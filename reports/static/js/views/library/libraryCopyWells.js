@@ -13,11 +13,6 @@ define([
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          LibraryView, layout) {
   
-  var VIEWS = {
-    'ListView': ListView, 
-    'DetailView': DetailLayout
-  };
-    
   var LibraryCopyWellView = Backbone.Layout.extend({
     
     template: _.template(layout),
@@ -151,14 +146,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         console.log('backgrid error', arguments);
       });
 
-      var view = new ListView({ options: {
+      var view = new ListView({ 
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
         url: url,
         collection: collection,
         extraControls: [showSaveButton, showHistoryButton]
-      }});
+      });
       showSaveButton.click(function(e){
         
         e.preventDefault();

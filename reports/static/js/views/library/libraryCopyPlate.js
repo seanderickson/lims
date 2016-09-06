@@ -13,20 +13,17 @@ define([
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          EditView, layout) {
   
-  var VIEWS = {
-    'ListView': ListView, 
-    'DetailView': DetailLayout
-  };
-    
   var LibraryCopyPlateView = Backbone.Layout.extend({
     
     template: _.template(layout),
     
     initialize: function(args) {
-      this.resource = args.resource || args.options.resource;
-      this.uriStack = args.uriStack || args.options.uriStack;
-      this.library = args.library  || args.options.library;
-      this.copy = args.copy || args.options.copy;
+      this._args = args;
+      this._classname = 'libraryCopyPlate';
+      this.resource = args.resource;
+      this.uriStack = args.uriStack;
+      this.library = args.library;
+      this.copy = args.copy;
       this.consumedStack = [];
       console.log('uriStack', this.uriStack);
       _.bindAll(this, 'showDetail');
@@ -111,17 +108,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var route = newUriStack.join('/');
         console.log('history route: ' + route);
         appModel.router.navigate(route, {trigger: true});
-        self.remove();
+//        self.remove();
       });
 
-      var view = new ListView({ options: {
+      // TODO: extending the passed args to get the "search_data", or other 
+      // passed args, grab options explicitly instead 201608
+      options = _.extend({
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
         url: url,
-//        collection: collection,
         extraControls: [showBatchEditButton, showHistoryButton]
-      }});
+        }, self._args ) ;
+      var view = new ListView(options);
       showBatchEditButton.click(function(e){
         e.preventDefault();
         self.createBatchEditDialog(view);
@@ -237,6 +236,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               }).text(option.label));
           });
           $chosen.trigger("chosen:updated");
+          form.setValue('freezer',null);
         });
         
         form.on("freezer:change", function(e){
@@ -257,6 +257,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               }).text(option.label));
           });
           $chosen.trigger("chosen:updated");
+          form.setValue('shelf',null);
         });
         
         form.on("shelf:change", function(e){
@@ -278,6 +279,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               }).text(option.label));
           });
           $chosen.trigger("chosen:updated");
+          form.setValue('bin',null);
         });
         
         var dialog = appModel.showModal({
@@ -329,6 +331,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
             .done(function(model, resp){
                 // FIXME: should be showing a regular message
+              listView.collection.fetch();
                 appModel.error('success');
             });
             

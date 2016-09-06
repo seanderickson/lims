@@ -337,13 +337,32 @@ define([
         template: _.template(screenTemplate)
         
       });
+
+      // Removed - overwrites validate instead of extending
+      //var ScreenModel = Backbone.Model.extend({
+      //  validate: function(attrs, options) {
+      //    errs = {};
+      //    if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))){
+      //      if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))){
+      //        errs['max_allowed_data_privacy_expiration_date'] = (
+      //          'can not be set if the expiration notified date is set');
+      //      }
+      //      if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))){
+      //        errs['min_allowed_data_privacy_expiration_date'] = (
+      //          'can not be set if the expiration notified date is set');
+      //      }
+      //    }
+      //    return _.isEmpty(errs) ? null : errs;
+      //  }
+      //});
+      //  key: self.model.key,
+      //  resource: self.model.resource,
+      //  url: self.model.url,
+      //  parse: self.model.parse,
+      //this.model = new ScreenModel(this.model.attributes);
       
-      var ScreenModel = Backbone.Model.extend({
-        key: self.model.key,
-        resource: self.model.resource,
-        url: self.model.url,
-        parse: self.model.parse,
-        validate: function(attrs, options) {
+      var temp_validate = this.model.validate;
+      this.model.validate = function(attrs, options) {
           errs = {};
           if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))){
             if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))){
@@ -357,8 +376,7 @@ define([
           }
           return _.isEmpty(errs) ? null : errs;
         }
-      });
-      this.model = new ScreenModel(this.model.attributes);
+      
       
       view = new DetailLayout({ 
         model: this.model, 
@@ -397,13 +415,13 @@ define([
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
       var resource = appModel.getResource('library');
-      var view = new ListView({ options: {
+      var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
-      }});
+      });
       Backbone.Layout.setupView(view);
       self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -424,13 +442,13 @@ define([
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'copyplates'].join('/');
       var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ options: {
+      var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
-      }});
+      });
       Backbone.Layout.setupView(view);
       self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -451,13 +469,13 @@ define([
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
       var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ options: {
+      var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
-      }});
+      });
       Backbone.Layout.setupView(view);
       self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -509,13 +527,13 @@ define([
         extraControls = extraControls.concat(uploadAttachedFileButton, showDeleteButton);
       }      
       
-      var view = new ListView({ options: {
+      var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: extraControls
-      }});
+      });
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
       self.reportUriStack([]);
@@ -559,13 +577,13 @@ define([
         });
         extraControls = extraControls.concat(showAddButton, showDeleteButton)
       }      
-      var view = new ListView({ options: {
+      var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: extraControls
-      }});
+      });
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
       self.reportUriStack([]);
@@ -1039,13 +1057,13 @@ define([
         var self = this;
         var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
         var resource = appModel.getResource('cherrypickrequest');
-        var view = new ListView({ options: {
+        var view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: []
-        }});
+        });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -1078,13 +1096,13 @@ define([
         
         console.log('combined vocab', resource.fields['type'].vocabulary );
         
-        var view = new ListView({ options: {
+        var view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: []
-        }});
+        });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -1341,12 +1359,12 @@ define([
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'libraryscreening'].join('/');
-        view = new ListView({ options: {
+        view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: lsResource,
           resource: lsResource,
           url: url
-        }});
+        });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -1720,13 +1738,13 @@ define([
           console.log('custom exclude options', options);
         }
         var initialSearchHash;
-        view = new ListView({ options: {
+        view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: schemaResult,
           resource: screenResultResource,
           url: url,
           extraControls: extraControls
-        }});
+        });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

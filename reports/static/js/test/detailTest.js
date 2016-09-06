@@ -225,12 +225,12 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'groups'].join('/');
-      view = new ListView({ options: {
+      view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource.schema,
         resource: resource,
         url: url
-      }});
+      });
       Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
       self.reportUriStack([]);

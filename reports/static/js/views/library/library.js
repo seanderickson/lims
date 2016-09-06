@@ -296,12 +296,12 @@ define([
           var url = [self.model.resource.apiUri, 
                      self.model.key,
                      'well'].join('/');
-          view = new ListView({ options: {
+          view = new ListView({ 
             uriStack: _.clone(delegateStack),
             schemaResult: schemaResult,
             resource: schemaResult,
             url: url
-          }});
+          });
           Backbone.Layout.setupView(view);
           self.reportUriStack([]);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -322,12 +322,12 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'plate'].join('/');
-      view = new ListView({ options: {
+      view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: copyPlateResource,
         resource: copyPlateResource,
         url: url
-      }});
+      });
       Backbone.Layout.setupView(view);
       self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -362,12 +362,12 @@ define([
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'copy'].join('/');
-        view = new ListView({ options: {
+        view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: copyResource,
           resource: copyResource,
           url: url
-        }});
+        });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

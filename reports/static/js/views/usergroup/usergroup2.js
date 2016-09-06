@@ -188,12 +188,12 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'users'].join('/');
-      view = new ListView({ options: {
+      view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url
-      }});
+      });
       Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
       self.reportUriStack([]);
@@ -207,12 +207,12 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'subgroups'].join('/');
-      view = new ListView({ options: {
+      view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: self.model.resource,
         resource: self.model.resource,
         url: url
-      }});
+      });
       Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
       self.reportUriStack([]);

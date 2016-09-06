@@ -1115,7 +1115,7 @@ define([
       // the API resource only: tastypie wants this
       // Note: this is happening if the model was fetched specifically for this
       // page, and has the url used to fetch it, rather than the collection url.
-      url = options['url'] = _.result(this.model, 'url');
+      url = options['url'] || _.result(this.model, 'url');
       // TODO: this should be optional (for most resources, to have url end with '/'
       if( url && url.charAt(url.length-1) != '/'){
         url += '/';
@@ -1152,10 +1152,12 @@ define([
               // this is an +add event
               model = new Backbone.Model(model);
               var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+              model.key = self.model.resource.key + '/' + key;
               appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+            }else{
+              console.log('trigger remove');
+              self.trigger('remove');
             }
-            console.log('trigger remove');
-            self.trigger('remove');
           })
           .done(function(model, resp) {
             // TODO: done replaces success as of jq 1.8

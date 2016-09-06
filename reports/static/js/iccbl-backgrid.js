@@ -1270,7 +1270,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     _.each(_.keys(searchHash), function(key) {
       var val = searchHash[key]
 
-      if(_.isEmpty(val)){
+      if(_.isEmpty("" + val)){
           delete self.queryParams[key];
       }else{
         // Check if param dne, or if param exists and is a value to be set.
@@ -1287,11 +1287,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       }
     });
 
-    // if(!_.isEmpty(_data)){
-    // self.fetch({data:_.clone(_data), reset: true});
-    self.fetch().fail(
-      function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-    );      
+//    if(!_.isEmpty(_data)){
+      self.fetch({data:_data, reset: true});
+//    }else{
+//      self.fetch().fail(
+//        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+//      );    
+//    }
   },
 
   /**
@@ -1881,7 +1883,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
         var searchVal = searchHash[nsearchTerm];
         negated=true;
       }
-      if(searchVal){
+      if(searchVal !== null){
         found = true;
         self.setValue('lower_criteria', criteriaKey);
         if(criteria == 'is_null'){
@@ -2093,7 +2095,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
         var searchVal = searchHash[nsearchTerm];
         negated=true;
       }
-      if(searchVal){
+      if(searchVal !== null){
         found = true;
         self.setValue('lower_criteria', criteriaKey);
         try{
@@ -2897,11 +2899,13 @@ var NumberFormFilter = CriteriumFormFilter.extend({
   
   criterium: {'=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
     '<>':'ne', 'x..y':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
-
+  
+  // FIXME: this template is a mix of adaptive and fixed styles, for instance:
+  // for the first input-group: style="width: 50px"
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
-      '<div class="row center-block" style="margin: 0 0 0 0;" >',
-      '<div class="input-group ">',
+      '<div class="center-block" style="margin: 0 0 0 0;" >',
+      '<div class="input-group" style="width: 50px" >',
       '   <div data-fields="lower_criteria" ',
       '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
       '   <div data-fields="lower_value"/>',
@@ -3030,7 +3034,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         var searchVal = searchHash[nsearchTerm];
         negated=true;
       }
-      if(searchVal){
+      if(searchVal !== null){
         found = true;
         self.setValue('lower_criteria', criteriaKey);
         if(criteria == 'range'){

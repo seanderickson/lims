@@ -121,7 +121,8 @@ define([
         'setCurrentUser','getResources','getVocabularies',
         'getAdminUserOptions','getUserOptions','getUserGroupOptions',
         'getPrincipalInvestigatorOptions','getLibraries','getLibraryOptions',
-        'getScreens','getScreenOptions');
+        'getScreens','getScreenOptions','getPlateLocationTree',
+        'getPlateLocations');
     },
         
     start: function(callBack) {
@@ -202,6 +203,39 @@ define([
       return options;
     },
 
+    getPlateLocationTree: function(callBack){
+      var self = this;
+      var prop = 'locationHash';
+      var locationHash = this.get(prop);
+      if(!locationHash){
+        this.getPlateLocations(function(locations){
+          var locationHash = {};
+          locations.each(function(location){
+            var room = location.get('room');
+            if (!room) return;
+            var roomHash = _.result(locationHash, room,{});
+            locationHash[room] = roomHash;
+            var freezer = location.get('freezer');
+            if (!freezer) return;
+            var freezerHash = _.result(roomHash, freezer, {});
+            roomHash[freezer] = freezerHash;
+            var shelf = location.get('shelf');
+            if (!shelf) return;
+            var shelfHash = _.result(freezerHash,shelf,{});
+            freezerHash[shelf]=shelfHash;
+            var bin = location.get('bin');
+            if (!bin) return;
+            shelfHash[bin] = bin;
+          });
+          self.set(prop,locationHash);
+          if (callBack) callBack(locationHash);
+        });
+      }else{
+        if (callBack) callBack(locationHash);
+      }
+      return locationHash;
+    },
+
     getScreenOptions: function(callBack){
       var self = this;
       var prop = 'screenOptions';
@@ -237,6 +271,31 @@ define([
               return;
             }
             if (library.get('screen_type') != screen_type){
+              return;
+            }
+            var short_name = library.get('short_name');
+            var library_name = library.get('library_name');
+            options.push({ val: short_name, label: library_name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+      }
+      return options;
+    },
+
+    getPlatedLibraryOptions: function(callBack){
+      /** return libraries with plate copies **/
+      var self = this;
+      var prop = 'platedLibraryOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getLibraries(function(libraries){
+          options = [];
+          libraries.each(function(library){
+            if (! library.has('copies')){
               return;
             }
             var short_name = library.get('short_name');
@@ -353,6 +412,14 @@ define([
       };
       return this.getCachedResourceCollection(
         'libraries', this.dbApiUri + '/library', data_for_get, callback );
+    },
+    
+    getPlateLocations: function(callback){
+      data_for_get = { 
+        exact_fields: ['room','freezer','shelf','bin']
+      };
+      return this.getCachedResourceCollection(
+        'platelocations', this.dbApiUri + '/platelocation', data_for_get, callback );
     },
     
     getScreens: function(callback){
@@ -718,6 +785,7 @@ define([
       });
       var newModel = new NewModel();
       newModel.resource = resource;
+      console.log('url', newModel.url());
       console.log('new model', newModel);
       
       return newModel;
@@ -883,9 +951,7 @@ define([
     getResource: function(resourceId){
       var uiResources = this.get('ui_resources');
       if(!_.has(uiResources, resourceId)) {
-        var msg = "Unknown resource: " + resourceId;
-        console.log('error: ' + msg);
-        //Iccbl.appModel.error(msg);
+        throw "Unknown resource: " + resourceId;
       }
       return uiResources[resourceId];
     },

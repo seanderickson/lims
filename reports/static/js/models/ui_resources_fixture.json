@@ -197,7 +197,17 @@
         "order": []  }
     },
     "librarycopyplate": {
+      "detailView": "LibraryCopyPlateView",
+      "listView": "LibraryCopyPlateView",
       "options": { 
+        "order": []  }
+    },
+    "platelocation": {
+      "detailView": "PlateLocationView",
+      "list_view": "ListView",
+      "api_resource": "platelocation",
+      "options": { 
+        "search": {"plate_count__gt":0},
         "order": []  }
     },
     "librarycopy": {

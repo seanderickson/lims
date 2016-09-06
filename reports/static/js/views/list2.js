@@ -17,7 +17,7 @@ define([
   
   var ListView = Backbone.View.extend({
 
-    LIST_ROUTE_ORDER: appModel.LIST_ARGS,
+    LIST_MODEL_ROUTE_KEYS: appModel.LIST_ARGS,
     SEARCH_DELIMITER: appModel.SEARCH_DELIMITER,
     
     events: {
@@ -30,8 +30,12 @@ define([
     initialize : function(args) {
       
       var self = this;
-      var _options = self._options = args.options;
-      var resource = self._options.resource;
+      var _options = self._options = args;
+      var resource = args.resource;
+      var urlSuffix = self.urlSuffix = "";
+      var listInitial = {};
+      var uriStack = args.uriStack || [];
+
       var ListModel = Backbone.Model.extend({
         defaults: {
             rpp: 25,
@@ -39,15 +43,14 @@ define([
             order: {},
             search: {}}
         });
-      var preset_searches = {};
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.search)){
-        _.each(_.keys(resource.options.search), function(key){
-          preset_searches[key] = resource.options.search[key];
-        });
-      }
-      var urlSuffix = self.urlSuffix = "";
-      var listInitial = {};
+
+//      var preset_searches = {};
+//      if(!_.isUndefined(resource.options)
+//          && ! _.isUndefined(resource.options.search)){
+//        _.each(_.keys(resource.options.search), function(key){
+//          preset_searches[key] = resource.options.search[key];
+//        });
+//      }
 
       // Presets
       
@@ -66,57 +69,54 @@ define([
       }
       
       // Update with the uriStack values
-      if(_.has(self._options,'uriStack')){
-        var stack = self._options.uriStack;
-        for (var i=0; i<stack.length; i++){
-          var key = stack[i];
-          i = i+1;
-          if (i==stack.length) continue;
-          var value = stack[i];
-          if (!value || _.isEmpty(value) ){
-            continue;
-          }
+      for (var i=0; i<uriStack.length; i++){
+        var key = uriStack[i];
+        i = i+1;
+        if (i==uriStack.length) continue;
+        var value = uriStack[i];
+        if (!value || _.isEmpty(value) ){
+          continue;
+        }
+        
+        if(key == 'log'){
+          self.urlSuffix = key + '/' + value;
+          continue;
+        }
+        if(key == 'children'){
+          // This is a hack to show the children of an apilog, see 
+          // reports.api.ApiLogResource.prepend_urls for further details
+          var substack = _.rest(uriStack,i)
+          var substack_consumed = []
+          var _key = Iccbl.popKeyFromStack(resource, substack, substack_consumed);
+          i += substack_consumed.length;
+          self.urlSuffix = key + '/' + _key;
+          console.log('urlSuffix: ' + self.urlSuffix);
+        }
+        
+        if(_.contains(this.LIST_MODEL_ROUTE_KEYS, key)){
           
-          if(key == 'log'){
-            self.urlSuffix = key + '/' + value;
-            continue;
-          }
-          if(key == 'children'){
-            // This is a hack to show the children of an apilog, see 
-            // reports.api.ApiLogResource.prepend_urls for further details
-            var substack = _.rest(stack,i)
-            var substack_consumed = []
-            var _key = Iccbl.popKeyFromStack(resource, substack, substack_consumed);
-            i += substack_consumed.length;
-            self.urlSuffix = key + '/' + _key;
-            console.log('urlSuffix: ' + self.urlSuffix);
-          }
-          
-          if(_.contains(this.LIST_ROUTE_ORDER, key)){
-            
-            if(key === 'search') {
-              var searchHash = self.searchHash = {};
-              var searches = value.split(this.SEARCH_DELIMITER);
-              _.each(searches, function(search){
-                var parts = search.split('=');
-                if (!parts || parts.length!=2) {
-                  var msg = 'invalid search parts: ' + search;
-                  console.log(msg);
-                  appModel.error(msg);
-                } else if (_.isEmpty(parts[1])) {
-                  // pass, TODO: prevent empty searches from notifying
-                } else {
-                  searchHash[parts[0]] = parts[1];
-                }
-              });
-              listInitial[key] = searchHash;
-            } else if (key === 'order') {
-              listInitial[key] = value.split(',');        
-            } else if (key === 'includes') {
-              listInitial[key] = value.split(',');        
-            }else {
-              listInitial[key] = value;
-            }
+          if(key === 'search') {
+            var searchHash = self.searchHash = {};
+            var searches = value.split(this.SEARCH_DELIMITER);
+            _.each(searches, function(search){
+              var parts = search.split('=');
+              if (!parts || parts.length!=2) {
+                var msg = 'invalid search parts: ' + search;
+                console.log(msg);
+                appModel.error(msg);
+              } else if (_.isEmpty(parts[1])) {
+                // pass, TODO: prevent empty searches from notifying
+              } else {
+                searchHash[parts[0]] = parts[1];
+              }
+            });
+            listInitial[key] = searchHash;
+          } else if (key === 'order') {
+            listInitial[key] = value.split(',');        
+          } else if (key === 'includes') {
+            listInitial[key] = value.split(',');        
+          }else {
+            listInitial[key] = value;
           }
         }
       }
@@ -132,11 +132,8 @@ define([
       var orderStack = self.listModel.get('order') || [];
       _state.orderStack = _.clone(orderStack);
       
-      var url = self._options.resource.apiUri + '/' + self.urlSuffix;
-      if (_.has(self._options, 'url')) {
-        url = self._options.url;
-      } else {
-        self._options.url = url;   // TODO: cleanup messy initializations
+      if (!_.has(self._options, 'url')) {
+        self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
       }
 
       var collection;
@@ -146,7 +143,7 @@ define([
         });
         
         collection = self.collection = new Collection({
-          'url': url,
+          'url': self._options.url,
           listModel: listModel
         });
         this.objects_to_destroy.push(collection);
@@ -173,14 +170,11 @@ define([
     
     getCollectionUrl: function(limit) {
       var self = this;
+      var url = self.collection.url;
       var urlparams = '';
-      self.trigger('update_title', '');
-      
       var search_title_val = '';
-      
       var _translate_sql_specifier = function(k){
         if(! k || _.isEmpty(k)) return k;
-        
         var parts = k.split('__');
         var name = k;
         if(parts.length == 2){
@@ -193,30 +187,27 @@ define([
         return name;
       };
       
-      _.each(self.LIST_ROUTE_ORDER, function(route){
-        var value = self.listModel.get(route);
-        if ( (!_.isObject(value) && value ) || 
-             ( _.isObject(value) && !_.isEmpty(value))) {
-
-          if (route === 'search') {
-            
-            var val = '';
-            if( route == 'search'){
-              _.each(value, function(v,k){
-                if(val !== '' ) val += '&';
-                if(search_title_val !== '' ) search_title_val += ' AND ';
-                val += k + "=" + v;
-                search_title_val += _translate_sql_specifier(k) + " (" + v + ") ";
-              });
-            }
+      _.each(self.LIST_MODEL_ROUTE_KEYS, function(routeKey){
+        var routeEntry = self.listModel.get(routeKey);
+        if ( ! _.isEmpty(routeEntry)) {
+          if (routeKey === 'search') {
             if(!_.isEmpty(urlparams)) urlparams += '&';
-            urlparams += val;
-          }else if (route === 'order') {
+            urlparams += _.map(
+              _.zip(_.keys(routeEntry),_.values(routeEntry)), 
+              function(kv){
+                return kv.join('=');
+              }).join('&');
+            search_title_val += _.map(
+              _.zip(_.keys(routeEntry),_.values(routeEntry)), 
+              function(kv){
+                return [_translate_sql_specifier(kv[0]),kv[1]].join('=');
+              }).join(' AND ');
+          }else if (routeKey === 'order') {
             if(!_.isEmpty(urlparams)) urlparams += '&';
-            urlparams += 'order_by=' + value.join('&order_by=');
-          }else if (route === 'includes') {
+            urlparams += 'order_by=' + routeEntry.join('&order_by=');
+          }else if (routeKey === 'includes') {
             if(!_.isEmpty(urlparams)) urlparams += '&';
-            urlparams += 'includes=' + value.join('&includes=');
+            urlparams += 'includes=' + routeEntry.join('&includes=');
           }
         }
       });
@@ -226,10 +217,10 @@ define([
           limit = 0;
         }
       }
-      
-      var url = self.collection.url + '?' + 
-                '&limit=' + limit;
-      if(!_.isEmpty(urlparams)) url += '&' + urlparams;
+      url += '?limit=' + limit;
+      if(!_.isEmpty(urlparams)){
+        url += '&' + urlparams;
+      }
       console.log('collection url: ' + url)
       
       if(_.has(self._options, 'search_data')){
@@ -249,6 +240,8 @@ define([
         if(search_title_val !== '') search_title_val += '<br>AND ';
         search_title_val += '[ ' + or_clauses + ' ]';
       }            
+
+      self.trigger('update_title', '');
       if(search_title_val !== ''){
         self.trigger('update_title', 'Search: ' + search_title_val);
       }
@@ -259,40 +252,33 @@ define([
     reportState: function(args) {
       var self = this;
       var newStack = [];
+      var previousStack = self.currentStack;
       
       // If a suffix was consumed, then put it back
       if(self.urlSuffix != ""){
         newStack = self.urlSuffix.split('/');
       }
-      
-      _.each(self.LIST_ROUTE_ORDER, function(route){
-        var value = self.listModel.get(route);
-        if ( (!_.isObject(value) && value ) || 
-             ( _.isObject(value) && !_.isEmpty(value))) {
-          newStack.push(route);
-          
-          if (route === 'search') {
-            var val = '';
-            _.each(value, function(v,k){
-              if (val !== '' ) val += self.SEARCH_DELIMITER;
-              
-              val += k + "=" + v;
-            });
-            
-            newStack.push(val);
-            
-          }else if (route === 'order') {
-            newStack.push(value);
-          }else if (route === 'includes') {
-            newStack.push(value.join(','));
+      _.each(self.LIST_MODEL_ROUTE_KEYS, function(routeKey){
+        var routeEntry = self.listModel.get(routeKey);
+        if ( ! _.isEmpty(routeEntry)) {
+          newStack.push(routeKey);
+          if (routeKey === 'search') {
+            newStack.push(_.map(
+              _.zip(_.keys(routeEntry),_.values(routeEntry)), 
+              function(kv){
+                return kv.join('=');
+              }).join(self.SEARCH_DELIMITER));
+          }else if (routeKey === 'order') {
+            newStack.push(routeEntry);
+          }else if (routeKey === 'includes') {
+            newStack.push(routeEntry.join(','));
           } else {
-            newStack.push(value);
+            newStack.push(routeEntry);
           }
         }
       });
-      console.log('newStack: ' + JSON.stringify(newStack));
-      var previousStack = self.currentStack;
       self.currentStack = newStack;
+      console.log('newStack: ' + JSON.stringify(newStack));
       if(previousStack && _.isEqual(previousStack,newStack)){
         console.log('no new stack updates');
       }else{

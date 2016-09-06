@@ -9,8 +9,11 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/library/library',
+  'views/library/libraryCopy',
+  'views/library/libraryCopyPlate',
   'views/screen/screen',
   'views/screen/libraryScreening',
+  'views/plateLocation',
   'views/user/user2',
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
@@ -20,7 +23,8 @@ define([
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, ScreenView, LibraryScreeningView, UserAdminView, 
+         EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView, 
+         ScreenView, LibraryScreeningView, PlateLocationView, UserAdminView, 
          UserView, UserGroupAdminView, DetailTestView, layout, welcomeLayout, 
          aboutLayout) {
   
@@ -28,8 +32,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ListView': ListView, 
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
+    'LibraryCopyView': LibraryCopyView, 
+    'LibraryCopyPlateView': LibraryCopyPlateView,
     'ScreenView': ScreenView,
     'LibraryScreeningView': LibraryScreeningView,
+    'PlateLocationView': PlateLocationView,
     'UserView': UserView,
     'UserAdminView': UserAdminView,
     'UserGroupAdminView': UserGroupAdminView,
@@ -39,7 +46,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   var ContentView = Iccbl.UriContainerView.extend({
     
     template: _.template(layout),
-    //className: "col-sm-10 col-md-10 col-lg-10",
     
     initialize: function() {
       console.log('initialize content.js', arguments);
@@ -49,12 +55,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.objects_to_destroy = [];
     },
         
+    // Create a new model for editing
     showAdd: function(resource, uriStack){
+      
       var self = this;
       var newModel = appModel.createNewModel(resource.key);
+      var viewClass = DetailLayout;
+      var view;
+      
       newModel.resource = resource;
       this.$('#content_title').html(resource.title + ': Add' );
-      var viewClass = DetailLayout;
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
           viewClass = VIEWS[resource['detailView']];
@@ -66,33 +76,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
-      var view = new viewClass({ model: newModel, uriStack: uriStack});
+      view = new viewClass({ model: newModel, uriStack: uriStack});
 
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
     },
     
+    // Show a mock detail view to test UI components
     showDetailTest: function(uriStack){
       var self = this;
-      self.removeView('#content');
-      self.cleanup();
-      self.off();
       this.$('#content_title').html("Detail Test");
       var view = new DetailTestView({uriStack: uriStack});
       self.setView('#content', view).render();
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
     },
     
+    // Show the standard view of a resource
     showDetail: function(uriStack, model){
+      
+      console.log('showDetail', uriStack, model.resource.key);
+      
       var self = this;
       var uriStack = _.clone(uriStack);
       var resource = model.resource;
       var viewClass = DetailLayout;
 
-      self.removeView('#content');
-      self.cleanup();
-      self.off();
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
           viewClass = VIEWS[resource['detailView']];
@@ -123,16 +132,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     }, // end showDetail
     
+    // Show a listing of a resource, get the parameters from the uriStack
     showList: function(resource, uriStack, schemaResult) {
       
+      console.log('showList: uriStack', uriStack);
+
       var self = this;
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
-
-      // TODO: validate cleanup operations
-      self.removeView('#content');
-      self.cleanup();
-      self.off();
+      var view;
       
       if (_.has(resource, 'listView')){
         if (_.has(VIEWS, resource['listView'])) {
@@ -141,11 +149,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }else{
           var msg = 'listView class specified could not be found: ' + 
               resource['listView'];
-          
           window.alert(msg);
           throw msg;
         }
       }
+      
       if(uriStack.length > 1 && uriStack[0] == 'children'){
         var substack = _.rest(uriStack,1);
         var _key = Iccbl.popKeyFromStack(resource, substack, []);
@@ -155,84 +163,84 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
     
       if(uriStack.length > 1 && uriStack[0] == 'search' 
-        && !_.isNaN(parseInt(uriStack[1]))){
-        // search view
-        console.log('create a collection with search data');
-        // IF search, override collection fetch; POST search data
-        // TODO: if search data contains a simple AND list, then just pass these
-        // params on to the list and conduct the searches from the header field mechanism
-        
-        this.consumedStack.push(uriStack.shift());
-        // TODO: searchID not used - will be needed to persist searches on server
-        var searchID = uriStack.shift();
+          && !_.isNaN(parseInt(uriStack[1]))){
 
-        this.consumedStack.push(searchID);
-        this.$('#content_title').html(resource.title + ' search');
-        
-        var url = resource.apiUri + '/search/' + searchID;
-        
-        var search_data = appModel.getSearch(searchID);
-        if(_.isUndefined(search_data) || _.isEmpty(search_data)){
-          var msg = 'Content List search requires a "search_data:'+searchID +'" in current browser state';
-          console.log(msg);
-          appModel.error(msg);
-          return;
-        }
-        var Collection = Iccbl.MyCollection.extend({
-          url: url,
-          fetch: function(options){
-            // endcode for the post_data arg; post data elements are sent 
-            // as urlencoded values via a POST form for simplicity
-            console.log('execute POST for collection form data: ', search_data);
-            options = options || {};
-            var data = options.data || {};
-            options.data = _.extend({ search_data: JSON.stringify(search_data) }, data);
-            options.type = 'POST';
-            Collection.__super__.fetch.call(this, options);
-          }
-        });
-        var collection = new Collection({
-          url: url,
-        });
-
-        var view = new viewClass({ model: appModel, 
-          options: { 
-            uriStack: uriStack,
-            schemaResult: schemaResult, 
-            resource: resource, 
-            collection: collection, 
-            search_data: search_data
-          }
-        });
+        view = self.createListSearchView(resource, schemaResult, viewClass, uriStack);
+      
       }else{ // normal list view
-        var view = new viewClass({ model: appModel, 
-          options: { 
+      
+        view = new viewClass({ 
+            model: appModel, 
             uriStack: uriStack,
             schemaResult: schemaResult, 
             resource: resource
-          }
-        });
+          });
       }
     
       self.listenTo(view, 'update_title', function(val){
         if(val) {
-          this.$('#content_title').html(
-              resource.title + 
-              ': <small>' + val + '</small>');
+          this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
         }else{
           this.$('#content_title').html(resource.title);
         }
       });
     
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      
       Backbone.Layout.setupView(view);
       self.setView('#content', view ).render();
       self.objects_to_destroy.push(view);
 
     }, // end showList
     
-    /** Backbone.layoutmanager callback **/
+    // Create a list view using the stateful searchID given on the uriStack
+    createListSearchView: function(resource, schemaResult, viewClass, uriStack){
+      
+      var url;
+      var searchID;
+      var search_data;
+
+      console.log('create a collection with search data: ', uriStack);
+      
+      this.consumedStack.push(uriStack.shift());
+      searchID = uriStack.shift();
+      this.consumedStack.push(searchID);
+      search_data = appModel.getSearch(searchID);
+      
+      if(_.isUndefined(search_data) || _.isEmpty(search_data)){
+        var msg = 'Content List search requires a "search_data:'
+          +searchID +'" in current browser state';
+        console.log(msg);
+        appModel.error(msg);
+        return;
+      }
+      url = resource.apiUri + '/search/' + searchID;
+      var Collection = Iccbl.MyCollection.extend({
+        fetch: function(options){
+          // Endcode for the post_data arg; post data elements are sent 
+          // as urlencoded values via a POST form for simplicity
+          options.data = _.extend(
+            { search_data: JSON.stringify(search_data) }, 
+            options.data);
+          options.type = 'POST';
+          return Iccbl.MyCollection.prototype.fetch.call(this, options);
+        }
+      });
+      var collection = new Collection({
+        url: url,
+      });
+      var view = new viewClass({ 
+          model: appModel, 
+          uriStack: uriStack,
+          schemaResult: schemaResult, 
+          resource: resource, 
+          collection: collection, 
+          search_data: search_data
+        });
+      this.$('#content_title').html(resource.title + ' search');
+      return view;
+    },
+    
+    // Backbone layoutmanager callback
     cleanup: function(){
       console.log('cleanup');
       var oldView = this.getView('#content');
@@ -247,25 +255,34 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
     },
 
+    // Main view control method
     // delegated from UriContainerView on appModel change:uriStack
     changeUri: function(uriStack) {
+      
       console.log('changeUri:', uriStack);
+      
       var self = this;
       var consumedStack = this.consumedStack = [];
-
+      var uiResourceId;
+      var resource;
+      
+      self.removeView('#content');
+      self.cleanup();
+      self.off();
+      
       if (!_.isEmpty(uriStack)){
         if(uriStack[0] == 'detail_test'){
           this.consumedStack.push(uriStack.shift());
           self.showDetailTest(uriStack);
           return;
         }
-        var uiResourceId = uriStack.shift();
+        uiResourceId = uriStack.shift();
         this.consumedStack.push(uiResourceId);
       }else{
         uiResourceId = 'home';
       }
       
-      var resource = appModel.getResource(uiResourceId);
+      resource = appModel.getResource(uiResourceId);
       
       if (uiResourceId == 'home'){
         var WelcomeView = Backbone.Layout.extend({
@@ -291,16 +308,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         return;
       }
       
-      if (_.isUndefined(resource) || _.isUndefined(resource)){
-        var msg = "Resource schema not defined: " + uiResourceId;
-        appModel.error(msg)
-        throw msg;
-      }
-
       // Test for list args, if not found, then it's a detail view
-      if (!_.isEmpty(uriStack) && 
-            !_.contains(appModel.LIST_ARGS, uriStack[0]) &&
-            uriStack[0] != 'search') {
+      if (!_.isEmpty(uriStack) 
+            && !_.contains(appModel.LIST_ARGS, uriStack[0]) 
+            && uriStack[0] != 'search') {
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
@@ -313,10 +324,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               // Use the special "ui" url for screen
               options.url = [resource.apiUri, _key, 'ui'].join('/');
             }
-            appModel.getModel(uiResourceId, _key, function(model){
-              model.resource = resource;
-              self.showDetail(uriStack, model);
-            }, options);
+            appModel.getModel(
+              uiResourceId, _key, 
+              function(model){
+                model.resource = resource;
+                self.showDetail(uriStack, model);
+              }, 
+              options);
           }catch(e){
             var msg = 'Unable to display resource: ' + uiResourceId;
             console.log(msg,e);

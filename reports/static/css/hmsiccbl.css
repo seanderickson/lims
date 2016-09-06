@@ -167,6 +167,13 @@ div.backgrid-paginator {
   display: inline;
 }
 
+.backgrid td.edited,
+.backgrid tbody tr:nth-child(odd) td.edited {
+  background-color: rgba(0, 255, 0, 0.15);
+  outline: 1px solid green;
+}
+
+
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 
 td.dl-title {
@@ -258,7 +265,7 @@ ul.chosen-choices {
 .iccbl-headerfield-form input[type=number]{
 /*   padding: 0 0 0 0 !important; */
   width: 6em !important;
-  border: 0px;
+/*   border: 0px; */
 }
 
 .iccbl-headerfield-number select{

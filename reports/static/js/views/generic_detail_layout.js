@@ -25,6 +25,7 @@ define([
       this.EditView = args.EditView || EditView;
       this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
+      this.title = args.title;
       _.bindAll(this, 'showDetail', 'showEdit');
     },
 
@@ -83,6 +84,9 @@ define([
     },
     
     afterRender: function(){
+      if (this.title){
+        this.$el.find('#content_title').html(this.title).show();
+      }
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == 'edit') {
@@ -126,7 +130,7 @@ define([
       var route = newUriStack.join('/');
       console.log('history route: ' + route);
       appModel.router.navigate(route, {trigger: true});
-      this.remove();
+//      this.remove();
     },
 
     onClose: function() {

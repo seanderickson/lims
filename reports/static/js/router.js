@@ -30,14 +30,15 @@ function($, _, Backbone, appModel) {
       var uriStack = [];
       if (path){
         uriStack = path.split('/');
-        // special search case, as last item
-        var searchIndex = _.indexOf(uriStack,'search');
-        if(searchIndex > -1){
-          var temp = uriStack.slice(0,searchIndex+1);
-          temp.push(_.rest(uriStack,searchIndex+1).join('/'));
-          uriStack = temp;
-          console.log('new uriStack', uriStack);
-        }
+        // Removed 201608 - unknown purpose
+        //// special search case, as last item
+        //var searchIndex = _.indexOf(uriStack,'search');
+        //if(searchIndex > -1){
+        //  var temp = uriStack.slice(0,searchIndex+1);
+        //  temp.push(_.rest(uriStack,searchIndex+1).join('/'));
+        //  uriStack = temp;
+        //  console.log('new uriStack', uriStack);
+        //}
       }
       appModel.set({ uriStack: uriStack }, { source: this });
     },

@@ -155,9 +155,8 @@ class PlateLocationResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(PlateLocationResource, self).build_schema()
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -193,13 +192,17 @@ class PlateLocationResource(ApiResource):
             _pl = self.bridge['plate_location']
             _c = self.bridge['copy']
             _l = self.bridge['library']
-
+            
+            plate_location_counts = (
+                select([_pl.c.plate_location_id, func.count().label('plate_count')])
+                    .select_from(
+                        _pl.join(_p,_pl.c.plate_location_id
+                            ==_p.c.plate_location_id))
+                    .group_by(_pl.c.plate_location_id )
+                ).cte('plate_counts')
+            
             custom_columns = {
-                'plate_count': (
-                    select([func.count()])
-                        .select_from(_p)
-                        .where(_p.c.plate_location_id
-                            ==literal_column('plate_location.plate_location_id'))),
+                'plate_count': literal_column('plate_counts.plate_count'),
                 'libraries': (
                     select([func.array_to_string(
                         func.array_agg(distinct(_l.c.short_name)), 
@@ -218,7 +221,12 @@ class PlateLocationResource(ApiResource):
                 custom_columns=custom_columns)
             # build the query statement
 
-            stmt = select(columns.values()).select_from(_pl)
+            stmt = select(columns.values()).select_from(
+                _pl.join(
+                    plate_location_counts, 
+                    _pl.c.plate_location_id
+                            ==plate_location_counts.c.plate_location_id,
+                    isouter=True))
 
             # general setup
              
@@ -344,7 +352,7 @@ class PlateLocationResource(ApiResource):
 
     def patch_obj(self, request, deserialized, **kwargs):
 
-        logger.info('patch platelocation, kwargs: %r', kwargs)
+        logger.info('patch platelocation, kwargs: %r, %r', deserialized, kwargs)
         
         schema = self.build_schema()
         fields = schema['fields']
@@ -374,35 +382,54 @@ class PlateLocationResource(ApiResource):
                 'copy_plate_ranges', [])
             if copy_plate_ranges:
                 all_plates = self._find_plates(copy_plate_ranges)
-                # get the old plate locations, for logging
-                old_copyplate_data = []
                 
+                # get the old plate locations, for logging
+                plate_log_hash = {}
+                # combine all_plates (new) with plate_set.all() (previous)
                 for plate in set(all_plates) | set(plate_location.plate_set.all()):
                     plate_dict = {
+                        'library_short_name': plate.copy.library.short_name,
                         'copy_name': plate.copy.name,
                         'plate_number': str(plate.plate_number).zfill(5)
                     }
                     if plate.plate_location:
-                        plate_dict.update(model_to_dict(plate.plate_location))
-                    old_copyplate_data.append(plate_dict)
+                        plate_dict.update({
+                            k:getattr(plate.plate_location,k, None)
+                                for k in lookup })
+                    plate_log_hash[plate.plate_id] = [plate_dict]
                 
                 plate_location.plate_set = all_plates
                 plate_location.save()
                 
-                new_copyplate_data = []
                 for plate in set(all_plates) | set(plate_location.plate_set.all()):
                     plate_dict = {
+                        'library_short_name': plate.copy.library.short_name,
                         'copy_name': plate.copy.name,
                         'plate_number': str(plate.plate_number).zfill(5)
                     }
                     if plate.plate_location:
-                        plate_dict.update(model_to_dict(plate.plate_location))
-                    new_copyplate_data.append(plate_dict)
+                        plate_dict.update({
+                            k:getattr(plate.plate_location,k, None)
+                                for k in lookup })
+                    plate_log_hash[plate.plate_id].append(plate_dict)
 
-                logger.info('log copyplate patches for platelocation...')
-                self.get_librarycopyplate_resource().log_patches( 
-                    request,old_copyplate_data, new_copyplate_data, 
-                    **{'full': True } )
+                logger.info(
+                    'log copyplate patches for platelocation, '
+                    'len: %d...', len(plate_log_hash.items()))
+                
+                plate_logs = []
+                lcp_id_attribute = \
+                    self.get_librarycopyplate_resource().build_schema()['id_attribute']
+                for prev_dict,new_dict in plate_log_hash.values():
+                    plate_logs.append(
+                        self.get_librarycopyplate_resource().log_patch( 
+                            request,prev_dict,new_dict,
+                            **{ 'parent_log': kwargs.get('parent_log', None),
+                                'full': True,
+                                'id_attribute': lcp_id_attribute } ))
+                logger.info('logs created, saving...')
+                ApiLog.objects.bulk_create(plate_logs)
+                logger.info('logs saved.')
             else:
                 raise ValidationError(key='copy_plate_ranges', msg='required')
 
@@ -550,9 +577,8 @@ class LibraryCopyPlateResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(LibraryCopyPlateResource, self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id', None)
@@ -755,7 +781,9 @@ class LibraryCopyPlateResource(ApiResource):
         schema = cache.get(self._meta.resource_name + ":schema")
         if not schema:
             schema = super(LibraryCopyPlateResource, self).build_schema()
-            temp = [ x.status for x in self.Meta.queryset.distinct('status')]
+            temp = [ x for x in 
+                self.Meta.queryset.distinct('status')
+                    .values_list('status', flat=True)]
             schema['extraSelectorOptions'] = { 
                 'label': 'Type', 'searchColumn': 'status', 'options': temp }
         return schema
@@ -766,6 +794,7 @@ class LibraryCopyPlateResource(ApiResource):
         '''
         Batch edit is like patch, except:
         - bypasses the "dispatch" framework call
+        - can use the "search_data" to find the plates
         -- must be authenticated and authorized
         '''
         self.is_authenticated(request)
@@ -776,9 +805,8 @@ class LibraryCopyPlateResource(ApiResource):
                     'user: %s, permission: %s/%s not found' 
                     % (request.user,self._meta.resource_name,'write')))
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(LibraryCopyPlateResource, self).build_schema()
         deserialized = self.deserialize(request)
         
@@ -806,8 +834,11 @@ class LibraryCopyPlateResource(ApiResource):
         kwargs['search_data'] = deserialized.pop('search_data', {})
         logger.info('batch_edit: %r, %r, %r', 
             param_hash, deserialized, request)
-        # get all of the search plates:
         original_data = self._get_list_response(request, **kwargs)
+        
+        if not original_data:
+            raise HttpNotFound
+        
         logger.info('get the plate objects for search data: %d', len(original_data))
         
         logger.info('convert the plates into ranges...')
@@ -831,7 +862,7 @@ class LibraryCopyPlateResource(ApiResource):
                    str(plate_range[-1]).zfill(5) ))
 
         logger.info(
-            'patch location: %r, with copy_ranges: %r', 
+            'patch original location: %r, with copy_ranges: %r', 
             location_data, copy_plate_ranges) 
         location_copy_ranges = \
             location_data.get('copy_plate_ranges', [])
@@ -1590,9 +1621,8 @@ class ScreenResultResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
 
         manual_field_includes = set(param_hash.get('includes', []))
         limit = param_hash.get('limit', 0)        
@@ -1923,9 +1953,8 @@ class ScreenResultResource(ApiResource):
                 ' in the URI, as in /screenresult/[facility_id]/schema/')
         facility_id = kwargs.pop('screen_facility_id')
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         other_screens = param_hash.get('other_screens', [])
         show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
 
@@ -2719,9 +2748,8 @@ class DataColumnResource(ApiResource):
     def build_list_response(self, request, **kwargs):
         
         logger.info('build datacolumn response...')
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(DataColumnResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -3050,9 +3078,8 @@ class CopyWellResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         is_for_detail = kwargs.pop('is_for_detail', False)
         schema = super(CopyWellResource, self).build_schema()
         filename = self._get_filename(schema, kwargs)
@@ -3290,9 +3317,8 @@ class CherryPickRequestResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         schema = super(CherryPickRequestResource, self).build_schema()
@@ -3533,9 +3559,8 @@ class CherryPickPlateResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(CherryPickPlateResource, self).build_schema()
 
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -3765,9 +3790,8 @@ class LibraryCopyResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(LibraryCopyResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -4123,9 +4147,8 @@ class PublicationResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
         
         logger.info('params: %r', param_hash.keys())
@@ -4619,9 +4642,8 @@ class AttachedFileResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -5308,9 +5330,8 @@ class ActivityResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -5546,9 +5567,8 @@ class CherryPickScreeningResource(ActivityResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
  
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -5689,9 +5709,8 @@ class LibraryScreeningResource(ActivityResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
  
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -7056,9 +7075,8 @@ class ScreenResource(ApiResource):
         '''
         logger.info('2 - build_list_response')
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -7443,9 +7461,8 @@ class UserChecklistItemResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -7855,9 +7872,8 @@ class ScreensaverUserResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -8750,9 +8766,8 @@ class ReagentResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
         
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         
@@ -9564,9 +9579,8 @@ class LibraryResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(LibraryResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)

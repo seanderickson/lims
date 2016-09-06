@@ -9,6 +9,7 @@ from operator import itemgetter
 import os
 import re
 import sys
+import urllib
 
 from aldjemy.core import get_tables, get_engine
 from django.conf import settings
@@ -329,15 +330,8 @@ class ApiLogAuthorization(UserGroupAuthorization):
 
 class ApiResource(SqlAlchemyResource):
     '''
-    Provides framework for "Patch" and "Put" methods
-    - patch_list, put_list, put_detail; with logging
-    - patch_detail must be implemented
-    - patch/put methods call "patch_obj"
-    - "patch_obj" must be implemented
-    - "put" methods call "delete_obj" 
-    - "delete_obj" must be implemented
-    - wrap mutating methods in "un_cache"
-    - prepend_urls must direct to the detail/list methods
+    Provides framework for PATCH and PUT request methods:
+    - wrap logging 
     '''
     
     def __init__(self, **kwargs):
@@ -436,6 +430,57 @@ class ApiResource(SqlAlchemyResource):
                 initializer_dict[key] = parse_val(
                     deserialized.get(key,None), key,field['data_type']) 
         return initializer_dict
+    
+    def search(self, request, **kwargs):
+        '''
+        Treats a POST request like a GET (with posted search_data)
+        '''
+         
+        DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
+         
+        search_ID = kwargs['search_ID']
+         
+        all_params = self._convert_request_to_dict(request)
+        all_params.update(kwargs)
+ 
+        search_data = all_params.get('search_data', None)
+         
+        if search_data:
+            # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
+            # deserializer
+            search_data = urllib.unquote(search_data)
+            search_data = json.loads(search_data)   
+            # cache the search data on the session, to support subsequent requests
+            # to download or modify
+            request.session[search_ID] = search_data  
+         
+        if not search_data:
+            if search_ID in request.session:
+                search_data = request.session[search_ID]
+            else:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(request, 
+                        { 'search_data for id missing: ' + search_ID: 
+                            self._meta.resource_name + 
+                                '.search requires a "search_data" param'}))
+        
+        if DEBUG_SEARCH:
+            logger.info('search_data: %r', search_data)
+        kwargs['search_data'] = search_data
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+ 
+        response = self.build_list_response(request,**kwargs)
+        
+        # Because this view bypasses the IccblBaseResource.dispatch method, we
+        # are implementing the downloadID cookie here, for now.
+        downloadID = all_params.get('downloadID', None)
+        if downloadID:
+            logger.info('set cookie downloadID: %r', downloadID)
+            response.set_cookie('downloadID', downloadID)
+        else:
+            logger.info('no downloadID')
+        
+        return response
     
     @write_authorization
     @un_cache        
@@ -685,19 +730,14 @@ class ApiResource(SqlAlchemyResource):
         except Exception:
             # this can be ok, if the ID is generated
             logger.info('object id not posted')
-        if not kwargs_for_log:
-            # then this is a create
-            original_data = []
-        else:
-            original_data = []
+
+        original_data = None
+        if kwargs_for_log:
             try:
-                item = self._get_detail_response(request,**kwargs_for_log)
-                if item:
-                    original_data = [item]
+                original_data = self._get_detail_response(request,**kwargs_for_log)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
-                original_data = []
         try:
             log = self.make_log(request)
             log.save()
@@ -712,11 +752,12 @@ class ApiResource(SqlAlchemyResource):
 
         # get new state, for logging
         try:
-            new_data = [self._get_detail_response(request,**kwargs_for_log)]
-            self.log_patches(request, original_data,new_data,log=log, **kwargs)
+            new_data = self._get_detail_response(request,**kwargs_for_log)
+            log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
+            log.save()
         except Exception, e: 
-            logger.exception('exception when querying for new data for logging: %s', 
-                kwargs_for_log)
+            logger.exception(
+                'exception when logging: %s', kwargs_for_log)
 
         if not self._meta.always_return_data:
             return HttpResponse(status=202)
@@ -953,9 +994,13 @@ class ApiResource(SqlAlchemyResource):
     
     def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
         DEBUG_PATCH_LOG = False
+        logger.info('1')
         
-        schema = self.build_schema()
-        id_attribute = schema['id_attribute']
+        id_attribute = kwargs.get('id_attribute', None)
+        if id_attribute is None:
+            schema = self.build_schema()
+            logger.info('1a')
+            id_attribute = schema['id_attribute']
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
@@ -969,6 +1014,7 @@ class ApiResource(SqlAlchemyResource):
             log = self.make_log(request)
 
         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+        logger.info('id_attribute: %r, key: %r', id_attribute, log.key)
         log.uri = '/'.join([self._meta.resource_name,log.key])
 
         if 'parent_log' in kwargs:
@@ -976,9 +1022,11 @@ class ApiResource(SqlAlchemyResource):
         if prev_dict:
             full = kwargs.get('full', False)
             difflog = compare_dicts(prev_dict,new_dict, full=full)
+            logger.info('1b')
             if difflog.get('diff_keys',None) or difflog.get('diffs',None):
                 log.diff_dict_to_api_log(difflog)
-                log.save()
+                logger.info('1b1')
+#                 log.save()
                 if DEBUG_PATCH_LOG:
                     logger.info('update, api log: %r' % log)
             else:
@@ -990,9 +1038,11 @@ class ApiResource(SqlAlchemyResource):
             log.api_action = API_ACTION_CREATE
             log.added_keys = json.dumps(new_dict.keys())
             log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
-            log.save()
+#             log.save()
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %s', log)
+
+        logger.info('1c')
         
         return log
 
@@ -1033,7 +1083,7 @@ class ApiResource(SqlAlchemyResource):
         
         if DEBUG_PATCH_LOG:
             logger.info('log patches: %s' %kwargs)
-            logger.info('log patches original: %s, =====new data===== %s',
+            logger.debug('log patches original: %s, =====new data===== %s',
                 original_data,new_data)
         
         schema = self.build_schema()
@@ -1067,7 +1117,7 @@ class ApiResource(SqlAlchemyResource):
             logs.append(
                 self.log_patch(
                     request, prev_dict, new_dict, **kwargs))   
-                
+            
         for deleted_dict in deleted_items:
             
             log = self.make_log(request)
@@ -1084,10 +1134,15 @@ class ApiResource(SqlAlchemyResource):
             log.api_action = API_ACTION_DELETE
             log.diff_keys = json.dumps(deleted_dict.keys())
             log.diffs = json.dumps(deleted_dict,cls=DjangoJSONEncoder)
-            log.save()
+#             log.save()
             logs.append(log)
             if DEBUG_PATCH_LOG:
                 logger.info('delete, api log: %r',log)
+        
+        
+        logger.debug('bulk create logs: %r', logs)
+        ApiLog.objects.bulk_create(logs)
+        
         return logs
                 
 class ApiLogResource(ApiResource):
@@ -1182,9 +1237,8 @@ class ApiLogResource(ApiResource):
         if 'parent_log_id' in kwargs:
             parent_log_id = kwargs.pop('parent_log_id')
             
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
 
         if parent_log_id:
             kwargs['parent_log_id'] = parent_log_id
@@ -1476,9 +1530,8 @@ class FieldResource(ApiResource):
     @read_authorization
     def build_list_response(self,request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         
         logger.debug('param_hash: %r', param_hash)
         # Do not have real filtering, but support the scope filters, manually
@@ -1745,9 +1798,8 @@ class ResourceResource(ApiResource):
     @read_authorization
     def build_list_response(self,request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         
         # TODO: CACHE
         
@@ -2009,9 +2061,8 @@ class VocabularyResource(ApiResource):
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -2485,9 +2536,8 @@ class UserResource(ApiResource):
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = super(UserResource,self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -3083,9 +3133,8 @@ class UserGroupResource(ApiResource):
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -3438,9 +3487,8 @@ class PermissionResource(ApiResource):
     @read_authorization
     def build_list_response(self,request, **kwargs):
 
-        param_hash = {}
+        param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)

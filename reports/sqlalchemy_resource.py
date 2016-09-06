@@ -7,7 +7,6 @@ import logging
 import os.path
 import re
 import sys
-import urllib
 
 from aldjemy.core import get_engine, get_tables
 from django.conf import settings
@@ -43,6 +42,7 @@ from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
     cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
+import json
 
 
 logger = logging.getLogger(__name__)
@@ -217,10 +217,10 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.exception('on get_visible_fields')
             raise e 
 
-    def build_sqlalchemy_columns(self, fields, base_query_tables=None, 
-            custom_columns=None):
+    def build_sqlalchemy_columns(
+            self, fields, base_query_tables=None, custom_columns=None):
         '''
-        returns an ordered dict of sqlalchemy.sql.schema.Column objects, associated 
+        Returns an ordered dict of sqlalchemy.sql.schema.Column objects, associated 
         with the sqlalchemy.sql.schema.Table definitions, which are bound to 
         the sqlalchemy.engine.Engine: 
         "Connects a Pool and Dialect together to provide a source of database 
@@ -456,8 +456,8 @@ class SqlAlchemyResource(IccblBaseResource):
         Attempt to create a SqlAlchemy whereclause out of django style filters:
         - field_name__filter_expression
         '''
-        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
-        logger.debug('build_sqlalchemy_filters_from_hash %r' % param_hash)
+        DEBUG_FILTERS = True or logger.isEnabledFor(logging.DEBUG)
+        logger.info('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
         if param_hash is None:
@@ -630,59 +630,59 @@ class SqlAlchemyResource(IccblBaseResource):
             raise e   
         
 
-    def search(self, request, **kwargs):
-        '''
-        Implement a special search view to get around Tastypie deserialization
-        methods on POST-list.
-        Note: could implement a special tastypie serializer and "post_list"; but
-        choosing not to couple with the framework in this way here.
-        '''
-         
-        DEBUG_SEARCH = False or logger.isEnabledFor(logging.DEBUG)
-         
-        search_ID = kwargs['search_ID']
-         
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
- 
-        search_data = param_hash.get('search_data', None)
-        
-        # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
-        # deserializer
-        search_data = urllib.unquote(search_data)
-         
-        if search_data:
-            # cache the search data on the session, to support subsequent requests
-            # to download or modify
-            request.session[search_ID] = search_data  
-         
-        if not search_data:
-            if search_ID in request.session:
-                search_data = request.session[search_ID]
-            else:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, 
-                        { 'search_data for id missing: ' + search_ID: 
-                            self._meta.resource_name + 
-                                '.search requires a "search_data" param'}))
-         
-        search_data = json.loads(search_data)   
-        param_hash['search_data'] = search_data
-        if DEBUG_SEARCH:
-            logger.info('search: %r, kwargs: %r', param_hash, kwargs)
- 
-        response = self.build_list_response(request,param_hash=param_hash, **kwargs)
-        
-        # Because this view bypasses the IccblBaseResource.dispatch method, we
-        # are implementing the downloadID cookie here, for now.
-        downloadID = param_hash.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie downloadID: %r', downloadID)
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.info('no downloadID')
-        
-        return response
+#     def search(self, request, **kwargs):
+#         '''
+#         Implement a special search view to get around Tastypie deserialization
+#         methods on POST-list.
+#         Note: could implement a special tastypie serializer and "post_list"; but
+#         choosing not to couple with the framework in this way here.
+#         '''
+#          
+#         DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
+#          
+#         search_ID = kwargs['search_ID']
+#          
+#         param_hash = self._convert_request_to_dict(request)
+#         param_hash.update(kwargs)
+#  
+#         search_data = param_hash.get('search_data', None)
+#         # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
+#         # deserializer
+#         search_data = urllib.unquote(search_data)
+#          
+#         if search_data:
+#             # cache the search data on the session, to support subsequent requests
+#             # to download or modify
+#             request.session[search_ID] = search_data  
+#          
+#         if not search_data:
+#             if search_ID in request.session:
+#                 search_data = request.session[search_ID]
+#             else:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, 
+#                         { 'search_data for id missing: ' + search_ID: 
+#                             self._meta.resource_name + 
+#                                 '.search requires a "search_data" param'}))
+#         
+#         search_data = json.loads(search_data)   
+# 
+#         param_hash['search_data'] = search_data
+#         if DEBUG_SEARCH:
+#             logger.info('search: %r, kwargs: %r', param_hash, kwargs)
+#  
+#         response = self.build_list_response(request,param_hash=param_hash, **kwargs)
+#         
+#         # Because this view bypasses the IccblBaseResource.dispatch method, we
+#         # are implementing the downloadID cookie here, for now.
+#         downloadID = param_hash.get('downloadID', None)
+#         if downloadID:
+#             logger.info('set cookie downloadID: %r', downloadID)
+#             response.set_cookie('downloadID', downloadID)
+#         else:
+#             logger.info('no downloadID')
+#         
+#         return response
 
     def _get_list_response(self,request,**kwargs):
         '''
@@ -765,7 +765,7 @@ class SqlAlchemyResource(IccblBaseResource):
             'get_list must be implemented for the SqlAlchemyResource: %r' 
             % self._meta.resource_name)
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         raise NotImplemented(
             'build_list_response must be implemented for the SqlAlchemyResource: %r' 
             % self._meta.resource_name)
@@ -900,7 +900,7 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         
         
-        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_STREAMING = True or logger.isEnabledFor(logging.DEBUG)
         
         logger.info('stream_response_from_statement: %r', self._meta.resource_name )
         if DEBUG_STREAMING:

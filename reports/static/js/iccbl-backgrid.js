@@ -1259,9 +1259,12 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     self.listModel.set('search', searchHash);
     
     // Tell all the header cells
-    // TODO: test further - REMOVED 20150113
     this.trigger("MyServerSideFilter:search", searchHash, this);
 
+    // TODO: debug: "_data" is not needed
+    // backbone.paginator should translate all queryparams into "data" in the 
+    // fetch method
+    //
     // Allow searches that aren't for a visible column:
     // - if the search key is not in the queryParams, then it is not a column
     // - this will add it manually to the queryParams (which are serialized in
@@ -1281,19 +1284,22 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         	_data[key]=val;
         	// Make the params persistent (if not a backgrid-filter)
           self.queryParams[key] = function () {
-            return self.listModel.get('search')[key] || null;
+            var search = self.listModel.get('search');
+            if (!_.isEmpty(search)){
+              return _.result(search, key, null);
+            }
+            return null;
           };
         }
       }
     });
 
-//    if(!_.isEmpty(_data)){
-      self.fetch({data:_data, reset: true});
-//    }else{
-//      self.fetch().fail(
-//        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-//      );    
-//    }
+    self.fetch({reset: true}).fail(
+      function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+    );
+//    self.fetch({data:_data, reset: true}).fail(
+//      function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+//    );
   },
 
   /**

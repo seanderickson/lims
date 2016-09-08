@@ -58,6 +58,7 @@ define([
       }
       this.setView("#detail_content", view ).render();
       this.reportUriStack([]);
+      return view;
     },
     
     clickEdit: function(event){
@@ -81,6 +82,7 @@ define([
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#detail_content", view ).render();
+      return view;
     },
     
     afterRender: function(){

@@ -64,7 +64,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view;
       
       newModel.resource = resource;
-      this.$('#content_title').html(resource.title + ': Add' );
+      this.$('#content_title').html('Create a new ' + resource.title );
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
           viewClass = VIEWS[resource['detailView']];
@@ -76,7 +76,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
-      view = new viewClass({ model: newModel, uriStack: uriStack});
+      view = new viewClass({
+        model: newModel, 
+        uriStack: uriStack,
+        isCreate: true
+      });
 
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -169,11 +173,28 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       }else{ // normal list view
       
+        var extraControls = [];
+        if (_.contains(resource.visibility, 'c')){
+          if (appModel.hasPermission(resource.key, 'write')){
+            var showAddButton = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="add_resource" href="#">',
+                'Add</a>'
+              ].join(''));   
+            showAddButton.click(function(e){
+              e.preventDefault();
+              var route = resource.key + '/+add';
+              appModel.router.navigate(route, {trigger: true});
+            });
+            extraControls.push(showAddButton);
+          }
+        }
         view = new viewClass({ 
             model: appModel, 
             uriStack: uriStack,
             schemaResult: schemaResult, 
-            resource: resource
+            resource: resource,
+            extraControls: extraControls
           });
       }
     

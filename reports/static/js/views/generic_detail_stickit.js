@@ -132,6 +132,7 @@ define([
       }
       
       function getTitle(vocabulary,value){
+        if (_.isEmpty(value)) return value;
         if (!_.isEmpty(vocabulary[value])){
           if(vocabulary[value].title){
             return vocabulary[value].title;
@@ -146,7 +147,7 @@ define([
           console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key 
             + ', value:' + value, fi);
           appModel.error('vocabulary not found for: ' + 
-            fi.vocabulary_scope_ref + ', field: ' + fi.key + ': ' + value);
+            fi.vocabulary_scope_ref + ', field: ' + fi.key + ', value: "' + value + '"');
         }
         return value;
       };      

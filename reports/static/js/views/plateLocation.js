@@ -4,6 +4,7 @@ define([
   'backbone',
   'backgrid',
   'layoutmanager',
+  'bootstrap-3-typeahead',
   'iccbl_backgrid',
   'models/app_state',
   'utils/plateRangeTable',
@@ -11,7 +12,7 @@ define([
   'views/generic_edit',
   'views/generic_detail_layout'
 ], 
-function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, 
+function($, _, Backbone, Backgrid, layoutmanager, typeahead, Iccbl, appModel, 
          PlateRangePrototype, DetailView, EditView, DetailLayout) {
 
   var nested_library_plate_pattern = '{library}:{copy}:{start_plate}-{end_plate}';
@@ -73,9 +74,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
             function(collection){
               if(collection && !collection.isEmpty()){
                 var model = collection.at(0);
-                //console.log('assay_protocol_last_modified_date',model.get('date_time'));
-                //self.model.set('assay_protocol_last_modified_date',model.get('date_time'));
-                
                 // TODO: bin last modified date?
               }else{
                 // no apilog found, set it to the creation date
@@ -130,8 +128,58 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           $target_el = $target_el.parent();
           $target_el.append(addButton);
           
-        }
-      });
+          var plateLocationTree = appModel.getPlateLocationTree();
+          console.log('construct the platelocations, ', plateLocationTree );
+
+          var subKey = 'room';
+          $('[name="'+subKey +'"]').typeahead({
+            autoSelect: false,
+            delay: 1,
+            minLength: 0,
+            items: 'all',
+            source: _.keys(plateLocationTree),
+            afterSelect: function(val){
+              var subKey = 'freezer';
+              view.setValue(subKey,null);
+              view.setValue('shelf',null);
+              view.setValue('bin',null);
+              $('[name="'+subKey +'"]').typeahead('destroy')
+              $('[name="'+subKey +'"]').typeahead({
+                autoSelect: false,
+                delay: 1,
+                minLength: 0,
+                items: 'all',
+                source: _.keys(plateLocationTree[val]),
+                afterSelect: function(freezerVal){
+                  var subKey = 'shelf';
+                  view.setValue(subKey,null);
+                  view.setValue('bin',null);
+                  $('[name="'+subKey +'"]').typeahead('destroy')
+                  $('[name="'+subKey +'"]').typeahead({
+                    autoSelect: false,
+                    delay: 1,
+                    minLength: 0,
+                    items: 'all',
+                    source: _.keys(plateLocationTree[val][freezerVal]),
+                    afterSelect: function(shelfVal){
+                      var subKey = 'bin';
+                      view.setValue(subKey,null);
+                      $('[name="'+subKey +'"]').typeahead('destroy')
+                      $('[name="'+subKey +'"]').typeahead({
+                        autoSelect: false,
+                        delay: 1,
+                        minLength: 0,
+                        items: 'all',
+                        source: _.keys(plateLocationTree[val][freezerVal][shelfVal])
+                      });// bin
+                    }
+                  });// shelf
+                }
+              });//freezer
+            }
+          });//room
+        }//editView.afterRender
+      });//editView
       args.EditView = editView;
       args.DetailView = detailView;
       
@@ -148,15 +196,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     
     showEdit: function() {
       var self = this;
-      appModel.initializeAdminMode(function(){
-        //var userOptions = appModel.getAdminUserOptions();
-        //var fields = self.model.resource.fields;
-        //fields['performed_by_username']['choices'] = (
-        //    [{ val: '', label: ''}].concat(userOptions));
-        DetailLayout.prototype.showEdit.apply(self,arguments);
-      });  
+      var fields = self.model.resource.fields;
+      var initfun = function(){
+        view = DetailLayout.prototype.showEdit.apply(self,arguments);
+      };
+      $(this).queue([appModel.getPlateLocationTree,initfun]);
     }
-    
   });
 
   return PlateLocationView;

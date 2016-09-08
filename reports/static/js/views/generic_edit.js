@@ -5,6 +5,7 @@ define([
     'backbone_forms',
     'multiselect',
     'quicksearch',
+    'bootstrap-3-typeahead',
     'iccbl_backgrid',
     'models/app_state',
     'views/generic_detail_stickit',
@@ -13,7 +14,7 @@ define([
     'bootstrap-datepicker',
     'chosen'
 ], function( $, _, Backbone, backbone_forms, 
-            multiselect, quicksearch, Iccbl, appModel,
+            multiselect, quicksearch, typeahead, Iccbl, appModel,
             DetailView, editTemplate ) {
   var SIunitEditor = Backbone.Form.editors.Base.extend({
     
@@ -527,7 +528,8 @@ define([
       this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
       this.groupedKeys = this.modelSchema.groupedKeys(this.editKeys);
       this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
-      if(_.isEmpty(_.compact(_.values(this.model.pick(this.model.resource['id_attribute']))))){
+      if(args.isCreate 
+          || _.isEmpty(_.compact(_.values(this.model.pick(this.model.resource['id_attribute']))))){
         this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
       }
       // Add comment field
@@ -734,6 +736,12 @@ define([
             type: ChosenMultiSelect,
             editorClass: 'chosen-select',
             editorAttrs: { widthClass: 'col-sm-5'}
+          },
+        'typeahead': 
+          {
+            type: Backbone.Form.editors.Text,
+            editorClass: 'form-control',
+            editorAttrs: { widthClass: 'col-sm-4'}
           },
         'radio':
           {
@@ -947,6 +955,7 @@ define([
      * Override after render to patch in the multi select
      */
     afterRender: function(){
+      var self = this;
       console.log('afterRender...');
 
       console.log('setup single selects using chosen...');
@@ -958,6 +967,19 @@ define([
         search_contains: true
         });
       
+      _.each(this.editKeys, function(key){
+
+        var fi = self.modelFields[key];
+        if (fi.edit_type == 'typeahead' && fi.choices){
+          $('[name="'+key +'"]').typeahead({
+            autoSelect: false,
+            delay: 1,
+            minLength: 0,
+            items: 'all',
+            source: fi.choices
+          });
+        }
+      });
       // TODO: move this to the multiselect2 render()
       console.log('setup multiselect2 elements using loudev multiselect');
       // see: http://loudev.com/
@@ -1121,7 +1143,7 @@ define([
         url += '/';
       }
       
-      
+      // Determine PATCH (update) or POST (create)
       options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
       if (!_.contains(this.uriStack, '+add') && options['key'] ){
         self.model.idAttribute = self.model.resource['id_attribute'];
@@ -1219,7 +1241,7 @@ define([
       var form_template = [
          "<div class='form-horizontal container' id='uploadAttachedFileButton_form' >",
          "<form data-fieldsets class='form-horizontal container' >",
-//         "<div class='form-group' ><input type='file' name='fileInput' /></div>",
+         //"<div class='form-group' ><input type='file' name='fileInput' /></div>",
          "</form>",
          "</div>"].join('');      
       var fieldTemplate = _.template([

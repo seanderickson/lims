@@ -13,14 +13,12 @@ import logging
 import os.path
 import re
 import shutil
-import sys
 from tempfile import NamedTemporaryFile
 import time
 from wsgiref.util import FileWrapper
 from zipfile import ZipFile
 
 from django.conf import settings
-from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse
 import six
@@ -30,8 +28,7 @@ from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, \
     MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     CSV_DELIMITER
-from reports.serialize import XLSX_MIMETYPE
-from reports.serialize import dict_to_rows
+from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder
 import reports.serialize
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
@@ -44,6 +41,7 @@ logger = logging.getLogger(__name__)
 MOLDATAKEY = sdfutils.MOLDATAKEY
 
 DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
+
 
 def closing_iterator_wrapper(iterable, close):
     try:
@@ -173,14 +171,16 @@ def json_generator(data, meta, is_for_detail=False):
     # and downstream programs have trouble with mixed encoding (cStringIO)
     if not is_for_detail:
         yield ( '{ "meta": %s, "objects": [' 
-            % json.dumps(meta, cls=DjangoJSONEncoder, ensure_ascii=True, encoding="utf-8"))
+            % json.dumps(meta, cls=LimsJSONEncoder, ensure_ascii=True, encoding="utf-8"))
     try:
         for rownum, row in enumerate(data):
+            if '1404' in row.get('facility_id', ''):
+                logger.info('row: %r', row)
             try:
                 if rownum == 0:
                     # NOTE, using "ensure_ascii" = True to force encoding of all 
                     # chars to the ascii charset; otherwise, cStringIO has problems
-                    yield json.dumps(row, cls=DjangoJSONEncoder,
+                    yield json.dumps(row, cls=LimsJSONEncoder,
                         sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
                 else:
                     # NOTE, using "ensure_ascii" = True to force encoding of all 
@@ -188,7 +188,7 @@ def json_generator(data, meta, is_for_detail=False):
                     # e.g. "tm" becomes \u2122
                     # CStringIO doesn't support UTF-8 mixed with ascii, for instance
                     # NOTE2: control characters are not allowed: should convert \n to "\\n"
-                    yield ', ' + json.dumps(row, cls=DjangoJSONEncoder,
+                    yield ', ' + json.dumps(row, cls=LimsJSONEncoder,
                         sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
             except Exception, e:
                 logger.exception('dict: %r', row)
@@ -348,7 +348,7 @@ def get_xls_response(
                 sheet_name = default_converter(key)
                 logger.info('writing sheet %r...', sheet_name)
                 sheet = workbook.add_worksheet(sheet_name)
-                for i, row in enumerate(dict_to_rows(sheet_rows)):
+                for i, row in enumerate(csvutils.dict_to_rows(sheet_rows)):
                     sheet.write_row(i,0,row)
             elif isinstance(sheet_rows, basestring):
                 sheet_name = default_converter(key)
@@ -603,7 +603,7 @@ def generic_xlsx_response(data):
 #                 if i == 1:
 #                     # NOTE, using "ensure_ascii" = True to force encoding of all 
 #                     # chars to the ascii charset; otherwise, cStringIO has problems
-#                     yield json.dumps(_dict, cls=DjangoJSONEncoder,
+#                     yield json.dumps(_dict, cls=LimsJSONEncoder,
 #                         sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
 #                 else:
 #                     # NOTE, using "ensure_ascii" = True to force encoding of all 
@@ -612,7 +612,7 @@ def generic_xlsx_response(data):
 #                     # Upon fp.write  the unicode is converted to the default charset?
 #                     # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
 #                     # NOTE2: control characters are not allowed: should convert \n to "\\n"
-#                     yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
+#                     yield ', ' + json.dumps(_dict, cls=LimsJSONEncoder,
 #                         sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
 #             except Exception, e:
 #                 logger.exception('dict: %r', _dict)

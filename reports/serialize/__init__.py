@@ -1,15 +1,19 @@
 from __future__ import unicode_literals
 
+import datetime
 import io
 import logging
 
 from PIL import Image
 import dateutil
+from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve
+from django.utils.encoding import force_text
+import pytz
 import six
 
 from reports import ValidationError
-from reports.serialize import csvutils
 
 
 logger = logging.getLogger(__name__)
@@ -19,28 +23,49 @@ CSV_MIMETYPE = 'text/csv'
 XLS_MIMETYPE = 'application/xls'
 XLSX_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 SDF_MIMETYPE = 'chemical/x-mdl-sdfile'
-def dict_to_rows(_dict):
-    ''' Utility that converts a dict into a table for writing to a spreadsheet
-    '''
-    
-    logger.debug('_dict: %r', _dict)
-    values = []
-    if isinstance(_dict, dict):
-        for key,val in _dict.items():
-            for row in dict_to_rows(val):
-                if not row:
-                    values.append([key,None])
-                else:
-                    keyrow = [key]
-                    if isinstance(row, basestring):
-                        keyrow.append(row)
-                    else:
-                        keyrow.extend(row)
-                    values.append(keyrow)
-    else:
-        values = (csvutils.csv_convert(_dict),)
-    return values
 
+def make_local_time(datetime_obj):
+    '''
+    Motivation: convert UST datetimes to the local timezone
+    '''
+    if settings.USE_TZ and settings.TIME_ZONE:
+        if isinstance(datetime_obj, datetime.datetime):
+            return datetime_obj.astimezone(pytz.timezone(settings.TIME_ZONE))
+    return datetime_obj
+
+
+class LimsJSONEncoder(DjangoJSONEncoder):
+
+    def default(self, o):
+        if isinstance(o, datetime.datetime):
+            o = make_local_time(o)
+        return DjangoJSONEncoder.default(self, o)
+    
+json_encoder = LimsJSONEncoder()
+
+def to_simple(data):
+    """
+    This brings complex Python data structures down to native types of the
+    serialization format(s).
+    """
+    if isinstance(data, (list, tuple)):
+        return [to_simple(item) for item in data]
+    if isinstance(data, dict):
+        return dict((key, to_simple(val)) for (key, val) in data.items())
+    elif isinstance(data, datetime.datetime):
+        return json_encoder.default(data)
+    elif isinstance(data, datetime.date):
+        return json_encoder.default(data)
+    elif isinstance(data, datetime.time):
+        return json_encoder.default(data)
+    elif isinstance(data, bool):
+        return data
+    elif isinstance(data, (six.integer_types, float)):
+        return data
+    elif data is None:
+        return None
+    else:
+        return force_text(data)
 
 def parse_val(value, key, data_type):
     """

@@ -360,7 +360,8 @@ class ApiResource(SqlAlchemyResource):
     def get_id(self,deserialized,validate=False,**kwargs):
         ''' 
         return the full ID for the resource, as defined by the "id_attribute"
-        - return None if some or all keys are missing
+        - if validate=True, raises ValidationError if some or all keys are missing
+        - otherwise, returns keys that can be found
         '''
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
@@ -413,14 +414,17 @@ class ApiResource(SqlAlchemyResource):
         else:
             return dict(zip(id_attribute,keys))
 
-    def parse(self,deserialized):
+    def parse(self,deserialized, create=False):
         ''' parse schema fields from the deserialized dict '''
         
         schema = self.build_schema()
         fields = schema['fields']
-        mutable_fields = [ field for field in fields.values() 
-            if field.get('editability', None) and (
-                'u' in field['editability'] or 'c' in field['editability'])]
+        mutable_fields = []
+        for field in fields.values():
+            editability = field.get('editability', None)
+            if editability and (
+                'u' in editability or (create and 'c' in editability )):
+                mutable_fields.append(field)
         logger.debug('r: %r, mutable fields: %r', self._meta.resource_name, 
             [field['key'] for field in mutable_fields])
         initializer_dict = {}
@@ -642,13 +646,82 @@ class ApiResource(SqlAlchemyResource):
     @write_authorization
     @un_cache        
     def post_detail(self, request, **kwargs):
+        '''
+        POST is used to create or update a resource; not idempotent;
+        - The LIMS client will use POST to create exclusively
+        '''
         return self.patch_detail(request,**kwargs)
         
     @write_authorization
+    @un_cache  
+    @transaction.atomic      
+    def patch_detail(self, request, **kwargs):
+        '''
+        PATCH is used to create or update a resource; not idempotent
+        '''
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        logger.debug('patch detail %s, %s', deserialized,kwargs)
+
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
+
+        original_data = None
+        if kwargs_for_log:
+            try:
+                original_data = self._get_detail_response(request,**kwargs_for_log)
+            except Exception, e: 
+                logger.exception('exception when querying for existing obj: %s', 
+                    kwargs_for_log)
+        try:
+            log = self.make_log(request)
+            log.save()
+            obj = self.patch_obj(request, deserialized, **kwargs)
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise e
+
+        # get new state, for logging
+        try:
+            new_data = self._get_detail_response(request,**kwargs_for_log)
+            log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
+            if log:
+                log.save()
+        except Exception, e: 
+            logger.exception(
+                'exception when logging: %s', kwargs_for_log)
+
+        if not self._meta.always_return_data:
+            return HttpResponse(status=202)
+        else:
+            response = self.get_detail(request,**kwargs_for_log)
+            response.status_code = 201
+            return response
+
+    @write_authorization
     @un_cache        
     def put_detail(self, request, **kwargs):
+        '''
+        PUT is used to create or overwrite a resource; idempotent
+        Note: this version of PUT cannot be used if the resource must create
+        the ID keys on create (use POST/PATCH)
+        '''
                 
         # TODO: enforce a policy that either objects are patched or deleted
+        # and then posted/patched
         raise NotImplementedError('put_detail must be implemented')
 
         if kwargs.get('data', None):
@@ -660,25 +733,27 @@ class ApiResource(SqlAlchemyResource):
 
         logger.debug('put detail: %r, %r' % (deserialized,kwargs))
         
+        
+        
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
+        # Note: this version of PUT cannot be used if the resource must create
+        # the ID keys on create (use POST/PATCH)
+        
+        kwargs_for_log = self.get_id(deserialized, validate=True, **kwargs)
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
-        kwargs_for_log = {}
-        for id_field in id_attribute:
-            if deserialized.get(id_field,None):
-                kwargs_for_log[id_field] = deserialized[id_field]
-            elif kwargs.get(id_field,None):
-                kwargs_for_log[id_field] = kwargs[id_field]
+        # kwargs_for_log = {}
+        # for id_field in id_attribute:
+        # if deserialized.get(id_field,None):
+        #     kwargs_for_log[id_field] = deserialized[id_field]
+        # elif kwargs.get(id_field,None):
+        #     kwargs_for_log[id_field] = kwargs[id_field]
         logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
         try:
             logger.info('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            if not kwargs_for_log:
-                # then this is a create
-                original_data = []
-            else:
-                original_data = self._get_list_response(request,**kwargs_for_log)
+            original_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
@@ -705,66 +780,6 @@ class ApiResource(SqlAlchemyResource):
             response.status_code = 200
             return response
 
-    @write_authorization
-    @un_cache  
-    @transaction.atomic      
-    def patch_detail(self, request, **kwargs):
-        
-        if kwargs.get('data', None):
-            # allow for internal data to be passed
-            deserialized = kwargs['data']
-        else:
-            deserialized = self.deserialize(
-                request, format=kwargs.get('format', None))
-
-        logger.debug('patch detail %s, %s', deserialized,kwargs)
-
-        # cache state, for logging
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = schema['id_attribute']
-        kwargs_for_log = {}
-        try:
-            kwargs_for_log = self.get_id(deserialized,**kwargs)
-            logger.debug('patch detail: %s, %s' %(deserialized,kwargs_for_log))
-        except Exception:
-            # this can be ok, if the ID is generated
-            logger.info('object id not posted')
-
-        original_data = None
-        if kwargs_for_log:
-            try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
-            except Exception, e: 
-                logger.exception('exception when querying for existing obj: %s', 
-                    kwargs_for_log)
-        try:
-            log = self.make_log(request)
-            log.save()
-            obj = self.patch_obj(request, deserialized, **kwargs)
-            for id_field in id_attribute:
-                val = getattr(obj, id_field,None)
-                if val:
-                    kwargs_for_log['%s' % id_field] = val
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
-
-        # get new state, for logging
-        try:
-            new_data = self._get_detail_response(request,**kwargs_for_log)
-            log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
-            log.save()
-        except Exception, e: 
-            logger.exception(
-                'exception when logging: %s', kwargs_for_log)
-
-        if not self._meta.always_return_data:
-            return HttpResponse(status=202)
-        else:
-            response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 201
-            return response
 
     @write_authorization
     @un_cache        
@@ -994,12 +1009,10 @@ class ApiResource(SqlAlchemyResource):
     
     def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
         DEBUG_PATCH_LOG = False
-        logger.info('1')
         
         id_attribute = kwargs.get('id_attribute', None)
         if id_attribute is None:
             schema = self.build_schema()
-            logger.info('1a')
             id_attribute = schema['id_attribute']
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
@@ -1014,7 +1027,7 @@ class ApiResource(SqlAlchemyResource):
             log = self.make_log(request)
 
         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-        logger.info('id_attribute: %r, key: %r', id_attribute, log.key)
+        logger.debug('id_attribute: %r, key: %r', id_attribute, log.key)
         log.uri = '/'.join([self._meta.resource_name,log.key])
 
         if 'parent_log' in kwargs:
@@ -1022,11 +1035,8 @@ class ApiResource(SqlAlchemyResource):
         if prev_dict:
             full = kwargs.get('full', False)
             difflog = compare_dicts(prev_dict,new_dict, full=full)
-            logger.info('1b')
             if difflog.get('diff_keys',None) or difflog.get('diffs',None):
                 log.diff_dict_to_api_log(difflog)
-                logger.info('1b1')
-#                 log.save()
                 if DEBUG_PATCH_LOG:
                     logger.info('update, api log: %r' % log)
             else:
@@ -1034,16 +1044,14 @@ class ApiResource(SqlAlchemyResource):
                 if DEBUG_PATCH_LOG:
                     logger.info('no diffs found: %r, %r, %r' 
                         % (prev_dict,new_dict,difflog))
+                log = None
         else: # creating
             log.api_action = API_ACTION_CREATE
             log.added_keys = json.dumps(new_dict.keys())
             log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
-#             log.save()
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %s', log)
 
-        logger.info('1c')
-        
         return log
 
     def make_log(self, request, **kwargs):
@@ -1114,9 +1122,9 @@ class ApiResource(SqlAlchemyResource):
                         prev_dict, deleted_items)
                 deleted_items.remove(prev_dict)
                 
-            logs.append(
-                self.log_patch(
-                    request, prev_dict, new_dict, **kwargs))   
+            log = self.log_patch(request, prev_dict, new_dict, **kwargs)            
+            if log:
+                logs.append(log)   
             
         for deleted_dict in deleted_items:
             

@@ -9,7 +9,7 @@ import xlsxwriter
 
 from db.support.data_converter import default_converter
 from reports import MAX_IMAGE_ROWS_PER_XLS_FILE
-from reports.serialize import dict_to_rows, csvutils
+from reports.serialize import csvutils
 import reports.serialize
 
 
@@ -39,7 +39,7 @@ def xls_write_workbook(file, data, request=None, image_keys=None,
             sheet_name = default_converter(key)
             logger.info('writing sheet %r...', sheet_name)
             sheet = wb.add_worksheet(sheet_name)
-            for i, row in enumerate(dict_to_rows(sheet_rows)):
+            for i, row in enumerate(csvutils.dict_to_rows(sheet_rows)):
                 sheet.write_row(i,0,row)
         elif isinstance(sheet_rows, basestring):
             sheet_name = default_converter(key)
@@ -120,7 +120,7 @@ def generic_xls_write_workbook(file, data):
             logger.info('writing sheet %r...', sheet_name)
             sheet = wb.add_worksheet(sheet_name)
             if isinstance(sheet_rows, dict):
-                for i, row in enumerate(dict_to_rows(sheet_rows)):
+                for i, row in enumerate(csvutils.dict_to_rows(sheet_rows)):
                     sheet.write_row(i,0,row)
             elif isinstance(sheet_rows, basestring):
                 sheet.write_string(0,0,sheet_rows)

@@ -87,6 +87,7 @@ from reports.serializers import LimsSerializer, \
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 import reports.sqlalchemy_resource
+import time
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
@@ -350,88 +351,106 @@ class PlateLocationResource(ApiResource):
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_detail must be implemented')
 
+    @write_authorization
+    @un_cache
+    @transaction.atomic        
+    def post_detail(self, request, **kwargs):
+        '''
+        POST is used to create or update a resource; not idempotent;
+        - The LIMS client will use POST to create exclusively
+        '''
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        logger.debug('patch detail %s, %s', deserialized,kwargs)
+        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
+        
+        try:
+            extant_location = PlateLocation.objects.get(**id_kwargs)
+            raise BadRequest('Plate location already exists: %r' % extant_location)
+        
+        except ObjectDoesNotExist:
+            pass
+        
+        return self.patch_detail(request,**kwargs)
+        
     def patch_obj(self, request, deserialized, **kwargs):
 
         logger.info('patch platelocation, kwargs: %r, %r', deserialized, kwargs)
-        
-        schema = self.build_schema()
-        fields = schema['fields']
-        initializer_dict = {}
+        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
 
-        for key in fields.keys():
-            if deserialized.get(key, None) is not None:
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
-
-        logger.debug('initializer_dict: %r', initializer_dict)
-
-        id_kwargs = self.get_id(deserialized, **kwargs)
-        lookup = ['room','freezer','shelf','bin']
-        if not id_kwargs:
-            raise ValidationError({
-                k:'required' for k in lookup })
         with transaction.atomic():
+            create = False
             try:
                 plate_location = PlateLocation.objects.get(**id_kwargs)
             except ObjectDoesNotExist:
                 logger.info('plate location does not exist, creating: %r',
                     id_kwargs)
+                create=True
                 plate_location = PlateLocation.objects.create(**id_kwargs)
+
+            initializer_dict = self.parse(deserialized, create=create)
             
             copy_plate_ranges = deserialized.get(
                 'copy_plate_ranges', [])
-            if copy_plate_ranges:
-                all_plates = self._find_plates(copy_plate_ranges)
+            all_plates = self._find_plates(copy_plate_ranges)
+            
+            # get the old plate locations, for logging
+            plate_log_hash = {}
+            lookup = ['room','freezer','shelf','bin']
+            # combine all_plates (new) with plate_set.all() (previous)
+            for plate in set(all_plates) | set(plate_location.plate_set.all()):
+                plate_dict = {
+                    'library_short_name': plate.copy.library.short_name,
+                    'copy_name': plate.copy.name,
+                    'plate_number': str(plate.plate_number).zfill(5)
+                }
+                plate_log_hash[plate.plate_id] = [plate_dict, plate_dict.copy()]
                 
-                # get the old plate locations, for logging
-                plate_log_hash = {}
-                # combine all_plates (new) with plate_set.all() (previous)
-                for plate in set(all_plates) | set(plate_location.plate_set.all()):
-                    plate_dict = {
-                        'library_short_name': plate.copy.library.short_name,
-                        'copy_name': plate.copy.name,
-                        'plate_number': str(plate.plate_number).zfill(5)
-                    }
-                    if plate.plate_location:
-                        plate_dict.update({
-                            k:getattr(plate.plate_location,k, None)
-                                for k in lookup })
-                    plate_log_hash[plate.plate_id] = [plate_dict]
-                
-                plate_location.plate_set = all_plates
-                plate_location.save()
-                
-                for plate in set(all_plates) | set(plate_location.plate_set.all()):
-                    plate_dict = {
-                        'library_short_name': plate.copy.library.short_name,
-                        'copy_name': plate.copy.name,
-                        'plate_number': str(plate.plate_number).zfill(5)
-                    }
-                    if plate.plate_location:
-                        plate_dict.update({
-                            k:getattr(plate.plate_location,k, None)
-                                for k in lookup })
-                    plate_log_hash[plate.plate_id].append(plate_dict)
+                if plate.plate_location:
+                    plate_dict.update({
+                        k:getattr(plate.plate_location,k, None)
+                            for k in lookup })
+            
+            plate_location.plate_set = all_plates
+            plate_location.save()
+            
+            for plate in set(all_plates) | set(plate_location.plate_set.all()):
+                plate_dict = {
+                    'library_short_name': plate.copy.library.short_name,
+                    'copy_name': plate.copy.name,
+                    'plate_number': str(plate.plate_number).zfill(5)
+                }
+                if plate.plate_location:
+                    plate_dict.update({
+                        k:getattr(plate.plate_location,k, None)
+                            for k in lookup })
+                plate_log_hash[plate.plate_id] = \
+                    [plate_log_hash[plate.plate_id][0],plate_dict]
 
-                logger.info(
-                    'log copyplate patches for platelocation, '
-                    'len: %d...', len(plate_log_hash.items()))
-                
-                plate_logs = []
-                lcp_id_attribute = \
-                    self.get_librarycopyplate_resource().build_schema()['id_attribute']
-                for prev_dict,new_dict in plate_log_hash.values():
-                    plate_logs.append(
-                        self.get_librarycopyplate_resource().log_patch( 
-                            request,prev_dict,new_dict,
-                            **{ 'parent_log': kwargs.get('parent_log', None),
-                                'full': True,
-                                'id_attribute': lcp_id_attribute } ))
-                logger.info('logs created, saving...')
-                ApiLog.objects.bulk_create(plate_logs)
-                logger.info('logs saved.')
-            else:
-                raise ValidationError(key='copy_plate_ranges', msg='required')
+            logger.info(
+                'log copyplate patches for platelocation, '
+                'len: %d...', len(plate_log_hash.items()))
+            
+            logger.info('plate_log_hash: %r', plate_log_hash)
+            plate_logs = []
+            lcp_id_attribute = \
+                self.get_librarycopyplate_resource().build_schema()['id_attribute']
+            for prev_dict,new_dict in plate_log_hash.values():
+                log = self.get_librarycopyplate_resource().log_patch( 
+                    request,prev_dict,new_dict,
+                    **{ 'parent_log': kwargs.get('parent_log', None),
+                        'full': True,
+                        'id_attribute': lcp_id_attribute } )
+                if log: 
+                    plate_logs.append(log)
+            logger.info('logs created, saving...')
+            ApiLog.objects.bulk_create(plate_logs)
+            logger.info('logs saved.')
 
         return plate_location
 
@@ -1009,7 +1028,9 @@ class LibraryCopyPlateResource(ApiResource):
                     ._get_detail_response_internal(**location_data))
             log = self.get_platelocation_resource().log_patch(
                 request, original_location_data, new_location_data,**kwargs)
-            logger.info('log created; %r', log)
+            if log:
+                log.save()
+                logger.info('log created; %r', log)
                     
             return plate
     
@@ -1052,36 +1073,6 @@ class ScreenResultResource(ApiResource):
         self.screen_resource = None
         self._well_data_column_positive_index = None
 
-    def deserialize(self, request, **kwargs):
-        '''
-        Override deserialize to access the multipart/form-data content.
-        '''
-        content_type = self.get_content_type(request, format=format)
-        
-        if content_type.startswith('multipart'):
-            if len(request.FILES.keys()) != 1:
-                raise BadRequest(
-                    'File upload supports only one file at a time',
-                    'filenames sent: %r' % request.FILES.keys())
-            if 'xls' in request.FILES:
-                file = request.FILES['xls']
-                deserialized = self._meta.serializer.deserialize(
-                    file.read(), XLS_MIMETYPE)
-                
-#                 wb = xlrd.open_workbook(file_contents=file.read())
-#                 deserialized = screen_result_importer.read_workbook(wb)
-# #                 deserialized = screen_result_importer.read_file(file)
-            else:
-                msg = ( 'ScreenResult deserialization: multipart/form-data key '
-                        'must be "xls", received: %r' % request.FILES.keys())
-                raise BadRequest(msg)
-
-        else:
-            deserialized = super(ScreenResultResource, self).deserialize(request)    
-         
-        return deserialized
-
-        
     def get_well_data_column_positive_index_table(self):
         ''' Work around method; create the well_data_column_positive_index 
         table for the Aldjemy bridge '''
@@ -4345,7 +4336,9 @@ class PublicationResource(ApiResource):
                     kwargs_for_log['%s' % id_field] = val
             try:
                 new_data = self._get_detail_response(request,**kwargs_for_log)
-                self.log_patch(request, None, new_data, log=log, **kwargs_for_log)
+                log = self.log_patch(request, None, new_data, log=log, **kwargs_for_log)
+                if log:
+                    log.save()
             except Exception, e: 
                 logger.exception(
                     'exception when querying for new data for logging: %s', 
@@ -4582,7 +4575,9 @@ class AttachedFileResource(ApiResource):
             'parent_log': param_hash.get('parent_log', None) }
         try:
             new_data = self._get_detail_response(request,**kwargs_for_log)
-            self.log_patch(request, None,new_data,**kwargs_for_log)
+            log = self.log_patch(request, None,new_data,**kwargs_for_log)
+            if log:
+                log.save()
         except Exception, e: 
             logger.exception('exception when querying for new data for logging: %s', 
                 kwargs_for_log)
@@ -7170,19 +7165,6 @@ class ScreenResource(ApiResource):
 
         schema = super(ScreenResource, self).build_schema()
 
-        if 'fields' in schema and 'facility_id' in schema['fields']:
-            # TODO: cache       
-            max_facility_id_sql = '''
-                select facility_id::text, project_phase from screen 
-                where project_phase='primary_screen' 
-                order by facility_id::integer desc
-                limit 1;
-            '''
-            with get_engine().connect() as conn:
-                max_facility_id = int(
-                    conn.execute(max_facility_id_sql).scalar() or 0)
-                schema['fields']['facility_id']['default'] = max_facility_id + 1
-        
         temp = [ x.screen_type 
             for x in self.Meta.queryset.distinct('screen_type')]
         schema['extraSelectorOptions'] = { 
@@ -7215,55 +7197,63 @@ class ScreenResource(ApiResource):
         #             errs['min_allowed_data_privacy_expiration_date'] = \
         #                 'can not be set if the expiration notified date is set'
         return errors
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic        
+    def post_detail(self, request, **kwargs):
+        '''
+        POST is used to create or update a resource; not idempotent;
+        - The LIMS client will use POST to create exclusively
+        '''
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        logger.debug('patch detail %s, %s', deserialized,kwargs)
+        id_kwargs = self.get_id(deserialized, **kwargs)
+        if id_kwargs:
+            raise BadRequest(
+                'POST may not be used to modify a screen: %r' % id_kwargs )
+            
+        # find a new facility id
+        max_facility_id_sql = '''
+            select facility_id::text, project_phase from screen 
+            where project_phase='primary_screen' 
+            and facility_id ~ '^\d+$' 
+            order by facility_id::integer desc
+            limit 1;
+        '''
+        with get_engine().connect() as conn:
+            max_facility_id = int(
+                conn.execute(max_facility_id_sql).scalar() or 0)
+        kwargs['facility_id'] = str(max_facility_id+1)
+        
+        return self.patch_detail(request,**kwargs)
+        
     
-    @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
         
-        schema = self.build_schema()
-        fields = schema['fields']
-        initializer_dict = {}
-        for key in fields.keys():
-            if key in deserialized:
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
+        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
         
-        logger.debug('deserialized: %r', deserialized)
-        logger.debug('initializer_dict: %r', initializer_dict)
-        id_kwargs = self.get_id(deserialized, **kwargs)
-        
-        # create/update the screen
         try:
-            screen = None
-            
-            if id_kwargs:
-                try:
-                    screen = Screen.objects.get(**id_kwargs)
-                    errors = self.validate(deserialized, patch=True)
-                    if errors:
-                        raise ValidationError(errors)
-                except ObjectDoesNotExist, e:
-                    raise Exception('screen does not exist: %r' % id_kwargs)
-            else:
-                # find a new facility id
-                query = Screen.objects.filter(
-                    project_phase__iexact='primary_screen')
-                query = (
-                    query.extra(
-                        select={'facility_id_int': 'facility_id::integer'})
-                    .order_by('-facility_id_int'))
-                query = query.values_list('facility_id_int', flat=True)
-                if query.exists():
-                    logger.info('facility_id_max: %r', query[0])
-                    facility_id = str(int(query[0]) + 1)
-                else:
-                    logger.info('create the first facility id (1)')
-                    facility_id = '1'
-                initializer_dict['facility_id'] = facility_id
-                screen = Screen(facility_id=facility_id)
+            create = False
+            try:
+                screen = Screen.objects.get(**id_kwargs)
+            except ObjectDoesNotExist, e:
+                create = True
+                screen = Screen(**id_kwargs)
+                logger.info('creating screen: %r, with %r', screen, id_kwargs)
 
-                errors = self.validate(deserialized, patch=False)
-                if errors:
-                    raise ValidationError(errors)
+            initializer_dict = self.parse(deserialized, create=create)
+            logger.debug('initializer_dict: %r', initializer_dict)
+                
+            errors = self.validate(deserialized, patch=not create)
+            if errors:
+                raise ValidationError(errors)
             
             _key = 'lab_head_username'
             if _key in initializer_dict:
@@ -7312,7 +7302,7 @@ class ScreenResource(ApiResource):
             
             screen.clean()
             screen.save()
-                    
+            logger.info('save/created screen: %r', screen)
             # related objects
             
             _key = 'cell_lines'
@@ -8233,16 +8223,11 @@ class NaturalProductReagentResource(ApiResource):
         if not well:
             raise ValidationError(key='well', msg='required')
 
-        initializer_dict = self.parse(deserialized)
-        
         id_kwargs = self.get_id(deserialized, **kwargs)
         
         patch = False
         if not well.reagent_set.exists():
             reagent = NaturalProductReagent(well=well)
-            errors = self.validate(initializer_dict, patch=False)
-            if errors:
-                raise ValidationError(errors)
         
         else:
             patch = True
@@ -8252,13 +8237,17 @@ class NaturalProductReagentResource(ApiResource):
             # TODO: update reagent
             reagent = well.reagent_set.all()[0]
             reagent = reagent.naturalproductreagent
-            errors = self.validate(initializer_dict, patch=True)
-            if errors:
-                raise ValidationError(errors)
             logger.info('found reagent: %r, %r', reagent.well_id, reagent)
+
+        initializer_dict = self.parse(deserialized,create=not patch)
+        errors = self.validate(initializer_dict, patch=patch)
+        if errors:
+            raise ValidationError(errors)
+        
         for key, val in initializer_dict.items():
             if hasattr(reagent, key):
                 setattr(reagent, key, val)
+
         reagent.save()
         logger.debug('patch natural product reagent: %r', reagent)
 
@@ -8285,7 +8274,20 @@ class SilencingReagentResource(ApiResource):
     def __init__(self, **kwargs):
 
         super(SilencingReagentResource, self).__init__(**kwargs)
-
+        
+        # for debugging
+        self.patch_elapsedtime1 = 0
+        self.patch_elapsedtime2 = 0
+        self.patch_elapsedtime3 = 0
+        
+    def get_debug_times(self):
+        
+        logger.info('silencing reagent times: %r, %r, %r', 
+            self.patch_elapsedtime1, self.patch_elapsedtime2, self.patch_elapsedtime3)
+        self.patch_elapsedtime1 = 0
+        self.patch_elapsedtime2 = 0
+        self.patch_elapsedtime3 = 0
+        
     def build_sqlalchemy_columns(self, fields):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
@@ -8422,21 +8424,18 @@ class SilencingReagentResource(ApiResource):
     @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
 
+        start_time = time.time()
+        
         well = kwargs.get('well', None)
         if not well:
             raise ValidationError(key='well', msg='required')
 
-        initializer_dict = self.parse(deserialized)
-        
         id_kwargs = self.get_id(deserialized, **kwargs)
 
         patch = False
         if not well.reagent_set.exists():
             reagent = SilencingReagent(well=well)
-            errors = self.validate(initializer_dict, patch=False)
-            if errors:
-                raise ValidationError(errors)
-
+            
             # only allow duplex_wells to be set on create
             if 'duplex_wells' in kwargs:
                 reagent.save()
@@ -8450,17 +8449,25 @@ class SilencingReagentResource(ApiResource):
             # TODO: update reagent
             reagent = well.reagent_set.all()[0]
             reagent = reagent.silencingreagent
-            errors = self.validate(initializer_dict, patch=True)
-            if errors:
-                raise ValidationError(errors)
             logger.info('found reagent: %r, %r', reagent.well_id, reagent)
+
+        initializer_dict = self.parse(deserialized, create=not patch)
+        errors = self.validate(initializer_dict, patch=patch)
+        if errors:
+            raise ValidationError(errors)
+
+        self.patch_elapsedtime1 += (time.time() - start_time)
+        start_time = time.time()
+            
         for key, val in initializer_dict.items():
             if hasattr(reagent, key):
                 setattr(reagent, key, val)
         reagent.save()
         logger.debug('patch silencing reagent: %r', reagent)
 
-        
+        self.patch_elapsedtime2 += (time.time() - start_time)
+        start_time = time.time()
+
         # Now do the gene tables
         
         gene_key = 'entrezgene_id'
@@ -8471,6 +8478,8 @@ class SilencingReagentResource(ApiResource):
             reagent.facility_gene = \
                 self._create_gene(deserialized, 'facility')
         reagent.save()
+
+        self.patch_elapsedtime3 += (time.time() - start_time)
                 
         return reagent        
         
@@ -8524,39 +8533,60 @@ class SmallMoleculeReagentResource(ApiResource):
 
     def __init__(self, **kwargs):
         super(SmallMoleculeReagentResource, self).__init__(**kwargs)
+        # for debugging
+        self.patch_elapsedtime1 = 0
+        self.patch_elapsedtime2 = 0
+        self.patch_elapsedtime3 = 0
+        
+    def get_debug_times(self):
+        
+        logger.info('sm reagent times: %r, %r, %r', 
+            self.patch_elapsedtime1, self.patch_elapsedtime2, self.patch_elapsedtime3)
+        self.patch_elapsedtime1 = 0
+        self.patch_elapsedtime2 = 0
+        self.patch_elapsedtime3 = 0
+        
 
     @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
         
+        start_time = time.time()
+
         well = kwargs.get('well', None)
         if not well:
             raise ValidationError(key='well', msg='required')
 
-        initializer_dict = self.parse(deserialized)
-        
         id_kwargs = self.get_id(deserialized, **kwargs)
         
+        patch = False
         if not well.reagent_set.exists():
             reagent = SmallMoleculeReagent(well=well)
-            errors = self.validate(initializer_dict, patch=False)
-            if errors:
-                raise ValidationError(errors)
         else:
+            patch = True
             # TODO: only works for a single reagent
             # can search for the reagent using id_kwargs
             # reagent = well.reagent_set.all().filter(**id_kwargs)
             # TODO: update reagent
             reagent = well.reagent_set.all()[0]
             reagent = reagent.smallmoleculereagent
-            errors = self.validate(initializer_dict, patch=True)
-            if errors:
-                raise ValidationError(errors)
             logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+
+        initializer_dict = self.parse(deserialized, create=not patch)
+        errors = self.validate(initializer_dict, patch=patch)
+        if errors:
+            raise ValidationError(errors)
+
+        self.patch_elapsedtime1 += (time.time() - start_time)
+        start_time = time.time()
+        
         for key, val in initializer_dict.items():
             if hasattr(reagent, key):
                 setattr(reagent, key, val)
         logger.debug('patch small molecule reagent: %r', reagent)
         reagent.save()
+
+        self.patch_elapsedtime2 += (time.time() - start_time)
+        start_time = time.time()
         
         if 'compound_name' in initializer_dict:
             reagent.smallmoleculecompoundname_set.all().delete()
@@ -8594,6 +8624,8 @@ class SmallMoleculeReagentResource(ApiResource):
                 reagent=reagent, molfile=deserialized['molfile'])
             molfile.save()
         reagent.save()
+
+        self.patch_elapsedtime3 += (time.time() - start_time)
                 
         logger.debug('sm patch_obj done')
         return reagent
@@ -8829,7 +8861,12 @@ class ReagentResource(ApiResource):
             is_for_detail=is_for_detail,
             rowproxy_generator=rowproxy_generator,
             title_function=title_function)
- 
+    
+    def get_debug_times(self):
+        
+        self.get_sr_resource().get_debug_times()
+        self.get_smr_resource().get_debug_times()
+        
     def get_sr_resource(self):
         if not self.sr_resource:
             self.sr_resource = SilencingReagentResource()
@@ -8936,50 +8973,6 @@ class WellResource(ApiResource):
         self.reagent_resource = None
         super(WellResource, self).__init__(**kwargs)
 
-    def deserialize(self, request, **kwargs):
-        '''
-        Override deserialize to access the multipart/form-data content.
-        '''
-        content_type = self.get_content_type(request, format=kwargs.get('format', None))
-        logger.info('well deserialize content_type: %r', content_type)
-        if content_type.startswith('multipart'):
-            logger.info('request.Files.keys: %r', request.FILES.keys())
-            if len(request.FILES.keys()) != 1:
-                raise BadRequest({ 
-                    'FILES': 'File upload supports only one file at a time',
-                    'filenames': request.FILES.keys(),
-                })
-             
-            if 'sdf' in request.FILES:  
-                # process *only* the first file
-                file = request.FILES['sdf']
-                logger.info('file: %r', file)
-                # NOTE: 
-                # override super, because it ignores the format and 
-                # grabs it again from the Request headers 
-                # (which is "multipart...")
-                deserialized = self._meta.serializer.deserialize(
-                    file.read(), SDF_MIMETYPE)
- 
-            elif 'xls' in request.FILES:
-                # TP cannot handle binary file formats - it is calling 
-                # django.utils.encoding.force_text on all input
-                file = request.FILES['xls']
-                deserialized = self._meta.xls_serializer.from_xls(file.read())
-            else:
-                raise BadRequest(
-                    'Unsupported multipart file key: %r', request.FILES.keys())
-         
-        elif content_type == 'application/xls':
-            # TP cannot handle binary file formats - it is calling 
-            # django.utils.encoding.force_text on all input
-            deserialized = self._meta.xls_serializer.from_xls(request.body)
-             
-        else:
-            deserialized = super(WellResource, self).deserialize(request)    
-         
-        return deserialized
-    
     def get_reagent_resource(self):
         if not self.reagent_resource:
             self.reagent_resource = ReagentResource()
@@ -9304,6 +9297,9 @@ class WellResource(ApiResource):
             
             logger.info(
                 'put_list: WellResource: library: %r; patch completed', library.short_name)
+            
+            self.get_reagent_resource().get_debug_times()
+            
             experimental_well_count = library.well_set.filter(
                 library_well_type__iexact='experimental').count()
             if library.experimental_well_count != experimental_well_count:
@@ -9781,25 +9777,23 @@ class LibraryResource(ApiResource):
     @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
         
-        initializer_dict = self.parse(deserialized)
-        id_kwargs = self.get_id(deserialized, **kwargs)
-        
+        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
         # create/update the library
-        creating = False
+        create = False
         try:
             library = None
             try:
                 library = Library.objects.get(**id_kwargs)
-                errors = self.validate(initializer_dict, patch=True)
-                if errors:
-                    raise ValidationError(errors)
             except ObjectDoesNotExist, e:
-                creating = True
+                create = True
                 logger.info('Library %s does not exist, creating', id_kwargs)
                 library = Library(**id_kwargs)
-                errors = self.validate(initializer_dict, patch=False)
-                if errors:
-                    raise ValidationError(errors)
+
+            initializer_dict = self.parse(deserialized, create=create)
+            errors = self.validate(initializer_dict, patch=not create)
+            if errors:
+                raise ValidationError(errors)
+            
 
             for key, val in initializer_dict.items():
                 if hasattr(library, key):

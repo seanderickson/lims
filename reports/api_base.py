@@ -72,14 +72,36 @@ class IccblBaseResource(Resource):
     def deserialize(self, request, format=None):
         
         content_type = self._meta.serializer.get_content_type(request, format)
+
+        if content_type.startswith('multipart'):
+            logger.info('request.Files.keys: %r', request.FILES.keys())
+            # process *only* one attached file
+            if len(request.FILES.keys()) != 1:
+                raise BadRequest({ 
+                    'FILES': 'File upload supports only one file at a time',
+                    'filenames': request.FILES.keys(),
+                })
+             
+            if 'sdf' in request.FILES:  
+                file = request.FILES['sdf']
+                return self._meta.serializer.deserialize(
+                    file.read(), SDF_MIMETYPE)
+ 
+            elif 'xls' in request.FILES:
+                file = request.FILES['xls']
+                return self._meta.serializer.deserialize(
+                    file.read(), XLS_MIMETYPE)
+            else:
+                raise BadRequest(
+                    'Unsupported multipart file key: %r', request.FILES.keys())
+        
+        
         return self._meta.serializer.deserialize(request.body,content_type)
+
 
     def serialize(self, request, data, format=None):
         content_type = self._meta.serializer.get_accept_content_type(request, format)
         return self._meta.serializer.serialize(data, content_type)
-
-#     def deserialize(self, request, data, **kwargs):
-#         return self._meta.serializer.deserialize(request, data, **kwargs)
 
     def _get_filename(self, schema, kwargs, filename=''):
         filekeys = [filename]

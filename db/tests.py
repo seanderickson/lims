@@ -2185,165 +2185,24 @@ class ScreenResource(DBResourceTestCase):
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
         ScreensaverUser.objects.all().filter(username='adminuser').delete()
-
-    def test3_create_publication(self):
-        logger.info('create users...')
-        self.screening_user = self.create_screensaveruser({ 
-            'username': 'screening1'
-        })
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
-        })
-        logger.info('create screen...')        
-        screen = self.create_screen({
-            'screen_type': 'small_molecule'
-            })
         
-        publication_data = {
-            'pubmed_id': 'PM00001',
-            'pubmed_central_id': 12121212,
-            'authors': "Smith JA, White EA, Sowa ME, Powell ML, Ottinger M, Harper JW, Howley PM",
-            'journal': "Proceedings of the National Academy of Sciences of the United States of America",
-            'pages': "3752-7",
-            'screen_facility_id': screen['facility_id'],
-            'title': "Genome-wide siRNA screen identifies SMCX, EP400, and Brd4 as E2-dependent regulators of human papillomavirus oncogene expression.",
-            'volume': "107",
-            'year_published': "2010"            
+    def test1_create_screen(self):
+        
+        data = {
+            'screen_type': 'small_molecule',
+            'cell_lines': ['293_hek_293','colo_858'],
         }
-        resource_uri = '/'.join([
-            BASE_URI_DB, 'screen',screen['facility_id'],'publications'])
-        # NOTE: post data because publications may include attached files
-        content_type = MULTIPART_CONTENT
-        resource_uri = '/'.join([
-            BASE_URI_DB, 'screen',screen['facility_id'],'publications'])
-        authentication=self.get_credentials()
-        kwargs = {}
-        kwargs['HTTP_AUTHORIZATION'] = authentication
+        screen_item = self.create_screen(data=data)
+        
+        self.assertTrue(
+            'facility_id' in screen_item, 
+            'the facility_id was not created')
+        
+        for key, value in data.items():
+            self.assertEqual(value, screen_item[key], 
+                'key %r, val: %r not expected: %r' % (key, value, screen_item[key]))
+        logger.info('screen created: %r', screen_item)
 
-        # Add an attached file and post the publication
-        base_filename = 'iccbl_sm_user_agreement_march2015.pdf'
-        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,base_filename)
-        with open(filename) as input_file:
-
-            logger.info('POST publication with attached_file to the server')
-            publication_data['attached_file'] = input_file
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
-                resource_uri, content_type=content_type, 
-                data=publication_data, **kwargs)
-            self.assertTrue(
-                resp.status_code == 201, 
-                (resp.status_code,self.get_content(resp)))
-        
-        resp = self.api_client.get(
-            resource_uri,
-            authentication=self.get_credentials(),
-            data={ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        logger.info('new obj: %s ' % new_obj)
-        self.assertTrue(
-            len(new_obj['objects'])==1,'wrong number of publications returned')
-    
-        publication_received = new_obj['objects'][0]
-        result,msgs = assert_obj1_to_obj2(
-            publication_data, publication_received, 
-            excludes=['attached_file'])
-        self.assertTrue(result,msgs)
-    
-        # Check for the attached file
-        uri = '/db/publication/%s/attached_file' % publication_received['publication_id']
-        try:
-            admin_user = User.objects.get(username=self.username)
-            view, args, kwargs = resolve(uri)
-            kwargs['request'] = self.api_client.client.request()
-            kwargs['request'].user=admin_user
-            result = view(*args, **kwargs)
-            self.assertTrue(
-                result.status_code == 200, 
-                'No attached file found, status_code: %r, %r' 
-                    % (result.status_code, result))
-            output_filename = '%s.out.%s' % tuple(filename.split('.'))
-            logger.info('write %s to %r', filename, output_filename)
-            with open(output_filename, 'w') as out_file:
-                out_file.write(self.get_content(result))
-            self.assertTrue(filecmp.cmp(filename,output_filename), 
-                'input file: %r, not equal to output file: %r' 
-                % (filename, output_filename))
-            os.remove(output_filename)    
-        except Exception, e:
-            logger.info('no file found at: %r', uri)
-            raise
-        
-        # Test apilog
-        resource_uri = BASE_REPORTS_URI + '/apilog'
-        data_for_get={ 
-            'limit': 0, 
-            'ref_resource_name': 'publication', 
-        }
-        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
-        self.assertTrue(len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
-        apilog = apilogs[0]
-        logger.debug('publication log: %r', apilog)
-        self.assertTrue(apilog['api_action'] == 'CREATE')
-        self.assertTrue('attached_filename' in apilog['added_keys'])
-        self.assertTrue(base_filename in apilog['diffs'])
-        
-        return publication_received
-        
-    def test4_delete_publication(self):
-        
-        publication_received = self.test3_create_publication()
-        resource_uri = '/'.join([
-            BASE_URI_DB, 'screen',publication_received['screen_facility_id'],
-            'publications', str(publication_received['publication_id'])])
-        
-        resp = self.api_client.delete(
-            resource_uri, authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code == 204, 
-            (resp.status_code, self.get_content(resp)))
-        resp = self.api_client.get(
-            resource_uri,
-            authentication=self.get_credentials(),
-            data={ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code == 404, 
-            ('error, publication should be deleted', resp.status_code, 
-                self.get_content(resp)))
-
-        # Check for the attached file record
-        resource_uri = '/'.join([
-            BASE_URI_DB, 'attached_file', 
-            str(publication_received['attached_file_id'])])
-        resp = self.api_client.get(
-            resource_uri,
-            authentication=self.get_credentials(),
-            data={ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code == 404, 
-            (resp.status_code, self.get_content(resp)))
-        
-        # Check for the attached file
-        uri = '/db/publication/%s/attached_file' % publication_received['publication_id']
-        try:
-            admin_user = User.objects.get(username=self.username)
-            view, args, kwargs = resolve(uri)
-            kwargs['request'] = self.api_client.client.request()
-            kwargs['request'].user=admin_user
-            result = view(*args, **kwargs)
-            self.assertTrue(
-                result.status_code == 404, 
-                'Attached file found after delete, status_code: %r, %r' 
-                    % (result.status_code, result))
-        except Exception, e:
-            logger.exception('exception when trying to locate: %r', uri)
-            raise
-    
     def test2_create_library_screening(self):
         
         logger.info('create users...')
@@ -2601,26 +2460,164 @@ class ScreenResource(DBResourceTestCase):
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
         
+    def test3_create_publication(self):
+        logger.info('create users...')
+        self.screening_user = self.create_screensaveruser({ 
+            'username': 'screening1'
+        })
+        # Make a ScreensaverUser entry for the admin user
+        self.admin_user = self.create_screensaveruser({ 
+            'username': self.username,
+            'is_superuser': True
+        })
+        logger.info('create screen...')        
+        screen = self.create_screen({
+            'screen_type': 'small_molecule'
+            })
         
-        
-        
-        
-        
-        
-    
-    def test1_create_screen(self):
-        
-        data = {
-            'cell_lines': ['293_hek_293','colo_858'],
+        publication_data = {
+            'pubmed_id': 'PM00001',
+            'pubmed_central_id': 12121212,
+            'authors': "Smith JA, White EA, Sowa ME, Powell ML, Ottinger M, Harper JW, Howley PM",
+            'journal': "Proceedings of the National Academy of Sciences of the United States of America",
+            'pages': "3752-7",
+            'screen_facility_id': screen['facility_id'],
+            'title': "Genome-wide siRNA screen identifies SMCX, EP400, and Brd4 as E2-dependent regulators of human papillomavirus oncogene expression.",
+            'volume': "107",
+            'year_published': "2010"            
         }
-        screen_item = self.create_screen(data=data)
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'screen',screen['facility_id'],'publications'])
+        # NOTE: post data because publications may include attached files
+        content_type = MULTIPART_CONTENT
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'screen',screen['facility_id'],'publications'])
+        authentication=self.get_credentials()
+        kwargs = {}
+        kwargs['HTTP_AUTHORIZATION'] = authentication
+
+        # Add an attached file and post the publication
+        base_filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,base_filename)
+        with open(filename) as input_file:
+
+            logger.info('POST publication with attached_file to the server')
+            publication_data['attached_file'] = input_file
+            django_test_client = self.api_client.client
+            resp = django_test_client.post(
+                resource_uri, content_type=content_type, 
+                data=publication_data, **kwargs)
+            self.assertTrue(
+                resp.status_code == 201, 
+                (resp.status_code,self.get_content(resp)))
         
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 'limit': 0, 'includes': '*'} )
         self.assertTrue(
-            'facility_id' in screen_item, 
-            'the facility_id was not created')
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new obj: %s ' % new_obj)
+        self.assertTrue(
+            len(new_obj['objects'])==1,'wrong number of publications returned')
+    
+        publication_received = new_obj['objects'][0]
+        result,msgs = assert_obj1_to_obj2(
+            publication_data, publication_received, 
+            excludes=['attached_file'])
+        self.assertTrue(result,msgs)
+    
+        # Check for the attached file
+        uri = '/db/publication/%s/attached_file' % publication_received['publication_id']
+        try:
+            admin_user = User.objects.get(username=self.username)
+            view, args, kwargs = resolve(uri)
+            kwargs['request'] = self.api_client.client.request()
+            kwargs['request'].user=admin_user
+            result = view(*args, **kwargs)
+            self.assertTrue(
+                result.status_code == 200, 
+                'No attached file found, status_code: %r, %r' 
+                    % (result.status_code, result))
+            output_filename = '%s.out.%s' % tuple(filename.split('.'))
+            logger.info('write %s to %r', filename, output_filename)
+            with open(output_filename, 'w') as out_file:
+                out_file.write(self.get_content(result))
+            self.assertTrue(filecmp.cmp(filename,output_filename), 
+                'input file: %r, not equal to output file: %r' 
+                % (filename, output_filename))
+            os.remove(output_filename)    
+        except Exception, e:
+            logger.info('no file found at: %r', uri)
+            raise
         
-        logger.info('screen created: %r', screen_item)
+        # Test apilog
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'publication', 
+        }
+        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
+        self.assertTrue(len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.debug('publication log: %r', apilog)
+        self.assertTrue(apilog['api_action'] == 'CREATE')
+        self.assertTrue('attached_filename' in apilog['added_keys'])
+        self.assertTrue(base_filename in apilog['diffs'])
         
+        return publication_received
+        
+    def test4_delete_publication(self):
+        
+        publication_received = self.test3_create_publication()
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'screen',publication_received['screen_facility_id'],
+            'publications', str(publication_received['publication_id'])])
+        
+        resp = self.api_client.delete(
+            resource_uri, authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code == 204, 
+            (resp.status_code, self.get_content(resp)))
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code == 404, 
+            ('error, publication should be deleted', resp.status_code, 
+                self.get_content(resp)))
+
+        # Check for the attached file record
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'attached_file', 
+            str(publication_received['attached_file_id'])])
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code == 404, 
+            (resp.status_code, self.get_content(resp)))
+        
+        # Check for the attached file
+        uri = '/db/publication/%s/attached_file' % publication_received['publication_id']
+        try:
+            admin_user = User.objects.get(username=self.username)
+            view, args, kwargs = resolve(uri)
+            kwargs['request'] = self.api_client.client.request()
+            kwargs['request'].user=admin_user
+            result = view(*args, **kwargs)
+            self.assertTrue(
+                result.status_code == 404, 
+                'Attached file found after delete, status_code: %r, %r' 
+                    % (result.status_code, result))
+        except Exception, e:
+            logger.exception('exception when trying to locate: %r', uri)
+            raise
+    
 
 class MutualScreensTest(DBResourceTestCase,ResourceTestCase):
     

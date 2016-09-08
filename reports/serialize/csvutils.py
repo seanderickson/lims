@@ -2,7 +2,9 @@ from __future__ import unicode_literals
 
 import csv
 import logging
-from django.utils.encoding import smart_text
+
+from reports.serialize import to_simple
+from django.utils.encoding import smart_text, force_text
 
 
 logger = logging.getLogger(__name__)
@@ -88,15 +90,37 @@ def from_csv_iterate(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None
 def string_convert(val):
     return csv_convert(val, delimiter=',')
 
+def dict_to_rows(_dict):
+    ''' Utility that converts a dict into a table for writing to a spreadsheet
+    '''
+    
+    logger.debug('_dict: %r', _dict)
+    values = []
+    if isinstance(_dict, dict):
+        for key,val in _dict.items():
+            for row in dict_to_rows(val):
+                if not row:
+                    values.append([key,None])
+                else:
+                    keyrow = [key]
+                    if isinstance(row, basestring):
+                        keyrow.append(row)
+                    else:
+                        keyrow.extend(row)
+                    values.append(keyrow)
+    else:
+        values = (csv_convert(_dict),)
+    return values
+
 def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
     
     if isinstance(val, (list,tuple)):
         if list_brackets:
             return ( list_brackets[0] 
-                + delimiter.join([smart_text(x) for x in val]) 
+                + delimiter.join([smart_text(to_simple(x)) for x in val]) 
                 + list_brackets[1] )
         else: 
-            return delimiter.join([smart_text(x) for x in val]) 
+            return delimiter.join([smart_text(to_simple(x)) for x in val]) 
     elif val != None:
         if type(val) == bool:
             if val:
@@ -104,6 +128,7 @@ def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
             else:
                 return 'FALSE'
         else:
-            return smart_text(val)
+            return force_text(to_simple(val))
+#             return smart_text(val)
     else:
         return None

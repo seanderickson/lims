@@ -3,19 +3,16 @@ from __future__ import unicode_literals
 
 import cStringIO
 from collections import OrderedDict
-import copy
 import csv
-import datetime
 import json
 import logging
-import re
 
-from django.core.serializers.json import DjangoJSONEncoder
+from django.conf import settings
 from django.db.backends.utils import CursorDebugWrapper
 from django.http.response import StreamingHttpResponse
 from django.utils.encoding import smart_text, force_text
 import mimeparse
-from psycopg2.psycopg1 import cursor
+# from psycopg2.psycopg1 import cursor
 import six
 from tastypie.exceptions import BadRequest
 import xlrd
@@ -23,22 +20,19 @@ import xlrd
 from db.support import screen_result_importer
 from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE, \
     JSON_MIMETYPE, CSV_MIMETYPE
-from reports.serialize import dict_to_rows
-from reports.serialize.csvutils import LIST_DELIMITER_CSV
+from reports.serialize.csvutils import LIST_DELIMITER_CSV, dict_to_rows
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
+import reports.serialize.xlsutils as xlsutils
+from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 from reports.serialize.streaming_serializers import generic_xlsx_response, \
     get_xls_response
-from reports.serialize.xlsutils import LIST_DELIMITER_XLS
-import reports.serialize.xlsutils as xlsutils
-
+from reports.serialize import to_simple, LimsJSONEncoder
 
 logger = logging.getLogger(__name__)
 
-class BaseSerializer(object):
     
-    # Use DjangoJSONEncoder for date,datetime, and time serialization
-    json_encoder = DjangoJSONEncoder()
+class BaseSerializer(object):
     
     content_types = {'json': JSON_MIMETYPE,
                      'html': 'text/html',
@@ -51,30 +45,6 @@ class BaseSerializer(object):
 
         self.content_types = content_types or {}    
         content_types['json'] = JSON_MIMETYPE
-
-    def to_simple(self, data, options):
-        """
-        This brings complex Python data structures down to native types of the
-        serialization format(s).
-        """
-        if isinstance(data, (list, tuple)):
-            return [self.to_simple(item, options) for item in data]
-        if isinstance(data, dict):
-            return dict((key, self.to_simple(val, options)) for (key, val) in data.items())
-        elif isinstance(data, datetime.datetime):
-            return self.json_encoder.default(data)
-        elif isinstance(data, datetime.date):
-            return self.json_encoder.default(data)
-        elif isinstance(data, datetime.time):
-            return self.json_encoder.default(data)
-        elif isinstance(data, bool):
-            return data
-        elif isinstance(data, (six.integer_types, float)):
-            return data
-        elif data is None:
-            return None
-        else:
-            return force_text(data)
 
     @staticmethod
     def get_content(resp):
@@ -263,11 +233,10 @@ class BaseSerializer(object):
 
     def to_json(self, data, options=None):
         json_indent = 2
-        data = self.to_simple(data, options)
         # NOTE, using "ensure_ascii" = True to force encoding of all 
         # chars to the ascii charset; otherwise, cStringIO has problems
         return json.dumps(
-            data, cls=DjangoJSONEncoder,
+            data, cls=LimsJSONEncoder,
             sort_keys=True, ensure_ascii=True, indent=json_indent, 
             encoding="utf-8")
 
@@ -293,7 +262,7 @@ class SDFSerializer(BaseSerializer):
         
     def to_sdf(self, data, options=None):
         
-        data = self.to_simple(data, options)
+        data = to_simple(data)
 
         if 'objects' in data:
             data = data['objects']
@@ -414,7 +383,7 @@ class CSVSerializer(BaseSerializer):
         
     def to_csv(self, data, root='objects', options=None):
 
-        data = self.to_simple(data, options)
+        data = to_simple(data)
 
         raw_data = cStringIO.StringIO()
         writer = csv.writer(raw_data) 
@@ -639,7 +608,7 @@ class CursorSerializer(BaseSerializer):
             raw_data.write(json.dumps(
                 OrderedDict(zip(cols, row)),
                 skipkeys=False,ensure_ascii=True,check_circular=True,
-                allow_nan=True, cls=DjangoJSONEncoder,encoding="utf-8"))
+                allow_nan=True, cls=LimsJSONEncoder,encoding="utf-8"))
             i += 1
 
         logger.info('done, wrote: %d' % i)

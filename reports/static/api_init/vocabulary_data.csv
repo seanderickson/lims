@@ -27,7 +27,8 @@ multiselect,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multisele
 multiselect2,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect2/,3,,"Dual column multi-select",Multi-select2
 multiselect3,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect3/,4,,"Chosen Multiselect",Multi-select3
 textarea,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/textarea/,4,,TextArea,TextArea
-custom,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/custom/,5,"A custom UI element will be used to edit this field","Custom implementation",Custom
+typeahead,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/typeahead/,5,"Text box with search","Text Box with search","Text with search"
+custom,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/custom/,6,"A custom UI element will be used to edit this field","Custom implementation",Custom
 fields.CharField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
 fields.ListField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
 fields.BooleanField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField

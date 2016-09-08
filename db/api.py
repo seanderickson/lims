@@ -6156,7 +6156,7 @@ class ServiceActivityResource(ActivityResource):
 
     def build_schema(self):
         return ApiResource.build_schema(self)
-
+    
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
 

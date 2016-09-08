@@ -643,14 +643,70 @@ class ApiResource(SqlAlchemyResource):
         # - this is because tastypie interprets url's with no pk as "list" urls
         return self.post_detail(request,**kwargs)
         
+#     @write_authorization
+#     @un_cache        
+#     def post_detail(self, request, **kwargs):
+#         '''
+#         POST is used to create or update a resource; not idempotent;
+#         - The LIMS client will use POST to create exclusively
+#         '''
+#         return self.patch_detail(request,**kwargs)
+
     @write_authorization
-    @un_cache        
+    @un_cache  
+    @transaction.atomic      
     def post_detail(self, request, **kwargs):
         '''
         POST is used to create or update a resource; not idempotent;
         - The LIMS client will use POST to create exclusively
         '''
-        return self.patch_detail(request,**kwargs)
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        logger.debug('post detail %s, %s', deserialized,kwargs)
+        
+        # Note, find kwargs that are available, validate=False, for if they DNE
+        kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
+        
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        original_data = None
+        try:
+            log = self.make_log(request)
+            log.save()
+            obj = self.patch_obj(request, deserialized, **kwargs)
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise e
+
+        # get new state, for logging
+        try:
+            new_data = self._get_detail_response(request,**kwargs_for_log)
+            log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
+            if log:
+                log.save()
+        except Exception, e: 
+            logger.exception(
+                'exception when logging: %s', kwargs_for_log)
+
+        if not self._meta.always_return_data:
+            return HttpResponse(status=202)
+        else:
+            response = self.get_detail(request,**kwargs_for_log)
+            response.status_code = 201
+            return response
+
+
+
         
     @write_authorization
     @un_cache  

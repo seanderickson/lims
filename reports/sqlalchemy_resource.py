@@ -43,6 +43,7 @@ from reports.serialize.streaming_serializers import sdf_generator, \
     cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
 import json
+import pytz
 
 
 logger = logging.getLogger(__name__)
@@ -456,7 +457,7 @@ class SqlAlchemyResource(IccblBaseResource):
         Attempt to create a SqlAlchemy whereclause out of django style filters:
         - field_name__filter_expression
         '''
-        DEBUG_FILTERS = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         logger.info('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
@@ -787,7 +788,6 @@ class SqlAlchemyResource(IccblBaseResource):
         #    raise Exception('limit for caching must be >0')
         
         prefetch_number = 5
-        
         if limit <= 1:
             prefetch_number = 1
         
@@ -829,15 +829,21 @@ class SqlAlchemyResource(IccblBaseResource):
                     stmt = stmt.limit(new_limit)
                 resultset = conn.execute(stmt)
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
-                logger.info('executed stmt')
+                logger.info('executed stmt %d', len(prefetched_result))
                 
                 logger.info('no cache hit, execute count')
                 if limit == 1:
                     count = 1
                 else:
                     count = conn.execute(count_stmt).scalar()
-                    
                 logger.info('count: %s', count)
+                
+#                 if count == 1 or count < limit:
+#                     return {
+#                         'stmt': compiled_stmt,
+#                         'cached_result': prefetched_result,
+#                         'count': count,
+#                     }
                 
                 if limit==0 and count > settings.MAX_ROWS_FOR_CACHE_RESULTPROXY:
                     logger.warn('too many rows to cache: %r, limit: %r, '
@@ -900,7 +906,7 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         
         
-        DEBUG_STREAMING = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
         logger.info('stream_response_from_statement: %r', self._meta.resource_name )
         if DEBUG_STREAMING:
@@ -1052,9 +1058,13 @@ class SqlAlchemyResource(IccblBaseResource):
             data = cursor_generator(
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
+            
+#             if settings.USE_TZ and settings.TIME_ZONE:
+#                 logger.info('using time zone: %r', pytz.timezone(settings.TIME_ZONE))
+#                 data = timezone_generator(data)
+                
             response = None
             if content_type == JSON_MIMETYPE:
-                
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(
                         json_generator(

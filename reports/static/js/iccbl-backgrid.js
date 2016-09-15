@@ -256,7 +256,13 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consu
     ref_resource = Iccbl.appModel.getResource(ref_resource_name);
     if(ref_resource && !_.isEmpty(ref_resource)){
       checkStack(urlStack);
-      key = self.popKeyFromStack(ref_resource,urlStack,consumedStack);
+      if (urlStack[0] == ref_resource_name){
+        // if the key == resource, then this is a "parent log" (patch/post list)
+        key = urlStack.shift();
+        consumedStack.push(key);
+      }else{
+        key = self.popKeyFromStack(ref_resource,urlStack,consumedStack);
+      }
     }
     checkStack(urlStack);
     date_time = urlStack.shift();
@@ -1881,13 +1887,20 @@ var TextFormFilter = CriteriumFormFilter.extend({
       var criteria = self.criterium[criteriaKey];
       var searchTerm = self.columnName + '__' + criteria;
       var nsearchTerm = '-' + self.columnName + '__' + criteria;
+      
       var searchVal = null;
       var negated = false;
       if(_.has(searchHash, searchTerm)){
-        var searchVal = searchHash[searchTerm];
+        searchVal = searchHash[searchTerm];
       }else if(_.has(searchHash, nsearchTerm)){
-        var searchVal = searchHash[nsearchTerm];
+        searchVal = searchHash[nsearchTerm];
         negated=true;
+      }else if (_.has(searchHash,self.columnName)){
+        searchVal = searchHash[self.columnName];
+        criteria = 'eq';
+        searchTerm = self.columnName + '__' + criteria;
+        delete searchHash[self.columnName]
+        searchHash[searchTerm] = searchVal;
       }
       if(searchVal !== null){
         found = true;
@@ -1940,7 +1953,16 @@ var TextFormFilter = CriteriumFormFilter.extend({
     searchHash[searchKey] = searchVal;
   
     return searchHash
+  },
+
+  getPossibleSearches: function(){
+    var possibleSearches = 
+      CriteriumFormFilter.prototype.getPossibleSearches.apply(this,arguments);
+    // TODO: add in the "=" (without __eq)
+    possibleSearches.push(this.columnName)
+    return possibleSearches;
   }
+
 });
 
 var DateEditor = Backbone.Form.editors.Date.extend({

@@ -25,20 +25,95 @@ function($, _, Backbone, appModel) {
       console.log('router initialized...');
     },
     
+    /** 
+     * Pull out complex keys in search - to allow for slashes in the keys
+     * recursive to grab multiple search terms 
+     **/
     toPath: function(path){
+      function popKeys(stack){
+        if(!_.isEmpty(stack)){
+          var searchIndex = _.indexOf(stack,'search');
+          if(searchIndex > -1){
+            var newStack = stack.slice(0,searchIndex+1);
+            var keys = [];
+            stack = stack.slice(searchIndex+1);
+            while(!_.isEmpty(stack)){
+              var temp = stack.shift();
+              if (!_.contains(appModel.LIST_ARGS, temp)){
+                keys.push(temp);
+              }else{
+                stack.unshift(temp);
+                break;
+              }
+            }
+            temp = [keys.join('/')];
+            newStack = newStack.concat(temp);
+            newStack = newStack.concat(popKeys(stack));
+            return newStack;
+          }
+        }
+        return stack;
+      }
+      var uriStack = [];
+      if (path){
+        uriStack = popKeys(path.split('/'));
+      }
+      appModel.set({ uriStack: uriStack}, { source: this });
+    },
+    
+    /** 
+     * Pull out complex keys in search - to allow for slashes in the keys
+     * non-recursive will grab only the first term.
+     **/
+    toPath1: function(path){
       console.log('toPath: ' + path);
       var uriStack = [];
       if (path){
         uriStack = path.split('/');
-        // Removed 201608 - unknown purpose
-        //// special search case, as last item
-        //var searchIndex = _.indexOf(uriStack,'search');
-        //if(searchIndex > -1){
-        //  var temp = uriStack.slice(0,searchIndex+1);
-        //  temp.push(_.rest(uriStack,searchIndex+1).join('/'));
-        //  uriStack = temp;
-        //  console.log('new uriStack', uriStack);
-        //}
+        // Pull out complex keys in search - to allow for slashes in the keys
+        var searchIndex = _.indexOf(uriStack,'search');
+        if(searchIndex > -1){
+          var temp = uriStack.slice(0,searchIndex+1);
+          // pop search terms off the stack until another router term is found
+          var restOfStack = [];
+          var searchKey = [];
+          var restOfStack = uriStack.slice(searchIndex+1);
+          var i = 0;
+          for (; i<restOfStack.length; i++){
+            var routeKey = restOfStack[i];
+            if (!_.contains(appModel.LIST_ARGS, routeKey)){
+              searchKey.push(routeKey);
+            }else{
+              break;
+            }
+          }
+          temp.push(searchKey.join('/'));
+          if (i<restOfStack.length){
+            temp = temp.concat(restOfStack.slice(i));
+          }
+          uriStack = temp;
+          console.log('new uriStack', uriStack);
+        }
+      }
+      appModel.set({ uriStack: uriStack }, { source: this });
+    },
+    
+    
+    
+    toPathbak: function(path){
+      console.log('toPath: ' + path);
+      var uriStack = [];
+      if (path){
+        uriStack = path.split('/');
+        // special search case, search as the last item:
+        // - allow for slashes ("/") in the search term
+        var searchIndex = _.indexOf(uriStack,'search');
+        if(searchIndex > -1){
+          var temp = uriStack.slice(0,searchIndex+1);
+          temp.push(_.rest(uriStack,searchIndex+1).join('/'));
+          uriStack = temp;
+          console.log('new uriStack', uriStack);
+        }
       }
       appModel.set({ uriStack: uriStack }, { source: this });
     },

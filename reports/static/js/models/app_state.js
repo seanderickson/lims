@@ -1629,7 +1629,14 @@ define([
       $modal.on('show.bs.modal', function () {
         $('.modal-content').css('height',$( window ).height()*0.95);
       });      
-      $modal.modal({show:true, backdrop: 'static'});
+      $modal.on('shown.bs.modal', function () {
+        $('#modal').find('.form').find('input').first().focus();
+      });
+      $modal.modal({
+        backdrop: 'static',
+        keyboard: false, // prevent the escape key from closing the modal
+        show: true
+      });
       return modalDialog;
     },
     
@@ -1644,7 +1651,7 @@ define([
   var appState = new AppState();
   
   appState._form_template = _.template([
-     '<div class="form-horizontal containe" id="add_value_field" >',
+     '<div class="form-horizontal container" id="add_value_field" >',
      '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
      "</form>",
      "</div>"].join(''));      

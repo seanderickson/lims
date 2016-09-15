@@ -48,7 +48,7 @@ def closing_iterator_wrapper(iterable, close):
         for item in iterable:
             yield item
     finally:
-        logger.warn('close connection...')
+        logger.info('close connection...')
         close()
 
 

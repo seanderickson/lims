@@ -42,7 +42,8 @@ from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
-    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
+    HTTP_PARAM_DATA_INTERCHANGE, InformationError
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache
 from reports.models import MetaHash, Vocabulary, ApiLog, ListLog, Permission, \
@@ -503,7 +504,20 @@ class ApiResource(SqlAlchemyResource):
 
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
-        
+
+        if len(deserialized) == 0:
+            meta = { 
+                'Result': {
+                    'Patched': 0, 
+                    'Updated': 0, 
+                    'Created': 0,
+                    'Unchanged': 0, 
+                    'Comments': 'no data patched'
+                }
+            }
+            return self.build_response(
+                request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
+                    
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
@@ -528,6 +542,8 @@ class ApiResource(SqlAlchemyResource):
             with transaction.atomic():
                 if 'parent_log' not in kwargs:
                     parent_log = self.make_log(request)
+                    parent_log.key = self._meta.resource_name
+                    parent_log.uri = self._meta.resource_name
                     parent_log.save()
                     kwargs['parent_log'] = parent_log
                 
@@ -537,15 +553,32 @@ class ApiResource(SqlAlchemyResource):
             logger.exception('Validation error: %r', e)
             raise e
             
-        # Get new state, for logging
+        logger.info('Get new state, for logging...')
         new_data = self._get_list_response(request,**kwargs_for_log)
-        logger.debug('patch list done, new data: %d', len(new_data))
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
+        logger.info('new data: %d, log patches...', len(new_data))
+        logs = self.log_patches(request, original_data,new_data,**kwargs)
+        logger.info('patch logs created.')
+        patch_count = len(deserialized)
+        update_count = len([x for x in logs if x.diffs ])
+        create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
+        unchanged_count = patch_count - update_count
+        meta = { 
+            'Result': {
+                'Patched': patch_count, 
+                'Updated': update_count, 
+                'Created': create_count,
+                'Unchanged': unchanged_count, 
+                'Comments': parent_log.comment
+            }
+        }
         if not self._meta.always_return_data:
-            return HttpResponse(status=202)
+            return self.build_response(
+                request, { 'meta': meta }, response_class=HttpResponse, 
+                format=format)
         else:
-            response = self.get_list(request, **kwargs)             
+            logger.debug(
+                'return data with post response: %r, kwargs: %r', meta, kwargs_for_log)
+            response = self.get_list(request, meta=meta, **kwargs_for_log)             
             response.status_code = 200
             return response
  
@@ -625,7 +658,7 @@ class ApiResource(SqlAlchemyResource):
             logger.exception('original state not obtained')
             new_data = []
         
-        logger.debug('patch list done, new data: %d', len(new_data))
+        logger.debug('put list done, new data: %d', len(new_data))
         self.log_patches(request, original_data,new_data,**kwargs)
         
         logger.info('put_list done.')
@@ -639,18 +672,102 @@ class ApiResource(SqlAlchemyResource):
     @write_authorization
     @un_cache        
     def post_list(self, request, **kwargs):
-        # NOTE: POST-ing will always be for single items
-        # - this is because tastypie interprets url's with no pk as "list" urls
-        return self.post_detail(request,**kwargs)
+        '''
+        POST is used to create or update a resource; not idempotent;
+        - The LIMS client will use POST LIST to create and update because
+        Django will only "attach" files with POST (not PATCH)
+        '''
+        logger.info('patch list, user: %r, resource: %r' 
+            % ( request.user.username, self._meta.resource_name))
+        logger.debug('patch list: %r' % kwargs)
+
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        if self._meta.collection_name in deserialized:
+            deserialized = deserialized[self._meta.collection_name]
+
+        if len(deserialized) == 0:
+            meta = { 
+                'Result': {
+                    'Patched': 0, 
+                    'Updated': 0, 
+                    'Created': 0,
+                    'Unchanged': 0, 
+                    'Comments': 'no data posted'
+                }
+            }
+            return self.build_response(
+                request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
         
-#     @write_authorization
-#     @un_cache        
-#     def post_detail(self, request, **kwargs):
-#         '''
-#         POST is used to create or update a resource; not idempotent;
-#         - The LIMS client will use POST to create exclusively
-#         '''
-#         return self.patch_detail(request,**kwargs)
+        if len(deserialized) == 1 or isinstance(deserialized, dict):
+            # post_detail
+            return self.post_detail(request, **kwargs)
+
+        # Limit the potential candidates for logging to found id_kwargs
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        kwargs_for_log = kwargs.copy()
+        logger.debug('id_attribute: %r', id_attribute)
+        for id_field in id_attribute:
+            ids = []
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.append(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = \
+                    LIST_DELIMITER_URL_PARAM.join(ids)
+        try:
+            logger.debug('get original state, for logging...')
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            original_data = self._get_list_response(request,**kwargs_for_log)
+        except Exception as e:
+            logger.exception('original state not obtained')
+            original_data = []
+
+        try:
+            with transaction.atomic():
+                if 'parent_log' not in kwargs:
+                    parent_log = self.make_log(request)
+                    parent_log.key = self._meta.resource_name
+                    parent_log.uri = self._meta.resource_name
+                    parent_log.save()
+                    kwargs['parent_log'] = parent_log
+                
+                for _dict in deserialized:
+                    self.patch_obj(request, _dict, **kwargs)
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise e
+            
+        # Get new state, for logging
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        logger.debug('patch list done, new data: %d', len(new_data))
+        logs = self.log_patches(request, original_data,new_data,**kwargs)
+        patch_count = len(deserialized)
+        update_count = len([x for x in logs if x.diffs ])
+        create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
+        unchanged_count = patch_count - update_count
+        meta = { 
+            'Result': {
+                'Posted': patch_count, 
+                'Updated': update_count, 
+                'Created': create_count,
+                'Unchanged': unchanged_count, 
+                'Comments': parent_log.comment
+            }
+        }
+        if not self._meta.always_return_data:
+            return self.build_response(
+                request, { 'meta': meta }, response_class=HttpResponse, format=format)
+        else:
+            logger.info('return data with post response')
+            response = self.get_list(request, meta=meta, **kwargs)             
+            response.status_code = 200
+            return response
 
     @write_authorization
     @un_cache  
@@ -698,15 +815,14 @@ class ApiResource(SqlAlchemyResource):
             logger.exception(
                 'exception when logging: %s', kwargs_for_log)
 
+        # TODO: add "Result" data to meta section, see post_list
+        
         if not self._meta.always_return_data:
             return HttpResponse(status=202)
         else:
             response = self.get_detail(request,**kwargs_for_log)
             response.status_code = 201
             return response
-
-
-
         
     @write_authorization
     @un_cache  
@@ -760,6 +876,8 @@ class ApiResource(SqlAlchemyResource):
             logger.exception(
                 'exception when logging: %s', kwargs_for_log)
 
+        # TODO: add "Result" data to meta section, see patch_list
+        
         if not self._meta.always_return_data:
             return HttpResponse(status=202)
         else:
@@ -830,6 +948,8 @@ class ApiResource(SqlAlchemyResource):
         new_data = self._get_list_response(request,**kwargs_for_log)
         self.log_patches(request, original_data,new_data,**kwargs)
         
+        # TODO: add "Result" data to meta section, see patch_list
+        
         if not self._meta.always_return_data:
             return HttpResponse(status=202)
         else:
@@ -840,6 +960,7 @@ class ApiResource(SqlAlchemyResource):
     @write_authorization
     @un_cache        
     def delete_list(self, request, **kwargs):
+        logger.info('delete list...')
         raise NotImplementedError('delete_list is not implemented for %s'
             % self._meta.resource_name )
 
@@ -1255,8 +1376,20 @@ class ApiLogResource(ApiResource):
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#             url((r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)"
+#                  r"/(?P<date_time>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(.[^\/])*)%s$")
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_parent_log_detail'), name="api_dispatch_parent_log_detail"),
         ]    
-
+     
+#     def dispatch_parent_log_detail(self,**kwargs):
+#         
+#         kwargs['key'] = None
+#         
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+#         kwargs['is_for_detail']=True
+#         return self.build_list_response(request, **kwargs)
+        
     def dispatch_clear_cache(self, request, **kwargs):
         self.clear_cache()
         return self.build_response(request, 'ok', **kwargs)
@@ -1303,11 +1436,20 @@ class ApiLogResource(ApiResource):
             
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
 
         if parent_log_id:
             kwargs['parent_log_id'] = parent_log_id
 
         is_for_detail = kwargs.pop('is_for_detail', False)
+
+        if is_for_detail:
+            param_hash['offset'] = 0
              
         schema = super(ApiLogResource,self).build_schema()
         
@@ -1355,9 +1497,9 @@ class ApiLogResource(ApiResource):
                 build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = ['reports_apilog']
@@ -1418,8 +1560,10 @@ class ApiLogResource(ApiResource):
                 stmt = stmt.where(column('ref_resource_name').in_(resources))
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
+            
+            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
+                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                    title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -1427,7 +1571,7 @@ class ApiLogResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True  )
              
         except Exception, e:
@@ -1596,6 +1740,12 @@ class FieldResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         
         logger.debug('param_hash: %r', param_hash)
         # Do not have real filtering, but support the scope filters, manually
@@ -1610,6 +1760,8 @@ class FieldResource(ApiResource):
             key = param_hash.get('key__exact', None)
         if not key:
             key = param_hash.get('key__eq', None)
+        
+        key_in = param_hash.get('key__in', None)
             
         if not scope:
             scopes = MetaHash.objects.all().filter(
@@ -1626,6 +1778,11 @@ class FieldResource(ApiResource):
                     scope=scope, field_definition_scope='fields.field', 
                     clear=True))
             fields.extend(field_hash.values())
+            
+        if key_in:
+            keys_in = key_in.split(LIST_DELIMITER_URL_PARAM)
+            fields = [x for x in fields if x['key'] in keys_in ]
+            
         for field in fields:
             field['1'] = field['scope']
             field['2'] = field['key']
@@ -1644,8 +1801,16 @@ class FieldResource(ApiResource):
             decorated.sort(key=itemgetter(0,1,2))
             fields = [field for scope,ordinal,key,field in decorated]
             # TODO: generalized pagination, sort, filter
+            
+            meta = { 'limit': 0, 'offset': 0, 'total_count': len(fields) }
+            if kwargs.get('meta', None):
+                temp = kwargs['meta']
+                temp.update(meta)
+                meta = temp
+                logger.info('meta: %r', meta)
+            logger.debug('meta: %r', meta)
             response_hash = { 
-                'meta': { 'limit': 0, 'offset': 0, 'total_count': len(fields) }, 
+                'meta': meta, 
                 self._meta.collection_name: fields 
             }
         logger.debug('build response...')
@@ -1794,13 +1959,17 @@ class ResourceResource(ApiResource):
         # Ok for the time being, because vocabularies/resources are not filtered
         cached_content = cache.get('resources')
         if not cached_content or not self.use_cache:
-            response = self.build_list_response(request, format='json')
+            response = self.build_list_response(
+                request, format='json', meta=kwargs.get('meta', None))
             cached_content = self._meta.serializer.from_json(
                 self._meta.serializer.get_content(response))
             cache.set('resources', cached_content)
         else:
             logger.debug('using cached resources...')
-        logger.debug('kwargs: %r', kwargs)
+        if kwargs.get('meta', None):
+            meta = kwargs.get('meta')
+            meta.update(cached_content.get('meta', {}))
+            cached_content['meta'] = meta
         return self.build_response(request, cached_content, **kwargs)
         
     def get_resource_schema(self,key):
@@ -1864,6 +2033,12 @@ class ResourceResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         
         # TODO: CACHE
         
@@ -1946,8 +2121,15 @@ class ResourceResource(ApiResource):
         else:
             values = resources.values()
             values.sort(key=lambda resource: resource['key'])
+            meta = { 'limit': 0, 'offset': 0, 'total_count': len(values) }
+            if kwargs.get('meta', None):
+                temp = kwargs['meta']
+                temp.update(meta)
+                meta = temp
+                logger.info('meta: %r', meta)
+            logger.debug('meta: %r', meta)
             response_hash = { 
-                'meta': { 'limit': 0, 'offset': 0, 'total_count': len(values) }, 
+                'meta': meta, 
                 self._meta.collection_name: values
             }
         
@@ -1970,7 +2152,7 @@ class ResourceResource(ApiResource):
     @un_cache        
     def patch_obj(self, request, deserialized, **kwargs):
         
-        logger.info('patch_obj: %r', deserialized)
+        logger.debug('patch_obj: %r', deserialized)
         schema = self.build_schema()
         fields = schema['fields']
         initializer_dict = {}
@@ -2127,6 +2309,12 @@ class VocabularyResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -2269,8 +2457,9 @@ class VocabularyResource(ApiResource):
                 stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
+            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
+                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                    title_function = lambda key: field_hash[key]['title']
             
             logger.info('vocabularies done, stream response...')
             return self.stream_response_from_statement(
@@ -2279,7 +2468,7 @@ class VocabularyResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=json_field_rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True  )
              
         except Exception, e:
@@ -2602,6 +2791,13 @@ class UserResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+
         schema = super(UserResource,self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -2638,7 +2834,7 @@ class UserResource(ApiResource):
                     order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+            if use_vocab:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -2665,8 +2861,9 @@ class UserResource(ApiResource):
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
+            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
+                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                    title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -2674,7 +2871,7 @@ class UserResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True  )
              
         except Exception, e:
@@ -3199,6 +3396,12 @@ class UserGroupResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -3243,7 +3446,7 @@ class UserGroupResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+            if use_vocab:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
@@ -3412,8 +3615,9 @@ class UserGroupResource(ApiResource):
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
+            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
+                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                    title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -3421,7 +3625,7 @@ class UserGroupResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True  )
              
         except Exception, e:
@@ -3553,6 +3757,13 @@ class PermissionResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -3584,9 +3795,9 @@ class PermissionResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _p = self.bridge['reports_permission']
@@ -3638,8 +3849,9 @@ class PermissionResource(ApiResource):
                 stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
+            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
+                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                    title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -3647,7 +3859,7 @@ class PermissionResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True  )
              
         except Exception, e:

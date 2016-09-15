@@ -72,7 +72,7 @@ class IccblBaseResource(Resource):
     def deserialize(self, request, format=None):
         
         content_type = self._meta.serializer.get_content_type(request, format)
-
+        
         if content_type.startswith('multipart'):
             logger.info('request.Files.keys: %r', request.FILES.keys())
             # process *only* one attached file
@@ -86,11 +86,18 @@ class IccblBaseResource(Resource):
                 file = request.FILES['sdf']
                 return self._meta.serializer.deserialize(
                     file.read(), SDF_MIMETYPE)
- 
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
+                
+                schema = self.build_schema()
+                list_keys = [x for x,y in schema['fields'].items() 
+                    if y.get('data_type') == 'list']
                 return self._meta.serializer.deserialize(
-                    file.read(), XLS_MIMETYPE)
+                    file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys})
+            elif 'csv' in request.FILES:
+                file = request.FILES['csv']
+                return self._meta.serializer.deserialize(
+                    file.read(), CSV_MIMETYPE)
             else:
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
@@ -368,8 +375,8 @@ class IccblBaseResource(Resource):
         # # If what comes back isn't a ``HttpResponse``, assume that the
         # # request was accepted and that some action occurred. This also
         # # prevents Django from freaking out.
-        # if not isinstance(response, HttpResponseBase):
-        #     return HttpNoContent()
+        if not isinstance(response, HttpResponseBase):
+            return HttpNoContent()
         
         # Custom ICCB parameter: set cookie to tell the browser javascript
         # UI that the download request is finished

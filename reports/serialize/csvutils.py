@@ -64,6 +64,7 @@ def from_csv_iterate(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None
     i = 0
     keys = []
     list_keys = list(list_keys) 
+    logger.debug('list_keys: %r', list_keys)
     for row in iterable:
         if i == 0:
             keys = [x for x in row]
@@ -79,9 +80,11 @@ def from_csv_iterate(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None
                         # due to the simplicity of the serializer, above, any 
                         # quoted string is a nested list
                         list_keys.append(key)
-                        item[key] = [
-                            x.strip() 
-                            for x in val.strip('"[]').split(list_delimiter)]
+                        item[key] = []
+                        for x in val.strip('"[]').split(list_delimiter):
+                            x = x.strip()
+                            if x:
+                                item[key].append(x)
             data_result.append(item)
         i += 1
     logger.debug('read in data, count: ' + str(len(data_result)) )   
@@ -113,7 +116,7 @@ def dict_to_rows(_dict):
     return values
 
 def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
-    
+    delimiter = delimiter + ' '
     if isinstance(val, (list,tuple)):
         if list_brackets:
             return ( list_brackets[0] 
@@ -129,6 +132,5 @@ def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
                 return 'FALSE'
         else:
             return force_text(to_simple(val))
-#             return smart_text(val)
     else:
         return None

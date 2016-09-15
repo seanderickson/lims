@@ -33,7 +33,7 @@ from tastypie.utils.mime import build_content_type
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
-    HTTP_PARAM_RAW_LISTS
+    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_DATA_INTERCHANGE
 from reports.api_base import IccblBaseResource, un_cache
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE,\
     JSON_MIMETYPE, CSV_MIMETYPE
@@ -44,6 +44,8 @@ from reports.serialize.streaming_serializers import sdf_generator, \
 from reports.serializers import LimsSerializer
 import json
 import pytz
+import urllib
+import six
 
 
 logger = logging.getLogger(__name__)
@@ -378,8 +380,9 @@ class SqlAlchemyResource(IccblBaseResource):
     def filter_value_to_python(value, param_hash, filter_expr, filter_type):
         """
         Turn the string ``value`` into a python object.
-        - copied from TP
         """
+        if isinstance(value, six.string_types):
+            value = urllib.unquote(value).decode('utf-8')
         # Simple values
         if value is 1:
             value = 1
@@ -458,7 +461,7 @@ class SqlAlchemyResource(IccblBaseResource):
         - field_name__filter_expression
         '''
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info('build_sqlalchemy_filters_from_hash %r' % param_hash)
+        logger.debug('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
         if param_hash is None:
@@ -629,61 +632,6 @@ class SqlAlchemyResource(IccblBaseResource):
         except Exception, e:
             logger.exception('on build_sqlalchemy_filters_from_hash')
             raise e   
-        
-
-#     def search(self, request, **kwargs):
-#         '''
-#         Implement a special search view to get around Tastypie deserialization
-#         methods on POST-list.
-#         Note: could implement a special tastypie serializer and "post_list"; but
-#         choosing not to couple with the framework in this way here.
-#         '''
-#          
-#         DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
-#          
-#         search_ID = kwargs['search_ID']
-#          
-#         param_hash = self._convert_request_to_dict(request)
-#         param_hash.update(kwargs)
-#  
-#         search_data = param_hash.get('search_data', None)
-#         # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
-#         # deserializer
-#         search_data = urllib.unquote(search_data)
-#          
-#         if search_data:
-#             # cache the search data on the session, to support subsequent requests
-#             # to download or modify
-#             request.session[search_ID] = search_data  
-#          
-#         if not search_data:
-#             if search_ID in request.session:
-#                 search_data = request.session[search_ID]
-#             else:
-#                 raise ImmediateHttpResponse(
-#                     response=self.error_response(request, 
-#                         { 'search_data for id missing: ' + search_ID: 
-#                             self._meta.resource_name + 
-#                                 '.search requires a "search_data" param'}))
-#         
-#         search_data = json.loads(search_data)   
-# 
-#         param_hash['search_data'] = search_data
-#         if DEBUG_SEARCH:
-#             logger.info('search: %r, kwargs: %r', param_hash, kwargs)
-#  
-#         response = self.build_list_response(request,param_hash=param_hash, **kwargs)
-#         
-#         # Because this view bypasses the IccblBaseResource.dispatch method, we
-#         # are implementing the downloadID cookie here, for now.
-#         downloadID = param_hash.get('downloadID', None)
-#         if downloadID:
-#             logger.info('set cookie downloadID: %r', downloadID)
-#             response.set_cookie('downloadID', downloadID)
-#         else:
-#             logger.info('no downloadID')
-#         
-#         return response
 
     def _get_list_response(self,request,**kwargs):
         '''
@@ -730,7 +678,6 @@ class SqlAlchemyResource(IccblBaseResource):
             else:
                 logger.info(
                     'no data found for %r, %r', self._meta.resource_name, kwargs)
-            logger.debug(' data: %s'% _data)
             return _data
         except Http404:
             return []
@@ -972,6 +919,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         logger.error('error, cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
                         result = conn.execute(stmt)
+                        logger.info('result: %r', [x for x in result])    
                     logger.info('====count: %d====', count)
                     
                 else:
@@ -980,7 +928,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     logger.info('excuted count stmt: %d', count)
                     result = conn.execute(stmt)
                     logger.info('excuted stmt')
-    
+
                 if not meta:
                     meta = {
                         'limit': limit,
@@ -995,7 +943,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         }
                     temp.update(meta)    
                     meta = temp
-                    
+                
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     
@@ -1030,15 +978,16 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.exception('on stream response')
             raise e
         
-    def stream_response_from_cursor(self,request,result,output_filename,
-            field_hash={}, param_hash={}, 
-            is_for_detail=False,
-            downloadID=None, title_function=None, meta=None):
+    def stream_response_from_cursor(
+            self,request,result,output_filename, field_hash={}, param_hash={}, 
+            is_for_detail=False, downloadID=None, title_function=None, 
+            meta=None):
           
         try:
 
             list_brackets = LIST_BRACKETS
-            if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
+            if ( param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+                or request.GET.get(HTTP_PARAM_RAW_LISTS, False)):
                 list_brackets = None
     
             content_type = self.get_accept_content_type(
@@ -1058,10 +1007,6 @@ class SqlAlchemyResource(IccblBaseResource):
             data = cursor_generator(
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
-            
-#             if settings.USE_TZ and settings.TIME_ZONE:
-#                 logger.info('using time zone: %r', pytz.timezone(settings.TIME_ZONE))
-#                 data = timezone_generator(data)
                 
             response = None
             if content_type == JSON_MIMETYPE:

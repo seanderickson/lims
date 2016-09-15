@@ -419,13 +419,18 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        logger.info('new_obj: %r', new_obj)
-        
-        self.assertEqual(len(new_obj['objects']),1)
-        new_copywell = new_obj['objects'][0]
-        
-        self.assertEqual(int(new_copywell['adjustments']), 1)
+        patch_response = self.deserialize(resp)
+        self.assertTrue('meta' in patch_response, '%r' % patch_response)
+        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(patch_response['meta']['Result']['Updated']==1, 
+            'Wrong updated count: %r' % patch_response['meta']['Result']['Updated'])
+
+        self.assertTrue(
+            len(patch_response['objects'])==1,'%r'%patch_response['objects'])
+        new_copywell = patch_response['objects'][0]
+        self.assertTrue(int(new_copywell['adjustments'])==1, 
+            'Expected adjustments==1, %r' % new_copywell)
         self.assertEqual(
             volume_adjustment, float(new_copywell['consumed_volume']))
         self.assertEqual(
@@ -545,6 +550,7 @@ class LibraryResource(DBResourceTestCase):
             'copy_plate_ranges': copy_plate_ranges,
         }
         resource_uri = BASE_URI_DB + '/platelocation'
+        
         resp = self.api_client.patch(
             resource_uri,format='json', 
             data={'objects': [plate_location_input],}, 
@@ -552,6 +558,8 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
+        # TODO: check for PATCH meta information
+        
         resp = self.api_client.get(
             resource_uri,format='json', 
             data={ 'includes': ['copy_plate_ranges'],}, 
@@ -591,9 +599,73 @@ class LibraryResource(DBResourceTestCase):
                     plate_data[field]==None,
                     'plate location: %r should be None, %r'
                     % (field, plate_data))
+    
+    def test17_batch_edit_copyplate_info(self):
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        end_plate = library_data['end_plate']
+        start_plate = library_data['start_plate']
+        short_name = library_data['short_name']
+        
+        new_plate_data = {
+            'status': 'not_available',
+            'well_volume': '0.000030', 
+            'plate_type': 'nunc_96'
+        }
+        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
+        
+        data = {
+            'data': { 'plate_info': new_plate_data }, 
+            'search_data': {
+                'library_short_name': library_data['short_name'],
+                'copy_name': copy_data['name'] }
+            }
+        
+        logger.info('Patch batch_edit: cred: %r', self.username)
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data=data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patch_response = self.deserialize(resp)
+        
+        # Inspect meta "Result" section
+        self.assertTrue('meta' in patch_response, '%r' % patch_response)
+        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue('Patched' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(patch_response['meta']['Result']['Patched']==6, 
+            'Wrong "Patched" count: %r' % patch_response['meta'])
+        logger.info('patch_response: %r', patch_response)
+        # Get plates as defined
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'library_short_name__eq': library_data['short_name'],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        
+        plates_data_input = plates_data
+        for plate_data in plates_data_input:
+            for field in new_plate_data.keys():
+                self.assertTrue(
+                    equivocal(plate_data[field],new_plate_data[field]),
+                    'plate data: expected: %r, rcvd: %r'
+                    % (new_plate_data[field],plate_data[field]))
         
     
-    def test15_batch_edit_copy_plates(self):
+    def test16_batch_edit_copyplate_location(self):
         
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
@@ -608,7 +680,7 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         
         data = {
-            'data': plate_location_input, 
+            'data': { 'plate_location': plate_location_input }, 
             'search_data': {
                 'library_short_name': library_data['short_name'],
                 'copy_name': copy_data['name'] }
@@ -619,11 +691,17 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data=data, 
             authentication=self.get_credentials())
-        
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
+        patch_response = self.deserialize(resp)
+        
+        # Inspect meta "Result" section
+        self.assertTrue('meta' in patch_response, '%r' % patch_response)
+        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue('Patched' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(patch_response['meta']['Result']['Patched']==6, 
+            'Wrong "Patched" count: %r' % patch_response['meta'])
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -651,7 +729,7 @@ class LibraryResource(DBResourceTestCase):
                     plate_data[field]==plate_location_input[field],
                     'plate location: expected: %r, rcvd: %r'
                     % (plate_location_input[field],plate_data))
-                plate_data[field] = plate_location_input[field]
+#                 plate_data[field] = plate_location_input[field]
 
         # check ApiLogs
         # one for each plate, one parent_log, one for each location
@@ -685,12 +763,11 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        expected_count = 6 # one for each plate in the copy_range
+        expected_count = 7 # one for each plate in the copy_range, one parent log
         self.assertEqual( 
             len(new_obj['objects']), expected_count , 
             str((len(new_obj['objects']), expected_count, new_obj)))
         for logvalue in new_obj['objects']:
-            logger.info('logvalue: %r', logvalue)
             if logvalue.get('diffs', None):
                 diffs = json.loads(logvalue['diffs'])
                 self.assertTrue(diffs['bin']==[None, 'bin1'],
@@ -698,8 +775,92 @@ class LibraryResource(DBResourceTestCase):
             else:
                 # parent log
                 logger.info('parent log: %r', logvalue)
+                self.assertTrue(logvalue['key']=='librarycopyplate',
+                    'parent_log key should be "librarycopyplate", %r' % logvalue)
     
+    def test15_modify_copyplate_info(self):
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        end_plate = library_data['end_plate']
+        start_plate = library_data['start_plate']
+        short_name = library_data['short_name']
+        
+        new_plate_data = {
+            'status': 'not_available',
+            'well_volume': '0.000030', 
+            'plate_type': 'nunc_96'
+        }
+        # Get plates as defined
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'plate_number__range': [start_plate,end_plate],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        
+        plates_data_input = plates_data
+        for plate_data in plates_data_input:
+            plate_data.update(new_plate_data)
+
+        # Patch the plates
+        logger.info('Patch the plates: cred: %r', self.username)
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data={'objects': plates_data_input,}, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patch_response = self.deserialize(resp)
+        self.assertTrue('meta' in patch_response, '%r' % patch_response)
+        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(
+            patch_response['meta']['Result']['Updated'] == (end_plate-start_plate+1),
+            '"Updated" : %r, expected: %r' 
+            % (patch_response['meta'], (end_plate-start_plate+1)))
+        
+        # Verify that the plates have the expected location
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'plate_number__range': [start_plate,end_plate],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        for plate_data in plates_data:
+            for field in new_plate_data.keys():
+                self.assertTrue(
+                    equivocal(plate_data[field],new_plate_data[field]),
+                    'plate data: expected: %r, rcvd: %r'
+                    % (new_plate_data[field],plate_data[field]))
+
+        
+        # Test ApiLogs:
+        # plate - one for each plate
+        # plate_location - one for each plate addition to the range
+        
+        
     def test14_modify_copy_plate_locations(self):
+
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -746,7 +907,15 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-
+        patch_response = self.deserialize(resp)
+        self.assertTrue('meta' in patch_response, '%r' % patch_response)
+        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(
+            patch_response['meta']['Result']['Updated'] == (end_plate-start_plate+1),
+            '"Updated" : %r, expected: %r' 
+            % (patch_response['meta'], (end_plate-start_plate+1)))
+        
         # Verify that the plates have the expected location
         resp = self.api_client.get(
             resource_uri,format='json', 
@@ -2852,6 +3021,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
         
+        logger.info('Post attached file item: %r', attachedfile_item_post)
         django_test_client = self.api_client.client
         resp = django_test_client.post(
             resource_uri, content_type=content_type, 
@@ -2917,7 +3087,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('POST with attached_file to the server')
             attachedfile_item_post['attached_file'] = input_file
 
-        
+            logger.info('Post attached file %r', filename)
             django_test_client = self.api_client.client
             resp = django_test_client.post(
                 resource_uri, content_type=content_type, 

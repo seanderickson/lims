@@ -198,11 +198,10 @@ class BaseSerializer(object):
             msg = ( 'unknown serialize content_type: %r or format: %r, options: %r'
                     % (content_type, format, self.content_types.values()))
             raise BadRequest(msg)
-    
         serialized = getattr(self, "to_%s" % desired_format)(data)
         return serialized
     
-    def deserialize(self, content, content_type):
+    def deserialize(self, content, content_type, **kwargs):
 
         desired_format = self.get_format_for_content_type(content_type)
         if desired_format is None:
@@ -220,7 +219,7 @@ class BaseSerializer(object):
          
         logger.info('deserializing for %r', desired_format)
 
-        deserialized = getattr(self, "from_%s" % desired_format)(content)
+        deserialized = getattr(self, "from_%s" % desired_format)(content,**kwargs)
         return deserialized
 
     def to_html(self, data, options=None):
@@ -296,7 +295,7 @@ class XLSSerializer(BaseSerializer):
         
         super(XLSSerializer,self).__init__(content_types=content_types);
 
-    def deserialize(self, content, content_type):
+    def deserialize(self, content, content_type, **kwargs):
 
         desired_format = self.get_format_for_content_type(content_type)
         if desired_format is None:
@@ -315,10 +314,10 @@ class XLSSerializer(BaseSerializer):
         
         logger.debug('deserializing for %r', desired_format)
 
-        deserialized = getattr(self, "from_%s" % desired_format)(content)
+        deserialized = getattr(self, "from_%s" % desired_format)(content, **kwargs)
         return deserialized
     
-    def to_xls(self,data, options=None):
+    def to_xls(self,data, options=None, **kwargs):
 
         # Note: all XLS serialization is to xlsx
         return self.to_xlsx(data, options)
@@ -341,11 +340,11 @@ class XLSSerializer(BaseSerializer):
         response = generic_xlsx_response(data)
         return self.get_content(response)
         
-    def from_xlsx(self, content, root='objects'):
+    def from_xlsx(self, content, root='objects',**kwargs):
 
-        return self.from_xls(content, root=root)
+        return self.from_xls(content, root=root, **kwargs)
 
-    def from_xls(self, content, root='objects'):
+    def from_xls(self, content, root='objects',**kwargs):
         
         if isinstance(content, six.string_types):
             wb = xlrd.open_workbook(file_contents=content)
@@ -364,7 +363,7 @@ class XLSSerializer(BaseSerializer):
         # because workbooks are treated like sets of csv sheets, now convert
         # as if this were a csv sheet
         data = csvutils.from_csv_iterate(
-            xlsutils.sheet_rows(sheet),list_delimiter=LIST_DELIMITER_XLS)
+            xlsutils.sheet_rows(sheet),list_delimiter=LIST_DELIMITER_XLS, **kwargs)
  
         if root:
             return { root: data }
@@ -405,8 +404,10 @@ class CSVSerializer(BaseSerializer):
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
             # but also, it could be just one item being returned
-            raise Exception('non-standard data: embedded dict: %r', data)
-        else:    
+            data = dict_to_rows(data)
+            for item in data:
+                writer.writerow(item)
+        else:
             i = 0
             keys = None
             for item in data:
@@ -442,7 +443,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         
         super(ScreenResultSerializer,self).__init__(content_types=content_types);
 
-    def deserialize(self, content, content_type):
+    def deserialize(self, content, content_type, **kwargs):
 
         desired_format = self.get_format_for_content_type(content_type)
         if desired_format is None:
@@ -461,7 +462,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         
         logger.info('deserializing for %r', desired_format)
 
-        deserialized = getattr(self, "from_%s" % desired_format)(content)
+        deserialized = getattr(self, "from_%s" % desired_format)(content, **kwargs)
         return deserialized
 
     def to_xlsx(self, data, options=None):
@@ -477,7 +478,6 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         return self.from_xls(content)
 
     def from_xls(self, content):
-        # For testing only - 
         if isinstance(content, six.string_types):
             wb = xlrd.open_workbook(file_contents=content)
         else:

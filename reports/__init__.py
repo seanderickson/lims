@@ -16,6 +16,7 @@ MAX_IMAGE_ROWS_PER_XLS_FILE = 1000
 HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
 HTTP_PARAM_USE_TITLES = 'use_titles'
 HTTP_PARAM_RAW_LISTS = 'raw_lists'
+HTTP_PARAM_DATA_INTERCHANGE = 'data_interchange'
 
 # Header custom comment field
 HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'

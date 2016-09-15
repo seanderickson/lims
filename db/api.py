@@ -64,7 +64,7 @@ from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
-    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, \
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError
 from reports import ValidationError, InformationError, _now
 from reports.api import ApiLogResource, \
@@ -88,6 +88,7 @@ from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 import reports.sqlalchemy_resource
 import time
+import urllib
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
@@ -131,7 +132,9 @@ class PlateLocationResource(ApiResource):
                 r"/(?P<shelf>[\w \-<>]+)"
                 r"/(?P<bin>[\w <>]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            
+        ]
 
     def get_detail(self, request, **kwargs):
         
@@ -158,6 +161,13 @@ class PlateLocationResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+            
         schema = super(PlateLocationResource, self).build_schema()
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -183,7 +193,7 @@ class PlateLocationResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -221,14 +231,38 @@ class PlateLocationResource(ApiResource):
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
             # build the query statement
-
-            stmt = select(columns.values()).select_from(
-                _pl.join(
+            
+            j = _pl.join(
                     plate_location_counts, 
                     _pl.c.plate_location_id
                             ==plate_location_counts.c.plate_location_id,
-                    isouter=True))
+                    isouter=True)
+#             if 'library_copy' in param_hash:
+#                 j = j.join(_p, _pl.c.plate_location_id==_p.c.plate_location_id)
+#                 j = j.join(_c, _p.c.copy_id == _c.c.copy_id)
+            stmt = select(columns.values()).select_from(j)
 
+            if 'library_copy' in param_hash:
+                param = param_hash.pop('library_copy')
+                param = urllib.unquote(param).decode('utf-8')
+                logger.info('param library_copy: %r', param)
+                if '/' not in param or len(param.split('/')) !=2:
+                    raise BadRequest(
+                        'library_copy parameter must be of the form '
+                        '"{library_short_name}/{copy_name}"')
+                param = param.split('/')
+                try:
+                    library_copy = Copy.objects.get(
+                        library__short_name=param[0],
+                        name=param[1])
+                    stmt = stmt.where(_pl.c.plate_location_id.in_(
+                        select([_pl.c.plate_location_id])
+                            .select_from(_pl.join(
+                                _p,_pl.c.plate_location_id==_p.c.plate_location_id)
+                                .join(_c,_p.c.copy_id==_c.c.copy_id))
+                            .where(_c.c.copy_id==library_copy.copy_id)))
+                except:
+                    raise Http404
             # general setup
              
             (stmt, count_stmt) = self.wrap_statement(
@@ -333,7 +367,7 @@ class PlateLocationResource(ApiResource):
                 rowproxy_generator = create_copy_plate_ranges_gen(rowproxy_generator)
 
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_statement(
@@ -341,7 +375,7 @@ class PlateLocationResource(ApiResource):
                 field_hash=field_hash, param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function, meta=kwargs.get('meta', None))
 
         except Exception, e:
             logger.exception('on get list')
@@ -352,31 +386,76 @@ class PlateLocationResource(ApiResource):
         raise NotImplementedError('put_detail must be implemented')
 
     @write_authorization
-    @un_cache
-    @transaction.atomic        
-    def post_detail(self, request, **kwargs):
+    @un_cache  
+    @transaction.atomic      
+    def patch_detail(self, request, **kwargs):
         '''
-        POST is used to create or update a resource; not idempotent;
-        - The LIMS client will use POST to create exclusively
+        Override to generate informational summary for callee
         '''
-        if kwargs.get('data', None):
-            # allow for internal data to be passed
-            deserialized = kwargs['data']
-        else:
+        
+        deserialized = kwargs.pop('data', None)
+        # allow for internal data to be passed
+        if deserialized is None:
             deserialized = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
-        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
-        
+
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
+
+        original_data = None
+        if kwargs_for_log:
+            try:
+                original_data = self._get_detail_response(request,**kwargs_for_log)
+            except Exception, e: 
+                logger.exception('exception when querying for existing obj: %s', 
+                    kwargs_for_log)
         try:
-            extant_location = PlateLocation.objects.get(**id_kwargs)
-            raise BadRequest('Plate location already exists: %r' % extant_location)
-        
-        except ObjectDoesNotExist:
-            pass
-        
-        return self.patch_detail(request,**kwargs)
+            log = kwargs.get('parent_log', None)
+            if not log:
+                log = self.make_log(request)
+                log.save()
+                kwargs['parent_log'] = log
+            patched_plate_logs = self.patch_obj(request, deserialized, **kwargs)
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise e
+
+        # get new state, for logging
+        new_data = self._get_detail_response(request,**kwargs_for_log)
+        update_log = self.log_patch(request, original_data,new_data,**kwargs)
+        if update_log:
+            update_log.save()
+        patch_count = len(patched_plate_logs)
+        update_count = len([x for x in patched_plate_logs if x.diffs ])
+        unchanged_count = patch_count - update_count
+        action = update_log.api_action if update_log else 'Unchanged'
+        if action == API_ACTION_CREATE:
+            action += ': ' + update_log.key
+        meta = { 
+            'Result': { 
+                'Plate location': action,
+                'Patched': patch_count, 
+                'Updated': update_count, 
+                'Unchanged': unchanged_count, 
+                'Comments': log.comment
+            }
+        }
+        if not self._meta.always_return_data:
+            return self.build_response(
+                request, {'meta': meta }, response_class=HttpResponse, **kwargs)
+        else:
+#             response = self.get_detail(request, meta=meta, **kwargs_for_log)
+#             response.status_code = 201
+#             return response
+            # bypass normal get_detail to add meta information to the response
+            return self.build_response(
+                request,  {'meta': meta }, response_class=HttpResponse, **kwargs)
+            
         
     def patch_obj(self, request, deserialized, **kwargs):
 
@@ -394,6 +473,9 @@ class PlateLocationResource(ApiResource):
                 plate_location = PlateLocation.objects.create(**id_kwargs)
 
             initializer_dict = self.parse(deserialized, create=create)
+            errors = self.validate(initializer_dict, patch=not create)
+            if errors:
+                raise ValidationError(errors)
             
             copy_plate_ranges = deserialized.get(
                 'copy_plate_ranges', [])
@@ -436,7 +518,6 @@ class PlateLocationResource(ApiResource):
                 'log copyplate patches for platelocation, '
                 'len: %d...', len(plate_log_hash.items()))
             
-            logger.info('plate_log_hash: %r', plate_log_hash)
             plate_logs = []
             lcp_id_attribute = \
                 self.get_librarycopyplate_resource().build_schema()['id_attribute']
@@ -451,8 +532,10 @@ class PlateLocationResource(ApiResource):
             logger.info('logs created, saving...')
             ApiLog.objects.bulk_create(plate_logs)
             logger.info('logs saved.')
-
-        return plate_location
+            
+            return plate_logs
+            
+            
 
     def _find_plates(self, copy_plate_ranges):
         logger.info('find copy_plate_ranges: %r', copy_plate_ranges)
@@ -598,6 +681,13 @@ class LibraryCopyPlateResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+
         schema = super(LibraryCopyPlateResource, self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id', None)
@@ -655,7 +745,7 @@ class LibraryCopyPlateResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -752,7 +842,7 @@ class LibraryCopyPlateResource(ApiResource):
                 stmt = stmt.order_by("plate_number", "copy_name")
 
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_statement(
@@ -760,7 +850,7 @@ class LibraryCopyPlateResource(ApiResource):
                 field_hash=field_hash, param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function, meta=kwargs.get('meta', None))
             
                         
         except Exception, e:
@@ -826,157 +916,136 @@ class LibraryCopyPlateResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        
+        logger.info('batch_edit plates...')
+        
         schema = super(LibraryCopyPlateResource, self).build_schema()
         deserialized = self.deserialize(request)
         
-        if 'data' not in deserialized:
+        data = deserialized.get('data', None)
+        if data is None:
             raise BadRequest('must submit "data" on the request')
-        location_data = deserialized['data']
-        plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
-        if (not location_data 
-                or not set(plate_location_fields) | set(location_data.keys())):
-            raise ValidationError(
-                key='data', msg='must contain plate location fields')
-
-
-        logger.info('find or create the location: %r', location_data)
-        original_location_data = (
-            self.get_platelocation_resource()
-                ._get_detail_response_internal(**location_data))
-        if not original_location_data:
-            logger.info('plate location not found: %r', location_data)
-        else:
-            location_data['copy_plate_ranges'] = \
-                original_location_data.get('copy_plate_ranges',None)
-
-        # Find all of the plates
-        kwargs['search_data'] = deserialized.pop('search_data', {})
-        logger.info('batch_edit: %r, %r, %r', 
-            param_hash, deserialized, request)
-        original_data = self._get_list_response(request, **kwargs)
         
-        if not original_data:
-            raise HttpNotFound
+        plate_info_data = data.get('plate_info', None)
+        location_data = data.get('plate_location', None)
+        if plate_info_data is not None and location_data is not None:
+            raise BadRequest('batch info: edit only one of %r'
+                % ['plate_info', 'plate_location'])
+        elif plate_info_data is None and location_data is None:
+            raise BadRequest('"data" must contain one of %r'
+                % ['plate_info', 'plate_location'])
         
-        logger.info('get the plate objects for search data: %d', len(original_data))
-        
-        logger.info('convert the plates into ranges...')
-        library_copy_ranges = {}
-        for plate_data in original_data:
-            library_copy = '{library_short_name}:{copy_name}'.format(**plate_data)
-            plate_range = library_copy_ranges.get(library_copy, [])
-            plate_range.append(int(plate_data['plate_number']))
-            library_copy_ranges[library_copy] = plate_range
-        copy_plate_ranges = []
-        for library_copy,plate_range in library_copy_ranges.items():
-            if not plate_range:
-                raise ValidationError(
-                    key='library_copy', 
-                    msg='no plates found for %r' % library_copy)
-            plate_range = sorted(plate_range)
-            copy_plate_ranges.append(
-                '%s:%s-%s' 
-                % (library_copy, 
-                   str(plate_range[0]).zfill(5),
-                   str(plate_range[-1]).zfill(5) ))
-
-        logger.info(
-            'patch original location: %r, with copy_ranges: %r', 
-            location_data, copy_plate_ranges) 
-        location_copy_ranges = \
-            location_data.get('copy_plate_ranges', [])
-        location_copy_ranges.extend(copy_plate_ranges)
-        location_data['copy_plate_ranges'] = location_copy_ranges
-        
-        self.get_platelocation_resource().patch_detail(
-            request, 
-            data=location_data,
-            format='json')
-
-        if not self._meta.always_return_data:
-            return HttpResponse(status=200)
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response
-
-    @write_authorization
-    @un_cache        
-    def patch_list(self, request, **kwargs):
-
-        logger.info('patch list: %r' % kwargs)
-
-        if kwargs.get('data', None):
-            # allow for internal data to be passed
-            deserialized = kwargs['data']
-        else:
-            deserialized = self.deserialize(
-                request, format=kwargs.get('format', None))
-        if self._meta.collection_name in deserialized:
-            deserialized = deserialized[self._meta.collection_name]
-        
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = schema['id_attribute']
-        kwargs_for_log = kwargs.copy()
-        logger.debug('id_attribute: %r', id_attribute)
-        for id_field in id_attribute:
-            ids = set()
-            # Test for each id key; it's ok on create for ids to be None
-            for _dict in [x for x in deserialized if x.get(id_field, None)]:
-                ids.add(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = \
-                    LIST_DELIMITER_URL_PARAM.join(ids)
-        try:
-            logger.debug('get original state, for logging...')
-            logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response(request,**kwargs_for_log)
-        except Exception as e:
-            logger.exception('original state not obtained')
-            original_data = []
-        try:
-            with transaction.atomic():
-                
-                parent_log = self.make_log(request)
-                parent_log.save()
-                kwargs['parent_log'] = parent_log
-                
-                for _dict in deserialized:
-                    logger.debug('patch: %r', deserialized)
-                    self.patch_obj(
-                        request, _dict, **{'parent_log': parent_log })
-
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
+        if plate_info_data is not None:
+            # Find all of the plates
+            kwargs['search_data'] = deserialized.pop('search_data', {})
+            logger.info('batch_edit: %r, %r, %r', 
+                param_hash, deserialized, request)
+            kwargs['includes'] = ['plate_id']
+            original_data = self._get_list_response(request, **kwargs)
             
-        # get new state, for logging
-        new_data = self._get_list_response(request,**kwargs_for_log)
-        logger.debug('new data: %s'% new_data)
-        logger.debug('patch list done, new data: %d' 
-            % (len(new_data)))
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
-        if not self._meta.always_return_data:
-            return HttpResponse(status=202)
-        else:
-            response = self.get_list(request, **kwargs_for_log)             
-            response.status_code = 200
+            plate_ids = [x['plate_id'] for x in original_data]
+            query = Plate.objects.all().filter(plate_id__in=plate_ids)
+            for key,value in plate_info_data.items():
+                fi = schema['fields'].get(key,None)
+                if fi is None or 'u' not in fi.get('editability',[]):
+                    raise ValidationError(
+                        key=key, msg='is not editable')
+                query.update(**{ key: value })
+            logger.info('batch update complete, logging...')
+            
+            new_data = self._get_list_response(request, **kwargs)
+            
+            parent_log = self.make_log(request)
+            parent_log.key = self._meta.resource_name
+            parent_log.uri = self._meta.resource_name
+            parent_log.save()
+            kwargs['parent_log'] = parent_log
+            logs = self.log_patches(request, original_data, new_data,**kwargs)
+            patch_count = len(logs)
+            update_count = len([x for x in logs if x.diffs ])
+            unchanged_count = patch_count - update_count
+            meta = { 
+                'Result': { 
+                    'Patched': patch_count, 
+                    'Updated': update_count, 
+                    'Unchanged': unchanged_count, 
+                    'Comments': parent_log.comment
+                }
+            }
+            return self.build_response(
+                request, {'meta': meta }, response_class=HttpResponse, **kwargs)
+            
+        location_data = data.get('plate_location', None)
+        if location_data is not None:
+            plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
+            if (not location_data 
+                    or not set(plate_location_fields) | set(location_data.keys())):
+                raise ValidationError(
+                    key='data', msg='must contain plate location fields')
+    
+            logger.info('find or create the location: %r', location_data)
+            original_location_data = (
+                self.get_platelocation_resource()
+                    ._get_detail_response_internal(**location_data))
+            if not original_location_data:
+                logger.info('plate location not found: %r', location_data)
+            else:
+                location_data['copy_plate_ranges'] = \
+                    original_location_data.get('copy_plate_ranges',None)
+    
+            # Find all of the plates
+            kwargs['search_data'] = deserialized.pop('search_data', {})
+            logger.info('batch_edit: %r, %r, %r', 
+                param_hash, deserialized, request)
+            original_data = self._get_list_response(request, **kwargs)
+            
+            if not original_data:
+                raise HttpNotFound
+            
+            logger.info('get the plate objects for search data: %d', len(original_data))
+            logger.info('convert the plates into ranges...')
+            library_copy_ranges = {}
+            for plate_data in original_data:
+                library_copy = '{library_short_name}:{copy_name}'.format(**plate_data)
+                plate_range = library_copy_ranges.get(library_copy, [])
+                plate_range.append(int(plate_data['plate_number']))
+                library_copy_ranges[library_copy] = plate_range
+            copy_plate_ranges = []
+            for library_copy,plate_range in library_copy_ranges.items():
+                if not plate_range:
+                    raise ValidationError(
+                        key='library_copy', 
+                        msg='no plates found for %r' % library_copy)
+                plate_range = sorted(plate_range)
+                copy_plate_ranges.append(
+                    '%s:%s-%s' 
+                    % (library_copy, 
+                       str(plate_range[0]).zfill(5),
+                       str(plate_range[-1]).zfill(5) ))
+    
+            logger.info(
+                'patch original location: %r, with copy_ranges: %r', 
+                location_data, copy_plate_ranges) 
+            location_copy_ranges = \
+                location_data.get('copy_plate_ranges', [])
+            location_copy_ranges.extend(copy_plate_ranges)
+            location_data['copy_plate_ranges'] = location_copy_ranges
+            
+            parent_log = self.make_log(request)
+            parent_log.key = self._meta.resource_name
+            parent_log.uri = self._meta.resource_name
+            parent_log.save()
+            kwargs['parent_log'] = parent_log
+            response = self.get_platelocation_resource().patch_detail(
+                request, 
+                data=location_data,
+                **kwargs)
             return response
     
     def patch_obj(self, request, deserialized, **kwargs):
-        logger.info('patch obj, kwargs: %r', kwargs)
+        logger.info('patch obj, deserialized: %r', deserialized)
         schema = self.build_schema()
         fields = schema['fields']
-        initializer_dict = {}
-
-        for key in fields.keys():
-            if deserialized.get(key, None) is not None:
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
-
-        logger.debug('initializer_dict: %r', initializer_dict)
 
         id_kwargs = self.get_id(deserialized, **kwargs)
         logger.info('id_kwargs: %r', id_kwargs)
@@ -994,15 +1063,27 @@ class LibraryCopyPlateResource(ApiResource):
             logger.info('plate does not exist: %r',
                 id_kwargs)
             raise
-         
+        
+        initializer_dict = self.parse(deserialized,create=False)
+        errors = self.validate(initializer_dict, patch=True)
+        if errors:
+            raise ValidationError(errors)
+        logger.info('patch obj, initializer: %r', initializer_dict)
+        for key, val in initializer_dict.items():
+            if hasattr(plate, key):
+                setattr(plate, key, val)
+        if initializer_dict:
+            plate.save()
+            
+        # Process plate location fields separately
         plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
         location_data = {}
-        found = False
+        update_plate_location = False
         for k in plate_location_fields:
             location_data[k] = deserialized.get(k,None)
             if location_data[k]:
-                found = True
-        if found:
+                update_plate_location = True
+        if update_plate_location:
             original_location_data = (
                 self.get_platelocation_resource()
                     ._get_detail_response_internal(**location_data))
@@ -1032,7 +1113,7 @@ class LibraryCopyPlateResource(ApiResource):
                 log.save()
                 logger.info('log created; %r', log)
                     
-            return plate
+        return plate
     
 
 class ScreenResultResource(ApiResource):
@@ -1614,7 +1695,15 @@ class ScreenResultResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        use_raw_lists = request.GET.get(HTTP_PARAM_RAW_LISTS, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+            use_raw_lists = True
+        
         manual_field_includes = set(param_hash.get('includes', []))
         limit = param_hash.get('limit', 0)        
         try:
@@ -1707,7 +1796,7 @@ class ScreenResultResource(ApiResource):
             # Perform custom serialization because each output format will be 
             # different.
             list_brackets = LIST_BRACKETS
-            if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
+            if use_raw_lists:
                 list_brackets = None
             image_keys = [key for key,field in field_hash.items()
                 if field.get('display_type', None) == 'image']
@@ -1722,18 +1811,19 @@ class ScreenResultResource(ApiResource):
                     if field.get('value_template', None)}
 
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 def title_function(key):
                     if key in field_hash:
                         return field_hash[key]['title']
                     else:
                         return key
             rowproxy_generator = None
-            if (param_hash.get(HTTP_PARAM_USE_VOCAB, False) 
-                    or content_type != JSON_MIMETYPE):
+            if ( use_vocab or content_type != JSON_MIMETYPE):
+                # NOTE: xls export uses vocab values
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
-            
+            else:
+                logger.info('do not use vocabularies: %r', param_hash)
             conn = get_engine().connect()
             if logger.isEnabledFor(logging.DEBUG):
                 logger.info(
@@ -2741,6 +2831,12 @@ class DataColumnResource(ApiResource):
         logger.info('build datacolumn response...')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = super(DataColumnResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -2769,10 +2865,9 @@ class DataColumnResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
             max_ordinal = len(field_hash)
             def create_dc_generator(generator):
@@ -2847,7 +2942,7 @@ class DataColumnResource(ApiResource):
             stmt = stmt.order_by('ordinal')
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -2856,7 +2951,7 @@ class DataColumnResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True )
              
         except Exception, e:
@@ -3071,7 +3166,14 @@ class CopyWellResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         is_for_detail = kwargs.pop('is_for_detail', False)
+
         schema = super(CopyWellResource, self).build_schema()
         filename = self._get_filename(schema, kwargs)
         well_id = param_hash.pop('well_id', None)
@@ -3109,10 +3211,9 @@ class CopyWellResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = [
@@ -3166,7 +3267,7 @@ class CopyWellResource(ApiResource):
                 stmt = stmt.order_by('copy_name', 'plate_number', 'well_id')
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3175,7 +3276,7 @@ class CopyWellResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function, meta=kwargs.get('meta', None))
              
         except Exception, e:
             logger.exception('on get list')
@@ -3310,6 +3411,12 @@ class CherryPickRequestResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         schema = super(CherryPickRequestResource, self).build_schema()
@@ -3338,10 +3445,9 @@ class CherryPickRequestResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = ['cherry_pick_request', 'screen']
@@ -3472,7 +3578,7 @@ class CherryPickRequestResource(ApiResource):
                     nullslast(desc(column('cherry_pick_request_id'))))
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3481,7 +3587,7 @@ class CherryPickRequestResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:
@@ -3552,6 +3658,12 @@ class CherryPickPlateResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = super(CherryPickPlateResource, self).build_schema()
 
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -3586,10 +3698,9 @@ class CherryPickPlateResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = [
@@ -3697,7 +3808,7 @@ class CherryPickPlateResource(ApiResource):
                     nullslast(desc(column('cherry_pick_request_id'))))
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3706,7 +3817,7 @@ class CherryPickPlateResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function, meta=kwargs.get('meta', None))
              
         except Exception, e:
             logger.exception('on get list')
@@ -3783,6 +3894,12 @@ class LibraryCopyResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = super(LibraryCopyResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -3822,10 +3939,9 @@ class LibraryCopyResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
 
@@ -3978,7 +4094,7 @@ class LibraryCopyResource(ApiResource):
                 stmt = stmt.order_by("library_short_name", "name")
  
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_statement(
@@ -3986,7 +4102,7 @@ class LibraryCopyResource(ApiResource):
                 field_hash=field_hash, param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
             
         except Exception, e:
@@ -4140,6 +4256,12 @@ class PublicationResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
         
         logger.info('params: %r', param_hash.keys())
@@ -4173,9 +4295,9 @@ class PublicationResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _publication = self.bridge['publication']
@@ -4210,7 +4332,7 @@ class PublicationResource(ApiResource):
             stmt = stmt.order_by('-publication_id')
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -4219,7 +4341,7 @@ class PublicationResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:
@@ -4463,6 +4585,7 @@ class AttachedFileResource(ApiResource):
             - attached file is not editable, so no logging of former state
             - custom deserialization of the attached file from form parameters
         '''
+        logger.info('post attached file')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         schema = self.build_schema()
@@ -4639,6 +4762,12 @@ class AttachedFileResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -4673,9 +4802,9 @@ class AttachedFileResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _af = self.bridge['attached_file']
@@ -4734,7 +4863,7 @@ class AttachedFileResource(ApiResource):
             # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -4743,7 +4872,7 @@ class AttachedFileResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:
@@ -5327,6 +5456,12 @@ class ActivityResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -5336,13 +5471,12 @@ class ActivityResource(ApiResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
             
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -5351,7 +5485,7 @@ class ActivityResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:
@@ -5564,6 +5698,12 @@ class CherryPickScreeningResource(ActivityResource):
  
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -5574,12 +5714,12 @@ class CherryPickScreeningResource(ActivityResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
   
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
              
             return self.stream_response_from_statement(
@@ -5588,7 +5728,7 @@ class CherryPickScreeningResource(ActivityResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
               
         except Exception, e:
@@ -5706,6 +5846,12 @@ class LibraryScreeningResource(ActivityResource):
  
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -5716,9 +5862,9 @@ class LibraryScreeningResource(ActivityResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
             # create a generator to wrap the cursor and expand the library_plates_screened
             def create_lcp_gen(generator):
@@ -5804,7 +5950,7 @@ class LibraryScreeningResource(ActivityResource):
                 rowproxy_generator = create_lcp_gen(rowproxy_generator)
                     
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
              
             return self.stream_response_from_statement(
@@ -5813,7 +5959,7 @@ class LibraryScreeningResource(ActivityResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
               
         except Exception, e:
@@ -6509,8 +6655,8 @@ class ScreenResource(ApiResource):
     def dispatch_screen_publicationview(self, request, **kwargs):
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')
         method = 'list'
-        if request.method.lower() == 'put':
-            # if put is used, force to "put_detail"
+        if request.method.lower() == 'post':
+            # if post is used, force to "put_detail"
             method = 'detail'
         return PublicationResource().dispatch(method, request, **kwargs)    
 
@@ -7072,6 +7218,12 @@ class ScreenResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -7082,12 +7234,12 @@ class ScreenResource(ApiResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
                     
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
              
             return self.stream_response_from_statement(
@@ -7096,7 +7248,7 @@ class ScreenResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
               
         except Exception, e:
@@ -7453,6 +7605,12 @@ class UserChecklistItemResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -7484,9 +7642,9 @@ class UserChecklistItemResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = ApiResource.\
-                    create_vocabulary_rowproxy_generator(field_hash)
+            if use_vocab:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _su = self.bridge['screensaver_user']
@@ -7581,7 +7739,7 @@ class UserChecklistItemResource(ApiResource):
                 stmt, order_clauses, filter_expression)
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -7590,7 +7748,7 @@ class UserChecklistItemResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:
@@ -7744,15 +7902,15 @@ class ScreensaverUserResource(ApiResource):
     
     def dispatch_user_attachedfileview(self, request, **kwargs):
         method = 'list'
-        if request.method.lower() == 'put':
-            # if put is used, force to "put_detail"
+        if request.method.lower() == 'post':
+            # if put is used, force to "post_detail"
             method = 'detail'
         return AttachedFileResource().dispatch(method, request, **kwargs)    
 
     def dispatch_useragreement_view(self, request, **kwargs):
         method = 'list'
-        if request.method.lower() == 'put':
-            # if put is used, force to "put_detail"
+        if request.method.lower() == 'post':
+            # if put is used, force to "post_detail"
             method = 'detail'
         return UserAgreementResource().dispatch(method, request, **kwargs)    
 
@@ -7864,6 +8022,12 @@ class ScreensaverUserResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -7896,10 +8060,9 @@ class ScreensaverUserResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _su = self.bridge['screensaver_user']
@@ -8005,7 +8168,7 @@ class ScreensaverUserResource(ApiResource):
                     dialect=postgresql.dialect(),
                     compile_kwargs={"literal_binds": True})))
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -8014,7 +8177,7 @@ class ScreensaverUserResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:
@@ -8800,6 +8963,12 @@ class ReagentResource(ApiResource):
         
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         
@@ -8846,13 +9015,12 @@ class ReagentResource(ApiResource):
                 library=library)
         
         rowproxy_generator = None
-        if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+        if use_vocab:
             rowproxy_generator = \
-                ApiResource.create_vocabulary_rowproxy_generator(
-                    field_hash)
+                ApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
         title_function = None
-        if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+        if use_titles:
             title_function = lambda key: field_hash[key]['title']
 
         return self.stream_response_from_statement(
@@ -8860,7 +9028,7 @@ class ReagentResource(ApiResource):
             field_hash=field_hash, param_hash=param_hash,
             is_for_detail=is_for_detail,
             rowproxy_generator=rowproxy_generator,
-            title_function=title_function)
+            title_function=title_function, meta=kwargs.get('meta', None))
     
     def get_debug_times(self):
         
@@ -9577,6 +9745,12 @@ class LibraryResource(ApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
         schema = super(LibraryResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
@@ -9602,10 +9776,9 @@ class LibraryResource(ApiResource):
                 order_params, field_hash)
             
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
             # specific setup
                                      
@@ -9664,7 +9837,7 @@ class LibraryResource(ApiResource):
                 stmt, order_clauses, filter_expression)
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            if use_titles:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -9673,7 +9846,7 @@ class LibraryResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function,
+                title_function=title_function, meta=kwargs.get('meta', None),
                 use_caching=True)
              
         except Exception, e:

@@ -170,7 +170,7 @@ class ApiLog(models.Model):
         unique_together = (('ref_resource_name', 'key', 'date_time'))    
 
     def __unicode__(self):
-        return unicode(str((self.api_action, self.ref_resource_name, self.key, 
+        return unicode(str((self.id, self.api_action, self.ref_resource_name, self.key, 
             str(self.date_time), self.username, self.added_keys, self.removed_keys, 
             self.diff_keys, self.diffs, self.comment, self.json_field)))
 

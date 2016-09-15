@@ -106,10 +106,11 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
                 r = requests.patch(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
             if(r.status_code not in [200,201,202,204]):
-                
+                # TODO: only 200
                 raise ApiError(obj_url,'PATCH',r)
+            # TODO: show "Result" section of meta
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
-                    r.status_code,', count: ',len(r.json()['objects']))
+                    r.status_code,', result: ',r.json()['meta']['Result'])
             if(logger.isEnabledFor(logging.DEBUG)):
                 logger.debug('--- PATCHED objects:')
                 try:

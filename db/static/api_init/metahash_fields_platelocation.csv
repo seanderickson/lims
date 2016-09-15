@@ -1,8 +1,8 @@
 key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,regex,required,default
-room,fields.platelocation,,,1,,TRUE,Room,Room,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/search/room__eq={room}' }",typeahead,,,TRUE,
-freezer,fields.platelocation,,,2,,TRUE,Freezer,Freezer,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/search/room__eq={room};freezer__eq={freezer}' }",,,,TRUE,
-shelf,fields.platelocation,,,3,,TRUE,Shelf,Shelf,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/search/room__eq={room};freezer__eq={freezer};shelf__eq={shelf}' }",,,,TRUE,
-bin,fields.platelocation,,,4,,TRUE,Bin,Bin,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/{room}/{freezer}/{shelf}/{bin}' }",,,,TRUE,
+room,fields.platelocation,,,1,,TRUE,Room,Room,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/search/room__eq={room}' }",typeahead,,"([\w \<>]+)",TRUE,
+freezer,fields.platelocation,,,2,,TRUE,Freezer,Freezer,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/search/room__eq={room};freezer__eq={freezer}' }",,,"([\w \<>]+)",TRUE,
+shelf,fields.platelocation,,,3,,TRUE,Shelf,Shelf,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/search/room__eq={room};freezer__eq={freezer};shelf__eq={shelf}' }",,,"([\w \<>]+)",TRUE,
+bin,fields.platelocation,,,4,,TRUE,Bin,Bin,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/{room}/{freezer}/{shelf}/{bin}' }",,,"([\w \<>]+)",TRUE,
 plate_count,fields.platelocation,custom,,5,,TRUE,"Number of plates in this location","Plate count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#librarycopyplate/search/room__eq={room};freezer__eq={freezer};shelf__eq={shelf};bin__eq={bin}' }",,,,,
 copy_plate_ranges,fields.platelocation,custom,,6,,FALSE,"Plate Ranges in Bin","Copy Plates",FALSE,,,[d],[c;u],list,,,custom,,(([^:]+):)?([^:]+):(\d+)(-(\d+))?,,
 libraries,fields.platelocation,custom,,7,,TRUE,"Libraries in this location",Libraries,TRUE,,,[d],,list,,,,,,,

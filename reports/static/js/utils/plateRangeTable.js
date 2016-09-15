@@ -298,7 +298,8 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       };
       $(this).queue([appModel.getLibraries,initfun]);
     } //_addPlateRangeDialog
-  }
+  };
+  
   return PlateRangeTablePrototype;
 });
 

@@ -127,7 +127,10 @@ define([
       var newUriStack = ['apilog','order','-date_time', 'search'];
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
-      search['key'] = this.model.key;
+
+      //search['key'] = this.model.key;
+      search['key'] = encodeURIComponent(this.model.key);
+      
       newUriStack.push(appModel.createSearchString(search));
       var route = newUriStack.join('/');
       console.log('history route: ' + route);

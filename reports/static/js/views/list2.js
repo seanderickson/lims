@@ -32,6 +32,9 @@ define([
       var self = this;
       var _options = self._options = args;
       var resource = args.resource;
+      if (!_options.schemaResult){
+        _options.schemaResult = resource;
+      }
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       var uriStack = args.uriStack || [];
@@ -82,16 +85,16 @@ define([
           self.urlSuffix = key + '/' + value;
           continue;
         }
-        if(key == 'children'){
-          // This is a hack to show the children of an apilog, see 
-          // reports.api.ApiLogResource.prepend_urls for further details
-          var substack = _.rest(uriStack,i)
-          var substack_consumed = []
-          var _key = Iccbl.popKeyFromStack(resource, substack, substack_consumed);
-          i += substack_consumed.length;
-          self.urlSuffix = key + '/' + _key;
-          console.log('urlSuffix: ' + self.urlSuffix);
-        }
+//        if(key == 'children'){
+//          // This is a hack to show the children of an apilog, see 
+//          // reports.api.ApiLogResource.prepend_urls for further details
+//          var substack = _.rest(uriStack,i)
+//          var substack_consumed = []
+//          var _key = Iccbl.popKeyFromStack(resource, substack, substack_consumed);
+//          i += substack_consumed.length;
+//          self.urlSuffix = key + '/' + _key;
+//          console.log('urlSuffix: ' + self.urlSuffix);
+//        }
         
         if(_.contains(this.LIST_MODEL_ROUTE_KEYS, key)){
           
@@ -107,7 +110,7 @@ define([
               } else if (_.isEmpty(parts[1])) {
                 // pass, TODO: prevent empty searches from notifying
               } else {
-                searchHash[parts[0]] = parts[1];
+                searchHash[parts[0]] = decodeURIComponent(parts[1]);
               }
             });
             listInitial[key] = searchHash;
@@ -260,7 +263,9 @@ define([
       }
       _.each(self.LIST_MODEL_ROUTE_KEYS, function(routeKey){
         var routeEntry = self.listModel.get(routeKey);
-        if ( ! _.isEmpty(routeEntry)) {
+        console.log('routeKey', routeKey, routeEntry);
+        if ( (!_.isObject(routeEntry) && routeEntry ) || 
+             ( _.isObject(routeEntry) && !_.isEmpty(routeEntry))) {
           newStack.push(routeKey);
           if (routeKey === 'search') {
             newStack.push(_.map(

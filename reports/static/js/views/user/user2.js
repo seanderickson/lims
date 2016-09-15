@@ -206,7 +206,6 @@ define([
       
       Backbone.Layout.setupView(view);
       this.consumedStack = ['usergrouppermissions']; 
-      //      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },

@@ -204,7 +204,7 @@
     },
     "platelocation": {
       "detailView": "PlateLocationView",
-      "list_view": "ListView",
+      "list_view": "PlateLocationView",
       "api_resource": "platelocation",
       "options": { 
         "search": {"plate_count__gt":0},

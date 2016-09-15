@@ -17,9 +17,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
   var nested_library_plate_pattern = '{library}:{copy}:{start_plate}-{end_plate}';
   
   var Prototype = DetailLayout.extend(PlateRangePrototype);
+  
   var LibraryScreeningView = Prototype.extend({
 
-    
     initialize: function(args) {
       
       var self = this;

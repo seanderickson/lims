@@ -203,11 +203,14 @@ define([
       return options;
     },
 
-    getPlateLocationTree: function(callBack){
+    getPlateLocationTree: function(callBack, options){
       var self = this;
+      var options = options || {};
+      var flush = options.flush || false;
+      
       var prop = 'locationHash';
       var locationHash = this.get(prop);
-      if(!locationHash){
+      if(!locationHash || flush){
         this.getPlateLocations(function(locations){
           var locationHash = {};
           locations.each(function(location){
@@ -229,7 +232,7 @@ define([
           });
           self.set(prop,locationHash);
           if (callBack) callBack(locationHash);
-        });
+        }, options);
       }else{
         if (callBack) callBack(locationHash);
       }
@@ -414,12 +417,13 @@ define([
         'libraries', this.dbApiUri + '/library', data_for_get, callback );
     },
     
-    getPlateLocations: function(callback){
+    getPlateLocations: function(callback, options){
       data_for_get = { 
         exact_fields: ['room','freezer','shelf','bin']
       };
       return this.getCachedResourceCollection(
-        'platelocations', this.dbApiUri + '/platelocation', data_for_get, callback );
+        'platelocations', this.dbApiUri + '/platelocation', data_for_get, 
+        callback, options );
     },
     
     getScreens: function(callback){
@@ -803,6 +807,7 @@ define([
       if(_.isArray(key)){
         key = key.join('/');
       }
+      console.log('model key:', key);
       var url = options.url || resource.apiUri + '/' + key;
       console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
@@ -1003,6 +1008,35 @@ define([
       }
     },
     
+    dict_to_rows: function(dict){
+      var self = this;
+      var rows = [];
+      if (_.isObject(dict) && !_.isArray(dict)){
+        _.each(_.keys(dict), function(key){
+          _.each(self.dict_to_rows(dict[key]),function(row){
+            if (_.isUndefined(row)){
+              rows.push(key);
+            }else{
+              var keyrow = [key];
+              if (!_.isArray(row)){
+                keyrow.push(row);
+              }else{
+                keyrow = keyrow.concat(row);
+              }
+              rows.push(keyrow);
+            }
+          });
+        });
+      }else{
+        console.log('obj: ', dict);
+        if (_.isArray(dict)){
+          return dict;
+        }else{
+          return [dict];
+        }
+      }
+      return rows;
+    },
     /**
      * Show a JSON object in a modal dialog:
      * - transform the object into a table using a depth-first traversal:
@@ -1010,46 +1044,17 @@ define([
      */
     showJsonMessages: function(jsonObj){
       
-      function dict_to_rows(dict){
-        var rows = [];
-        if (_.isObject(dict) && !_.isArray(dict)){
-          _.each(_.keys(dict), function(key){
-            _.each(dict_to_rows(dict[key]),function(row){
-              if (_.isEmpty(row)){
-                rows.push(key);
-              }else{
-                var keyrow = [key];
-                if (!_.isArray(row)){
-                  keyrow.push(row);
-                }else{
-                  keyrow = keyrow.concat(row);
-                }
-                rows.push(keyrow);
-              }
-            });
-          });
-        }else{
-          console.log('dict: ', dict);
-          if (_.isArray(dict)){
-            return dict;
-          }else{
-            return [dict];
-          }
-        }
-        return rows;
-      }
-      
       var title = "Messages";
       if(_.keys(jsonObj).length == 1){
         title = _.keys(jsonObj)[0];
         jsonObj = jsonObj[title];
       }
       
-      var msg_rows = dict_to_rows(jsonObj);
+      var msg_rows = this.dict_to_rows(jsonObj);
       var bodyMsg = msg_rows;
       if (_.isArray(msg_rows) && msg_rows.length > 1){
         bodyMsg = _.map(msg_rows, function(msg_row){
-          return msg_row.join(' - ');
+          return msg_row.join(': ');
         }).join('<br>');
       }
       
@@ -1153,7 +1158,7 @@ define([
       var self = this;
       
       var form_template = [
-         "<form  class='form-horizontal container' >",
+         '<form  class="form-horizontal container"  autocomplete="off" >',
          "<div data-fields='comments'/>",
          "</form>"];
       var altFieldTemplate =  _.template('\
@@ -1369,6 +1374,14 @@ define([
         type: 'Checkbox',
         template: altCheckboxTemplate
       };
+      formSchema['data_interchange'] = {
+        title: 'Download for data interchange',
+        help: [ 'Use a format suitable for data upload ',
+                '(vocabulary and column key values are used)'].join(''),
+        key: 'data_interchange',
+        type: 'Checkbox',
+        template: altCheckboxTemplate
+      };
       formSchema['content_type'] = {
         title: 'Download type',
         help: 'Select the data format',
@@ -1414,13 +1427,23 @@ define([
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
           form.$el.find('[name="use_titles"]').prop('disabled', false);
           form.$el.find('[name="raw_lists"]').prop('disabled', true);
+          form.$el.find('[name="data_interchange"]').prop('disabled', true);
+        }else{
+          form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
+          form.$el.find('[name="use_titles"]').prop('disabled', false);
+          form.$el.find('[name="raw_lists"]').prop('disabled', false);
+          form.$el.find('[name="data_interchange"]').prop('disabled', false);
+        }
+        if (form.getValue('data_interchange') === true ){
+          form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
+          form.$el.find('[name="use_titles"]').prop('disabled', true);
+          form.$el.find('[name="raw_lists"]').prop('disabled', true);
         }else{
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
           form.$el.find('[name="use_titles"]').prop('disabled', false);
           form.$el.find('[name="raw_lists"]').prop('disabled', false);
         }
       });
-      
       var el = form.render().el;
       
       var default_content = form.getValue('content_type');
@@ -1429,6 +1452,7 @@ define([
         $(el).find('[name="use_vocabularies"]').prop('disabled', true);
         $(el).find('[name="use_titles"]').prop('disabled', true);
         $(el).find('[name="raw_lists"]').prop('disabled', true);
+        form.$el.find('[name="data_interchange"]').prop('disabled', true);
       }
       
       self.showModal({
@@ -1459,6 +1483,9 @@ define([
           }
           if(values['raw_lists']){
             url += '&raw_lists=true';
+          }
+          if(values['data_intechange']){
+            url += '&data_intechange=true';
           }
           
           // When downloading via AJAX, the "Content-Disposition: attachment" 
@@ -1617,15 +1644,15 @@ define([
   var appState = new AppState();
   
   appState._form_template = _.template([
-     "<div class='form-horizontal container' id='add_value_field' >",
-     "<form data-fieldsets class='form-horizontal container' >",
+     '<div class="form-horizontal containe" id="add_value_field" >',
+     '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
      "</form>",
      "</div>"].join(''));      
   appState._field_template = _.template([
     '<div class="form-group" key="form-group-<%=key%>" >',
     '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
     '    <div class="" >',
-    '      <div data-editor  key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '      <div data-editor key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
     '      <div data-error class="text-danger" ></div>',
     '      <div><%= help %></div>',
     '    </div>',

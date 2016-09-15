@@ -54,6 +54,10 @@ define([
       copywell: { 
         description: 'Copy Wells', title: 'Copy Wells', invoke: 'setCopyWells',
         resource: 'copywell'
+      },
+      platelocation: { 
+        description: 'Copy Plate Locations', title: 'Copy Plate Locations', invoke: 'setCopyPlateLocations',
+        resource: 'platelocation'
       }
     },      
     
@@ -150,14 +154,10 @@ define([
     setDetail: function(delegateStack) {
       var key = 'detail';
       
-      var view = this.tabViews[key];
-      if ( !view ) {
-        view = new DetailLayout({ 
-          model: this.model,
-          uriStack: delegateStack, 
-          buttons: ['download', 'history'] });
-        this.tabViews[key] = view;
-      } 
+      var view = new DetailLayout({ 
+        model: this.model,
+        uriStack: delegateStack, 
+        buttons: ['download', 'history'] });
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -178,23 +178,35 @@ define([
       this.$('#detail').addClass('active');
     },
 
+    setCopyPlateLocations: function(delegateStack){
+      var self = this;
+      var key = 'platelocation';
+      var resource = appModel.getResource(key);
+      var url = [resource.apiUri, 
+                 '?library_copy=' + self.library.get('short_name') + '/' + self.model.get('name')].join('/')
+      // use a child container to manage batch edit functionality
+      var view = new ListView({
+        uriStack: delegateStack,
+        url: url,
+        resource: resource
+      });
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      
+    },
+    
     setCopyPlates: function(delegateStack) {
       var self = this;
       var key = 'librarycopyplates';
-      var view = this.tabViews[key];
-      if ( !view ) {
-        // use a child container to manage batch edit functionality
-        var view = new LibraryCopyPlateView({
-          library: self.library,
-          copy: self.model,
-          uriStack: delegateStack,
-          resource: appModel.getResource('librarycopyplate')
-        });
-        self.tabViews[key] = view;
-        Backbone.Layout.setupView(view);
-      } else {
-        self.reportUriStack([]);
-      }
+      // use a child container to manage batch edit functionality
+      var view = new LibraryCopyPlateView({
+        library: self.library,
+        copy: self.model,
+        uriStack: delegateStack,
+        resource: appModel.getResource('librarycopyplate')
+      });
+      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -202,19 +214,13 @@ define([
     setCopyWells: function(delegateStack) {
       var self = this;
       var key = 'copywell';
-      var view = this.tabViews[key];
-      if ( !view ) {
-        // TODO: review the way this is done in screen.js with sub-tabs
-        var view = new LibraryCopyWellsView({
-          library: self.library,
-          copy: self.model,
-          uriStack: delegateStack
-        });
-        self.tabViews[key] = view;
-        Backbone.Layout.setupView(view);
-      } else {
-        self.reportUriStack([]);
-      }
+      // TODO: review the way this is done in screen.js with sub-tabs
+      var view = new LibraryCopyWellsView({
+        library: self.library,
+        copy: self.model,
+        uriStack: delegateStack
+      });
+      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },

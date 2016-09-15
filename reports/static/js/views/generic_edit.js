@@ -1232,7 +1232,7 @@ define([
   EditView.ChosenSelect = ChosenSelect;
   EditView.DatePicker = DatePicker;
   EditView.DisabledField = DisabledField;
-  
+  EditView.SIunitEditor = SIunitEditor;
   /**
    * TODO: move this to utils module or parent view module
    */

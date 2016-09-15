@@ -384,6 +384,7 @@ define([
           copy_name: {
             title: 'Copy name',
             pattern: /\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*)\b/,
+            // pattern: /(\w+)\s+((\d+)-(\d+))/
             help: 'letters and numbers with no spaces'            
           },
           plate_number: {
@@ -475,7 +476,13 @@ define([
             var search_entry = entity + '__' + type;
             
             if(type == 'range'){
-              and_hash[search_entry] = terms[0].split('-').join(',');
+               number_array = terms[0].split('-');
+               _.each(number_array,function(num_val){
+                 if(_.isNaN(parseInt(num_val))){
+                   errors.push('ranges must be numbers: ' + terms);
+                 }
+               });
+               and_hash[search_entry] = number_array.join(',');
             }else{
               and_hash[search_entry] = terms.join(',');
             }

@@ -598,7 +598,7 @@ define([
          self.model.key,
          'publications'].join('/');
       var form_template = [
-         "<div class='form-horizontal container' id='uploadAttachedFileButton_form' >",
+         "<div class='form-horizontal container' id='publication_form' >",
          "<form data-fieldsets class='form-horizontal container' >",
          //"<div class='form-group' ><input type='file' name='fileInput' /></div>",
          "</form>",

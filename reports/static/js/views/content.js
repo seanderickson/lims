@@ -17,6 +17,7 @@ define([
   'views/user/user2',
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
+  'utils/uploadDataForm',
   'test/detailTest',
   'templates/content.html',
   'templates/welcome.html',
@@ -25,8 +26,8 @@ define([
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView, 
          ScreenView, LibraryScreeningView, PlateLocationView, UserAdminView, 
-         UserView, UserGroupAdminView, DetailTestView, layout, welcomeLayout, 
-         aboutLayout) {
+         UserView, UserGroupAdminView, UploadDataForm, DetailTestView, layout, 
+         welcomeLayout, aboutLayout) {
   
   var VIEWS = {
     'ListView': ListView, 
@@ -119,7 +120,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       
       var titleFunc = function setContentTitle(val){
-        self.$('#content_title').html(val);
+        self.$('#content_title').html(_.escape(val));
       }
       
       titleFunc(model.resource.title + ': ' + 
@@ -145,6 +146,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
       var view;
+      var url = resource.apiUri;
       
       if (_.has(resource, 'listView')){
         if (_.has(VIEWS, resource['listView'])) {
@@ -159,8 +161,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       
       if(uriStack.length > 1 && uriStack[0] == 'children'){
-        var substack = _.rest(uriStack,1);
-        var _key = Iccbl.popKeyFromStack(resource, substack, []);
+        
+        self.consumedStack.push(uriStack.shift());
+        
+        var _key = Iccbl.popKeyFromStack(resource, uriStack, self.consumedStack);
+        url += '/children/' + _key;
+        
         this.$('#content_title').html('Child logs for: ' + _key);
       }else{
         this.$('#content_title').html(resource.title + ' listing');
@@ -172,10 +178,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         view = self.createListSearchView(resource, schemaResult, viewClass, uriStack);
       
       }else{ // normal list view
-      
+
+        var Collection = Iccbl.MyCollection.extend({
+        });
+        
+        collection = self.collection = new Collection({
+          'url': url
+        });
+        
         var extraControls = [];
-        if (_.contains(resource.visibility, 'c')){
-          if (appModel.hasPermission(resource.key, 'write')){
+        if (appModel.hasPermission(resource.key, 'write')){
+          if (_.contains(resource.visibility, 'c')){
             var showAddButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
                 'role="button" id="add_resource" href="#">',
@@ -188,12 +201,26 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             });
             extraControls.push(showAddButton);
           }
+          if (_.contains(resource.visibility, 'e')){
+            var showUploadButton = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="patch_resource" href="#">',
+                'Upload data</a>'
+              ].join(''));   
+            showUploadButton.click(function(e){
+              e.preventDefault();
+              UploadDataForm.uploadAttachedFileDialog(
+                collection.url, collection, resource);
+            });
+            extraControls.push(showUploadButton);
+          }
         }
         view = new viewClass({ 
             model: appModel, 
             uriStack: uriStack,
             schemaResult: schemaResult, 
             resource: resource,
+            collection: collection,
             extraControls: extraControls
           });
       }
@@ -237,7 +264,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       url = resource.apiUri + '/search/' + searchID;
       var Collection = Iccbl.MyCollection.extend({
         fetch: function(options){
-          // Endcode for the post_data arg; post data elements are sent 
+          var options = options || {};
+          // Encode for the post_data arg; post data elements are sent 
           // as urlencoded values via a POST form for simplicity
           options.data = _.extend(
             { search_data: JSON.stringify(search_data) }, 

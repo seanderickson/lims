@@ -38,7 +38,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.trigger('uriStack:change', actualStack );
     },
     
-    afterRender: function(){
+    afterRender: function() {
       var self = this;
       var uriStack = this.uriStack;
       var library = this.library;
@@ -56,7 +56,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       } else {
         // List view
         var url = resource.apiUri;
-        if (self.library && self.copy){
+        if (self.library && self.copy) {
           url = [ 
               library.resource.apiUri,library.key,'copy',copy.get('name'),
               'plate'].join('/');
@@ -73,7 +73,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view = new DetailLayout({ 
         model: model, 
         uriStack: uriStack,
-        buttons: ['download','history'],
+//        buttons: ['download','history'],
         title: 'Plate ' + model.get('plate_number')
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -84,22 +84,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var self = this;
       var uriStack = _.clone(this.uriStack);
       console.log('uriStack', uriStack);
-      var showBatchEditButton = $([
+      var showEditLocationButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="batch_edit_button" href="#">',
-          'Batch Edit</a>'
+          'role="button" id="batch_edit_locations_button" href="#">',
+          'Edit Locations</a>'
+        ].join(''));
+      var showEditPlatesButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="batch_edit_plates_button" href="#">',
+          'Edit Plates</a>'
         ].join(''));
       var showHistoryButton = $([
       '<a class="btn btn-default btn-sm pull-down" ',
         'role="button" id="showHistoryButton" href="#">',
         'History</a>'
       ].join(''));
-      showHistoryButton.click(function(e){
+      showHistoryButton.click(function(e) {
         e.preventDefault();
         var newUriStack = ['apilog','order','-date_time', 'search'];
         var search = {};
         search['ref_resource_name'] = 'librarycopyplate';
-        if (self.library && self.copy){
+        if (self.library && self.copy) {
           search['key__icontains'] = [
             self.library.get('short_name'),
             self.copy.get('name')].join('/');
@@ -108,7 +113,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var route = newUriStack.join('/');
         console.log('history route: ' + route);
         appModel.router.navigate(route, {trigger: true});
-//        self.remove();
       });
 
       // TODO: extending the passed args to get the "search_data", or other 
@@ -118,12 +122,24 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         schemaResult: resource,
         resource: resource,
         url: url,
-        extraControls: [showBatchEditButton, showHistoryButton]
+        extraControls: [
+          showEditLocationButton, showEditPlatesButton, showHistoryButton]
         }, self._args ) ;
       var view = new ListView(options);
-      showBatchEditButton.click(function(e){
+      showEditLocationButton.click(function(e) {
         e.preventDefault();
-        self.createBatchEditDialog(view);
+        self.batchEditLocationsDialog(view);
+      });
+      showEditPlatesButton.click(function(e) {
+        e.preventDefault();
+        self.batchEditPlatesDialog(view);
+      });
+      self.listenTo(view, 'update_title', function(val) {
+        if(val) {
+          this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+        } else {
+          this.$('#content_title').html(resource.title);
+        }
       });
         
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -131,61 +147,215 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.setView('#resource_content', view ).render();
     },
     
-    createBatchEditDialog: function(listView){
+    batchEditPlatesDialog: function(listView) {
       var self = this;
-      console.log('batch edit dialog...');
+      console.log('batch edit plates dialog...');
       // find any extra search data
       post_data = {};
-      if(_.has(listView._options, 'search_data')){
+      if(_.has(listView._options, 'search_data')) {
         console.log('search data found on the list._options: ', listView._options.search_data);
         // endcode for the post_data arg; post data elements are sent 
         // as urlencoded values via a POST form for simplicity
         post_data['search_data'] = JSON.stringify(listView._options.search_data);  
       }
       // Construct the form
-      var initfun = function(){
+      var initfun = function() {
+        var formSchema = {};
+        var fieldTemplate = appModel._field_template;
+        var formTemplate = appModel._form_template;
+        formSchema['status'] = {
+          title: 'Status',
+          key: 'status',
+          type: EditView.ChosenSelect,
+          editorClass: 'form-control chosen-select',
+          options: appModel.getVocabularySelectOptions('plate.status'),
+          template: fieldTemplate 
+        };
+        formSchema['plate_type'] = {
+          title: 'Plate Type',
+          key: 'plate_type',
+          type: EditView.ChosenSelect,
+          editorClass: 'form-control chosen-select',
+          options: appModel.getVocabularySelectOptions('plate.type'),
+          template: fieldTemplate 
+        };
+        formSchema['well_volume'] = {
+          title: 'Initial Well Volume',
+          key: 'well_volume',
+          type: EditView.SIunitEditor,
+          template: fieldTemplate 
+        };
+        _.extend(
+          formSchema['well_volume'],
+          self.resource['fields']['well_volume']['display_options']);
+        formSchema['comments'] = {
+          title: 'Comments',
+          key: 'comments',
+          validators: ['required'],
+          type: 'TextArea',
+          template: fieldTemplate
+        };
+        
+        var FormFields = Backbone.Model.extend({
+          schema: formSchema,
+          validate: function(attrs) {
+            var errs = {};
+            if (attrs['status']==null 
+                && attrs['plate_type']==null
+                && attrs['well_volume']==0 ) {
+              errs['error'] = 'Must enter Status, Plate Type, or Initial Well Volume';
+            }
+            if (!_.isEmpty(errs)) return errs;
+          }
+        });
+        var formFields = new FormFields();
+        
+        var form = new Backbone.Form({
+          model: formFields,
+          template: formTemplate
+        });
+        var formview = form.render();
+        var _form_el = formview.el;
+        var $form = formview.$el;
+        
+        function submitForm(values, callback) {
+          var headers = {};
+          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+          delete values['comments']
+          var post_data = {
+            data: { 'plate_info': values },
+            search_data: listView._options.search_data 
+          }
+          
+          if (self.library && self.copy) {
+            search_data = _.result(post_data,'search_data', {});
+            search_data['library_short_name'] = self.library.get('short_name');
+            search_data['copy_name'] = self.copy.get('name');
+            post_data['search_data'] = search_data;
+          }            
+          
+          var url = self.resource.apiUri + '/batch_edit';
+          
+          var listParamString = listView.getCollectionUrl();
+          if(!_.isUndefined(listParamString)
+              && listParamString.indexOf('?')>-1) {
+            url += '?' + listParamString.split('?')[1];
+          }
+          $.ajax({
+            url: url,    
+            data: JSON.stringify(post_data),
+            cache: false,
+            contentType: 'application/json',
+            dataType: 'json', // what is expected back from the server
+            processData: false, // do not process data being sent
+            type: 'PATCH',
+            headers: headers
+          })
+          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+          .done(function(data) {
+            listView.collection.fetch();
+            
+            if (_.isObject(data) && !_.isString(data)) {
+              data = _.result(_.result(data,'meta',data),'Result',data);
+              var msg_rows = appModel.dict_to_rows(data);
+              var bodyMsg = msg_rows;
+              if (_.isArray(msg_rows) && msg_rows.length > 1) {
+                bodyMsg = _.map(msg_rows, function(msg_row) {
+                  return msg_row.join(': ');
+                }).join('<br>');
+              }
+              var title = 'Upload success';
+              appModel.showModalMessage({
+                body: bodyMsg,
+                title: title  
+              });
+            } else {
+              console.log('ajax should have been parsed data as json', data);
+              appModel.showModalMessage({
+                title: 'Batch edit success',
+                okText: 'ok',
+                body: 'Records: ' + listView.collection.state.totalRecords + ', ' + data
+              });
+            }
+            if (callback) {
+              callback();
+            }
+          });
+        }
+        
+        var dialog = appModel.showModal({
+          okText: 'Submit',
+          view: _form_el,
+          title: 'Batch edit plate information',
+          ok: function(e) {
+            e.preventDefault();
+            var errors = form.commit({ validate: true }) || {}; 
+            if (!_.isEmpty(errors) ) {
+              _.each(_.keys(errors), function(key) {
+                form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+                if (key=='_others') {
+                  form.$el.append('<div class="text-danger">' + errors[key][0]['error'] + '</div>');
+                }
+              });
+              return false;
+            }            
+            var values = form.getValue()
+            submitForm(values);
+          }
+        });
+      };    
+ 
+      console.log('call init...');
+      $(this).queue([initfun]);
+    },
+    
+    batchEditLocationsDialog: function(listView) {
+      var self = this;
+      console.log('batch edit plates dialog...');
+      // find any extra search data
+      post_data = {};
+      if(_.has(listView._options, 'search_data')) {
+        console.log('search data found on the list._options: ', listView._options.search_data);
+        // endcode for the post_data arg; post data elements are sent 
+        // as urlencoded values via a POST form for simplicity
+        post_data['search_data'] = JSON.stringify(listView._options.search_data);  
+      }
+      // Construct the form
+      var initfun = function() {
         var plateLocationTree = appModel.getPlateLocationTree();
         console.log('construct the batch edit form, ', plateLocationTree );
         var formSchema = {};
         var fieldTemplate = appModel._field_template;
         var formTemplate = appModel._form_template;
-        roomOptions = [{val: '', label: '' }];
-        _.each(_.keys(plateLocationTree),function(room){
-            roomOptions.push({ val: room, label: room });
-        });
         formSchema['room'] = {
           title: 'Room',
           key: 'room',
-          type: EditView.ChosenSelect,
-          editorClass: 'chosen-select',
-          options: roomOptions,
+          editorClass: 'form-control',
+          type: Backbone.Form.editors.Text,
           validators: ['required'],
           template: fieldTemplate 
         };
         formSchema['freezer'] = {
           title: 'Freezer',
           key: 'freezer',
-          type: EditView.ChosenSelect,
-          editorClass: 'chosen-select',
-          options: [],
+          editorClass: 'form-control',
+          type: Backbone.Form.editors.Text,
           validators: ['required'],
           template: fieldTemplate 
         };
         formSchema['shelf'] = {
           title: 'Shelf',
           key: 'shelf',
-          type: EditView.ChosenSelect,
-          editorClass: 'chosen-select',
-          options: [],
+          editorClass: 'form-control',
+          type: Backbone.Form.editors.Text,
           validators: ['required'],
           template: fieldTemplate 
         };
         formSchema['bin'] = {
           title: 'Bin',
           key: 'bin',
-          type: EditView.ChosenSelect,
-          editorClass: 'chosen-select',
-          options: [],
+          editorClass: 'form-control',
+          type: Backbone.Form.editors.Text,
           validators: ['required'],
           template: fieldTemplate 
         };
@@ -196,10 +366,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           type: 'TextArea',
           template: fieldTemplate
         };
-
         var FormFields = Backbone.Model.extend({
           schema: formSchema,
-          validate: function(attrs){
+          validate: function(attrs) {
             var errs = {};
             if (!_.isEmpty(errs)) return errs;
           }
@@ -212,136 +381,166 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         });
         var formview = form.render();
         var _form_el = formview.el;
-        formview.$el.find('.chosen-select').chosen({
-          disable_search_threshold: 3,
-          width: '100%',
-          allow_single_deselect: true,
-          search_contains: true
-        });
-
-        form.on("room:change", function(e){
-          var room = form.getValue('room');
-          console.log('change:room ' + room);
-          var options = [{val: '', label: '' }];
-          _.each(_.keys(plateLocationTree[room]),function(val){
-              options.push({ val: val, label: val });
-          });
-          var fieldKey = 'freezer';
-          var $chosen = form.$el.find('[name="' + fieldKey + '"]').parent()
-              .find('.chosen-select');
-          $chosen.empty();
-          _.each(options, function(option){
-            $chosen.append($('<option>',{
-                value: option.val
-              }).text(option.label));
-          });
-          $chosen.trigger("chosen:updated");
-          form.setValue('freezer',null);
-        });
+        var $form = formview.$el;
         
-        form.on("freezer:change", function(e){
-          var room = form.getValue('room');
-          var freezer = form.getValue('freezer');
-          console.log('change:freezer ', room, freezer);
-          var options = [{val: '', label: '' }];
-          _.each(_.keys(plateLocationTree[room][freezer]),function(val){
-              options.push({ val: val, label: val });
-          });
-          var fieldKey = 'shelf';
-          var $chosen = form.$el.find('[name="' + fieldKey + '"]').parent()
-              .find('.chosen-select');
-          $chosen.empty();
-          _.each(options, function(option){
-            $chosen.append($('<option>',{
-                value: option.val
-              }).text(option.label));
-          });
-          $chosen.trigger("chosen:updated");
-          form.setValue('shelf',null);
-        });
+        var subKey = 'room';
+        $form.find('[name="'+subKey +'"]').typeahead({
+          autoSelect: false,
+          delay: 1,
+          minLength: 0,
+          items: 'all',
+          source: _.keys(plateLocationTree),
+          afterSelect: function(roomVal) {
+            var subKey = 'freezer';
+            form.setValue(subKey,null);
+            form.setValue('shelf',null);
+            form.setValue('bin',null);
+            $form.find('[name="'+subKey +'"]').typeahead('destroy')
+            $form.find('[name="'+subKey +'"]').typeahead({
+              autoSelect: false,
+              delay: 1,
+              minLength: 0,
+              items: 'all',
+              source: _.keys(plateLocationTree[roomVal]),
+              afterSelect: function(freezerVal) {
+                var subKey = 'shelf';
+                form.setValue(subKey,null);
+                form.setValue('bin',null);
+                $form.find('[name="'+subKey +'"]').typeahead('destroy')
+                $form.find('[name="'+subKey +'"]').typeahead({
+                  autoSelect: false,
+                  delay: 1,
+                  minLength: 0,
+                  items: 'all',
+                  source: _.keys(plateLocationTree[roomVal][freezerVal]),
+                  afterSelect: function(shelfVal) {
+                    var subKey = 'bin';
+                    form.setValue(subKey,null);
+                    $form.find('[name="'+subKey +'"]').typeahead('destroy')
+                    $form.find('[name="'+subKey +'"]').typeahead({
+                      autoSelect: false,
+                      delay: 1,
+                      minLength: 0,
+                      items: 'all',
+                      source: _.keys(plateLocationTree[roomVal][freezerVal][shelfVal])
+                    });// bin
+                  }
+                });// shelf
+              }
+            });//freezer
+          }
+        });//room
         
-        form.on("shelf:change", function(e){
-          var room = form.getValue('room');
-          var freezer = form.getValue('freezer');
-          var shelf = form.getValue('shelf');
-          console.log('change:shelf', room, freezer, shelf);
-          var options = [{val: '', label: '' }];
-          _.each(_.keys(plateLocationTree[room][freezer][shelf]),function(val){
-              options.push({ val: val, label: val });
+        function findPlateLocation(room, freezer, shelf, bin) {
+          return _.result(_.result(_.result(_.result(
+            plateLocationTree, room),freezer),shelf),bin);
+        }
+        
+        function submitForm(values, callback) {
+          var headers = {};
+          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+          
+          var post_data = {
+            data: { 'plate_location': values },
+            search_data: listView._options.search_data 
+          }
+          
+          if (self.library && self.copy) {
+            search_data = _.result(post_data,'search_data', {});
+            search_data['library_short_name'] = self.library.get('short_name');
+            search_data['copy_name'] = self.copy.get('name');
+            post_data['search_data'] = search_data;
+          }            
+          
+          var url = self.resource.apiUri + '/batch_edit';
+          
+          var listParamString = listView.getCollectionUrl();
+          if(!_.isUndefined(listParamString)
+              && listParamString.indexOf('?')>-1) {
+            url += '?' + listParamString.split('?')[1];
+          }
+          $.ajax({
+            url: url,    
+            data: JSON.stringify(post_data),
+            cache: false,
+            contentType: 'application/json',
+            dataType: 'json', // what is expected back from the server
+            processData: false, // do not process data being sent
+            type: 'PATCH',
+            headers: headers
+          })
+          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+          .done(function(data) {
+            listView.collection.fetch();
+            
+            if (_.isObject(data) && !_.isString(data)) {
+              data = _.result(_.result(data,'meta',data),'Result',data);
+              var msg_rows = appModel.dict_to_rows(data);
+              var bodyMsg = msg_rows;
+              if (_.isArray(msg_rows) && msg_rows.length > 1) {
+                bodyMsg = _.map(msg_rows, function(msg_row) {
+                  return msg_row.join(': ');
+                }).join('<br>');
+              }
+              var title = 'Upload success';
+              appModel.showModalMessage({
+                body: bodyMsg,
+                title: title  
+              });
+            } else {
+              console.log('ajax should have been parsed data as json', data);
+              appModel.showModalMessage({
+                title: 'Batch edit success',
+                okText: 'ok',
+                body: 'Records: ' + listView.collection.state.totalRecords + ', ' + data
+              });
+            }
+            if (callback) {
+              callback();
+            }
           });
-          var fieldKey = 'bin';
-          var $chosen = form.$el.find('[name="' + fieldKey + '"]').parent()
-              .find('.chosen-select');
-          $chosen.empty();
-          _.each(options, function(option){
-            $chosen.append($('<option>',{
-                value: option.val
-              }).text(option.label));
-          });
-          $chosen.trigger("chosen:updated");
-          form.setValue('bin',null);
-        });
+        }
         
         var dialog = appModel.showModal({
           okText: 'Submit',
           view: _form_el,
           title: 'Batch edit plates',
-          ok: function(e){
+          ok: function(e) {
             e.preventDefault();
             var errors = form.commit({ validate: true }) || {}; 
-            if(!_.isEmpty(errors) ){
-              _.each(_.keys(errors), function(key){
+            if (!_.isEmpty(errors) ) {
+              _.each(_.keys(errors), function(key) {
                 form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
               });
               return false;
             }            
             // TODO: construct the batch url and submit
             var values = form.getValue()
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = values['comment'];
             
-            var post_data = {
-              data: values,
-              search_data: listView._options.search_data 
+            if (_.isUndefined(findPlateLocation(
+                values['room'],values['freezer'],values['shelf'],values['bin']))) {
+              $('#modal').modal('hide');
+              appModel.showModal({
+                title: 'Plate location will be created',
+                body: Iccbl.formatString(
+                  'Plate location: {room}-{freezer}-{shelf}-{bin}',values),
+                ok: function(e) {
+                  submitForm(values, function(){
+                    appModel.getPlateLocationTree(null, { flush:true });
+                  });
+                }
+              });
+              return false; // signal early exit for modal
+            } else {
+              submitForm(values);
             }
-            
-            if (self.library && self.copy){
-              search_data = _.result(post_data,'search_data', {});
-              search_data['library_short_name'] = self.library.get('short_name');
-              search_data['copy_name'] = self.copy.get('name');
-              post_data['search_data'] = search_data;
-            }            
-            
-            var url = self.resource.apiUri + '/batch_edit';
-            
-            var listParamString = listView.getCollectionUrl();
-            if(!_.isUndefined(listParamString)
-                && listParamString.indexOf('?')>-1){
-              url += '?' + listParamString.split('?')[1];
-            }
-            $.ajax({
-              url: url,    
-              data: JSON.stringify(post_data),
-              cache: false,
-              contentType: 'application/json',
-              processData: false,
-              type: 'PATCH',
-              headers: headers
-            })
-            .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-            .done(function(model, resp){
-                // FIXME: should be showing a regular message
-              listView.collection.fetch();
-                appModel.error('success');
-            });
-            
-         }
+          }
         });
       };
       console.log('call init...');
       $(this).queue([appModel.getPlateLocationTree,initfun]);
 
-    }
+    },
     
   });
 

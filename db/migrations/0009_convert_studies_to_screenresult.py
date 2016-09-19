@@ -90,7 +90,7 @@ def convert_studies(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0008_library_controlled_vocabularies'),
+        ('db', '0006_screen_status'),
     ]
 
     operations = [

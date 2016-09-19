@@ -16,7 +16,7 @@ from db.support.data_converter import default_converter
 logger = logging.getLogger(__name__)
 
 
-def create_vocab(vocab_writer, attr, scope, query):
+def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
     resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
@@ -32,7 +32,8 @@ def create_vocab(vocab_writer, attr, scope, query):
         title = row[4]
         key = row[1]
         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
-        vocab_writer.writerow(row)
+        if write_to_file is True:
+            vocab_writer.writerow(row)
         logger.info('updated vocab: %r' % row)
 
 def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
@@ -97,6 +98,21 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'TransfectionAgent').objects.all()],
                 ['assay_protocol_type', 'assayprotocol.type',
                     apps.get_model('db', 'Screening').objects.all()],
+
+                ['screen_type', 'screen.type',
+                    apps.get_model('db', 'Screen').objects.all()],
+                ['project_phase', 'screen.project_phase',
+                    apps.get_model('db', 'Screen').objects.all()],
+                
+                ['screening_status', 'library.screening_status',
+                    apps.get_model('db', 'Library').objects.all()],
+                ['library_type', 'library.type',
+                    apps.get_model('db', 'Library').objects.all()],
+                ['solvent', 'library.solvent',
+                    apps.get_model('db', 'Library').objects.all()],
+                ['screen_type', 'library.screen_type',
+                    apps.get_model('db', 'Library').objects.all(),False],
+
             ]            
         for arg_list in input_args:
             create_vocab(vocab_writer, *arg_list)

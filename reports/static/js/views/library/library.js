@@ -230,16 +230,20 @@ define([
         if (!_.isNumber(attrs.start_plate)){
           errs.start_plate = 'number required';
         }else{
-          var ranges = self.model.resource.library_plate_ranges;
+          var ranges = _.result(self.model.resource,'library_plate_ranges',[]);
+          var rangesAsString = _.map(_.zip(
+            _.filter(ranges, function(val, index){ return index%2==0; }),
+            _.filter(ranges, function(val, index){ return index%2==1; })),
+            function(pair){ return pair.join('-'); } ).join(', ');
           for (var i=0; i<ranges.length-1; i++){
             var start = ranges[i];
             var end = ranges[i+1];
             if (attrs.start_plate >= start && attrs.start_plate <= end){
-              errs.start_plate = 'range already used: ' + start + '-' + end;
+              errs.start_plate = 'range already used: ' + rangesAsString;
               break;
             }
             if (attrs.end_plate >= start && attrs.end_plate <= end){
-              errs.start_plate = 'range already used: ' + start + '-' + end;
+              errs.start_plate = 'range already used: ' + rangesAsString;
               break;
             }
             i++;

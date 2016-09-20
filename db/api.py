@@ -71,8 +71,9 @@ from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
     VocabularyResource, \
     UserResource, compare_dicts, \
-    UserGroupResource, ApiLogResource, ApiResource, \
+    UserGroupResource, ApiLogResource, \
     write_authorization, read_authorization
+import reports.api
 from reports.api_base import un_cache
 from reports.models import Vocabulary, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH, API_ACTION_CREATE
@@ -98,9 +99,27 @@ logger = logging.getLogger(__name__)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
+
+class DbApiResource(reports.api.ApiResource):
+    '''
+   '''
+    def __init__(self, **kwargs):
+        super(reports.api.ApiResource,self).__init__(**kwargs)
+        self.resource_resource = None
+
+    def get_resource_resource(self):
+        if not self.resource_resource:
+            self.resource_resource = ResourceResource()
+        return self.resource_resource
+
+    
+    def build_schema(self):
+        logger.debug('build schema for: %r', self._meta.resource_name)
+        return self.get_resource_resource()._get_resource_schema(
+            self._meta.resource_name)
     
 
-class PlateLocationResource(ApiResource):        
+class PlateLocationResource(DbApiResource):        
     
     class Meta:
         queryset = PlateLocation.objects.all()
@@ -133,7 +152,6 @@ class PlateLocationResource(ApiResource):
                 r"/(?P<bin>[\w <>]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            
         ]
 
     def get_detail(self, request, **kwargs):
@@ -195,7 +213,7 @@ class PlateLocationResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
  
@@ -237,9 +255,6 @@ class PlateLocationResource(ApiResource):
                     _pl.c.plate_location_id
                             ==plate_location_counts.c.plate_location_id,
                     isouter=True)
-#             if 'library_copy' in param_hash:
-#                 j = j.join(_p, _pl.c.plate_location_id==_p.c.plate_location_id)
-#                 j = j.join(_c, _p.c.copy_id == _c.c.copy_id)
             stmt = select(columns.values()).select_from(j)
 
             if 'library_copy' in param_hash:
@@ -449,10 +464,6 @@ class PlateLocationResource(ApiResource):
             return self.build_response(
                 request, {'meta': meta }, response_class=HttpResponse, **kwargs)
         else:
-#             response = self.get_detail(request, meta=meta, **kwargs_for_log)
-#             response.status_code = 201
-#             return response
-            # bypass normal get_detail to add meta information to the response
             return self.build_response(
                 request,  {'meta': meta }, response_class=HttpResponse, **kwargs)
             
@@ -535,8 +546,6 @@ class PlateLocationResource(ApiResource):
             
             return plate_logs
             
-            
-
     def _find_plates(self, copy_plate_ranges):
         logger.info('find copy_plate_ranges: %r', copy_plate_ranges)
         # parse library_plate_ranges
@@ -604,7 +613,7 @@ class PlateLocationResource(ApiResource):
             x for x in sorted(all_plates,key=lambda x: x.plate_number)])
         return all_plates
         
-class LibraryCopyPlateResource(ApiResource):
+class LibraryCopyPlateResource(DbApiResource):
 
     class Meta:
         queryset = Plate.objects.all() 
@@ -747,7 +756,7 @@ class LibraryCopyPlateResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
  
@@ -851,7 +860,6 @@ class LibraryCopyPlateResource(ApiResource):
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function, meta=kwargs.get('meta', None))
-            
                         
         except Exception, e:
             logger.exception('on get list')
@@ -884,18 +892,6 @@ class LibraryCopyPlateResource(ApiResource):
         subquery = subquery.where(
             _assay_plate.c.screen_result_data_loading_id != None)
         return subquery
-
-    def build_schema(self):
-        
-        schema = cache.get(self._meta.resource_name + ":schema")
-        if not schema:
-            schema = super(LibraryCopyPlateResource, self).build_schema()
-            temp = [ x for x in 
-                self.Meta.queryset.distinct('status')
-                    .values_list('status', flat=True)]
-            schema['extraSelectorOptions'] = { 
-                'label': 'Type', 'searchColumn': 'status', 'options': temp }
-        return schema
 
     @un_cache
     @transaction.atomic
@@ -1116,7 +1112,7 @@ class LibraryCopyPlateResource(ApiResource):
         return plate
     
 
-class ScreenResultResource(ApiResource):
+class ScreenResultResource(DbApiResource):
 
     class Meta:
     
@@ -1224,7 +1220,7 @@ class ScreenResultResource(ApiResource):
             all, by_date, by_uri, by_size)
 
         # FIXME: need test cases for this
-        ApiResource.clear_cache(self)
+        DbApiResource.clear_cache(self)
 
         max_indexes_to_cache = getattr(
             settings, 'MAX_WELL_INDEXES_TO_CACHE', 2e+08)
@@ -1689,7 +1685,6 @@ class ScreenResultResource(ApiResource):
           
         return (field_hash, columns, stmt, count_stmt, cachedQuery)
     
-    
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
@@ -1821,7 +1816,7 @@ class ScreenResultResource(ApiResource):
             if ( use_vocab or content_type != JSON_MIMETYPE):
                 # NOTE: xls export uses vocab values
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             else:
                 logger.info('do not use vocabularies: %r', param_hash)
             conn = get_engine().connect()
@@ -2782,7 +2777,7 @@ class ScreenResultResource(ApiResource):
             
         
 
-class DataColumnResource(ApiResource):
+class DataColumnResource(DbApiResource):
 
     class Meta:
 
@@ -2867,7 +2862,7 @@ class DataColumnResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
             max_ordinal = len(field_hash)
             def create_dc_generator(generator):
@@ -3095,7 +3090,7 @@ class DataColumnResource(ApiResource):
             raise e  
     
 
-class CopyWellResource(ApiResource):
+class CopyWellResource(DbApiResource):
     
     class Meta:
         
@@ -3213,7 +3208,7 @@ class CopyWellResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = [
@@ -3359,10 +3354,9 @@ class CopyWellResource(ApiResource):
         except Exception, e:
             logger.exception('on patch detail')
             raise e  
-
   
 
-class CherryPickRequestResource(ApiResource):        
+class CherryPickRequestResource(DbApiResource):        
 
     class Meta:
     
@@ -3447,7 +3441,7 @@ class CherryPickRequestResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = ['cherry_pick_request', 'screen']
@@ -3595,7 +3589,7 @@ class CherryPickRequestResource(ApiResource):
             raise e  
 
 
-class CherryPickPlateResource(ApiResource):        
+class CherryPickPlateResource(DbApiResource):        
 
     class Meta:
 
@@ -3700,7 +3694,7 @@ class CherryPickPlateResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = [
@@ -3824,7 +3818,7 @@ class CherryPickPlateResource(ApiResource):
             raise e  
 
 
-class LibraryCopyResource(ApiResource):
+class LibraryCopyResource(DbApiResource):
 
     class Meta:
 
@@ -3941,7 +3935,7 @@ class LibraryCopyResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
 
@@ -4201,7 +4195,7 @@ class LibraryCopyResource(ApiResource):
             raise e  
 
 
-class PublicationResource(ApiResource):
+class PublicationResource(DbApiResource):
 
     class Meta:
 
@@ -4297,7 +4291,7 @@ class PublicationResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _publication = self.bridge['publication']
@@ -4526,7 +4520,7 @@ class PublicationResource(ApiResource):
             return tastypie.http.HttpNotFound()
         
 
-class AttachedFileResource(ApiResource):
+class AttachedFileResource(DbApiResource):
 
     class Meta:
 
@@ -4804,7 +4798,7 @@ class AttachedFileResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _af = self.bridge['attached_file']
@@ -5133,7 +5127,7 @@ class UserAgreementResource(AttachedFileResource):
 # a.activity_id, a.date_of_activity, a.date_created, a.performed_by_id,serviced_user, sa.serviced_user_id, sa.service_activity_type, a.comments
 # order by facility_id, activity_id
 
-class ActivityResource(ApiResource):
+class ActivityResource(DbApiResource):
     '''
     Activity Resource is a combination of the LabActivity and the ServiceActivity
     '''
@@ -5473,7 +5467,7 @@ class ActivityResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
             title_function = None
             if use_titles:
@@ -5524,7 +5518,7 @@ class CherryPickLiquidTransferResource(ActivityResource):
         ]    
     
     def build_schema(self):
-        return ApiResource.build_schema(self)
+        return DbApiResource.build_schema(self)
 
     def get_custom_columns(self, alias_qualifier):
         '''
@@ -5630,7 +5624,7 @@ class CherryPickScreeningResource(ActivityResource):
         ]    
 
     def build_schema(self):
-        return ApiResource.build_schema(self)
+        return DbApiResource.build_schema(self)
 
     def get_query(self, param_hash):
         
@@ -5716,7 +5710,7 @@ class CherryPickScreeningResource(ActivityResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
   
             title_function = None
             if use_titles:
@@ -5774,7 +5768,7 @@ class LibraryScreeningResource(ActivityResource):
         ]    
 
     def build_schema(self):
-        return ApiResource.build_schema(self)
+        return DbApiResource.build_schema(self)
 
     def get_query(self, param_hash):
         '''  LibraryScreeningResource
@@ -5864,7 +5858,7 @@ class LibraryScreeningResource(ActivityResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
             # create a generator to wrap the cursor and expand the library_plates_screened
             def create_lcp_gen(generator):
@@ -6301,7 +6295,7 @@ class ServiceActivityResource(ActivityResource):
         ]    
 
     def build_schema(self):
-        return ApiResource.build_schema(self)
+        return DbApiResource.build_schema(self)
     
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
@@ -6484,7 +6478,7 @@ class ScreenAuthorization(UserGroupAuthorization):
                 authorized = True
         return authorized
     
-class ScreenResource(ApiResource):
+class ScreenResource(DbApiResource):
     
     class Meta:
 
@@ -7236,7 +7230,7 @@ class ScreenResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
                     
             title_function = None
             if use_titles:
@@ -7313,16 +7307,6 @@ class ScreenResource(ApiResource):
         )
         return screener_roles
     
-    def build_schema(self):
-
-        schema = super(ScreenResource, self).build_schema()
-
-        temp = [ x.screen_type 
-            for x in self.Meta.queryset.distinct('screen_type')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
-        return schema
-
     @transaction.atomic()    
     def delete_obj(self, request, deserialized, **kwargs):
         
@@ -7330,7 +7314,7 @@ class ScreenResource(ApiResource):
         Screen.objects.get(**id_kwargs).delete()
     
     def validate(self, _dict, patch=False, current_object=None):
-        errors = ApiResource.validate(self, _dict, patch=patch)
+        errors = DbApiResource.validate(self, _dict, patch=patch)
         # if not errors:
         #     errors = {}
         #     dped = _dict.get('data_privacy_expiration_date', None)
@@ -7530,7 +7514,7 @@ class StudyResource(ScreenResource):
             
     def build_schema(self):
         # Bypass Screen schema
-        schema = ApiResource.build_schema(self)
+        schema = DbApiResource.build_schema(self)
         logger.debug('schema: %r', schema)
         return schema
 
@@ -7543,7 +7527,7 @@ class StudyResource(ScreenResource):
         return super(StudyResource,self).build_list_response(request, **kwargs)
 
 
-class UserChecklistItemResource(ApiResource):    
+class UserChecklistItemResource(DbApiResource):    
 
     class Meta:
 
@@ -7644,7 +7628,7 @@ class UserChecklistItemResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _su = self.bridge['screensaver_user']
@@ -7825,7 +7809,7 @@ class UserChecklistItemResource(ApiResource):
             raise e
 
 
-class ScreensaverUserResource(ApiResource):    
+class ScreensaverUserResource(DbApiResource):    
 
     class Meta:
 
@@ -8062,7 +8046,7 @@ class ScreensaverUserResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             _su = self.bridge['screensaver_user']
@@ -8199,7 +8183,7 @@ class ScreensaverUserResource(ApiResource):
         # FIXME: this mirrors UserResource.get_id
         # - update the inheritance so that 
         # ScreensaveruserResource extends UserResource
-        id_kwargs = ApiResource.get_id(self, deserialized, **kwargs)
+        id_kwargs = DbApiResource.get_id(self, deserialized, **kwargs)
         if not id_kwargs:
             if deserialized and deserialized.get('ecommons_id', None):
                 id_kwargs = { 'ecommons_id': deserialized['ecommons_id']}
@@ -8249,9 +8233,6 @@ class ScreensaverUserResource(ApiResource):
                     raise ValidationError(errors)
                 try:
                     if username:
-#                         screensaver_user = \
-#                             ScreensaverUser.objects.get(
-#                                 user__username=username)
                         screensaver_user = \
                             ScreensaverUser.objects.get(
                                 username=username)
@@ -8361,7 +8342,7 @@ class ScreensaverUserResource(ApiResource):
             raise e  
 
 
-class NaturalProductReagentResource(ApiResource):
+class NaturalProductReagentResource(DbApiResource):
     
     class Meta:
 
@@ -8421,7 +8402,7 @@ class NaturalProductReagentResource(ApiResource):
         return reagent        
 
 
-class SilencingReagentResource(ApiResource):
+class SilencingReagentResource(DbApiResource):
     
     class Meta:
     
@@ -8679,7 +8660,7 @@ class SilencingReagentResource(ApiResource):
         return gene
         
 
-class SmallMoleculeReagentResource(ApiResource):
+class SmallMoleculeReagentResource(DbApiResource):
         
     class Meta:
 
@@ -8794,7 +8775,7 @@ class SmallMoleculeReagentResource(ApiResource):
         return reagent
 
 
-class ReagentResource(ApiResource):
+class ReagentResource(DbApiResource):
     
     class Meta:
 
@@ -8954,7 +8935,7 @@ class ReagentResource(ApiResource):
         sub_columns['plate_number'] = (literal_column(
             "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
             .label('plate_number'))
-        return ApiResource.build_sqlalchemy_columns(self, 
+        return DbApiResource.build_sqlalchemy_columns(self, 
             fields, base_query_tables=base_query_tables, 
             custom_columns=sub_columns)
         
@@ -9017,7 +8998,7 @@ class ReagentResource(ApiResource):
         rowproxy_generator = None
         if use_vocab:
             rowproxy_generator = \
-                ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
         title_function = None
         if use_titles:
@@ -9120,7 +9101,7 @@ class ReagentResource(ApiResource):
         reagent.save()
         return well
 
-class WellResource(ApiResource):
+class WellResource(DbApiResource):
 
     class Meta:
 
@@ -9361,7 +9342,7 @@ class WellResource(ApiResource):
         # so put is allowed to create, but patch must reference extant reagent 
         # (changes reagent assoc with well)
 
-        # TODO: use patch routine from ApiResource
+        # TODO: use patch routine from DbApiResource
         return self.put_list(request, **kwargs)
     
     @write_authorization
@@ -9563,7 +9544,7 @@ class WellResource(ApiResource):
         return well
     
 
-class LibraryResource(ApiResource):
+class LibraryResource(DbApiResource):
     
     class Meta:
 
@@ -9778,15 +9759,20 @@ class LibraryResource(ApiResource):
             rowproxy_generator = None
             if use_vocab:
                 rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
             # specific setup
                                      
             custom_columns = {
-                'plate_count': literal_column(
+                'copy_plate_count': literal_column(
                     '(select count(distinct(p.plate_id))'
                     '    from plate p join copy c using(copy_id)'
                     '    where c.library_id=library.library_id)'
+                    ).label('plate_count'),
+                'plate_count': literal_column(
+                    '(select count(distinct(w.plate_number))'
+                    '    from well w'
+                    '    where w.library_id=library.library_id)'
                     ).label('plate_count'),
                 'copies': literal_column(
                     "(select array_to_string(array_agg(c1.name),'%s') "
@@ -9802,7 +9788,7 @@ class LibraryResource(ApiResource):
                     '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
                     ).label('copies'),
                 # TODO: copies2 is the same in all respects, except that it is 
-                # used differently in the UI
+                # used differently in the UI - not displayed as a list of links
                 'copies2': literal_column(
                     "(select array_to_string(array_agg(c1.name),'%s') "
                     '    from ( select c.name from copy c '
@@ -9886,61 +9872,6 @@ class LibraryResource(ApiResource):
             .cte('screen_libraries'))
         return screen_libraries
        
-    def build_schema(self):
-
-        schema = cache.get(self._meta.resource_name + ":schema")
-        if not schema:
-            # FIXME: these options should be defined automatically 
-            # from a vocabulary in build_schema
-            schema = super(LibraryResource, self).build_schema()
-            
-            if ('start_plate' in schema['fields'] 
-                    and 'end_plate' in schema['fields']):
-                ranges = (Library.objects.all()
-                    .order_by('start_plate')
-                    .values_list('start_plate', 'end_plate'))
-                plate_ranges = []
-                temp = 0
-                for s, e in ranges:
-                    if temp == 0:
-                        plate_ranges.append(s)
-                    elif s > temp + 1:
-                        plate_ranges.append(temp)
-                        plate_ranges.append(s)
-                    temp = e
-                plate_ranges.append(temp)
-                schema['library_plate_ranges'] = plate_ranges
-                    
-            # # (only run if library fields already initialized)
-            # # Exemplary section - set start/end plate ranges
-            # smr_range = ( 
-            #     Library.objects
-            #         .filter(screen_type='small_molecule')
-            #         .exclude(library_type='natural_products')
-            #         .aggregate(Min('start_plate'),Max('end_plate')) )
-            # maxsmr = smr_range['end_plate__max']      
-            # minsmr = smr_range['start_plate__min']      
-            # rnai_range = ( 
-            #     Library.objects
-            #         .filter(screen_type='rnai')
-            #         .aggregate(Min('start_plate'),Max('end_plate')) )
-            # minrnai = rnai_range['start_plate__min']
-            # maxrnai = rnai_range['end_plate__max']
-            # schema['library_plate_range'] = [minsmr,maxsmr,minrnai,maxrnai]
-            # schema['fields']['start_plate']['range'] \
-            #    = [minsmr,maxsmr,minrnai,maxrnai]
-            # schema['fields']['end_plate']['range'] = [maxsmr,minrnai,maxrnai]
-            
-            temp = [ 
-                x.library_type 
-                for x in self.Meta.queryset.distinct('library_type')]
-            schema['extraSelectorOptions'] = { 
-                'label': 'Type',
-                'searchColumn': 'library_type',
-                'options': temp }
-        return schema
-    
-
     @transaction.atomic()    
     def delete_obj(self, request, deserialized, **kwargs):
         
@@ -9949,7 +9880,7 @@ class LibraryResource(ApiResource):
     
     @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
-        
+        logger.info('patch library: %r', deserialized)
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
         # create/update the library
         create = False
@@ -10015,6 +9946,68 @@ class LibraryResource(ApiResource):
             raise e  
     
 
+class ResourceResource(reports.api.ResourceResource):
+    '''
+    Motivation: to extend the reports.ResourceResource with "db" specific
+    extensions.
+    '''
+    
+    def _build_resources(self):
+        
+        resources = None
+        if self.use_cache:
+            resources = cache.get('dbresources')
+        if not resources:
+
+            resources = super(ResourceResource, self)._build_resources(use_cache=False)
+        
+            for key,resource in resources.items():
+                self.extend_resource_specific_data(resource)
+                
+            cache.set('dbresources', resources)
+    
+        return resources
+    
+    def extend_resource_specific_data(self, resource_data):
+        
+        key = resource_data['key']
+        if key == 'library':
+            ranges = (Library.objects.all()
+                .order_by('start_plate')
+                .values_list('start_plate', 'end_plate'))
+            plate_ranges = []
+            temp = 0
+            for s, e in ranges:
+                if temp == 0:
+                    plate_ranges.append(s)
+                if s > temp+1:
+                    plate_ranges.append(temp)
+                    plate_ranges.append(s)
+                temp = e
+            plate_ranges.append(temp)
+            resource_data['library_plate_ranges'] = plate_ranges
+ 
+            temp = [ 
+                x.library_type 
+                for x in Library.objects.all().distinct('library_type')]
+            resource_data['extraSelectorOptions'] = { 
+                'label': 'Type',
+                'searchColumn': 'library_type',
+                'options': temp }
+        elif key == 'librarycopyplate':
+            temp = [ x for x in 
+                Plate.objects.all().distinct('status')
+                    .values_list('status', flat=True)]
+            resource_data['extraSelectorOptions'] = { 
+                'label': 'Type', 'searchColumn': 'status', 'options': temp }
+        
+        elif key == 'screen':
+            temp = [ x.screen_type 
+                for x in Screen.objects.all().distinct('screen_type')]
+            resource_data['extraSelectorOptions'] = { 
+                'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
+            
+            
 # class BasicAuthenticationAjaxBrowsers(BasicAuthentication):
 #     '''
 #     Solves the issue:

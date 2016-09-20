@@ -16,6 +16,8 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CherryPickLiquidTransferResource, CherryPickScreeningResource, \
     UserAgreementResource, PublicationResource,PlateLocationResource
 
+import db.api
+
 
 v1_api = Api(api_name='v1')
 v1_api.register(ScreensaverUserResource())
@@ -48,6 +50,8 @@ v1_api.register(CherryPickLiquidTransferResource())
 v1_api.register(CherryPickScreeningResource())
 v1_api.register(UserAgreementResource())
 v1_api.register(PublicationResource())
+v1_api.register(db.api.ResourceResource())
+
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
     url(r'^smiles_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),

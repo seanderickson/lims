@@ -833,7 +833,7 @@ define([
                 type: 'Min',
                 message: 'must be >= ' + fi.min
             };
-            if (value <= fi.min ) return err;
+            if (value < fi.min ) return err;
           };
           validators.unshift(validator);
         }
@@ -1111,13 +1111,31 @@ define([
       var headers = options['headers'] = {};
       
       $('.has-error').removeClass('has-error');
+      $('[data-error]').empty();
       errors = this.commit({ validate: true });
       if(errors){
         console.log('errors in form:', errors);
         _.each(_.keys(errors), function(key){
           var error = errors[key];
-          $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-          console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
+          if (_.has(self.fields, key)){
+            $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+            console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
+          } else if (key=='_others') {
+            var other_errors = errors[key];
+            _.each(other_errors, function(error_obj){
+              console.log('other error', error_obj);
+              _.each(_.keys(error_obj), function(other_key){
+                other_error = error_obj[other_key];
+                if (_.has(self.fields, other_key)){
+                  $('[key="form-group-'+other_key +'"')
+                    .find('[data-error]').append('<br/>' + other_error);
+                } else {
+                  self.$el.append(
+                  '<div data-error class="text-danger">' + other_key + ': ' + other_error + '</div>');
+                }
+              });
+            });
+          }
         });
         return;
       }

@@ -350,7 +350,7 @@ class ApiResource(SqlAlchemyResource):
 
     def build_schema(self):
         logger.debug('build schema for: %r', self._meta.resource_name)
-        return self.get_resource_resource().get_resource_schema(
+        return self.get_resource_resource()._get_resource_schema(
             self._meta.resource_name)
 
     def get_resource_uri(self, deserialized, **kwargs):
@@ -1771,22 +1771,13 @@ class FieldResource(ApiResource):
                 scopes = [('fields.field',)]
         else:
             scopes = [(scope,)]
-        fields = []
-        for (scope,) in scopes:
-            field_hash = deepcopy(
-                MetaHash.objects.get_and_parse(
-                    scope=scope, field_definition_scope='fields.field', 
-                    clear=True))
-            fields.extend(field_hash.values())
+    
+        fields = self._build_fields(scopes)
             
         if key_in:
             keys_in = key_in.split(LIST_DELIMITER_URL_PARAM)
             fields = [x for x in fields if x['key'] in keys_in ]
             
-        for field in fields:
-            field['1'] = field['scope']
-            field['2'] = field['key']
-        
         response_hash = None
         if scope and key:
             for field in fields:
@@ -1797,11 +1788,6 @@ class FieldResource(ApiResource):
                 logger.info('Field %s/%s not found' % (scope,key))
                 raise Http404('Field %s/%s not found' % (scope,key))
         else:    
-            decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields]
-            decorated.sort(key=itemgetter(0,1,2))
-            fields = [field for scope,ordinal,key,field in decorated]
-            # TODO: generalized pagination, sort, filter
-            
             meta = { 'limit': 0, 'offset': 0, 'total_count': len(fields) }
             if kwargs.get('meta', None):
                 temp = kwargs['meta']
@@ -1816,6 +1802,35 @@ class FieldResource(ApiResource):
         logger.debug('build response...')
         return self.build_response(request, response_hash, **kwargs)
 
+    def _build_fields(self, scopes=None):
+        ''' Internal callers
+        '''
+        if not scopes:
+            scopes = MetaHash.objects.all().filter(
+                scope__icontains='fields.').values_list('scope').distinct()
+            if not scopes.exists():
+                # bootstrap case
+                scopes = [('fields.field',)]
+
+        fields = []
+        for (scope,) in scopes:
+            field_hash = deepcopy(
+                MetaHash.objects.get_and_parse(
+                    scope=scope, field_definition_scope='fields.field', 
+                    clear=True))
+            fields.extend(field_hash.values())
+            
+        for field in fields:
+            field['1'] = field['scope']
+            field['2'] = field['key']
+        
+        decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields]
+        decorated.sort(key=itemgetter(0,1,2))
+        fields = [field for scope,ordinal,key,field in decorated]
+
+        return fields
+    
+    
     @write_authorization
     @un_cache        
     def delete_list(self, request, **kwargs):
@@ -1931,65 +1946,41 @@ class ResourceResource(ApiResource):
     def clear_cache(self):
         ApiResource.clear_cache(self)
         cache.delete('resources');
-        cache.delete('resource_listing')
+#         cache.delete('resource_listing')
         
-    def _get_list_response(self, request, key=None, **kwargs):
+    def _get_resource_schema(self,key):
+        ''' For internal callers
+        '''
+        resources = self._build_resources()
         
-        cached = cache.get('resources')
-        if not cached  or not self.use_cache:
-            logger.debug('not cached, get %r, %r', key, kwargs)
-            resources = super(ResourceResource,self)._get_list_response(
-                request, **kwargs)
-        else: 
-            logger.debug('using cached resources...')
-            resources = cached['objects']
-
-        if key:
-            return [resource for resource in resources if resource['key']==key]
-        else:
-            return resources
+        if key not in resources:
+            raise BadRequest('Resource is not initialized: %r', key)
+        
+        
+        return resources[key]
 
     @read_authorization
     def get_list(self,request,**kwargs):
+        '''
+        For external callers - Dispatch GET list requests
+        '''
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        # return self.build_list_response(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
          
-        # FIXME - need to check and cache on kwargs
-        # Ok for the time being, because vocabularies/resources are not filtered
-        cached_content = cache.get('resources')
-        if not cached_content or not self.use_cache:
-            response = self.build_list_response(
-                request, format='json', meta=kwargs.get('meta', None))
-            cached_content = self._meta.serializer.from_json(
-                self._meta.serializer.get_content(response))
-            cache.set('resources', cached_content)
-        else:
-            logger.debug('using cached resources...')
-        if kwargs.get('meta', None):
-            meta = kwargs.get('meta')
-            meta.update(cached_content.get('meta', {}))
-            cached_content['meta'] = meta
-        return self.build_response(request, cached_content, **kwargs)
-        
-    def get_resource_schema(self,key):
+    def get_detail(self, request, **kwargs):
+        '''
+        For external callers - Dispatch GET detail
+        '''
 
-        # get the resource fields
-        request = HttpRequest()
-        class User:
-            @staticmethod
-            def is_superuser():
-                return true
-        request.user = User
-        temp = self._get_list_response(request=request, key=key)
-        assert len(temp)< 2,( 
-            'ResourceResource returns multiple objects for key: %r, %r' 
-            %(key,temp))
-        assert len(temp)==1,( 
-            'ResourceResource returns no objects for key: %r' %key )
-        return temp[0]
-    
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+
     def build_schema(self):
+        '''
+        Override resource method - bootstrap the "Resource" resource schema
+        '''
 
         # get the resource fields
         request = HttpRequest()
@@ -2022,12 +2013,6 @@ class ResourceResource(ApiResource):
         
         return resource_schema
     
-    def get_detail(self, request, **kwargs):
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail']=True
-        return self.build_list_response(request, **kwargs)
-
     @read_authorization
     def build_list_response(self,request, **kwargs):
 
@@ -2040,79 +2025,11 @@ class ResourceResource(ApiResource):
             use_vocab = False
             use_titles = False
         
-        # TODO: CACHE
-        
-        resources = deepcopy(
-            MetaHash.objects.get_and_parse(
-                scope='resource', field_definition_scope='fields.resource', 
-                clear=True))
-        # if there are no resources, use self to bootstrap
-        if not resources:
-            resource = self.build_schema()
-            resources = { resource['key']: resource }
-            
-        # get all of the fields
-        all_fields = self.get_field_resource()._get_list_response(
-            request=request)
-        field_hash = {}
-        # build a hash out of the fields
-        for field in all_fields:
-            _fields = field_hash.get(field['scope'],{})
-            _fields[field['key']]=field
-            field_hash[field['scope']] = _fields
-        
-        # for each resource, pull in the fields of the supertype resource
-        # todo recursion
-        for key,resource in resources.items():
-            logger.debug('resource: %r', resource)
-            resource['1'] = resource['key']
-            resource['fields'] = field_hash.get('fields.%s'%key, {})
-            resource['resource_uri'] = '/'.join([
-                self._meta.resource_name,resource['key']
-            ])
-            
-            # set the field['table'] 
-            for field in resource['fields'].values():
-                if not field.get('table',None):
-                    field['table'] = resource.get('table', None)
-            supertype = resource.get('supertype', None)
-            if supertype:
-                if supertype in resources:
-                    logger.debug('find the supertype fields: %r for %r', 
-                        supertype, key)
-                    supertype_fields = field_hash.get(
-                        'fields.%s' % supertype, None)
-                    if not supertype_fields:
-                        # ok, if the supertype is not built yet
-                        logger.warning('no fields for supertype: %r, %r', 
-                            supertype, field_hash.keys())
-                    else:
-                        # explicitly copy out all supertype fields, then update 
-                        # with fields from the current resource
-                        inherited_fields = {}
-                        for field in supertype_fields.values():
-                            inherited_field = deepcopy(field)
-                            inherited_field['scope'] = \
-                                'fields.%s' % resource['key']
-                            if not inherited_field.get('table',None):
-                                inherited_field['table'] = \
-                                    resources[supertype].get('table', None)
-                            
-                            inherited_fields[inherited_field['key']] = \
-                                inherited_field
-                        inherited_fields.update(resource['fields'])
-                        resource['fields'] = inherited_fields
-                else:
-                    logger.error(
-                        'supertype: %r, not found in resources: %r', 
-                        supertype, resources.keys())
-            
-            resource.get('content_types',[]).append('csv')
-        # TODO: extend with class specific implementations
-            
+        resources = self._build_resources()
+                    
         # TODO: pagination, sort, filter
-       
-        # only filter by key and scope at this point
+
+        # Only filter by key and scope at this point
         key = param_hash.get('key', None)
         if key:
             if key not in resources:
@@ -2122,12 +2039,14 @@ class ResourceResource(ApiResource):
             values = resources.values()
             values.sort(key=lambda resource: resource['key'])
             meta = { 'limit': 0, 'offset': 0, 'total_count': len(values) }
+
             if kwargs.get('meta', None):
                 temp = kwargs['meta']
                 temp.update(meta)
                 meta = temp
                 logger.info('meta: %r', meta)
             logger.debug('meta: %r', meta)
+            
             response_hash = { 
                 'meta': meta, 
                 self._meta.collection_name: values
@@ -2135,6 +2054,86 @@ class ResourceResource(ApiResource):
         
         return self.build_response(request, response_hash, **kwargs)
 
+    def _build_resources(self, use_cache=True):
+        '''
+        Internal callers - return the resource keyed hash, from cache if possible
+        '''
+        
+        resources = None
+        if use_cache and self.use_cache:
+            resources = cache.get('resources')
+        if not resources:
+        
+            resources = deepcopy(
+                MetaHash.objects.get_and_parse(
+                    scope='resource', field_definition_scope='fields.resource', 
+                    clear=True))
+            if not resources:
+                # If there are no resources, use self to bootstrap
+                resource = self.build_schema()
+                resources = { resource['key']: resource }
+                
+            # get all of the fields
+            all_fields = self.get_field_resource()._build_fields()
+            field_hash = {}
+            # build a hash out of the fields
+            for field in all_fields:
+                _fields = field_hash.get(field['scope'],{})
+                _fields[field['key']]=field
+                field_hash[field['scope']] = _fields
+            
+            # for each resource, pull in the fields of the supertype resource
+            # todo recursion
+            for key,resource in resources.items():
+                logger.debug('resource: %r', resource)
+                resource['1'] = resource['key']
+                resource['fields'] = field_hash.get('fields.%s'%key, {})
+                resource['resource_uri'] = '/'.join([
+                    self._meta.resource_name,resource['key']
+                ])
+                
+                # set the field['table'] 
+                for field in resource['fields'].values():
+                    if not field.get('table',None):
+                        field['table'] = resource.get('table', None)
+                supertype = resource.get('supertype', None)
+                if supertype:
+                    if supertype in resources:
+                        logger.debug('find the supertype fields: %r for %r', 
+                            supertype, key)
+                        supertype_fields = field_hash.get(
+                            'fields.%s' % supertype, None)
+                        if not supertype_fields:
+                            # ok, if the supertype is not built yet
+                            logger.warning('no fields for supertype: %r, %r', 
+                                supertype, field_hash.keys())
+                        else:
+                            # explicitly copy out all supertype fields, then update 
+                            # with fields from the current resource
+                            inherited_fields = {}
+                            for field in supertype_fields.values():
+                                inherited_field = deepcopy(field)
+                                inherited_field['scope'] = \
+                                    'fields.%s' % resource['key']
+                                if not inherited_field.get('table',None):
+                                    inherited_field['table'] = \
+                                        resources[supertype].get('table', None)
+                                
+                                inherited_fields[inherited_field['key']] = \
+                                    inherited_field
+                            inherited_fields.update(resource['fields'])
+                            resource['fields'] = inherited_fields
+                    else:
+                        logger.error(
+                            'supertype: %r, not found in resources: %r', 
+                            supertype, resources.keys())
+                
+                resource.get('content_types',[]).append('csv')
+        if use_cache and self.use_cache:
+            cache.set('resources', resources)
+
+        return resources
+            
     @write_authorization
     @un_cache        
     def delete_list(self, request, **kwargs):

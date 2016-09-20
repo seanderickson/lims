@@ -95,31 +95,19 @@ function _debug {
 }
 
 function gitpull {
-  # git fetch --all
-  # git pull
-  # git merge seanderickson/master
   
   _debug -n "pulling branch $BRANCH from $REMOTE... "
-  #  cp -a $SCRIPTPATH $SAVEPATH
   git fetch $REMOTE >>"$LOGFILE" 2>&1 || error "git-fetch failed: $?"
   git checkout $BRANCH >>"$LOGFILE" 2>&1 || error "git-checkout failed: $?"
-  
-  # reset the api_init_actions file, modified during migration
-  git checkout ./db/static/api_init/api_init_actions.csv
 
-  #  git checkout -- $SCRIPTPATH >>"$LOGFILE" 2>&1 || error "git-checkout $SCRIPTPATH failed: $?"
-
+  # reset api_init files that may have been modified during the previous migration
   if [[ -e db/static/api_init/vocabulary_data_generated.csv ]]; then
-    mv db/static/api_init/vocabulary_data_generated.csv db/static/api_init/vocabulary_data_generated.old.csv
+    # save the old version, might be useful
+    mv db/static/api_init/vocabulary_data_generated.csv db/static/api_init/vocabulary_data_generated.old
   fi
-  
-  mkdir bak
-  mv db/static/api_init/vocabulary_* bak  
-  
-  git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
-
-  #  mv -f $SAVEPATH $SCRIPTPATH
-  #  update_deploy_info "$STATUS"
+  # Forgo the heavy-handed approach  
+  #  git reset --hard $REMOTE/$BRANCH >> "$LOGFILE" 2>&1 || error "git hard reset failed: $?"
+  git checkout $REMOTE/$BRANCH ./db/static/api_init/*.csv
 
   _debug 'done'
   return 0

@@ -156,8 +156,9 @@ define([
       
       var view = new DetailLayout({ 
         model: this.model,
-        uriStack: delegateStack, 
-        buttons: ['download', 'history'] });
+        uriStack: delegateStack
+//        buttons: ['download', 'history'] 
+      });
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
     },

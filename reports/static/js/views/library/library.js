@@ -85,8 +85,9 @@ define([
         url: url,    
         data: data,
         cache: false,
-        contentType: false,
-        processData: false,
+        contentType: false, // defaults to multipart/form-data when using formdata
+        dataType: 'json', // what is expected back from the server
+        processData: false, // do not process data being sent
         type: 'POST',
         headers: headers
       })

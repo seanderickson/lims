@@ -8,10 +8,11 @@ define([
   'views/list2',
   'views/generic_detail_layout',
   'views/library/library',
+  'utils/uploadDataForm',
   'templates/genericResource.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, layout) {
+         LibraryView, UploadDataForm, layout) {
   
   var LibraryCopyWellView = Backbone.Layout.extend({
     
@@ -22,6 +23,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.library = args.library;
       this.copy = args.copy;
       this.consumedStack = [];
+      this._classname = 'libraryCopyWells';
       _.bindAll(this, 'showDetail');
     },
     
@@ -79,16 +81,44 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var self = this;
       var uriStack = _.clone(this.uriStack);
 
+      var extraControls = [];
+      
+      if (appModel.hasPermission(resource.key, 'write')){
+
+        var showUploadButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="patch_resource" href="#">',
+            'Upload data</a>'
+          ].join(''));   
+        extraControls.push(showUploadButton);
+        
+        showUploadButton.click(function(e){
+          e.preventDefault();
+          UploadDataForm.uploadAttachedFileDialog(
+            collection.url, collection, resource);
+        });
+        extraControls.push(showUploadButton);
+      }else {
+        var volume_field = _.result(resource['fields'], 'volume', null);
+        if (volume_field) {
+          volume_field['editability'] = [];
+        }
+        
+      }
+      
       var showSaveButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="save_button" href="#">',
+          'style="display: none; " ',
+          'role="button" id="save_button_wells" href="#">',
           'save</a>'
         ].join(''));
+      extraControls.push(showSaveButton);
       var showHistoryButton = $([
       '<a class="btn btn-default btn-sm pull-down" ',
-        'role="button" id="showHistoryButton" href="#">',
+        'role="button" id="showHistoryButton_wells" href="#">',
         'History</a>'
       ].join(''));
+      extraControls.push(showHistoryButton);
       showHistoryButton.click(function(e){
         e.preventDefault();
         var newUriStack = ['apilog','order','-date_time', 'search'];
@@ -130,11 +160,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             }
             model.url = url;
             changedCollection.add(model);
+            showSaveButton.show();
             appModel.setPagePending();
           });
         },
       });
-
+      CopyWellModel._label = 'CopyWellModel';
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
@@ -147,13 +178,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
 
       var view = new ListView({ 
+        _name: 'WellsListView',
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
         url: url,
         collection: collection,
-        extraControls: [showSaveButton, showHistoryButton]
+        extraControls: extraControls
       });
+      view._instanceName = 'WellsListView_instance';
       showSaveButton.click(function(e){
         
         e.preventDefault();

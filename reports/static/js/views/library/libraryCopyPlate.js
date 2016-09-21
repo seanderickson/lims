@@ -73,7 +73,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view = new DetailLayout({ 
         model: model, 
         uriStack: uriStack,
-//        buttons: ['download','history'],
         title: 'Plate ' + model.get('plate_number')
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -193,6 +192,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           key: 'comments',
           validators: ['required'],
           type: 'TextArea',
+          editorClass: 'input-full',
           template: fieldTemplate
         };
         
@@ -364,6 +364,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           key: 'comments',
           validators: ['required'],
           type: 'TextArea',
+          editorClass: 'input-full',
           template: fieldTemplate
         };
         var FormFields = Backbone.Model.extend({

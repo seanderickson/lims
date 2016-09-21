@@ -524,25 +524,26 @@ var MyModel = Iccbl.MyModel = Backbone.Model.extend({
   },
 });
 
-
 var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
   initialize: function (options) {
     
     Backgrid.Cell.prototype.initialize.apply(this, arguments);
     
-    //this.listenTo(this.model, "backgrid:edited", this.renderEdited);
-    
-  },
-
-  /**
-     Put an `edited` CSS class on the table cell.
-  renderEdited: function (model, column) {
-    if (column == null || column.get("name") == this.column.get("name")) {
-      this.$el.addClass("edited");
-    }
+    var self = this;
+    this.model.on('change:'+this.column.get("name") , function(){
+      self.$el.addClass('edited');
+    });
   }
-  */
+});
 
+var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
+  initialize: function(){
+    StringCell.__super__.initialize.apply(this, arguments);
+    var self = this;
+    this.model.on('change:'+this.column.get("name") , function(){
+      self.$el.addClass('edited');
+    });
+  }  
 });
 
 // TODO: redo the link cell like the UriListCell
@@ -705,21 +706,17 @@ var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
     
     NumberCell.__super__.initialize.apply(this, arguments);
     
-    //this.listenTo(this.model, "backgrid:edited", this.renderEdited);
+    var self = this;
+    var model = this.model;
+    var column = this.column;
+    var currVal = model.get(column.get("name"));
+    this.model.on('change:'+this.column.get("name") , function(){
+      if (parseFloat(currVal) !== parseFloat(model.get(column.get("name")))) {
+        self.$el.addClass('edited');
+      }
+    });
     
-  },
-
-  /**
-     Put an `edited` CSS class on the table cell.
-     TODO: conversion using fromRaw and toRaw causes all edit operations to 
-     trigger a backgrid:edited signal; so an equivalency check must be created.
-  renderEdited: function (model, column) {
-    if (column == null || column.get("name") == this.column.get("name")) {
-      this.$el.addClass("edited");
-    }
   }
-  */
-
 });
 
 var DecimalFormatter = Iccbl.DecimalFormatter = function () {
@@ -803,8 +800,7 @@ _.extend(SIUnitsFormatter.prototype, {
 
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.
-   * 
-   * - fromRaw parses the input (number) into a string value.
+   * Takes a raw value from a model and returns an optionally formatted string.
    * 
    * NOTE: precision is lost; input string values are converted to floating 
    * point numbers.
@@ -814,6 +810,9 @@ _.extend(SIUnitsFormatter.prototype, {
    * NumberFormatter#fromRaw, then finally append `symbol` to the end.
    */
   fromRaw: function (number, model) {
+
+    if (_.isNull(number) || _.isUndefined(number)) return '';
+
     return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
   },
 
@@ -824,12 +823,6 @@ _.extend(SIUnitsFormatter.prototype, {
    */
   getUnit: function(rawNumber, multiplier, symbol, decimals) {
      
-    if(_.isUndefined(rawNumber)){
-      return '';
-    }
-    if(_.isNull(rawNumber)){
-      return '';
-    }
     if(!_.isNumber(rawNumber)){
       try{
         number = parseFloat(rawNumber);
@@ -859,7 +852,7 @@ _.extend(SIUnitsFormatter.prototype, {
       }
     }
 
-    if(multiplier >= 1){
+    if(multiplier > 1){
       number = number * multiplier;
     }else{
       console.log("Error, DecimalCell multiplier < 1: " + multiplier);
@@ -909,58 +902,74 @@ _.extend(SIUnitsFormatter.prototype, {
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.
    * 
-   * - toRaw parses the formattedValue (string) into a number value.
+   * Takes a formatted string, usually from user input, and returns a
+   * number for persistence in the model.
    * 
-   * NOTE: precision is lost; NumberFormatter converts string values to number values.
+   * NOTE: precision is lost with zero padding; 
+   * NumberFormatter converts string values to number values.
    */
   toRaw: function (formattedValue, model) {
     var self = this;
-    var tokens = formattedValue.split(' ');
-    if (tokens && tokens[0] && tokens[1] ) {
-      
-      var rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
-      if (_.isUndefined(rawValue)) return rawValue;
+    var unit = '';
+    var tokens;
+    var rawValue, scaledRawValue;
+    var unitMultiplier;
+    
+    if (formattedValue === '') return null;
 
-      var originalPrecision = 0;
-      if (tokens[0].indexOf('.')>-1){
-        originalPrecision = (tokens[0] + "").split(".")[1].length;
-      }
-      
-      var temp = rawValue / this.multiplier;
-      var unit = tokens[1].trim().charAt(0);
-      var pairUnit = _.find(self.siunits, function(pair){
-        if(pair[0] == unit) return true;
-      });
-      if (_.isUndefined(pairUnit)){
-        return "" + temp;
-      }
-      
-      temp = temp*pairUnit[1];
-      
-      var allowedPrecision = this.decimals;
-      var desiredPrecision = originalPrecision;
-      if (pairUnit[1] < 1){
-        allowedPrecision += (pairUnit[1] + "").split(".")[1].length;
-        desiredPrecision += (pairUnit[1] + "").split(".")[1].length;
-      }
-      temp = temp.toFixed(allowedPrecision)*1;
-      
-      var newPrecision = 0;
-      if ( (temp+"").indexOf(".") > -1){
-        newPrecision = (temp+"").split(".")[1].length;
-      }
-      if (newPrecision < desiredPrecision){
-        if (desiredPrecision < allowedPrecision){
-          temp = temp.toFixed(desiredPrecision);
-        }else{
-          temp = temp.toFixed(allowedPrecision);
-        }
-      }
-      return "" + temp;
-      
-    }else{
-      console.log('error, number of tokens wrong:' + tokens );
+    tokens = formattedValue.split(' ');
+
+    rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
+
+    if (_.isUndefined(rawValue)) return rawValue;
+
+    if (tokens.length == 2 ) {
+      unit = tokens[1].trim().charAt(0);
     }
+      
+    var pairUnit = _.find(self.siunits, function(pair){
+      return pair[0] == unit;
+    });
+    if (_.isUndefined(pairUnit)){
+      console.log('unknown unit: ' + unit);
+      // FIXME: indicate error to the user
+      return null;
+    }
+    unitMultiplier = pairUnit[1];
+    
+    var originalPrecision = 0;
+    if (tokens[0].indexOf('.')>-1){
+      originalPrecision = (tokens[0] + "").split(".")[1].length;
+    }
+    
+    // use the multiplier to scale the raw value
+    newRawValue = rawValue / this.multiplier;
+    // use the SIUnit to scale the raw value
+    newRawValue= rawValue*unitMultiplier;
+    
+    // Truncate or pad the precision to the decimal setting
+    var allowedPrecision = this.decimals;
+    var desiredPrecision = originalPrecision;
+    if (unitMultiplier < 1){
+      allowedPrecision += (unitMultiplier + "").split(".")[1].length;
+      desiredPrecision += (unitMultiplier + "").split(".")[1].length;
+    }
+    newRawValue = newRawValue.toFixed(allowedPrecision)*1;
+    
+    var newPrecision = 0;
+    if ( (newRawValue+"").indexOf(".") > -1){
+      newPrecision = (newRawValue+"").split(".")[1].length;
+    }
+    if (newPrecision < desiredPrecision){
+      if (desiredPrecision < allowedPrecision){
+        newRawValue = newRawValue.toFixed(desiredPrecision);
+      }else{
+        newRawValue = newRawValue.toFixed(allowedPrecision);
+      }
+    }
+    
+    // Convert to string to finalize precision with subsequent serialization
+    return "" + newRawValue;
   },
  
 });  
@@ -3784,6 +3793,8 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
   
 });
 
+
+
 /**
  * Return an array for backgrid column descriptors.
  * 
@@ -3810,7 +3821,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
   var cell_options = prop.display_options || {};
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
-  var backgridCellType = 'string';
+  var backgridCellType = StringCell;
   var typeMap = {
     'date': Iccbl.DateCell,
     'link': Iccbl.LinkCell,

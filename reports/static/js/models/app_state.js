@@ -693,7 +693,7 @@ define([
       console.log('getResources from the server...')
       var self = this;
       // Retrieve the resource definitions from the server
-      var resourceUrl = self.reportsApiUri + '/resource'
+      var resourceUrl = self.dbApiUri + '/resource'
       
       Iccbl.getCollectionOnClient(resourceUrl, function(collection){
         
@@ -1163,9 +1163,9 @@ define([
          "</form>"];
       var altFieldTemplate =  _.template('\
         <div class="form-group" > \
-            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
-            <div class="col-sm-10" >\
-              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
+            <label class="control-label" for="<%= editorId %>"><%= title %></label>\
+            <div class="" >\
+              <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
               <div data-error class="text-danger" ></div>\
               <div><%= help %></div>\
             </div> \
@@ -1178,6 +1178,7 @@ define([
             title: 'Comments',
             key: 'comments',
             type: 'TextArea',
+            editorClass: 'input-full',
             validators: ['required'], 
             template: altFieldTemplate
           }
@@ -1246,6 +1247,7 @@ define([
       formSchema['comments'] = {
         title: 'Comments',
         key: 'comments',
+        editorClass: 'col-xs-12',
         validators: ['required'],
         type: 'TextArea',
         template: self._field_template

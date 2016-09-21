@@ -1152,6 +1152,7 @@ define([
         title: 'Comments',
         key: 'comments',
         validators: ['required'],
+        editorClass: 'input-full',
         type: 'TextArea',
         template: fieldTemplate
       };

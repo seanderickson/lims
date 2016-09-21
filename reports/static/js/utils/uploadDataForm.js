@@ -59,6 +59,7 @@ function($, _, Iccbl, appModel, EditView) {
         key: 'comments',
         validators: ['required'],
         type: 'TextArea',
+        editorClass: 'input-full',
         template: fieldTemplate
       };
 

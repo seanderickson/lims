@@ -517,7 +517,12 @@ class ApiResource(SqlAlchemyResource):
             }
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
-                    
+
+        if len(deserialized) == 1 or isinstance(deserialized, dict):
+            # send to patch detail to bypass parent log creation
+            kwargs['data'] = deserialized[0]
+            return self.patch_detail(request, **kwargs)
+        
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
@@ -585,8 +590,11 @@ class ApiResource(SqlAlchemyResource):
     @write_authorization
     @un_cache        
     def put_list(self,request, **kwargs):
+
         # TODO: enforce a policy that either objects are patched or deleted
-        #         raise NotImplementedError('put_list must be implemented')
+        # and then posted/patched
+        raise NotImplementedError('put_detail must be implemented')
+
             
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
@@ -600,6 +608,11 @@ class ApiResource(SqlAlchemyResource):
 
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
+        
+        if len(deserialized) == 1 or isinstance(deserialized, dict):
+            # send to put detail to bypass parent log creation
+            kwargs['data'] = deserialized[0]
+            return self.put_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
@@ -705,7 +718,8 @@ class ApiResource(SqlAlchemyResource):
                 request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
         
         if len(deserialized) == 1 or isinstance(deserialized, dict):
-            # post_detail
+            # send to post detail to bypass parent log creation
+            kwargs['data'] = deserialized[0]
             return self.post_detail(request, **kwargs)
 
         # Limit the potential candidates for logging to found id_kwargs
@@ -792,7 +806,16 @@ class ApiResource(SqlAlchemyResource):
         
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
+
+        kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         original_data = None
+        if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
+            # A full id exists, query for the existing state
+            try:
+                original_data = self._get_detail_response(request,**kwargs_for_log)
+            except Exception, e: 
+                logger.exception('exception when querying for existing obj: %s', 
+                    kwargs_for_log)
         try:
             log = self.make_log(request)
             log.save()
@@ -1497,7 +1520,7 @@ class ApiLogResource(ApiResource):
                 build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -1561,9 +1584,8 @@ class ApiLogResource(ApiResource):
             
             title_function = None
             
-            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
-                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                    title_function = lambda key: field_hash[key]['title']
+            if use_titles is True:
+                title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -2456,9 +2478,8 @@ class VocabularyResource(ApiResource):
                 stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
-                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                    title_function = lambda key: field_hash[key]['title']
+            if use_titles is True:
+                title_function = lambda key: field_hash[key]['title']
             
             logger.info('vocabularies done, stream response...')
             return self.stream_response_from_statement(
@@ -2833,7 +2854,7 @@ class UserResource(ApiResource):
                     order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -2860,9 +2881,8 @@ class UserResource(ApiResource):
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
-                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                    title_function = lambda key: field_hash[key]['title']
+            if use_titles is True:
+                title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -3445,7 +3465,7 @@ class UserGroupResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
@@ -3614,9 +3634,8 @@ class UserGroupResource(ApiResource):
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
-                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                    title_function = lambda key: field_hash[key]['title']
+            if use_titles is True:
+                title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -3794,7 +3813,7 @@ class PermissionResource(ApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -3848,9 +3867,8 @@ class PermissionResource(ApiResource):
                 stmt,order_clauses,filter_expression )
             
             title_function = None
-            if param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False):
-                if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                    title_function = lambda key: field_hash[key]['title']
+            if use_titles is True:
+                title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 

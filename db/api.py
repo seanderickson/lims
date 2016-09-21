@@ -211,7 +211,7 @@ class PlateLocationResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -382,7 +382,7 @@ class PlateLocationResource(DbApiResource):
                 rowproxy_generator = create_copy_plate_ranges_gen(rowproxy_generator)
 
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_statement(
@@ -754,7 +754,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -851,7 +851,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 stmt = stmt.order_by("plate_number", "copy_name")
 
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_statement(
@@ -1806,7 +1806,7 @@ class ScreenResultResource(DbApiResource):
                     if field.get('value_template', None)}
 
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 def title_function(key):
                     if key in field_hash:
                         return field_hash[key]['title']
@@ -2860,7 +2860,7 @@ class DataColumnResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
@@ -2937,7 +2937,7 @@ class DataColumnResource(DbApiResource):
             stmt = stmt.order_by('ordinal')
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3206,7 +3206,7 @@ class CopyWellResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -3262,7 +3262,7 @@ class CopyWellResource(DbApiResource):
                 stmt = stmt.order_by('copy_name', 'plate_number', 'well_id')
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3439,7 +3439,7 @@ class CherryPickRequestResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -3572,7 +3572,7 @@ class CherryPickRequestResource(DbApiResource):
                     nullslast(desc(column('cherry_pick_request_id'))))
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3692,7 +3692,7 @@ class CherryPickPlateResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -3802,7 +3802,7 @@ class CherryPickPlateResource(DbApiResource):
                     nullslast(desc(column('cherry_pick_request_id'))))
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -3933,7 +3933,7 @@ class LibraryCopyResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -4088,7 +4088,7 @@ class LibraryCopyResource(DbApiResource):
                 stmt = stmt.order_by("library_short_name", "name")
  
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_statement(
@@ -4289,7 +4289,7 @@ class PublicationResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -4326,7 +4326,7 @@ class PublicationResource(DbApiResource):
             stmt = stmt.order_by('-publication_id')
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -4796,7 +4796,7 @@ class AttachedFileResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -4857,7 +4857,7 @@ class AttachedFileResource(DbApiResource):
             # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -5465,12 +5465,12 @@ class ActivityResource(DbApiResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
             
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -5708,12 +5708,12 @@ class CherryPickScreeningResource(ActivityResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
   
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
              
             return self.stream_response_from_statement(
@@ -5856,7 +5856,7 @@ class LibraryScreeningResource(ActivityResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
@@ -5944,7 +5944,7 @@ class LibraryScreeningResource(ActivityResource):
                 rowproxy_generator = create_lcp_gen(rowproxy_generator)
                     
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
              
             return self.stream_response_from_statement(
@@ -7228,12 +7228,12 @@ class ScreenResource(DbApiResource):
             (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
                     
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
              
             return self.stream_response_from_statement(
@@ -7626,7 +7626,7 @@ class UserChecklistItemResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -7723,7 +7723,7 @@ class UserChecklistItemResource(DbApiResource):
                 stmt, order_clauses, filter_expression)
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -8044,7 +8044,7 @@ class ScreensaverUserResource(DbApiResource):
                 order_params, field_hash)
              
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
@@ -8152,7 +8152,7 @@ class ScreensaverUserResource(DbApiResource):
                     dialect=postgresql.dialect(),
                     compile_kwargs={"literal_binds": True})))
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(
@@ -8996,12 +8996,12 @@ class ReagentResource(DbApiResource):
                 library=library)
         
         rowproxy_generator = None
-        if use_vocab:
+        if use_vocab is True:
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
         title_function = None
-        if use_titles:
+        if use_titles is True:
             title_function = lambda key: field_hash[key]['title']
 
         return self.stream_response_from_statement(
@@ -9471,9 +9471,9 @@ class WellResource(DbApiResource):
                     original_data_patches_only.append(item)
                     new_data_patches_only.append(new_item)
         
-        logger.debug('new data: %s', new_data_patches_only)
-        logger.info('patch list done, new data: %d' 
-            % (len(new_data_patches_only)))
+        logger.info('new data: %s', new_data_patches_only)
+        logger.info('patch list done, original_data: %d, new data: %d' 
+            % (len(original_data_patches_only), len(new_data_patches_only)))
         self.log_patches(
             request, original_data_patches_only, new_data_patches_only,
             **kwargs)
@@ -9757,7 +9757,7 @@ class LibraryResource(DbApiResource):
                 order_params, field_hash)
             
             rowproxy_generator = None
-            if use_vocab:
+            if use_vocab is True:
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
@@ -9823,7 +9823,7 @@ class LibraryResource(DbApiResource):
                 stmt, order_clauses, filter_expression)
             
             title_function = None
-            if use_titles:
+            if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_statement(

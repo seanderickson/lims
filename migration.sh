@@ -108,6 +108,7 @@ function gitpull {
   # Forgo the heavy-handed approach  
   #  git reset --hard $REMOTE/$BRANCH >> "$LOGFILE" 2>&1 || error "git hard reset failed: $?"
   git checkout $REMOTE/$BRANCH ./db/static/api_init/*.csv
+  git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
 
   _debug 'done'
   return 0

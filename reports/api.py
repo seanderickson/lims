@@ -919,7 +919,7 @@ class ApiResource(SqlAlchemyResource):
                 
         # TODO: enforce a policy that either objects are patched or deleted
         # and then posted/patched
-        raise NotImplementedError('put_detail must be implemented')
+        # raise NotImplementedError('put_detail must be implemented')
 
         if kwargs.get('data', None):
             # allow for internal data to be passed

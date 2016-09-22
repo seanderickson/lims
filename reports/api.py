@@ -520,7 +520,10 @@ class ApiResource(SqlAlchemyResource):
 
         if len(deserialized) == 1 or isinstance(deserialized, dict):
             # send to patch detail to bypass parent log creation
-            kwargs['data'] = deserialized[0]
+            if not isinstance(deserialized,dict):
+                kwargs['data'] = deserialized[0]
+            else:
+                kwargs['data'] = deserialized
             return self.patch_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
@@ -593,8 +596,7 @@ class ApiResource(SqlAlchemyResource):
 
         # TODO: enforce a policy that either objects are patched or deleted
         # and then posted/patched
-        raise NotImplementedError('put_detail must be implemented')
-
+        # raise NotImplementedError('put_detail must be implemented')
             
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
@@ -611,7 +613,10 @@ class ApiResource(SqlAlchemyResource):
         
         if len(deserialized) == 1 or isinstance(deserialized, dict):
             # send to put detail to bypass parent log creation
-            kwargs['data'] = deserialized[0]
+            if not isinstance(deserialized,dict):
+                kwargs['data'] = deserialized[0]
+            else:
+                kwargs['data'] = deserialized
             return self.put_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
@@ -719,7 +724,10 @@ class ApiResource(SqlAlchemyResource):
         
         if len(deserialized) == 1 or isinstance(deserialized, dict):
             # send to post detail to bypass parent log creation
-            kwargs['data'] = deserialized[0]
+            if not isinstance(deserialized,dict):
+                kwargs['data'] = deserialized[0]
+            else:
+                kwargs['data'] = deserialized
             return self.post_detail(request, **kwargs)
 
         # Limit the potential candidates for logging to found id_kwargs

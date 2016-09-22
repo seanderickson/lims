@@ -518,13 +518,13 @@ class ApiResource(SqlAlchemyResource):
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
 
-        if len(deserialized) == 1 or isinstance(deserialized, dict):
-            # send to patch detail to bypass parent log creation
-            if not isinstance(deserialized,dict):
-                kwargs['data'] = deserialized[0]
-            else:
-                kwargs['data'] = deserialized
-            return self.patch_detail(request, **kwargs)
+#         if len(deserialized) == 1 or isinstance(deserialized, dict):
+#             # send to patch detail to bypass parent log creation
+#             if not isinstance(deserialized,dict):
+#                 kwargs['data'] = deserialized[0]
+#             else:
+#                 kwargs['data'] = deserialized
+#             return self.patch_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
@@ -611,13 +611,14 @@ class ApiResource(SqlAlchemyResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
         
-        if len(deserialized) == 1 or isinstance(deserialized, dict):
-            # send to put detail to bypass parent log creation
-            if not isinstance(deserialized,dict):
-                kwargs['data'] = deserialized[0]
-            else:
-                kwargs['data'] = deserialized
-            return self.put_detail(request, **kwargs)
+        # TODO: put_detail not implemented
+        # if len(deserialized) == 1 or isinstance(deserialized, dict):
+        #     # send to put detail to bypass parent log creation
+        #     if not isinstance(deserialized,dict):
+        #         kwargs['data'] = deserialized[0]
+        #     else:
+        #         kwargs['data'] = deserialized
+        #     return self.put_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
@@ -722,6 +723,7 @@ class ApiResource(SqlAlchemyResource):
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
         
+        # Post list may actually be a post_detail
         if len(deserialized) == 1 or isinstance(deserialized, dict):
             # send to post detail to bypass parent log creation
             if not isinstance(deserialized,dict):
@@ -927,7 +929,7 @@ class ApiResource(SqlAlchemyResource):
                 
         # TODO: enforce a policy that either objects are patched or deleted
         # and then posted/patched
-        # raise NotImplementedError('put_detail must be implemented')
+        raise NotImplementedError('put_detail must be implemented')
 
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -937,8 +939,6 @@ class ApiResource(SqlAlchemyResource):
                 request, format=kwargs.get('format', None))
 
         logger.debug('put detail: %r, %r' % (deserialized,kwargs))
-        
-        
         
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging

@@ -9300,6 +9300,8 @@ class WellResource(DbApiResource):
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])
             data['fields'] = newfields
+            
+            data['content_types'] = sub_data['content_types']
         temp = [ 
             x.title.lower() 
                 for x in 
@@ -9471,7 +9473,7 @@ class WellResource(DbApiResource):
                     original_data_patches_only.append(item)
                     new_data_patches_only.append(new_item)
         
-        logger.info('new data: %s', new_data_patches_only)
+        logger.debug('new data: %s', new_data_patches_only)
         logger.info('patch list done, original_data: %d, new data: %d' 
             % (len(original_data_patches_only), len(new_data_patches_only)))
         self.log_patches(
@@ -9713,6 +9715,7 @@ class LibraryResource(DbApiResource):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
+        logger.info('get_detail: %r', kwargs)
         return self.build_list_response(request, **kwargs)
         
     @read_authorization
@@ -9762,8 +9765,21 @@ class LibraryResource(DbApiResource):
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
             # specific setup
+            
+            _apilog = self.bridge['reports_apilog']
+            _l = self.bridge['library']
                                      
             custom_columns = {
+                'comments': (
+                    select([
+                        func.array_to_string(func.array_agg(
+                            literal_column('comment')), LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(_apilog)
+                        .where(_apilog.c.ref_resource_name=='library')
+                        .where(_apilog.c.key==literal_column('library.short_name'))
+                        .where(_apilog.c.diffs==None)
+                        .where(_apilog.c.comment!=None)
+                        ),
                 'copy_plate_count': literal_column(
                     '(select count(distinct(p.plate_id))'
                     '    from plate p join copy c using(copy_id)'
@@ -9809,7 +9825,6 @@ class LibraryResource(DbApiResource):
                 custom_columns=custom_columns)
 
             # build the query statement
-            _l = self.bridge['library']
 
             j = _l
             if for_screen_id:
@@ -9825,6 +9840,12 @@ class LibraryResource(DbApiResource):
             title_function = None
             if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
+            
+            logger.info(
+                'stmt: %s',
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -9906,33 +9927,34 @@ class LibraryResource(DbApiResource):
             library.save()
 
             # now create the wells
-            plate_size = int(library.plate_size)
-    
-            try:
-                i = 0
-                for plate in range(
-                        int(library.start_plate), int(library.end_plate) + 1):
-                    bulk_create_wells = []
-                    for index in range(0, plate_size):
-                        well = Well()
-                        well.well_name = lims_utils.well_name_from_index(
-                            index, plate_size)
-                        well.well_id = lims_utils.well_id(plate, well.well_name)
-                        well.library = library
-                        well.plate_number = plate
-                        # FIXME: use vocabularies for well type
-                        well.library_well_type = 'undefined'
-                        bulk_create_wells.append(well)
-                        i += 1
-                        if i % 38400 == 0:
-                            logger.info('created %d wells', i)
-                    Well.objects.bulk_create(bulk_create_wells)
-                logger.info(
-                    'created %d wells for library %r, %r',
-                    i, library.short_name, library.library_id)
-            except Exception, e:
-                logger.exception('on library wells create')
-                raise e
+            if create is True:
+                plate_size = int(library.plate_size)
+        
+                try:
+                    i = 0
+                    for plate in range(
+                            int(library.start_plate), int(library.end_plate) + 1):
+                        bulk_create_wells = []
+                        for index in range(0, plate_size):
+                            well = Well()
+                            well.well_name = lims_utils.well_name_from_index(
+                                index, plate_size)
+                            well.well_id = lims_utils.well_id(plate, well.well_name)
+                            well.library = library
+                            well.plate_number = plate
+                            # FIXME: use vocabularies for well type
+                            well.library_well_type = 'undefined'
+                            bulk_create_wells.append(well)
+                            i += 1
+                            if i % 38400 == 0:
+                                logger.info('created %d wells', i)
+                        Well.objects.bulk_create(bulk_create_wells)
+                    logger.info(
+                        'created %d wells for library %r, %r',
+                        i, library.short_name, library.library_id)
+                except Exception, e:
+                    logger.exception('on library wells create')
+                    raise e
 
             logger.info('patch_obj done')
 

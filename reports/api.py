@@ -27,9 +27,7 @@ from django.http.request import HttpRequest
 from django.http.response import HttpResponse, Http404
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects.postgresql import array
-from sqlalchemy.sql import and_, or_, not_ 
-from sqlalchemy.sql import asc, desc
-from sqlalchemy.sql import func
+from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
@@ -518,13 +516,13 @@ class ApiResource(SqlAlchemyResource):
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
 
-#         if len(deserialized) == 1 or isinstance(deserialized, dict):
-#             # send to patch detail to bypass parent log creation
-#             if not isinstance(deserialized,dict):
-#                 kwargs['data'] = deserialized[0]
-#             else:
-#                 kwargs['data'] = deserialized
-#             return self.patch_detail(request, **kwargs)
+        if len(deserialized) == 1 or isinstance(deserialized, dict):
+            # send to patch detail to bypass parent log creation
+            if not isinstance(deserialized,dict):
+                kwargs['data'] = deserialized[0]
+            else:
+                kwargs['data'] = deserialized
+            return self.patch_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
@@ -648,6 +646,8 @@ class ApiResource(SqlAlchemyResource):
 
                 if 'parent_log' not in kwargs:
                     parent_log = self.make_log(request)
+                    parent_log.key = self._meta.resource_name
+                    parent_log.uri = self._meta.resource_name
                     parent_log.save()
                     kwargs['parent_log'] = parent_log
                 
@@ -827,13 +827,16 @@ class ApiResource(SqlAlchemyResource):
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
         try:
-            log = self.make_log(request)
-            log.save()
             obj = self.patch_obj(request, deserialized, **kwargs)
             for id_field in id_attribute:
                 val = getattr(obj, id_field,None)
                 if val:
                     kwargs_for_log['%s' % id_field] = val
+            log = self.make_log(request)
+            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+            log.save()
+            logger.info('log saved: %r', log)
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
@@ -851,10 +854,11 @@ class ApiResource(SqlAlchemyResource):
         # TODO: add "Result" data to meta section, see post_list
         
         if not self._meta.always_return_data:
-            return HttpResponse(status=202)
+            # TODO: add "Result" data to meta section, see post_list
+            return HttpResponse(status=200)
         else:
             response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 201
+            response.status_code = 200
             return response
         
     @write_authorization
@@ -888,23 +892,29 @@ class ApiResource(SqlAlchemyResource):
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
         try:
+            if deserialized:
+                obj = self.patch_obj(request, deserialized, **kwargs)
+                for id_field in id_attribute:
+                    val = getattr(obj, id_field,None)
+                    if val:
+                        kwargs_for_log['%s' % id_field] = val
+            # NOTE: creating a log, even if no data have changed (may be comment only)
             log = self.make_log(request)
+            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
             log.save()
-            obj = self.patch_obj(request, deserialized, **kwargs)
-            for id_field in id_attribute:
-                val = getattr(obj, id_field,None)
-                if val:
-                    kwargs_for_log['%s' % id_field] = val
+            logger.info('log saved: %r', log)
+
+            if deserialized:
+                new_data = self._get_detail_response(request,**kwargs_for_log)
+                log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
+                if log:
+                    log.save()
+
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
 
-        # get new state, for logging
-        try:
-            new_data = self._get_detail_response(request,**kwargs_for_log)
-            log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
-            if log:
-                log.save()
         except Exception, e: 
             logger.exception(
                 'exception when logging: %s', kwargs_for_log)
@@ -912,10 +922,11 @@ class ApiResource(SqlAlchemyResource):
         # TODO: add "Result" data to meta section, see patch_list
         
         if not self._meta.always_return_data:
-            return HttpResponse(status=202)
+            return HttpResponse(status=200)
         else:
+            kwargs_for_log['includes'] = '*'
             response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 201
+            response.status_code = 200
             return response
 
     @write_authorization
@@ -929,6 +940,8 @@ class ApiResource(SqlAlchemyResource):
                 
         # TODO: enforce a policy that either objects are patched or deleted
         # and then posted/patched
+        
+        # TODO: if put_detail is used: rework based on post_detail
         raise NotImplementedError('put_detail must be implemented')
 
         if kwargs.get('data', None):
@@ -982,7 +995,7 @@ class ApiResource(SqlAlchemyResource):
         # TODO: add "Result" data to meta section, see patch_list
         
         if not self._meta.always_return_data:
-            return HttpResponse(status=202)
+            return HttpResponse(status=200)
         else:
             response.status_code = 200
             return response
@@ -1036,7 +1049,6 @@ class ApiResource(SqlAlchemyResource):
         id_attribute = schema['id_attribute']
 
         log = self.make_log(request)
-        log.ref_resource_name = self._meta.resource_name
         log.key = '/'.join([str(original_data[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name,log.key])
     
@@ -1235,8 +1247,7 @@ class ApiResource(SqlAlchemyResource):
             log = self.make_log(request)
 
         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-        logger.debug('id_attribute: %r, key: %r', id_attribute, log.key)
-        log.uri = '/'.join([self._meta.resource_name,log.key])
+        log.uri = '/'.join([log.ref_resource_name,log.key])
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)

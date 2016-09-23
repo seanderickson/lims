@@ -274,6 +274,53 @@ class LibraryResource(DBResourceTestCase):
         fields = specific_schema['fields']
         self.validate_wells(input_data, returned_data, fields)
         
+    def test1a_create_library_comments(self):
+        
+        resource_uri = BASE_URI_DB + '/library'
+        
+        library1 = self.create_library({ 
+            'short_name': 'testlibrary1','start_plate': '1534', 
+            'end_plate': '1534', 'plate_size': '384' })
+        
+        patch_uri = '/'.join([resource_uri,library1['short_name']]) 
+        
+        test_comment = 'Some test comment 123 xyz'
+        
+        header_data = { HEADER_APILOG_COMMENT: test_comment}
+        
+        resp = self.api_client.patch(
+            patch_uri, format='json', #data={ 'objects': [ copywell_input] }, 
+            authentication=self.get_credentials(), **header_data )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patch_response = self.deserialize(resp)
+        
+        self.assertTrue('comments' in patch_response, 'patch_response: %r' % patch_response)
+        self.assertTrue(test_comment in patch_response['comments'], 
+            'test_comment: %r not found in library response obj: %r' % (
+                test_comment, patch_response))
+
+        test_comment2 = 'another test comment...'
+        
+        header_data = { HEADER_APILOG_COMMENT: test_comment2}
+        
+        resp = self.api_client.patch(
+            patch_uri, format='json', #data={ 'objects': [ copywell_input] }, 
+            authentication=self.get_credentials(), **header_data )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patch_response = self.deserialize(resp)
+        
+        self.assertTrue('comments' in patch_response)
+        self.assertTrue(test_comment in patch_response['comments'], 
+            'test_comment: %r not found in library response obj: %r' % (
+                test_comment, patch_response))
+        self.assertTrue(test_comment2 in patch_response['comments'], 
+            'test_comment2: %r not found in library response obj: %r' % (
+                test_comment2, patch_response))
+        
     def validate_wells(self, input_data, output_data, fields):
         ''' Validate that the input well/reagents were created in the output_data'''
         substance_ids = set()
@@ -414,21 +461,22 @@ class LibraryResource(DBResourceTestCase):
         
         patch_uri = '/'.join([resource_uri,copywell_input['well_id']]) 
         resp = self.api_client.patch(
-            patch_uri, format='json', data={ 'objects': [ copywell_input] }, 
+            patch_uri, format='json', data=copywell_input, 
             authentication=self.get_credentials(), **data_for_get )
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
-        self.assertTrue('meta' in patch_response, '%r' % patch_response)
-        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
-        self.assertTrue(patch_response['meta']['Result']['Updated']==1, 
-            'Wrong updated count: %r' % patch_response['meta']['Result']['Updated'])
-
-        self.assertTrue(
-            len(patch_response['objects'])==1,'%r'%patch_response['objects'])
-        new_copywell = patch_response['objects'][0]
+#         self.assertTrue('meta' in patch_response, '%r' % patch_response)
+#         self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
+#         self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
+#         self.assertTrue(patch_response['meta']['Result']['Updated']==1, 
+#             'Wrong updated count: %r' % patch_response['meta']['Result']['Updated'])
+# 
+#         self.assertTrue(
+#             len(patch_response['objects'])==1,'%r'%patch_response['objects'])
+#         new_copywell = patch_response['objects'][0]
+        new_copywell = patch_response
         self.assertTrue(int(new_copywell['adjustments'])==1, 
             'Expected adjustments==1, %r' % new_copywell)
         self.assertEqual(
@@ -2745,6 +2793,7 @@ class ScreenResource(DBResourceTestCase):
             BASE_URI_DB, 'screen',publication_received['screen_facility_id'],
             'publications', str(publication_received['publication_id'])])
         
+        logger.info('submit the publication for deletion...')
         resp = self.api_client.delete(
             resource_uri, authentication=self.get_credentials())
         self.assertTrue(

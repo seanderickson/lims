@@ -3,8 +3,6 @@ from __future__ import unicode_literals
 
 import logging
 from django.db import migrations, models
-from db.support.data_converter import default_converter
-from reports.models import ApiLog
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +13,7 @@ def create_sm_diffs(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0009_convert_studies_to_screenresult'),
+        ('db', '0013_library_comments'),
     ]
 
     operations = [

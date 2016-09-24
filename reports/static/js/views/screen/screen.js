@@ -53,7 +53,6 @@ define([
         self.tabbed_resources['results'].description = 'Reagents studied';
       }
 
-      
       self.$loadScreenResultsButton = $(
         '<button class="btn btn-default btn-sm" role="button" \
         id="loadScreenResults" >Load Data</button>');

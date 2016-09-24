@@ -1037,6 +1037,7 @@ define([
       }
       return rows;
     },
+    
     /**
      * Show a JSON object in a modal dialog:
      * - transform the object into a table using a depth-first traversal:
@@ -1044,6 +1045,7 @@ define([
      */
     showJsonMessages: function(jsonObj){
       
+      console.log('showJsonMessages: ', jsonObj);
       var title = "Messages";
       if(_.keys(jsonObj).length == 1){
         title = _.keys(jsonObj)[0];
@@ -1051,6 +1053,7 @@ define([
       }
       
       var msg_rows = this.dict_to_rows(jsonObj);
+      console.log('msg_rows: ', msg_rows);
       var bodyMsg = msg_rows;
       if (_.isArray(msg_rows) && msg_rows.length > 1){
         bodyMsg = _.map(msg_rows, function(msg_row){
@@ -1426,10 +1429,11 @@ define([
         console.log('change');
         var content_type = form.getValue('content_type');
         if(content_type == 'sdf'){
-          form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
-          form.$el.find('[name="use_titles"]').prop('disabled', false);
+          form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
+          form.$el.find('[name="use_titles"]').prop('disabled', true);
           form.$el.find('[name="raw_lists"]').prop('disabled', true);
-          form.$el.find('[name="data_interchange"]').prop('disabled', true);
+//          form.$el.find('[name="data_interchange"]').prop('disabled', true);
+          form.setValue('data_interchange', true);
         }else{
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
           form.$el.find('[name="use_titles"]').prop('disabled', false);
@@ -1448,14 +1452,14 @@ define([
       });
       var el = form.render().el;
       
-      var default_content = form.getValue('content_type');
-      console.log('default_content: ' + default_content);
-      if(default_content != 'csv' && default_content != 'xls'){
-        $(el).find('[name="use_vocabularies"]').prop('disabled', true);
-        $(el).find('[name="use_titles"]').prop('disabled', true);
-        $(el).find('[name="raw_lists"]').prop('disabled', true);
-        form.$el.find('[name="data_interchange"]').prop('disabled', true);
-      }
+//      var default_content = form.getValue('content_type');
+//      console.log('default_content: ' + default_content);
+//      if(default_content != 'csv' && default_content != 'xls'){
+//        $(el).find('[name="use_vocabularies"]').prop('disabled', true);
+//        $(el).find('[name="use_titles"]').prop('disabled', true);
+//        $(el).find('[name="raw_lists"]').prop('disabled', true);
+//        form.$el.find('[name="data_interchange"]').prop('disabled', true);
+//      }
       
       self.showModal({
         view: el,
@@ -1486,8 +1490,8 @@ define([
           if(values['raw_lists']){
             url += '&raw_lists=true';
           }
-          if(values['data_intechange']){
-            url += '&data_intechange=true';
+          if(values['data_interchange']){
+            url += '&data_interchange=true';
           }
           
           // When downloading via AJAX, the "Content-Disposition: attachment" 

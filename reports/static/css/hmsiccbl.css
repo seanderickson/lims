@@ -273,6 +273,9 @@ ul.chosen-choices {
   width: 3em !important;
 }
 
+.input-full {
+ min-width: 100%;
+}
 /** 
 todo: these selectors should be redone 
 **/

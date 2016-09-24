@@ -80,11 +80,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showList: function(resource, url) {
       var self = this;
       var uriStack = _.clone(this.uriStack);
-
       var extraControls = [];
+      var Collection = Iccbl.MyCollection.extend({
+        url: url
+      });
+      collection = new Collection({
+        url: url,
+      });
       
       if (appModel.hasPermission(resource.key, 'write')){
-
         var showUploadButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="patch_resource" href="#">',
@@ -94,25 +98,102 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         showUploadButton.click(function(e){
           e.preventDefault();
+          function callbackSuccess() {
+          };
+          
           UploadDataForm.uploadAttachedFileDialog(
-            collection.url, collection, resource);
+            collection.url, resource.content_types, function(){
+              collection.fetch({ reset: true });
+            });
         });
-        extraControls.push(showUploadButton);
+
+        // Set up the grid to record edits of the "well_volume" column
+        var showSaveButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'style="display: none; " ',
+            'role="button" id="save_button_wells" href="#">',
+            'save</a>'
+          ].join(''));
+        extraControls.push(showSaveButton);
+        // Create a new collection of just the changed items 
+        // (so that multi page changes can be collected)
+        var PostCollection = Backbone.Collection.extend({
+          url: url,
+          toJSON: function(){
+            return {
+              objects: Collection.__super__.toJSON.apply(this) 
+            };
+          }
+        });
+        var changedCollection = new PostCollection();
+        var CopyWellModel = Backbone.Model.extend({
+          url: url,
+          initialize : function() {
+            this.on('change', function(model, options) {
+              // Prevent save on update
+              if (options.save === false)
+                  return;
+              var newValue = parseFloat(model.get("volume"));
+              var prevValue = parseFloat(model.previous("volume"));
+              if (newValue == prevValue){
+                console.log('no change');
+                return;
+              }
+              model.url = url;
+              changedCollection.add(model);
+              showSaveButton.show();
+              appModel.setPagePending();
+            });
+          },
+        });
+        
+        CopyWellModel._label = 'CopyWellModel';
+        collection.model = CopyWellModel;
+        
+        collection.on('backgrid:error', function(model, column, value){
+          console.log('backgrid error', arguments);
+          // TODO: indicate errors in the cell
+        });
+
+        showSaveButton.click(function(e){
+          e.preventDefault();
+          console.log('changed collection', changedCollection,changedCollection.url);
+          if(changedCollection.isEmpty()){
+            appModel.error('No changes to save');
+            return;
+          }
+          appModel.showSaveWithComments(function(formValues){
+            console.log('form values', formValues);
+            var comments = formValues['comments'];
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+            
+            Backbone.sync("patch",changedCollection,
+              {
+                headers: headers,
+                error: function(){
+                  appModel.jqXHRfail.apply(this,arguments);
+                  console.log('error, refetch', arguments);
+                  changedCollection.reset();
+                  collection.fetch({ reset: true });
+                },
+                success: function(){
+                  changedCollection.reset();
+                  collection.fetch({ reset: true });
+                }
+              }
+            );
+          });
+        });
+      
       }else {
+        // Turn off editability on the "volume" field
         var volume_field = _.result(resource['fields'], 'volume', null);
         if (volume_field) {
           volume_field['editability'] = [];
         }
-        
       }
       
-      var showSaveButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-          'style="display: none; " ',
-          'role="button" id="save_button_wells" href="#">',
-          'save</a>'
-        ].join(''));
-      extraControls.push(showSaveButton);
       var showHistoryButton = $([
       '<a class="btn btn-default btn-sm pull-down" ',
         'role="button" id="showHistoryButton_wells" href="#">',
@@ -134,49 +215,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.remove();
       });
 
-      // Create a new collection of just the changed items 
-      // (so that multi page changes can be collected)
-      var PostCollection = Backbone.Collection.extend({
-        url: url,
-        toJSON: function(){
-          return {
-            objects: Collection.__super__.toJSON.apply(this) 
-          };
-        }
-      });
-      var changedCollection = new PostCollection();
-      var CopyWellModel = Backbone.Model.extend({
-        url: url,
-        initialize : function() {
-          this.on('change', function(model, options) {
-            // Prevent save on update
-            if (options.save === false)
-                return;
-            var newValue = parseFloat(model.get("volume"));
-            var prevValue = parseFloat(model.previous("volume"));
-            if (newValue == prevValue){
-              console.log('no change');
-              return;
-            }
-            model.url = url;
-            changedCollection.add(model);
-            showSaveButton.show();
-            appModel.setPagePending();
-          });
-        },
-      });
-      CopyWellModel._label = 'CopyWellModel';
-      var Collection = Iccbl.MyCollection.extend({
-        url: url
-      });
-      collection = new Collection({
-        url: url,
-      });
-      collection.model = CopyWellModel;
-      collection.on('backgrid:error', function(model, column, value){
-        console.log('backgrid error', arguments);
-      });
-
       var view = new ListView({ 
         _name: 'WellsListView',
         uriStack: uriStack,
@@ -187,39 +225,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         extraControls: extraControls
       });
       view._instanceName = 'WellsListView_instance';
-      showSaveButton.click(function(e){
-        
-        e.preventDefault();
-        console.log('changed collection', changedCollection,changedCollection.url);
-        
-        if(changedCollection.isEmpty()){
-          appModel.error('No changes to save');
-          return;
-        }
-        
-        appModel.showSaveWithComments(function(formValues){
-          console.log('form values', formValues);
-          var comments = formValues['comments'];
-          var headers = {};
-          headers[appModel.HEADER_APILOG_COMMENT] = comments;
-          
-          Backbone.sync("patch",changedCollection,
-            {
-              headers: headers,
-              error: function(){
-                appModel.jqXHRfail.apply(this,arguments);
-                console.log('error, refetch', arguments);
-                changedCollection.reset();
-                collection.fetch({ reset: true });
-              },
-              success: function(){
-                changedCollection.reset();
-                collection.fetch({ reset: true });
-              }
-            }
-          );
-        });
-      });
         
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);

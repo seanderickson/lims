@@ -474,6 +474,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           .done(function(data) {
             listView.collection.fetch();
             
+            // TODO: refactor - display response
             if (_.isObject(data) && !_.isString(data)) {
               data = _.result(_.result(data,'meta',data),'Result',data);
               var msg_rows = appModel.dict_to_rows(data);

@@ -9,7 +9,11 @@ function($, _, Iccbl, appModel, EditView) {
 
   var UploadDataFormPrototype = {
     
-    uploadAttachedFileDialog: function(url, target_collection, resource){
+    /**
+     * @param callbackSuccess - optional function to call on success
+     */
+    uploadAttachedFileDialog: function(url, content_types, callbackSuccess){
+      
       var self = this;
       var form_template = [
          "<div class='form-horizontal container' id='upload_data_form' >",
@@ -28,7 +32,7 @@ function($, _, Iccbl, appModel, EditView) {
         '  </div>',
       ].join(''));
       var choiceHash = {}
-      _.each(resource.content_types,function(choice){
+      _.each(content_types,function(choice){
         choiceHash[choice] = choice;
       });
       var DisabledField = EditView.DisabledField.extend({
@@ -152,7 +156,6 @@ function($, _, Iccbl, appModel, EditView) {
                 success: function(data){
                   console.log('success', data);
                   
-                  target_collection.fetch({ reset: true });
                   if (_.isObject(data) && !_.isString(data)){
                     data = _.result(_.result(data,'meta',data),'Result',data);
                     var msg_rows = appModel.dict_to_rows(data);
@@ -174,6 +177,10 @@ function($, _, Iccbl, appModel, EditView) {
                       okText: 'ok',
                       body: '"' + file.name + '", ' + data
                     });
+                  }
+                  if (!_.isUndefined(callbackSuccess)) {
+                    callbackSuccess();
+//                    target_collection.fetch({ reset: true });
                   }
                 },
                 done: function(model, resp){

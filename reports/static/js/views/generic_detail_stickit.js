@@ -30,7 +30,7 @@ define([
       var groupedKeys = this.groupedKeys = schema.groupedKeys(this.detailKeys);
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
-      var buttons = this.buttons = args.buttons || ['download','history','back','edit','delete'];
+      var buttons = this.buttons = args.buttons || ['download','history','back','edit'];
       if (! appModel.isEditable(self.model.resource.key)
           || !appModel.hasPermission(schema.key, 'write')){
         

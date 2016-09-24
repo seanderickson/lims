@@ -5,18 +5,21 @@ define([
   'jquery',
   'underscore',
   'backbone',
+  'backgrid',
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
   'views/library/libraryCopy', 
   'views/library/libraryWell', 
   'views/generic_detail_layout',
+  'views/generic_detail_stickit', 
   'views/generic_edit',
   'views/list2',
+  'utils/uploadDataForm',
   'templates/generic-tabbed.html'
-], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
-            LibraryWellView, DetailLayout, EditView, ListView, 
-            libraryTemplate) {
+], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, LibraryCopyView, 
+            LibraryWellView, DetailLayout, DetailView, EditView, ListView, 
+            UploadDataForm, libraryTemplate) {
 
   var LibraryView = Backbone.Layout.extend({
     
@@ -32,7 +35,7 @@ define([
         }
       });
       _.bindAll(this, 'click_tab');
-      _.bindAll(this, 'saveFile');
+      _.bindAll(this, 'upload');
     },
     
     template: _.template(libraryTemplate),
@@ -62,43 +65,22 @@ define([
         'click ul.nav-tabs >li': 'click_tab',
         'click button#upload': 'upload'        
     },
-    
-    upload: function(event){
-      appModel.showModal({
-          ok: this.saveFile,
-          body: '<input type="file" name="fileInput" />',
-          title: 'Select a SDF file to upload'  });
-    },
-    
-    saveFile: function() {
-      var self=this;
-      var file = $('input[name="fileInput"]')[0].files[0]; 
-      var data = new FormData();
-      var url = _.result(this.model, 'url') + '/well';
-      // NOTE: 'sdf' is sent as the key to the FILE object in the upload.
-      // We are using this as a non-standard way to signal the upload type to the 
-      // serializer. (TP doesn't support mulitpart uploads, so this is patched in).
-      data.append('sdf', file);
-      var headers = {};
-      headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
-      $.ajax({
-        url: url,    
-        data: data,
-        cache: false,
-        contentType: false, // defaults to multipart/form-data when using formdata
-        dataType: 'json', // what is expected back from the server
-        processData: false, // do not process data being sent
-        type: 'POST',
-        headers: headers
-      })
-      .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-      .done(function(model, resp){
-          // FIXME: should be showing a regular message
-          appModel.error('success');
-          self.model.fetch();
-      });
-    },
 
+    upload: function(event){
+      var self = this;
+      event.preventDefault();
+      var url = _.result(this.model, 'url') + '/well';
+      var content_types = self.model.resource.content_types; // use standard library content types
+      if( this.model.get('screen_type') == 'small_molecule') {
+        content_types.push('sdf');
+      }
+      UploadDataForm.uploadAttachedFileDialog(url, content_types, 
+        function(){
+          self.model.fetch();
+        }
+      );
+    },
+    
     /**
      * Child view bubble up URI stack change event
      */
@@ -204,7 +186,7 @@ define([
       var view = new DetailLayout({
         model: self.model,
         uriStack: delegateStack, 
-        buttons: ['download', 'upload']
+        buttons: ['download']
       });
       Backbone.Layout.setupView(view);
 
@@ -258,17 +240,192 @@ define([
         // remove the view to refresh the page form
         this.removeView(this.tabViews[key]);
       }
-      
+      var detailView = DetailView.extend({
+        afterRender: function(){
+          DetailView.prototype.afterRender.apply(this,arguments);
+          self.createCommentHistoryTable($('#comments'), this);
+        },
+      });
+
       view = new DetailLayout({ 
         model: this.model,
         uriStack: delegateStack, 
-        buttons: buttons });
+        DetailView: detailView,
+        buttons: buttons 
+      });
       this.tabViews[key] = view;
 
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
+    
+    /**
+     * Update the libryary with a comment table: populate
+     * using the apilog history of the library
+     **/
+    createCommentHistoryTable: function($target_el, view){
+      console.log('create the comment history table', $target_el);
+      var self = this;
+      var apilogResource = appModel.getResource('apilog');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: apilogResource.apiUri 
+      });
+      var cell = $([
+        '<div id="comment_table_div" class="row">',
+        '</div>'
+        ].join(''));
+      
+      var $addCommentButton= $(
+        '<div class="col-xs-12"><button class="btn btn-default btn-sm" role="button" \
+        id="addCommentButton" >Add comment</button></div>');
 
+      if (appModel.hasPermission('library', 'write')){
+        cell.append($addCommentButton);
+      }
+      
+      function build_table(collection){
+        if (collection.isEmpty()){
+          return;
+        }
+        $target_el.html(cell);
+        
+        collection.each(function(model){
+        });
+        var TextWrapCell = Backgrid.Cell.extend({
+          className: 'text-wrap-cell'
+        });
+        var colTemplate = {
+          'cell' : 'string',
+          'order' : -1,
+          'sortable': false,
+          'searchable': false,
+          'editable' : false,
+          'visible': true,
+          'headerCell': Backgrid.HeaderCell
+        };
+        var columns = [
+            _.extend({},colTemplate,{
+              'name' : 'comment',
+              'label' : 'Comment',
+              'description' : 'Comment',
+              'order': 1,
+              'sortable': true,
+              'cell': TextWrapCell
+            }),
+            _.extend({},colTemplate,{
+              'name' : 'date_time',
+              'label' : 'Date',
+              'description' : 'Date',
+              'order': 1,
+              'sortable': true,
+              'cell': 'Date'
+            }),
+            _.extend({},colTemplate,{
+              'name' : 'username',
+              'label' : 'Username',
+              'description' : 'Username',
+              'order': 1,
+              'sortable': true,
+              'cell': Iccbl.LinkCell.extend({
+                'hrefTemplate': '#user/{username}'
+              })
+            })
+        ];
+        var colModel = new Backgrid.Columns(columns);
+        colModel.comparator = 'order';
+        colModel.sort();
+
+        cell.append($('<div class="col-xs-12" id="comment_items"/>'));
+        
+        var comment_grid= new Backgrid.Grid({
+          columns: colModel,
+          collection: collection,
+          className: 'backgrid table-striped table-condensed table-hover '
+        });
+        cell.find('#comment_items').html(comment_grid.render().$el);
+      }
+      
+      var comment_collection = new CollectionClass();
+      comment_collection.fetch({
+        data: { 
+          limit: 0,
+          key: self.model.get('short_name'),
+          ref_resource_name: self.model.resource.key,
+          comment__is_null: false,
+          diff_keys__is_null: true,
+          order_by: ['-date_time']
+        },
+        success: build_table
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      
+      $addCommentButton.click(function(){
+
+        var FormFields = Backbone.Model.extend({
+          schema: {
+            comment: {
+              title: 'Comment',
+              key: 'comment',
+              type: 'TextArea',
+              editorClass: 'input-full',
+              validators: ['required'], 
+              template: appModel._field_template
+            }
+          }
+        });
+        var formFields = new FormFields();
+        var form = new Backbone.Form({
+          model: formFields,
+          template: appModel._form_template
+        });
+        var _form_el = form.render().el;
+
+        appModel.showModal({
+          okText: 'ok',
+          ok: function(e){
+            e.preventDefault();
+            
+            var errors = form.commit();
+            if(!_.isEmpty(errors)){
+              console.log('form errors, abort submit: ' + JSON.stringify(errors));
+              return false;
+            }
+            var values = form.getValue();
+            
+            // TODO: submit a PATCH with only a header comment
+            var comment = values['comment'];
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = comment;
+            $.ajax({
+              url: [self.model.resource.apiUri, self.model.key].join('/'),    
+              // PATCH with no data; 
+              // data: JSON.stringify({ comment: comment }),  
+              cache: false,
+              contentType: 'application/json',
+              dataType: 'json', // what is expected back from the server
+              processData: false, // do not process data being sent
+              type: 'PATCH',
+              headers: headers, 
+              success: function(data){
+                console.log('success', data);
+                self.model.fetch({ reset: true });
+                view.render();
+              },
+              done: function(model, resp){
+                // TODO: done replaces success as of jq 1.8
+                console.log('done');
+              }
+            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
+          
+            return true;
+            
+          },
+          view: _form_el,
+          title: 'Add comment'  
+        });
+        
+      });
+    },
+    
     setWells: function(delegateStack) {
       var self = this;
       var schemaUrl = [self.model.resource.apiUri,self.model.key,'well',
@@ -364,14 +521,38 @@ define([
         return;
       }else{
         // List view
+        var extraControls = [];
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'copy'].join('/');
+        var Collection = Iccbl.MyCollection.extend({
+          url: url
+        });
+        collection = new Collection({
+          url: url,
+        });
+        
+        if (appModel.hasPermission(copyResource.key, 'write')){
+          var showAddButton = $([
+             '<a class="btn btn-default btn-sm pull-down" ',
+               'role="button" id="add_resource" href="#">',
+               'Add</a>'
+             ].join(''));   
+           showAddButton.click(function(e){
+             e.preventDefault();
+
+             self.showAddCopy(collection);
+           });
+           extraControls.push(showAddButton);
+        }        
+        
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: copyResource,
           resource: copyResource,
-          url: url
+          url: url,
+          collection: collection,
+          extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
@@ -381,6 +562,188 @@ define([
       }
     },
 
+    /**
+     * Manually create the copy dialog, to set initial volume/concentration
+     */
+    showAddCopy: function(collection){
+      var self = this;
+      var formSchema = {};
+      var fieldTemplate = appModel._field_template;
+      var formTemplate = appModel._form_template;
+      var copyResource = appModel.getResource('librarycopy');
+      var copyNameField = _.result(copyResource['fields'], 'name', {});
+      var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
+      var plateResource = appModel.getResource('librarycopyplate');
+      var plateWellVolumeField = _.result(plateResource['fields'], 'well_volume', {});
+      var copyUrl = copyResource.apiUri;
+        
+      formSchema['library_short_name'] = {
+        title: 'Library',
+        key: 'library_short_name',
+        type: EditView.DisabledField,
+        template: fieldTemplate 
+      };
+      
+      formSchema['name'] = {
+        title: 'Name',
+        key: 'name',
+        type: Backbone.Form.editors.Text,
+        validators: [
+          'required',
+          function checkRange(value, formValues) {
+            var extantCopies = self.model.get('copies');
+            if(extantCopies && _.contains(extantCopies,value)){
+              return {
+                type: 'Unique',
+                message: 'value: ' + value 
+                  + ', is already used: copies: ' + extantCopies.join(',')
+              };
+            }
+          }
+        ],
+        template: fieldTemplate 
+      };
+      if(_.has(copyNameField,'regex') ){
+        formSchema['name']['validators'].push(
+          { type: 'regexp', 
+            regexp: new RegExp(copyNameField['regex']),
+            message: _.result(copyNameField,'validation_message','Name pattern is incorrect' )
+          }
+        );
+      }
+      
+      formSchema['usage_type'] = {
+        title: 'Usage Type',
+        key: 'usage_type',
+        type: EditView.ChosenSelect,
+        editorClass: 'chosen-select',
+        editorAttrs: { widthClass: 'col-sm-5'},
+        validators: ['required'],
+        options: appModel.getVocabularySelectOptions(copyUsageTypeField.vocabulary_scope_ref),
+        template: fieldTemplate 
+      };
+      
+      formSchema['initial_plate_well_volume'] = {
+        title: 'Initial Plate Well Volume',
+        key: 'initial_plate_well_volume',
+        type: EditView.SIunitEditor,
+        template: fieldTemplate 
+      };
+      _.extend(
+        formSchema['initial_plate_well_volume'],
+        plateWellVolumeField['display_options']);
+
+// TODO:
+//      formSchema['initial_plate_status'] = {
+//        title: 'Initial Plate Status',
+//        key: 'initial_plate_status',
+//        type: EditView.ChosenSelect,
+//        editorClass: 'chosen-select',
+//        editorAttrs: { widthClass: 'col-sm-5'},
+//        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
+//        template: fieldTemplate 
+//      };
+      
+      
+// TODO:
+//      formSchema['initial_plate_well_concentration'] = {
+//        title: 'Initial Plate Well Concentration',
+//        key: 'initial_plate_well_concentration',
+//        type: EditView.SIunitEditor,
+//        template: fieldTemplate 
+//      };
+//      _.extend(
+//        formSchema['initial_plate_well_concentration'],
+//        plateWellConcentrationField['display_options']);
+      
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        type: 'TextArea',
+        editorClass: 'input-full',
+        template: fieldTemplate
+      };
+      
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs) {
+          var errs = {};
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      
+      var form = new Backbone.Form({
+        model: formFields,
+        template: formTemplate
+      });
+      form.setValue('library_short_name', self.model.get('short_name'));
+      var formview = form.render();
+      var _form_el = formview.el;
+      var $form = formview.$el;
+      $form.find('.chosen-select').chosen({
+        disable_search_threshold: 3,
+        width: '100%',
+        allow_single_deselect: true,
+        search_contains: true
+        });
+
+      var dialog = appModel.showModal({
+        okText: 'Submit',
+        view: _form_el,
+        title: 'Create a new copy for library: ' + self.model.get('name'),
+        ok: function(e) {
+          e.preventDefault();
+          var errors = form.commit({ validate: true }) || {}; 
+          if (!_.isEmpty(errors) ) {
+            _.each(_.keys(errors), function(key) {
+              form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+            });
+            return false;
+          }            
+          var values = form.getValue()
+          $.ajax({
+            url: copyUrl,    
+            data: JSON.stringify(values),
+            cache: false,
+            contentType: 'application/json',
+            dataType: 'json', // what is expected back from the server
+            processData: false, // do not process data being sent
+            type: 'PATCH'
+          })
+          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+          .done(function(data) {
+            collection.fetch();
+            
+            // TODO: refactor - display response
+            if (_.isObject(data) && !_.isString(data)) {
+              data = _.result(_.result(data,'meta',data),'Result',data);
+              var msg_rows = appModel.dict_to_rows(data);
+              var bodyMsg = msg_rows;
+              if (_.isArray(msg_rows) && msg_rows.length > 1) {
+                bodyMsg = _.map(msg_rows, function(msg_row) {
+                  return msg_row.join(': ');
+                }).join('<br>');
+              }
+              var title = 'Copy created';
+              appModel.showModalMessage({
+                body: bodyMsg,
+                title: title  
+              });
+            } else {
+              console.log('ajax should have been parsed data as json', data);
+              appModel.showModalMessage({
+                title: 'Copy created',
+                okText: 'ok',
+                body: 'Copy name: ' + values['name']
+              });
+            }
+          }); // ajax
+        } // ok
+      }); // dialog
+      
+    },
+    
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager
       this.tabViews = {};

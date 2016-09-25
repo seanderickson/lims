@@ -1397,13 +1397,19 @@ class TestApiClient(object):
         # Django doesn't support PATCH natively.
         parsed = urlparse.urlparse(uri)
         r = {
-            'CONTENT_LENGTH': len(kwargs['data']),
+#             'CONTENT_LENGTH': len(kwargs['data']) if data else 0,
             'CONTENT_TYPE': content_type,
             'PATH_INFO': self.client._get_path(parsed),
             'QUERY_STRING': parsed[4],
             'REQUEST_METHOD': 'PATCH',
-            'wsgi.input': FakePayload(kwargs['data']),
+#             'wsgi.input': FakePayload(kwargs['data']),
         }
+        if data:
+            r['CONTENT_LENGTH'] = len(kwargs['data'])
+            r['wsgi.input'] = FakePayload(kwargs['data'])
+        else:
+            r['CONTENT_LENGTH'] = 0
+        
         r.update(kwargs)
         return self.client.request(**r)
 

@@ -3,7 +3,7 @@ import logging
 import re
 from django.contrib.auth.models import User
 from reports.hms.auth import authenticate
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied
 
 logger = logging.getLogger(__name__)
 
@@ -47,20 +47,20 @@ class CustomAuthenticationBackend():
                     except User.DoesNotExist, e:
                         msg = 'no such user with the id: %r' % username
                         logger.warn(msg)
-                        raise ValidationError(msg)
+                        raise PermissionDenied(msg)
                 else:
                     msg = (
                         'logging in as another user requires superuser privileges'
                         ', user: %r') % superuser
                     logger.warn(msg)
-                    raise ValidationError(msg)
+                    raise PermissionDenied(msg)
             return None
         else:
             return self._inner_authenticate(username, password)
 
     def _inner_authenticate(self, username=None, password=None):
         if username is None:
-            raise ValidationError('username not set')
+            raise PermissionDenied('username not set')
         username = username.lower()
         logger.debug('inner_authenticate: %r', username)
         try:
@@ -72,7 +72,7 @@ class CustomAuthenticationBackend():
                 else:
                     msg = 'user password authentication failed: %r' % username
                     logger.info(msg)
-                    raise ValidationError(msg)
+                    raise PermissionDenied(msg)
             if(authenticate(username, password)):
                 logger.info('user %r authenticated with the ecommons server', user)
                 if(user.is_active):
@@ -80,15 +80,15 @@ class CustomAuthenticationBackend():
                 else:
                     msg = 'user authenticated, but is not active: %r' % user
                     logger.warn(msg)
-                    raise ValidationError(msg)
+                    raise PermissionDenied(msg)
             else:
                 msg = 'user not authenticated with the ecommons server: %r' % user
                 logger.warn(msg)
-                raise ValidationError(msg)
+                raise PermissionDenied(msg)
         except User.DoesNotExist, e:
             msg = 'no such user with the id: %r' % username
             logger.warn(msg)
-            raise ValidationError(msg)
+            raise PermissionDenied(msg)
 
     def get_user(self, user_id):
         try:

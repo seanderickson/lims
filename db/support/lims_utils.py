@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import math
 import logging
 logger = logging.getLogger(__name__)

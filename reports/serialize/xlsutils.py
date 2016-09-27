@@ -1,4 +1,6 @@
 # TODO: convert to openpyxl
+from __future__ import unicode_literals
+
 from collections import OrderedDict
 import io
 import logging

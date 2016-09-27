@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import re
 # MIGRATE "OLD" SS1 fields to new fields
 

@@ -301,6 +301,11 @@ class Migration(migrations.Migration):
             name='substance_id',
             field=models.CharField(null=True,max_length=8),
         ),
+        migrations.AlterField(
+            model_name='small_molecule_reagent',
+            name='is_restricted_structure',
+            field=models.BooleanField(default=False),
+        ),
         
         # TODO: create substance ID's for reagents
         # migrations.RunPython(create_reagent_ids),

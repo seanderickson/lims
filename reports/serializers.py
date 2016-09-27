@@ -12,22 +12,21 @@ from django.db.backends.utils import CursorDebugWrapper
 from django.http.response import StreamingHttpResponse
 from django.utils.encoding import smart_text, force_text
 import mimeparse
-# from psycopg2.psycopg1 import cursor
 import six
 from tastypie.exceptions import BadRequest
 import xlrd
 
 from db.support import screen_result_importer
 from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE, \
-    JSON_MIMETYPE, CSV_MIMETYPE
+    JSON_MIMETYPE, CSV_MIMETYPE, to_simple, LimsJSONEncoder
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, dict_to_rows
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
-import reports.serialize.xlsutils as xlsutils
-from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 from reports.serialize.streaming_serializers import generic_xlsx_response, \
     get_xls_response
-from reports.serialize import to_simple, LimsJSONEncoder
+from reports.serialize.xlsutils import LIST_DELIMITER_XLS
+import reports.serialize.xlsutils as xlsutils
+
 
 logger = logging.getLogger(__name__)
 
@@ -213,10 +212,10 @@ class BaseSerializer(object):
             msg = ( 'unknown deserialize content_type: %r, types: %r'
                     % (content_type, self.content_types.values()))
             raise BadRequest(msg)
+
+        if not content:
+            return {}
     
-        if isinstance(content, six.binary_type):
-            content = force_text(content)
-         
         logger.info('deserializing for %r', desired_format)
 
         deserialized = getattr(self, "from_%s" % desired_format)(content,**kwargs)
@@ -243,6 +242,9 @@ class BaseSerializer(object):
         """
         Override to quote attributes from the client.
         """
+        if isinstance(content, six.binary_type):
+            content = force_text(content)
+         
         content = content.decode('utf-8').replace(r'(\w+):', r'"\1" :')
         if content:
             return json.loads(content)
@@ -278,6 +280,9 @@ class SDFSerializer(BaseSerializer):
             response (None if no nesting, and return object will be an iterable)
 
         '''
+        if isinstance(content, six.binary_type):
+            content = force_text(content)
+         
         objects = sdfutils.parse_sdf(content)
         if root and not isinstance(objects, dict):
             return { root: objects }
@@ -295,28 +300,6 @@ class XLSSerializer(BaseSerializer):
         
         super(XLSSerializer,self).__init__(content_types=content_types);
 
-    def deserialize(self, content, content_type, **kwargs):
-
-        desired_format = self.get_format_for_content_type(content_type)
-        if desired_format is None:
-            msg = ( 'unknown serialize content_type: %r or format: %r, options: %r'
-                    % (content_type, format, self.content_types.values()))
-            raise BadRequest(msg)
-        
-        if desired_format is None:
-            msg = ( 'unknown deserialize content_type: %r, types: %r'
-                    % (content_type, self.content_types.values()))
-            raise BadRequest(msg)
-    
-        # Override: do not force_text for xls
-        # if isinstance(content, six.binary_type):
-        #     content = force_text(content)
-        
-        logger.debug('deserializing for %r', desired_format)
-
-        deserialized = getattr(self, "from_%s" % desired_format)(content, **kwargs)
-        return deserialized
-    
     def to_xls(self,data, options=None, **kwargs):
 
         # Note: all XLS serialization is to xlsx
@@ -325,16 +308,16 @@ class XLSSerializer(BaseSerializer):
     def to_xlsx(self, data, options=None):
 
         logger.info('Non-streamed xlsx data using generic serialization')
-        
         def sheet_rows(list_of_objects):
             ''' write a header row using the object keys '''
             for i,item in enumerate(list_of_objects):
                 if i == 0:
+                    logger.info('item: %r', item)
                     yield item.keys()
                 yield item.values()
         if 'objects' in data:
             data['objects'] = sheet_rows(data['objects'])
-        else:
+        elif isinstance(data, (list,tuple)):
             data = { 'objects': sheet_rows(data) }
         
         response = generic_xlsx_response(data)
@@ -425,6 +408,9 @@ class CSVSerializer(BaseSerializer):
             response (None if no nesting, and return object will be an iterable)
 
         '''
+        if isinstance(content, six.binary_type):
+            content = force_text(content)
+         
         objects = csvutils.from_csv(
             cStringIO.StringIO(content),list_delimiter=LIST_DELIMITER_CSV)
         if root:
@@ -442,28 +428,6 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         content_types['json'] = JSON_MIMETYPE
         
         super(ScreenResultSerializer,self).__init__(content_types=content_types);
-
-    def deserialize(self, content, content_type, **kwargs):
-
-        desired_format = self.get_format_for_content_type(content_type)
-        if desired_format is None:
-            msg = ( 'unknown serialize content_type: %r or format: %r, options: %r'
-                    % (content_type, format, self.content_types.values()))
-            raise BadRequest(msg)
-        
-        if desired_format is None:
-            msg = ( 'unknown deserialize content_type: %r, types: %r'
-                    % (content_type, self.content_types.values()))
-            raise BadRequest(msg)
-    
-        # Override: do not force_text for xls
-        # if isinstance(content, six.binary_type):
-        #     content = force_text(content)
-        
-        logger.info('deserializing for %r', desired_format)
-
-        deserialized = getattr(self, "from_%s" % desired_format)(content, **kwargs)
-        return deserialized
 
     def to_xlsx(self, data, options=None):
         logger.debug(
@@ -487,14 +451,6 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
     def to_json(self, data, options=None):
         return XLSSerializer.to_json(self, data, options=options)
 
-    # def from_json(self, content):
-    #     # For testing only - 
-    #     object = json.loads(content)
-    #     logger.info('object: %r', object)
-    #     # create a generator for 
-    #     object['objects'] = (x for x in object['objects'])
-    #     return object
-    
     
 class CursorSerializer(BaseSerializer):
     """
@@ -614,7 +570,7 @@ class CursorSerializer(BaseSerializer):
         logger.info('done, wrote: %d' % i)
 
 
-class LimsSerializer(CSVSerializer,SDFSerializer, XLSSerializer, BaseSerializer):
+class LimsSerializer(CSVSerializer,SDFSerializer, XLSSerializer):
     ''' 
     Combine all of the Serializers used by the API
     '''

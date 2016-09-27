@@ -72,7 +72,7 @@ class IccblBaseResource(Resource):
     def deserialize(self, request, format=None):
         
         content_type = self._meta.serializer.get_content_type(request, format)
-        
+        logger.info('content_type: %r', content_type)
         if content_type.startswith('multipart'):
             logger.info('request.Files.keys: %r', request.FILES.keys())
             # process *only* one attached file
@@ -102,7 +102,7 @@ class IccblBaseResource(Resource):
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
         
-        
+        logger.info('use deserializer: %r', content_type)
         return self._meta.serializer.deserialize(request.body,content_type)
 
 
@@ -247,6 +247,7 @@ class IccblBaseResource(Resource):
 
                 return response
             except BadRequest as e:
+                logger.exception('bad request...')
                 # for BadRequest, the message is the first/only arg
                 logger.exception('Bad request exception: %r', e)
                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
@@ -281,7 +282,7 @@ class IccblBaseResource(Resource):
                         logger.debug('no downloadID: %s' % request.GET )
                 return response
             except django.core.exceptions.ValidationError as e:
-                logger.exception('Django validation error: %r, %r', e, e.message_dict)
+                logger.exception('Django validation error: %s', e)
                 response = self.build_error_response(
                     request, { 'errors': e.message_dict }, **kwargs)
                 if 'xls' in response['Content-Type']:

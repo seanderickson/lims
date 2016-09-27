@@ -58,6 +58,12 @@ logger = logging.getLogger(__name__)
 URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
 
+API_MESSAGE_SUBMIT_COUNT = 'Data submitted'
+API_MESSAGE_UPDATED = 'Updated'
+API_MESSAGE_CREATED = 'Created'
+API_MESSAGE_UNCHANGED = 'Unchanged'
+API_MESSAGE_COMMENTS = 'Comments'
+API_MESSAGE_ACTION = 'Action'
 
 class Authorization():
 
@@ -506,11 +512,11 @@ class ApiResource(SqlAlchemyResource):
         if len(deserialized) == 0:
             meta = { 
                 'Result': {
-                    'Patched': 0, 
-                    'Updated': 0, 
-                    'Created': 0,
-                    'Unchanged': 0, 
-                    'Comments': 'no data patched'
+                    API_MESSAGE_SUBMIT_COUNT : 0, 
+                    API_MESSAGE_UPDATED: 0, 
+                    API_MESSAGE_CREATED: 0,
+                    API_MESSAGE_UNCHANGED: 0, 
+                    API_MESSAGE_COMMENTS: 'no data patched'
                 }
             }
             return self.build_response(
@@ -545,6 +551,7 @@ class ApiResource(SqlAlchemyResource):
             original_data = []
 
         try:
+            # FIXME: move transaction to method decorator
             with transaction.atomic():
                 if 'parent_log' not in kwargs:
                     parent_log = self.make_log(request)
@@ -570,11 +577,11 @@ class ApiResource(SqlAlchemyResource):
         unchanged_count = patch_count - update_count
         meta = { 
             'Result': {
-                'Patched': patch_count, 
-                'Updated': update_count, 
-                'Created': create_count,
-                'Unchanged': unchanged_count, 
-                'Comments': parent_log.comment
+                API_MESSAGE_SUBMIT_COUNT : patch_count, 
+                API_MESSAGE_UPDATED: update_count, 
+                API_MESSAGE_CREATED: create_count,
+                API_MESSAGE_UNCHANGED: unchanged_count, 
+                API_MESSAGE_COMMENTS: parent_log.comment
             }
         }
         if not self._meta.always_return_data:
@@ -713,11 +720,11 @@ class ApiResource(SqlAlchemyResource):
         if len(deserialized) == 0:
             meta = { 
                 'Result': {
-                    'Patched': 0, 
-                    'Updated': 0, 
-                    'Created': 0,
-                    'Unchanged': 0, 
-                    'Comments': 'no data posted'
+                    API_MESSAGE_SUBMIT_COUNT : 0, 
+                    API_MESSAGE_UPDATED: 0, 
+                    API_MESSAGE_CREATED: 0,
+                    API_MESSAGE_UNCHANGED: 0, 
+                    API_MESSAGE_COMMENTS: 'no data posted'
                 }
             }
             return self.build_response(
@@ -777,11 +784,11 @@ class ApiResource(SqlAlchemyResource):
         unchanged_count = patch_count - update_count
         meta = { 
             'Result': {
-                'Posted': patch_count, 
-                'Updated': update_count, 
-                'Created': create_count,
-                'Unchanged': unchanged_count, 
-                'Comments': parent_log.comment
+                API_MESSAGE_SUBMIT_COUNT: patch_count, 
+                API_MESSAGE_UPDATED: update_count, 
+                API_MESSAGE_CREATED: create_count,
+                API_MESSAGE_UNCHANGED: unchanged_count, 
+                API_MESSAGE_COMMENTS: parent_log.comment
             }
         }
         if not self._meta.always_return_data:

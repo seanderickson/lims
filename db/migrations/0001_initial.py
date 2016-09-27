@@ -1005,7 +1005,7 @@ class Migration(migrations.Migration):
                 ('version', models.IntegerField(null=True)),
                 ('plate_number', models.IntegerField()),
                 ('well_name', models.TextField()),
-                ('facility_id', models.TextField()),
+                ('facility_id', models.TextField(null=True)),
                 ('library_well_type', models.TextField()),
                 ('is_deprecated', models.BooleanField(default=False)),
                 ('molar_concentration', models.DecimalField(null=True, max_digits=13, decimal_places=12)),

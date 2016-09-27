@@ -1,4 +1,3 @@
-
 from __future__ import unicode_literals
 
 import datetime
@@ -224,25 +223,25 @@ class EquipmentUsed(models.Model):
         db_table = 'equipment_used'
 
 
-class AnnotationType(models.Model):
-    annotation_type_id = models.AutoField(primary_key=True)
-    # version = models.IntegerField()
-    study = models.ForeignKey('Screen')
-    name = models.TextField()
-    description = models.TextField()
-    ordinal = models.IntegerField()
-    is_numeric = models.BooleanField()
-    class Meta:
-        db_table = 'annotation_type'
-
-class AnnotationValue(models.Model):
-    annotation_value_id = models.IntegerField(null=True)
-    numeric_value = models.FloatField(null=True)
-    value = models.TextField()
-    annotation_type = models.ForeignKey(AnnotationType, null=True)
-    reagent = models.ForeignKey('Reagent', null=True)
-    class Meta:
-        db_table = 'annotation_value'
+# class AnnotationType(models.Model):
+#     annotation_type_id = models.AutoField(primary_key=True)
+#     # version = models.IntegerField()
+#     study = models.ForeignKey('Screen')
+#     name = models.TextField()
+#     description = models.TextField()
+#     ordinal = models.IntegerField()
+#     is_numeric = models.BooleanField()
+#     class Meta:
+#         db_table = 'annotation_type'
+# 
+# class AnnotationValue(models.Model):
+#     annotation_value_id = models.IntegerField(null=True)
+#     numeric_value = models.FloatField(null=True)
+#     value = models.TextField()
+#     annotation_type = models.ForeignKey(AnnotationType, null=True)
+#     reagent = models.ForeignKey('Reagent', null=True)
+#     class Meta:
+#         db_table = 'annotation_value'
 
 class AssayPlate(models.Model):
     assay_plate_id = models.AutoField(primary_key=True)
@@ -516,8 +515,10 @@ class Screen(models.Model):
     date_of_application = models.DateField(null=True)
     data_meeting_complete = models.DateField(null=True)
     data_meeting_scheduled = models.DateField(null=True)
-    perturbagen_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    perturbagen_ug_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    perturbagen_molar_concentration = models.DecimalField(
+        null=True, max_digits=13, decimal_places=12)
+    perturbagen_ug_ml_concentration = models.DecimalField(
+        null=True, max_digits=5, decimal_places=3)
     
     publishable_protocol = models.TextField()
     publishable_protocol_comments = models.TextField()
@@ -628,6 +629,9 @@ class Screen(models.Model):
     
     class Meta:
         db_table = 'screen'
+        
+    def __repr__(self):
+        return "<Screen(facility_id=%r)>" % self.facility_id
 
 class ScreenKeyword(models.Model):
     screen = models.ForeignKey('Screen', related_name='keywords')
@@ -959,13 +963,13 @@ class Well(models.Model):
 #     version = models.IntegerField(, null=True)
     plate_number = models.IntegerField()
     well_name = models.TextField()
-    facility_id = models.TextField()
+    facility_id = models.TextField(null=True)
     library_well_type = models.TextField()
     library = models.ForeignKey('Library')
     deprecation_admin_activity = models.ForeignKey('AdministrativeActivity', null=True)
     is_deprecated = models.BooleanField(default=False)
-    latest_released_reagent = models.ForeignKey(
-        'Reagent', null=True, related_name='reagent_well')
+#     latest_released_reagent = models.ForeignKey(
+#         'Reagent', null=True, related_name='reagent_well')
     
 #     reagent = models.ForeignKey('Reagent', null=True, related_name='wells')
 #     reagent = models.ForeignKey('Reagent', to_field='substance_id')
@@ -1158,11 +1162,11 @@ class NaturalProductReagent(Reagent):
     class Meta:
         db_table = 'natural_product_reagent'
 
-class StudyReagentLink(models.Model):
-    study = models.ForeignKey(Screen)
-    reagent = models.ForeignKey(Reagent)
-    class Meta:
-        db_table = 'study_reagent_link'
+# class StudyReagentLink(models.Model):
+#     study = models.ForeignKey(Screen)
+#     reagent = models.ForeignKey(Reagent)
+#     class Meta:
+#         db_table = 'study_reagent_link'
 
 #class SilencingReagentNonTargettedGenbankAccessionNumber(models.Model):
 #    silencing_reagent_id = models.TextField()
@@ -1399,6 +1403,10 @@ class PlateLocation(models.Model):
     shelf = models.TextField()
     class Meta:
         db_table = 'plate_location'
+    def __repr__(self):
+        return (
+            "<PlateLocation(room=%r, freezer=%r, shelf=%r, bin=%r, plate_location_id=%r)>" 
+            % (self.room, self.freezer, self.shelf, self.bin, self.plate_location_id) )
 
 
 # this is a LINCS table

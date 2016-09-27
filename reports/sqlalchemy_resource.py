@@ -581,6 +581,9 @@ class SqlAlchemyResource(IccblBaseResource):
                         expression = col == None 
                     else:
                         expression = col != None
+                        
+                    # TODO: test that col <> '' expression is created
+                    
                 elif filter_type == 'in':
                     if field['data_type'] == 'list':
                         # NOTE: for the list type, interpret "in" as any of the 
@@ -642,6 +645,7 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.debug(
                 'get internal list response %s, %s ', 
                 self._meta.resource_name, kwargs)
+            kwargs.setdefault('limit', 0)
             response = self.get_list(
                 request,
                 format='json',

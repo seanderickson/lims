@@ -32,6 +32,9 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
+from reports.api import API_MESSAGE_COMMENTS, API_MESSAGE_CREATED, \
+    API_MESSAGE_SUBMIT_COUNT, API_MESSAGE_UNCHANGED, API_MESSAGE_UPDATED,\
+    API_MESSAGE_ACTION
 
 
 logger = logging.getLogger(__name__)
@@ -201,6 +204,8 @@ class LibraryResource(DBResourceTestCase):
         ApiLog.objects.all().delete()
     
     def test1_create_library(self):
+
+        logger.info('test1_create_library ...')
         
         resource_uri = BASE_URI_DB + '/library'
         
@@ -214,7 +219,7 @@ class LibraryResource(DBResourceTestCase):
         logger.info('Find the library wells that were created...')
         resource_uri = '/'.join([
             BASE_URI_DB,'library',library2['short_name'],'well'])
-        data_for_get={ 'limit': 0, 'includes': ['*'] }
+        data_for_get={ 'limit': 0, 'includes': ['*', '-structure_image'] }
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
@@ -275,6 +280,8 @@ class LibraryResource(DBResourceTestCase):
         self.validate_wells(input_data, returned_data, fields)
         
     def test1a_create_library_comments(self):
+
+        logger.info('test1a_create_library_comments ...')
         
         resource_uri = BASE_URI_DB + '/library'
         
@@ -349,6 +356,8 @@ class LibraryResource(DBResourceTestCase):
             substance_ids.add(substance_id)
         
     def test10_create_library_copy(self):
+
+        logger.info('test10_create_library_copy ...')
         
         library = self.create_library({
             'start_plate': 1000, 
@@ -403,6 +412,8 @@ class LibraryResource(DBResourceTestCase):
         pass
     
     def test12_update_copy_wells(self):
+
+        logger.info('test12_update_copy_wells ...')
     
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
@@ -486,6 +497,7 @@ class LibraryResource(DBResourceTestCase):
     
     def test13_plate_locations(self):
 
+        logger.info('test17_batch_edit_copyplate_info ...')
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         
         end_plate = library_data['end_plate']
@@ -649,6 +661,9 @@ class LibraryResource(DBResourceTestCase):
                     % (field, plate_data))
     
     def test17_batch_edit_copyplate_info(self):
+        
+        logger.info('test17_batch_edit_copyplate_info ...')
+        
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -681,9 +696,10 @@ class LibraryResource(DBResourceTestCase):
         # Inspect meta "Result" section
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
         self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue('Patched' in patch_response['meta']['Result'], '%r' % patch_response)
-        self.assertTrue(patch_response['meta']['Result']['Patched']==6, 
-            'Wrong "Patched" count: %r' % patch_response['meta'])
+        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT]==6, 
+            'Wrong "%r" count: %r' 
+            % (API_MESSAGE_SUBMIT_COUNT, patch_response['meta']))
         logger.info('patch_response: %r', patch_response)
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -715,6 +731,7 @@ class LibraryResource(DBResourceTestCase):
     
     def test16_batch_edit_copyplate_location(self):
         
+        logger.info('test16_batch_edit_copyplate_location ...')
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -747,9 +764,9 @@ class LibraryResource(DBResourceTestCase):
         # Inspect meta "Result" section
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
         self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue('Patched' in patch_response['meta']['Result'], '%r' % patch_response)
-        self.assertTrue(patch_response['meta']['Result']['Patched']==6, 
-            'Wrong "Patched" count: %r' % patch_response['meta'])
+        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT]==6, 
+            'Wrong %r count: %r' % (API_MESSAGE_SUBMIT_COUNT,patch_response['meta']))
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -827,6 +844,7 @@ class LibraryResource(DBResourceTestCase):
                     'parent_log key should be "librarycopyplate", %r' % logvalue)
     
     def test15_modify_copyplate_info(self):
+        logger.info('test15_modify_copyplate_info ...')
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -872,11 +890,12 @@ class LibraryResource(DBResourceTestCase):
         patch_response = self.deserialize(resp)
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
         self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
         self.assertTrue(
-            patch_response['meta']['Result']['Updated'] == (end_plate-start_plate+1),
-            '"Updated" : %r, expected: %r' 
-            % (patch_response['meta'], (end_plate-start_plate+1)))
+            patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT] == (end_plate-start_plate+1),
+            '"%r" : %r, expected: %r' 
+            % (API_MESSAGE_SUBMIT_COUNT,
+                patch_response['meta'], (end_plate-start_plate+1)))
         
         # Verify that the plates have the expected location
         resp = self.api_client.get(
@@ -909,6 +928,7 @@ class LibraryResource(DBResourceTestCase):
         
     def test14_modify_copy_plate_locations(self):
 
+        logger.info('test14_modify_copy_plate_locations ...')
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -958,11 +978,12 @@ class LibraryResource(DBResourceTestCase):
         patch_response = self.deserialize(resp)
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
         self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
         self.assertTrue(
-            patch_response['meta']['Result']['Updated'] == (end_plate-start_plate+1),
-            '"Updated" : %r, expected: %r' 
-            % (patch_response['meta'], (end_plate-start_plate+1)))
+            patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT] == (end_plate-start_plate+1),
+            '"%r" : %r, expected: %r' 
+            % (API_MESSAGE_SUBMIT_COUNT,
+                patch_response['meta'], (end_plate-start_plate+1)))
         
         # Verify that the plates have the expected location
         resp = self.api_client.get(
@@ -1085,7 +1106,7 @@ class LibraryResource(DBResourceTestCase):
         pass
     
     def test6_load_small_molecule_file(self):
-        
+        logger.info('test6_load_small_molecule_file')
         library_item = self.create_library({ 
             'start_plate': '1536', 
             'end_plate': '1536', 
@@ -1154,7 +1175,7 @@ class LibraryResource(DBResourceTestCase):
         filename = ( APP_ROOT_DIR 
             + '/db/static/test_data/libraries/clean_data_small_molecule_update.sdf')
 
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
         data_for_get['HTTP_ACCEPT'] = SDF_MIMETYPE
 
         with open(filename) as input_file:
@@ -1276,6 +1297,7 @@ class LibraryResource(DBResourceTestCase):
     
     def test7_load_sirnai(self):
 
+        logger.info('test7_load_sirnai ...')
         filename = ('%s/db/static/test_data/libraries/clean_data_rnai.xlsx'
                     % APP_ROOT_DIR )
         
@@ -1294,6 +1316,7 @@ class LibraryResource(DBResourceTestCase):
 
     def test8_sirna_duplex(self):
         
+        logger.info('test8_sirna_duplex ...')
         filename = (  
             '%s/db/static/test_data/libraries/clean_rnai_duplex_50440_50443.xlsx'
             % APP_ROOT_DIR)
@@ -1322,6 +1345,7 @@ class LibraryResource(DBResourceTestCase):
         
     def test9_natural_product(self):
         
+        logger.info('test9_natural_product ...')
         filename = (  
             '%s/db/static/test_data/libraries/clean_data_natural_product.xlsx'
             % APP_ROOT_DIR )
@@ -1345,7 +1369,7 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = '/'.join([
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
         data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
         xls_serializer = XLSSerializer()
         

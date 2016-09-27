@@ -8,7 +8,7 @@ import logging
 
 # Note the csv package does not allow multibyte delimiters 
 CSV_DELIMITER = b','  
-LIST_DELIMITER_SQL_ARRAY = ';'
+LIST_DELIMITER_SQL_ARRAY = '~^'
 LIST_DELIMITER_URL_PARAM = ','
 MAX_ROWS_PER_XLS_FILE = 100000
 MAX_IMAGE_ROWS_PER_XLS_FILE = 1000

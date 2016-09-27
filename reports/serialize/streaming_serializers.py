@@ -174,8 +174,6 @@ def json_generator(data, meta, is_for_detail=False):
             % json.dumps(meta, cls=LimsJSONEncoder, ensure_ascii=True, encoding="utf-8"))
     try:
         for rownum, row in enumerate(data):
-            if '1404' in row.get('facility_id', ''):
-                logger.info('row: %r', row)
             try:
                 if rownum == 0:
                     # NOTE, using "ensure_ascii" = True to force encoding of all 

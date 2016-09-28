@@ -120,7 +120,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       
       var titleFunc = function setContentTitle(val){
-        self.$('#content_title').html(_.escape(val));
+        self.$('#content_title').html(val);
       }
       
       titleFunc(model.resource.title + ': ' + 

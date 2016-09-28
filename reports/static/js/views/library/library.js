@@ -226,7 +226,7 @@ define([
               break;
             }
             if (attrs.end_plate >= start && attrs.end_plate <= end){
-              errs.start_plate = 'range already used: ' + rangesAsString;
+              errs.end_plate = 'range already used: ' + rangesAsString;
               break;
             }
             i++;

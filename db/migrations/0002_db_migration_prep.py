@@ -302,9 +302,14 @@ class Migration(migrations.Migration):
             field=models.CharField(null=True,max_length=8),
         ),
         migrations.AlterField(
-            model_name='small_molecule_reagent',
+            model_name='silencingreagent',
+            name='is_restricted_sequence',
+            field=models.NullBooleanField(default=False),
+        ),
+        migrations.AlterField(
+            model_name='smallmoleculereagent',
             name='is_restricted_structure',
-            field=models.BooleanField(default=False),
+            field=models.NullBooleanField(default=False),
         ),
         
         # TODO: create substance ID's for reagents
@@ -387,9 +392,9 @@ class Migration(migrations.Migration):
             ' where sru.screensaver_user_id=su.screensaver_user_id'),
         migrations.AddField(
             model_name='screensaveruser',
-            name='lab_head', 
-            field=models.ForeignKey('ScreensaverUser',null=True,
-                related_name='lab_member')),
+            name='lab_head',
+            field=models.ForeignKey(related_name='lab_member', to='db.ScreensaverUser', null=True),
+        ),
         migrations.RunSQL(
             'UPDATE screensaver_user su '
             ' set lab_head_id=sru.lab_head_id '

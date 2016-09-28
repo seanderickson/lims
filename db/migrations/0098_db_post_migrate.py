@@ -72,22 +72,23 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='volume_approved_by',
-            field=models.ForeignKey(related_name='approved_cherry_pick', to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(
+                related_name='approved_cherry_pick', to='db.ScreensaverUser', null=True),
         ),
+        
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='requested_by',
             field=models.ForeignKey(related_name='requested_cherry_pick', to='db.ScreensaverUser'),
         ),
         migrations.AlterField(
-            model_name='cherrypickrequest',
-            name='volume_approved_by',
-            field=models.ForeignKey(related_name='approved_cherry_pick', blank=True, to='db.ScreensaverUser', null=True),
-        ),
-        migrations.AlterField(
             model_name='screensaveruser',
             name='lab_head',
             field=models.ForeignKey(related_name='lab_member', blank=True, to='db.ScreensaverUser', null=True),
+        ),
+        migrations.RemoveField(
+            model_name='well',
+            name='latest_released_reagent',
         ),
 
         

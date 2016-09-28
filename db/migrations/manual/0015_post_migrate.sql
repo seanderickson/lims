@@ -138,6 +138,6 @@ alter table study_reagent_link add CONSTRAINT fk_reagent_to_study
 /**
 alter table well add CONSTRAINT fk37a0ce68c7e7c9
   FOREIGN KEY (latest_released_reagent_id) REFERENCES reagent(reagent_id);       
+alter table well drop column latest_released_reagent;
 **/
 
-alter table well drop column latest_released_reagent;

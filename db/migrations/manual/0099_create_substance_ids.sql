@@ -12,7 +12,7 @@ current_timestamp,
   - copy the csv file to a temp table
   - update reagent.substance_id from the table
   
-  NOTE: 20151029 - retired; this functionality is not run from the substance
+  NOTE: 20151029 - retired; this functionality is now run from the substance
   ID migration script.
 **/
 

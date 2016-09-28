@@ -9,7 +9,7 @@ from django.db import migrations, models
 
 from lims.base_settings import PROJECT_ROOT
 from reports.utils.gray_codes import create_substance_id
-from db.models import create_id
+import db.models
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,8 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='reagent',
             name='substance_id',
-            field=models.CharField(unique=True, max_length=8),
-            ),
+            field=models.CharField(default=db.models.create_id, 
+                unique=True, max_length=8),
+        ),
+            
     ]

@@ -1065,7 +1065,7 @@ class SilencingReagent(Reagent):
         'Gene', unique=True, null=True, related_name='facility_reagent')
     
     duplex_wells = models.ManyToManyField('Well')
-    is_restricted_sequence = models.BooleanField(default=False)
+    is_restricted_sequence = models.NullBooleanField(default=False)
     class Meta:
         db_table = 'silencing_reagent'
 
@@ -1144,7 +1144,7 @@ class SmallMoleculeReagent(Reagent):
 #     molecular_weight = models.FloatField(null=True)
     smiles = models.TextField()
 #     salt_form_id = models.IntegerField(null=True)
-    is_restricted_structure = models.BooleanField(default=False)
+    is_restricted_structure = models.NullBooleanField(default=False)
     class Meta:
         db_table = 'small_molecule_reagent'
 

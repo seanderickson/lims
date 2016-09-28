@@ -93,7 +93,6 @@ from reports.serializers import LimsSerializer, \
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 import reports.sqlalchemy_resource
-from reports.utils.gray_codes import create_substance_id
 
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'

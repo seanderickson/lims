@@ -823,8 +823,9 @@ class ApiResource(SqlAlchemyResource):
         
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
+        
+        logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
 
-        kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         original_data = None
         if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
             # A full id exists, query for the existing state
@@ -833,6 +834,10 @@ class ApiResource(SqlAlchemyResource):
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
+            
+            if original_data is not None and len(original_data) != 0:
+                raise ValidationError({ 
+                    k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
         try:
             obj = self.patch_obj(request, deserialized, **kwargs)
             for id_field in id_attribute:

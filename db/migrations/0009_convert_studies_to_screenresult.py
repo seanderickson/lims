@@ -95,14 +95,5 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(convert_studies),
-        migrations.DeleteModel(
-            name='AnnotationValue',
-        ),
-        migrations.DeleteModel(
-            name='AnnotationType',
-        ),
-        migrations.DeleteModel(
-            name='StudyReagentLink',
-        ),
         
     ]

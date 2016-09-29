@@ -70,7 +70,6 @@ delete from natural_product_reagent r
   where r.reagent_id=d.reagent_id; 
 
 /** 
- FIXME: these will all be broken:
  study_reagent_link
  publication
  attached_file

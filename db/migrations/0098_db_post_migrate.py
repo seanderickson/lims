@@ -90,6 +90,15 @@ class Migration(migrations.Migration):
             model_name='well',
             name='latest_released_reagent',
         ),
+        migrations.DeleteModel(
+            name='AnnotationValue',
+        ),
+        migrations.DeleteModel(
+            name='AnnotationType',
+        ),
+        migrations.DeleteModel(
+            name='StudyReagentLink',
+        ),
 
         
 #         migrations.DeleteModel('ScreeningRoomUser'),

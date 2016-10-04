@@ -19,12 +19,15 @@ import xlrd
 
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklistItem, AttachedFile, ServiceActivity, Screen, Well, Publication, \
-    PlateLocation
+    PlateLocation, LibraryScreening
 import db.models
 from db.support import lims_utils, screen_result_importer
 from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory
 from reports import ValidationError, HEADER_APILOG_COMMENT
+from reports.api import API_MESSAGE_COMMENTS, API_MESSAGE_CREATED, \
+    API_MESSAGE_SUBMIT_COUNT, API_MESSAGE_UNCHANGED, API_MESSAGE_UPDATED, \
+    API_MESSAGE_ACTION
 from reports.models import ApiLog, UserProfile, UserGroup
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
@@ -32,9 +35,7 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-from reports.api import API_MESSAGE_COMMENTS, API_MESSAGE_CREATED, \
-    API_MESSAGE_SUBMIT_COUNT, API_MESSAGE_UNCHANGED, API_MESSAGE_UPDATED,\
-    API_MESSAGE_ACTION
+from django.core.exceptions import ObjectDoesNotExist
 
 
 logger = logging.getLogger(__name__)
@@ -104,12 +105,8 @@ class DBResourceTestCase(IResourceTestCase):
     def create_screen(self, data=None):
         ''' Create a test Screen through the API'''
         
-        lab_head = self.create_screensaveruser({ 
-            'username': 'lab_head_1'
-        })
-        lead_screener = self.create_screensaveruser({ 
-            'username': 'lead_screener_1'
-        })
+        lab_head = self.create_screensaveruser()
+        lead_screener = self.create_screensaveruser()
         input_data = ScreenFactory.attributes()
         logger.info('input_data: %r', input_data)
         if data:
@@ -169,12 +166,33 @@ def setUpModule():
                 keepdb = True
             if 'reinit_metahash' in arg:
                 reinit_metahash = True
+    # Set up a superuser
+    try:
+        logger.info('create/find superuser %s...', IResourceTestCase.username)
+        IResourceTestCase.user = User.objects.get(username=IResourceTestCase.username)
+        logger.info('superuser found: %r', IResourceTestCase.user)
+        logger.info('users: %r', [str(u) for u in User.objects.all()])
+    except ObjectDoesNotExist:
+        logger.info('creating superuser: %s', IResourceTestCase.username)
+        IResourceTestCase.user = User.objects.create_superuser(
+            IResourceTestCase.username, '1testsuperuser@example.com', IResourceTestCase.password)
+        logger.info('superuser created.')
+
     if reinit_metahash or not keepdb:
         testContext = DBResourceTestCase(methodName='_bootstrap_init_files')
         testContext.setUp()
         testContext._bootstrap_init_files()
     else:
         print 'skip database metahash initialization when using keepdb'
+
+    logger.info('create an admin screensaveruser...')
+    temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
+    DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
+        'username': temp_test_case.username,
+        'is_superuser': True
+    })
+    logger.info('admin screensaveruser created')
+    
     logger.info('=== setup Module done')
 
 def tearDownModule():
@@ -186,7 +204,11 @@ def tearDownModule():
     # bridge.get_engine().connect().close()
     # bridge.get_engine().dispose()
     # bridge = None
-
+    
+    # remove the admin user
+    ScreensaverUser.objects.all().delete() 
+    UserProfile.objects.all().delete()
+    User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
 
@@ -199,7 +221,9 @@ class LibraryResource(DBResourceTestCase):
         DBResourceTestCase.tearDown(self)
         logger.info('delete library resources')
         Library.objects.all().delete()
-        Well.objects.all().delete()
+        # removing the library should remove dependent resources
+        # Well.objects.all().delete()
+        # Reagent.objects.all().delete()
         PlateLocation.objects.all().delete()
         ApiLog.objects.all().delete()
     
@@ -844,7 +868,9 @@ class LibraryResource(DBResourceTestCase):
                     'parent_log key should be "librarycopyplate", %r' % logvalue)
     
     def test15_modify_copyplate_info(self):
+
         logger.info('test15_modify_copyplate_info ...')
+        
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -919,16 +945,15 @@ class LibraryResource(DBResourceTestCase):
                     equivocal(plate_data[field],new_plate_data[field]),
                     'plate data: expected: %r, rcvd: %r'
                     % (new_plate_data[field],plate_data[field]))
-
         
         # Test ApiLogs:
         # plate - one for each plate
         # plate_location - one for each plate addition to the range
         
-        
     def test14_modify_copy_plate_locations(self):
 
         logger.info('test14_modify_copy_plate_locations ...')
+        
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -1106,7 +1131,9 @@ class LibraryResource(DBResourceTestCase):
         pass
     
     def test6_load_small_molecule_file(self):
+        
         logger.info('test6_load_small_molecule_file')
+        
         library_item = self.create_library({ 
             'start_plate': '1536', 
             'end_plate': '1536', 
@@ -1298,6 +1325,7 @@ class LibraryResource(DBResourceTestCase):
     def test7_load_sirnai(self):
 
         logger.info('test7_load_sirnai ...')
+        
         filename = ('%s/db/static/test_data/libraries/clean_data_rnai.xlsx'
                     % APP_ROOT_DIR )
         
@@ -1317,6 +1345,7 @@ class LibraryResource(DBResourceTestCase):
     def test8_sirna_duplex(self):
         
         logger.info('test8_sirna_duplex ...')
+        
         filename = (  
             '%s/db/static/test_data/libraries/clean_rnai_duplex_50440_50443.xlsx'
             % APP_ROOT_DIR)
@@ -1346,6 +1375,7 @@ class LibraryResource(DBResourceTestCase):
     def test9_natural_product(self):
         
         logger.info('test9_natural_product ...')
+        
         filename = (  
             '%s/db/static/test_data/libraries/clean_data_natural_product.xlsx'
             % APP_ROOT_DIR )
@@ -1645,14 +1675,9 @@ class ScreenResultResource(DBResourceTestCase):
         # ScreensaverUser.objects.all().filter(username='adminuser').delete()
 
     def _setup_test_config(self):
+
         # Setup ScreenResult dependencies
         
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
-        })
-
         logger.info('create library...')
         library1 = self.create_library({
             'start_plate': 1, 
@@ -1685,12 +1710,6 @@ class ScreenResultResource(DBResourceTestCase):
         
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
-        
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
-        })
         
         logger.info('create library...')
         library1 = self.create_library({
@@ -2147,7 +2166,6 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('deserialize to json and check mutual positives columns...')
         # use generic deserialization to show all of the fields
         content = self.get_content(resp)
-#         logger.info('content: %r', content)
         output_data = self.serializer.deserialize(
             content, JSON_MIMETYPE)
         
@@ -2180,19 +2198,10 @@ class ScreenResultResource(DBResourceTestCase):
                             row[col] is not None,
                             ('mutual positive column %r is missing data in row: %r' 
                              % (col, row)))
-                
             
-        # test mutual column filtering 
-         
-        
-        
+        # TODO: test mutual column filtering 
         
     def test4_result_value_errors_from_file(self):
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
-        })
         
         logger.info('create library...')
         library1 = self.create_library({
@@ -2287,11 +2296,6 @@ class ScreenResultResource(DBResourceTestCase):
                     % (key,sheet_errors[key]) )
 
     def test5_data_column_errors(self):
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
-        })
         
         logger.info('create library...')
         library1 = self.create_library({
@@ -2424,8 +2428,10 @@ class ScreenResource(DBResourceTestCase):
         DBResourceTestCase.tearDown(self)
         Screen.objects.all().delete()
         Library.objects.all().delete()
+        LibraryScreening.objects.all().delete()
         ApiLog.objects.all().delete()
-        ScreensaverUser.objects.all().filter(username='adminuser').delete()
+        ScreensaverUser.objects.all().exclude(username='testsuper').delete()
+#         ScreensaverUser.objects.all().delete()
         
     def test1_create_screen(self):
         
@@ -2442,7 +2448,7 @@ class ScreenResource(DBResourceTestCase):
         for key, value in data.items():
             self.assertEqual(value, screen_item[key], 
                 'key %r, val: %r not expected: %r' % (key, value, screen_item[key]))
-        logger.info('screen created: %r', screen_item)
+        logger.debug('screen created: %r', screen_item)
 
     def test2_create_library_screening(self):
         
@@ -2450,12 +2456,6 @@ class ScreenResource(DBResourceTestCase):
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
         })
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
-        })
-        
         logger.info('create library...')
         library1 = self.create_library({
             'start_plate': 1000, 
@@ -2644,8 +2644,15 @@ class ScreenResource(DBResourceTestCase):
             lps_format.format(**library_copy2).format(
                 start_plate=library2['start_plate']+15,
                 end_plate=int(library2['start_plate']+20)))
-        library_screening = self._create_resource(
-            input, resource_uri, resource_test_uri)
+        logger.info('input: %r', input)
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=input, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        library_screening = self.deserialize(resp)
 
         # 8. Test - delete a plate_range
         input = { 
@@ -2654,11 +2661,19 @@ class ScreenResource(DBResourceTestCase):
                 library_screening['library_plates_screened'][:-1] 
             }
         logger.info('input: %r', input)
-        library_screening = self._create_resource(
-            input, resource_uri, resource_test_uri)
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=input, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        library_screening = self.deserialize(resp)
         
         # 9. test valid input with start_plate==end_plate (no end plate)
         
+        logger.info('test valid single plate input...')
+
         single_plate_lps_format = '{library_short_name}:{name}:{{start_plate}}'
         single_plate_lps_return_format = \
             '{library_short_name}:{name}:{{start_plate}}-{{start_plate}}'
@@ -2672,11 +2687,10 @@ class ScreenResource(DBResourceTestCase):
             single_plate_lps_return_format.format(**library_copy2).format(
                 start_plate=library2['start_plate'])
         ]
+
         input = library_screening_input.copy()
         input['date_of_activity'] = '2016-08-01'
         input['library_plates_screened'] =  library_plates_screened
-        
-        logger.info('test valid single plate input...')
         data_for_get = { 'date_of_activity__eq': input['date_of_activity']}
         library_screening = self._create_resource(
             input, resource_uri, resource_test_uri,
@@ -2692,7 +2706,9 @@ class ScreenResource(DBResourceTestCase):
             'single plate test, returned ranges, expected: %r, returned: %r'
             %(library_plates_screened_return_formatted,
                 library_screening['library_plates_screened']))
+        
         # Test Screen statistics
+
         screen = self.get_screen(screen['facility_id'])
 
         key = 'library_screenings'
@@ -2702,14 +2718,11 @@ class ScreenResource(DBResourceTestCase):
                 'returned value',screen[key]))
         
     def test3_create_publication(self):
-        logger.info('create users...')
+
+        logger.info('test3_create_publication ...')
+        
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
-        })
-        # Make a ScreensaverUser entry for the admin user
-        self.admin_user = self.create_screensaveruser({ 
-            'username': self.username,
-            'is_superuser': True
         })
         logger.info('create screen...')        
         screen = self.create_screen({
@@ -2742,7 +2755,7 @@ class ScreenResource(DBResourceTestCase):
         filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,base_filename)
         with open(filename) as input_file:
 
-            logger.info('POST publication with attached_file to the server')
+            logger.info('POST publication with attached_file to the server...')
             publication_data['attached_file'] = input_file
             django_test_client = self.api_client.client
             resp = django_test_client.post(
@@ -2773,7 +2786,7 @@ class ScreenResource(DBResourceTestCase):
         # Check for the attached file
         uri = '/db/publication/%s/attached_file' % publication_received['publication_id']
         try:
-            admin_user = User.objects.get(username=self.username)
+            admin_user = User.objects.get(username=self.admin_user['username'])
             view, args, kwargs = resolve(uri)
             kwargs['request'] = self.api_client.client.request()
             kwargs['request'].user=admin_user
@@ -2847,7 +2860,7 @@ class ScreenResource(DBResourceTestCase):
         # Check for the attached file
         uri = '/db/publication/%s/attached_file' % publication_received['publication_id']
         try:
-            admin_user = User.objects.get(username=self.username)
+            admin_user = User.objects.get(username=self.admin_user['username'])
             view, args, kwargs = resolve(uri)
             kwargs['request'] = self.api_client.client.request()
             kwargs['request'].user=admin_user
@@ -2882,11 +2895,11 @@ class ScreensaverUserResource(DBResourceTestCase):
         UserChecklistItem.objects.all().delete()
         AttachedFile.objects.all().delete()
         ServiceActivity.objects.all().delete()
-        ScreensaverUser.objects.all().delete()
-        
+        ScreensaverUser.objects.all().exclude(username=self.username).delete()
+         
         UserGroup.objects.all().delete()
-        UserProfile.objects.all().delete()
-        User.objects.all().delete()
+        UserProfile.objects.all().exclude(username=self.username).delete()
+        User.objects.all().exclude(username=self.username).delete()
         
         ApiLog.objects.all().delete()
 
@@ -2997,36 +3010,34 @@ class ScreensaverUserResource(DBResourceTestCase):
                 'usergroups': ['usergroup3']
             },
         ]};
-        try:       
-            resource_uri = BASE_URI_DB + '/screensaveruser'
-            resp = self.api_client.patch(resource_uri, 
-                format='json', data=userpatch, 
-                authentication=self.get_credentials())
-            self.assertTrue(
-                resp.status_code in [200,201,202], 
-                (resp.status_code, self.get_content(resp)))
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        resp = self.api_client.patch(resource_uri, 
+            format='json', data=userpatch, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
 
-            data_for_get = { 'limit': 0, 'includes': ['*'] }
-            resp = self.api_client.get(resource_uri, format='json', 
-                authentication=self.get_credentials(), data=data_for_get )
-            new_obj = self.deserialize(resp)
-            self.assertTrue(
-                resp.status_code in [200], 
-                (resp.status_code, self.get_content(resp)))
-            self.assertEqual(len(new_obj['objects']), 3, (new_obj))
-            
-            for i,item in enumerate(userpatch['objects']):
-                result, obj = find_obj_in_list(item, new_obj['objects'])
-                self.assertTrue(
-                    result, 
-                    ('bootstrap item not found', item, new_obj['objects']))
-                logger.debug('item found: %r', obj)        
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        resp = self.api_client.get(resource_uri, format='json', 
+            authentication=self.get_credentials(), data=data_for_get )
+        new_obj = self.deserialize(resp)
+
+        extant_user_count = 4 # 3 created in this test + testsuper (setupModule)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        self.assertEqual(len(new_obj['objects']), extant_user_count, (new_obj))
         
-        except Exception, e:
-            logger.exception('on userpatch %r, %e', userpatch, e)
-            raise
+        for i,item in enumerate(userpatch['objects']):
+            result, obj = find_obj_in_list(item, new_obj['objects'])
+            self.assertTrue(
+                result, 
+                ('bootstrap item not found', item, new_obj['objects']))
+            logger.debug('item found: %r', obj)        
 
     def test2_user_checklist_items(self):
+        
         self.test0_create_user();
         
         test_username = self.user1['username']

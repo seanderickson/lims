@@ -945,6 +945,11 @@ class LogCompareTest(TestCase):
         
 
 class IResourceTestCase(SimpleTestCase):
+   
+    username = 'testsuper'
+    password = 'pass'
+    
+    
     """
     Override the Django SimpleTestCase, not using the TransactionTestCase
     necessary so that the SqlAlchemy connection can see the same database as the 
@@ -978,18 +983,6 @@ class IResourceTestCase(SimpleTestCase):
     def setUp(self):
         super(IResourceTestCase, self).setUp()
 
-        logger.info('create a superuser...')
-        self.username = 'testsuper'
-        self.password = 'pass'
-        try:
-            self.user = User.objects.get(username=self.username)
-            logger.warn('superuser found: %r', self.user)
-            logger.warn('users: %r', [str(u) for u in User.objects.all()])
-        except ObjectDoesNotExist:
-            logger.warn('creating superuser: %s', self.username)
-            self.user = User.objects.create_superuser(
-                self.username, '1testsuperuser@example.com', self.password)
- 
     def _bootstrap_init_files(self):
         
         logger.info('_bootstrap_init_files...')
@@ -1020,7 +1013,8 @@ class IResourceTestCase(SimpleTestCase):
         
         _data_for_get = { 
             'limit': 0,
-            'includes': '*'
+            'includes': '*',
+            'HTTP_ACCEPT': 'application/json'
         }
         if data_for_get:
             _data_for_get.update(data_for_get)
@@ -1033,13 +1027,13 @@ class IResourceTestCase(SimpleTestCase):
         logger.info('post to %r...', resource_uri)
         resp = self.api_client.post(
             resource_uri, format='json', data=input_data, 
-            authentication=self.get_credentials())
-        new_obj = self.deserialize(resp)
+            authentication=self.get_credentials(), **_data_for_get)
         # FIXME: tp uses status code 200 instead of 201
         if expect_fail:
             self.assertFalse(
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
+            new_obj = self.deserialize(resp)
 
             resp1 = self.api_client.get(
                 resource_test_uri, format='json', 
@@ -1053,7 +1047,9 @@ class IResourceTestCase(SimpleTestCase):
             self.assertTrue(
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
-        
+            new_obj = self.deserialize(resp)
+            logger.info('post response: %r', new_obj)
+            
         new_obj = self.get_single_resource(resource_test_uri, data_for_get=_data_for_get)
         result,msg = assert_obj1_to_obj2(input_data,new_obj, excludes=excludes)
         self.assertTrue(result, msg)
@@ -1301,6 +1297,20 @@ def setUpModule():
     
     logger.info('init vars: keepdb: %r, reinit_metahash: %r, TestApiInit: %r', 
         keepdb,reinit_metahash,runTestApiInit[0])
+
+    # Set up a superuser
+    print 'create a superuser...'
+    try:
+        logger.info('create/find superuser %s...', IResourceTestCase.username)
+        IResourceTestCase.user = User.objects.get(username=IResourceTestCase.username)
+        logger.warn('superuser found: %r', IResourceTestCase.user)
+        logger.warn('users: %r', [str(u) for u in User.objects.all()])
+    except ObjectDoesNotExist:
+        logger.warn('creating superuser: %s', IResourceTestCase.username)
+        IResourceTestCase.user = User.objects.create_superuser(
+            IResourceTestCase.username, '1testsuperuser@example.com', IResourceTestCase.password)
+    print 'superuser created.'
+
     if (reinit_metahash or not keepdb) and not runTestApiInit[0]:
         testContext = IResourceTestCase(methodName='_bootstrap_init_files')
         testContext.setUp()
@@ -1308,6 +1318,7 @@ def setUpModule():
         logger.info('database initialization finished')
     else:
         print 'skip database metahash initialization when using keepdb'
+
 
     logger.info('=== setup Module done')
 

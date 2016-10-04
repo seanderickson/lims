@@ -233,7 +233,7 @@ class BaseSerializer(object):
             sort_keys=True, ensure_ascii=True, indent=json_indent, 
             encoding="utf-8")
 
-    def from_json(self, content):
+    def from_json(self, content, **kwargs):
         """
         Override to quote attributes from the client.
         """
@@ -269,7 +269,7 @@ class SDFSerializer(BaseSerializer):
         sdfutils.to_sdf(data,output)
         return output.getvalue()
     
-    def from_sdf(self, content, root='objects'):
+    def from_sdf(self, content, root='objects', **kwargs):
         '''
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
@@ -340,7 +340,9 @@ class XLSSerializer(BaseSerializer):
         # because workbooks are treated like sets of csv sheets, now convert
         # as if this were a csv sheet
         data = csvutils.from_csv_iterate(
-            xlsutils.sheet_rows(sheet),list_delimiter=LIST_DELIMITER_XLS, **kwargs)
+            xlsutils.sheet_rows(sheet),
+            list_delimiter=LIST_DELIMITER_XLS, 
+            list_keys=kwargs.get('list_keys', None))
  
         if root:
             return { root: data }
@@ -396,7 +398,7 @@ class CSVSerializer(BaseSerializer):
 
         return raw_data.getvalue()
 
-    def from_csv(self, content, root='objects'):
+    def from_csv(self, content, root='objects', **kwargs):
         '''
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
@@ -406,7 +408,9 @@ class CSVSerializer(BaseSerializer):
             content = force_text(content)
          
         objects = csvutils.from_csv(
-            cStringIO.StringIO(content),list_delimiter=LIST_DELIMITER_CSV)
+            cStringIO.StringIO(content),
+            list_delimiter=LIST_DELIMITER_CSV,
+            list_keys=kwargs.get('list_keys', None))
         if root:
             return { root: objects }
         else:
@@ -432,10 +436,10 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
     def to_xls(self, data, options=None):
         return self.to_xlsx(data, options)
     
-    def from_xlsx(self, content):
-        return self.from_xls(content)
+    def from_xlsx(self, content, **kwargs):
+        return self.from_xls(content, **kwargs)
 
-    def from_xls(self, content):
+    def from_xls(self, content, **kwargs):
         if isinstance(content, six.string_types):
             wb = xlrd.open_workbook(file_contents=content)
         else:

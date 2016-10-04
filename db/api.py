@@ -602,15 +602,40 @@ class PlateLocationResource(DbApiResource):
                         copy=copy_name,
                         val=str(_data)))
             try:
-                plate_range = Plate.objects.all().filter(
-                    copy=copy,
-                    plate_number__range=[_data['start_plate'],_data['end_plate']])
+                start_plate = _data['start_plate']
+                end_plate = _data['end_plate']
+                plate_range = ( 
+                    Plate.objects.all().filter(
+                        copy=copy,
+                        plate_number__range=[start_plate, end_plate])
+                        .order_by('plate_number')
+                    )
+                if not plate_range:
+                    raise ValidationError(
+                        key='copy_plate_ranges',
+                        msg=('plate range not found: {copy_name}{start_plate}-{end_plate}'
+                            ).format(**_data))
+                min = max = plate_range[0].plate_number
                 for plate in plate_range:
+                    if plate.plate_number < min:
+                        min = plate.plate_number
+                    if plate.plate_number > max:
+                        max = plate.plate_number
                     all_plates.add(plate)
+                if min != start_plate:
+                    raise ValidationError(
+                        key='copy_plate_ranges',
+                        msg=('plate range start not found: {copy_name}:{start_plate}-{end_plate}'
+                            ).format(**_data))
+                if max != end_plate:
+                    raise ValidationError(
+                        key='copy_plate_ranges',
+                        msg=('plate range end not found: {copy_name}:{start_plate}-{end_plate}'
+                            ).format(**_data))
             except ObjectDoesNotExist:
                 raise ValidationError(
                     key='copy_plate_ranges',
-                    msg=('plate range not found: {start_plate}-{end_plate}'
+                    msg=('plate range not found: {copy_name}:{start_plate}-{end_plate}'
                         ).format(**_data))
         
         logger.debug('all plate keys: %r', [

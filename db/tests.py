@@ -521,7 +521,7 @@ class LibraryResource(DBResourceTestCase):
     
     def test13_plate_locations(self):
 
-        logger.info('test17_batch_edit_copyplate_info ...')
+        logger.info('test13_plate_locations ...')
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         
         end_plate = library_data['end_plate']
@@ -635,6 +635,7 @@ class LibraryResource(DBResourceTestCase):
         }
         resource_uri = BASE_URI_DB + '/platelocation'
         
+        # TODO: test multipart/form upload, which is what the client will use
         resp = self.api_client.patch(
             resource_uri,format='json', 
             data={'objects': [plate_location_input],}, 

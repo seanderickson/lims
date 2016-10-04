@@ -96,16 +96,31 @@ class IccblBaseResource(Resource):
                     file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys})
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
+
+                schema = self.build_schema()
+                list_keys = [x for x,y in schema['fields'].items() 
+                    if y.get('data_type') == 'list']
+                
                 return self._meta.serializer.deserialize(
-                    file.read(), CSV_MIMETYPE)
+                    file.read(), CSV_MIMETYPE, **{ 'list_keys': list_keys})
             else:
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
         
         logger.info('use deserializer: %r', content_type)
-        return self._meta.serializer.deserialize(request.body,content_type)
-
-
+        
+        if content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
+            # NOTE: must inject information about the list fields, so that they
+            # can be properly parsed (this is a custom serialization format)
+            schema = self.build_schema()
+            list_keys = [x for x,y in schema['fields'].items() 
+                if y.get('data_type') == 'list']
+            return self._meta.serializer.deserialize(
+                request.body,content_type,
+                **{ 'list_keys': list_keys})
+        else:
+            return self._meta.serializer.deserialize(request.body,content_type)
+            
     def serialize(self, request, data, format=None):
         content_type = self._meta.serializer.get_accept_content_type(request, format)
         return self._meta.serializer.serialize(data, content_type)
@@ -297,6 +312,7 @@ class IccblBaseResource(Resource):
                 return response
                 
             except Exception as e:
+                logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):
                     # A specific response was specified
                     return e.response

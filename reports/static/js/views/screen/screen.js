@@ -1579,6 +1579,13 @@ define([
       var view = this.tabViews[key];
       if (!view){
         var billingKeys = self.model.resource.filterKeys('visibility', 'billing');
+        
+        var buttons = ['download','history'];
+        
+        if (appModel.hasPermission('screen', 'write')) {
+          buttons.push('edit');
+        }
+        
         var summaryModel = appModel.getModel(
           self.model.resource.key, self.model.key, 
           function(model){
@@ -1588,7 +1595,7 @@ define([
               detailKeys: billingKeys,
               editKeys: billingKeys,
               editableKeys: billingKeys,
-              buttons: ['download']
+              buttons: buttons
             });
             self.tabViews[key] = view;
             

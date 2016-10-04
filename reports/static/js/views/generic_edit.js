@@ -1085,7 +1085,7 @@ define([
         // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
         // NOTE: JSON does not officially support control-characters, so 
         // newlines should be escaped/unescaped on send/receive in the API (TODO)
-        if(_.isString(value) && model.previous(key)){
+        if(_.isString(value) && _.isString(model.previous(key))){
           if( value.replace(/(\r\n|\n|\r)/gm,"\n") == 
               model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") ){
             return true;

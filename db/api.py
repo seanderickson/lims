@@ -4627,7 +4627,9 @@ class AttachedFileResource(DbApiResource):
         except ObjectDoesNotExist:
             logger.exception('created_by_username does not exist: %s',
                 initializer_dict['created_by_username'])
-            raise
+            raise ValidationError(
+                key='created_by_username',
+                msg='user: %r does not exist' % initializer_dict['created_by_username'])
 
         parent_fields = set(['username', 'publication_id', 'screen_facility_id', 'reagent_id'])
         initializer_keys = set(initializer_dict.keys())
@@ -5988,19 +5990,26 @@ class LibraryScreeningResource(ActivityResource):
         # TODO: wrapper for parsing
         # FIXME: move parsing until after validation
         # FIXME: parse and validate only editable fields
-        
-        for key in fields.keys():
-            if deserialized.get(key, None) is not None:
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
 
         id_kwargs = self.get_id(deserialized, **kwargs)
         patch = bool(id_kwargs)
-        # NOTE: can determine patch because the activity_id key is only 
-        # available on patch
-        errors = self.validate(deserialized, patch=patch)
+        initializer_dict = self.parse(deserialized, create=not patch)
+        errors = self.validate(initializer_dict, patch=patch)
         if errors:
             raise ValidationError(errors)
+        
+#         for key in fields.keys():
+#             if deserialized.get(key, None) is not None:
+#                 initializer_dict[key] = parse_val(
+#                     deserialized.get(key, None), key, fields[key]['data_type']) 
+# 
+#         id_kwargs = self.get_id(deserialized, **kwargs)
+#         patch = bool(id_kwargs)
+#         # NOTE: can determine patch because the activity_id key is only 
+#         # available on patch
+#         errors = self.validate(deserialized, patch=patch)
+#         if errors:
+#             raise ValidationError(errors)
         
         if not patch:
             _key = 'screen_facility_id'
@@ -6185,15 +6194,19 @@ class LibraryScreeningResource(ActivityResource):
                 plate_numbers.update(plate_range)
                 plate_keys.update([ '%s/%d' % (copy.name, plate_number) 
                     for plate_number in plate_range])
+                logger.info('find the plate range: %s-%s', 
+                    start_plate.plate_number, end_plate.plate_number)
                 plate_ranges.append(Plate.objects.all().filter(
                     copy=copy,
                     plate_number__range=(
                         start_plate.plate_number, end_plate.plate_number)))
             except ObjectDoesNotExist:
-                raise ValidationError(
-                    key='library_plates_screened',
-                    msg=('plate range not found: {start_plate}-{end_plate}'
-                        ).format(**_data))
+                logger.exception('plate range error')
+                raise ValidationError({
+                    'library_plates_screened':
+                    ('plate range not found: {start_plate}-{end_plate}'
+                        ).format(**_data),
+                    'copy_name': _data['copy_name'] })
         logger.debug('plate keys: %r, plate_numbers: %r', plate_keys, plate_numbers)
 
         # find extant/deleted plates        
@@ -8368,46 +8381,41 @@ class NaturalProductReagentResource(DbApiResource):
         
         NaturalProductReagent.objects.all().filter(well__library=library).delete()
 
-    @transaction.atomic()    
-    def patch_obj(self, request, deserialized, **kwargs):
-
-        well = kwargs.get('well', None)
-        if not well:
-            raise ValidationError(key='well', msg='required')
-
-        id_kwargs = self.get_id(deserialized, **kwargs)
-        
-        patch = False
-        if not well.reagent_set.exists():
-            reagent = NaturalProductReagent(well=well)
-        
-        else:
-            patch = True
-            # TODO: only works for a single reagent
-            # can search for the reagent using id_kwargs
-            # reagent = well.reagent_set.all().filter(**id_kwargs)
-            # TODO: update reagent
-            reagent = well.reagent_set.all()[0]
-            reagent = reagent.naturalproductreagent
-            logger.info('found reagent: %r, %r', reagent.well_id, reagent)
-
-        initializer_dict = self.parse(deserialized,create=not patch)
-        errors = self.validate(initializer_dict, patch=patch)
-        if errors:
-            raise ValidationError(errors)
-        
-        for key, val in initializer_dict.items():
-            if hasattr(reagent, key):
-                setattr(reagent, key, val)
-
-        reagent.save()
-        logger.debug('patch natural product reagent: %r', reagent)
-
-        logger.debug(
-            'patched natural product reagent: %r',
-            self.get_id(model_to_dict(reagent)))
-        
-        return reagent        
+    def _patch_wells(self, deserialized):
+        ''' For bulk update: 
+        - deserialized has been loaded with the well
+        '''
+        schema = self.build_schema()
+        for i,well_data in enumerate(deserialized):
+            well = well_data['well']
+            is_patch = False
+            fields = schema['create_fields']
+            if not well.reagent_set.exists():
+                reagent = NaturalProductReagent(well=well)
+            else:
+                is_patch = True
+                fields = schema['update_fields']
+                # TODO: only works for a single reagent
+                # can search for the reagent using id_kwargs
+                # reagent = well.reagent_set.all().filter(**id_kwargs)
+                # TODO: update reagent
+                reagent = well.reagent_set.all()[0]
+                reagent = reagent.naturalproductreagent
+                logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+                
+            initializer_dict = self.parse(well_data, fields=fields)
+            errors = self.validate(initializer_dict, patch=is_patch, schema=schema)
+            if errors:
+                raise ValidationError(errors)
+            
+            for key, val in initializer_dict.items():
+                if hasattr(reagent, key):
+                    setattr(reagent, key, val)
+    
+            reagent.save()
+            if i % 999 == 0:
+                logger.info('patched %d reagents', i+1)
+        logger.info('patched %d reagents', i+1)
 
 
 class SilencingReagentResource(DbApiResource):
@@ -8577,38 +8585,88 @@ class SilencingReagentResource(DbApiResource):
         
         return columns 
 
-    @transaction.atomic()    
-    def patch_obj(self, request, deserialized, **kwargs):
+    # NOTE: removed; patching will only be done in batch, from library/well
+    # @transaction.atomic()    
+    # def patch_obj(self, request, deserialized, **kwargs):
+    # 
+    #     start_time = time.time()
+    #      
+    #     well = kwargs.get('well', None)
+    #     if not well:
+    #         raise ValidationError(key='well', msg='required')
+    # 
+    #     schema = self.build_schema()
+    #     fields = schema['fields']
+    #     mutable_fields = []
+    #     for field in fields.values():
+    #         editability = field.get('editability', None)
+    #         if editability and (
+    #             'u' in editability or (create and 'c' in editability )):
+    #             mutable_fields.append(field)
+    #     id_kwargs = self.get_id(deserialized, **kwargs)
+    # 
+    #     patch = False
+    #     if not well.reagent_set.exists():
+    #         reagent = SilencingReagent(well=well)
+    #          
+    #         # only allow duplex_wells to be set on create
+    #         if 'duplex_wells' in kwargs:
+    #             reagent.save()
+    #             reagent.duplex_wells = kwargs['duplex_wells']
+    #      
+    #     else:
+    #         patch = True
+    #         # TODO: only works for a single reagent
+    #         # can search for the reagent using id_kwargs
+    #         # reagent = well.reagent_set.all().filter(**id_kwargs)
+    #         # TODO: update reagent
+    #         reagent = well.reagent_set.all()[0]
+    #         reagent = reagent.silencingreagent
+    #         logger.info('found reagent: %r, %r', reagent.well_id, reagent)
+    # 
+    #     self._set_reagent_values(reagent, deserialized, patch)                
+    #      
+    #     return reagent        
+
+    def _patch_wells(self, deserialized):
+        ''' For bulk update: 
+        - deserialized has been loaded with the well & duplex wells
+        '''
+        schema = self.build_schema()
+        for i,well_data in enumerate(deserialized):
+            well = well_data['well']
+            is_patch = False
+            fields = schema['create_fields']
+            if not well.reagent_set.exists():
+                reagent = SilencingReagent(well=well)
+                
+                # only allow duplex_wells to be set on create
+                if well_data.get('duplex_wells', None):
+                    reagent.save()
+                    reagent.duplex_wells = well_data['duplex_wells']
+            else:
+                is_patch = True
+                fields = schema['update_fields']
+                # TODO: only works for a single reagent
+                # can search for the reagent using id_kwargs
+                # reagent = well.reagent_set.all().filter(**id_kwargs)
+                # TODO: update reagent
+                reagent = well.reagent_set.all()[0]
+                reagent = reagent.silencingreagent
+                logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+                
+            self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
+
+            if i % 999 == 0:
+                logger.info('patched %d reagents', i+1)
+        logger.info('patched %d reagents', i+1)
+
+    def _set_reagent_values(self, reagent, deserialized, is_patch, schema, fields):
 
         start_time = time.time()
-        
-        well = kwargs.get('well', None)
-        if not well:
-            raise ValidationError(key='well', msg='required')
 
-        id_kwargs = self.get_id(deserialized, **kwargs)
-
-        patch = False
-        if not well.reagent_set.exists():
-            reagent = SilencingReagent(well=well)
-            
-            # only allow duplex_wells to be set on create
-            if 'duplex_wells' in kwargs:
-                reagent.save()
-                reagent.duplex_wells = kwargs['duplex_wells']
-        
-        else:
-            patch = True
-            # TODO: only works for a single reagent
-            # can search for the reagent using id_kwargs
-            # reagent = well.reagent_set.all().filter(**id_kwargs)
-            # TODO: update reagent
-            reagent = well.reagent_set.all()[0]
-            reagent = reagent.silencingreagent
-            logger.info('found reagent: %r, %r', reagent.well_id, reagent)
-
-        initializer_dict = self.parse(deserialized, create=not patch)
-        errors = self.validate(initializer_dict, patch=patch)
+        initializer_dict = self.parse(deserialized, fields=fields)
+        errors = self.validate(initializer_dict, patch=is_patch, schema=schema)
         if errors:
             raise ValidationError(errors)
 
@@ -8636,9 +8694,7 @@ class SilencingReagentResource(DbApiResource):
         reagent.save()
 
         self.patch_elapsedtime3 += (time.time() - start_time)
-                
-        return reagent        
-        
+
     def _create_gene(self, data, source_type):
         
         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
@@ -8706,32 +8762,43 @@ class SmallMoleculeReagentResource(DbApiResource):
         
         SmallMoleculeReagent.objects.all().filter(well__library=library).delete()
 
-    @transaction.atomic()    
-    def patch_obj(self, request, deserialized, **kwargs):
+    def _patch_wells(self, deserialized):
+        ''' For bulk update: 
+        - deserialized has been loaded with the wells
+        '''
+        logger.info('patch reagents...')
         
+        schema = self.build_schema()
+        for i,well_data in enumerate(deserialized):
+            well = well_data['well']
+            is_patch = False
+            fields = schema['create_fields']
+            if not well.reagent_set.exists():
+                reagent = SmallMoleculeReagent(well=well)
+                reagent.save()
+            else:
+                is_patch = True
+                fields = schema['update_fields']
+                # TODO: only works for a single reagent
+                # can search for the reagent using id_kwargs
+                # reagent = well.reagent_set.all().filter(**id_kwargs)
+                # TODO: update reagent
+                reagent = well.reagent_set.all()[0]
+                reagent = reagent.smallmoleculereagent
+                logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+                
+            self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
+            
+            if i % 999 == 0:
+                logger.info('patched %d reagents', i+1)
+        logger.info('patched %d reagents', i+1)
+
+    def _set_reagent_values(self, reagent, deserialized, is_patch, schema, fields):
+
         start_time = time.time()
 
-        well = kwargs.get('well', None)
-        if not well:
-            raise ValidationError(key='well', msg='required')
-
-        id_kwargs = self.get_id(deserialized, **kwargs)
-        
-        patch = False
-        if not well.reagent_set.exists():
-            reagent = SmallMoleculeReagent(well=well)
-        else:
-            patch = True
-            # TODO: only works for a single reagent
-            # can search for the reagent using id_kwargs
-            # reagent = well.reagent_set.all().filter(**id_kwargs)
-            # TODO: update reagent
-            reagent = well.reagent_set.all()[0]
-            reagent = reagent.smallmoleculereagent
-            logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
-
-        initializer_dict = self.parse(deserialized, create=not patch)
-        errors = self.validate(initializer_dict, patch=patch)
+        initializer_dict = self.parse(deserialized, fields=fields)
+        errors = self.validate(initializer_dict, patch=is_patch, schema=schema)
         if errors:
             raise ValidationError(errors)
 
@@ -8778,17 +8845,17 @@ class SmallMoleculeReagentResource(DbApiResource):
                 cid.save()
         if deserialized.get('molfile', None):
             Molfile.objects.all().filter(reagent=reagent).delete()
-            
+             
             molfile = Molfile.objects.create(
                 reagent=reagent, molfile=deserialized['molfile'])
             molfile.save()
-        reagent.save()
+#         reagent.save()
 
         self.patch_elapsedtime3 += (time.time() - start_time)
                 
         logger.debug('sm patch_obj done')
         return reagent
-
+    
 
 class ReagentResource(DbApiResource):
     
@@ -9105,19 +9172,20 @@ class ReagentResource(DbApiResource):
     def delete_reagents_for_library(self, library):
         self.get_reagent_resource(library.classification).delete_reagents(library)
 
-    @transaction.atomic()    
-    def patch_obj(self, request, deserialized, **kwargs):
-        well = kwargs.get('well', None)
-        if not well:
-            raise ValidationError(key='well', msg='required')
-        
-        reagent_resource = self.get_reagent_resource(
-            well.library.classification)
-        reagent = reagent_resource.patch_obj(request, deserialized, **kwargs)
-        
-        reagent.well = well
-        reagent.save()
-        return well
+    # NOTE: removed; patching will only be done in batch, from library/well
+    # @transaction.atomic()    
+    # def patch_obj(self, request, deserialized, **kwargs):
+    #     well = kwargs.get('well', None)
+    #     if not well:
+    #         raise ValidationError(key='well', msg='required')
+    #     
+    #     reagent_resource = self.get_reagent_resource(
+    #         well.library.classification)
+    #     reagent = reagent_resource.patch_obj(request, deserialized, **kwargs)
+    #     
+    #     reagent.well = well
+    #     reagent.save()
+    #     return well
 
 class WellResource(DbApiResource):
 
@@ -9397,10 +9465,8 @@ class WellResource(DbApiResource):
             'patch_list: WellResource: library: %r...', library.short_name)
          
         deserialized = self.deserialize(request)
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
+        if self._meta.collection_name in deserialized:
+            deserialized = deserialized[self._meta.collection_name]
  
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
@@ -9438,6 +9504,7 @@ class WellResource(DbApiResource):
             '/'.join(
                 self.get_library_resource()
                     .get_id(model_to_dict(library)).values()))
+        kwargs.update({ 'parent_log': library_log })
  
         logger.info('Cache library wells for patch...') 
         well_map = dict((well.well_id, well) 
@@ -9446,8 +9513,9 @@ class WellResource(DbApiResource):
             raise BadRequest('Library wells have not been created')
          
         logger.info('patch wells, count: %d', len(deserialized))
-        count = 0
-        for well_data in deserialized:
+        # Note: wells can only be created on library creation
+        fields = schema['update_fields']
+        for i,well_data in enumerate(deserialized):
             well_data['library_short_name'] = kwargs['library_short_name']
              
             well_id = well_data.get('well_id', None)
@@ -9463,7 +9531,7 @@ class WellResource(DbApiResource):
                 raise ValidationError(
                     key='well_id',
                     msg='well_id is required')
-             
+            
             well = well_map.get(well_id, None)
             if not well:
                 raise ValidationError(
@@ -9471,21 +9539,45 @@ class WellResource(DbApiResource):
                     msg=('well %r not found for this library %r'
                         % (well_id, well_data['library_short_name']))
                 )
+            well_data['well_id'] = well_id
+            well_data['well'] = well
+
+            initializer_dict = self.parse(well_data, fields=fields)
+            for key, val in initializer_dict.items():
+                if hasattr(well, key):
+                    setattr(well, key, val)
             
-            kwargs.update({ 'library': library })
-            kwargs.update({ 'well': well })
-            kwargs.update({ 'parent_log': library_log })
-            try:
-                self.patch_obj(request, well_data, **kwargs)
-            except ValidationError, e:
-                logger.exception('Validation error: %r', e)
-                raise e
-            count += 1
-            if count % 100 == 0:
-                logger.info('patched: %d wells', count)
+            well.save()
+        
+            duplex_wells = []
+            if well_data.get('duplex_wells', None):
+                if not library.is_pool:
+                    raise ValidationError(
+                        key='duplex_wells',
+                        msg='library is not a pool libary: %r' % library.short_name)
+                
+                # TODO: batch get/set all of the duplex wells as well
+                well_ids = well_data['duplex_wells']
+                for well_id in well_ids:
+                    try:
+                        duplex_wells.append(Well.objects.get(well_id=well_id))
+                    except:
+                        raise ValidationError(
+                            key='duplex_well not found',
+                            msg='well: %r, pool well: %r' % (well.well_id, well_id))
+                well_data['duplex_wells'] = duplex_wells
+            if i % 999 == 0:
+                logger.info('patched: %d wells', i+1)
+        logger.info('patched %d wells', i+1)
+
+        self.get_reagent_resource().\
+            get_reagent_resource(library.classification)._patch_wells(deserialized)        
+        
+        library.save()
+        
         logger.info(
             'put_list: WellResource: library: %r; patch completed: %d', 
-            library.short_name, count)
+            library.short_name, i+1)
              
         self.get_reagent_resource().get_debug_times()
          
@@ -9519,7 +9611,6 @@ class WellResource(DbApiResource):
             **kwargs)
 
         patch_count = len(deserialized)
-        # update_count = len(new_data_patches_only)
         # Update: for wells, only measure what has diffed
         update_count = len([x for x in logs if x.diffs ])
         # Create: measure what is reported created (new_data), subtract updates,
@@ -9547,419 +9638,65 @@ class WellResource(DbApiResource):
 
     @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
-        logger.debug('patch: %r', deserialized)
-        library = kwargs.get('library', None)
-        if not library:
-            library_short_name = kwargs.get('library_short_name', None)
-            if not library_short_name:
-                raise ValidationError(key='library_short_name', msg='required')
-            try:
-                library = Library.objects.get(short_name=library_short_name)
-                kwargs['library'] = library
-            except ObjectDoesNotExist:
-                raise Http404('library not found: %r' % library_short_name)
+        
+        raise NotImplementedError('patch obj must be implemented')
+        
+        # logger.debug('patch: %r', deserialized)
+        # library = kwargs.get('library', None)
+        # if not library:
+        #     library_short_name = kwargs.get('library_short_name', None)
+        #     if not library_short_name:
+        #         raise ValidationError(key='library_short_name', msg='required')
+        #     try:
+        #         library = Library.objects.get(short_name=library_short_name)
+        #         kwargs['library'] = library
+        #     except ObjectDoesNotExist:
+        #         raise Http404('library not found: %r' % library_short_name)
+        # 
+        # initializer_dict = self.parse(deserialized)
+        # 
+        # id_kwargs = self.get_id(deserialized, **kwargs)
+        # 
+        # well = kwargs.get('well', None)
+        # if not well:
+        #     # find the well, to allow for patching
+        #     try:
+        #         well = Well.obj.get(**id_kwargs)
+        #         kwargs['well'] = well
+        #     except ObjectDoesNotExist:
+        #         raise Http404('well not found: %r' % id_kwargs)
+        # 
+        # errors = self.validate(initializer_dict, patch=True)
+        # if errors:
+        #     raise ValidationError(errors)
+        # 
+        # for key, val in initializer_dict.items():
+        #     if hasattr(well, key):
+        #         setattr(well, key, val)
+        # 
+        # well.save()
+        # 
+        # duplex_wells = []
+        # if deserialized.get('duplex_wells', None):
+        #     if not library.is_pool:
+        #         raise ValidationError(
+        #             key='duplex_wells',
+        #             msg='library is not a pool libary: %r' % library.short_name)
+        #     well_ids = deserialized['duplex_wells']  # .split(';')
+        #     for well_id in well_ids:
+        #         try:
+        #             duplex_wells.append(Well.objects.get(well_id=well_id))
+        #         except:
+        #             raise ValidationError(
+        #                 key='duplex_well not found',
+        #                 msg='well: %r, pool well: %r' % (well.well_id, well_id))
+        #     kwargs['duplex_wells'] = duplex_wells
+        # # lookup/create the reagent
+        # # TODO: delegate this to the ReagentResource
+        # self.get_reagent_resource().patch_obj(request, deserialized, **kwargs)
+        # 
+        # return well
 
-        initializer_dict = self.parse(deserialized)
-        
-        id_kwargs = self.get_id(deserialized, **kwargs)
-        
-        well = kwargs.get('well', None)
-        if not well:
-            # find the well, to allow for patching
-            try:
-                well = Well.obj.get(**id_kwargs)
-                kwargs['well'] = well
-            except ObjectDoesNotExist:
-                raise Http404('well not found: %r' % id_kwargs)
-
-        errors = self.validate(initializer_dict, patch=True)
-        if errors:
-            raise ValidationError(errors)
-        
-        for key, val in initializer_dict.items():
-            if hasattr(well, key):
-                setattr(well, key, val)
-        
-        well.save()
-    
-        duplex_wells = []
-        if deserialized.get('duplex_wells', None):
-            if not library.is_pool:
-                raise ValidationError(
-                    key='duplex_wells',
-                    msg='library is not a pool libary: %r' % library.short_name)
-            well_ids = deserialized['duplex_wells']  # .split(';')
-            for well_id in well_ids:
-                try:
-                    duplex_wells.append(Well.objects.get(well_id=well_id))
-                except:
-                    raise ValidationError(
-                        key='duplex_well not found',
-                        msg='well: %r, pool well: %r' % (well.well_id, well_id))
-            kwargs['duplex_wells'] = duplex_wells
-        # lookup/create the reagent
-        # TODO: delegate this to the ReagentResource
-        self.get_reagent_resource().patch_obj(request, deserialized, **kwargs)
-        
-        return well
-
-#     @write_authorization
-#     @un_cache        
-#     def put_list_bulk_update_attempt(self, request, **kwargs):
-# #     def put_list(self, request, **kwargs):
-#         ''' works, but not implemented yet:
-#         pubchem_cids, chembl_ids, chembank_ids, 
-#         all SilencingReagent: duplex, genes
-#         
-#         - Also, not markedly more performant
-#         '''
-#         if 'library_short_name' not in kwargs:
-#             raise BadRequest('library_short_name is required')
-#         logger.info('patch wells for library: %r', kwargs['library_short_name'])
-#         
-#         deserialized = self.deserialize(request)
-#         if self._meta.collection_name in deserialized:
-#             deserialized = deserialized[self._meta.collection_name]
-# 
-#         if not deserialized:
-#             raise BadRequest('no data submitted')
-# 
-#         logger.info('deserialized: %d', len(deserialized))
-#         schema = self.build_schema()
-#         id_attribute = schema['id_attribute']
-# 
-#         logger.info('cache the current data...')    
-#         kwargs_for_log = kwargs.copy()
-#         for id_field in id_attribute:
-#             ids = set()
-#             # Test for each id key; it's ok on create for ids to be None
-#             for _dict in [x for x in deserialized if x.get(id_field, None)]:
-#                 ids.add(_dict.get(id_field))
-#             if ids:
-#                 kwargs_for_log['%s__in' % id_field] = \
-#                     LIST_DELIMITER_URL_PARAM.join(ids)
-#         logger.info('get original state, for logging')
-#         kwargs_for_log['includes'] = ['*', '-molfile']
-#         # NOTE: consider 'undefined' to be created
-#         kwargs_for_log['library_well_type__ne'] = 'undefined'
-#         original_data = self._get_list_response(request, **kwargs_for_log)
-#         logger.info('current data cached: %d...', len(original_data))
-#         
-# #         logger.debug('original data: %r', original_data)
-#         with transaction.atomic():
-# 
-#             library = Library.objects.get(
-#                 short_name=kwargs['library_short_name'])
-#             logger.info(
-#                 'put_list: WellResource: library: %r...', library.short_name)
-#     
-#             prev_version = library.version_number
-#             if library.version_number:
-#                 library.version_number += 1
-#             else:
-#                 library.version_number = 1
-#             library.save()
-#             
-#             library_log = self.make_log(request, **kwargs)
-#             library_log.diff_keys = ['version_number']
-#             library_log.diffs = { 'version_number': [prev_version, library.version_number]}
-#             library_log.ref_resource_name = 'library'
-#             library_log.uri = self.get_library_resource().get_resource_uri(
-#                 model_to_dict(library))
-#             library_log.key = (
-#                 '/'.join(
-#                     self.get_library_resource()
-#                         .get_id(model_to_dict(library)).values()))
-# #     
-#         TEMP_WELL_TABLE = 'temp_well_data'
-#         TEMP_CMPDNAME_TABLE = 'temp_compound_name_data'
-#         TEMP_REAGENT_SUBSTANCE_TABLE = 'temp_reagent_substance_ids'
-#         CSV_DELIMITER = str('|')
-#         schema = self.build_schema(library.classification)
-#         fields = schema['fields']
-#         
-#         fieldnames = [key for key in fields.keys() 
-#             if fields[key]['data_type'] != 'list' 
-# #             and key != 'molfile'
-#         ]
-#         well_fields = [
-#             'facility_id', 'library_well_type', 'molar_concentration', 
-#             'mg_ml_concentration']
-#         reagent_fields = [
-#             'reagent_id','vendor_identifier', 'vendor_name', 'well_id',
-#             'vendor_batch_id', ]
-#         sm_reagent_fields = [
-#             'reagent_id','inchi', 'molecular_formula', 'molecular_mass',
-#             'molecular_weight', 'smiles']
-#         cn_fieldnames = ['well_id','ordinal', 'name']
-#         pubchem_fieldnames = ['well_id','pubchem_cid']
-#         chembl_fieldnames = ['well_id','chembl_id']
-#         chembank_fieldnames = ['well_id','chembank_id']
-#         
-#         logger.info('fieldnames: %d, %r', len(fieldnames), fieldnames)
-#         with SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as f, \
-#             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as cn_file, \
-#             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as pubchem_file, \
-#             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as chembl_file, \
-#             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as chembank_file, \
-#             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as temp_reagent_file:
-#         
-#             writer = csv.DictWriter(
-#                 f, fieldnames=fieldnames, delimiter=CSV_DELIMITER,
-#                 lineterminator="\n")
-#             cnwriter = csv.DictWriter(
-#                 cn_file, fieldnames=cn_fieldnames, delimiter=CSV_DELIMITER,
-#                 lineterminator="\n")
-#             temp_rg_writer = csv.DictWriter(
-#                 temp_reagent_file, fieldnames=['reagent_id', 'substance_id'], 
-#                 delimiter=CSV_DELIMITER,lineterminator="\n")
-# 
-#             rows_created = 0
-#             wells_to_create = 0
-#             compound_names_to_create = 0
-#             plates_max_replicate_loaded = {}
-#             logger.info('write temp file wells for library: %r ...',
-#                 library.short_name)
-#             
-#             initializer_dict = { 
-#                 fieldname:PSYCOPG_NULL for fieldname in fieldnames}
-#             
-#             logger.info('initializer dict: %d', len(initializer_dict))
-#             for _data in deserialized:
-#                 _dict = {}
-#                 _dict.update(initializer_dict)
-#                 
-#                 for key in fieldnames:
-#                     if key in _data:
-#                         if key == 'molfile':
-#                             _dict[key] = _data.get('molfile',PSYCOPG_NULL).replace("\n","\\n")
-#                         else:
-#                             _dict[key] = parse_val(
-#                                 _data.get(key,None), key,fields[key]['data_type']) 
-#                             if _dict[key] is None:
-#                                 _dict[key] = PSYCOPG_NULL
-#                 _dict['library_short_name'] = library.short_name
-#                  
-#                 well_id = _data.get('well_id', None)
-#                 if not well_id:
-#                     well_name = _data.get('well_name', None)
-#                     plate_number = _data.get('plate_number', None)
-#                     if well_name and plate_number:                
-#                         well_id = '%s:%s' % (
-#                             str(plate_number).zfill(5), well_name)
-#                         _dict['well_id'] = well_id
-#      
-#                 if not well_id:
-#                     raise ValidationError(
-#                         key='well_id',
-#                         msg='well_id is required')
-#                 
-#                 logger.debug('well_id: %r', well_id)
-#                 writer.writerow(_dict)
-#                 compound_names = _data.get('compound_name', [])
-#                 if not isinstance(compound_names, (list,tuple)):
-#                     compound_names = [compound_names,]
-#                 for i,cn in enumerate(compound_names):
-#                     cnwriter.writerow({
-#                         'well_id': well_id, 
-#                         'ordinal': i,
-#                         'name': cn
-#                     })
-#                     compound_names_to_create += 1
-#                 wells_to_create += 1
-#             
-#             logger.info('well_data rows to create: %d', wells_to_create)
-#             
-#             field_types = {
-#                 'string': 'text',
-#                 'boolean': 'boolean',
-#                 'list': 'text', # todo
-#                 'float': 'float',
-#                 'decimal': 'float',
-#                 'integer': 'integer',
-#             }
-# 
-#             f.seek(0)
-#             cn_file.seek(0)
-# 
-#             with connection.cursor() as cursor:
-# 
-#                 # Drop and recreate temp tables
-#                 try:
-#                     cursor.execute('DROP TABLE %s;' % TEMP_WELL_TABLE)
-#                 except Exception, e:
-#                     logger.info('on dropping table: %r, %s', TEMP_WELL_TABLE, e)
-#                 try:
-#                     cursor.execute('DROP TABLE %s;' % TEMP_CMPDNAME_TABLE)
-#                 except Exception, e:
-#                     logger.info('on dropping table: %r, %s', TEMP_CMPDNAME_TABLE, e)
-#                 try:
-#                     cursor.execute('DROP TABLE %s;' % TEMP_REAGENT_SUBSTANCE_TABLE)
-#                 except Exception, e:
-#                     logger.info('on dropping table: %r, %s', TEMP_REAGENT_SUBSTANCE_TABLE, e)
-#                 
-#                 # Create temp tables
-#                 table_create_sql = ''.join([
-#                     'CREATE TABLE "%s" (' % TEMP_WELL_TABLE,
-#                     ', '.join(['%s %s'%(key,field_types[fields[key]['data_type']]) 
-#                         for key in fieldnames]),
-#                     ');'])
-#                 logger.info('temp table sql: %r', table_create_sql)
-#                 cursor.execute(table_create_sql);
-#                 cursor.execute('alter table %s add CONSTRAINT well_id_unique UNIQUE(well_id);' % TEMP_WELL_TABLE);
-# 
-#                 cursor.execute('CREATE TABLE %s ( well_id text, ordinal integer, name text) ; '
-#                     % TEMP_CMPDNAME_TABLE)
-#                 
-#                 cursor.execute('CREATE TABLE %s ( reagent_id integer, substance_id text) ; '
-#                     % TEMP_REAGENT_SUBSTANCE_TABLE)
-#                 
-#                 #### Copy data into the temp tables
-#                 
-#                 cursor.copy_from(
-#                     f, TEMP_WELL_TABLE, sep=CSV_DELIMITER, 
-#                     columns=fieldnames, null=PSYCOPG_NULL)
-#                 logger.info('temp well data created.')
-#                 
-#                 logger.info('create compound names: %d', compound_names_to_create)
-#                 cursor.copy_from(
-#                     cn_file, TEMP_CMPDNAME_TABLE, sep=CSV_DELIMITER, 
-#                     columns=cn_fieldnames, null=PSYCOPG_NULL)
-#                 logger.info('temp compound names created')
-# #                 TODO: update wells, reagents, (sr, smr, compound names, etc.)
-# #                 Cases:
-# #                 1. reagents do not exist (create)
-# #                 1. reagents do exist (update)
-#                 find_new_wells_sql = (
-#                     'select tw.well_id from temp_well_data tw ' 
-#                     'where not exists(select well_id '
-#                     'from reagent where reagent.well_id=tw.well_id);')
-#                 find_extant_wells_sql = (
-#                     'select tw.well_id from temp_well_data tw ' 
-#                     'where exists(select well_id '
-#                     'from reagent where reagent.well_id=tw.well_id);')
-#                 cursor.execute(find_new_wells_sql)
-#                 wells_to_create_reagents = [x[0] for x in cursor.fetchall()]
-#                 cursor.execute(find_extant_wells_sql)
-#                 wells_to_update_reagents = [x[0] for x in cursor.fetchall()]
-#                 
-#                 if len(wells_to_create_reagents) == 0 and len(wells_to_update_reagents) ==0:
-#                     raise ValidationError(key='well_id', msg='no wells found to update or create')
-#                 
-#                 if wells_to_update_reagents:
-#                     logger.info('wells to update: %r', len(wells_to_update_reagents))
-#                     update_reagent_sql = (
-#                         'update reagent set ' + 
-#                         ', '.join(['%s=tw.%s' %(field,field) for field in reagent_fields[1:] ]) +
-#                         ' from %s tw where tw.well_id = reagent.well_id;'% TEMP_WELL_TABLE
-#                         )
-#                     logger.info('update sql: %r', update_reagent_sql)
-#                     cursor.execute(update_reagent_sql);
-#                     logger.info('temp reagent data update')
-# 
-#                     # FIX: only set if input field is not null
-#                     
-#                     sm_update_reagent_sql = (
-#                         'update small_molecule_reagent set ' +
-#                         ', '.join(['%s=tw.%s' %(field,field) for field in sm_reagent_fields[1:] ]) +
-#                         ' from %s tw join reagent r using(well_id) '% TEMP_WELL_TABLE  + 
-#                         ' join small_molecule_reagent smr using(reagent_id) ;'
-#                         )
-#                     logger.info('insert sql: %r', sm_update_reagent_sql)
-#                     result = cursor.execute(sm_update_reagent_sql,[wells_to_create_reagents]);
-#                     logger.info('temp sm reagent data inserted: %r', result)
-#                 
-# 
-# 
-#                 if wells_to_create_reagents:
-#                     logger.info('create reagents for wells: %r', len(wells_to_create_reagents))
-#                     cursor.execute('alter table reagent alter column substance_id drop not null;')                
-#                     insert_reagent_sql = (
-#                         'insert into reagent (' + ', '.join(reagent_fields) + ') ' +
-#                         " ( select nextval('reagent_reagent_id_seq'), " +
-#                         ', '.join(reagent_fields[1:]) +
-#                         ' from %s tw where not exists(select well_id ' % TEMP_WELL_TABLE +
-#                         ' from reagent where reagent.well_id=tw.well_id));'
-#                         )
-#                     logger.info('insert sql: %r', insert_reagent_sql)
-#                     cursor.execute(insert_reagent_sql);
-#                     logger.info('temp reagent data inserted')
-#                 
-#                     sm_insert_reagent_sql = (
-#                         'insert into small_molecule_reagent (' + ', '.join(sm_reagent_fields) + ') ' +
-#                         " ( select reagent_id, " +
-#                         ', '.join(sm_reagent_fields[1:]) +
-#                         ' from %s tw join reagent using(well_id) ' % TEMP_WELL_TABLE +
-#                         ' where tw.well_id = any(%s) '  +
-#                         ' and reagent.well_id=tw.well_id);'
-#                         )
-#                     logger.info('insert sql: %r', sm_insert_reagent_sql)
-#                     cursor.execute(sm_insert_reagent_sql,[wells_to_create_reagents]);
-#                     logger.info('temp sm reagent data inserted')
-#                 
-#                 logger.info('create compound name data')
-#                 cursor.execute(
-#                     'delete from small_molecule_compound_name sn' +
-#                     ' using reagent, %s tcn' % TEMP_CMPDNAME_TABLE +
-#                     ' where reagent.reagent_id=sn.reagent_id ' +
-#                     ' and tcn.well_id = reagent.well_id' )
-#                 cn_insert_sql = (
-#                     'insert into small_molecule_compound_name (' + 
-#                     'reagent_id, ordinal, compound_name ) ' + 
-#                     '( select '+
-#                     ' reagent_id, tcn.ordinal, tcn.name ' +
-#                     ' from %s tcn join reagent using(well_id) )' % TEMP_CMPDNAME_TABLE )
-#                 cursor.execute(cn_insert_sql)
-#                 logger.info('compound names inserted')
-#                 
-#                 logger.info('create substance ids')
-#                 cursor.execute(
-#                     'select reagent_id from reagent where well_id = ANY(%s)', 
-#                     [wells_to_create_reagents])
-#                 
-#                 substance_id_count = 0
-#                 for row in cursor.fetchall(): 
-#                     reagent_id = row[0]
-#                     substance_id = create_substance_id(reagent_id)
-#                     logger.debug('reagent: %r create substance id %r', reagent_id, substance_id)
-#                     temp_rg_writer.writerow({
-#                         'reagent_id': reagent_id,
-#                         'substance_id': substance_id
-#                         })
-#                     substance_id_count += 1
-#                 logger.info('created %d substance ids', substance_id_count)
-#                 temp_reagent_file.seek(0)
-#                 cursor.copy_from(
-#                     temp_reagent_file, TEMP_REAGENT_SUBSTANCE_TABLE, 
-#                     sep=CSV_DELIMITER, columns=['reagent_id', 'substance_id'], null=PSYCOPG_NULL)
-#                 logger.info('subtance ids inserted')
-#                 
-#                 cursor.execute('update reagent set substance_id=t.substance_id '
-#                     'from %s t where t.reagent_id=reagent.reagent_id;' % TEMP_REAGENT_SUBSTANCE_TABLE)
-#                 
-#                 logger.info('subtance ids updated')
-#                 
-# #                 2. reagents exist (update) ==> record well_ids for logging
-#         logger.info('get new wells state, for logging...')
-#         new_data = self._get_list_response(request, **kwargs_for_log)
-#          
-#         original_data_patches_only = []
-#         new_data_patches_only = []
-#         for item in original_data:
-#             for new_item in new_data:
-#                 if item['well_id'] == new_item['well_id']:
-#                     original_data_patches_only.append(item)
-#                     new_data_patches_only.append(new_item)
-#          
-#         logger.debug('new data: %s', new_data_patches_only)
-#         logger.info('patch list done, original_data: %d, new data: %d' 
-#             % (len(original_data_patches_only), len(new_data_patches_only)))
-#         self.log_patches(
-#             request, original_data_patches_only, new_data_patches_only,
-#             **kwargs)
-#                 
-#         return tastypie.http.HttpAccepted()
-                
                 
 class LibraryResource(DbApiResource):
     
@@ -10364,7 +10101,7 @@ class LibraryResource(DbApiResource):
                             well.library_well_type = 'undefined'
                             bulk_create_wells.append(well)
                             i += 1
-                            if i % 38400 == 0:
+                            if i % 1000 == 0:
                                 logger.info('created %d wells', i)
                         Well.objects.bulk_create(bulk_create_wells)
                     logger.info(
@@ -10448,202 +10185,3 @@ class ResourceResource(reports.api.ResourceResource):
                 'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
             
             
-# class BasicAuthenticationAjaxBrowsers(BasicAuthentication):
-#     '''
-#     Solves the issue:
-#     The session key may not be timed out, but the browser has cleared the 
-#     basic-auth credentials: the Django templates use session auth and report 
-#     that the user is logged in, but when an ajax request is made, the server
-#     asks for basic-auth credentials, and the browser has already cleared them.
-#     
-#     see: 
-#     http://sysadminpy.com/programming/2011/11/14/ajax-and-tastypie---check-if-a-user-has-authenticated/
-#     '''
-#     
-#     
-#     def __init__(self, *args, **kwargs):
-#         super(BasicAuthenticationAjaxBrowsers, self).__init__(*args, **kwargs)
-#  
-#     def is_authenticated(self, request, **kwargs):
-#         from django.contrib.sessions.models import Session
-#         if 'sessionid' in request.COOKIES:
-#             s = Session.objects.get(pk=request.COOKIES['sessionid'])
-#             if '_auth_user_id' in s.get_decoded():
-#                 u = User.objects.get(id=s.get_decoded()['_auth_user_id'])
-#                 request.user = u
-#                 return True
-#         return super(BasicAuthenticationAjaxBrowsers, self).is_authenticated(request, **kwargs)
-
-
-# # Deprecate - use apilog viewer
-# class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
-# 
-#     class Meta:
-#     
-#         queryset = CopyWell.objects.all().order_by('well_id')
-#         authentication = MultiAuthentication(BasicAuthentication(), 
-#                                              SessionAuthentication())
-#         authorization= UserGroupAuthorization()
-#         resource_name = 'copywellhistory'
-#         ordering = []
-#         filtering = {}
-#         serializer = LimsSerializer()
-#         always_return_data = True 
-#         
-#     def __init__(self, **kwargs):
-#         super(CopyWellHistoryResource,self).__init__(**kwargs)
-# 
-#     def prepend_urls(self):
-#         
-#         return [
-#             url(r"^(?P<resource_name>%s)/schema%s$" 
-#                 % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
-#                 % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('search'), name="api_search"),
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w.\-\+ ]+)" 
-#                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w.\-\+: ]+)%s$" 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-#         ]
-# 
-#     def get_detail(self, request, **kwargs):
-# 
-#         copy_name = kwargs.get('copy_name', None)
-#         if not copy_name:
-#             logger.info(str(('no copy_name provided')))
-#             raise NotImplementedError('must provide a copy_name parameter')
-#         
-#         well_id = kwargs.get('well_id', None)
-#         if not well_id:
-#             logger.info(str(('no well_id provided')))
-#             raise NotImplementedError('must provide a well_id parameter')
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-#         kwargs['is_for_detail']=True
-#         return self.build_list_response(request, **kwargs)
-#         
-#     @read_authorization
-#     def get_list(self,request,**kwargs):
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-#         return self.build_list_response(request, **kwargs)
-# 
-#     @read_authorization
-#     def build_list_response(self,request, **kwargs):
-# 
-#         param_hash = {}
-#         param_hash.update(kwargs)
-#         param_hash.update(self._convert_request_to_dict(request))
-#         schema = super(CopyWellHistoryResource,self).build_schema()
-#         
-#         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
-#         well_id = param_hash.pop('well_id', None)
-#         if well_id:
-#             param_hash['well_id__eq'] = well_id
-#         copy_name = param_hash.pop('copy_name', None)
-#         if copy_name:
-#             param_hash['copy_name__eq'] = copy_name
-# 
-#         try:
-#             
-#             # general setup
-#           
-#             manual_field_includes = set(param_hash.get('includes', []))
-#   
-#             (filter_expression, filter_fields) = \
-#                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-# 
-#             if filter_expression is None:
-#                 msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
-#                 logger.info(str((msgs)))
-#                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
-#                                   
-#             field_hash = self.get_visible_fields(
-#                 schema['fields'], filter_fields, manual_field_includes, 
-#                 param_hash.get('visibilities'), 
-#                 exact_fields=set(param_hash.get('exact_fields',[])))
-#               
-#             order_params = param_hash.get('order_by',[])
-#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-#              
-#             rowproxy_generator = None
-#             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-#                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
-#  
-#             # specific setup 
-#             base_query_tables = [
-#                 'copy_well', 'copy', 'plate', 'well','library',
-#                 'well_volume_adjustment','activity']
-#             
-#             # NOTE: date_time is included here as an exercise:
-#             # why db table structure needs to be redone
-#             custom_columns = {
-#                 'consumed_volume': literal_column(
-#                     'initial_volume-copy_well.volume').label('consumed_volume'),
-#                 'date_time': literal_column('\n'.join([
-#                     'case when wva.well_volume_correction_activity_id is not null then (', 
-#                     'select a1.date_created from activity a1', 
-#                     'where a1.activity_id = wva.well_volume_correction_activity_id )',  
-#                     'else ( select a2.date_created from activity a2', 
-#                     'join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id=a2.activity_id)',
-#                     'join lab_cherry_pick lcp on(lcp.cherry_pick_assay_plate_id=cpap.cherry_pick_assay_plate_id)',
-#                     'where lcp.lab_cherry_pick_id = wva.lab_cherry_pick_id ) ',
-#                     'end',
-#                     ])).label('date_time'),
-#             }
-#             
-#             columns = self.build_sqlalchemy_columns(
-#                 field_hash.values(), base_query_tables=base_query_tables,
-#                 custom_columns=custom_columns )
-# 
-#             # build the query statement
-# 
-#             _cw = self.bridge['copy_well']
-#             _c = self.bridge['copy']
-#             _l = self.bridge['library']
-#             _p = self.bridge['plate']
-#             _w = self.bridge['well']
-#             _wva = self.bridge['well_volume_adjustment']
-#             _a = self.bridge['activity']
-#             
-#             _wva = _wva.alias('wva')
-#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
-#             j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
-#             j = j.join(_w, _cw.c.well_id == _w.c.well_id )
-#             j = j.join(_l, _w.c.library_id == _l.c.library_id )
-#             j = j.join(_wva,onclause=(and_(
-#                 _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
-#                 isouter=True)
-#             j = j.join(_a, _wva.c.well_volume_correction_activity_id 
-#                 == _a.c.activity_id, isouter=True )
-#             stmt = select(columns.values()).select_from(j)
-# 
-#             # general setup
-#              
-#             (stmt,count_stmt) = self.wrap_statement(
-#                 stmt,order_clauses,filter_expression )
-#             
-#             title_function = None
-#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-#                 title_function = lambda key: field_hash[key]['title']
-#             
-#             return self.stream_response_from_statement(
-#                 request, stmt, count_stmt, filename, 
-#                 field_hash=field_hash, 
-#                 param_hash=param_hash,
-#                 is_for_detail=is_for_detail,
-#                 rowproxy_generator=rowproxy_generator,
-#                 title_function=title_function  )
-#              
-#         except Exception, e:
-#             logger.exception('on get list')
-#             raise e  
-   

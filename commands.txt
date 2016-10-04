@@ -17,6 +17,7 @@ PROFILE_LOG_BASE='/tmp'
 # then analyze the outpufile:
 PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-20141031T193039.prof 
 
+#####
 # EXAMPLE login interaction using cookies with curl
 # NOTE: basic authentication is not set up on Orchestra; 
 # because the wsgi client does not communicate credentials with the apache server
@@ -28,7 +29,7 @@ curl -k --cookie cookiefile  \
   -H "X-CSRFTOKEN: `grep csrftoken cookiefile | awk '{print $7}'`"  \
   --user sde -X POST  "https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/"
 
-
+#####
 # EXAMPLE interaction using "django_requests.py" utility to do the form authentication
 # NOTE: basic authentication is not set up on Orchestra; 
 # because the wsgi client does not communicate credentials with the apache server
@@ -54,6 +55,13 @@ curl -v --user sde -H 'Content-Type: application/xls' \
 screen importer test
 (iccbl-env) $ PYTHONPATH=. python db/support/screen_result_importer.py -f db/static/test_data/screens/ScreenRe
 sultTest_115.xls | python -m json.tool
+
+#####
+# upload library contents
+# use "PUT" to clear and recreate reagents
+curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: application/json" --user sde -X PUT http://localhost:8000/db/api/v1/library/test4100/well --data-binary @db/static/test_data/libraries/test_small_molecule_4100_4129.sdf
+# use "POST" to update
+curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: application/json" --user sde -X POST http://localhost:8000/db/api/v1/library/test5/well --data-binary @db/static/test_data/libraries/clean_data_1170-1171.sdf
 
 #####
 # Re-initialize the meta data for the site

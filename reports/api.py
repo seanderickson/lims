@@ -419,17 +419,19 @@ class ApiResource(SqlAlchemyResource):
         else:
             return dict(zip(id_attribute,keys))
 
-    def parse(self,deserialized, create=False):
+    def parse(self,deserialized, create=False, fields=None):
         ''' parse schema fields from the deserialized dict '''
-        
-        schema = self.build_schema()
-        fields = schema['fields']
-        mutable_fields = []
-        for field in fields.values():
-            editability = field.get('editability', None)
-            if editability and (
-                'u' in editability or (create and 'c' in editability )):
-                mutable_fields.append(field)
+
+        mutable_fields = fields        
+        if fields is None:
+            schema = self.build_schema()
+            fields = schema['fields']
+            mutable_fields = []
+            for field in fields.values():
+                editability = field.get('editability', None)
+                if editability and (
+                    'u' in editability or (create and 'c' in editability )):
+                    mutable_fields.append(field)
         logger.debug('r: %r, mutable fields: %r', self._meta.resource_name, 
             [field['key'] for field in mutable_fields])
         initializer_dict = {}
@@ -1091,7 +1093,7 @@ class ApiResource(SqlAlchemyResource):
     def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
-    def validate(self, _dict, patch=False):
+    def validate(self, _dict, patch=False, schema=None):
         '''
         Perform validation according the the field schema:
         @param patch if False then check all fields (for required); not just the 
@@ -1104,7 +1106,9 @@ class ApiResource(SqlAlchemyResource):
         fields are not updated
         '''
         DEBUG_VALIDATION = False or logger.isEnabledFor(logging.DEBUG)
-        schema = self.build_schema()
+
+        if schema is None:
+            schema = self.build_schema()
         fields = schema['fields']
         id_attribute = schema['id_attribute']
         
@@ -1130,7 +1134,6 @@ class ApiResource(SqlAlchemyResource):
                         continue
                 
             value = _dict.get(name,None)
-            
             
             if DEBUG_VALIDATION:
                 logger.info('validate: %r:%r',name,value)
@@ -2009,7 +2012,6 @@ class ResourceResource(ApiResource):
         if key not in resources:
             raise BadRequest('Resource is not initialized: %r', key)
         
-        
         return resources[key]
 
     @read_authorization
@@ -2180,6 +2182,19 @@ class ResourceResource(ApiResource):
                         logger.error(
                             'supertype: %r, not found in resources: %r', 
                             supertype, resources.keys())
+                
+                update_fields = []
+                create_fields = []
+                for field in resource['fields'].values():
+                    editability = field.get('editability', None)
+                    if editability:
+                        if 'u' in editability:
+                            update_fields.append(field)
+                            create_fields.append(field)
+                        if 'c' in editability:
+                            create_fields.append(field)
+                resource['update_fields'] = update_fields
+                resource['create_fields'] = create_fields
                 
                 resource.get('content_types',[]).append('csv')
         if use_cache and self.use_cache:

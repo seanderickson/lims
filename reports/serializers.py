@@ -195,7 +195,7 @@ class BaseSerializer(object):
         desired_format = self.get_format_for_content_type(content_type)
         if desired_format is None:
             msg = ( 'unknown serialize content_type: %r or format: %r, options: %r'
-                    % (content_type, format, self.content_types.values()))
+                    % (content_type, desired_format, self.content_types.values()))
             raise BadRequest(msg)
         serialized = getattr(self, "to_%s" % desired_format)(data)
         return serialized
@@ -204,19 +204,14 @@ class BaseSerializer(object):
 
         desired_format = self.get_format_for_content_type(content_type)
         if desired_format is None:
-            msg = ( 'unknown serialize content_type: %r or format: %r, options: %r'
-                    % (content_type, format, self.content_types.values()))
-            raise BadRequest(msg)
-        
-        if desired_format is None:
-            msg = ( 'unknown deserialize content_type: %r, types: %r'
-                    % (content_type, self.content_types.values()))
+            msg = ( 'unknown deserialize content_type: %r or format: %r, options: %r'
+                    % (content_type, desired_format, self.content_types.values()))
             raise BadRequest(msg)
 
         if not content:
             return {}
     
-        logger.info('deserializing for %r', desired_format)
+        logger.debug('deserializing for %r', desired_format)
 
         deserialized = getattr(self, "from_%s" % desired_format)(content,**kwargs)
         return deserialized
@@ -312,7 +307,6 @@ class XLSSerializer(BaseSerializer):
             ''' write a header row using the object keys '''
             for i,item in enumerate(list_of_objects):
                 if i == 0:
-                    logger.info('item: %r', item)
                     yield item.keys()
                 yield item.values()
         if 'objects' in data:

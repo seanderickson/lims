@@ -7376,7 +7376,7 @@ class ScreenResource(DbApiResource):
         max_facility_id_sql = '''
             select facility_id::text, project_phase from screen 
             where project_phase='primary_screen' 
-            and facility_id ~ '^\d+$' 
+            and facility_id ~ E'^\\d+$' 
             order by facility_id::integer desc
             limit 1;
         '''

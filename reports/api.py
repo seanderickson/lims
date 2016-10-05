@@ -1845,7 +1845,9 @@ class FieldResource(ApiResource):
         fields = self._build_fields(scopes)
             
         if key_in:
-            keys_in = key_in.split(LIST_DELIMITER_URL_PARAM)
+            keys_in = key_in
+            if not isinstance(key_in,(list,tuple)):
+                keys_in = key_in.split(LIST_DELIMITER_URL_PARAM)
             fields = [x for x in fields if x['key'] in keys_in ]
             
         response_hash = None

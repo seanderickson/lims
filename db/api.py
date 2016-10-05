@@ -7384,6 +7384,7 @@ class ScreenResource(DbApiResource):
         POST is used to create or update a resource; not idempotent;
         - The LIMS client will use POST to create exclusively
         '''
+        logger.info('post_detail, screen: %r', kwargs)
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
@@ -7401,22 +7402,26 @@ class ScreenResource(DbApiResource):
         max_facility_id_sql = '''
             select facility_id::text, project_phase from screen 
             where project_phase='primary_screen' 
-            and facility_id ~ E'^\\d+$' 
+            and facility_id ~ '^[[:digit:]]+$' 
             order by facility_id::integer desc
             limit 1;
         '''
+        # NOTE: not using facility_id ~ E'^\\d+$' syntax, which is valid when
+        # "standard_conforming_strings = "on";
+        # the test harness sets the standard_conforming_strings = off for the 
+        # test connections; and does not recognize the E'\\d syntax at all. 
+        # (even if standard_conforming_strings is set to "on").
         with get_engine().connect() as conn:
             max_facility_id = int(
                 conn.execute(max_facility_id_sql).scalar() or 0)
+            logger.info('new screen facility id to be created: %d', max_facility_id+1)
         kwargs['facility_id'] = str(max_facility_id+1)
         
         return self.patch_detail(request,**kwargs)
         
-    
     def patch_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
-        
         try:
             create = False
             try:

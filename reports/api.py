@@ -362,13 +362,14 @@ class ApiResource(SqlAlchemyResource):
         ids.extend(self.get_id(deserialized,**kwargs).values())
         return '/'.join(ids)
         
-    def get_id(self,deserialized,validate=False,**kwargs):
+    def get_id(self,deserialized, validate=False, schema=None, **kwargs):
         ''' 
         return the full ID for the resource, as defined by the "id_attribute"
         - if validate=True, raises ValidationError if some or all keys are missing
         - otherwise, returns keys that can be found
         '''
-        schema = self.build_schema()
+        if schema is None:
+            schema = self.build_schema()
         id_attribute = schema['id_attribute']
         fields = schema['fields']
 
@@ -386,7 +387,7 @@ class ApiResource(SqlAlchemyResource):
                         id_field,None), id_field,fields[id_field]['data_type']) 
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(
-                    deserialized['resource_uri'])
+                    deserialized['resource_uri'], schema=schema)
             else:
                 not_found.append(id_field)
         if not_found:
@@ -398,9 +399,10 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('kwargs_for_id: %r', kwargs_for_id)   
         return kwargs_for_id
 
-    def find_key_from_resource_uri(self,resource_uri):
+    def find_key_from_resource_uri(self,resource_uri, schema=None):
         
-        schema = self.build_schema()
+        if schema is None:
+            schema = self.build_schema()
         id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
          
@@ -411,7 +413,7 @@ class ApiResource(SqlAlchemyResource):
         else:
             keystring = resource_uri
         keys = keystring.strip('/').split('/')
-        logger.info('keys: %r, id_attribute: %r', keys, id_attribute)
+        logger.debug('keys: %r, id_attribute: %r', keys, id_attribute)
         if len(keys) < len(id_attribute):
             raise NotImplementedError(
                 'resource uri %r does not contain all id attributes: %r'
@@ -534,19 +536,19 @@ class ApiResource(SqlAlchemyResource):
         
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
-        id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
-        logger.debug('id_attribute: %r', id_attribute)
-        for id_field in id_attribute:
-            ids = set()
-            for _dict in [x for x in deserialized if x.get(id_field, None)]:
-                ids.add(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = \
-                    LIST_DELIMITER_URL_PARAM.join(ids)
+        for _data in deserialized:
+            id_kwargs = self.get_id(_data, schema=schema)
+            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
+            if id_kwargs:
+                for idkey,idval in id_kwargs.items():
+                    id_param = '%s__in' % idkey
+                    id_vals = kwargs_for_log.get(id_param, [])
+                    id_vals.append(idval)
+                    kwargs_for_log[id_param] = id_vals
         try:
             logger.debug('get original state, for logging...')
-            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            logger.info('kwargs_for_log: %r', kwargs_for_log)
             original_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
@@ -575,6 +577,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('patch logs created.')
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
+        logger.debug('updates: %r', [x for x in logs if x.diffs ])
         create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
@@ -598,7 +601,8 @@ class ApiResource(SqlAlchemyResource):
             return response
  
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def put_list(self,request, **kwargs):
 
         # TODO: enforce a policy that either objects are patched or deleted
@@ -631,13 +635,15 @@ class ApiResource(SqlAlchemyResource):
         schema = self.build_schema()
         id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
-        for id_field in id_attribute:
-            ids = set()
-            for _dict in [x for x in deserialized if x.get(id_field, None)]:
-                ids.add(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = \
-                    LIST_DELIMITER_URL_PARAM.join(ids)
+        for _data in deserialized:
+            id_kwargs = self.get_id(_data, schema=schema)
+            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
+            if id_kwargs:
+                for idkey,idval in id_kwargs.items():
+                    id_param = '%s__in' % idkey
+                    id_vals = kwargs_for_log.get(id_param, [])
+                    id_vals.append(idval)
+                    kwargs_for_log[id_param] = id_vals
         try:
             logger.info('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -647,37 +653,32 @@ class ApiResource(SqlAlchemyResource):
             original_data = []
 
         logger.debug('put list %s, %s',deserialized,kwargs)
-        try:
-            with transaction.atomic():
-                
-                # TODO: review REST actions:
-                # PUT deletes the endpoint
 
-                if 'parent_log' not in kwargs:
-                    parent_log = self.make_log(request)
-                    parent_log.key = self._meta.resource_name
-                    parent_log.uri = self._meta.resource_name
-                    parent_log.save()
-                    kwargs['parent_log'] = parent_log
-                
-                self._meta.queryset.delete()
-                
-                for _dict in deserialized:
-                    self.put_obj(request, _dict)
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
+        # TODO: review REST actions:
+        # PUT deletes the endpoint
+
+        if 'parent_log' not in kwargs:
+            parent_log = self.make_log(request)
+            parent_log.key = self._meta.resource_name
+            parent_log.uri = self._meta.resource_name
+            parent_log.save()
+            kwargs['parent_log'] = parent_log
+        
+        self._meta.queryset.delete()
+        new_objs = []
+        for _dict in deserialized:
+            new_objs.append(self.put_obj(request, _dict))
 
         # Get new state, for logging
-        kwargs_for_log = kwargs.copy()
-        for id_field in id_attribute:
-            ids = set()
-            # After patch, the id keys must be present
-            for _dict in [x for x in deserialized]:
-                ids.add(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = \
-                    LIST_DELIMITER_URL_PARAM.join(ids)
+        # After patch, the id keys must be present
+        for idkey in id_attribute:
+            id_param = '%s__in' % idkey
+            ids = set(kwargs_for_log[id_param])
+            for new_obj in new_objs:
+                if hasattr(new_obj, idkey):
+                    idval = getattr(new_obj, idkey)
+                    ids.add(idval)
+            kwargs_for_log[id_param] = ids
         try:
             logger.info('get new state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -699,6 +700,7 @@ class ApiResource(SqlAlchemyResource):
 
     @write_authorization
     @un_cache        
+    @transaction.atomic
     def post_list(self, request, **kwargs):
         '''
         POST is used to create or update a resource; not idempotent;
@@ -744,15 +746,19 @@ class ApiResource(SqlAlchemyResource):
         # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
+        
+        # Limit the potential candidates for logging to found id_kwargs
+        schema = self.build_schema()
         kwargs_for_log = kwargs.copy()
-        logger.debug('id_attribute: %r', id_attribute)
-        for id_field in id_attribute:
-            ids = []
-            for _dict in [x for x in deserialized if x.get(id_field, None)]:
-                ids.append(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = \
-                    LIST_DELIMITER_URL_PARAM.join(ids)
+        for _data in deserialized:
+            id_kwargs = self.get_id(_data, schema=schema)
+            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
+            if id_kwargs:
+                for idkey,idval in id_kwargs.items():
+                    id_param = '%s__in' % idkey
+                    id_vals = kwargs_for_log.get(id_param, [])
+                    id_vals.append(idval)
+                    kwargs_for_log[id_param] = id_vals
         try:
             logger.debug('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -761,24 +767,32 @@ class ApiResource(SqlAlchemyResource):
             logger.exception('original state not obtained')
             original_data = []
 
-        try:
-            with transaction.atomic():
-                if 'parent_log' not in kwargs:
-                    parent_log = self.make_log(request)
-                    parent_log.key = self._meta.resource_name
-                    parent_log.uri = self._meta.resource_name
-                    parent_log.save()
-                    kwargs['parent_log'] = parent_log
-                
-                for _dict in deserialized:
-                    self.patch_obj(request, _dict, **kwargs)
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
-            
+        if 'parent_log' not in kwargs:
+            parent_log = self.make_log(request)
+            parent_log.key = self._meta.resource_name
+            parent_log.uri = self._meta.resource_name
+            parent_log.save()
+            kwargs['parent_log'] = parent_log
+        
+        for _dict in deserialized:
+            self.patch_obj(request, _dict, **kwargs)
+        new_objs = []
+        for _dict in deserialized:
+            new_objs.append(self.patch_obj(request, _dict))
+
         # Get new state, for logging
+        # After patch, the id keys must be present
+        for idkey in id_attribute:
+            id_param = '%s__in' % idkey
+            ids = set(kwargs_for_log[id_param])
+            for new_obj in new_objs:
+                if hasattr(new_obj, idkey):
+                    idval = getattr(new_obj, idkey)
+                    ids.add(idval)
+            kwargs_for_log[id_param] = ids
         new_data = self._get_list_response(request,**kwargs_for_log)
         logger.debug('patch list done, new data: %d', len(new_data))
+
         logs = self.log_patches(request, original_data,new_data,**kwargs)
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
@@ -3087,7 +3101,7 @@ class UserResource(ApiResource):
                                     usergroup = UserGroup.objects.get(**usergroup_key)
                                     usergroup.users.add(userprofile)
                                     usergroup.save()
-                                    logger.info(
+                                    logger.debug(
                                         'added user %r, %r to usergroup %r', 
                                         userprofile,userprofile.user, usergroup)
                                 except ObjectDoesNotExist as e:
@@ -3154,15 +3168,15 @@ class UserGroupResource(ApiResource):
             raise NotImplementedError('must provide a group "name" parameter')
         return name
     
-    @transaction.atomic()    
-    def put_obj(self,request, deserialized, **kwargs):
-        
-        try:
-            self.delete_obj(request, deserialized, **kwargs)
-        except ObjectDoesNotExist,e:
-            pass 
-        
-        return self.patch_obj(request, deserialized, **kwargs)
+#     @transaction.atomic()    
+#     def put_obj(self,request, deserialized, **kwargs):
+#         
+#         try:
+#             self.delete_obj(request, deserialized, **kwargs)
+#         except ObjectDoesNotExist,e:
+#             pass 
+#         
+#         return self.patch_obj(request, deserialized, **kwargs)
     
     @write_authorization
     def delete_detail(self,deserialized, **kwargs):
@@ -3229,7 +3243,7 @@ class UserGroupResource(ApiResource):
                             permission.save()
                         usergroup.permissions.add(permission)
                         usergroup.save()
-                        logger.info(
+                        logger.debug(
                             'added permission %r to group %r', 
                             permission,usergroup)
                 elif key == 'users':
@@ -3240,7 +3254,7 @@ class UserGroupResource(ApiResource):
                         try:
                             user = UserProfile.objects.get(**user_key)
                             usergroup.users.add(user)
-                            logger.info('added user %r to group %r', 
+                            logger.debug('added user %r to group %r', 
                                 user, usergroup)
                         except ObjectDoesNotExist, e:
                             logger.info('no such user: %r, %r, %r', 
@@ -3253,7 +3267,7 @@ class UserGroupResource(ApiResource):
                         try:
                             supergroup = UserGroup.objects.get(**ug_key)
                             usergroup.super_groups.add(supergroup)
-                            logger.info('added supergroup %r to group: %r',
+                            logger.debug('added supergroup %r to group: %r',
                                 supergroup,usergroup)
                         except ObjectDoesNotExist, e:
                             logger.warn(
@@ -3268,7 +3282,7 @@ class UserGroupResource(ApiResource):
                             subgroup = UserGroup.objects.get(**ug_key)
                             subgroup.super_groups.add(usergroup)
                             subgroup.save()
-                            logger.info('added subgroup %r to group %r', 
+                            logger.debug('added subgroup %r to group %r', 
                                 subgroup, usergroup)
                         except ObjectDoesNotExist, e:
                             logger.warn(

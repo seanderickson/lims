@@ -185,13 +185,16 @@ def setUpModule():
     else:
         print 'skip database metahash initialization when using keepdb'
 
-    logger.info('create an admin screensaveruser...')
-    temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
-    DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
-        'username': temp_test_case.username,
-        'is_superuser': True
-    })
-    logger.info('admin screensaveruser created')
+    try:
+        su = ScreensaverUser.objects.get(username=IResourceTestCase.username)
+    except ObjectDoesNotExist:
+        logger.info('create an admin screensaveruser...')
+        temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
+        DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
+            'username': temp_test_case.username,
+            'is_superuser': True
+        })
+        logger.info('admin screensaveruser created')
     
     logger.info('=== setup Module done')
 
@@ -206,9 +209,9 @@ def tearDownModule():
     # bridge = None
     
     # remove the admin user
-    ScreensaverUser.objects.all().delete() 
-    UserProfile.objects.all().delete()
-    User.objects.all().delete()
+#     ScreensaverUser.objects.all().delete() 
+#     UserProfile.objects.all().delete()
+#     User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
 
@@ -1673,6 +1676,8 @@ class ScreenResultResource(DBResourceTestCase):
         Screen.objects.all().delete()
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
+        ScreensaverUser.objects.all().exclude(username='testsuper').delete()
+
         # ScreensaverUser.objects.all().filter(username='adminuser').delete()
 
     def _setup_test_config(self):

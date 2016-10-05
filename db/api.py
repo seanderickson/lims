@@ -5842,6 +5842,16 @@ class LibraryScreeningResource(ActivityResource):
         custom_columns.update({
             'type': cast(literal_column("'libraryscreening'"), TEXT),
             'activity_class': cast(literal_column("'libraryscreening'"), TEXT),
+            'libraries_screened_count': literal_column(
+                '(select count(distinct(l.*)) from library l '
+                'join copy using(library_id) join plate using(copy_id) '
+                'join assay_plate ap using(plate_number) '
+                'where library_screening_id='
+                'library_screening.activity_id)' ),
+             'library_plates_screened_count': literal_column(
+                 '(select count(distinct(ap.plate_number)) '
+                 'from assay_plate ap where library_screening_id='
+                 'library_screening.activity_id)' ),
             })
 
         base_query_tables = [
@@ -6539,6 +6549,7 @@ class ScreenResource(DbApiResource):
         self.apilog_resource = None
         self.cpr_resource = None
         self.activity_resource = None
+        self.libraryscreening_resource = None
             
     def get_apilog_resource(self):
         if self.apilog_resource is None:
@@ -6555,6 +6566,11 @@ class ScreenResource(DbApiResource):
             self.activity_resource = ActivityResource()
         return self.activity_resource
     
+    def get_library_screening_resource(self):
+        if self.libraryscreening_resource is None:
+            self.libraryscreening_resource = LibraryScreeningResource()
+        return self.libraryscreening_resource
+        
     def prepend_urls(self):
 
         return [
@@ -6605,6 +6621,11 @@ class ScreenResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_activityview'),
                 name="api_dispatch_screen_activityview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w]+))/libraryscreening%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_screeningview'),
+                name="api_dispatch_screen_screeningview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/screenresult%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -6703,6 +6724,10 @@ class ScreenResource(DbApiResource):
     def dispatch_screen_activityview(self, request, **kwargs):
         kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
         return self.get_activity_resource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_screen_screeningview(self, request, **kwargs):
+        kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
+        return self.get_library_screening_resource().dispatch('list', request, **kwargs)    
     
     def dispatch_screen_screenresultview(self, request, **kwargs):
         logger.info('dispatch screenresultview...')
@@ -10018,6 +10043,9 @@ class LibraryResource(DbApiResource):
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
+            
+            if not order_clauses:
+                stmt = stmt.order_by("short_name")
             
             title_function = None
             if use_titles is True:

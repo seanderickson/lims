@@ -23,6 +23,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     initialize: function(args) {
       
       var self = this;
+      this.screen = args.screen;
+      
       var fields = self.model.resource.fields;
       var library_plate_parser = null; 
       if (!_.has(fields,'library_plates_screened')
@@ -166,6 +168,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       args.EditView = editView;
       args.DetailView = detailView;
+      args.saveSuccessCallBack = function(model){
+        model = new Backbone.Model(model);
+        var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+        model.key = self.model.resource.key + '/' + key;
+        appModel.router.navigate([
+          self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
+          {trigger:true});
+      };
       
       DetailLayout.prototype.initialize.call(this,args);
     },
@@ -184,6 +194,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var fields = self.model.resource.fields;
         fields['performed_by_username']['choices'] = (
             [{ val: '', label: ''}].concat(userOptions));
+        fields['screen_facility_id']['editability'] = [];
         DetailLayout.prototype.showEdit.apply(self,arguments);
       });  
     }

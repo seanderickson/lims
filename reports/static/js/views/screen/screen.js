@@ -9,7 +9,7 @@ define([
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
-  'views/screen/libraryScreening', 
+  'views/screen/screenSummary', 
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
   'views/generic_edit',
@@ -18,8 +18,8 @@ define([
   'templates/generic-tabbed.html',
   'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            LibraryScreening, DetailLayout, DetailView, EditView, ListView, 
-            CollectionColumnView, tabbedTemplate, screenTemplate){
+            ScreenSummaryView, DetailLayout, DetailView, EditView, ListView, 
+            CollectionColumnView, tabbedTemplate, screenTemplate) {
 
   var ScreenView = Backbone.Layout.extend({
 
@@ -29,21 +29,21 @@ define([
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       this.tabbed_resources = _.extend(
-        {}, _.mapObject(this.tabbed_resources_template, function(val,key){
+        {}, _.mapObject(this.tabbed_resources_template, function(val,key) {
           return _.clone(val);
         }));
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail'){
+      _.each(_.keys(this.tabbed_resources), function(key) {
+        if (key !== 'detail') {
           var permission = self.tabbed_resources[key].permission;
-          if (_.isUndefined(permission)){
+          if (_.isUndefined(permission)) {
             permission = self.tabbed_resources[key].resource;
           }
-          if (!appModel.hasPermission(permission)){
+          if (!appModel.hasPermission(permission)) {
             delete self.tabbed_resources[key];
           }
         }
       });
-      if (self.model.get('project_phase') == 'annotation'){
+      if (self.model.get('project_phase') == 'annotation') {
         delete self.tabbed_resources['summary'];
         delete self.tabbed_resources['billingItems'];
         delete self.tabbed_resources['cherrypicks'];
@@ -81,6 +81,30 @@ define([
         invoke : 'setSummary',
         permission: 'screensummary'
       },
+      cherrypicks: {
+        description : 'Cherry Pick Requests',
+        title : 'Cherry Picks',
+        invoke : 'setCherryPicks',
+        permission: 'cherrypick'
+      },
+      activities: {
+        description : 'Activities',
+        title : 'Activities',
+        invoke : 'setActivities',
+        permission: 'activity'
+      },
+      datacolumns : {
+        description : 'Data Columns',
+        title : 'Data Columns',
+        invoke : 'setDatacolumns',
+        permission: 'screenresult'
+      },
+      results : {
+        description : 'Screen Results',
+        title : 'Screen Results',
+        invoke : 'setResults',
+        permission: 'screenresult'
+      },
       attachedfile: {
         description: "Attached Files",
         title: "Attached Files",
@@ -98,30 +122,6 @@ define([
         title : 'Billing',
         invoke : 'setBilling',
         permission: 'screenbilling'
-      },
-      datacolumns : {
-        description : 'Data Columns',
-        title : 'Data Columns',
-        invoke : 'setDatacolumns',
-        permission: 'screenresult'
-      },
-      results : {
-        description : 'Screen Results',
-        title : 'Screen Results',
-        invoke : 'setResults',
-        permission: 'screenresult'
-      },
-      cherrypicks: {
-        description : 'Cherry Pick Requests',
-        title : 'Cherry Picks',
-        invoke : 'setCherryPicks',
-        permission: 'cherrypick'
-      },
-      activities: {
-        description : 'Activities',
-        title : 'Activities',
-        invoke : 'setActivities',
-        permission: 'activity'
       },
     },
 
@@ -146,7 +146,7 @@ define([
     serialize: function() {
       var self = this;
       var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
-      if (! self.model.get('has_screen_result')){
+      if (! self.model.get('has_screen_result')) {
         delete displayed_tabbed_resources['results'];
         delete displayed_tabbed_resources['datacolumns'];
       }
@@ -159,44 +159,35 @@ define([
     /**
      * Layoutmanager hook
      */
-    afterRender: function(){
+    afterRender: function() {
       var self = this;
       console.log('afterRender called...');
       var viewId = 'detail';
-      if (!_.isEmpty(this.uriStack)){
+      if (!_.isEmpty(this.uriStack)) {
         viewId = this.uriStack.shift();
         if (viewId == '+add') {
           this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId);
           viewId = 'detail';
           delete self.tabbed_resources['summary'];
-        }else if (viewId == 'edit'){
+        }else if (viewId == 'edit') {
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
-        }else if (_.contains(['libraries'],viewId)){
-          this.consumedStack = [viewId];
-          this.showLibraries(this.uriStack);
-          return;
-        }else if (_.contains(['copyplates'],viewId)){
-          this.consumedStack = [viewId];
-          this.showCopyPlates(this.uriStack);
-          return;
-        }else if (_.contains(['copyplatesloaded'],viewId)){
+//        }else if (_.contains(['libraries'],viewId)) {
+//          this.consumedStack = [viewId];
+//          this.showLibraries(this.uriStack);
+//          return;
+//        }else if (_.contains(['copyplates'],viewId)) {
+//          this.consumedStack = [viewId];
+//          this.showCopyPlates(this.uriStack);
+//          return;
+        }else if (_.contains(['copyplatesloaded'],viewId)) {
           this.consumedStack = [viewId];
           this.showCopyPlatesLoaded(this.uriStack);
           return;
-        }else if (viewId == 'libraryscreening'){
-          if(_.contains(this.uriStack, '+add') ){
-            this.addLibraryScreening();
-            return;
-          }else{
-            this.consumedStack = [viewId];
-            this.showLibraryScreenings(this.uriStack); 
-            return;
-          }
         }
         
-        if (!_.has(this.tabbed_resources, viewId)){
+        if (!_.has(this.tabbed_resources, viewId)) {
           var msg = 'could not find the tabbed resource: ' + viewId;
           appModel.error(msg);
           throw msg;
@@ -206,33 +197,33 @@ define([
       console.log('afterRender, done.');
     },
 
-    click_tab : function(event){
+    click_tab : function(event) {
       var self = this;
       event.preventDefault();
       var key = event.currentTarget.id;
-      if(_.isEmpty(key)) return;
-      if(this.$('#'+key).hasClass('disabled')){
+      if (_.isEmpty(key)) return;
+      if (this.$('#'+key).hasClass('disabled')) {
         return;
       }
-      if(this.key && this.key === key){
+      if (this.key && this.key === key) {
         return;
       }
       appModel.requestPageChange({
-        ok: function(){
+        ok: function() {
           self.change_to_tab(key);
         }
       });
     },
 
-    change_to_tab: function(key){
+    change_to_tab: function(key) {
       console.log('change_to_tab', key);
       
-      if(_.has(this.tabbed_resources, key)){
+      if (_.has(this.tabbed_resources, key)) {
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
-        if(key !== 'detail'){
+        if (key !== 'detail') {
           this.consumedStack = [key];
-        }else{
+        } else {
           this.consumedStack = [];
         }
         var delegateStack = _.clone(this.uriStack);
@@ -243,31 +234,31 @@ define([
         } else {
           throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
         }
-      }else{
+      } else {
         var msg = 'Unknown tab: ' + key;
         appModel.error(msg);
         throw msg;
       }
     },
 
-    render : function(){
+    render : function() {
       window.scrollTo(0, 0);
       return this;
     },
 
-    setDetail: function(delegateStack){
+    setDetail: function(delegateStack) {
       var self,outerSelf = self = this;
       var key = 'detail';
       var fields = self.model.resource.fields;
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      if (this.model.get('project_phase')!= 'annotation'){
+      if (this.model.get('project_phase')!= 'annotation') {
         fields['collaborator_usernames'].vocabulary = (
             _.object(this.model.get('collaborator_usernames'),
               this.model.get('collaborator_names')));
       }
       var editView = EditView.extend({
-        afterRender: function(){
+        afterRender: function() {
           outerSelf._addVocabularyButton(
             this, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
          
@@ -286,29 +277,29 @@ define([
       }
       
       var detailView = DetailView.extend({
-        afterRender: function(){
+        afterRender: function() {
           DetailView.prototype.afterRender.apply(this,arguments);
           
-          if(self.model.get('project_phase')=='annotation'){
-            if (appModel.hasPermission('screenresult','write')){
-              if (self.model.get('has_screen_result')){
+          if (self.model.get('project_phase')=='annotation') {
+            if (appModel.hasPermission('screenresult','write')) {
+              if (self.model.get('has_screen_result')) {
                 this.$('#generic-detail-buttonpanel').prepend(self.$deleteScreenResultsButton);
               }
               this.$('#generic-detail-buttonpanel').prepend(self.$loadScreenResultsButton);
             }
-          }else{
+          } else {
             self.createStatusHistoryTable($('#screen_extra_information'));
             self.createActivitySummary($('#screen_extra_information'));
             self.createCprTable($('#screen_extra_information'));
             
             // TODO: create a metadata setting for "show if present"
-            if (!self.model.has('perturbagen_molar_concentration')){
+            if (!self.model.has('perturbagen_molar_concentration')) {
               $('#perturbagen_molar_concentration').closest('tr').remove();
             }
-            if (!self.model.has('perturbagen_ug_ml_concentration')){
+            if (!self.model.has('perturbagen_ug_ml_concentration')) {
               $('#perturbagen_ug_ml_concentration').closest('tr').remove();
             }
-            if (!self.model.has('transfection_agent')){
+            if (!self.model.has('transfection_agent')) {
               $('#transfection_agent').closest('tr').remove();
             }
           }
@@ -320,10 +311,10 @@ define([
           var data = DetailView.prototype.serialize.apply(this,arguments);
           var informationKeys = [];
           var groupedKeys = [];
-          data['groupedKeys'].each(function(groupKey){
-            if(_.result(groupKey,'title',null) == 'Information'){
+          data['groupedKeys'].each(function(groupKey) {
+            if (_.result(groupKey,'title',null) == 'Information') {
               informationKeys = informationKeys.concat(groupKey.fields);
-            }else{
+            } else {
               groupedKeys.push(groupKey);
             }
           });
@@ -337,38 +328,15 @@ define([
         
       });
 
-      // Removed - overwrites validate instead of extending
-      //var ScreenModel = Backbone.Model.extend({
-      //  validate: function(attrs, options) {
-      //    errs = {};
-      //    if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))){
-      //      if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))){
-      //        errs['max_allowed_data_privacy_expiration_date'] = (
-      //          'can not be set if the expiration notified date is set');
-      //      }
-      //      if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))){
-      //        errs['min_allowed_data_privacy_expiration_date'] = (
-      //          'can not be set if the expiration notified date is set');
-      //      }
-      //    }
-      //    return _.isEmpty(errs) ? null : errs;
-      //  }
-      //});
-      //  key: self.model.key,
-      //  resource: self.model.resource,
-      //  url: self.model.url,
-      //  parse: self.model.parse,
-      //this.model = new ScreenModel(this.model.attributes);
-      
       var temp_validate = this.model.validate;
       this.model.validate = function(attrs, options) {
           errs = {};
-          if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))){
-            if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))){
+          if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))) {
+            if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))) {
               errs['max_allowed_data_privacy_expiration_date'] = (
                 'can not be set if the expiration notified date is set');
             }
-            if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))){
+            if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))) {
               errs['min_allowed_data_privacy_expiration_date'] = (
                 'can not be set if the expiration notified date is set');
             }
@@ -376,15 +344,14 @@ define([
           return _.isEmpty(errs) ? null : errs;
         }
       
-      
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,
         EditView: editView,
         DetailView: detailView
       });
-      view.showEdit = function(){
-        appModel.initializeAdminMode(function(){
+      view.showEdit = function() {
+        appModel.initializeAdminMode(function() {
           var userOptions = appModel.getUserOptions();
           fields['collaborator_usernames']['choices'] = userOptions;
           fields['lead_screener_username']['choices'] = (
@@ -406,87 +373,6 @@ define([
       this.setView("#tab_container", view ).render();
       return view;
     },
-
-    /**
-     * Libraries view is a sub-view of Summary
-     */
-    showLibraries: function(delegateStack){
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
-      var resource = appModel.getResource('library');
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      });
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event){
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Libraries for screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-
-    },
-    
-    /**
-     * Library Copy Plates view is a sub-view of Summary
-     */
-    showCopyPlates: function(delegateStack){
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplates'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      });
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event){
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-
-    },
-    
-    /**
-     * Library Copy Plates Loaded view is a sub-view of Summary
-     */
-    showCopyPlatesLoaded: function(delegateStack){
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      });
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event){
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-
-    },    
     
     setAttachedFiles: function(delegateStack) {
       var self = this;
@@ -496,7 +382,7 @@ define([
                  self.model.key,
                  'attachedfiles'].join('/');
       extraControls = []
-      if (appModel.hasPermission('screen','write')){
+      if (appModel.hasPermission('screen','write')) {
         var uploadAttachedFileButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="save_button" href="#">',
@@ -507,16 +393,16 @@ define([
               'role="button" id="showDeleteButton" href="#">',
               'Delete</a>'
             ].join(''));
-        uploadAttachedFileButton.click(function(e){
+        uploadAttachedFileButton.click(function(e) {
           e.preventDefault();
           var url = [self.model.resource.apiUri, 
              self.model.key,
              'attachedfiles'].join('/');
           EditView.uploadAttachedFileDialog(url, view.collection, 'attachedfiletype.screen');
         });
-        showDeleteButton.click(function(e){
+        showDeleteButton.click(function(e) {
           e.preventDefault();
-          if (! view.grid.columns.findWhere({name: 'deletor'})){
+          if (! view.grid.columns.findWhere({name: 'deletor'})) {
             view.grid.columns.unshift({ 
               name: 'deletor', label: 'Delete', text:'X', 
               description: 'delete record', 
@@ -549,7 +435,7 @@ define([
                  self.model.key,
                  'publications'].join('/');
       extraControls = []
-      if (appModel.hasPermission('screen','write')){
+      if (appModel.hasPermission('screen','write')) {
         var showDeleteButton = $([
             '<a class="btn btn-default btn-sm pull-down" ',
               'role="button" id="showDeleteButton" href="#">',
@@ -561,16 +447,16 @@ define([
               'role="button" id="showAddButton" href="#">',
               'Add</a>'
             ].join(''));
-        showDeleteButton.click(function(e){
+        showDeleteButton.click(function(e) {
           e.preventDefault();
-          if (! view.grid.columns.findWhere({name: 'deletor'})){
+          if (! view.grid.columns.findWhere({name: 'deletor'})) {
             view.grid.columns.unshift({ 
               name: 'deletor', label: 'Delete', text:'X', 
               description: 'delete record', 
               cell: Iccbl.DeleteCell, sortable: false });
           }
         });
-        showAddButton.click(function(e){
+        showAddButton.click(function(e) {
           e.preventDefault();
           self.addPublicationDialog(view.collection);
         });
@@ -591,7 +477,7 @@ define([
       
     },
     
-    addPublicationDialog: function(collection){
+    addPublicationDialog: function(collection) {
       var self = this;
       var url = [self.model.resource.apiUri, 
          self.model.key,
@@ -678,10 +564,10 @@ define([
 
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
-        validate: function(attrs){
+        validate: function(attrs) {
           var errs = {};
           if (_.isEmpty(attrs.pubmed_central_id) 
-              && _.isEmpty(attrs.pubmed_id)){
+              && _.isEmpty(attrs.pubmed_id)) {
             var msg = 'must specify either "Pubmed ID" or "Pubmed CID"';
             errs['pubmed_id'] = msg;
             errs['pubmed_central_id'] = msg;
@@ -707,78 +593,78 @@ define([
       });
 
       var dialog = appModel.showModal({
-          okText: 'ok',
-          ok: function(e){
-            e.preventDefault();
-            var errors = form.commit({ validate: true }); // runs schema and model validation
-            if(!_.isEmpty(errors) ){
-              console.log('form errors, abort submit: ',errors);
-              _.each(_.keys(errors), function(key){
-                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-              });
-              return false;
-            }else{
-              var values = form.getValue();
-              var comments = _.result(values,'comments','');
-              var publication_id = _.result(values,'pubmed_id', _.result(values,'pubmed_central_id'));
-              var headers = {};
-              headers[appModel.HEADER_APILOG_COMMENT] = comments;
-              
-              var data = new FormData();
-              _.each(_.keys(values), function(key){
-                if(values[key]){
-                  data.append(key,values[key]);
-                }
-              });
-              
-              var file = $('input[name="fileInput"]')[0].files[0];
-              var filename;
-              if(file){
-                data.append('attached_file',file);
-                filename = file.name;
-                if (!_.isEmpty(values['filename'])){
-                  filename = values['filename'];
-                }
-                if (_.isEmpty(values['file_date'])){
-                  data.append(
-                    'file_date',
-                    Iccbl.getISODateString(_.result(file,'lastModifiedDate', null)));
-                }
-              }else{
+        okText: 'ok',
+        ok: function(e) {
+          e.preventDefault();
+          var errors = form.commit({ validate: true }); // runs schema and model validation
+          if (!_.isEmpty(errors)) {
+            console.log('form errors, abort submit: ',errors);
+            _.each(_.keys(errors), function(key) {
+              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+            });
+            return false;
+          } else {
+            var values = form.getValue();
+            var comments = _.result(values,'comments','');
+            var publication_id = _.result(values,'pubmed_id', _.result(values,'pubmed_central_id'));
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+            
+            var data = new FormData();
+            _.each(_.keys(values), function(key) {
+              if (values[key]) {
+                data.append(key,values[key]);
+              }
+            });
+            
+            var file = $('input[name="fileInput"]')[0].files[0];
+            var filename;
+            if (file) {
+              data.append('attached_file',file);
+              filename = file.name;
+              if (!_.isEmpty(values['filename'])) {
                 filename = values['filename'];
               }
-              
-              $.ajax({
-                url: url,    
-                data: data,
-                cache: false,
-                contentType: false,
-                processData: false,
-                type: 'POST',
-                headers: headers, 
-                success: function(data){
-                  collection.fetch({ reset: true });
-                  appModel.showModalMessage({
-                    title: 'Publication added',
-                    okText: 'ok',
-                    body: '"' + publication_id + '"'
-                  });
-                },
-                done: function(model, resp){
-                  // TODO: done replaces success as of jq 1.8
-                  console.log('done');
-                }
-              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
-            
-              return true;
+              if (_.isEmpty(values['file_date'])) {
+                data.append(
+                  'file_date',
+                  Iccbl.getISODateString(_.result(file,'lastModifiedDate', null)));
+              }
+            } else {
+              filename = values['filename'];
             }
-          },
-          view: _form_el,
-          title: 'Upload an Attached File'  });
-      
+            
+            $.ajax({
+              url: url,    
+              data: data,
+              cache: false,
+              contentType: false,
+              processData: false,
+              type: 'POST',
+              headers: headers, 
+              success: function(data) {
+                collection.fetch({ reset: true });
+                appModel.showModalMessage({
+                  title: 'Publication added',
+                  okText: 'ok',
+                  body: '"' + publication_id + '"'
+                });
+              },
+              done: function(model, resp) {
+                // TODO: done replaces success as of jq 1.8
+                console.log('done');
+              }
+            }).fail(function() { appModel.jqXHRfail.apply(this,arguments); });
+          
+            return true;
+          }
+        },
+        view: _form_el,
+        title: 'Upload an Attached File'  
+      });
     },
     
-    createActivitySummary: function($target_el){
+    createActivitySummary: function($target_el) {
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
@@ -787,8 +673,8 @@ define([
       var cell = $('<div id="activity_summary" class="row"/>');
       $target_el.append(cell);
 
-      function build_table(collection){
-          if (collection.isEmpty()){
+      function build_table(collection) {
+          if (collection.isEmpty()) {
             return;
           }
           var activity = collection.at(0);
@@ -832,9 +718,9 @@ define([
 
           $('#activity_count').closest('tr').remove();
       }      
-      if(self.model.has('latest_activities_data')){
+      if (self.model.has('latest_activities_data')) {
         build_table(new CollectionClass(self.model.get('latest_activities_data')));
-      }else{
+      } else {
         var cpr_collection = new CollectionClass();
         cpr_collection.fetch({
           data: { 
@@ -842,11 +728,11 @@ define([
             order_by: ['-date_of_activity']
           },
           success: build_table
-        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       }
     },
     
-    createCprTable: function($target_el){
+    createCprTable: function($target_el) {
       var self = this;
       var cprResource = appModel.getResource('cherrypickrequest');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
@@ -855,11 +741,11 @@ define([
       var cell = $('<div id="cpr_table" class="row"/>');
       $target_el.append(cell);
       
-      function build_table(collection){
-        if (collection.isEmpty()){
+      function build_table(collection) {
+        if (collection.isEmpty()) {
           return;
         }
-        collection.each(function(model){
+        collection.each(function(model) {
         });
         var TextWrapCell = Backgrid.Cell.extend({
           className: 'text-wrap-cell'
@@ -920,9 +806,9 @@ define([
         
       }
       
-      if(self.model.has('cherry_pick_request_data')){
+      if (self.model.has('cherry_pick_request_data')) {
         build_table(new CollectionClass(self.model.get('cherry_pick_request_data')));
-      }else{
+      } else {
         var cpr_collection = new CollectionClass();
         cpr_collection.fetch({
           data: { 
@@ -931,7 +817,7 @@ define([
             order_by: ['-date_requested']
           },
           success: build_table
-        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       }
     },
     
@@ -939,7 +825,7 @@ define([
      * Update the screen status with a status history table: populate
      * using the apilog history of the status attribute
      **/
-    createStatusHistoryTable: function($target_el){
+    createStatusHistoryTable: function($target_el) {
       var self = this;
       var apilogResource = appModel.getResource('apilog');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
@@ -948,11 +834,11 @@ define([
       var cell = $('<div id="status_table" class="row"/>');
       $target_el.append(cell);
       
-      function build_table(collection){
-        if (collection.isEmpty()){
+      function build_table(collection) {
+        if (collection.isEmpty()) {
           return;
         }
-        collection.each(function(model){
+        collection.each(function(model) {
           var diffs = JSON.parse(model.get('diffs'));
           model.set('status', appModel.getVocabularyTitle('screen.status', diffs.status[1]));
         });
@@ -1004,9 +890,9 @@ define([
         
       }
       
-      if(self.model.has('status_data')){
+      if (self.model.has('status_data')) {
         build_table(new CollectionClass(self.model.get('status_data')));
-      }else{
+      } else {
         var status_collection = new CollectionClass();
         status_collection.fetch({
           data: { 
@@ -1017,24 +903,24 @@ define([
             order_by: ['-date_time']
           },
           success: build_table
-        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       }
       
     },
     
     _addVocabularyButton: function(
-        editForm, fieldKey, vocabulary_scope_ref, vocabulary_name, options){
+        editForm, fieldKey, vocabulary_scope_ref, vocabulary_name, options) {
       var options = options || {};
       var addButton = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="add_' + fieldKey + '_button" href="#">',
           'Add</a>'
         ].join(''));
-      addButton.click(function(event){
+      addButton.click(function(event) {
         event.preventDefault();
         appModel.addVocabularyItemDialog(
           vocabulary_scope_ref, vocabulary_name,
-          function(new_vocab_item){
+          function(new_vocab_item) {
             // manually add the new vocabulary options to the multiselect
             editForm.$el.find('[key="' + fieldKey + '"]')
               .find('.chosen-select').append($('<option>',{
@@ -1047,12 +933,12 @@ define([
       editForm.$el.find('div[key="form-group-' + fieldKey + '"]').append(addButton);
     },
     
-    setCherryPicks: function(delegateStack){
+    setCherryPicks: function(delegateStack) {
       var self = this;
       var key = 'cherryPicks';
       var view = this.tabViews[key];
       
-      if (!view){
+      if (!view) {
         var self = this;
         var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
         var resource = appModel.getResource('cherrypickrequest');
@@ -1070,26 +956,26 @@ define([
         this.$('li').removeClass('active');
         this.$('#'+key).addClass('active');
 
-      }else{
+      } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
         self.reportUriStack([]);
       }
     },
-      
-    setActivities: function(delegateStack){
+
+    setActivities: function(delegateStack) {
       var self = this;
       var key = 'activities';
       var view = this.tabViews[key];
       
-      if (!view){
+      if (!view) {
         var self = this;
         var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
         var resource = appModel.getResource('activity');
         
         var sa_vocab = appModel.getVocabulary('activity.type');
         resource.fields['type'].vocabulary = 
-          _.map(sa_vocab, function(v){
+          _.map(sa_vocab, function(v) {
             return [v.title,v.key];
           }); // TODO: app model method for this
         
@@ -1109,7 +995,7 @@ define([
         this.$('li').removeClass('active');
         this.$('#'+key).addClass('active');
 
-      }else{
+      } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
         self.reportUriStack([]);
@@ -1125,7 +1011,7 @@ define([
      * NOTE: a "POST" form cannot be used - there is no standard way to signal
      * the result of the post to JavaScript.
      */
-    loadScreenResults: function(){
+    loadScreenResults: function() {
       var self = this;
       var isStudy = self.model.get('project_phase') == 'annotation';
       var form_template = [
@@ -1158,7 +1044,7 @@ define([
 
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
-        validate: function(attrs){
+        validate: function(attrs) {
           var errs = {};
           var file = $('input[name="fileInput"]')[0].files[0]; 
           if (! file) {
@@ -1177,18 +1063,18 @@ define([
       function saveFile() {
 
         var errors = form.commit({ validate: true }); // runs schema and model validation
-        if(!_.isEmpty(errors) ){
+        if (!_.isEmpty(errors)) {
           console.log('form errors, abort submit: ',errors);
-          _.each(_.keys(errors), function(key){
+          _.each(_.keys(errors), function(key) {
             $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-            if( key == '_others'){
-              _.each(errors[key], function(otherError){
+            if ( key == '_others') {
+              _.each(errors[key], function(otherError) {
                 // TODO: display file req'd msg
               });
             }
           });
           return false;
-        }else{
+        } else {
           var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
           var values = form.getValue();
           var file = $('input[name="fileInput"]')[0].files[0]; 
@@ -1210,15 +1096,15 @@ define([
             type: 'POST',
             headers: headers
           })
-          .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-          .done(function(model, resp){
+          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+          .done(function(model, resp) {
             // FIXME: should be showing a regular message
             appModel.error('success');
             // Must refetch and render, once for the containing tabbed layout,
             // and then (during render), will refetch again for the summary view
             self.model.fetch({
               success: function() {
-                if (!isStudy){
+                if (!isStudy) {
                   self.uriStack = ['summary'];
                   // remove the child view before calling render, to prevent
                   // it from being rendered twice, and calling afterRender twice
@@ -1226,7 +1112,7 @@ define([
                 }
                 self.render();
               }
-            }).fail(function(){ 
+            }).fail(function() { 
               Iccbl.appModel.jqXHRfail.apply(this,arguments); 
             });
           });
@@ -1240,7 +1126,7 @@ define([
       });
     },
     
-    deleteScreenResults: function(){
+    deleteScreenResults: function() {
       var self = this;
       var isStudy = self.model.get('project_phase') == 'annotation';
       var formSchema = {};
@@ -1260,14 +1146,14 @@ define([
       });
       var _form_el = form.render().el;
       var dialog = appModel.showModal({
-          ok: function(){
+          ok: function() {
             var errors = form.commit({ validate: true }); 
-            if(!_.isEmpty(errors) ){
-              _.each(_.keys(errors), function(key){
+            if (!_.isEmpty(errors)) {
+              _.each(_.keys(errors), function(key) {
                 $('[name="'+key +'"').parents('.form-group').addClass('has-error');
               });
               return false;
-            }else{
+            } else {
               var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
               var values = form.getValue();
               var headers = {
@@ -1282,14 +1168,14 @@ define([
                 type: 'DELETE',
                 headers: headers
               })
-              .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-              .done(function(model, resp){
+              .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+              .done(function(model, resp) {
                 appModel.error('success');
                 // Must refetch and render, once for the containing tabbed layout,
                 // and then (during render), will refetch again for the summary view
                 self.model.fetch({
                   success: function() {
-                    if (!isStudy){
+                    if (!isStudy) {
                       self.uriStack = ['summary'];
                       // remove the child view before calling render, to prevent
                       // it from being rendered twice
@@ -1297,7 +1183,7 @@ define([
                     }
                     self.render();
                   }
-                }).fail(function(){ 
+                }).fail(function() { 
                   Iccbl.appModel.jqXHRfail.apply(this,arguments); 
                 });
               });
@@ -1309,275 +1195,26 @@ define([
       
     },
     
-    addLibraryScreening: function(){
-      console.log('add library screening');
+    setSummary: function(delegateStack) {
       var self = this;
-      var defaults = {
-        screen_facility_id: self.model.get('facility_id'),
-        screen_type: self.model.get('screen_type')
-      };
-      var newModel = appModel.createNewModel('libraryscreening', defaults);
-
-      var view = new LibraryScreening({ 
-        model: newModel, 
-        uriStack: ['+add']
-      });
-      
+      var key = 'summary';
+      var view = this.tabViews[key];
+      if (!view) {
+        view = new ScreenSummaryView({
+          model: self.model, 
+          uriStack: _.clone(delegateStack)
+        });
+      }
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-
-      
-      this.consumedStack = ['libraryscreening','+add'];
-      self.reportUriStack([]);
-    },
-    
-    showLibraryScreenings: function(delegateStack){
-      var self = this;
-      var lsResource = appModel.getResource('libraryscreening'); 
-
-      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
-          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
-        var activityId = delegateStack.shift();
-        self.consumedStack.push(activityId);
-        var _key = [self.model.key,'libraryscreening',activityId ].join('/');
-        appModel.getModel(lsResource.key, activityId, function(model){
-
-          var view = new LibraryScreening({ 
-            model: model, 
-            uriStack: _.clone(delegateStack),
-          });
-          
-          Backbone.Layout.setupView(view);
-          self.listenTo(view , 'uriStack:change', self.reportUriStack);
-          self.setView("#tab_container", view ).render();
-        });        
-        return;
-      }else{
-        // List view
-        // special url because list is a child view for library
-        var url = [self.model.resource.apiUri, 
-                   self.model.key,
-                   'libraryscreening'].join('/');
-        view = new ListView({ 
-          uriStack: _.clone(delegateStack),
-          schemaResult: lsResource,
-          resource: lsResource,
-          url: url
-        });
-        Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        this.setView("#tab_container", view ).render();
-      }
-    },
-    
-    setSummary : function(delegateStack){
-      console.log('setSummary...', delegateStack);
-      var self = this;
-      var key = 'summary';
-      var $addLibraryScreeningButton = $(
-        '<a class="btn btn-default btn-sm" role="button" \
-        id="addLibraryScreening" href="#">Add Library Screening</a>');
-      $addLibraryScreeningButton.click(function(e){
-        e.preventDefault();
-        self.addLibraryScreening();
-      });
-      
-      function viewLoadHistory(e){
-        e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
-        var search = {};
-        search['ref_resource_name'] = 'screenresult';
-        search['key'] = self.model.key;
-        newUriStack.push(appModel.createSearchString(search));
-        var route = newUriStack.join('/');
-        appModel.router.navigate(route, {trigger: true});
-        self.remove();
-      }
-      
-      var summaryKeys = self.model.resource.filterKeys('visibility', 'summary');
-      var summaryModel = appModel.getModel(
-        self.model.resource.key, self.model.key, 
-        function(model){
-          view = new DetailView({ 
-            events: {
-              'click button#history': viewLoadHistory
-            },
-            model: model, 
-            uriStack: _.clone(delegateStack),
-            detailKeys: summaryKeys,
-            buttons: ['history'],
-            afterRender: function(){
-              DetailView.prototype.afterRender.apply(this);
-              this.$el.find('#libraries_screened_count').click(function(e){
-                e.preventDefault();
-                self.consumedStack = ['libraries'];
-                self.showLibraries(delegateStack);
-              });
-              this.$el.find('#library_plates_screened').click(function(e){
-                e.preventDefault();
-                self.consumedStack = ['copyplates'];
-                self.showCopyPlates(delegateStack);
-              });
-              this.$el.find('#library_plates_data_loaded').click(function(e){
-                e.preventDefault();
-                self.consumedStack = ['copyplates'];
-                self.showCopyPlatesLoaded(delegateStack);
-              });
-
-              if (self.model.get('has_screen_result')){
-                self._createPositivesSummary(this.$el.find('#positives_summary'));
-              }
-              if (appModel.hasPermission('screenresult','write')){
-                if (self.model.get('has_screen_result')){
-                  this.$('#generic-detail-buttonpanel').prepend(self.$deleteScreenResultsButton);
-                }
-                this.$('#generic-detail-buttonpanel').prepend(self.$loadScreenResultsButton);
-              }
-              if (appModel.hasPermission('libraryscreening','write')){
-                this.$('#generic-detail-buttonpanel').prepend($addLibraryScreeningButton);
-              }
-            }
-          });
-          self.tabViews[key] = view;
-          
-          self.setView("#tab_container", view ).render();
-          
-          self.reportUriStack([]);
-          
-        },{ data_for_get: { visibilities: ['summary']} }
-      );
-    },
-    
-    _createPositivesSummary: function($target_el){
-      var self = this;
-
-      var experimental_wells_loaded = self.model.get('experimental_well_count');
-      if(!_.isNumber(experimental_wells_loaded) ||
-          experimental_wells_loaded < 1 ){
-        return;
-      }
-      function createPositiveStat(raw_value){
-        var formatter = new Iccbl.DecimalFormatter({ decimals: 2 });
-        if (!raw_value) raw_value = 0;
-        if( raw_value === 0 || !_.isNumber(experimental_wells_loaded) ||
-            experimental_wells_loaded < 1 ){
-          return ''
-        }
-        return Iccbl.formatString(
-            '{val} ({percent}%)', {
-              val: raw_value,
-              percent: formatter.fromRaw(
-                100.0*raw_value/experimental_wells_loaded )
-            });
-      }
-      
-      var dcResource = appModel.getResource('datacolumn');
-      var CollectionClass = Iccbl.CollectionOnClient.extend({
-        url: dcResource.apiUri 
-      });
-      
-      var dcCollection = new CollectionClass();
-      dcCollection.fetch({
-        data: { 
-          limit: 0,
-          screen_facility_id__eq: self.model.get('facility_id'),
-          data_type__in: [
-            'partition_positive_indicator','boolean_positive_indicator',
-            'confirmed_positive_indicator'],
-          includes: ['positives_count', 'strong_positives_count',
-                     'medium_positives_count','weak_positives_count'],
-          order_by: ['ordinal']
-        },
-        success: function(collection, response) {
-          if (!collection || collection.isEmpty()){
-            return;
-          }
-          collection.each(function(dc){
-            dc.set('total_positives', createPositiveStat(dc.get('positives_count')));
-            dc.set('strong_positives', createPositiveStat(dc.get('strong_positives_count')));
-            dc.set('medium_positives', createPositiveStat(dc.get('medium_positives_count')));
-            dc.set('weak_positives', createPositiveStat(dc.get('weak_positives_count')));
-          });
-          
-          var TextWrapCell = Backgrid.Cell.extend({
-            className: 'text-wrap-cell'
-          });
-          var colTemplate = {
-            'cell' : 'string',
-            'order' : -1,
-            'sortable': false,
-            'searchable': false,
-            'editable' : false,
-            'visible': true,
-            'headerCell': Backgrid.HeaderCell
-          };
-          var columns = [
-              _.extend({},colTemplate,{
-                'name' : 'name',
-                'label' : 'Data Column',
-                'description' : 'Data Column',
-                'order': 1,
-                'sortable': true,
-                'cell': TextWrapCell
-              }),
-              _.extend({},colTemplate,{
-                'name' : 'total_positives',
-                'label' : 'Total Positives',
-                'description' : 'Total Positives',
-                'order': 2,
-                'sortable': true,
-                'cell': TextWrapCell
-              }),
-              _.extend({},colTemplate,{
-                'name' : 'strong_positives',
-                'label' : 'Strong Positives',
-                'description' : 'Strong Positives',
-                'order': 3,
-                'sortable': true,
-                'cell': TextWrapCell
-              }),
-              _.extend({},colTemplate,{
-                'name' : 'medium_positives',
-                'label' : 'Medium Positives',
-                'description' : 'Medium Positives',
-                'order': 4,
-                'sortable': true,
-                'cell': TextWrapCell
-              }),
-              _.extend({},colTemplate,{
-                'name' : 'weak_positives',
-                'label' : 'Weak Positives',
-                'description' : 'Weak Positives',
-                'order': 5,
-                'sortable': true,
-                'cell': TextWrapCell
-              }),
-          ];
-          var colModel = new Backgrid.Columns(columns);
-          colModel.comparator = 'order';
-          colModel.sort();
-          var positives_grid = new Backgrid.Grid({
-            columns: colModel,
-            collection: collection,
-            className: 'backgrid table-striped table-condensed table-hover'
-          });
-          
-          $target_el.empty();
-          var cell = $('<div>',{ class: 'col-xs-4' });
-          cell.html(positives_grid.render().$el);
-          $target_el.append(cell);
-        }
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
-      
     },
 
-    setBilling: function(delegateStack){
+    setBilling: function(delegateStack) {
       var self = this;
       var key = 'billing';
       var view = this.tabViews[key];
-      if (!view){
+      if (!view) {
         var billingKeys = self.model.resource.filterKeys('visibility', 'billing');
         
         var buttons = ['download','history'];
@@ -1588,7 +1225,7 @@ define([
         
         var summaryModel = appModel.getModel(
           self.model.resource.key, self.model.key, 
-          function(model){
+          function(model) {
             view = new DetailLayout({ 
               model: model, 
               uriStack: delegateStack,
@@ -1603,14 +1240,14 @@ define([
             self.setView("#tab_container", view ).render();
             self.reportUriStack([]);
           },{ data_for_get: { visibilities: ['billing']}});
-      }else{
+      } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
         self.reportUriStack([]);
       }
     },
 
-    setDatacolumns: function(delegateStack){
+    setDatacolumns: function(delegateStack) {
       
       var self = this;
       var datacolumnResource = appModel.getResource('datacolumn'); 
@@ -1618,7 +1255,7 @@ define([
       
       // construct a collection-in-columns
       // pivot the datacolumn list
-      Iccbl.getCollectionOnClient(url, function(collection){
+      Iccbl.getCollectionOnClient(url, function(collection) {
         // create a colModel for the list
         var columns = [];
         var TextWrapCell = Backgrid.Cell.extend({
@@ -1632,7 +1269,7 @@ define([
           'editable' : false,
           'visible': true,
           'headerCell': Backgrid.HeaderCell.extend({
-            render: function(){
+            render: function() {
               this.$el.empty();
               var label = Iccbl.createLabel(
                 this.column.get("label"), 10);
@@ -1652,7 +1289,7 @@ define([
         });
         columns.push(col0);
         
-        collection.each(function(datacolumn){
+        collection.each(function(datacolumn) {
           var col = _.extend({},colTemplate,{
             'name' : datacolumn.get('key'),
             'label' : datacolumn.get('title'),
@@ -1662,7 +1299,7 @@ define([
             'cell': TextWrapCell
           });
           columns.push(col);
-          if (datacolumn.has('derived_from_columns')){
+          if (datacolumn.has('derived_from_columns')) {
             datacolumn.set(
               'derived_from_columns', 
               datacolumn.get('derived_from_columns').join(', '));
@@ -1675,11 +1312,11 @@ define([
         // create the collection by pivoting
         orderedFields = _.sortBy(datacolumnResource.fields,'ordinal');
         var pivotCollection = new Backbone.Collection();
-        _.each(orderedFields, function(field){
-          if(_.contains(field.visibility, 'l') 
-              && !_.contains(['name','title','key'],field.key )){
+        _.each(orderedFields, function(field) {
+          if (_.contains(field.visibility, 'l') 
+              && !_.contains(['name','title','key'],field.key )) {
             var row = {'key': field.key, 'fieldname': field.title };
-            collection.each(function(datacolumn){
+            collection.each(function(datacolumn) {
               row[datacolumn.get('key')] = datacolumn.get(field.key);
             });
             pivotCollection.push(row);
@@ -1701,7 +1338,7 @@ define([
       
     },
     
-    setResults : function(delegateStack){
+    setResults : function(delegateStack) {
       var self = this;
       var screenResultResource = appModel.getResource('screenresult');
       var schemaUrl = [appModel.dbApiUri,
@@ -1715,7 +1352,7 @@ define([
       var _id = self.model.key;
       var screen_facility_id = self.model.get('facility_id');
       
-      var createResults = function(schemaResult){
+      var createResults = function(schemaResult) {
         var extraControls = [];
         var show_positives_control = $([
           '<label class="checkbox-inline">',
@@ -1727,16 +1364,16 @@ define([
            '  <input type="checkbox">mutual positives',
            '</label>'
            ].join(''));
-        if (self.model.get('project_phase') != 'annotation'){
+        if (self.model.get('project_phase') != 'annotation') {
           extraControls = extraControls.concat(
             show_positives_control, show_mutual_positives_control);
         }
         // create an option vocab for the exclued col, if needed
-        if (_.has(schemaResult['fields'], 'excluded')){
+        if (_.has(schemaResult['fields'], 'excluded')) {
           var options = [];
-          _.each(schemaResult['fields'],function(field){
+          _.each(schemaResult['fields'],function(field) {
             var dc_col_key = 'dc_' + self.model.key + '_';
-            if (field['key'].indexOf(dc_col_key)>-1){
+            if (field['key'].indexOf(dc_col_key)>-1) {
               var option_name = field['key'].substring(dc_col_key.length);
               options.unshift([option_name, option_name]);
             }
@@ -1758,39 +1395,39 @@ define([
         self.setView("#tab_container", view ).render();
         initialSearchHash = view.listModel.get('search');
         
-        if(_.has(initialSearchHash, 'is_positive__eq')
-            && initialSearchHash.is_positive__eq.toLowerCase()=='true'){
+        if (_.has(initialSearchHash, 'is_positive__eq')
+            && initialSearchHash.is_positive__eq.toLowerCase()=='true') {
           show_positives_control.find('input[type="checkbox"]').prop('checked',true);
         }
-        if(_.has(initialSearchHash, 'show_mutual_positives')
-            && initialSearchHash.show_mutual_positives.toLowerCase()=='true'){
+        if (_.has(initialSearchHash, 'show_mutual_positives')
+            && initialSearchHash.show_mutual_positives.toLowerCase()=='true') {
           show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
           view.show_mutual_positives(screen_facility_id, true);
         }
-        if(_.has(initialSearchHash, 'other_screens')){
+        if (_.has(initialSearchHash, 'other_screens')) {
           view.show_other_screens(initialSearchHash['other_screens']);
         }
-        show_positives_control.click(function(e){
-          if(e.target.checked){
+        show_positives_control.click(function(e) {
+          if (e.target.checked) {
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['is_positive__eq'] = 'true';
             view.listModel.set('search',searchHash);
-          }else{
+          } else {
             // make sure unset
             var searchHash = _.clone(view.listModel.get('search'));
-            if(_.has(searchHash,'is_positive__eq')){
+            if (_.has(searchHash,'is_positive__eq')) {
               delete searchHash['is_positive__eq'];
               view.listModel.set('search',searchHash);
             }
           }
         });
-        show_mutual_positives_control.click(function(e){
-          if(e.target.checked){
-            window.setTimeout(function(){
+        show_mutual_positives_control.click(function(e) {
+          if (e.target.checked) {
+            window.setTimeout(function() {
               view.show_mutual_positives(screen_facility_id, true);
             });
-          }else{
-            window.setTimeout(function(){
+          } else {
+            window.setTimeout(function() {
               view.show_mutual_positives(screen_facility_id, false);
             });
           }
@@ -1799,6 +1436,34 @@ define([
       };
       appModel.getResourceFromUrl(schemaUrl, createResults);
     },
+
+    /**
+     * Library Copy Plates Loaded view is a sub-view of Summary
+     */
+    showCopyPlatesLoaded: function(delegateStack) {
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
+      var resource = appModel.getResource('librarycopyplate');
+      var view = new ListView({ 
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: []
+      });
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event) {
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },    
+    
     
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager

@@ -522,7 +522,8 @@ define([
       this.uriStack = args.uriStack;
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
-
+      this.saveSuccessCallBack = args.saveSuccessCallBack;
+      
       this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
       this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
@@ -1178,7 +1179,7 @@ define([
         this.saveCallBack(this.model,headers,options, url);
       }else{
         // Note:
-        // You have to send { dataType: 'text' } to have the success function 
+        // Must send { dataType: 'text' } to have the success function 
         // work with jQuery and empty responses ( otherwise, fails on JSON.parse 
         // of the empty response).        
         //        dataType: 'text', 
@@ -1188,15 +1189,19 @@ define([
         this.model.save(changedAttributes, options)
           .success(function(model, resp) {
             console.log('success');
-            if(!options['patch']){
-              // this is an +add event
-              model = new Backbone.Model(model);
-              var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-              model.key = self.model.resource.key + '/' + key;
-              appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
-            }else{
-              console.log('trigger remove');
-              self.trigger('remove');
+            if (self.saveSuccessCallBack) {
+              self.saveSuccessCallBack(model);
+            } else {
+              if(!options['patch']){
+                // this is an +add event
+                model = new Backbone.Model(model);
+                var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+                model.key = self.model.resource.key + '/' + key;
+                appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+              }else{
+                console.log('trigger remove');
+                self.trigger('remove');
+              }
             }
           })
           .done(function(model, resp) {

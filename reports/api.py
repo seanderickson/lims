@@ -919,33 +919,28 @@ class ApiResource(SqlAlchemyResource):
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
-        try:
-            if deserialized:
-                obj = self.patch_obj(request, deserialized, **kwargs)
-                for id_field in id_attribute:
-                    val = getattr(obj, id_field,None)
-                    if val:
-                        kwargs_for_log['%s' % id_field] = val
-            # NOTE: creating a log, even if no data have changed (may be comment only)
-            log = self.make_log(request)
-            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-            log.uri = '/'.join([log.ref_resource_name,log.key])
-            log.save()
-            logger.info('log saved: %r', log)
+        # NOTE: creating a log, even if no data have changed (may be comment only)
+        log = self.make_log(request)
+        if deserialized:
+            obj = self.patch_obj(request, deserialized, **kwargs)
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
+        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
+        log.uri = '/'.join([log.ref_resource_name,log.key])
+        log.save()
+        logger.info('log saved: %r', log)
 
-            if deserialized:
+        if deserialized:
+            try:
                 new_data = self._get_detail_response(request,**kwargs_for_log)
                 log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
                 if log:
                     log.save()
-
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
-
-        except Exception, e: 
-            logger.exception(
-                'exception when logging: %s', kwargs_for_log)
+            except Exception, e: 
+                logger.exception(
+                    'exception when logging: %s', kwargs_for_log)
 
         # TODO: add "Result" data to meta section, see patch_list
         

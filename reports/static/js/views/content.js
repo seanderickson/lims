@@ -209,7 +209,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               ].join(''));   
             showUploadButton.click(function(e){
               e.preventDefault();
-              UploadDataForm.uploadAttachedFileDialog(
+              UploadDataForm.postUploadFileDialog(
                 collection.url, resource.content_types, function(){
                   collection.fetch({ reset: true });
               });

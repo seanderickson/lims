@@ -74,7 +74,7 @@ define([
       if( this.model.get('screen_type') == 'small_molecule') {
         content_types.push('sdf');
       }
-      UploadDataForm.uploadAttachedFileDialog(url, content_types, 
+      UploadDataForm.postUploadFileDialog(url, content_types, 
         function(){
           self.model.fetch();
         }

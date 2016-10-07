@@ -15,11 +15,12 @@ define([
   'views/generic_edit',
   'views/list2', 
   'views/collectionColumns',
+  'utils/uploadDataForm',
   'templates/generic-tabbed.html',
   'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             ScreenSummaryView, DetailLayout, DetailView, EditView, ListView, 
-            CollectionColumnView, tabbedTemplate, screenTemplate) {
+            CollectionColumnView, UploadDataForm, tabbedTemplate, screenTemplate) {
 
   var ScreenView = Backbone.Layout.extend({
 
@@ -105,18 +106,18 @@ define([
         invoke : 'setResults',
         permission: 'screenresult'
       },
-      attachedfile: {
-        description: "Attached Files",
-        title: "Attached Files",
-        invoke: "setAttachedFiles",
-        resource: 'attachedfile'
-      },      
-      publication: {
-        description: "Publications",
-        title: "Publications",
-        invoke: "setPublications",
-        resource: 'publication'
-      },      
+//      attachedfile: {
+//        description: "Attached Files",
+//        title: "Attached Files",
+//        invoke: "setAttachedFiles",
+//        resource: 'attachedfile'
+//      },      
+//      publication: {
+//        description: "Publications",
+//        title: "Publications",
+//        invoke: "setPublications",
+//        resource: 'publication'
+//      },      
       billingItems: {
         description : 'Billing information',
         title : 'Billing',
@@ -173,14 +174,6 @@ define([
         }else if (viewId == 'edit') {
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
-//        }else if (_.contains(['libraries'],viewId)) {
-//          this.consumedStack = [viewId];
-//          this.showLibraries(this.uriStack);
-//          return;
-//        }else if (_.contains(['copyplates'],viewId)) {
-//          this.consumedStack = [viewId];
-//          this.showCopyPlates(this.uriStack);
-//          return;
         }else if (_.contains(['copyplatesloaded'],viewId)) {
           this.consumedStack = [viewId];
           this.showCopyPlatesLoaded(this.uriStack);
@@ -291,6 +284,8 @@ define([
             self.createStatusHistoryTable($('#screen_extra_information'));
             self.createActivitySummary($('#screen_extra_information'));
             self.createCprTable($('#screen_extra_information'));
+            self.createPublicationTable(this.$el.find('#publications'));
+            self.createAttachedFileTable(this.$el.find('#attached_files'));
             
             // TODO: create a metadata setting for "show if present"
             if (!self.model.has('perturbagen_molar_concentration')) {
@@ -342,12 +337,22 @@ define([
             }
           }
           return _.isEmpty(errs) ? null : errs;
-        }
+        };
+        
+      var editKeys = self.model.resource.updateKeys();
+      if (self.model.isNew()) {
+        editKeys = self.model.resource.createKeys();
+      }
+      
+      editKeys = _.filter(editKeys, function(key){
+        return !_.isEmpty(_.intersection(fields[key].visibility, ['l','d']));
+      });
       
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,
         EditView: editView,
+        editKeys: editKeys,
         DetailView: detailView
       });
       view.showEdit = function() {
@@ -374,109 +379,126 @@ define([
       return view;
     },
     
-    setAttachedFiles: function(delegateStack) {
-      var self = this;
-      var key = 'attachedfile';
-      var resource = appModel.getResource('attachedfile');
-      var url = [self.model.resource.apiUri, 
-                 self.model.key,
-                 'attachedfiles'].join('/');
-      extraControls = []
-      if (appModel.hasPermission('screen','write')) {
-        var uploadAttachedFileButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="save_button" href="#">',
-            'Add</a>'
-          ].join(''));
-        var showDeleteButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-              'role="button" id="showDeleteButton" href="#">',
-              'Delete</a>'
-            ].join(''));
-        uploadAttachedFileButton.click(function(e) {
-          e.preventDefault();
-          var url = [self.model.resource.apiUri, 
-             self.model.key,
-             'attachedfiles'].join('/');
-          EditView.uploadAttachedFileDialog(url, view.collection, 'attachedfiletype.screen');
-        });
-        showDeleteButton.click(function(e) {
-          e.preventDefault();
-          if (! view.grid.columns.findWhere({name: 'deletor'})) {
-            view.grid.columns.unshift({ 
-              name: 'deletor', label: 'Delete', text:'X', 
-              description: 'delete record', 
-              cell: Iccbl.DeleteCell, sortable: false });
-          }
-        });
-        extraControls = extraControls.concat(uploadAttachedFileButton, showDeleteButton);
-      }      
-      
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: extraControls
-      });
-      Backbone.Layout.setupView(view);
-      self.consumedStack = [key]; 
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      
-    },
-        
-    setPublications: function(delegateStack) {
-      var self = this;
-      var key = 'publication';
-      var resource = appModel.getResource(key);
-      var url = [self.model.resource.apiUri, 
-                 self.model.key,
-                 'publications'].join('/');
-      extraControls = []
-      if (appModel.hasPermission('screen','write')) {
-        var showDeleteButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-              'role="button" id="showDeleteButton" href="#">',
-              'Delete</a>'
-            ].join(''));
-        
-        var showAddButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-              'role="button" id="showAddButton" href="#">',
-              'Add</a>'
-            ].join(''));
-        showDeleteButton.click(function(e) {
-          e.preventDefault();
-          if (! view.grid.columns.findWhere({name: 'deletor'})) {
-            view.grid.columns.unshift({ 
-              name: 'deletor', label: 'Delete', text:'X', 
-              description: 'delete record', 
-              cell: Iccbl.DeleteCell, sortable: false });
-          }
-        });
-        showAddButton.click(function(e) {
-          e.preventDefault();
-          self.addPublicationDialog(view.collection);
-        });
-        extraControls = extraControls.concat(showAddButton, showDeleteButton)
-      }      
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: extraControls
-      });
-      Backbone.Layout.setupView(view);
-      self.consumedStack = [key]; 
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      
-    },
+//    setAttachedFiles: function(delegateStack) {
+//      var self = this;
+//      var key = 'attachedfile';
+//      var resource = appModel.getResource('attachedfile');
+//      var url = [self.model.resource.apiUri, 
+//                 self.model.key,
+//                 'attachedfiles'].join('/');
+//      extraControls = []
+//      if (appModel.hasPermission('screen','write')) {
+//        var uploadAttachedFileButton = $([
+//          '<a class="btn btn-default btn-sm pull-down" ',
+//            'role="button" id="save_button" href="#">',
+//            'Add</a>'
+//          ].join(''));
+//        var showDeleteButton = $([
+//            '<a class="btn btn-default btn-sm pull-down" ',
+//              'role="button" id="showDeleteButton" href="#">',
+//              'Delete</a>'
+//            ].join(''));
+//        uploadAttachedFileButton.click(function(e) {
+//          e.preventDefault();
+//          var url = [self.model.resource.apiUri, 
+//             self.model.key,
+//             'attachedfiles'].join('/');
+//          EditView.uploadAttachedFileDialog(url, view.collection, 'attachedfiletype.screen');
+//        });
+//        showDeleteButton.click(function(e) {
+//          e.preventDefault();
+//          if (! view.grid.columns.findWhere({name: 'deletor'})) {
+//            view.grid.columns.unshift({ 
+//              name: 'deletor', label: 'Delete', text:'X', 
+//              description: 'delete record', 
+//              cell: Iccbl.DeleteCell, sortable: false });
+//          }
+//        });
+//        extraControls = extraControls.concat(uploadAttachedFileButton, showDeleteButton);
+//      }      
+//      
+//      var view = new ListView({ 
+//        uriStack: _.clone(delegateStack),
+//        schemaResult: resource,
+//        resource: resource,
+//        url: url,
+//        extraControls: extraControls
+//      });
+//      Backbone.Layout.setupView(view);
+//      self.consumedStack = [key]; 
+//      self.reportUriStack([]);
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      self.setView("#tab_container", view ).render();
+//    },
     
+    createActivitySummary: function($target_el) {
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url
+      });
+      var cell = $('<div id="activity_summary" class="row"/>');
+      $target_el.append(cell);
+
+      function build_table(collection) {
+          if (collection.isEmpty()) {
+            return;
+          }
+          var activity = collection.at(0);
+          
+          cell.append($([
+            '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
+            '<div id="" class="col-xs-12" >',
+            '<table id="activity_summary" class="table-condensed data-list">',
+            '<tr>',
+            '<td class="dl-title small">Activities</td>', 
+            '<td class="dl-data small">',
+            Iccbl.formatString(
+              '<a href="#screen/{facility_id}/activities">{activity_count}</a>', 
+              self.model),
+            '</td>', 
+            '</tr>',
+            '<tr>',
+            '<td class="dl-title small">Last Activity</td>', 
+            '<td class="dl-data small">',
+            '<table id="last_activity" class="table-condensed data-list">',
+            '<tr>',
+            '<td class="dl-title ">Date</td>', 
+            '<td class="dl-data ">' + activity.get('date_of_activity') + '</td>',
+            '</tr>',
+            '<tr>',
+            '<td class="dl-title ">Activity Type</td>', 
+            '<td class="dl-data ">',
+            appModel.getVocabularyTitle('activity.type',activity.get('type')),
+            '</td>',
+            '</tr>',
+            '<tr>',
+            '<td class="dl-title col-xs-6">Performed By</td>', 
+            '<td class="dl-data ">' + activity.get('performed_by_name') + '</td>',
+            '</tr>',
+            '</table>',
+            '</td>',
+            '</tr>',
+            '</table>',
+            '</div>'
+            ].join('')));
+
+          $('#activity_count').closest('tr').remove();
+      }      
+      if (self.model.has('latest_activities_data')) {
+        build_table(new CollectionClass(self.model.get('latest_activities_data')));
+      } else {
+        var cpr_collection = new CollectionClass();
+        cpr_collection.fetch({
+          data: { 
+            limit: 1,
+            order_by: ['-date_of_activity']
+          },
+          success: build_table
+        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }
+    },
+
     addPublicationDialog: function(collection) {
       var self = this;
       var url = [self.model.resource.apiUri, 
@@ -520,6 +542,7 @@ define([
         title: 'Title',
         key: 'title',
         type: 'TextArea',
+        editorClass: 'input-full',
         validators: ['required'],
         template: fieldTemplate
       };
@@ -527,6 +550,7 @@ define([
         title: 'Authors',
         key: 'authors',
         type: 'TextArea',
+        editorClass: 'input-full',
         validators: ['required'],
         template: fieldTemplate
       };
@@ -534,6 +558,7 @@ define([
         title: 'Journal',
         key: 'journal',
         type: 'TextArea',
+        editorClass: 'input-full',
         validators: ['required'],
         template: fieldTemplate
       };
@@ -559,6 +584,13 @@ define([
         title: 'Upload File',
         key: 'file_input',
         type: DisabledField, 
+        template: fieldTemplate
+      };
+      formSchema['comments'] = {
+        title: 'Comments (optional)',
+        key: 'comments',
+        type: 'TextArea',
+        editorClass: 'input-full',
         template: fieldTemplate
       };
 
@@ -640,21 +672,23 @@ define([
               cache: false,
               contentType: false,
               processData: false,
+              dataType: 'json', // what is expected back from the server
               type: 'POST',
-              headers: headers, 
-              success: function(data) {
-                collection.fetch({ reset: true });
-                appModel.showModalMessage({
-                  title: 'Publication added',
-                  okText: 'ok',
-                  body: '"' + publication_id + '"'
-                });
-              },
-              done: function(model, resp) {
-                // TODO: done replaces success as of jq 1.8
-                console.log('done');
+              headers: headers
+            }).fail(function() {
+              appModel.jqXHRfail.apply(this,arguments); 
+            }).done(function(data, textStatus, jqXHR) {
+              collection.fetch({ reset: true });
+              var msg = 'Success';
+              if (data) {
+                msg = data['title'];
               }
-            }).fail(function() { appModel.jqXHRfail.apply(this,arguments); });
+              appModel.showModalMessage({
+                title: 'Publication added',
+                okText: 'ok',
+                body: msg
+              });
+            });
           
             return true;
           }
@@ -664,73 +698,224 @@ define([
       });
     },
     
-    createActivitySummary: function($target_el) {
+    createPublicationTable: function($target_el) {
       var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
+      var key = 'publication';
+      var resource = appModel.getResource(key);
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'publications'].join('/');
+      
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-      var cell = $('<div id="activity_summary" class="row"/>');
-      $target_el.append(cell);
+      
+      var collection = new CollectionClass();
+      var colModel = Iccbl.createBackgridColModel(resource.fields); 
+      var grid = new Backgrid.Grid({
+        columns: colModel,
+        collection: collection,
+        className: 'backgrid table-striped table-condensed table-hover'
+      });
+      $target_el.empty();
+      var cell = $('<div>',{ class: 'col-xs-4' });
+      var grid_el = grid.render().$el;
+      cell.html(grid_el);
 
-      function build_table(collection) {
-          if (collection.isEmpty()) {
-            return;
+      collection.on('all', function(){
+        if (collection.isEmpty()) {
+          grid_el.hide();
+        } else {
+          grid_el.show();
+        }
+      });
+      if (appModel.hasPermission('screen','write')) {
+        var showDeleteButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showDeleteButton" href="#">',
+              'Delete</a>'
+            ].join(''));
+        
+        var showAddButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showAddButton" href="#">',
+              'Add</a>'
+            ].join(''));
+        
+        cell.append(showAddButton);
+        cell.append(showDeleteButton);
+        showDeleteButton.click(function(e) {
+          e.preventDefault();
+          if (! grid.columns.findWhere({name: 'deletor'})) {
+            grid.columns.unshift({ 
+              name: 'deletor', label: 'Delete', text:'X', 
+              description: 'delete record', 
+              cell: Iccbl.DeleteCell, sortable: false });
           }
-          var activity = collection.at(0);
+        });
+        self.listenTo(collection, "MyCollection:delete", function (model) {
           
-          cell.append($([
-            '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
-            '<div id="" class="col-xs-12" >',
-            '<table id="activity_summary" class="table-condensed data-list">',
-            '<tr>',
-            '<td class="dl-title small">Activities</td>', 
-            '<td class="dl-data small">',
-            Iccbl.formatString(
-              '<a href="#screen/{facility_id}/activities">{activity_count}</a>', 
-              self.model),
-            '</td>', 
-            '</tr>',
-            '<tr>',
-            '<td class="dl-title small">Last Activity</td>', 
-            '<td class="dl-data small">',
-            '<table id="last_activity" class="table-condensed data-list">',
-            '<tr>',
-            '<td class="dl-title ">Date</td>', 
-            '<td class="dl-data ">' + activity.get('date_of_activity') + '</td>',
-            '</tr>',
-            '<tr>',
-            '<td class="dl-title ">Activity Type</td>', 
-            '<td class="dl-data ">',
-            appModel.getVocabularyTitle('activity.type',activity.get('type')),
-            '</td>',
-            '</tr>',
-            '<tr>',
-            '<td class="dl-title col-xs-6">Performed By</td>', 
-            '<td class="dl-data ">' + activity.get('performed_by_name') + '</td>',
-            '</tr>',
-            '</table>',
-            '</td>',
-            '</tr>',
-            '</table>',
-            '</div>'
-            ].join('')));
+          var title = 'Confirm deletion of publication: ' + 
 
-          $('#activity_count').closest('tr').remove();
-      }      
-      if (self.model.has('latest_activities_data')) {
-        build_table(new CollectionClass(self.model.get('latest_activities_data')));
-      } else {
-        var cpr_collection = new CollectionClass();
-        cpr_collection.fetch({
-          data: { 
-            limit: 1,
-            order_by: ['-date_of_activity']
-          },
-          success: build_table
-        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
-      }
+          Iccbl.getTitleFromTitleAttribute(model, resource);
+          appModel.showOkCommentForm( title, function(values){
+            appModel.clearPagePending();
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+            
+            model.collection = collection;
+            var patchUrl = [resource.apiUri, 
+                       Iccbl.getIdFromIdAttribute(model, resource),
+                       ].join('/');
+            model.url = patchUrl;
+            
+            // Backbone will only send DELETE if the model has an id
+            model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
+            model.destroy({
+              wait: true,
+              headers: headers,
+              success: function(model,response){
+                console.log('model removed successfully', model, response);
+              }
+            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+          });
+        });            
+        
+        showAddButton.click(function(e) {
+          e.preventDefault();
+          self.addPublicationDialog(collection);
+        });
+      } 
+      $target_el.append(cell);
+      
+      collection.fetch({
+        data: { 
+          limit: 0
+        },
+        success: function(collection, response) {
+          console.log('publications fetched.');
+        }
+      }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+   
     },
+
+    createAttachedFileTable: function($target_el) {
+      var self = this;
+      var key = 'attachedfile';
+      var resource = appModel.getResource(key);
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'attachedfiles'].join('/');
+      
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url
+      });
+      
+      var collection = new CollectionClass();
+      var colModel = Iccbl.createBackgridColModel(resource.fields); 
+      var grid = new Backgrid.Grid({
+        columns: colModel,
+        collection: collection,
+        className: 'backgrid table-striped table-condensed table-hover'
+      });
+      $target_el.empty();
+      var cell = $('<div>',{ class: 'col-xs-4' });
+      var grid_el = grid.render().$el;
+      cell.html(grid_el);
+
+      collection.on('all', function(){
+        if (collection.isEmpty()) {
+          grid_el.hide();
+        } else {
+          grid_el.show();
+        }
+      });
+      if (appModel.hasPermission('screen','write')) {
+        var showDeleteButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showDeleteButton" href="#">',
+              'Delete</a>'
+            ].join(''));
+        
+        var showAddButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showAddButton" href="#">',
+              'Add</a>'
+            ].join(''));
+        
+        cell.append(showAddButton);
+        cell.append(showDeleteButton);
+        showDeleteButton.click(function(e) {
+          e.preventDefault();
+          if (! grid.columns.findWhere({name: 'deletor'})) {
+            grid.columns.unshift({ 
+              name: 'deletor', label: 'Delete', text:'X', 
+              description: 'delete record', 
+              cell: Iccbl.DeleteCell, sortable: false });
+          }
+        });
+        self.listenTo(collection, "MyCollection:delete", function (model) {
+          
+          var title = 'Confirm deletion of attached file: ' + 
+
+          Iccbl.getTitleFromTitleAttribute(model, resource);
+          appModel.showOkCommentForm( title, function(values){
+            appModel.clearPagePending();
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+            
+            model.collection = collection;
+            var patchUrl = [resource.apiUri, 
+                       Iccbl.getIdFromIdAttribute(model, resource),
+                       ].join('/');
+            model.url = patchUrl;
+            
+            // Backbone will only send DELETE if the model has an id
+            model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
+            model.destroy({
+              wait: true,
+              headers: headers,
+              success: function(model,response){
+                console.log('model removed successfully', model, response);
+              }
+            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+          });
+        });            
+        
+        showAddButton.click(function(e) {
+          e.preventDefault();
+          UploadDataForm.uploadAttachedFileDialog(
+            url, 'attachedfiletype.screen'
+          ).done(function(data, textStatus, jqXHR){
+            var msg = 'Success';
+            if (data) {
+              msg = data['filename'];
+            }
+            appModel.showModalMessage({
+              title: 'Attached File uploaded',
+              okText: 'ok',
+              body: msg
+            });
+            collection.fetch({ reset: true });
+          }).fail(function(){
+            appModel.jqXHRfail.apply(this,arguments); 
+          });
+          
+        });
+      } 
+      $target_el.append(cell);
+      
+      collection.fetch({
+        data: { 
+          limit: 0
+        },
+        success: function(collection, response) {
+          console.log('attached files fetched.');
+        }
+      }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+   
+    },
+    
     
     createCprTable: function($target_el) {
       var self = this;
@@ -1223,7 +1408,7 @@ define([
           buttons.push('edit');
         }
         
-        var summaryModel = appModel.getModel(
+        appModel.getModel(
           self.model.resource.key, self.model.key, 
           function(model) {
             view = new DetailLayout({ 

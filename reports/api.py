@@ -876,6 +876,7 @@ class ApiResource(SqlAlchemyResource):
             if log:
                 log.save()
         except Exception, e: 
+            # FIXME: don't catch - should always have new data after patch
             logger.exception(
                 'exception when logging: %s', kwargs_for_log)
 

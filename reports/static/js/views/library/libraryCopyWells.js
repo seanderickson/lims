@@ -101,7 +101,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           function callbackSuccess() {
           };
           
-          UploadDataForm.uploadAttachedFileDialog(
+          UploadDataForm.postUploadFileDialog(
             collection.url, resource.content_types, function(){
               collection.fetch({ reset: true });
             });

@@ -4239,12 +4239,18 @@ class PublicationResource(DbApiResource):
     def __init__(self, **kwargs):
         
         self.attached_file_resource = None
+        self.screen_resource = None
         super(PublicationResource, self).__init__(**kwargs)
         
     def get_attached_file_resource(self):
         if not self.attached_file_resource:
             self.attached_file_resource = AttachedFileResource()
         return self.attached_file_resource
+
+    def get_screen_resource(self):
+        if not self.screen_resource:
+            self.screen_resource = ScreenResource()
+        return self.screen_resource
 
     def prepend_urls(self):
         
@@ -4389,6 +4395,7 @@ class PublicationResource(DbApiResource):
     
     @write_authorization
     @un_cache        
+    @transaction.atomic
     def post_detail(self, request, **kwargs):
                 
         param_hash = self._convert_request_to_dict(request)
@@ -4447,106 +4454,130 @@ class PublicationResource(DbApiResource):
                 'pubmed_id': msg,
                 'pubmed_central_id': msg })
 
-        with transaction.atomic():
-            publication = Publication.objects.create()
-            for key, val in initializer_dict.items():
-                if hasattr(publication, key):
-                    setattr(publication, key, val)
-                else:
-                    logger.warn(
-                        'no such attribute on publication: %s:%r' % (key, val))
-            publication.save()
+        publication = Publication.objects.create()
+        for key, val in initializer_dict.items():
+            if hasattr(publication, key):
+                setattr(publication, key, val)
+            else:
+                logger.warn(
+                    'no such attribute on publication: %s:%r' % (key, val))
 
-            # create a "parent_log" for the attached_file log            
-            log = self.make_log(request)
+        parent_log = kwargs.get('parent_log',None)
+        logger.info('parent_log: %r', parent_log)
+        if parent_log is None and publication.screen is not None:
+            parent_log = self.log_to_screen(
+                publication.screen, publication, request)
+            kwargs['parent_log'] = parent_log
+            logger.info('1parent_log: %r', parent_log)
+        logger.info('parent_log: %r', parent_log)
+            
+        publication.save()
+
+        attached_file = request.FILES.get('attached_file', None)
+        if attached_file:
+            logger.info('create attached file for publication: %r', publication)
+            
+            af_request = HttpRequest()
+            af_request.META['HTTP_ACCEPT'] = request.META['HTTP_ACCEPT']
+            af_request.user = request.user
+            self.get_attached_file_resource().post_detail(
+                af_request, **{ 
+                    'attached_file': attached_file,
+                    'publication_id': publication.publication_id,
+                    'type': 'publication',
+                    'parent_log': parent_log })
+            
+        kwargs_for_log = { 'parent_log': parent_log }
+        for id_field in id_attribute:
+            val = getattr(publication, id_field,None)
+            if val:
+                kwargs_for_log['%s' % id_field] = val
+        logger.info('get new data: %r', kwargs_for_log)
+        new_data = self._get_detail_response(request,**kwargs_for_log)
+        log = self.log_patch(request, None, new_data, **kwargs_for_log)
+        if log:
             log.save()
+        logger.info('created log: %r', log)
+        return self.build_response(request, new_data)
 
-            attached_file = request.FILES.get('attached_file', None)
-            if attached_file:
-                logger.info('create attached file for publication: %r', publication)
-                
-                af_request = HttpRequest()
-                af_request.user = request.user
-                self.get_attached_file_resource().post_detail(
-                    af_request, **{ 
-                        'attached_file': attached_file,
-                        'publication_id': publication.publication_id,
-                        'type': 'publication',
-                        'parent_log': log })
-                
-            kwargs_for_log = { 'parent_log': param_hash.get('parent_log', None) }
-            for id_field in id_attribute:
-                val = getattr(publication, id_field,None)
-                if val:
-                    kwargs_for_log['%s' % id_field] = val
-            try:
-                new_data = self._get_detail_response(request,**kwargs_for_log)
-                log = self.log_patch(request, None, new_data, log=log, **kwargs_for_log)
-                if log:
-                    log.save()
-            except Exception, e: 
-                logger.exception(
-                    'exception when querying for new data for logging: %s', 
-                    kwargs_for_log)
-        
-        logger.info('publication created: %s for screen: %s',
-            publication, screen)
-        
-        return tastypie.http.HttpCreated(location=publication.publication_id)
-
+    def log_to_screen(self, screen, publication, request, is_delete=False):
+        screen_resource = self.get_screen_resource()
+        _screen_data = \
+            screen_resource._get_detail_response_internal(**{
+                'limit': 10,
+                'facility_id': screen.facility_id,
+                'exact_fields': ['publications'],
+                })
+        parent_log = screen_resource.make_log(request)
+        parent_log.api_action = API_ACTION_PATCH
+        parent_log.key = screen.facility_id
+        parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
+        parent_log.diff_keys = ['publications'];
+        current_pubs = _screen_data['publications']
+        if is_delete:
+            new_pubs = [x for x in current_pubs 
+                if x != str(publication.title)]
+        else:
+            new_pubs = list(current_pubs)
+            new_pubs.append(publication.title)
+        parent_log.diffs = { 'publications': [current_pubs,new_pubs]}
+        parent_log.save()
+        logger.info('created parent log: %r', parent_log)
+        return parent_log
+    
     @write_authorization
-    @un_cache        
+    @un_cache   
+    @transaction.atomic     
     def delete_detail(self, request, **kwargs):
+
         logger.info('delete publication...')
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
     
-        try:
-            publication_id = kwargs.get('publication_id', None)
-            if not publication_id:
-                NotImplementedError('must provide a publication_id parameter')
-            
-            publication = Publication.objects.get(publication_id=publication_id)
-
-            kwargs_for_log = {}
-            for id_field in id_attribute:
-                if kwargs.get(id_field,None):
-                    kwargs_for_log[id_field] = kwargs[id_field]
-            logger.debug('delete detail: %s' %(kwargs_for_log))
-            if not kwargs_for_log:
-                raise Exception('required id keys %s' % id_attribute)
-            else:
-                try:
-                    original_data = self._get_detail_response(request,**kwargs_for_log)
-                except Exception as e:
-                    logger.exception('original state not obtained')
-                    original_data = {}
-    
-            with transaction.atomic():
-                publication.delete()
-    
-            logger.info('deleted: %s' %kwargs_for_log)
-            log_comment = None
-            if HEADER_APILOG_COMMENT in request.META:
-                log_comment = request.META[HEADER_APILOG_COMMENT]
-            
-            log = self.make_log(request)
-            log.ref_resource_name = self._meta.resource_name
-            log.key = '/'.join([str(original_data[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
+        publication_id = kwargs.get('publication_id', None)
+        if not publication_id:
+            NotImplementedError('must provide a publication_id parameter')
         
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-        
-            log.api_action = API_ACTION_DELETE
-            log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
-            log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
-            log.save()
-            logger.info('delete, api log: %r', log)
+        publication = Publication.objects.get(publication_id=publication_id)
 
-            return tastypie.http.HttpNoContent()
-        except NotFound:
-            return tastypie.http.HttpNotFound()
+        parent_log = kwargs.get('parent_log',None)
+        if parent_log is None and publication.screen is not None:
+            parent_log = self.log_to_screen(
+                publication.screen, publication, request, is_delete=True)
+
+        kwargs_for_log = {}
+        for id_field in id_attribute:
+            if kwargs.get(id_field,None):
+                kwargs_for_log[id_field] = kwargs[id_field]
+        logger.debug('delete detail: %s' %(kwargs_for_log))
+        if not kwargs_for_log:
+            raise Exception('required id keys %s' % id_attribute)
+        else:
+            try:
+                original_data = self._get_detail_response(request,**kwargs_for_log)
+            except Exception as e:
+                logger.exception('original state not obtained')
+                original_data = {}
+
+        publication.delete()
+
+        logger.info('deleted: %s' %kwargs_for_log)
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
+        
+        log = self.make_log(request)
+        log.ref_resource_name = self._meta.resource_name
+        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
+        log.uri = '/'.join([self._meta.resource_name,log.key])
+        log.parent_log = parent_log
+        log.api_action = API_ACTION_DELETE
+        log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
+        log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+        log.save()
+        logger.info('delete, api log: %r', log)
+
+        return tastypie.http.HttpNoContent()
         
 
 class AttachedFileResource(DbApiResource):
@@ -4564,6 +4595,13 @@ class AttachedFileResource(DbApiResource):
     def __init__(self, **kwargs):
         
         super(AttachedFileResource, self).__init__(**kwargs)
+        self.screen_resource = None
+        
+    def get_screen_resource(self):
+        if self.screen_resource is None:
+            self.screen_resource = ScreenResource()
+        return self.screen_resource
+
 
     def prepend_urls(self):
         
@@ -4600,8 +4638,33 @@ class AttachedFileResource(DbApiResource):
         raise NotImplementedError(
             "Patch detail is not implemented for AttachedFiles")
     
+    def log_to_screen(self, screen, af, request, is_delete=False):
+        screen_resource = self.get_screen_resource()
+        _screen_data = \
+            screen_resource._get_detail_response_internal(**{
+                'limit': 10,
+                'facility_id': screen.facility_id,
+                'exact_fields': ['attached_files'],
+                })
+        parent_log = screen_resource.make_log(request)
+        parent_log.api_action = API_ACTION_PATCH
+        parent_log.key = screen.facility_id
+        parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
+        parent_log.diff_keys = ['attached_files'];
+        current_files = _screen_data['attached_files']
+        if is_delete:
+            new_files = [x for x in current_files 
+                if x != str(af.filename)]
+        else:
+            new_files = list(current_files)
+            new_files.append(af.filename)
+        parent_log.diffs = { 'attached_files': [current_files,new_files]}
+        parent_log.save()
+        return parent_log
+
     @write_authorization
     @un_cache        
+    @transaction.atomic
     def post_detail(self, request, **kwargs):
         ''' 
         Custom post_detail: 
@@ -4624,6 +4687,7 @@ class AttachedFileResource(DbApiResource):
         if not attached_file:
             attached_file = param_hash.get('attached_file', None)
         if not attached_file:
+            # FIXME: "contents" has been eliminated
             contents = param_hash.get('contents', None)
             filename = param_hash.get('filename', None)
             if not (contents and filename):
@@ -4705,66 +4769,72 @@ class AttachedFileResource(DbApiResource):
                 raise Http404('reagent_id does not exist: %s' 
                     % initializer_dict['reagent_id'])
         
-        with transaction.atomic():
-            af = AttachedFile()
-            for key, val in initializer_dict.items():
-                if hasattr(af, key):
-                    setattr(af, key, val)
-                else:
-                    logger.warn('no such attribute on attached_file: %s:%r' 
-                        % (key, val))
-            af.save()
+        af = AttachedFile()
+        for key, val in initializer_dict.items():
+            if hasattr(af, key):
+                setattr(af, key, val)
+            else:
+                logger.warn('no such attribute on attached_file: %s:%r' 
+                    % (key, val))
 
-        logger.info('attached file created: %r',af)
+        parent_log = kwargs.get('parent_log', None)
+        if parent_log is None and af.screen is not None:
+            parent_log = \
+                self.log_to_screen(af.screen, af, request, is_delete=False)
+        # TODO: log_to_reagent
+        # TODO: log_to_screensaver_user
         
+        af.save()
+
         # get new state, for logging
         kwargs_for_log = { 
-            'attached_file_id': af.attached_file_id,
-            'parent_log': param_hash.get('parent_log', None) }
-        try:
-            new_data = self._get_detail_response(request,**kwargs_for_log)
-            log = self.log_patch(request, None,new_data,**kwargs_for_log)
-            if log:
-                log.save()
-        except Exception, e: 
-            logger.exception('exception when querying for new data for logging: %s', 
-                kwargs_for_log)
-        
-        return tastypie.http.HttpAccepted()
+            'attached_file_id': af.attached_file_id, 
+            'parent_log': parent_log 
+        }
+        new_data = self._get_detail_response(request,**kwargs_for_log)
+        log = self.log_patch(request, None,new_data,**kwargs_for_log)
+        if log:
+            log.save()
+
+        if not self._meta.always_return_data:
+            return HttpResponse(status=200)
+        else:
+            return self.build_response(request, new_data)
         
     @write_authorization
     @un_cache        
     @transaction.atomic
     def delete_detail(self, request, **kwargs):
-        try:
-            attached_file_id = kwargs.pop('attached_file_id', None)
-            if not attached_file_id:
-                NotImplementedError('must provide a attached_file_id parameter')
-            
-            af = AttachedFile.objects.get(attached_file_id=attached_file_id)
-            _dict = model_to_dict(af)
-            af.delete()
-    
-            logger.info('deleted: %s' % kwargs)
-            
-            schema = self.build_schema()
-            id_attribute = resource = schema['id_attribute']
-    
-            log = self.make_log(request, **kwargs)
-            log.ref_resource_name = self._meta.resource_name
-            log.key = '/'.join([str(_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name, log.key])
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-            log.api_action = API_ACTION_DELETE
-            log.added_keys = json.dumps(_dict.keys(), cls=DjangoJSONEncoder)
-            log.diffs = json.dumps(_dict, cls=DjangoJSONEncoder)
-            log.save()
-            logger.debug('delete, api log: %r', log)
+        attached_file_id = kwargs.pop('attached_file_id', None)
+        if not attached_file_id:
+            NotImplementedError('must provide a attached_file_id parameter')
+        
+        af = AttachedFile.objects.get(attached_file_id=attached_file_id)
+        _dict = model_to_dict(af)
 
-            return tastypie.http.HttpNoContent()
-        except NotFound:
-            return tastypie.http.HttpNotFound()
+        # Create parent log
+        parent_log = kwargs.get('parent_log', None)
+        if parent_log is None and af.screen is not None:
+            parent_log = \
+                self.log_to_screen(af.screen, af, request, is_delete=True)
+
+        af.delete()
+        
+        schema = self.build_schema()
+        id_attribute = resource = schema['id_attribute']
+
+        log = self.make_log(request, **kwargs)
+        log.ref_resource_name = self._meta.resource_name
+        log.key = '/'.join([str(_dict[x]) for x in id_attribute])
+        log.uri = '/'.join([self._meta.resource_name, log.key])
+        log.parent_log = parent_log
+        log.api_action = API_ACTION_DELETE
+        log.added_keys = json.dumps(_dict.keys(), cls=DjangoJSONEncoder)
+        log.diffs = json.dumps(_dict, cls=DjangoJSONEncoder)
+        log.save()
+        logger.debug('delete, api log: %r', log)
+
+        return tastypie.http.HttpNoContent()
 
     def get_detail(self, request, **kwargs):
 
@@ -6700,8 +6770,8 @@ class ScreenResource(DbApiResource):
     def dispatch_screen_attachedfileview(self, request, **kwargs):
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')
         method = 'list'
-        if request.method.lower() == 'put':
-            # if put is used, force to "put_detail"
+        if request.method.lower() == 'post':
+            # if post is used, force to "post_detail"
             method = 'detail'
         return AttachedFileResource().dispatch(method, request, **kwargs)    
 
@@ -6713,7 +6783,7 @@ class ScreenResource(DbApiResource):
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')
         method = 'list'
         if request.method.lower() == 'post':
-            # if post is used, force to "put_detail"
+            # if post is used, force to "post_detail"
             method = 'detail'
         return PublicationResource().dispatch(method, request, **kwargs)    
 
@@ -6837,7 +6907,8 @@ class ScreenResource(DbApiResource):
         _cp_screening = self.bridge['cherry_pick_screening']
         _lab_activity = self.bridge['lab_activity']
         _service_activity = self.bridge['service_activity']
-        
+        _publication = self.bridge['publication']
+        _attached_file = self.bridge['attached_file']
         # create CTEs -  Common Table Expressions for the intensive queries:
         
         collaborators = (
@@ -7227,6 +7298,20 @@ class ScreenResource(DbApiResource):
                    .select_from(_screen_keyword)
                    .where(_screen_keyword.c.screen_id == _screen.c.screen_id)),
                 'screen_id': _screen.c.screen_id,
+                'publications': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_publication.c.title),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                   .select_from(_publication)
+                   .where(_publication.c.screen_id == _screen.c.screen_id)),
+                'attached_files': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_attached_file.c.filename),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                   .select_from(_attached_file)
+                   .where(_attached_file.c.screen_id == _screen.c.screen_id)),
             }
         except Exception, e:
             logger.exception('on custom columns creation')
@@ -7457,7 +7542,7 @@ class ScreenResource(DbApiResource):
                 logger.info('creating screen: %r, with %r', screen, id_kwargs)
 
             initializer_dict = self.parse(deserialized, create=create)
-            logger.debug('initializer_dict: %r', initializer_dict)
+            logger.info('initializer_dict: %r', initializer_dict)
                 
             errors = self.validate(deserialized, patch=not create)
             if errors:
@@ -7502,6 +7587,8 @@ class ScreenResource(DbApiResource):
                 initializer_dict.pop('funding_supports', None)
             related_initializer['keywords'] = \
                 initializer_dict.pop('keywords', None)
+            related_initializer['publications'] = \
+                initializer_dict.pop('publications', None)
                 
             for key, val in initializer_dict.items():
                 if hasattr(screen, key):
@@ -7561,7 +7648,30 @@ class ScreenResource(DbApiResource):
                             screen=screen,
                             keyword=keyword)
             
+            _key = 'publications'
+            _val = related_initializer.get(_key, None)
+            if _val:
+                current_publications = set([ 
+                    str(x) for x in
+                        screen.publication_set.all()
+                            .values_list('publication_id', flat=True)])
+                logger.info('current: %r, val: %r', current_publications, _val)
+                publications_delete = current_publications - set(_val)
+                logger.info('delete publications: %r', publications_delete)
+                if publications_delete:
+                    query = Publication.objects.all().filter(
+                        publication_id__in=publications_delete)
+                    logger.info('delete: %r', [x for x in query])
+                    query.delete()
+                # Note: prefer create publications with screen reference set
+                publications_add = set(_val) - current_publications
+                logger.info('add publications: %r', publications_add)
+                if publications_add:
+                    query = Publication.objects.all().filter(
+                        publication_id__in=publications_add)
+                    screen.publication_set.add(query)
             
+            screen.save()
             logger.info('patch_obj done')
             return screen
             

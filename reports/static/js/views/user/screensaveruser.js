@@ -11,11 +11,13 @@ define([
     'views/screen/screen',
     'views/generic_edit',
     'views/generic_detail_stickit',
+    'utils/uploadDataForm',
     'templates/generic-tabbed.html',
     'bootstrap-datepicker'
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, ReportsUserView, ScreenView, EditView, DetailView, layout) {
+            ListView, ReportsUserView, ScreenView, EditView, DetailView, 
+            UploadDataForm, layout) {
 
   var UserView = ReportsUserView.extend({
 
@@ -661,7 +663,13 @@ define([
       });
       uploadAttachedFileButton.click(function(e){
         e.preventDefault();
-        EditView.uploadAttachedFileDialog(url, view.collection, 'attachedfiletype.user');
+        UploadDataForm.uploadAttachedFileDialog(
+          url, 'attachedfiletype.user'
+        ).done(function(){
+          view.collection.fetch({ reset: true });
+        }).fail(function(){
+          appModel.jqXHRfail.apply(this,arguments); 
+        });
       });
       showDeleteButton.click(function(e){
         e.preventDefault();

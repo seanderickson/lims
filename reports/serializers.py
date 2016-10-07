@@ -177,15 +177,15 @@ class BaseSerializer(object):
                 
                 logger.debug('"HTTP_ACCEPT" - content_type: %r', content_type)
         if not content_type:
-            msg = 'no best match format for CONTENT_TYPE'
+            msg = 'no best match format for CONTENT_TYPE: '
             if request:
-                msg += request.META['CONTENT_TYPE']
+                msg += request.META.get('CONTENT_TYPE','-no content type specified')
             else:
                 msg += ', request not specified'
             if format:
                 msg += ', format: %r' % format
             else:
-                msg += ', format not specified'
+                msg += ', format not specified. '
             msg += 'ser: %r' % self
             raise BadRequest(msg)
         return content_type

@@ -79,7 +79,12 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
       }
   });
   
-
+  // Prevent keypresses in input elements from propogating to the form submit button
+  $(document).on("keypress", "input:not(textarea):not([type=submit])", function(event) {
+    if (event.keyCode == 13) {
+        event.preventDefault();
+    }
+  });
   /**
    * Augment the view prototype to prevent memory leaks -
    * See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/

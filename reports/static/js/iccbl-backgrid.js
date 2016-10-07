@@ -1556,29 +1556,32 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     var state = this.collection.state;
 
     var i = 0;
-    _.each(state.orderStack, function(order_entry){
-      i++;
-      var dir = order_entry.substring(0,1);
-      var direction = null;
-      var fieldname = order_entry;
-      if(dir == '-'){
-        fieldname = order_entry.substring(1);
-        direction = 'descending';
-      }else{
-        dir = '';
-        direction = 'ascending';
-      }
-      if(fieldname == name){
-        self.$el.removeClass("ascending").removeClass("descending");
-        self.$el.addClass(direction); 
-
-        var sorter = self.$el.find('#sorter');
-        sorter.empty();
-        sorter.append(
-         "<span style='margin-bottom: 2px;' class='badge pull-right'>" 
-         + i + "<b class='sort-caret'></b></span>");
-      }
-    });
+    if (state) {
+      
+      _.each(state.orderStack, function(order_entry){
+        i++;
+        var dir = order_entry.substring(0,1);
+        var direction = null;
+        var fieldname = order_entry;
+        if(dir == '-'){
+          fieldname = order_entry.substring(1);
+          direction = 'descending';
+        }else{
+          dir = '';
+          direction = 'ascending';
+        }
+        if(fieldname == name){
+          self.$el.removeClass("ascending").removeClass("descending");
+          self.$el.addClass(direction); 
+  
+          var sorter = self.$el.find('#sorter');
+          sorter.empty();
+          sorter.append(
+           "<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+           + i + "<b class='sort-caret'></b></span>");
+        }
+      });
+    }
   },
  
   /**

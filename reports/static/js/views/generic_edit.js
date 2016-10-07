@@ -268,8 +268,25 @@ define([
     getValue: function() {
       var input = $('input', this.el);
       var date = input.datepicker('getDate');
-      var val = Iccbl.getISODateString(date);
-      return val;
+      try{
+        return Iccbl.getISODateString(date);
+      } catch(e) {
+        console.log('invalid date', e, date);
+        return date;
+      }
+    },
+    
+    validate: function(options) {
+      try {
+        Iccbl.getISODateString(this.getValue());
+      }catch(e) {
+        console.log('date validation error', e, this.getValue());
+        errors = {
+          type: 'date', message: 'Invalid date: '+ e 
+        };
+        return errors;
+      }
+      return Backbone.Form.editors.Base.prototype.validate.call(this, options);
     },
 
     setValue: function(value) {
@@ -531,7 +548,8 @@ define([
       this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
       if(args.isCreate 
           || _.isEmpty(_.compact(_.values(this.model.pick(this.model.resource['id_attribute']))))){
-        this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
+        //this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
+        this.editableKeys = this.modelSchema.createKeys();
       }
       // Add comment field
       if( _.propertyOf(this.model.resource,'require_comment_on_save') && 
@@ -1208,6 +1226,8 @@ define([
             // TODO: done replaces success as of jq 1.8
             console.log('model saved');
           })
+          // NOTE: chained, fail behaves like $.ajax().fail(jqXHR, textstatus, errorThrown)
+          // whereas the error callback takes (model, response, options)
           .fail(function(jqXHR, textStatus, errorThrown){ 
             
             if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
@@ -1256,200 +1276,6 @@ define([
   EditView.DatePicker = DatePicker;
   EditView.DisabledField = DisabledField;
   EditView.SIunitEditor = SIunitEditor;
-  /**
-   * TODO: move this to utils module or parent view module
-   */
-  EditView.uploadAttachedFileDialog = function(url, attachedfileCollection, vocabulary_ref){
-      var self = this;
-      var form_template = [
-         "<div class='form-horizontal container' id='uploadAttachedFileButton_form' >",
-         "<form data-fieldsets class='form-horizontal container' >",
-         //"<div class='form-group' ><input type='file' name='fileInput' /></div>",
-         "</form>",
-         "</div>"].join('');      
-      var fieldTemplate = _.template([
-        '<div class="form-group" >',
-        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
-        '    <div class="" >',
-        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
-        '      <div data-error class="text-danger" ></div>',
-        '      <div><%= help %></div>',
-        '    </div>',
-        '  </div>',
-      ].join(''));
-      var choiceHash = {}
-      try{
-        var vocabulary = appModel.getVocabulary(vocabulary_ref);
-          _.each(_.keys(vocabulary),function(choice){
-            choiceHash[choice] = vocabulary[choice].title;
-          });
-      }catch(e){
-        console.log('on get vocabulary', e);
-        appModel.error('Error locating vocabulary: ' + vocabulary_ref);
-      }
-      var DisabledField = EditView.DisabledField.extend({
-        tagName: 'p',
-        className: 'form-control-static'
-      });
-      
-      var formSchema = {};
-
-      formSchema['fileInputPlaceholder'] = {
-        title: 'File',
-        key: 'file_input',
-        type: DisabledField, 
-        template: fieldTemplate
-      };
-      formSchema['type'] = {
-        title: 'File Type',
-        key: 'type',
-        type: Backbone.Form.editors.Select.extend({
-            className: 'form-control'
-          }),
-        options: choiceHash,
-        template: fieldTemplate
-      };
-      formSchema['file_date'] = {
-        title: 'File Date',
-        key: 'file_date',
-        type: EditView.DatePicker,
-        template: fieldTemplate
-      };
-      formSchema['filename'] = {
-        title: 'Option 2: Name',
-        key: 'filename',
-        type: 'TextArea',
-        template: fieldTemplate
-      };
-      formSchema['contents'] = {
-        title: 'Option 2: Contents',
-        key: 'contents',
-        type: 'TextArea',
-        template: fieldTemplate
-      };
-      formSchema['comments'] = {
-        title: 'Comments',
-        key: 'comments',
-        validators: ['required'],
-        type: 'TextArea',
-        template: fieldTemplate
-      };
-
-      var FormFields = Backbone.Model.extend({
-        schema: formSchema,
-        validate: function(attrs){
-          console.log('form validate', attrs);
-          var errs = {};
-          var file = $('input[name="fileInput"]')[0].files[0]; 
-          if (file) {
-            if (!_.isEmpty(attrs.contents)){
-              console.log('error, multiple file uploads specified');
-              errs.contents = 'Specify either file or contents, not both';
-            }
-          } else {
-            if (_.isEmpty(attrs.contents)){
-              errs.contents = 'Specify either file or contents';
-            }else{
-              if (_.isEmpty(attrs.filename)){
-                errs.filename = 'Must specify a filename with the file contents';
-              }
-            }
-          }
-          if (!_.isEmpty(errs)) return errs;
-        }
-      });
-      var formFields = new FormFields();
-      var form = new Backbone.Form({
-        model: formFields,
-        template: _.template(form_template)
-      });
-      var _form_el = form.render().el;
-      form.$el.find("[name='fileInputPlaceholder']").append(
-        '<label class="btn btn-default btn-file">' + 
-        'Browse<input type="file" name="fileInput" style="display: none;"></label>'+ 
-        '<p id="filechosen" class="form-control-static" ></p>');
-      form.$el.on('change', ':file', function() {
-        var input = $(this),
-            numFiles = input.get(0).files ? input.get(0).files.length : 1,
-            label = input.val().replace(/\\/g, '/').replace(/.*\//, '');
-        form.$el.find('#filechosen').html(label);
-      });
-
-      var dialog = appModel.showModal({
-          okText: 'upload',
-          ok: function(e){
-            e.preventDefault();
-            var errors = form.commit({ validate: true }); // runs schema and model validation
-            if(!_.isEmpty(errors) ){
-              console.log('form errors, abort submit: ',errors);
-              _.each(_.keys(errors), function(key){
-                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-              });
-              return false;
-            }else{
-              var values = form.getValue();
-              var comments = values['comments'];
-              var headers = {};
-              headers[appModel.HEADER_APILOG_COMMENT] = comments;
-              
-              var data = new FormData();
-              _.each(_.keys(values), function(key){
-                if(values[key]){
-                  data.append(key,values[key]);
-                }
-              });
-              
-              var file = $('input[name="fileInput"]')[0].files[0];
-              var filename;
-              if(file){
-                data.append('attached_file',file);
-                filename = file.name;
-                if (!_.isEmpty(values['filename'])){
-                  filename = values['filename'];
-                }
-                if (_.isEmpty(values['file_date'])){
-                  data.append(
-                    'file_date',
-                    Iccbl.getISODateString(_.result(file,'lastModifiedDate', null)));
-                }
-              }else{
-                filename = values['filename'];
-              }
-              for(var pair of data.entries()) {
-                 console.log(pair[0]+ ', '+ pair[1]); 
-              }
-              
-              $.ajax({
-                url: url,    
-                data: data,
-                cache: false,
-                contentType: false,
-                processData: false,
-                type: 'POST',
-                headers: headers, 
-                success: function(data){
-                  attachedfileCollection.fetch({ reset: true });
-                  appModel.showModalMessage({
-                    title: 'Attached File uploaded',
-                    okText: 'ok',
-                    body: '"' + filename + '"'
-                  });
-                },
-                done: function(model, resp){
-                  // TODO: done replaces success as of jq 1.8
-                  console.log('done');
-                }
-              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
-            
-              return true;
-            }
-          },
-          view: _form_el,
-          title: 'Upload an Attached File'  });
-      
-    };
-    
-  
   
 	return EditView;
 });

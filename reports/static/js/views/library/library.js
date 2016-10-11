@@ -83,39 +83,6 @@ define([
       }      
     }, 
     
-//    showAdd: function() {
-//      console.log('add view');
-//      
-//      var self = this;
-//      var delegateStack = _.clone(this.uriStack);
-//      var view = new DetailLayout({
-//        model: self.model,
-//        uriStack: delegateStack
-//      });
-//      Backbone.Layout.setupView(view);
-//
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      this.setView("#tab_container", view ).render();
-//      this.$('li').removeClass('active');
-//      this.$('#detail').addClass('active');
-//    },
-//    
-//    showEdit: function() {
-//      var self = this;
-//      var delegateStack = _.clone(this.uriStack);
-//      var view = new DetailLayout({
-//        model: self.model,
-//        uriStack: delegateStack, 
-//        buttons: ['download']
-//      });
-//      Backbone.Layout.setupView(view);
-//
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      this.setView("#tab_container", view ).render();
-//      this.$('li').removeClass('active');
-//      this.$('#detail').addClass('active');
-//    },
-    
     setDetail: function(delegateStack) {
       console.log('detail view');
       

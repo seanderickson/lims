@@ -19,26 +19,29 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       
-      _.each(_.keys(this.tabbed_resources), function(key) {
+      var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
+      _.each(_.keys(displayed_tabbed_resources), function(key) {
         if (key !== 'detail') {
-          var permission = self.tabbed_resources[key].permission;
+          var permission = displayed_tabbed_resources[key].permission;
           if (_.isUndefined(permission)) {
-            permission = self.tabbed_resources[key].resource;
+            permission = displayed_tabbed_resources[key].resource;
           }
           if (!appModel.hasPermission(permission)) {
-            delete self.tabbed_resources[key];
+            delete displayed_tabbed_resources[key];
           }
         }
       });
+      this.tabbed_resources = displayed_tabbed_resources;
+      
       _.bindAll(this, 'click_tab');
     },
 
     tabbed_resources: {
- 
+      // To be defined in the subclass
     },      
     
     events: {
-        'click ul.nav-tabs >li': 'click_tab',
+      'click ul.nav-tabs >li': 'click_tab',
     },
 
     /**
@@ -57,7 +60,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       var self = this;
       return {
         'base_url': self.model.resource.key + '/' + self.model.key ,
-        'tab_resources': this.tabbed_resources
+        'tab_resources': self.tabbed_resources
       }      
     }, 
     
@@ -94,6 +97,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       event.stopPropagation();
       var key = event.currentTarget.id;
       if (_.isEmpty(key)) return;
+      if (this.$('#'+key).hasClass('disabled')) {
+        return;
+      }
       appModel.requestPageChange({
         ok: function() {
           self.change_to_tab(key);

@@ -11,8 +11,7 @@ define([
   'views/screen/libraryScreening',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView,
-            ListView, LibraryScreeningView, 
-            TabbedController) {
+            ListView, LibraryScreeningView, TabbedController) {
   
   var ScreenSummaryView = TabbedController.extend({
     
@@ -109,12 +108,6 @@ define([
 
               if (self.model.get('has_screen_result')) {
                 self._createPositivesSummary(this.$el.find('#positives_summary'));
-              }
-              if (appModel.hasPermission('screenresult','write')) {
-                if (self.model.get('has_screen_result')) {
-                  this.$('#generic-detail-buttonpanel').prepend(self.$deleteScreenResultsButton);
-                }
-                this.$('#generic-detail-buttonpanel').prepend(self.$loadScreenResultsButton);
               }
             }
           });
@@ -356,8 +349,6 @@ define([
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Libraries for screen: ' + self.model.key + '</H4>');
       });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
 
     },
     
@@ -383,8 +374,6 @@ define([
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
       });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
 
     }
     

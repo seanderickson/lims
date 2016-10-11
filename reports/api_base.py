@@ -164,10 +164,13 @@ class IccblBaseResource(Resource):
         content_type = self._meta.serializer.get_content_type(
             request, format=kwargs.get('format', None))
         serialized = self.serialize(request, data, format=kwargs.get('format', None))
-        return response_class(
+        response = response_class(
             content=serialized, 
             content_type=content_type)
-
+        if 'status_code' in kwargs:
+            response.status_code = kwargs['status_code']
+        return response 
+    
     def build_error_response(self, request, data, response_class=HttpBadRequest, **kwargs):
         format = 'json'
         if kwargs and 'format' in kwargs:
@@ -283,7 +286,7 @@ class IccblBaseResource(Resource):
                 return response
             
             except ValidationError as e:
-                logger.exception('Validation error')
+                logger.exception('Validation error: %r', kwargs)
                 response = self.build_error_response(
                     request, { 'errors': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:

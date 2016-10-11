@@ -548,7 +548,6 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log[id_param] = id_vals
         try:
             logger.debug('get original state, for logging...')
-            logger.info('kwargs_for_log: %r', kwargs_for_log)
             original_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
@@ -854,20 +853,16 @@ class ApiResource(SqlAlchemyResource):
             if original_data is not None and len(original_data) != 0:
                 raise ValidationError({ 
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
-        try:
-            obj = self.patch_obj(request, deserialized, **kwargs)
-            for id_field in id_attribute:
-                val = getattr(obj, id_field,None)
-                if val:
-                    kwargs_for_log['%s' % id_field] = val
-            log = self.make_log(request)
-            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-            log.uri = '/'.join([log.ref_resource_name,log.key])
-            log.save()
-            logger.info('log saved: %r', log)
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
+        obj = self.patch_obj(request, deserialized, **kwargs)
+        for id_field in id_attribute:
+            val = getattr(obj, id_field,None)
+            if val:
+                kwargs_for_log['%s' % id_field] = val
+        log = self.make_log(request)
+        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
+        log.uri = '/'.join([log.ref_resource_name,log.key])
+        log.save()
+        logger.info('log saved: %r', log)
 
         # get new state, for logging
         try:

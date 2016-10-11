@@ -4478,7 +4478,7 @@ class PublicationResource(DbApiResource):
             logger.info('create attached file for publication: %r', publication)
             
             af_request = HttpRequest()
-            af_request.META['HTTP_ACCEPT'] = request.META['HTTP_ACCEPT']
+            af_request.META['HTTP_ACCEPT'] = JSON_MIMETYPE
             af_request.user = request.user
             self.get_attached_file_resource().post_detail(
                 af_request, **{ 
@@ -4498,7 +4498,7 @@ class PublicationResource(DbApiResource):
         if log:
             log.save()
         logger.info('created log: %r', log)
-        return self.build_response(request, new_data)
+        return self.build_response(request, new_data, status_code=201)
 
     def log_to_screen(self, screen, publication, request, is_delete=False):
         screen_resource = self.get_screen_resource()
@@ -4513,7 +4513,7 @@ class PublicationResource(DbApiResource):
         parent_log.key = screen.facility_id
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
         parent_log.diff_keys = ['publications'];
-        current_pubs = _screen_data['publications']
+        current_pubs = _screen_data['publications'] or []
         if is_delete:
             new_pubs = [x for x in current_pubs 
                 if x != str(publication.title)]
@@ -4651,7 +4651,7 @@ class AttachedFileResource(DbApiResource):
         parent_log.key = screen.facility_id
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
         parent_log.diff_keys = ['attached_files'];
-        current_files = _screen_data['attached_files']
+        current_files = _screen_data['attached_files'] or []
         if is_delete:
             new_files = [x for x in current_files 
                 if x != str(af.filename)]
@@ -4799,7 +4799,7 @@ class AttachedFileResource(DbApiResource):
         if not self._meta.always_return_data:
             return HttpResponse(status=200)
         else:
-            return self.build_response(request, new_data)
+            return self.build_response(request, new_data, status_code=201)
         
     @write_authorization
     @un_cache        
@@ -6102,19 +6102,6 @@ class LibraryScreeningResource(ActivityResource):
         errors = self.validate(initializer_dict, patch=patch)
         if errors:
             raise ValidationError(errors)
-        
-#         for key in fields.keys():
-#             if deserialized.get(key, None) is not None:
-#                 initializer_dict[key] = parse_val(
-#                     deserialized.get(key, None), key, fields[key]['data_type']) 
-# 
-#         id_kwargs = self.get_id(deserialized, **kwargs)
-#         patch = bool(id_kwargs)
-#         # NOTE: can determine patch because the activity_id key is only 
-#         # available on patch
-#         errors = self.validate(deserialized, patch=patch)
-#         if errors:
-#             raise ValidationError(errors)
         
         if not patch:
             _key = 'screen_facility_id'

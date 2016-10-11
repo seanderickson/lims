@@ -187,7 +187,12 @@ def setUpModule():
 
     try:
         su = ScreensaverUser.objects.get(username=IResourceTestCase.username)
-    except ObjectDoesNotExist:
+        logger.info('found ss user: %r', su)
+        temp_test_case = DBResourceTestCase(methodName='get_from_server')
+        resource_uri = BASE_URI_DB + '/screensaveruser/' +IResourceTestCase.username
+        DBResourceTestCase.admin_user = temp_test_case.get_from_server(resource_uri)
+        logger.info('got admin user: %r', DBResourceTestCase.admin_user)
+    except Exception:
         logger.info('create an admin screensaveruser...')
         temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
         DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
@@ -2755,6 +2760,7 @@ class ScreenResource(DBResourceTestCase):
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
 
         # Add an attached file and post the publication
         base_filename = 'iccbl_sm_user_agreement_march2015.pdf'
@@ -2901,12 +2907,12 @@ class ScreensaverUserResource(DBResourceTestCase):
         UserChecklistItem.objects.all().delete()
         AttachedFile.objects.all().delete()
         ServiceActivity.objects.all().delete()
+        logger.info('delete users, including: %r', self.username)
         ScreensaverUser.objects.all().exclude(username=self.username).delete()
          
         UserGroup.objects.all().delete()
         UserProfile.objects.all().exclude(username=self.username).delete()
         User.objects.all().exclude(username=self.username).delete()
-        
         ApiLog.objects.all().delete()
 
     def test01_create_user_iccbl(self):
@@ -2935,7 +2941,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.user1 = self.create_screensaveruser({ 'username': 'st1'})
         self.screening_user = self.create_screensaveruser(
             { 'username': 'screening1'})
-        self.admin_user = self.create_screensaveruser(
+        
+        self.test_admin_user = self.create_screensaveruser(
             { 'username': 'adminuser'})
 
         # create an admin
@@ -3012,7 +3019,7 @@ class ScreensaverUserResource(DBResourceTestCase):
                 'usergroups': ['usergroup2']
             },
             {
-                'username': self.admin_user['username'],
+                'username': self.test_admin_user['username'],
                 'usergroups': ['usergroup3']
             },
         ]};
@@ -3050,7 +3057,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         checklist_item_patch = {
             'objects': [
                 { 
-                    'admin_username': self.admin_user['username'], 
+                    'admin_username': self.test_admin_user['username'], 
                     'item_group': "mailing_lists_wikis",
                     'item_name': "added_to_iccb_l_nsrb_email_list",
                     'status': "activated",
@@ -3095,7 +3102,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # Test using embedded "contents" field               
         test_username = self.user1['username']
-        admin_username = self.admin_user['username']
+        admin_username = self.test_admin_user['username']
         attachedfile_item_post = {
             'created_by_username': admin_username, 
             'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
@@ -3110,6 +3117,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
         
         logger.info('Post attached file item: %r', attachedfile_item_post)
         django_test_client = self.api_client.client
@@ -3157,7 +3165,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # Test using embedded "contents" field               
         test_username = self.user1['username']
-        admin_username = self.admin_user['username']
+        admin_username = self.test_admin_user['username']
         attachedfile_item_post = {
             'created_by_username': admin_username, 
             'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
@@ -3169,6 +3177,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
         file = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = \
             '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
@@ -3244,7 +3253,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         
         test_username = self.user1['username']
-        admin_username = self.admin_user['username']
+        admin_username = self.test_admin_user['username']
         first_usergroup_to_add = 'smDsl2MutualPositives'
         # TEST 1 - Try adding a SM dsl
         
@@ -3496,7 +3505,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.test0_create_user();
         
         test_username = self.user1['username']
-        admin_username = self.admin_user['username']
+        admin_username = self.test_admin_user['username']
         service_activity_post = {
             'serviced_username': test_username,
             'type': "image_analysis",

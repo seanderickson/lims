@@ -163,6 +163,7 @@ class IccblBaseResource(Resource):
         
         content_type = self._meta.serializer.get_content_type(
             request, format=kwargs.get('format', None))
+        # FIXME: "data" must be a dict {'objects': [data] } for xls, csv serialization
         serialized = self.serialize(request, data, format=kwargs.get('format', None))
         response = response_class(
             content=serialized, 

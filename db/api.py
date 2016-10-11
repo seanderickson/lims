@@ -6710,12 +6710,16 @@ class ScreenResource(DbApiResource):
         
     def dispatch_screen_detail_uiview(self, request, **kwargs):
         ''' Special method to populate nested entities for the UI '''
-        response = self.dispatch('detail', request, **kwargs )
-        if response.status_code == 200:
-            _data = self._meta.serializer.deserialize(
-                LimsSerializer.get_content(response), 
-                response['Content-Type'])
-            
+        
+        _data = self._get_detail_response(request, **kwargs)
+        if not _data:
+            return Http404
+        else:
+            # response = self.dispatch('detail', request, format='json', **kwargs )
+            # if response.status_code == 200:
+            #     _data = self._meta.serializer.deserialize(
+            #         JSON_MIMETYPE, 
+            #         response['Content-Type'])
             _status_data = \
                 self.get_apilog_resource()._get_list_response_internal(**{
                     'key': _data['facility_id'],
@@ -6744,14 +6748,32 @@ class ScreenResource(DbApiResource):
                     })
             _data['latest_activities_data'] = _latest_activities_data
 
+            # FIXME: refactor to generalize serialization:
+            # see build_response method (needs rework)
             content_type = self.get_accept_content_type(
                 request,format=kwargs.get('format', None))
-            return HttpResponse(
+            if content_type in [XLS_MIMETYPE,CSV_MIMETYPE]:
+                _data = {'objects': [_data]}
+            response = HttpResponse(
                 content=self._meta.serializer.serialize(
                     _data, content_type),
                 content_type=content_type)
+            if content_type == XLS_MIMETYPE:
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.xlsx' % self._get_filename(
+                        self.build_schema(), kwargs)
+            if content_type == CSV_MIMETYPE:
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.csv' % self._get_filename(
+                        self.build_schema(), kwargs)
+            downloadID = request.GET.get('downloadID', None)
+            if downloadID:
+                logger.info('set cookie "downloadID" %r', downloadID )
+                response.set_cookie('downloadID', downloadID)
+            else:
+                logger.debug('no downloadID: %s' % request.GET )
         
-        return response;
+            return response;
         
         
     def dispatch_screen_attachedfileview(self, request, **kwargs):

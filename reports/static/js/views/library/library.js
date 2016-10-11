@@ -16,30 +16,20 @@ define([
   'views/generic_edit',
   'views/list2',
   'utils/uploadDataForm',
-  'templates/generic-tabbed.html'
+  'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, LibraryCopyView, 
             LibraryWellView, DetailLayout, DetailView, EditView, ListView, 
-            UploadDataForm, libraryTemplate) {
+            UploadDataForm, TabbedController ) {
 
-  var LibraryView = Backbone.Layout.extend({
+  var LibraryView = TabbedController.extend({
     
     initialize: function(args) {
       var self = this;
-      this.tabViews = {}; // view cache
-      this.uriStack = args.uriStack;
-      this.consumedStack = [];
-      
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].resource)){
-          delete self.tabbed_resources[key];
-        }
-      });
-      _.bindAll(this, 'click_tab');
+      this._classname = 'LibraryView';
       _.bindAll(this, 'upload');
+      TabbedController.prototype.initialize.apply(this,arguments);
     },
     
-    template: _.template(libraryTemplate),
-
     tabbed_resources: {
       detail: { 
         description: 'Library Details', 
@@ -62,7 +52,6 @@ define([
     },      
     
     events: {
-        'click ul.nav-tabs >li': 'click_tab',
         'click button#upload': 'upload'        
     },
 
@@ -74,20 +63,14 @@ define([
       if( this.model.get('screen_type') == 'small_molecule') {
         content_types.push('sdf');
       }
-      UploadDataForm.postUploadFileDialog(url, content_types, 
-        function(){
+      UploadDataForm.postUploadFileDialog(url, content_types)
+        .done(function(){
           self.model.fetch();
+        })
+        .fail(function(){
+          appModel.jqXHRfail.apply(this,arguments); 
         }
       );
-    },
-    
-    /**
-     * Child view bubble up URI stack change event
-     */
-    reportUriStack: function(reportedUriStack) {
-      var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
-      this.trigger('uriStack:change', actualStack );
     },
     
     /**
@@ -100,101 +83,38 @@ define([
       }      
     }, 
     
-    /**
-     * Layoutmanager hook
-     */
-    afterRender: function(){
-      var viewId = 'detail';
-      if (!_.isEmpty(this.uriStack)){
-        viewId = this.uriStack.shift();
-        if(viewId == '+add'){
-          this.$('ul.nav-tabs > li').addClass('disabled');
-          this.uriStack.unshift(viewId); 
-          viewId = 'detail';
-        }
-        if(viewId == 'edit'){
-          this.uriStack.unshift(viewId); 
-          viewId = 'detail';
-        }
-        if (!_.has(this.tabbed_resources, viewId)){
-          var msg = 'could not find the tabbed resource: ' + viewId;
-          window.alert(msg);
-          throw msg;
-        }
-      }
-      this.change_to_tab(viewId);
-    },    
-    
-    click_tab : function(event){
-      var self = this;
-      event.preventDefault();
-      event.stopPropagation();
-      var key = event.currentTarget.id;
-      if(_.isEmpty(key)) return;
-      appModel.requestPageChange({
-        ok: function(){
-          self.change_to_tab(key);
-        }
-      });
-    },
-
-    change_to_tab: function(key){
-      if(_.has(this.tabbed_resources, key)){
-        this.$('li').removeClass('active');
-        this.$('#' + key).addClass('active');
-        this.$("#tab_container-title").empty();
-        if(key !== 'detail'){
-          this.consumedStack = [key];
-        }else{
-          this.consumedStack = [];
-        }
-        var delegateStack = _.clone(this.uriStack);
-        this.uriStack = [];
-        var method = this[this.tabbed_resources[key]['invoke']];
-        if (_.isFunction(method)) {
-          method.apply(this,[delegateStack]);
-        } else {
-          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-        }
-      }else{
-        var msg = 'Unknown tab: ' + key;
-        appModel.error(msg);
-        throw msg;
-      }
-    },
-    
-    showAdd: function() {
-      console.log('add view');
-      
-      var self = this;
-      var delegateStack = _.clone(this.uriStack);
-      var view = new DetailLayout({
-        model: self.model,
-        uriStack: delegateStack
-      });
-      Backbone.Layout.setupView(view);
-
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-      this.$('li').removeClass('active');
-      this.$('#detail').addClass('active');
-    },
-    
-    showEdit: function() {
-      var self = this;
-      var delegateStack = _.clone(this.uriStack);
-      var view = new DetailLayout({
-        model: self.model,
-        uriStack: delegateStack, 
-        buttons: ['download']
-      });
-      Backbone.Layout.setupView(view);
-
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-      this.$('li').removeClass('active');
-      this.$('#detail').addClass('active');
-    },
+//    showAdd: function() {
+//      console.log('add view');
+//      
+//      var self = this;
+//      var delegateStack = _.clone(this.uriStack);
+//      var view = new DetailLayout({
+//        model: self.model,
+//        uriStack: delegateStack
+//      });
+//      Backbone.Layout.setupView(view);
+//
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      this.setView("#tab_container", view ).render();
+//      this.$('li').removeClass('active');
+//      this.$('#detail').addClass('active');
+//    },
+//    
+//    showEdit: function() {
+//      var self = this;
+//      var delegateStack = _.clone(this.uriStack);
+//      var view = new DetailLayout({
+//        model: self.model,
+//        uriStack: delegateStack, 
+//        buttons: ['download']
+//      });
+//      Backbone.Layout.setupView(view);
+//
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      this.setView("#tab_container", view ).render();
+//      this.$('li').removeClass('active');
+//      this.$('#detail').addClass('active');
+//    },
     
     setDetail: function(delegateStack) {
       console.log('detail view');
@@ -742,12 +662,6 @@ define([
         } // ok
       }); // dialog
       
-    },
-    
-    onClose: function() {
-      // TODO: is this necessary when using Backbone LayoutManager
-      this.tabViews = {};
-      this.remove();
     }
   
   });

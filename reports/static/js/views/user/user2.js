@@ -8,31 +8,21 @@ define([
     'views/user/user_group_permissions',
     'views/generic_detail_layout',
     'views/list2',
-    'templates/generic-tabbed.html',
+    'utils/tabbedController'
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, UserGroupPermissionView, DetailLayout, 
-            ListView, layout) {
+            ListView, TabbedController) {
 
-  var UserView = Backbone.Layout.extend({
+  var UserView = TabbedController.extend({
 
     initialize: function(args) {
       var self = this;
-      this.tabViews = {}; // view cache
-      this.uriStack = args.uriStack;
-      this.consumedStack = [];
+      this._classname = 'userView';
+
       this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource);
 
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(
-            self.tabbed_resources[key].resource,'read')){
-          delete self.tabbed_resources[key];
-        }
-      });
-      
-      _.bindAll(this, 'click_tab');
+      TabbedController.prototype.initialize.apply(this,arguments);
     },
-    
-    template: _.template(layout),
     
     tabbed_resources: {
         detail: { 
@@ -46,10 +36,6 @@ define([
         },
     },
     
-    events: {
-      'click ul.nav-tabs >li': 'click_tab',
-    },
-
     /**
      * Layoutmanager hook
      */
@@ -60,96 +46,6 @@ define([
         'tab_resources': this.tabbed_resources
       }      
     }, 
-    
-    /**
-     * Layoutmanager hook
-     */
-    afterRender: function(){
-      var viewId = 'detail';
-      if (!_.isEmpty(this.uriStack)){
-        viewId = this.uriStack.shift();
-        if(viewId == '+add'){
-          this.$('ul.nav-tabs > li').addClass('disabled');
-          this.uriStack.unshift(viewId); 
-          viewId = 'detail';
-        }
-        if(viewId == 'edit'){
-          this.uriStack.unshift(viewId); 
-          viewId = 'detail';
-        }
-        if (!_.has(this.tabbed_resources, viewId)){
-          var msg = 'could not find the tabbed resource: ' + viewId;
-          window.alert(msg);
-          throw msg;
-        }
-      }
-      this.change_to_tab(viewId);
-    },
-    
-    /**
-     * Child view bubble up URI stack change event
-     */
-    reportUriStack: function(reportedUriStack) {
-      var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
-      this.trigger('uriStack:change', actualStack );
-      
-      // ++++hack remove disabled state
-      this.$('ul.nav-tabs > li').removeClass('disabled');
-    },
-    
-    click_tab : function(event){
-      var self = this;
-      event.preventDefault();
-      var key = event.currentTarget.id;
-      if(_.isEmpty(key)) return;
-      if(this.$('#'+key).hasClass('disabled')){
-        return;
-      }
-      if(this.key && this.key === key){
-        return;
-      }
-      
-      appModel.requestPageChange({
-        ok: function(){
-          self.change_to_tab(key);
-        }
-      });
-    },
-
-    change_to_tab: function(key){
-      if(_.has(this.tabbed_resources, key)){
-        var delegateStack = _.clone(this.uriStack);
-        if(!_.isUndefined(this.tabbed_resources[key].alias)){
-          key = this.tabbed_resources[key].alias;
-        }
-        if(this.key && this.key === key){
-          return;
-        }else{
-          this.key = key;
-        }        
-        if(key !== 'detail'){
-          this.consumedStack = [key];
-        }else{
-          this.consumedStack = [];
-        }
-        
-        this.$('li').removeClass('active'); // TODO: use bootstrap tabs
-        this.$('#' + key).addClass('active');
-        
-        this.uriStack = [];
-        var method = this[this.tabbed_resources[key]['invoke']];
-        if (_.isFunction(method)) {
-          method.apply(this,[delegateStack]);
-        } else {
-          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-        }
-      }else{
-        var msg = 'Unknown tab: ' + key;
-        window.alert(msg);
-        throw msg;
-      }
-    },
     
     setDetail: function(delegateStack){
       var key = 'detail';

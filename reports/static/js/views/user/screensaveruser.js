@@ -206,30 +206,6 @@ define([
           DetailLayout.prototype.showEdit.call(view,arguments);
         });
       };
-//      view.showEdit = function(){
-//        this.model.resource.fields['permissions']['choices'] = (
-//            appModel.get('permissionOptions'));
-//        appModel.getPrincipalInvestigatorOptions(function(options){
-//
-//          self.model.resource.fields['lab_head_username']['choices'] = options;
-//          
-//          // Set up the dynamic add lab_affiliation form
-//          // with the edit view available, set up the lab_head_affiliation rules
-//          // - add listener to update options dynamically
-//          // - attach the "add lab affiliation" button to the view
-//          
-//          // - add listener to update view options when classification changes
-//          //    - note we want to replace this with model-driven events (backbone.stickit)
-//          self.model.on('sync', function(){
-//            // TODO: should only need to do this if the classification has changed
-//            // to "PI"; but the changedAttributes are unreliable for detecting this
-//            if(self.model.get('classification')=='principal_investigator'){
-//              appModel.unset('principal_investigators');
-//            }
-//          });
-//          DetailLayout.prototype.showEdit.call(view,arguments);
-//        });  
-//      };
       
       this.tabViews[key] = view;
       

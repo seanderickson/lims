@@ -1,0 +1,180 @@
+define([
+  'jquery',
+  'underscore',
+  'backgrid',
+  'iccbl_backgrid',
+  'models/app_state',
+  'views/generic_edit',
+  'templates/generic-tabbed.html'
+], 
+function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
+
+  var TabbedController = Backbone.Layout.extend({
+    
+    template: _.template(tabbedTemplate),
+
+    initialize: function(args) {
+      var self = this;
+      this.tabViews = {}; 
+      this.uriStack = args.uriStack;
+      this.consumedStack = [];
+      
+      _.each(_.keys(this.tabbed_resources), function(key) {
+        if (key !== 'detail') {
+          var permission = self.tabbed_resources[key].permission;
+          if (_.isUndefined(permission)) {
+            permission = self.tabbed_resources[key].resource;
+          }
+          if (!appModel.hasPermission(permission)) {
+            delete self.tabbed_resources[key];
+          }
+        }
+      });
+      _.bindAll(this, 'click_tab');
+    },
+
+    tabbed_resources: {
+ 
+    },      
+    
+    events: {
+        'click ul.nav-tabs >li': 'click_tab',
+    },
+
+    /**
+     * Child view bubble up URI stack change event
+     */
+    reportUriStack: function(reportedUriStack) {
+      var consumedStack = this.consumedStack || [];
+      var actualStack = consumedStack.concat(reportedUriStack);
+      this.trigger('uriStack:change', actualStack );
+    },
+    
+    /**
+     * Layoutmanager hook
+     */
+    serialize: function() {
+      var self = this;
+      return {
+        'base_url': self.model.resource.key + '/' + self.model.key ,
+        'tab_resources': this.tabbed_resources
+      }      
+    }, 
+    
+    /**
+     * Layoutmanager hook
+     */
+    afterRender: function() {
+      var viewId = 'detail';
+      if (!_.isEmpty(this.uriStack)) {
+        viewId = this.uriStack.shift();
+
+        if(viewId == '+add'){
+          this.$('ul.nav-tabs > li').addClass('disabled');
+          this.uriStack.unshift(viewId); 
+          viewId = 'detail';
+        }
+        if(viewId == 'edit'){
+          this.uriStack.unshift(viewId); 
+          viewId = 'detail';
+        }
+
+        if (!_.has(this.tabbed_resources, viewId)) {
+          var msg = 'could not find the tabbed resource: ' + viewId;
+          appModel.error(msg);
+          throw msg;
+        }
+      }
+      this.change_to_tab(viewId);
+    },
+    
+    click_tab : function(event) {
+      var self = this;
+      event.preventDefault();
+      event.stopPropagation();
+      var key = event.currentTarget.id;
+      if (_.isEmpty(key)) return;
+      appModel.requestPageChange({
+        ok: function() {
+          self.change_to_tab(key);
+        }
+      });
+      
+    },
+
+    change_to_tab: function(key) {
+      if (_.has(this.tabbed_resources, key)) {
+        this.$('li').removeClass('active');
+        this.$('#' + key).addClass('active');
+        if (key !== 'detail') {
+          this.consumedStack = [key];
+        } else {
+          this.consumedStack = [];
+        }
+        var delegateStack = _.clone(this.uriStack);
+        this.uriStack = [];
+        var method = this[this.tabbed_resources[key]['invoke']];
+        if (_.isFunction(method)) {
+          method.apply(this,[delegateStack]);
+        } else {
+          throw ( 
+            "Tabbed resources refers to a non-function: "
+            + this.tabbed_resources[key]['invoke'] );
+        }
+      } else {
+        var msg = 'Unknown tab: ' + key;
+        appModel.error(msg);
+        throw msg;
+      }
+    },
+
+    showAdd: function() {
+      console.log('add view');
+      
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack
+      });
+      Backbone.Layout.setupView(view);
+
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
+    },
+    
+    showEdit: function() {
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack, 
+        buttons: ['download']
+      });
+      Backbone.Layout.setupView(view);
+
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
+    },
+    
+    setDetail: function(delegateStack) {
+      // to implement
+    },    
+    
+    onClose: function() {
+      // TODO: is this necessary when using Backbone LayoutManager
+      this.tabViews = {};
+      this.remove();
+    }
+
+  });
+  
+  return TabbedController;
+});
+
+
+

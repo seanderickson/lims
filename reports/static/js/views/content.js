@@ -210,9 +210,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             showUploadButton.click(function(e){
               e.preventDefault();
               UploadDataForm.postUploadFileDialog(
-                collection.url, resource.content_types, function(){
+                collection.url, resource.content_types)
+                .done(function(){
                   collection.fetch({ reset: true });
-              });
+                })
+                .fail(function(){
+                  appModel.jqXHRfail.apply(this,arguments); 
+                });
             });
             extraControls.push(showUploadButton);
           }

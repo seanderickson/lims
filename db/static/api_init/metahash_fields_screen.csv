@@ -79,3 +79,4 @@ billing_comments,fields.screen,,,/reports/api/v1/field/fields.screen/billing_com
 screen_id,fields.screen,custom,,/reports/api/v1/field/fields.screen/screen_id/,999,,TRUE,"Internal Screen ID","Internal Screen ID",TRUE,,,,,integer,,,,,,,
 publications,fields.screen,custom,,/reports/api/v1/field/fields.screen/publications/,90,,TRUE,Publications,Publications,TRUE,,,[d],,list,,,custom,,,,
 attached_files,fields.screen,custom,,/reports/api/v1/field/fields.screen/attached_files/,91,,TRUE,"Attached Files","Attached Files",TRUE,,,[d],,list,,,custom,,,,
+screensaver_user_role,fields.screen,custom,,/reports/api/v1/field/fields.screen/screensaver_user_role/,92,,TRUE,"Role of the provided screener","User Role",TRUE,,,,,list,,,,,,,

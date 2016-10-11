@@ -10,35 +10,19 @@ define([
   'views/list2',
   'views/library/libraryCopyWells',
   'views/library/libraryCopyPlate',
-  'templates/generic-tabbed.html'
+  'utils/tabbedController'
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, 
             DetailLayout, EditView, ListView, LibraryCopyWellsView, 
-            LibraryCopyPlateView, libraryCopyTemplate ) {
+            LibraryCopyPlateView, TabbedController ) {
   
-  var LibraryCopyView = Backbone.Layout.extend({
-    
-    template: _.template(libraryCopyTemplate),
+  var LibraryCopyView = TabbedController.extend({
 
     initialize: function(args) {
       var self = this;
       this._classname = 'libraryCopy';
+
       this.library = args.library;
-      this.tabViews = {}; 
-      this.uriStack = args.uriStack;
-      this.consumedStack = [];
-      
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail'){
-          var permission = self.tabbed_resources[key].permission;
-          if (_.isUndefined(permission)){
-            permission = self.tabbed_resources[key].resource;
-          }
-          if (!appModel.hasPermission(permission)){
-            delete self.tabbed_resources[key];
-          }
-        }
-      });
-      _.bindAll(this, 'click_tab');
+      TabbedController.prototype.initialize.apply(this,arguments);
     },
 
     tabbed_resources: {
@@ -61,19 +45,6 @@ define([
       }
     },      
     
-    events: {
-        'click ul.nav-tabs >li': 'click_tab',
-    },
-
-    /**
-     * Child view bubble up URI stack change event
-     */
-    reportUriStack: function(reportedUriStack) {
-      var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
-      this.trigger('uriStack:change', actualStack );
-    },
-    
     /**
      * Layoutmanager hook
      */
@@ -87,96 +58,15 @@ define([
       }      
     }, 
     
-    /**
-     * Layoutmanager hook
-     */
-    afterRender: function(){
-      var viewId = 'detail';
-      if (!_.isEmpty(this.uriStack)){
-        viewId = this.uriStack.shift();
-        if (viewId == '+add') {
-          this.uriStack.unshift(viewId);
-          this.showAdd();
-          return;
-        }else if (viewId == 'edit'){
-          this.uriStack.unshift(viewId);
-          this.showEdit();
-          return;
-        }
-
-        if (!_.has(this.tabbed_resources, viewId)){
-          var msg = 'could not find the tabbed resource: ' + viewId;
-          appModel.error(msg);
-          throw msg;
-        }
-      }
-      this.change_to_tab(viewId);
-    },
-    
-    click_tab : function(event){
-      var self = this;
-      event.preventDefault();
-      event.stopPropagation();
-      var key = event.currentTarget.id;
-      if(_.isEmpty(key)) return;
-      appModel.requestPageChange({
-        ok: function(){
-          self.change_to_tab(key);
-        }
-      });
-      
-    },
-
-    change_to_tab: function(key){
-      if(_.has(this.tabbed_resources, key)){
-        this.$('li').removeClass('active');
-        this.$('#' + key).addClass('active');
-        if(key !== 'detail'){
-          this.consumedStack = [key];
-        }else{
-          this.consumedStack = [];
-        }
-        var delegateStack = _.clone(this.uriStack);
-        this.uriStack = [];
-        var method = this[this.tabbed_resources[key]['invoke']];
-        if (_.isFunction(method)) {
-          method.apply(this,[delegateStack]);
-        } else {
-          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-        }
-      }else{
-        var msg = 'Unknown tab: ' + key;
-        appModel.error(msg);
-        throw msg;
-      }
-    },
-    
     setDetail: function(delegateStack) {
       var key = 'detail';
       
       var view = new DetailLayout({ 
         model: this.model,
         uriStack: delegateStack
-//        buttons: ['download', 'history'] 
       });
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
-    },
-    
-    showEdit: function() {
-      var self = this;
-      var delegateStack = _.clone(this.uriStack);
-      var view = new DetailLayout({
-        model: self.model,
-        uriStack: delegateStack, 
-        buttons: ['download', 'upload','history']
-      });
-      Backbone.Layout.setupView(view);
-
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-      this.$('li').removeClass('active');
-      this.$('#detail').addClass('active');
     },
 
     setCopyPlateLocations: function(delegateStack){
@@ -224,14 +114,8 @@ define([
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
-    },
-
-    onClose: function() {
-      // TODO: is this necessary when using Backbone LayoutManager
-      this.tabViews = {};
-      this.remove();
     }
-  
+
   });
   
   return LibraryCopyView;

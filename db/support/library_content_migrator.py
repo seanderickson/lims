@@ -284,8 +284,8 @@ where r.library_contents_version_id=%s order by well_id;
         log.api_action = 'MIGRATION'
         log.key = prev_dict['well_id']
         log.uri = '/db/api/v1/well/'+log.key 
-        log.diff_dict_to_api_log(difflog)
-        
+#         log.diff_dict_to_api_log(difflog)
+        log.diffs = difflog
         log.json_field = json.dumps({
             'version': version.version_number })
         log.parent_log = parent_log

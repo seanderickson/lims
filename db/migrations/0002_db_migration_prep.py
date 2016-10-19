@@ -393,7 +393,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screensaveruser',
             name='lab_head',
-            field=models.ForeignKey(related_name='lab_member', to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(
+                related_name='lab_member', to='db.ScreensaverUser', null=True),
         ),
         migrations.RunSQL(
             'UPDATE screensaver_user su '
@@ -453,8 +454,21 @@ class Migration(migrations.Migration):
             field=models.TextField(unique=True, null=True)),
         migrations.AddField(
             model_name='plate',
+            name='screening_count', 
+            field=models.IntegerField(null=True)),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='status', 
+            field=models.TextField(null=True)),
+
+        # IN PROGRESS - well volume/concentration related fields
+        
+        migrations.AddField(
+            model_name='plate',
             name='remaining_volume', 
             field=models.FloatField(null=True)),
+            
+        # 20161011 - to be removed    
         migrations.AddField(
             model_name='plate',
             name='avg_remaining_volume', 
@@ -467,14 +481,18 @@ class Migration(migrations.Migration):
             model_name='plate',
             name='max_remaining_volume', 
             field=models.FloatField(null=True)),
+
         migrations.AddField(
             model_name='plate',
-            name='screening_count', 
-            field=models.IntegerField(null=True)),
+            name='mg_ml_concentration',
+            field=models.DecimalField(null=True, max_digits=5, decimal_places=3),
+        ),
         migrations.AddField(
-            model_name='cherrypickassayplate',
-            name='status', 
-            field=models.TextField(null=True)),
+            model_name='plate',
+            name='molar_concentration',
+            field=models.DecimalField(null=True, max_digits=13, decimal_places=12),
+        ),
+        
         migrations.CreateModel(
             name='CopyWell',
             fields=[
@@ -485,6 +503,10 @@ class Migration(migrations.Migration):
                 ('initial_volume', models.FloatField(null=True)),
                 ('adjustments', models.IntegerField()),
                 ('copy', models.ForeignKey(to='db.Copy')),
+                ('mg_ml_concentration',
+                    models.DecimalField(null=True, max_digits=5, decimal_places=3)),
+                ('molar_concentration',
+                    models.DecimalField(null=True, max_digits=13, decimal_places=12)),
             ],
             options={
                 'db_table': 'copy_well',
@@ -500,6 +522,13 @@ class Migration(migrations.Migration):
             name='well',
             field=models.ForeignKey(to='db.Well'),
         ),
+        migrations.AlterUniqueTogether(
+            name='copywell',
+            unique_together=set([('copy', 'plate', 'well')]),
+        ),
+
+        #####
+        
         migrations.CreateModel(
             name='CachedQuery',
             fields=[

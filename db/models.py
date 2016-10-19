@@ -145,6 +145,7 @@ class WellVolumeAdjustment(models.Model):
     class Meta:
         db_table = 'well_volume_adjustment'
 
+# Deprecate - remove after plate well volume migration
 class WellVolumeCorrectionActivity(models.Model):
     activity = models.OneToOneField('AdministrativeActivity', primary_key=True)
     class Meta:
@@ -974,6 +975,8 @@ class Well(models.Model):
 #     reagent = models.ForeignKey('Reagent', null=True, related_name='wells')
 #     reagent = models.ForeignKey('Reagent', to_field='substance_id')
     
+    # DEPRECATED - to be removed after copy-well migration; 
+    # either no concentration (just set on plates when copy is created), or store on library
     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
     
@@ -1001,7 +1004,6 @@ class CachedQuery(models.Model):
     count = models.IntegerField(null=True)
     
     class Meta:
-#         unique_together = (('sql', 'key'))   
         db_table = 'cached_query' 
 
     def __unicode__(self):
@@ -1286,10 +1288,14 @@ class Copy(models.Model):
     date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True)
     date_plated = models.DateField(null=True)
+    
+    # Deprecated - verify removal once UI is approved - Jen
     primary_plate_status = models.TextField()
     primary_plate_location_id = models.IntegerField(null=True)
     plates_available = models.IntegerField(null=True)
     plate_locations_count = models.IntegerField(null=True)
+    
+    # Deprecated - concentration fields: to be removed after copywell migrations
     primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
     primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
     min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
@@ -1297,6 +1303,7 @@ class Copy(models.Model):
     min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
     max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
     well_concentration_dilution_factor = models.DecimalField(null=True, max_digits=8, decimal_places=2)
+    
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     class Meta:
@@ -1343,17 +1350,8 @@ class Plate(models.Model):
     
     well_volume = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
-#     well_volume = models.FloatField(null=True)
-
-    # TODO: decide how to handle library screening plates:
-    # - use only remaining volume, set all volumes the same, or 
-    # eliminate remaining, and set min/max/avg to the same, or
-    # can we update the queries to be efficient enough to not need min/max/avg?
     remaining_volume = models.FloatField(null=True)
-    avg_remaining_volume = models.FloatField(null=True)
-    min_remaining_volume = models.FloatField(null=True)
-    max_remaining_volume = models.FloatField(null=True)
-    
+
     screening_count = models.IntegerField(null=True)
     
     copy = models.ForeignKey(Copy)
@@ -1362,16 +1360,31 @@ class Plate(models.Model):
     created_by = models.ForeignKey('ScreensaverUser', null=True)
     plate_location = models.ForeignKey('PlateLocation', null=True)
     status = models.TextField()
-    retired_activity_id = models.IntegerField(unique=True, null=True)
-    plated_activity_id = models.IntegerField(unique=True, null=True)
     stock_plate_number = models.IntegerField(null=True)
     quadrant = models.IntegerField(null=True)
+
+    # New - to be populated by migration
+    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+
+    # Deprecated: replaced by apilog status change dates
+    retired_activity_id = models.IntegerField(unique=True, null=True)
+    plated_activity_id = models.IntegerField(unique=True, null=True)
+
+    # Deprecated: calculate based on copy wells
+    avg_remaining_volume = models.FloatField(null=True)
+    min_remaining_volume = models.FloatField(null=True)
+    max_remaining_volume = models.FloatField(null=True)
+    
+    # Deprecated - concentration fields: to be removed after copywell migrations
     min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
     max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
     min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
     max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
     primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
     primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+
+    
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     class Meta:
@@ -1385,14 +1398,18 @@ class CopyWell(models.Model):
 #     library = models.ForeignKey('Library')
     plate = models.ForeignKey('Plate')
     copy = models.ForeignKey('Copy')
-    # FIXME: name should be "well" - also fix db.apy then
     well = models.ForeignKey('Well')
     volume = models.FloatField(null=True)
     initial_volume = models.FloatField(null=True)
     adjustments = models.IntegerField()
- 
+
+    # New - to be populated by migration
+    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    
     class Meta:
         db_table = 'copy_well'
+        unique_together = (('copy', 'plate', 'well'))
 
 
 class PlateLocation(models.Model):

@@ -87,20 +87,27 @@ class DBResourceTestCase(IResourceTestCase):
         ''' Generate a test well for library initialization'''
         
         library_well_types = [
-            'experimental','dmso','library_control' ]
+            'empty','experimental','dmso','library_control' ]
         well_name = lims_utils.well_name_from_index(well_index, platesize)
         if not library_well_type:
             library_well_type = library_well_types[well_index%3]
-        return {
-            'plate_number': plate, 'well_name': well_name,
+        _data = {
+            'plate_number': plate, 
+            'well_name': well_name,
+            'well_id': '%s:%s' % (str(plate).zfill(5),well_name),
             'library_well_type' : library_well_type,
-            'vendor_name': 'vendorX',
-            'vendor_identifier': 'ID-%d' % well_index,
-            'vendor_batch_id': 2,
-            'molar_concentration': float('0.00%d' %well_index),
-            'smiles': 'H%dC%dN%d' % (well_index%10,well_index%11,well_index%12),
-            'compound_name': ['name-%d'%well_index, 'name-%d'%((well_index+11)%100)]
         }
+        if library_well_type == 'experimental':
+            _data['molar_concentration'] = float('0.00%d' % (well_index+1))
+            _data['vendor_name'] = 'vendorX'
+            _data['vendor_identifier'] = 'ID-%d' % well_index
+            _data['vendor_batch_id'] = 2
+            _data['smiles'] = \
+                'H%dC%dN%d' % (well_index%10,well_index%11,well_index%12)
+            _data['compound_name'] = \
+                ['name-%d'%well_index, 'name-%d'%((well_index+11)%100)]
+            
+        return _data
 
     def create_screen(self, data=None):
         ''' Create a test Screen through the API'''
@@ -391,23 +398,49 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test10_create_library_copy ...')
         
-        library = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1005,
+        logger.info('create library a library...')
+        start_plate = 1000
+        end_plate = 1005
+        plate_size = 384
+        library_data = self.create_library({
+            'start_plate': start_plate, 
+            'end_plate': end_plate,
+            'plate_size': plate_size,
             'screen_type': 'small_molecule' })
+        short_name = library_data['short_name']
+        
+        logger.info('create and load well data, plates: %r-%r...', 
+            start_plate, end_plate)
 
+        well_input_data = {}
+        for plate in range(start_plate, end_plate+1):
+            for i in range(0,plate_size):
+                well_input = self.create_small_molecule_test_well(
+                    plate,i,library_well_type='experimental')
+                well_input_data[well_input['well_id']] = well_input
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', short_name, resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': well_input_data.values() } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
         logger.info('create library copy...')
-        input_data = {
-            'library_short_name': library['short_name'],
+        copy_input_data = {
+            'library_short_name': library_data['short_name'],
             'name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000040'
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,input_data['library_short_name'],input_data['name']])
+            resource_uri,copy_input_data['library_short_name'],copy_input_data['name']])
         library_copy = self._create_resource(
-            input_data, resource_uri, resource_test_uri, 
+            copy_input_data, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume'])
         
         logger.info('Verify plates created...')
@@ -421,21 +454,191 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        start_plate = int(library['start_plate'])
-        end_plate = int(library['end_plate'])
+        start_plate = int(library_data['start_plate'])
+        end_plate = int(library_data['end_plate'])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj['objects']),number_of_plates)
-
         for obj in new_obj['objects']:
             self.assertEqual(library_copy['name'],obj['copy_name'])
             self.assertEqual(
-                float(input_data['initial_plate_well_volume']),float(obj['well_volume']))
+                float(copy_input_data['initial_plate_well_volume']),float(obj['well_volume']))
             plate_number = int(obj['plate_number'])
             self.assertTrue(
                 plate_number>=start_plate and plate_number<=end_plate,
                 'wrong plate_number: %r' % obj)
+
+        logger.info('Verify copy_wells created (check varying concentrations)...')
+        uri = '/'.join([
+            BASE_URI_DB,
+            'library',
+            copy_input_data['library_short_name'],
+            'copy',
+            copy_input_data['name'],
+            'copywell'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        resp = self.api_client.get(
+            uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        copy_wells_returned = new_obj['objects']
+        self.assertEqual(len(copy_wells_returned),len(well_input_data))
+
+        for obj in copy_wells_returned:
+            self.assertEqual(library_copy['name'],obj['copy_name'])
+            self.assertTrue(
+                obj['plate_number'] >= start_plate
+                and obj['plate_number'] <= end_plate,
+                'copy_well returned for wrong plate: %r' % obj )
+            well_input = well_input_data.get(obj['well_id'], None)
+            self.assertTrue(well_input is not None, 
+                'copy well not in wells: %r' % obj)
+            if well_input['library_well_type'] == 'experimental':
+                self.assertEqual(
+                    float(copy_input_data['initial_plate_well_volume']),
+                    float(obj['initial_volume']))
+                self.assertEqual(obj['initial_volume'], obj['volume'])
+                self.assertEqual(
+                    well_input['molar_concentration'],
+                    float(obj['molar_concentration']), 
+                    'molar concentration mismatch: %r output %r' %(well_input,obj))
+            else:
+                self.assertTrue(
+                    obj['initial_volume'] is None,
+                    'non-experimental well has data: %r' % obj)
+                self.assertTrue(obj['volume'] is None,
+                    'non-experimental well has data: %r' % obj)
+                self.assertTrue(obj['molar_concentration'] is None,
+                    'non-experimental well has data: %r' % obj)
+        return (library_data, library_copy, new_obj['objects'])
+
+    def test10a_create_library_copy_simple_wells(self):
+
+        logger.info('test10a_create_library_copy_simple_wells ...')
+        logger.info('creates a library wells with single concentration')
         
-        return (library, library_copy, new_obj['objects'])
+        logger.info('create library a library...')
+        start_plate = 1000
+        end_plate = 1005
+        plate_size = 384
+        library_data = self.create_library({
+            'start_plate': start_plate, 
+            'end_plate': end_plate,
+            'plate_size': plate_size,
+            'screen_type': 'small_molecule' })
+        short_name = library_data['short_name']
+        
+        logger.info('create and load well data, plates: %r-%r...', 
+            start_plate, end_plate)
+
+        well_input_data = {}
+        single_molar_concentration = 0.010
+        for plate in range(start_plate, end_plate+1):
+            for i in range(0,plate_size):
+                well_input = self.create_small_molecule_test_well(
+                    plate,i)
+                if well_input['library_well_type'] == 'experimental':
+                    well_input['molar_concentration'] = single_molar_concentration
+                well_input_data[well_input['well_id']] = well_input
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', short_name, resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': well_input_data.values() } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        logger.info('create library copy...')
+        copy_input_data = {
+            'library_short_name': library_data['short_name'],
+            'name': "A",
+            'usage_type': "library_screening_plates",
+            'initial_plate_well_volume': '0.000040'
+        }        
+        resource_uri = BASE_URI_DB + '/librarycopy'
+        resource_test_uri = '/'.join([
+            resource_uri,copy_input_data['library_short_name'],copy_input_data['name']])
+        library_copy = self._create_resource(
+            copy_input_data, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume'])
+        
+        logger.info('Verify plates created...')
+        uri = '/'.join([resource_test_uri,'plate'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        resp = self.api_client.get(
+            uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        start_plate = int(library_data['start_plate'])
+        end_plate = int(library_data['end_plate'])
+        number_of_plates = end_plate-start_plate+1
+        self.assertEqual(len(new_obj['objects']),number_of_plates)
+        for obj in new_obj['objects']:
+            self.assertEqual(library_copy['name'],obj['copy_name'])
+            self.assertEqual(
+                float(copy_input_data['initial_plate_well_volume']),float(obj['well_volume']))
+            plate_number = int(obj['plate_number'])
+            self.assertTrue(
+                plate_number>=start_plate and plate_number<=end_plate,
+                'wrong plate_number: %r' % obj)
+
+        logger.info('Verify copy_wells created (check varying concentrations)...')
+        uri = '/'.join([
+            BASE_URI_DB,
+            'library',
+            copy_input_data['library_short_name'],
+            'copy',
+            copy_input_data['name'],
+            'copywell'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        resp = self.api_client.get(
+            uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        copy_wells_returned = new_obj['objects']
+        self.assertEqual(len(copy_wells_returned),len(well_input_data))
+
+        for obj in copy_wells_returned:
+            self.assertEqual(library_copy['name'],obj['copy_name'])
+            self.assertTrue(
+                obj['plate_number'] >= start_plate
+                and obj['plate_number'] <= end_plate,
+                'copy_well returned for wrong plate: %r' % obj )
+            well_input = well_input_data.get(obj['well_id'], None)
+            self.assertTrue(well_input is not None, 
+                'copy well not in wells: %r' % obj)
+            if well_input['library_well_type'] == 'experimental':
+                self.assertEqual(
+                    float(copy_input_data['initial_plate_well_volume']),
+                    float(obj['initial_volume']))
+                self.assertEqual(obj['initial_volume'], obj['volume'])
+                self.assertEqual(
+                    well_input['molar_concentration'],
+                    float(obj['molar_concentration']), 
+                    'molar concentration mismatch: %r output %r' %(well_input,obj))
+            else:
+                self.assertTrue(
+                    obj['initial_volume'] is None,
+                    'non-experimental well has data: %r' % obj)
+                self.assertTrue(obj['volume'] is None,
+                    'non-experimental well has data: %r' % obj)
+                self.assertTrue(obj['molar_concentration'] is None,
+                    'non-experimental well has data: %r' % obj)
+        return (library_data, library_copy, new_obj['objects'])
         
     def test11_create_library_copy_invalids(self):
         # TODO: try to create duplicate copy names
@@ -443,34 +646,16 @@ class LibraryResource(DBResourceTestCase):
         
         pass
     
-    def test12_update_copy_wells(self):
+    def test12_modify_copy_wells(self):
 
-        logger.info('test12_update_copy_wells ...')
+        logger.info('test12_modify_copy_wells ...')
     
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
-        end_plate = library_data['end_plate']
-        start_plate = library_data['start_plate']
+        end_plate = int(library_data['end_plate'])
+        start_plate = int(library_data['start_plate'])
         short_name = library_data['short_name']
-        
-        logger.info('create and load well data, start_plate: %r...', start_plate)
-        
-        plate = start_plate
-        wells_created = 384
-        input_data = [
-            self.create_small_molecule_test_well(
-                plate,i,library_well_type='experimental') 
-                    for i in range(0,wells_created)]
-        resource_name = 'well'
-        resource_uri = '/'.join([
-            BASE_URI_DB,'library', short_name, resource_name])
-        resp = self.api_client.put(
-            resource_uri, format='sdf', data={ 'objects': input_data } , 
-            authentication=self.get_credentials(), 
-            **{ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
+        plate_size = int(library_data['plate_size'])
+
         logger.info('retrieve the copy_wells...')
         resource_uri = '/'.join([
             BASE_URI_DB,'library',library_data['short_name'],'copy',
@@ -487,10 +672,7 @@ class LibraryResource(DBResourceTestCase):
         new_obj = self.deserialize(resp)
         
         copywell_data = new_obj['objects']
-        
-        expected_plates = end_plate - start_plate
-        expected_wells = wells_created;
-        
+        expected_wells = plate_size;
         logger.info('returned copywell: %r', copywell_data[0])
         logger.info('returned copywell: %r', copywell_data[-1])
         self.assertEqual(len(copywell_data),expected_wells)
@@ -510,15 +692,6 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
-#         self.assertTrue('meta' in patch_response, '%r' % patch_response)
-#         self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-#         self.assertTrue('Updated' in patch_response['meta']['Result'], '%r' % patch_response)
-#         self.assertTrue(patch_response['meta']['Result']['Updated']==1, 
-#             'Wrong updated count: %r' % patch_response['meta']['Result']['Updated'])
-# 
-#         self.assertTrue(
-#             len(patch_response['objects'])==1,'%r'%patch_response['objects'])
-#         new_copywell = patch_response['objects'][0]
         new_copywell = patch_response
         self.assertTrue(int(new_copywell['adjustments'])==1, 
             'Expected adjustments==1, %r' % new_copywell)
@@ -613,8 +786,7 @@ class LibraryResource(DBResourceTestCase):
             authentication=self.get_credentials(), 
             data={ 
                 'limit': 0, 
-                'ref_resource_name': 'librarycopyplate',
-                'includes': ['added_keys']})
+                'ref_resource_name': 'librarycopyplate'})
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
@@ -866,7 +1038,7 @@ class LibraryResource(DBResourceTestCase):
             len(new_obj['objects']), expected_count , 
             str((len(new_obj['objects']), expected_count, new_obj)))
         for logvalue in new_obj['objects']:
-            if logvalue.get('diffs', None):
+            if logvalue['parent_log_uri']:
                 diffs = json.loads(logvalue['diffs'])
                 self.assertTrue(diffs['bin']==[None, 'bin1'],
                     'wrong diff: %r' % diffs )
@@ -1320,8 +1492,9 @@ class LibraryResource(DBResourceTestCase):
                     'parent_log_uri should contain: %r - %r' 
                     % (library_item['short_name'], log) )
                 if log['key'] == '01536:A01':
+                    logger.info('log: %r', log)
                     self.assertTrue(
-                        set(json.loads(log['diff_keys']))==
+                        set(log['diff_keys'])==
                         set([
                             "pubchem_cid", "vendor_identifier", 
                             "vendor_batch_id", "compound_name", "smiles"]),
@@ -2830,7 +3003,7 @@ class ScreenResource(DBResourceTestCase):
         apilog = apilogs[0]
         logger.debug('publication log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
-        self.assertTrue('attached_filename' in apilog['added_keys'])
+        self.assertTrue('attached_filename' in apilog['diff_keys'])
         self.assertTrue(base_filename in apilog['diffs'])
         
         return publication_received

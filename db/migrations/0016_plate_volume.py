@@ -2,17 +2,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from datetime import datetime, time, date, timedelta
+import datetime
 import json
 import logging
 
 from django.db import migrations, models
-from django.db.utils import IntegrityError
 from pytz import timezone
 import pytz
 
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
+from collections import OrderedDict
+import re
+from decimal import Decimal
 
 
 logger = logging.getLogger(__name__)
@@ -22,8 +24,7 @@ copywell_resource_name = 'copywell'
 copywell_uri = '/db/api/v1/' + copywell_resource_name
 cpap_resource_name = 'cherrypickassayplate'
 cpap_uri = '/db/api/v1/' + cpap_resource_name
-plate_resource_name = 'plate'
-plate_uri = '/db/api/v1/' + plate_resource_name
+librarycopyplate_resource_name = 'librarycopyplate'
 
 # this is a workaround, because some activities have identical date_of_activity
 times_seen = set()
@@ -31,12 +32,12 @@ times_seen = set()
 plate_vol_time_offset = 1111
 def create_log_time(input_date):
     date_time = pytz.timezone('US/Eastern').localize(
-        datetime.combine(input_date, datetime.min.time()))
+        datetime.datetime.combine(input_date, datetime.datetime.min.time()))
     i = 0
-    date_time += timedelta(0,plate_vol_time_offset)
+    date_time += datetime.timedelta(0,plate_vol_time_offset)
     while date_time in times_seen:
         i += 1
-        date_time += timedelta(0,i)
+        date_time += datetime.timedelta(0,i)
     times_seen.add(date_time)
     return date_time
 
@@ -46,7 +47,7 @@ def _create_generic_log(activity):
 
     log.comment = activity.comments
     log.date_time = create_log_time(activity.date_of_activity)
-    log.username = activity.performed_by.ecommons_id
+    log.username = activity.performed_by.username
     if not log.username:
         log.username = '%s: %s' % (
             activity.performed_by.screensaver_user_id,
@@ -78,7 +79,7 @@ def _child_log_from(parent_log):
 
 def create_library_screening_logs(apps, schema_editor):
     
-    logger.info(str(('create library screening logs')))
+    logger.info('create library screening logs')
     
     LibraryScreening = apps.get_model('db', 'LibraryScreening')
     screen_to_screening_count = {}
@@ -93,7 +94,7 @@ def create_library_screening_logs(apps, schema_editor):
         screen = lab_activity.screen
         activity = lab_activity.activitylink
         # create parent logs:
-        logger.debug(str(('for screen', screen.facility_id)))
+        logger.debug('for screen: %r', screen.facility_id)
         
         # screen log for library screening
         screen_log = _create_generic_log(activity)
@@ -111,7 +112,8 @@ def create_library_screening_logs(apps, schema_editor):
         try:
             screen_log.save()
         except Exception,e :
-            logger.warn(str(('exception on save', screen_log, screen_log.ref_resource_name, e)))
+            logger.exception(
+                'exception on save of %r, %s', screen_log, screen_log.ref_resource_name)
             raise e
         j = 0
         cp_logs = []
@@ -119,8 +121,10 @@ def create_library_screening_logs(apps, schema_editor):
             plate = assay_plate.plate
             # copyplate log for library screening
             cp_log = _child_log_from(screen_log)
-            cp_log.ref_resource_name = 'librarycopyplate' #TODO: "plate" or "copyplate"
-            cp_log.key = '/'.join([plate.copy.name, str(plate.plate_number).zfill(5)])
+            cp_log.ref_resource_name = librarycopyplate_resource_name 
+            cp_log.key = '/'.join([
+                plate.copy.library.short_name, plate.copy.name, 
+                str(plate.plate_number).zfill(5)])
             cp_log.uri = '/'.join([base_uri,cp_log.ref_resource_name,cp_log.key])
              # TODO: the edit UI will set a "screenings" count
             screen_count = copyplate_to_screening_count.get(cp_log.key, 0)
@@ -157,11 +161,114 @@ def create_library_screening_logs(apps, schema_editor):
 
         i += 1
         total_plate_logs += j
-        if total_plate_logs - (total_plate_logs/1000)*1000  == 0:
-            logger.info(str(('created screen logs:', i, 'plate logs', total_plate_logs)))
-    logger.info(str(('created screen logs:', i, 'plate logs', total_plate_logs)))
+        if total_plate_logs % 1000  == 0:
+            logger.info('created screen logs: %d, plate logs: %d',i, total_plate_logs)
+    logger.info('created screen logs: %d, plate logs: %d',i, total_plate_logs)
+  
+def create_plate_activity_logs(apps, schema_editor):  
+
+    logger.info('create plate activity logs')
+
+    Activity = apps.get_model('db', 'Activity')
+
+    cols = OrderedDict({
+        'activity_id': 'a.activity_id',
+        'username': 'username',
+        'screensaver_user_id': 'screensaver_user_id',
+        'date_of_activity': 'date_of_activity',
+        'comments': 'a.comments',
+        'plate_number': 'plate_number',
+        'copy_name': 'copy.name',
+        'library_short_name': 'library.short_name',
+        })
+    colkeys = cols.keys()
+    _cols = ', '.join([ '%s as %s' % (value,key) for key, value in cols.items() ])
+    sql = (
+        'select ' + _cols + 
+    ''' from activity a join screensaver_user on(performed_by_id=screensaver_user_id) 
+    join plate on (activity_id=plate.plated_activity_id)
+    join copy using(copy_id)
+    join library using(library_id); '''
+    )
+    
+    connection = schema_editor.connection
+    cursor = connection.cursor()
         
-def create_lcp_logs(apps):
+    cursor.execute(sql)
+    _list = cursor.fetchall()
+    if len(_list) == 0:
+        raise Exception('No plate plated_activities found with sql: %r' % sql)
+    for i,_data in enumerate(_list):
+        _activity = dict(zip(colkeys, _data))
+        log = ApiLog()
+        log.ref_resource_name = librarycopyplate_resource_name
+        log.key = '/'.join([
+            _activity['library_short_name'],_activity['copy_name'],
+            str(_activity['plate_number'])])
+        log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
+        log.comment = _activity['comments']
+        log.date_time = create_log_time(_activity['date_of_activity'])
+        log.username = _activity['username']
+        log.user_id = _activity['screensaver_user_id']
+        log.diff_keys = ['status']
+        if "'available'" in log.comment.lower():
+            log.diffs = { 'status': ['not_specied','available']}
+        elif "'not available'" in log.comment.lower():
+            log.diffs = { 'status': ['not_specied','not_available']}
+        else:
+            raise Exception('unknown plate.plated_activity comment: %r', _activity)
+        log.save()
+        
+        if i % 1000 == 0:
+            logger.info('processed %d plate plated activity logs', i)
+    logger.info('processed %d plate plated activity logs', i)
+
+    sql = (
+        'select ' + _cols + 
+    ''' from activity a join screensaver_user on(performed_by_id=screensaver_user_id) 
+    join plate on (activity_id=plate.retired_activity_id)
+    join copy using(copy_id)
+    join library using(library_id); '''
+    )
+
+    cursor.execute(sql)
+    _list = cursor.fetchall()
+    status_change_pattern = re.compile(r".*from '([^\']+)'.*to '([^\']+)'.*")
+    if len(_list) == 0:
+        raise Exception('No plate retired_activities found with sql: %r' % sql)
+    
+    status_terms_recognized = set()
+    for i,_data in enumerate(_list):
+        _activity = dict(zip(colkeys, _data))
+        log = ApiLog()
+        log.ref_resource_name = librarycopyplate_resource_name
+        log.key = '/'.join([
+            _activity['library_short_name'],_activity['copy_name'],
+            str(_activity['plate_number'])])
+        log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
+        log.comment = _activity['comments']
+        log.date_time = create_log_time(_activity['date_of_activity'])
+        log.username = _activity['username']
+        log.user_id = _activity['screensaver_user_id']
+        log.diff_keys = ['status']
+        
+        match = status_change_pattern.match(log.comment)
+        if not match:
+            raise Exception('unknown plate.retired_activity comment: %r', _activity)
+        log.diffs = {'status': [
+            default_converter(match.group(1)),
+            default_converter(match.group(2))]}
+        log.save()
+        status_terms_recognized.add(default_converter(match.group(1)))
+        status_terms_recognized.add(default_converter(match.group(2)))
+        
+        if i % 1000 == 0:
+            logger.info('processed %d plate retired activity logs', i)
+    logger.info('processed %d plate retired activity logs', i)
+    logger.info('status terms recognized: %r', status_terms_recognized)
+
+
+def create_lab_cherry_pick_logs(apps, schema_editor):
     
     # a. create logs for all the cplt's, and child cpap's, then finally for the
     # wvas on each cpap
@@ -181,12 +288,14 @@ def create_lcp_logs(apps):
     
     cpap_parent_logs = {}
     
+    CherryPickLiquidTransfer = apps.get_model('db', 'CherryPickLiquidTransfer')
+    
     i = 0
     liquid_transfers = CherryPickLiquidTransfer.objects.all()
-    logger.info(str(('create logs for ', len(liquid_transfers), 'liquid_transfers')))
+    logger.info('create logs for %d liquid_transfers', len(liquid_transfers))
     for cplt in liquid_transfers:
-        lab_activity = cplt.activity
-        activity = lab_activity.activity
+        lab_activity = cplt.labactivitylink
+        activity = lab_activity.activitylink
         cpr = cplt.cherrypickassayplate_set.all()[0].cherry_pick_request
         screen_facility_id = lab_activity.screen.facility_id
 
@@ -208,7 +317,7 @@ def create_lcp_logs(apps):
         elif cplt.status == 'Canceled':
             cpap_state = 'canceled'
         else:
-            logger.warn(str(('unknown state', cplt.status,cpr,cplt)))
+            logger.warn('unknown state: %r, %r, %r', cplt.status,cpr,cplt)
             
         cpr_log.diffs = json.dumps({
             'plating_activity': [previous_state, cpap_state]
@@ -242,20 +351,23 @@ def create_lcp_logs(apps):
             
             cpap_parent_logs[cpap.cherry_pick_assay_plate_id] = cpap_log
             j += 1
-        logger.info(str(('cpr',cpr.cherry_pick_request_id,'cpaps processed',j)))
+        logger.info('cpr: %r, cpaps processed %d',cpr.cherry_pick_request_id,j)
         
-        
-    logger.info(str((
-        'finished step 1:',len(liquid_transfers), 'cpap parent logs',
-        len(cpap_parent_logs))))        
-    create_lcp_wva_logs(apps,cpap_parent_logs)
+    logger.info(
+        'finished step 1: %d, cpap parent logs: %d',len(liquid_transfers),
+        len(cpap_parent_logs))
+    create_lcp_wva_logs(apps,cpap_parent_logs, schema_editor)
 
     
-def create_lcp_wva_logs(apps,cpap_parent_logs):
+def create_lcp_wva_logs(apps,cpap_parent_logs, schema_editor):
     
-    logger.info(str(('now create the child logs for all of the '
-        'wvas on the cpap on the cplts' )))
+    logger.info('now create the child logs for all of the '
+        'wvas on the cpap on the cplts' )
     
+    CherryPickLiquidTransfer = apps.get_model('db', 'CherryPickLiquidTransfer')
+    connection = schema_editor.connection
+    cursor = connection.cursor()
+
     # create apilogs for cherry_pick_liquid_transfers
     # 1. well volume adjustments (copy_id, well_id)
     #    a. well volume correction activities
@@ -264,6 +376,7 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
     #     or cherry_pick_screening -> cpap's -> lcp -> wva
     cols = OrderedDict({
         'well_id': 'well_id' ,
+        'library_short_name': 'l.short_name',
         'copy_name':'c.name',
         'plate_number':'p.plate_number',
         'volume_adjustment': 'wva.volume',
@@ -285,6 +398,7 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
         _cols ,
         'from well_volume_adjustment wva ' ,
         'join copy c using(copy_id) ',
+        'join library l using(library_id) '
         'join well w using(well_id) ',
         'join plate p on(wva.copy_id=p.copy_id and w.plate_number=p.plate_number) ',
         'join lab_cherry_pick lcp on (wva.lab_cherry_pick_id=lcp.lab_cherry_pick_id) ',
@@ -298,10 +412,10 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
         'AND p.well_volume is not null ',
         'order by c.name, well_id,wva.well_volume_adjustment_id ',
         ])        
-    logger.info(str(('query_sql', query_sql)))
+    logger.info('query_sql: %r', query_sql)
 
     liquid_transfers = CherryPickLiquidTransfer.objects.all()
-    logger.info(str(('create logs for ', len(liquid_transfers), 'liquid_transfers')))
+    logger.info('create logs for %d liquid_transfers', len(liquid_transfers))
     
     count = 0
     parent_log_count = 0
@@ -313,7 +427,8 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
         cpap = xfer.cherrypickassayplate_set.all()[0] 
         
         if cpap.cherry_pick_assay_plate_id not in cpap_parent_logs:
-            raise Exception(str(('could not find a parent log for cpap', cpap,xfer)))
+            raise Exception('could not find a parent log for cpap %r, xfer %r' 
+                % (cpap,xfer))
             
         parent_log = cpap_parent_logs[cpap.cherry_pick_assay_plate_id]
         
@@ -321,10 +436,10 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
         
         colkeys = cols.keys()
         # FIXME: create a log for each activity/cpap
-        _list = db.execute(query_sql, [xfer.activity_id])
-
+        cursor.execute(query_sql, [xfer.labactivitylink.activitylink.activity_id])
+        _list = cursor.fetchall()
         if len(_list) == 0:
-            logger.info(str(('no adjustments for ', parent_log,xfer,xfer.status )))
+            logger.info('no adjustments for %r, %r, %r', parent_log,xfer,xfer.status )
             continue;
     
         i = 0
@@ -339,10 +454,18 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
                 log.ref_resource_name = copywell_resource_name
                 log.api_action = 'PATCH'
 
-                log.key = adj['copy_name'] + '/'+ adj['well_id']
+                log.key = '/'.join([
+                    adj['library_short_name'], adj['copy_name'], adj['well_id']])
                 log.uri = copywell_uri + '/' + log.key
                 log.json_field = str(adj['volume_adjustment'])
+                
+                # Short cut, just record the volume adjustment
+                log.diff_keys = ['volume']
+                log.diffs = {'volume': ['',str(adj['volume_adjustment']) ]}
+                # temporarily store the adjustment in the json field
+                log.json_field = str(adj['volume_adjustment'])
 
+# Manual migration 0016 uses all of the WVA's to set the copy well volume
 #                     
 #                     # FIXME: because this list may not contain all wva's for the well,
 #                     # we must do a different, final pass over all wva's for the well 
@@ -364,7 +487,7 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
                     log.comment = log.comment + '. ' + adj['legacy_plate_name']
 
                 if (log.ref_resource_name,log.key,log.date_time) in prev_logs :
-                    logger.warn(str(('log key already exists!', log)))
+                    logger.warn('log key already exists! %r', log)
                     log.date_time = log.date_time + timedelta(0,i+parent_log_count) # hack, add second
                 
                 log.save()
@@ -372,58 +495,53 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
                 count += 1
                 i += 1
             except Exception, e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                msg = str((e,activity.activity_id, screen_facility_id ))
-                
-                logger.warn(str(('on migrate', 
-                     msg, exc_type, fname, exc_tb.tb_lineno)))
+                logger.exception('on lcp_wva log migrate')
                 raise e
             if count % 10000 == 0:
-                logger.info(str(( 'parent_log_count: ', parent_log_count,
-                    ' logs created', count )))
+                logger.info('parent_log_count: %d logs created: %d', 
+                    parent_log_count,count )
 #             if parent_log_count > 10: break
             
-        logger.info(str(('done, parent_log_count',parent_log_count,'cplt count', i, 'total',count)))
+        logger.info('done, parent_log_count: %d, cplt count %d total: %d',
+            parent_log_count, i, count)
         
-    logger.info(str(('total', count, 'parent_log_count',parent_log_count)))   
+    logger.info('total: %d, parent_log_count: %d',count,parent_log_count)
         
     
-def create_well_correction_logs(apps):
+def create_well_correction_logs(apps, schema_editor):
     
-    logger.info(str(('create well correction logs...')))
+    logger.info('create well correction logs...')
     
     cp_pattern = re.compile(r'.*cp(\d+)',re.I)
     
     i = 0
     total_corrections = 0
-    query = apps.get_mdodel('db', 'WellVolumeCorrectionActivity').objects.all()\
+    query = apps.get_model('db', 'WellVolumeCorrectionActivity').objects.all()\
         .order_by('activity__activity__date_of_activity')
     for wvac in query:
         activity = wvac.activity.activity
         matched = False
         if activity.comments:
-            match = cp_pattern.match(activity.comments)
-            if match:
-                matched = True
+            matched = cp_pattern.match(activity.comments)
+            if matched:
                 # for a cpr
-                cpr_id = match.group(1)
-                logger.debug(str(('locate cpr', cpr_id)))
+                cpr_id = matched.group(1)
+                logger.debug('locate cpr: %r', cpr_id)
                 
                 parent_log = None
                 try:
-                    cpr = apps.get_mdodel('db', 'CherryPickRequest').objects.get(pk=cpr_id)  
-                    logger.info(str(('process correction activity for cpr',cpr_id)))
+                    cpr = apps.get_model('db', 'CherryPickRequest').objects.get(pk=cpr_id)  
+                    logger.info('process correction activity for cpr: %r',cpr_id)
                     parent_log = _create_cpr_log(cpr, activity)
                     
                     parent_log.save()
                 except Exception, e:
-                    logger.info(str(('could not find cpr', cpr_id)))
+                    logger.info('could not find cpr: %r', cpr_id)
                     parent_log = _create_generic_log(activity)
                     
                     # FIXME: need a parent resource?
-                    parent_log.ref_resource_name = 'wellvolumecorrectionactivity'
-                    parent_log.key = str(activity.activity_id)
+                    parent_log.ref_resource_name = copywell_resource_name
+                    parent_log.key = copywell_resource_name
                     parent_log.uri = '/'.join([
                         base_uri, parent_log.ref_resource_name, parent_log.key])
                     
@@ -435,15 +553,22 @@ def create_well_correction_logs(apps):
                     log = _child_log_from(parent_log)
 
                     log.ref_resource_name = copywell_resource_name
-                    log.key = wva.copy.name + '/'+ wva.well_id
+                    log.key = '/'.join([
+                        wva.copy.library.short_name,
+                        wva.copy.name,
+                        wva.well_id])
                     log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
                     
+                    # Short cut, just record the volume adjustment
+                    log.diff_keys = ['volume']
+                    log.diffs = {'volume': ['',str(wva.volume) ]}
+
                     # temporarily store the adjustment in the json field
                     log.json_field = str(wva.volume)
                     
                     log.save()
                     j += 1
-                logger.info(str(('processed', j)))
+                logger.info('processed %d', j)
                 total_corrections += j
                 
         if not matched:
@@ -451,26 +576,33 @@ def create_well_correction_logs(apps):
             parent_log = _create_generic_log(activity)
             
             # FIXME: need a parent resource?
-            parent_log.ref_resource_name = 'wellvolumecorrectionactivity'
-            parent_log.key = str(activity.activity_id)
+            parent_log.ref_resource_name = copywell_resource_name
+            parent_log.key = copywell_resource_name
             parent_log.uri = '/'.join([
                 base_uri, parent_log.ref_resource_name, parent_log.key])
             
             parent_log.save()
-            logger.info(str(('create generic wvca', parent_log)))
+            logger.info('create log for manual wvca: %r', parent_log)
             j = 0
             for wva in wvac.wellvolumeadjustment_set.all():
                 log = _child_log_from(parent_log)
 
                 log.ref_resource_name = copywell_resource_name
-                log.key = wva.copy.name + '/'+ wva.well_id
+                log.key = '/'.join([
+                    wva.copy.library.short_name,
+                    wva.copy.name,
+                    wva.well_id])
                 log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
-                
+            
+                # Short cut, just record the volume adjustment
+                log.diff_keys = ['volume']
+                log.diffs = {'volume': ['',str(wva.volume) ]}
+
                 # temporarily store the adjustment in the json field
                 log.json_field = str(wva.volume)
                 log .save()
                 j += 1
-            logger.info(str(('processed', j)))
+            logger.info('processed %d', j)
             total_corrections += j
         i += 1       
         
@@ -480,19 +612,19 @@ def create_well_correction_logs(apps):
     # we know these are all for one copy: 
     # copy_id = 664, name = 'C', library_short_name = 'Human4 Duplexes'
     
-    copy = apps.get_mdodel('db', 'Copy').objects.get(pk=664)
-    copy1 = apps.get_mdodel('db', 'Copy').objects.get(pk=659)
+    copy = apps.get_model('db', 'Copy').objects.get(pk=664)
+    copy1 = apps.get_model('db', 'Copy').objects.get(pk=659)
     
     parent_log = ApiLog()
-    parent_log.date_time = datetime.date(2000, 1, 1)
-    parent_log.ref_resource_name = 'wellvolumecorrectionactivity'
-    parent_log.key = 'unknown'
+    parent_log.date_time = create_log_time(datetime.date(2000, 1, 1))
+    parent_log.ref_resource_name = copywell_resource_name
+    parent_log.key = copywell_resource_name
     parent_log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
     
     parent_log1 = ApiLog()
-    parent_log1.date_time = datetime.date(2000, 1, 2)
-    parent_log1.ref_resource_name = 'wellvolumecorrectionactivity'
-    parent_log1.key = 'unknown'
+    parent_log1.date_time = create_log_time(datetime.date(2000, 1, 2))
+    parent_log1.ref_resource_name = copywell_resource_name
+    parent_log1.key = copywell_resource_name
     parent_log1.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
     
     # assign to Stewart Rudnicki
@@ -506,14 +638,14 @@ def create_well_correction_logs(apps):
     parent_log1.comment = 'Manual well volume correction activity with no log information'
     parent_log1.save()
     
-    query = apps.get_mdodel('db', 'WellVolumeAdjustment').objects\
+    query = apps.get_model('db', 'WellVolumeAdjustment').objects\
         .filter(lab_cherry_pick__isnull=True)\
         .filter(well_volume_correction_activity__isnull=True)\
         .order_by('well__well_id')
     j = 0
     for wva in query:
         if wva.copy_id not in [659,664]:
-            raise Exception(str(('manual wva for unknown copy', wva.copy_id,[659,664])))
+            raise Exception('manual wva for unknown copy: %r', wva.copy_id,[659,664])
         
         if wva.copy_id == copy.copy_id:
             log = _child_log_from(parent_log)
@@ -521,48 +653,73 @@ def create_well_correction_logs(apps):
             log = _child_log_from(parent_log1)
             
         log.ref_resource_name = copywell_resource_name
-        log.key = wva.copy.name + '/'+ wva.well_id
+        log.key = '/'.join([
+            wva.copy.library.short_name,
+            wva.copy.name,
+            wva.well_id])
         log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
         
+        # Short cut, just record the volume adjustment
+        log.diff_keys = ['volume']
+        log.diffs = {'volume': ['',str(wva.volume) ]}
+
         # temporarily store the adjustment in the json field
-        log.json_field = str(wva.volume,10)
+        log.json_field = str(wva.volume)
         log .save()
         j += 1
-    logger.info(str(('orphaned wvas processed', j)))
+    logger.info('orphaned wvas processed: %d', j)
     total_corrections += j
-    logger.info(str(('done, processed activities', i, 'corrections', total_corrections)))        
+    logger.info('done, processed activities %d, corrections %d', i, total_corrections)
 
 
-def create_copywell_adjustments(apps):
+#  This would be a method to make complete diff logs
+##
+## TODO: this is tricky - need to verify that the copy_well volumes (final)
+## match the copy_well volumes from the manual sql migration 0016
+##
+def create_copywell_adjustments(apps, schema_editor):
     # Now go back over all of the corrections and construct the diffs
-    
+     
     # first get the plate volume = initial volume
-    logger.info(str(('create copywell adjustments...')))
+    logger.info('create copywell adjustments...')
+    librarycopyplate_pattern = re.compile(r'^[^\/]+\/[^\/]+\/\d+$')
+    
     copy_plate_initial_volumes = {}
-    for plate in apps.get_mdodel('db', 'Plate').objects.all():
-        key = '%s/%s' % (plate.copy.name,str(plate.plate_number).zfill(5))
+    for plate in apps.get_model('db', 'Plate').objects.all():
+        key = ( '%s/%s/%s' 
+            % ( plate.copy.library.short_name, 
+                plate.copy.name,
+                str(plate.plate_number).zfill(5)))
         copy_plate_initial_volumes[key] = plate.well_volume
-        
-    logger.info(str(('plate volume map built, iterate through copywells...')))
+         
+    logger.info(
+        'plate volume map built, iterate through copywells for %d plates...',
+        len(copy_plate_initial_volumes))
     prev_wellcopy_key = None
     prev_plate_key = None
     initial_plate_vol = None
     current_wellcopy_volume = None
     diff_keys = json.dumps(['volume'])
     j = 0
-    for log in apps.get_mdodel('reports', 'ApiLog').objects.all()\
-            .filter(ref_resource_name='copywell')\
-            .order_by('key','date_time'):
+    for log in ( apps.get_model('reports', 'ApiLog').objects.all()
+            .filter(ref_resource_name='copywell')
+            .filter(diff_keys__contains='volume')
+            .order_by('key','date_time')):
         plate_key = log.key.split(':')[0]
+        if not librarycopyplate_pattern.match(plate_key):
+            # skip these logs, may be "parent" logs
+            logger.info('non-copyplate log_key: %r', log.key)
+            continue
+        
         if plate_key != prev_plate_key:
             prev_plate_key = plate_key
             initial_plate_vol = copy_plate_initial_volumes[plate_key]
-        
+         
         if log.key != prev_wellcopy_key:
             current_wellcopy_volume = initial_plate_vol
             prev_wellcopy_key = log.key
         # TODO: would be better to make a hash than to store in the json_field
-        new_volume = Decimal(log.json_field)
+        new_volume = current_wellcopy_volume + Decimal(log.json_field)
         log.diff_keys = diff_keys
         log.diffs = json.dumps({
             'volume': [str(current_wellcopy_volume),
@@ -573,8 +730,8 @@ def create_copywell_adjustments(apps):
         log.save()
         j += 1
         if j % 10000 == 0:
-            logger.info(str(('processed',j)))
-    logger.info(str(('volume apilogs adjusted', j)))
+            logger.info('processed: %d',j)
+    logger.info('volume apilogs adjusted: %d', j)
 
 class Migration(migrations.Migration):
 
@@ -590,7 +747,7 @@ class Migration(migrations.Migration):
     # # 2. create ApiLogs for WVA's: temporarily store volume adjusment on the log
     # 
     # # a. do cplt's
-    # self.create_lcp_logs(orm) 
+    # self.create_lab_cherry_pick_logs(orm) 
     #         
     # # b. do wvca's
     # # c. do orphaned wvas (no cplt or wvca attached)
@@ -602,4 +759,8 @@ class Migration(migrations.Migration):
     
     operations = [
         migrations.RunPython(create_library_screening_logs),
+        migrations.RunPython(create_lab_cherry_pick_logs),
+        migrations.RunPython(create_plate_activity_logs),
+        migrations.RunPython(create_well_correction_logs),
+        migrations.RunPython(create_copywell_adjustments),
     ]

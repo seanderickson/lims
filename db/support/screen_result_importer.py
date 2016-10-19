@@ -581,7 +581,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
                 temp = result_value['exclude']
                 if hasattr(temp, 'split'):
                     temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
-                logger.info('excluded data_columns: find %r, in %r', temp, data_columns)    
+                logger.debug('excluded data_columns: find %r, in %r', temp, data_columns)    
                 for data_column_name in temp:
                     excluded_cols.append(get_column_letter(
                         len(RESULT_VALUE_FIELD_MAP)+1

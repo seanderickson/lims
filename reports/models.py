@@ -9,9 +9,11 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+from django.db import transaction
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 from tastypie.utils.dict import dict_strip_unicode_keys
+from aldjemy.core import get_engine
 
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,25 @@ class MetaManager(GetOrNoneManager):
         return parsed_objects
 
 
+class LogDiff(models.Model):
+    
+    log = models.ForeignKey('ApiLog', on_delete=models.CASCADE)
+    
+    #field = models.ForeignKey('Metahash')
+    field_key = models.TextField()
+    field_scope = models.TextField()
+    
+    before = models.TextField(null=True)
+    after = models.TextField(null=True)
+    
+    class Meta:
+        unique_together = (('log','field_key','field_scope'))    
+
+    def __repr__(self):
+        return (
+            "<LogDiff(ref_resource_name=%r, key=%r, field=%r)>" 
+            % (self.log.ref_resource_name, self.log.key, self.field))
+
 API_ACTION_POST = 'POST'
 API_ACTION_PUT = 'PUT'
 # NOTE: "CREATE" - to distinguish PATCH/modify, PATCH/create
@@ -155,10 +176,10 @@ class ApiLog(models.Model):
     api_action = models.CharField(
         max_length=10, null=False, choices=API_ACTION_CHOICES)
     
-    added_keys = models.TextField(null=True)
-    removed_keys = models.TextField(null=True)
-    diff_keys = models.TextField(null=True)
-    diffs = models.TextField(null=True)
+#     added_keys = models.TextField(null=True)
+#     removed_keys = models.TextField(null=True)
+#     diff_keys = models.TextField(null=True)
+#     diffs = models.TextField(null=True)
     comment = models.TextField(null=True)
     
     parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
@@ -171,8 +192,7 @@ class ApiLog(models.Model):
 
     def __unicode__(self):
         return unicode(str((self.id, self.api_action, self.ref_resource_name, self.key, 
-            str(self.date_time), self.username, self.added_keys, self.removed_keys, 
-            self.diff_keys, self.diffs, self.comment, self.json_field)))
+            str(self.date_time), self.username, self.comment, self.json_field)))
 
     @staticmethod   
     def json_dumps(obj):
@@ -180,39 +200,90 @@ class ApiLog(models.Model):
             obj, skipkeys=False,check_circular=True, allow_nan=True, 
             default=lambda x: str(x), cls=DjangoJSONEncoder)
     
-    def save(self, **kwargs):
+    def __init__(self, *args, **kwargs):
+        self.diffs = {}
+        models.Model.__init__(self, *args, **kwargs)
+    
+    def save1(self, **kwargs):
         ''' override to convert json fields '''
-        if isinstance(self.added_keys, dict):
-            self.added_keys = self.json_dumps(self.added_keys)
-        
-        if isinstance(self.removed_keys, dict):
-            self.removed_keys = self.json_dumps(self.removed_keys)
-        
-        if isinstance(self.diff_keys, dict):
-            self.diff_keys = self.json_dumps(self.diff_keys)
+#         if isinstance(self.added_keys, dict):
+#             self.added_keys = self.json_dumps(self.added_keys)
+#         
+#         if isinstance(self.removed_keys, dict):
+#             self.removed_keys = self.json_dumps(self.removed_keys)
+#         
+#         if isinstance(self.diff_keys, dict):
+#             self.diff_keys = self.json_dumps(self.diff_keys)
         
         if isinstance(self.diffs, dict):
             self.diffs = self.json_dumps(self.diffs)
         
         return models.Model.save(self, **kwargs)
+
+    # PRELIMINARY: must rework:
+    # - all logging code
+    # - log queries
+    # - cleanup: drop diff_keys, diff_logs, added_keys, removed_keys
+    def save(self, **kwargs):
+        ''' override to convert json fields '''
+        models.Model.save(self, **kwargs)
+        
+        bulk_create_diffs = []
+        for key,diffs in self.diffs.items():
+            assert isinstance(diffs, (list,tuple))
+            assert len(diffs) == 2
+            bulk_create_diffs.append(LogDiff(
+                log=self,
+                field_key = key,
+                field_scope = 'fields.%s' % self.ref_resource_name,
+                before=diffs[0],
+                after=diffs[1]))
+        LogDiff.objects.bulk_create(bulk_create_diffs)
     
-    def diff_dict_to_api_log(self, log):
-        '''
-        Set the diff fields from a dict
-        @param log a dict version of the diff fields
-        '''
-        if 'added_keys' in log:
-            self.added_keys = self.json_dumps(log['added_keys'])
-        if 'removed_keys' in log:
-            self.removed_keys = self.json_dumps(log['removed_keys'])
-        if 'diff_keys' in log:
-            self.diff_keys = self.json_dumps(log['diff_keys'])
-        if 'diffs' in log:
-            self.diffs = self.json_dumps(log['diffs'])
+#     def diff_dict_to_api_log(self, log):
+#         '''
+#         Set the diff fields from a dict
+#         @param log a dict version of the diff fields
+#         '''
+#         if 'added_keys' in log:
+#             self.added_keys = self.json_dumps(log['added_keys'])
+#         if 'removed_keys' in log:
+#             self.removed_keys = self.json_dumps(log['removed_keys'])
+#         if 'diff_keys' in log:
+#             self.diff_keys = self.json_dumps(log['diff_keys'])
+#         if 'diffs' in log:
+#             self.diffs = self.json_dumps(log['diffs'])
+# 
+#         logger.debug('added: %r, log: %r', self.added_keys, log)
 
-        logger.debug('added: %r, log: %r', self.added_keys, log)
+    @staticmethod
+    def bulk_create(logs):
 
-
+        logger.debug('bulk create logs: %r', logs)
+        with transaction.atomic():
+            with get_engine().connect() as conn:
+                last_id = int(conn.execute(
+                    'select last_value from reports_apilog_id_seq;').scalar() or 0)
+                ApiLog.objects.bulk_create(logs)
+                #NOTE: postgresql & django 1.10 only: ids are created on bulk create
+                for i,log in enumerate(logs):
+                    log.id = last_id+i+1
+            
+                bulk_create_diffs = []
+                for i,log in enumerate(logs):
+                    for key, logdiffs in log.diffs.items():
+                        bulk_create_diffs.append(
+                            LogDiff(
+                                log=log,
+                                field_key = key,
+                                field_scope = 'fields.%s' % log.ref_resource_name,
+                                before=logdiffs[0],
+                                after=logdiffs[1])
+                        )
+                LogDiff.objects.bulk_create(bulk_create_diffs)
+            
+            return logs
+        
 class ListLog(models.Model):
     '''
     A model that holds the keys for the items created in a "put_list"

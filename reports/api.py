@@ -44,7 +44,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache
-from reports.models import MetaHash, Vocabulary, ApiLog, ListLog, Permission, \
+from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, ListLog, Permission, \
                            UserGroup, UserProfile, API_ACTION_DELETE, \
                            API_ACTION_CREATE
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
@@ -199,7 +199,7 @@ class SuperUserAuthorization(Authorization):
         return False
     
 
-def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
+def compare_dicts(dict1, dict2, excludes=['resource_uri']):
     '''
     @param full (default False) 
     - a full compare shows added keys as well as diff keys
@@ -212,53 +212,123 @@ def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
     original_keys = set(dict1.keys())-set(excludes)
     updated_keys = set(dict2.keys())-set(excludes)
     
-    intersect_keys = original_keys.intersection(updated_keys)
-    log = {'diffs': {}}
+    union_keys = original_keys.union(updated_keys)
+    diffs = {}
+    for key in union_keys:
+        v1 = dict1.get(key, None)
+        v2 = dict2.get(key, None)
+        if v1 is not None or v2 is not None:
+            if v1 != v2:
+                diffs[key] = [v1,v2]
+    return diffs
     
-    added_keys = list(updated_keys - intersect_keys)
-    if len(added_keys)>0: 
-        log['added_keys'] = added_keys
-        if full:
-            log['diffs'].update( 
-                dict(zip(
-                    added_keys,
-                    ([None,dict2[key]] for key in added_keys if dict2[key]) )) )
-    
-    removed_keys = list(original_keys- intersect_keys)
-    if len(removed_keys)>0: 
-        log['removed_keys'] = removed_keys
-        if full:
-            log['diffs'].update(
-                dict(zip(
-                    removed_keys,
-                    ([dict1[key],None] for key in removed_keys if dict1[key]))))
-    
-    diff_keys = list()
-    for key in intersect_keys:
-        val1 = dict1[key]
-        val2 = dict2[key]
-        # NOTE: Tastypie converts to tz naive on serialization; then it 
-        # forces it to the default tz upon deserialization (in the the 
-        # DateTimeField convert method); for the purpose of this comparison,
-        # then, make both naive.
-        if isinstance(val2, datetime.datetime):
-            val2 = make_naive(val2)
-        if val1 != val2: 
-            diff_keys.append(key)
-    # Note, simple equality not used, since the serialization isn't 
-    # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
-    # upon serialization to the ISO 8601 format.
-    #         diff_keys = \
-    #             list( key for key in intersect_keys 
-    #                     if dict1[key] != dict2[key])
+#     log = {'diffs': { key: []}}
+#     
+#     added_keys = list(updated_keys - intersect_keys)
+#     if len(added_keys)>0: 
+#         log['added_keys'] = added_keys
+#         if full:
+#             log['diffs'].update( 
+#                 dict(zip(
+#                     added_keys,
+#                     ([None,dict2[key]] for key in added_keys if dict2[key]) )) )
+#     
+#     removed_keys = list(original_keys- intersect_keys)
+#     if len(removed_keys)>0: 
+#         log['removed_keys'] = removed_keys
+#         if full:
+#             log['diffs'].update(
+#                 dict(zip(
+#                     removed_keys,
+#                     ([dict1[key],None] for key in removed_keys if dict1[key]))))
+#     
+#     diff_keys = list()
+#     for key in intersect_keys:
+#         val1 = dict1[key]
+#         val2 = dict2[key]
+#         # NOTE: Tastypie converts to tz naive on serialization; then it 
+#         # forces it to the default tz upon deserialization (in the the 
+#         # DateTimeField convert method); for the purpose of this comparison,
+#         # then, make both naive.
+#         if isinstance(val2, datetime.datetime):
+#             val2 = make_naive(val2)
+#         if val1 != val2: 
+#             diff_keys.append(key)
+#     # Note, simple equality not used, since the serialization isn't 
+#     # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
+#     # upon serialization to the ISO 8601 format.
+#     #         diff_keys = \
+#     #             list( key for key in intersect_keys 
+#     #                     if dict1[key] != dict2[key])
+# 
+#     if len(diff_keys)>0: 
+#         log['diff_keys'] = diff_keys
+#         log['diffs'].update(
+#             dict(zip(
+#                 diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
+#     
+#     return log
 
-    if len(diff_keys)>0: 
-        log['diff_keys'] = diff_keys
-        log['diffs'].update(
-            dict(zip(
-                diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
-    
-    return log
+# def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
+#     '''
+#     @param full (default False) 
+#     - a full compare shows added keys as well as diff keys
+#     
+#     Note: "full" logs would log all of the created data in the resource;
+#     whereas "not full" only logs the creation; with this strategy, logs 
+#     must be played backwards to recreate an entity state.
+#     '''
+#     logger.debug('compare dicts: %r, %r, %r', dict1, dict2, full)
+#     original_keys = set(dict1.keys())-set(excludes)
+#     updated_keys = set(dict2.keys())-set(excludes)
+#     
+#     intersect_keys = original_keys.intersection(updated_keys)
+#     log = {'diffs': {}}
+#     
+#     added_keys = list(updated_keys - intersect_keys)
+#     if len(added_keys)>0: 
+#         log['added_keys'] = added_keys
+#         if full:
+#             log['diffs'].update( 
+#                 dict(zip(
+#                     added_keys,
+#                     ([None,dict2[key]] for key in added_keys if dict2[key]) )) )
+#     
+#     removed_keys = list(original_keys- intersect_keys)
+#     if len(removed_keys)>0: 
+#         log['removed_keys'] = removed_keys
+#         if full:
+#             log['diffs'].update(
+#                 dict(zip(
+#                     removed_keys,
+#                     ([dict1[key],None] for key in removed_keys if dict1[key]))))
+#     
+#     diff_keys = list()
+#     for key in intersect_keys:
+#         val1 = dict1[key]
+#         val2 = dict2[key]
+#         # NOTE: Tastypie converts to tz naive on serialization; then it 
+#         # forces it to the default tz upon deserialization (in the the 
+#         # DateTimeField convert method); for the purpose of this comparison,
+#         # then, make both naive.
+#         if isinstance(val2, datetime.datetime):
+#             val2 = make_naive(val2)
+#         if val1 != val2: 
+#             diff_keys.append(key)
+#     # Note, simple equality not used, since the serialization isn't 
+#     # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
+#     # upon serialization to the ISO 8601 format.
+#     #         diff_keys = \
+#     #             list( key for key in intersect_keys 
+#     #                     if dict1[key] != dict2[key])
+# 
+#     if len(diff_keys)>0: 
+#         log['diff_keys'] = diff_keys
+#         log['diffs'].update(
+#             dict(zip(
+#                 diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
+#     
+#     return log
 
 def is_empty_diff(difflog):
     if not difflog:
@@ -496,7 +566,8 @@ class ApiResource(SqlAlchemyResource):
         return response
     
     @write_authorization
-    @un_cache        
+    @un_cache
+    @transaction.atomic   
     def patch_list(self, request, **kwargs):
 
         logger.info('patch list, user: %r, resource: %r' 
@@ -1247,7 +1318,28 @@ class ApiResource(SqlAlchemyResource):
                 yield Row(row)
         return vocabulary_rowproxy_generator
     
+    def make_log(self, request, **kwargs):
+
+        log = ApiLog()
+        log.api_action = str((request.method)).upper()
+        log.ref_resource_name = self._meta.resource_name
+        log.username = request.user.username 
+        log.user_id = request.user.id 
+        log.date_time = _now()
+ 
+        # TODO: how do we feel about passing form data in the headers?
+        # TODO: abstract the form field name
+        if HEADER_APILOG_COMMENT in request.META:
+            log.comment = request.META[HEADER_APILOG_COMMENT]
+     
+        if kwargs:
+            for key, value in kwargs.items():
+                if hasattr(log, key):
+                    setattr(log, key, value)
+        return log
+
     def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
+        # new
         DEBUG_PATCH_LOG = False
         
         id_attribute = kwargs.get('id_attribute', None)
@@ -1273,46 +1365,23 @@ class ApiResource(SqlAlchemyResource):
             log.parent_log = kwargs.get('parent_log', None)
         if prev_dict:
             full = kwargs.get('full', False)
-            difflog = compare_dicts(prev_dict,new_dict, full=full)
-            if difflog.get('diff_keys',None) or difflog.get('diffs',None):
-                log.diff_dict_to_api_log(difflog)
+            log.diffs = compare_dicts(prev_dict,new_dict)
+            if not log.diffs:
                 if DEBUG_PATCH_LOG:
-                    logger.info('update, api log: %r' % log)
-            else:
-                # don't save the log
-                if DEBUG_PATCH_LOG:
-                    logger.info('no diffs found: %r, %r, %r' 
-                        % (prev_dict,new_dict,difflog))
+                    logger.info('no diffs found: %r, %r' 
+                        % (prev_dict,new_dict))
                 log = None
         else: # creating
             log.api_action = API_ACTION_CREATE
-            log.added_keys = json.dumps(new_dict.keys())
-            log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
+#             log.added_keys = json.dumps(new_dict.keys())
+#             log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
+            log.diffs = { key: [None,val] for key,val in new_dict.items() if val is not None }
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %s', log)
 
         return log
 
-    def make_log(self, request, **kwargs):
-
-        log = ApiLog()
-        log.api_action = str((request.method)).upper()
-        log.ref_resource_name = self._meta.resource_name
-        log.username = request.user.username 
-        log.user_id = request.user.id 
-        log.date_time = _now()
- 
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
-        if HEADER_APILOG_COMMENT in request.META:
-            log.comment = request.META[HEADER_APILOG_COMMENT]
-     
-        if kwargs:
-            for key, value in kwargs.items():
-                if hasattr(log, key):
-                    setattr(log, key, value)
-        return log
-
+    @transaction.atomic
     def log_patches(self,request, original_data, new_data, **kwargs):
         '''
         log differences between dicts having the same identity in the arrays:
@@ -1340,13 +1409,9 @@ class ApiResource(SqlAlchemyResource):
         for new_dict in new_data:
             if not new_dict:
                 continue
-            if DEBUG_PATCH_LOG:
-                logger.info('new dict: %r, %r', new_dict, id_attribute)
             prev_dict = None
             for c_dict in original_data:
                 if c_dict:
-                    if DEBUG_PATCH_LOG:
-                        logger.info('consider prev dict: %s', c_dict)
                     prev_dict = c_dict
                     for key in id_attribute:
                         if new_dict[key] != c_dict[key]:
@@ -1379,18 +1444,158 @@ class ApiResource(SqlAlchemyResource):
                 log.parent_log = kwargs.get('parent_log', None)
 
             log.api_action = API_ACTION_DELETE
-            log.diff_keys = json.dumps(deleted_dict.keys())
-            log.diffs = json.dumps(deleted_dict,cls=DjangoJSONEncoder)
-#             log.save()
+            log.diffs = { key:[val,None] for key,val in deleted_dict.items() }
             logs.append(log)
             if DEBUG_PATCH_LOG:
                 logger.info('delete, api log: %r',log)
-        
-        
-        logger.debug('bulk create logs: %r', logs)
-        ApiLog.objects.bulk_create(logs)
-        
+
+        logs = ApiLog.bulk_create(logs)
+#         logger.debug('bulk create logs: %r', logs)
+#         with get_engine().connect() as conn:
+#             last_id = int(conn.execute(
+#                 'select last_value from reports_apilog_id_seq;').scalar() or 0)
+#         logs = ApiLog.objects.bulk_create(logs)
+#         #NOTE: postgresql & django 1.10 only: ids are created on bulk create
+#         
+#         bulk_create_diffs = []
+#         for i,log in enumerate(logs):
+#             for key, logdiffs in log.diffs.items():
+#                 logger.info('diff key: %r, diffs: %r', key, logdiffs)
+#                 bulk_create_diffs.append(
+#                     LogDiff(
+#                         log_id=last_id+i+1,
+#                         field_key = key,
+#                         field_scope = 'fields.%s' % log.ref_resource_name,
+#                         before=logdiffs[0],
+#                         after=logdiffs[1])
+#                 )
+#         LogDiff.objects.bulk_create(bulk_create_diffs)
+            
         return logs
+
+#     def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
+#         DEBUG_PATCH_LOG = False
+#         
+#         id_attribute = kwargs.get('id_attribute', None)
+#         if id_attribute is None:
+#             schema = self.build_schema()
+#             id_attribute = schema['id_attribute']
+#         log_comment = None
+#         if HEADER_APILOG_COMMENT in request.META:
+#             log_comment = request.META[HEADER_APILOG_COMMENT]
+#         
+#         if DEBUG_PATCH_LOG:
+#             logger.info(
+#                 'prev_dict: %s, ======new_dict====: %s', 
+#                 prev_dict, new_dict)
+# 
+#         if log is None:
+#             log = self.make_log(request)
+# 
+#         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+#         log.uri = '/'.join([log.ref_resource_name,log.key])
+# 
+#         if 'parent_log' in kwargs:
+#             log.parent_log = kwargs.get('parent_log', None)
+#         if prev_dict:
+#             full = kwargs.get('full', False)
+#             difflog = compare_dicts(prev_dict,new_dict, full=full)
+#             if difflog.get('diff_keys',None) or difflog.get('diffs',None):
+#                 log.diff_dict_to_api_log(difflog)
+#                 if DEBUG_PATCH_LOG:
+#                     logger.info('update, api log: %r' % log)
+#             else:
+#                 # don't save the log
+#                 if DEBUG_PATCH_LOG:
+#                     logger.info('no diffs found: %r, %r, %r' 
+#                         % (prev_dict,new_dict,difflog))
+#                 log = None
+#         else: # creating
+#             log.api_action = API_ACTION_CREATE
+#             log.added_keys = json.dumps(new_dict.keys())
+#             log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
+#             if DEBUG_PATCH_LOG:
+#                 logger.info('create, api log: %s', log)
+# 
+#         return log
+# 
+#     def log_patches(self,request, original_data, new_data, **kwargs):
+#         '''
+#         log differences between dicts having the same identity in the arrays:
+#         @param original_data - data from before the API action
+#         @param new_data - data from after the API action
+#         - dicts have the same identity if the id_attribute keys have the same
+#         value.
+#         '''
+#         DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
+#         logs = []
+#         
+#         log_comment = None
+#         if HEADER_APILOG_COMMENT in request.META:
+#             log_comment = request.META[HEADER_APILOG_COMMENT]
+#         
+#         if DEBUG_PATCH_LOG:
+#             logger.info('log patches: %s' %kwargs)
+#             logger.debug('log patches original: %s, =====new data===== %s',
+#                 original_data,new_data)
+#         
+#         schema = self.build_schema()
+#         id_attribute = schema['id_attribute']
+#         
+#         deleted_items = list(original_data)        
+#         for new_dict in new_data:
+#             if not new_dict:
+#                 continue
+#             if DEBUG_PATCH_LOG:
+#                 logger.info('new dict: %r, %r', new_dict, id_attribute)
+#             prev_dict = None
+#             for c_dict in original_data:
+#                 if c_dict:
+#                     if DEBUG_PATCH_LOG:
+#                         logger.info('consider prev dict: %s', c_dict)
+#                     prev_dict = c_dict
+#                     for key in id_attribute:
+#                         if new_dict[key] != c_dict[key]:
+#                             prev_dict = None
+#                             break
+#                     if prev_dict:
+#                         break # found
+#             if prev_dict:
+#                 # if found, then it is modified, not deleted
+#                 if DEBUG_PATCH_LOG:
+#                     logger.info('remove from deleted dict %r, %r',
+#                         prev_dict, deleted_items)
+#                 deleted_items.remove(prev_dict)
+#                 
+#             log = self.log_patch(request, prev_dict, new_dict, **kwargs)            
+#             if log:
+#                 logs.append(log)   
+#             
+#         for deleted_dict in deleted_items:
+#             
+#             log = self.make_log(request)
+#             log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
+#             log.uri = '/'.join([self._meta.resource_name,log.key])
+#         
+#             # user can specify any valid, escaped json for this field
+#             # if 'apilog_json_field' in bundle.data:
+#             #     log.json_field = bundle.data['apilog_json_field']
+#             
+#             if 'parent_log' in kwargs:
+#                 log.parent_log = kwargs.get('parent_log', None)
+# 
+#             log.api_action = API_ACTION_DELETE
+#             log.diff_keys = json.dumps(deleted_dict.keys())
+#             log.diffs = json.dumps(deleted_dict,cls=DjangoJSONEncoder)
+#             logs.append(log)
+#             if DEBUG_PATCH_LOG:
+#                 logger.info('delete, api log: %r',log)
+#         
+#         
+#         logger.debug('bulk create logs: %r', logs)
+#         ApiLog.objects.bulk_create(logs)
+#         
+#         return logs
                 
 class ApiLogResource(ApiResource):
     
@@ -1504,6 +1709,10 @@ class ApiLogResource(ApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
+        manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes.add('id')
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
 
         if parent_log_id:
             kwargs['parent_log_id'] = parent_log_id
@@ -1537,10 +1746,6 @@ class ApiLogResource(ApiResource):
             
             # general setup
           
-            manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info('manual_field_includes: %r', manual_field_includes)
-  
             (filter_expression, filter_fields) = SqlAlchemyResource.\
                 build_sqlalchemy_filters(schema, param_hash=param_hash)
 
@@ -1564,9 +1769,21 @@ class ApiLogResource(ApiResource):
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
+            _log = self.bridge['reports_apilog']
+            _log2 = self.bridge['reports_apilog']
+            _log2 = _log2.alias('parent_log')
+            _logdiffs = self.bridge['reports_logdiff']
+            
             base_query_tables = ['reports_apilog']
             
             custom_columns = {
+                'diff_keys': (
+                    select([
+                        func.array_to_string(func.array_agg(
+                            _logdiffs.c.field_key),LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(_logdiffs)
+                    .where(_logdiffs.c.log_id==text('reports_apilog.id'))
+                    ),
                 #  create a full ISO-8601 date format
                 'parent_log_uri': literal_column(
                     "parent_log.ref_resource_name "
@@ -1594,10 +1811,6 @@ class ApiLogResource(ApiResource):
 
             # build the query statement
 
-            _log = self.bridge['reports_apilog']
-            _log2 = self.bridge['reports_apilog']
-            _log2 = _log2.alias('parent_log')
-            
             j = join(
                 _log, _log2, _log.c.parent_log_id == _log2.c.id, isouter=True )
             
@@ -1605,6 +1818,14 @@ class ApiLogResource(ApiResource):
             
             if 'parent_log_id' in kwargs:
                 stmt = stmt.where(_log2.c.id == kwargs.pop('parent_log_id'))
+                
+#             # TODO: implement diff key filtering on the front end
+#             # need to know that "diff_key" is available
+#             if 'diff_key' in kwargs:
+#                 stmt = stmt.where(exists(
+#                     select([None]).select_from(_logdiffs)
+#                     .where(_logdiffs.c.log_id==_apilog.c.id)
+#                     .where(_logdiffs.c.field_key==kwargs['diff_key'])))
 
             # general setup
             stmt = stmt.order_by('ref_resource_name','key', 'date_time')
@@ -1625,6 +1846,50 @@ class ApiLogResource(ApiResource):
             
             if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
+            
+            def create_diff_generator(generator):
+                bridge = self.bridge
+                _apilog = bridge['reports_apilog']
+                _logdiff = bridge['reports_logdiff']
+                query = (
+                    select([
+                        _logdiff.c.field_key,
+                        array([_logdiff.c.before,_logdiff.c.after])])
+                    .select_from(_logdiff))
+                
+
+                def diff_generator(cursor):
+                    if generator:
+                        cursor = generator(cursor)
+                    class Row:
+                        def __init__(self, row):
+                            self.row = row
+                                    
+                        def has_key(self, key):
+                            if key == 'diffs': 
+                                return True
+                            return self.row.has_key(key)
+                        def keys(self):
+                            return self.row.keys();
+                        def __getitem__(self, key):
+                            if key == 'diffs':
+                                _diffs = conn.execute(
+                                    query.where(_logdiff.c.log_id==row['id']))
+                                diff_dict = { x[0]:x[1] for x in _diffs }
+                                return json.dumps(diff_dict)
+                            else:
+                                return self.row[key]
+                    conn = get_engine().connect()
+                    try:
+                        for row in cursor:
+                            yield Row(row)
+                    finally:
+                        conn.close()
+                        
+                return diff_generator
+            
+            if 'diffs' in field_hash:
+                rowproxy_generator = create_diff_generator(rowproxy_generator)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -1837,7 +2102,7 @@ class FieldResource(ApiResource):
             
         if key_in:
             keys_in = key_in
-            if not isinstance(key_in,(list,tuple)):
+            if not isinstance(key_in,(list,tuple,set)):
                 keys_in = key_in.split(LIST_DELIMITER_URL_PARAM)
             fields = [x for x in fields if x['key'] in keys_in ]
             

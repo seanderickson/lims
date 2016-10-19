@@ -40,7 +40,7 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
     exists, cast
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
-from sqlalchemy.sql.sqltypes import TEXT
+import sqlalchemy.sql.sqltypes
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
 from tastypie.exceptions import BadRequest, NotFound
@@ -70,13 +70,10 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError
 from reports import ValidationError, InformationError, _now
 from reports.api import API_MESSAGE_COMMENTS, API_MESSAGE_CREATED, \
-    API_MESSAGE_SUBMIT_COUNT, API_MESSAGE_UNCHANGED, API_MESSAGE_UPDATED,\
+    API_MESSAGE_SUBMIT_COUNT, API_MESSAGE_UNCHANGED, API_MESSAGE_UPDATED, \
     API_MESSAGE_ACTION
-from reports.api import ApiLogResource, \
-    UserGroupAuthorization, \
-    VocabularyResource, \
-    UserResource, compare_dicts, \
-    UserGroupResource, ApiLogResource, \
+from reports.api import ApiLogResource, UserGroupAuthorization, \
+    VocabularyResource, UserResource, UserGroupResource, ApiLogResource, \
     write_authorization, read_authorization
 import reports.api
 from reports.api_base import un_cache
@@ -373,6 +370,7 @@ class PlateLocationResource(DbApiResource):
                             else:
                                 return self.row[key]
                     conn = get_engine().connect()
+                    # FIXME: use with get_engine().connect() as conn:
                     try:
                         for row in cursor:
                             yield Row(row)
@@ -545,8 +543,9 @@ class PlateLocationResource(DbApiResource):
                 if log: 
                     plate_logs.append(log)
             logger.info('logs created, saving...')
-            ApiLog.objects.bulk_create(plate_logs)
-            logger.info('logs saved.')
+#             ApiLog.objects.bulk_create(plate_logs)
+            ApiLog.bulk_create(plate_logs)
+            logger.info('logs saved %r', plate_logs)
             
             return plate_logs
             
@@ -714,6 +713,31 @@ class LibraryCopyPlateResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
+    @classmethod
+    def get_librarycopyplate_cte(cls):
+        bridge = get_tables()
+        _l = bridge['library']
+        _c = bridge['copy']
+        _p = bridge['plate']
+        
+        j = _p
+        j = j.join(_c, _p.c.copy_id == _c.c.copy_id)
+        j = j.join(_l, _c.c.library_id == _l.c.library_id)
+        plate_table = (
+            select([
+                _p.c.plate_id,
+                _p.c.plate_number,
+                _p.c.copy_id,
+                _c.c.library_id,
+                _concat(_l.c.short_name, '/', _c.c.name, '/', 
+                    cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
+                    .label('key'),
+                ])
+            .select_from(j))
+        return plate_table
+        
+        
+
     @read_authorization
     def build_list_response(self, request, **kwargs):
 
@@ -789,52 +813,113 @@ class LibraryCopyPlateResource(DbApiResource):
  
             # specific setup 
  
+            _apilog = self.bridge['reports_apilog']
+            _p = self.bridge['plate']
+            _pl = self.bridge['plate_location']
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _ls = self.bridge['library_screening']
+            _a = self.bridge['activity']
+            _ap = self.bridge['assay_plate']
+            _plate_cte = self.get_librarycopyplate_cte().cte('plate_cte')
+            _user_cte = ScreensaverUserResource.get_user_cte().cte('user_cte')
+            
+            _diff = self.bridge['reports_logdiff']
+            
+            j = _apilog.join(_diff,_apilog.c.id==_diff.c.log_id)
+            j = j.join(_user_cte, _apilog.c.username==_user_cte.c.username)
+            status_apilogs = (
+                select([
+                    _apilog.c.date_time,
+                    _apilog.c.key,
+                    _diff.c.before,
+                    _diff.c.after,
+                    _user_cte.c.username,
+                    _user_cte.c.name,
+                    ])
+                .select_from(j)
+                .where(_apilog.c.ref_resource_name==self._meta.resource_name)
+                .where(_diff.c.field_key=='status')
+                .cte('status_apilogs'))
+
+            retired_statuses = [
+                'retired','discarded','lost','given_away','discarded_volume_transferred']
+            
             custom_columns = {
-                'screening_count': literal_column('p1.screening_count'),
+#                 'avg_remaining_volume': (
+#                     )
+#                 'min_remaining_volume'
+#                 'max_remaining_volume'
+#                 'molar_concentrations'
+#                 'mg_ml_concentrations'                
                 'plate_number': (literal_column(
                     "to_char(plate.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
                     .label('plate_number')),
-                'ap_count': literal_column('p1.ap_count'),
-                'dl_count':literal_column('p1.dl_count'),
-                'first_date_data_loaded':literal_column('p1.first_date_data_loaded'),
-                'last_date_data_loaded':literal_column('p1.last_date_data_loaded'),
-                'first_date_screened':literal_column('p1.first_date_screened'),
-                'last_date_screened':literal_column('p1.last_date_screened'),
-                'status_date': literal_column(
-                    '(select date_of_activity'
-                    ' from activity a'
-                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
-                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
-                    ' where pu.plate_id = plate.plate_id'
-                    " and aa.administrative_activity_type='Plate Status Update' "
-                    ' order by date_created desc limit 1 )').label('status_date'),
-                'status_performed_by': literal_column(
-                    "(select su.first_name || ' ' || su.last_name "
-                    ' from activity a'
-                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
-                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
-                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
-                    ' where pu.plate_id = plate.plate_id'
-                    " and aa.administrative_activity_type='Plate Status Update' "
-                    ' order by a.date_created desc limit 1 )').label('status_performed_by'),
-                'status_performed_by_id': literal_column(
-                    "(select su.screensaver_user_id "  # TODO: replace with the final login id
-                    ' from activity a'
-                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
-                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
-                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
-                    ' where pu.plate_id = plate.plate_id'
-                    " and aa.administrative_activity_type='Plate Status Update' "
-                    ' order by a.date_created desc limit 1 )').label('status_performed_by_id'),
-                'date_plated': literal_column(
-                    '(select date_of_activity '
-                    ' from activity a'
-                    ' where a.activity_id=plate.plated_activity_id )').label('date_plated'),
-                'date_retired': literal_column(
-                    '(select date_of_activity '
-                    ' from activity a'
-                    ' where a.activity_id=plate.retired_activity_id )').label('date_retired'),
-                    };
+                'screening_count': (
+                    select([func.count(distinct(_ls.c.activity_id))])
+                    .select_from(_ls.join(
+                        _ap,_ls.c.activity_id==_ap.c.library_screening_id))
+                    .where(_ap.c.plate_id==literal_column('plate.plate_id'))
+                    ),
+                'ap_count': (
+                    select([func.count(distinct(_ap.c.assay_plate_id))])
+                    .select_from(_ap)
+                    .where(_ap.c.plate_id==literal_column('plate.plate_id'))
+                    ),
+                'first_date_screened': (
+                    select([func.min(_a.c.date_of_activity)])
+                    .select_from(
+                        _ls.join(
+                            _ap,_ls.c.activity_id==_ap.c.library_screening_id)
+                        .join(_a, _a.c.activity_id==_ls.c.activity_id))
+                    .where(_ap.c.plate_id==literal_column('plate.plate_id'))
+                    ),
+                'last_date_screened': (
+                    select([func.max(_a.c.date_of_activity)])
+                    .select_from(
+                        _ls.join(
+                            _ap,_ls.c.activity_id==_ap.c.library_screening_id)
+                        .join(_a, _a.c.activity_id==_ls.c.activity_id))
+                    .where(_ap.c.plate_id==literal_column('plate.plate_id'))
+                    ),
+                'status_date': (
+                    select([status_apilogs.c.date_time])
+                    .select_from(status_apilogs)
+                    .where(status_apilogs.c.key==_plate_cte.c.key)
+                    .order_by(desc(status_apilogs.c.date_time))
+                    .limit(1)
+                    ),
+                'status_performed_by': (
+                    select([status_apilogs.c.name])
+                    .select_from(status_apilogs)
+                    .where(status_apilogs.c.key==_plate_cte.c.key)
+                    .order_by(desc(status_apilogs.c.date_time))
+                    .limit(1)
+                    ),
+                'status_performed_by_username': (
+                    select([status_apilogs.c.username])
+                    .select_from(status_apilogs)
+                    .where(status_apilogs.c.key==_plate_cte.c.key)
+                    .order_by(desc(status_apilogs.c.date_time))
+                    .limit(1)
+                    ),
+                'date_plated': (
+                    select([status_apilogs.c.date_time])
+                    .select_from(status_apilogs)
+                    .where(status_apilogs.c.key==_plate_cte.c.key)
+                    .where(status_apilogs.c.after=='available')
+                    .order_by(desc(status_apilogs.c.date_time))
+                    .limit(1)
+                    ),
+                'date_retired': (
+                    select([status_apilogs.c.date_time])
+                    .select_from(status_apilogs)
+                    .where(status_apilogs.c.key==_plate_cte.c.key)
+                    .where(status_apilogs.c.after.in_(retired_statuses))
+                    .order_by(desc(status_apilogs.c.date_time))
+                    .limit(1)
+                    ),
+            };
 
             base_query_tables = ['plate', 'copy', 'plate_location', 'library']
 
@@ -843,15 +928,8 @@ class LibraryCopyPlateResource(DbApiResource):
                 custom_columns=custom_columns)
             # build the query statement
 
-            _p = self.bridge['plate']
-            _pl = self.bridge['plate_location']
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _ap = self.bridge['assay_plate']
-            p1 = self.bridge['plate_screening_statistics']
-            p1 = p1.alias('p1')
-            j = join(_p, _c, _p.c.copy_id == _c.c.copy_id)
-            j = j.join(p1, _p.c.plate_id == text('p1.plate_id'), isouter=True)
+            j = join(_plate_cte, _p, _p.c.plate_id == _plate_cte.c.plate_id)
+            j = j.join(_c, _p.c.copy_id == _c.c.copy_id)
             j = j.join(
                 _pl, _p.c.plate_location_id == _pl.c.plate_location_id,
                 isouter=True)
@@ -1080,7 +1158,6 @@ class LibraryCopyPlateResource(DbApiResource):
                 or not set(required_kwargs_check) & set(id_kwargs.keys())):
             raise ValidationError({
                 k:'required' for k in required_kwargs_check if k not in id_kwargs })
-        logger.info('1')
         try:
             plate = Plate.objects.get(
                 copy__name=id_kwargs['copy_name'],
@@ -1848,6 +1925,7 @@ class ScreenResultResource(DbApiResource):
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             else:
                 logger.info('do not use vocabularies: %r', param_hash)
+            # FIXME: use closing wrapper
             conn = get_engine().connect()
             if logger.isEnabledFor(logging.DEBUG):
                 logger.info(
@@ -2398,10 +2476,10 @@ class ScreenResultResource(DbApiResource):
             
         self.create_data_loading_statistics(screen_result)
         screenresult_log.diffs.update({ 
-            'created_by': adminuser.username,  
-            'experimental_well_count': screen_result.experimental_well_count,
-            'replicate_count': screen_result.replicate_count,
-            'channel_count': screen_result.channel_count,
+            'created_by': [None,adminuser.username],  
+            'experimental_well_count': [None,screen_result.experimental_well_count],
+            'replicate_count': [None,screen_result.replicate_count],
+            'channel_count': [None,screen_result.channel_count],
         })
         screenresult_log.save()
         
@@ -2661,8 +2739,8 @@ class ScreenResultResource(DbApiResource):
                     f, 'result_value', sep=str(','), columns=fieldnames, null=PSYCOPG_NULL)
                 logger.info('result_values created.')
             screenresult_log.diffs.update({
-                'result_values_created': rvs_to_create,
-                'assay_wells_loaded': rows_created
+                'result_values_created': [None,rvs_to_create],
+                'assay_wells_loaded': [None, rows_created]
                 })
         for dc in sheet_col_to_datacolumn.values():
             dc.save()
@@ -3250,14 +3328,33 @@ class CopyWellResource(DbApiResource):
             _w = self.bridge['well']
             
             custom_columns = {
-                'volume': func.coalesce(_cw.c.volume, _p.c.well_volume),
-                'initial_volume': func.coalesce(
-                    _cw.c.initial_volume,_p.c.well_volume),
-                'consumed_volume': (
-                    func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
-                    func.coalesce(_cw.c.volume, _p.c.well_volume) 
-                    ),
-                'adjustments': func.coalesce(_cw.c.adjustments, 0),
+                'volume': case([
+                    (_w.c.library_well_type=='experimental', 
+                         func.coalesce(_cw.c.volume, _p.c.well_volume) )],
+                    else_=None),
+                'initial_volume': case([
+                    (_w.c.library_well_type=='experimental', 
+                         func.coalesce(_cw.c.initial_volume,_p.c.well_volume) )],
+                     else_=None),
+                'consumed_volume': case([
+                    (_w.c.library_well_type=='experimental', 
+                        func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
+                            func.coalesce(_cw.c.volume, _p.c.well_volume) )],
+                    else_=None),
+                'mg_ml_concentration': case([
+                    (_w.c.library_well_type=='experimental', 
+                        func.coalesce(
+                            _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration) )],
+                    else_=None),
+                'molar_concentration': case([
+                    (_w.c.library_well_type=='experimental', 
+                        func.coalesce(
+                            _cw.c.molar_concentration,_p.c.molar_concentration) )],
+                    else_=None),
+                'adjustments': case([
+                    (_w.c.library_well_type=='experimental', 
+                        func.coalesce(_cw.c.adjustments, 0) )],
+                    else_=None),
                 # Note: the query plan makes this faster than the hash join of 
                 # copy-copy_well
                 # 'copy_name': literal_column(
@@ -3314,8 +3411,14 @@ class CopyWellResource(DbApiResource):
     def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete_obj is not implemented')
     
+#     @write_authorization
+#     @un_cache
+#     @transaction.atomic
+#     def patch_list(self, request, **kwargs):
+#         return DbApiResource.patch_list(self, request, **kwargs)
+    
     def patch_obj(self, request, deserialized, **kwargs):
-
+        # TODO: optimize for list inputs (see well.patch)
         logger.info('patch_obj %s', deserialized)
 
         schema = self.build_schema()
@@ -3328,11 +3431,18 @@ class CopyWellResource(DbApiResource):
             if deserialized.get(key, None) is not None:
                 initializer_dict[key] = parse_val(
                     deserialized.get(key, None), key, fields[key]['data_type']) 
+
+        volume = initializer_dict.get('volume', None)        
+        mg_ml_concentration = initializer_dict.get('mg_ml_concentration', None)
+        molar_concentration = initializer_dict.get('molar_concentration', None)
         
-        if 'volume' not in initializer_dict:
-            raise ValidationError(
-                key='volume',
-                msg='must submit a value')
+        if volume is None and molar_concentration is None and mg_ml_concentration is None:
+            msg = 'Must submit one of [volume, mg_ml_concentration, molar_concentration]'
+            raise ValidationError({
+                'volume': mmsg,
+                'mg_ml_concentration': msg,
+                'molar_concentration': msg
+                })
         
         id_kwargs = self.get_id(deserialized, **kwargs)
         
@@ -3358,7 +3468,9 @@ class CopyWellResource(DbApiResource):
             try:
                 copywell = CopyWell.objects.get(
                     well=well, copy=librarycopy)
-                copywell.adjustments += 1
+
+                if volume is not None:
+                    copywell.adjustments += 1
             except ObjectDoesNotExist:
                 try:
                     plate = Plate.objects.get(
@@ -3369,12 +3481,16 @@ class CopyWellResource(DbApiResource):
                     raise Http404(msg)
                 copywell = CopyWell.objects.create(
                     well=well, copy=librarycopy, plate=plate,
-                    adjustments=1)
+                    adjustments=0)
+                if volume is not None:
+                    copywell.adjustments += 1
                 copywell.save()
                 logger.info('created cw: %r, %r', copywell, copywell.adjustments)
 
             # Note: only 'remaining volume' may be set at this time
-            copywell.volume = initializer_dict['volume']
+            copywell.volume = volume
+            copywell.mg_ml_concentration = mg_ml_concentration
+            copywell.molar_concentration = molar_concentration
             
             copywell.save()
             logger.info('patch_obj done')
@@ -3968,11 +4084,16 @@ class LibraryCopyResource(DbApiResource):
  
             # specific setup 
 
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _ap = self.bridge['assay_plate']
+            _p = self.bridge['plate']
+            _ls = self.bridge['library_screening']
+
             custom_columns = {
                 'copy_id': literal_column('c1.copy_id'),
                 'library_short_name': literal_column(
                     'c1.short_name').label('library_short_name'),
-                'plate_screening_count': literal_column('c1.plate_screening_count'),
                 'copy_plate_count': literal_column('c1.copy_plate_count'),
                 'plate_screening_count_average': literal_column(
                     'c1.plate_screening_count::float/c1.copy_plate_count::float ').\
@@ -3980,13 +4101,28 @@ class LibraryCopyResource(DbApiResource):
                 'avg_plate_volume': literal_column('c2.avg_plate_volume'),
                 'min_plate_volume': literal_column('c2.min_plate_volume'),
                 'max_plate_volume': literal_column('c2.max_plate_volume'),
-                'screening_count': literal_column('c3.screening_count'),
+                # FIXME: redo for dynamic calculation
+#                 'screening_count': literal_column('c3.screening_count'),
+                'screening_count': (
+                    select([func.count(distinct(_ls.c.activity_id))])
+                    .select_from(_ls.join(
+                            _ap,_ls.c.activity_id==_ap.c.library_screening_id)
+                        .join(_p,_p.c.plate_id==_ap.c.plate_id))
+                    .where(_p.c.copy_id==literal_column('copy.copy_id'))
+                    ),
+                # FIXME: redo for dynamic calculation
                 'ap_count': literal_column('c3.ap_count'),
+                # FIXME: redo for dynamic calculation
                 'dl_count': literal_column('c3.dl_count'),
+                # FIXME: redo for dynamic calculation
                 'first_date_data_loaded': literal_column('c3.first_date_data_loaded'),
+                # FIXME: redo for dynamic calculation
                 'last_date_data_loaded': literal_column('c3.last_date_data_loaded'),
+                # FIXME: redo for dynamic calculation
                 'first_date_screened': literal_column('c3.first_date_screened'),
+                # FIXME: redo for dynamic calculation
                 'last_date_screened': literal_column('c3.last_date_screened'),
+
                 'primary_plate_location': (
                     literal_column('\n'.join([
                     "( select room || '-' || freezer || '-' || shelf || '-' || bin ",
@@ -4015,10 +4151,6 @@ class LibraryCopyResource(DbApiResource):
 
             # build the query statement
 
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _ap = self.bridge['assay_plate']
-            
             # = copy volume statistics = 
 
             text_cols = ','.join([
@@ -4085,13 +4217,17 @@ class LibraryCopyResource(DbApiResource):
     
             # = copy screening statistics = 
             
-            # NOTE: precalculated version
+            copy_screening_statistics = (
+                select([
+                    ]))
+            
+#             # NOTE: precalculated version
             copy_screening_statistics = select([text('*')])\
                     .select_from(text('copy_screening_statistics'))\
-
+ 
             copy_screening_statistics = copy_screening_statistics.where(
                 literal_column('short_name') == library_short_name)
-
+ 
             copy_screening_statistics = copy_screening_statistics.cte(
                 'copy_screening_statistics')
             
@@ -4205,15 +4341,83 @@ class LibraryCopyResource(DbApiResource):
             if initial_plate_volume:
                 initial_plate_volume = parse_val(
                     initial_plate_volume, 'initial_plate_volume', 'decimal')
+            initial_plate_mg_ml_concentration = \
+                deserialized.get('initial_plate_mg_ml_concentration', None)
+            if initial_plate_mg_ml_concentration:
+                initial_plate_mg_ml_concentration = parse_val(
+                    initial_plate_mg_ml_concentration, 
+                    'initial_plate_mg_ml_concentration', 'decimal')
+            initial_plate_molar_concentration = \
+                deserialized.get('initial_plate_molar_concentration', None)
+            if initial_plate_molar_concentration:
+                initial_plate_molar_concentration = parse_val(
+                    initial_plate_mg_ml_concentration, 
+                    'initial_plate_molar_concentration', 'decimal')
+            if ( initial_plate_molar_concentration is not None and
+                 initial_plate_mg_ml_concentration is not None ):
+                msg = ('May only set one of '
+                    '["initial_plate_mg_ml_concentration",'
+                    '"initial_plate_molar_concentration"]')
+                raise ValidationError({
+                    'initial_plate_mg_ml_concentration': msg,
+                    'initial_plate_molar_concentration': msg })     
+            
             library = librarycopy.library
+            
+            if ( initial_plate_molar_concentration is None and 
+                 initial_plate_mg_ml_concentration is None ):
+                # use the well concentrations to set the values
+                # case 1: all wells use the same concentration value
+                
+                mg_mls = ( 
+                    library.well_set.all()
+                        .filter(library_well_type='experimental')
+                        .distinct('mg_ml_concentration')
+                        .values_list('mg_ml_concentration', flat=True))
+                if len(mg_mls) == 1:
+                    initial_plate_mg_ml_concentration = mg_mls[0]
+                molars = ( 
+                    library.well_set.all()
+                        .filter(library_well_type='experimental')
+                        .distinct('molar_concentration')
+                        .values_list('molar_concentration', flat=True))
+                if len(molars) == 1:
+                    initial_plate_molar_concentration = molars[0]
+            
+                if ( initial_plate_molar_concentration is not None and
+                     initial_plate_mg_ml_concentration is not None ):
+                    msg = ('Invalid library well concentrations: both '
+                        '["mg_ml_concentration",'
+                        '"molar_concentration"] are set')
+                    logger.warn(msg)
+                    initial_plate_molar_concentration = None
+                    initial_plate_mg_ml_concentration = None
+                    
+            logger.info('initial mg_ml %r, molar: %r', 
+                initial_plate_mg_ml_concentration, 
+                initial_plate_molar_concentration)            
             logger.debug('create plates start: %d, end: %d',
                 library.start_plate, library.end_plate)
             for x in range(library.start_plate, library.end_plate + 1):
                 p = Plate.objects.create(
                     copy=librarycopy, 
                     plate_number=x,
-                    well_volume=initial_plate_volume )
+                    well_volume=initial_plate_volume,
+                    mg_ml_concentration=initial_plate_mg_ml_concentration,
+                    molar_concentration=initial_plate_molar_concentration )
                 p.save()
+                
+                if len(mg_mls)>1 or len(molars)>1:
+                    # Library contains specific well concentrations, must 
+                    # create copy_wells to reflect these concentrations
+                    logger.info('creating copywells for plate: %r', p)
+                    for well in library.well_set.all().filter(plate_number=p.plate_number):
+                        CopyWell.objects.create(
+                            well=well, copy=librarycopy, plate=p,
+                            adjustments=0,
+                            mg_ml_concentration=well.mg_ml_concentration,
+                            molar_concentration=well.molar_concentration)
+                
                 logger.debug('saved plate: %r', p.plate_number)
             
             logger.info('patch_obj done')
@@ -4572,8 +4776,9 @@ class PublicationResource(DbApiResource):
         log.uri = '/'.join([self._meta.resource_name,log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION_DELETE
-        log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
-        log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+#         log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
+#         log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+        log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
 
@@ -5107,7 +5312,7 @@ class UserAgreementResource(AttachedFileResource):
         apilog.ref_resource_name = 'screensaveruser'
         apilog.uri = [apilog.ref_resource_name, username]
         apilog.key = username
-        apilog.diff_keys = ['data_sharing_level']
+#         apilog.diff_keys = ['data_sharing_level']
         
         # - the user agreement is an attached file to the user
         super(UserAgreementResource,self).post_detail(request, **kwargs)
@@ -5422,7 +5627,8 @@ class ActivityResource(DbApiResource):
         for key in [key for key, field in field_hash.items() 
             if field['scope'] == 'fields.activity'] :
             if key not in columns_sa:
-                sa_columns.append(cast(literal_column("null"), TEXT).label(key))
+                sa_columns.append(cast(literal_column("null"), 
+                    sqlalchemy.sql.sqltypes.Text).label(key))
             else:
                 sa_columns.append(literal_column(key))
         stmt_sa = stmt_sa.cte('serviceactivities')
@@ -5438,7 +5644,9 @@ class ActivityResource(DbApiResource):
                 logger.info(
                     ('programming error: get_lab_activity_query '
                      'is missing the col: %r'), key)
-                la_columns.append(cast(literal_column("null"), TEXT).label(key))
+                la_columns.append(cast(
+                    literal_column("null"), 
+                    sqlalchemy.sql.sqltypes.Text).label(key))
             else:
                 la_columns.append(literal_column(key))
         stmt_la = stmt_la.cte('labactivities')
@@ -5464,14 +5672,13 @@ class ActivityResource(DbApiResource):
         _screen = self.bridge['screen']
         activity_type_column = cast(case([
             (_library_screening.c.activity_id != None,
-               case([(
-                   _library_screening.c.is_for_external_library_plates,
+               case([(_library_screening.c.is_for_external_library_plates,
                         'externallibraryscreening')],
-                        else_='libraryscreening')),
+                    else_='libraryscreening')),
             (_cps.c.activity_id != None,
                 'cherrypickscreening')
             ],
-            else_='cplt'), TEXT)
+            else_='cplt'), sqlalchemy.sql.sqltypes.Text)
 
         return { 
             'type': activity_type_column,
@@ -5766,9 +5973,13 @@ class CherryPickScreeningResource(ActivityResource):
         custom_columns = \
             super(CherryPickScreeningResource, self).get_custom_columns('ls')
         custom_columns.update({
-            'type': cast(literal_column("'cherrypickscreening'"), TEXT),
+            'type': cast(
+                literal_column("'cherrypickscreening'"), 
+                sqlalchemy.sql.sqltypes.Text),
             'activity_class': 
-                cast(literal_column("'cherrypickscreening'"), TEXT),
+                cast(
+                    literal_column("'cherrypickscreening'"), 
+                    sqlalchemy.sql.sqltypes.Text),
             })
 
         base_query_tables = ['activity', 'lab_activity', 'screening',
@@ -5910,8 +6121,12 @@ class LibraryScreeningResource(ActivityResource):
         custom_columns = \
             super(LibraryScreeningResource, self).get_custom_columns('ls')
         custom_columns.update({
-            'type': cast(literal_column("'libraryscreening'"), TEXT),
-            'activity_class': cast(literal_column("'libraryscreening'"), TEXT),
+            'type': cast(
+                literal_column("'libraryscreening'"), 
+                sqlalchemy.sql.sqltypes.Text),
+            'activity_class': cast(
+                literal_column("'libraryscreening'"), 
+                sqlalchemy.sql.sqltypes.Text),
             'libraries_screened_count': literal_column(
                 '(select count(distinct(l.*)) from library l '
                 'join copy using(library_id) join plate using(copy_id) '
@@ -6152,6 +6367,8 @@ class LibraryScreeningResource(ActivityResource):
                         library_screening, library_plates_screened)
             
             self.create_screen_screening_statistics(library_screening.screen)
+            
+            # TODO: create copy_screening_statistics, plate_screening_statistics
                         
             return library_screening
         except Exception, e:
@@ -6552,7 +6769,9 @@ class ServiceActivityResource(ActivityResource):
         custom_columns = \
             super(ServiceActivityResource, self).get_custom_columns('sa')
         custom_columns.update({
-            'activity_class': cast(literal_column("'serviceactivity'"), TEXT),
+            'activity_class': cast(
+                literal_column("'serviceactivity'"), 
+                sqlalchemy.sql.sqltypes.Text),
             'serviced_user': _serviced.c.name,
             'serviced_username': _serviced.c.username,
             })
@@ -9561,14 +9780,14 @@ class WellResource(DbApiResource):
             data['fields'] = newfields
             
             data['content_types'] = sub_data['content_types']
-        temp = [ 
-            x.title.lower() 
-                for x in 
-                Vocabulary.objects.all().filter(scope='library.well_type')]
-        data['extraSelectorOptions'] = { 
-            'label': 'Type',
-            'searchColumn': 'library_well_type',
-            'options': temp }
+#         temp = [ 
+#             x.title.lower() 
+#                 for x in 
+#                 Vocabulary.objects.all().filter(scope='library.well_type')]
+#         data['extraSelectorOptions'] = { 
+#             'label': 'Type',
+#             'searchColumn': 'library_well_type',
+#             'options': temp }
         return data
     
     def get_detail(self, request, **kwargs):
@@ -10071,6 +10290,9 @@ class LibraryResource(DbApiResource):
             # general setup
             
             manual_field_includes = set(param_hash.get('includes', []))
+            
+            if is_for_detail:
+                manual_field_includes.add('concentration_types')
  
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
@@ -10093,9 +10315,20 @@ class LibraryResource(DbApiResource):
             # specific setup
             
             _apilog = self.bridge['reports_apilog']
+            _logdiff = self.bridge['reports_logdiff']
             _l = self.bridge['library']
                                      
             custom_columns = {
+#                 'comments': (
+#                     select([
+#                         func.array_to_string(func.array_agg(
+#                             literal_column('comment')), LIST_DELIMITER_SQL_ARRAY)])
+#                         .select_from(_apilog)
+#                         .where(_apilog.c.ref_resource_name=='library')
+#                         .where(_apilog.c.key==literal_column('library.short_name'))
+#                         .where(_apilog.c.diffs==None)
+#                         .where(_apilog.c.comment!=None)
+#                         ),
                 'comments': (
                     select([
                         func.array_to_string(func.array_agg(
@@ -10103,7 +10336,9 @@ class LibraryResource(DbApiResource):
                         .select_from(_apilog)
                         .where(_apilog.c.ref_resource_name=='library')
                         .where(_apilog.c.key==literal_column('library.short_name'))
-                        .where(_apilog.c.diffs==None)
+                        .where(not_(exists(
+                            select([None]).select_from(_logdiff)
+                            .where(_logdiff.c.log_id==_apilog.c.id))))
                         .where(_apilog.c.comment!=None)
                         ),
                 'copy_plate_count': literal_column(
@@ -10141,8 +10376,31 @@ class LibraryResource(DbApiResource):
                     "(select u.first_name || ' ' || u.last_name "
                     '    from screensaver_user u '
                     '    where u.screensaver_user_id=library.owner_screener_id)'
-                    ).label('owner')
-                    };
+                    ).label('owner'),
+                'concentration_types': literal_column(
+                    '(select array_to_string(ARRAY['
+                    ' case when exists(select null from well '
+                    '  where well.library_id=library.library_id '
+                    "  and well.mg_ml_concentration is not null limit 1) then 'mg_ml' end, "
+                    ' case when exists(select null from well '
+                    '  where well.library_id=library.library_id '
+                    "  and well.molar_concentration is not null limit 1) then 'molar' end "
+                    "], '%s' ) )" % LIST_DELIMITER_SQL_ARRAY
+                    )
+                }
+            concentration_sql = (
+                'select short_name, '
+                'exists(select null from well '
+                '  where well.library_id=l.library_id '
+                '  and well.mg_ml_concentration is not null limit 1) mg_ml_measure, '
+                'exists(select null from well '
+                '  where well.library_id=l.library_id '
+                '  and well.molar_concentration is not null limit 1) molar_measure '
+                'from library l;')
+            with get_engine().connect() as conn:
+                result = conn.execute(text(concentration_sql))
+                cached_ids =  [x[0] for x in result ]
+            
                      
             base_query_tables = ['library']
 
@@ -10348,6 +10606,7 @@ class ResourceResource(reports.api.ResourceResource):
                 'label': 'Type',
                 'searchColumn': 'library_type',
                 'options': temp }
+            
         elif key == 'librarycopyplate':
             temp = [ x for x in 
                 Plate.objects.all().distinct('status')

@@ -432,11 +432,11 @@ define([
           appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
-      this.listenTo(this.listModel, 'change:search', function(){
-        // TODO: this listener should be set in the collection initializer
-        var searchHash = _.clone(self.listModel.get('search'));
-        self.collection.setSearch(searchHash);
-      });
+//      this.listenTo(this.listModel, 'change:search', function(){
+//        // TODO: this listener should be set in the collection initializer
+//        var searchHash = _.clone(self.listModel.get('search'));
+//        self.collection.setSearch(searchHash);
+//      });
 
 
       if(self.collection instanceof Backbone.PageableCollection){

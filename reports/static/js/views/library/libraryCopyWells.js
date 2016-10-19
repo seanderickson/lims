@@ -137,10 +137,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               // Prevent save on update
               if (options.save === false)
                   return;
+              
+              var has_changes = false;
               var newValue = parseFloat(model.get("volume"));
               var prevValue = parseFloat(model.previous("volume"));
               if (newValue == prevValue){
-                console.log('no change');
+                console.log('no change in volume');
+              } else {
+                has_changes = true;
+              }
+              var newValue = parseFloat(model.get("mg_ml_concentration"));
+              var prevValue = parseFloat(model.previous("mg_ml_concentration"));
+              if (newValue == prevValue){
+                console.log('no change in mg_ml_concentration');
+              } else {
+                has_changes = true;
+              }
+              var newValue = parseFloat(model.get("molar_concentration"));
+              var prevValue = parseFloat(model.previous("molar_concentration"));
+              if (newValue == prevValue){
+                console.log('no change in molar_concentration');
+              } else {
+                has_changes = true;
+              }
+              
+              if (!has_changes) {
+                console.log('no changes');
                 return;
               }
               model.url = url;
@@ -219,6 +241,18 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.remove();
       });
 
+      var concentration_types = self.library.get('concentration_types');
+      resource.fields['mg_ml_concentration']['visibility'] = [];
+      resource.fields['molar_concentration']['visibility'] = [];
+      if (concentration_types) {
+        if (_.contains(concentration_types, 'mg_ml')){
+          resource.fields['mg_ml_concentration']['visibility'] = ['l'];
+        }
+        if (_.contains(concentration_types, 'molar')){
+          resource.fields['molar_concentration']['visibility'] = ['l'];
+        }
+      }
+      
       var view = new ListView({ 
         _name: 'WellsListView',
         uriStack: uriStack,

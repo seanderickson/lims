@@ -100,14 +100,14 @@ define([
         key:  'unit', 
         type: 'Select',
         options: units,
-        editorClass: 'form-control',
+        editorClass: 'form-control form-control-zero-padding',
         template: this.unitFieldTemplate
       };
       formSchema['number'] = {
         title: '', 
         key:  'number',
         type: 'Number',
-        editorClass: 'form-control',
+        editorClass: 'form-control form-control-zero-padding',
         template: this.fieldTemplate
       };
     },

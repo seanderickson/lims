@@ -40,6 +40,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       // To be defined in the subclass
     },      
     
+    // NOTE: if overriding, must register click_tab in the subclass
     events: {
       'click ul.nav-tabs >li': 'click_tab',
     },

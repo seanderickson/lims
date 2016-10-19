@@ -52,7 +52,8 @@ define([
     },      
     
     events: {
-        'click button#upload': 'upload'        
+      'click ul.nav-tabs >li': 'click_tab',
+      'click button#upload': 'upload'        
     },
 
     upload: function(event){
@@ -462,6 +463,10 @@ define([
       var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
       var plateResource = appModel.getResource('librarycopyplate');
       var plateWellVolumeField = _.result(plateResource['fields'], 'well_volume', {});
+      var plateMgMlConcentrationField = _.result(
+        plateResource['fields'], 'mg_ml_concentration', {});
+      var plateMolarConcentrationField = _.result(
+        plateResource['fields'], 'molar_concentration', {});
       var copyUrl = copyResource.apiUri;
         
       formSchema['library_short_name'] = {
@@ -475,6 +480,7 @@ define([
         title: 'Name',
         key: 'name',
         type: Backbone.Form.editors.Text,
+        editorClass: 'form-control',
         validators: [
           'required',
           function checkRange(value, formValues) {
@@ -520,6 +526,37 @@ define([
         formSchema['initial_plate_well_volume'],
         plateWellVolumeField['display_options']);
 
+      formSchema['set_initial_plate_concentration'] = {
+        title: '<strong>Set initial plate concentrations:</strong>',
+        help: 'Select to override the default library well concentrations',
+        key: 'set_initial_plate_concentration',
+        type: 'Checkbox',
+        template: appModel._alt_checkbox_template
+      };
+      formSchema['initial_plate_mg_ml_concentration'] = {
+        title: 'Initial Plate mg/ml Concentration',
+        help: 'If set, this value overrides the default library well concentration',
+        key: 'initial_plate_mg_ml_concentration',
+        type: Backbone.Form.editors.Number,
+        editorClass: 'form-control',
+        template: fieldTemplate 
+      };
+      _.extend(
+        formSchema['initial_plate_mg_ml_concentration'],
+        plateMgMlConcentrationField['display_options']);
+
+      formSchema['initial_plate_molar_concentration'] = {
+        title: 'Initial Plate Molar Concentration',
+        help: 'If set, this value overrides the default library well concentration',
+        key: 'initial_plate_molar_concentration',
+        type: EditView.SIunitEditor,
+        editorClass: 'form-control form-control-zero-padding',
+        template: fieldTemplate 
+      };
+      _.extend(
+        formSchema['initial_plate_molar_concentration'],
+        plateMolarConcentrationField['display_options']);
+      
 // TODO:
 //      formSchema['initial_plate_status'] = {
 //        title: 'Initial Plate Status',
@@ -530,18 +567,6 @@ define([
 //        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
 //        template: fieldTemplate 
 //      };
-      
-      
-// TODO:
-//      formSchema['initial_plate_well_concentration'] = {
-//        title: 'Initial Plate Well Concentration',
-//        key: 'initial_plate_well_concentration',
-//        type: EditView.SIunitEditor,
-//        template: fieldTemplate 
-//      };
-//      _.extend(
-//        formSchema['initial_plate_well_concentration'],
-//        plateWellConcentrationField['display_options']);
       
       formSchema['comments'] = {
         title: 'Comments',
@@ -555,6 +580,26 @@ define([
         schema: formSchema,
         validate: function(attrs) {
           var errs = {};
+          
+          var v1 = _.result(attrs, 'initial_plate_mg_ml_concentration');
+          var v2 = _.result(attrs, 'initial_plate_molar_concentration');
+          if (v1 != 0 && v2 != 0 ) {
+            var msg = 'Can not specify both "mg/ml" and "Molar" initial plate concentrations';
+            errs['initial_plate_mg_ml_concentration'] = msg;
+            errs['initial_plate_molar_concentration'] = msg;
+          }
+          
+          if (v1 < 0 ) {
+            errs['initial_plate_mg_ml_concentration'] = 'Must be positive';
+          }
+          if (v2 < 0 ) {
+            errs['initial_plate_molar_concentration'] = 'Must be positive';
+          } 
+          
+          if (_.result(attrs, 'initial_plate_well_volume') < 0) {
+            errs['initial_plate_well_volume'] = 'Must be positive';
+          }
+          
           if (!_.isEmpty(errs)) return errs;
         }
       });
@@ -568,6 +613,22 @@ define([
       var formview = form.render();
       var _form_el = formview.el;
       var $form = formview.$el;
+
+      $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', true);
+      $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', true);
+
+      form.listenTo(form, "change", function(e){
+        console.log('change');
+        var set_initial_plate_concentration = form.getValue('set_initial_plate_concentration');
+        if(set_initial_plate_concentration){
+          $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', false);
+          $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', false);
+        } else {
+          $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', true);
+          $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', true);
+        }
+      });
+      
       $form.find('.chosen-select').chosen({
         disable_search_threshold: 3,
         width: '100%',
@@ -584,11 +645,25 @@ define([
           var errors = form.commit({ validate: true }) || {}; 
           if (!_.isEmpty(errors) ) {
             _.each(_.keys(errors), function(key) {
-              form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+              form.$el.find('[name="'+key +'"]')
+                .parents('.form-group').addClass('has-error');
             });
             return false;
           }            
-          var values = form.getValue()
+          var values = form.getValue();
+          
+          if (! values['set_initial_plate_concentration']) {
+            delete values['initial_plate_mg_ml_concentration'];
+            delete values['initial_plate_molar_concentration'];
+          } else {
+            if (values['initial_plate_mg_ml_concentration'] == 0) {
+              delete values['initial_plate_mg_ml_concentration'];
+            }
+            if (values['initial_plate_molar_concentration'] == 0) {
+              delete values['initial_plate_molar_concentration'];
+            }
+          }
+          
           $.ajax({
             url: copyUrl,    
             data: JSON.stringify(values),

@@ -1407,14 +1407,6 @@ define([
       if(url.search(/\?/) < 1 ){
         url = url + '?';
       }
-      var self = this;
-      var altCheckboxTemplate =  _.template('\
-          <div class="form-group" style="margin-bottom: 0px;" > \
-            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-            </div>\
-          </div>\
-        ');
       var formSchema = {};
       
       formSchema['use_vocabularies'] = {
@@ -1422,14 +1414,14 @@ define([
         help: 'If selected, vocabulary key values will be replaced with labels',
         key: 'use_vocabularies',
         type: 'Checkbox',
-        template: altCheckboxTemplate
+        template: self._alt_checkbox_template
       };
       formSchema['use_titles'] = {
         title: 'Use column titles',
         help: 'If selected, column key values will be replaced with column titles',
         key: 'use_titles',
         type: 'Checkbox',
-        template: altCheckboxTemplate
+        template: self._alt_checkbox_template
       };
       formSchema['raw_lists'] = {
         title: 'Export nested lists without list brackets',
@@ -1437,7 +1429,7 @@ define([
                 'but not denoted with brackets[]. '].join(''),
         key: 'raw_lists',
         type: 'Checkbox',
-        template: altCheckboxTemplate
+        template: self._alt_checkbox_template
       };
       formSchema['data_interchange'] = {
         title: 'Download for data interchange',
@@ -1445,7 +1437,7 @@ define([
                 '(vocabulary and column key values are used)'].join(''),
         key: 'data_interchange',
         type: 'Checkbox',
-        template: altCheckboxTemplate
+        template: self._alt_checkbox_template
       };
       formSchema['content_type'] = {
         title: 'Download type',
@@ -1533,7 +1525,8 @@ define([
           if(!_.isEmpty(errors) ){
             console.log('errors', errors);
             _.each(_.keys(errors), function(key){
-              form.$el.find('[name="'+key +'"]').parents('.form-group,.input-group').addClass('has-error');
+              form.$el.find('[name="'+key +'"]')
+                .parents('.form-group,.input-group').addClass('has-error');
             });
             return false;
           }
@@ -1732,6 +1725,13 @@ define([
     '  </div>',
   ].join(''));
   
+  appState._alt_checkbox_template =  _.template('\
+    <div class="form-group" style="margin-bottom: 0px;" > \
+      <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+        <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+      </div>\
+    </div>\
+  ');
   
   
   appState.schemaClass = new SchemaClass(); // make accessible to outside world

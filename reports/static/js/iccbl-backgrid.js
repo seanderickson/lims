@@ -246,7 +246,7 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consu
   var checkStack = function(stack){
     if (_.isEmpty(urlStack)){
       var msg = 'not enough items on the URL to create the key for resource: ' + 
-          resource.title;
+          resource.title + JSON.stringify(resource.id_attribute);
       throw msg;
     }
   };
@@ -852,7 +852,7 @@ _.extend(SIUnitsFormatter.prototype, {
       }
     }
 
-    if(multiplier > 1){
+    if(multiplier >= 1){
       number = number * multiplier;
     }else{
       console.log("Error, DecimalCell multiplier < 1: " + multiplier);
@@ -1266,7 +1266,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   },
       
   /**
-   * Method for external callers to set the search
+   * Method for external callers to set the search, with fetch
    */
   setSearch: function(searchHash) {
     var self = this;
@@ -1312,15 +1312,15 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     self.fetch({reset: true}).fail(
       function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
     );
-//    self.fetch({data:_data, reset: true}).fail(
-//      function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-//    );
   },
 
   /**
-   * Proxy for the search elements to add search terms to the listModel
+   * Proxy for the search elements to add search terms to the listModel,
+   * if options.reset == true, then fetch, otherwise no fetch.
    */ 
-  addSearch: function(searchHash) {
+  addSearch: function(searchHash, options) {
+    console.log('addSearch: ' + JSON.stringify(searchHash) 
+      + ', options: ' + JSON.stringify(options) );
     var self = this;
     var oldsearchHash = _.clone(self.listModel.get('search'));
     oldsearchHash = _.extend(oldsearchHash, searchHash);
@@ -1333,11 +1333,18 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         return self.listModel.get('search')[key] || null;
       };
     });
+    if(options && options.reset){
+      console.log('collection.addSearch: reset');
+      self.getFirstPage({reset: true, fetch: true}).fail(
+        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+      );
+    }
   },
 
   /**
    * Proxy for the search elements to clear search terms from the listModel on
    * the collection.
+   * if options.reset == true, then fetch, otherwise no fetch.
    */ 
   clearSearch: function(searchKeys, options) {
     console.log('clearsearch: ' + JSON.stringify(searchKeys) 
@@ -1360,7 +1367,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       });
       if(options && options.reset){
         console.log('collection.clearSearch: reset');
-        self.getFirstPage({reset: true, fetch: true});
+        self.getFirstPage({reset: true, fetch: true}).fail(
+          function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+        );
       }
     }
   },
@@ -2254,7 +2263,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
+      this.collection.addSearch(searchHash,{reset: true});
     }else{
       console.log('nothing submitted');
     }
@@ -2354,7 +2363,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
       self.collection.clearSearch(possibleSearches);
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
+      this.collection.addSearch(searchHash,{reset: true});
     }else{
       console.log('Date Cell nothing submitted');
     }
@@ -2566,7 +2575,7 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
       self.collection.clearSearch(possibleSearches);
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
+      this.collection.addSearch(searchHash,{reset: true});
     }else{
       console.log('nothing submitted');
     }
@@ -2863,7 +2872,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     if(!_.isEmpty(searchHash)){
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
+      this.collection.addSearch(searchHash,{reset: true});
     }else{
       self.collection.fetch().fail(
         function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
@@ -3177,7 +3186,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
       self.collection.clearSearch(self._serverSideFilter.getPossibleSearches());
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
+      this.collection.addSearch(searchHash,{reset: true});
     }else{
       console.log('nothing submitted');
     }
@@ -3476,7 +3485,7 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
       self.collection.clearSearch(possibleSearches);
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
+      this.collection.addSearch(searchHash,{reset: true});
     }else{
       console.log('nothing submitted');
     }

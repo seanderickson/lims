@@ -308,6 +308,13 @@ todo: these selectors should be redone
   padding-right: 0px; 
 }
 
+.form-control-zero-padding {
+ padding: 0px;
+ border-left: 0px;
+ border-right: 0px;
+ border-top: 0px;
+}
+
 td.text-wrap-cell {
   text-overflow: inherit;
   white-space: inherit;

@@ -934,14 +934,11 @@ class LogCompareTest(TestCase):
         
         diff_dict = compare_dicts(dict1, dict2)
         
-        self.assertTrue(diff_dict['added_keys'] == ['three'], diff_dict['added_keys'])
-        self.assertTrue(diff_dict['removed_keys'] == ['six'], diff_dict['removed_keys'])
-        self.assertTrue(set(diff_dict['diff_keys']) 
-            == set(['one','two','four']), diff_dict['diff_keys'])
+        self.assertTrue(set(diff_dict.keys()) 
+            == set(['one','two','three','four','six']), diff_dict.keys())
 
-        # because it's not "full", diff_dict doesn't show diffs added
-        self.assertTrue('three' not in diff_dict['diffs'], diff_dict['diffs'])
-        self.assertTrue(diff_dict['diffs']['two']==['value2a', 'value2b'])
+        self.assertTrue('three' in diff_dict, diff_dict)
+        self.assertTrue(diff_dict['two']==['value2a', 'value2b'])
         
 
 class IResourceTestCase(SimpleTestCase):

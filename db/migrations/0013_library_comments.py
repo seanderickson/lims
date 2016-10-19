@@ -65,7 +65,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('db', '0009_convert_studies_to_screenresult'),
-        ('reports', '0001_initial')
+#         ('reports', '0001_initial')
     ]
 
     operations = [

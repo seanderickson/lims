@@ -168,12 +168,14 @@ where r.library_contents_version_id=%s order by well_id;
                 log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
                 log.key = '/'.join([str(x) for x in (
                     self.libraryResource.get_id(model_to_dict(library)).values()) ])
-                log.diff_keys = json.dumps(['version_number'])
-                log.diffs = json.dumps([
-                    prev_version.version_number if prev_version else 0, version.version_number])
+#                 log.diff_keys = json.dumps(['version_number'])
+                log.diffs = {
+                    'version_number': [
+                        prev_version.version_number if prev_version else 0, 
+                        version.version_number]
+                        }
                 log.comment = activity.comments
                 log.save()
-                logger.debug(str(('created log', log)))
                 if prev_version:
                     self.diff_library_wells(schema_editor,library, prev_version, version, log)            
 

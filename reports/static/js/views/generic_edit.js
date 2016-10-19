@@ -201,10 +201,6 @@ define([
       Backbone.View.prototype.remove.call(this);
     },
   
-    validate: function() {
-      return this.nestedForm.validate();
-    },
-  
     _observeFormEvents: function() {
       // redirect all of the nested events up
       if (!this.nestedForm) return;
@@ -842,13 +838,23 @@ define([
       
       if (_.contains(['integer','float','decimal'],fi.data_type))
       {
-        if (fi.min && !_.isUndefined(fi.min)) {
+        if (_.isNumber(fi.min)) {
           validator = function checkMin(value, formValues) {
             var err = {
                 type: 'Min',
                 message: 'must be >= ' + fi.min
             };
             if (value < fi.min ) return err;
+          };
+          validators.unshift(validator);
+        }
+        if (_.isNumber(fi.max)) {
+          validator = function checkMax(value, formValues) {
+            var err = {
+                type: 'Max',
+                message: 'must be <= ' + fi.max
+            };
+            if (value > fi.max ) return err;
           };
           validators.unshift(validator);
         }

@@ -226,19 +226,23 @@ class ApiLog(models.Model):
     # - cleanup: drop diff_keys, diff_logs, added_keys, removed_keys
     def save(self, **kwargs):
         ''' override to convert json fields '''
+        
+        # ONLY on first save, create the associated logdiffs
+        is_new = self.pk is None
         models.Model.save(self, **kwargs)
         
-        bulk_create_diffs = []
-        for key,diffs in self.diffs.items():
-            assert isinstance(diffs, (list,tuple))
-            assert len(diffs) == 2
-            bulk_create_diffs.append(LogDiff(
-                log=self,
-                field_key = key,
-                field_scope = 'fields.%s' % self.ref_resource_name,
-                before=diffs[0],
-                after=diffs[1]))
-        LogDiff.objects.bulk_create(bulk_create_diffs)
+        if is_new:
+            bulk_create_diffs = []
+            for key,diffs in self.diffs.items():
+                assert isinstance(diffs, (list,tuple))
+                assert len(diffs) == 2
+                bulk_create_diffs.append(LogDiff(
+                    log=self,
+                    field_key = key,
+                    field_scope = 'fields.%s' % self.ref_resource_name,
+                    before=diffs[0],
+                    after=diffs[1]))
+            LogDiff.objects.bulk_create(bulk_create_diffs)
     
 #     def diff_dict_to_api_log(self, log):
 #         '''

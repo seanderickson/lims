@@ -239,8 +239,8 @@ where r.library_contents_version_id=%s order by well_id;
                         logger.debug(str(('===create log for ', prev_well['well_id'])))
                         log = self.create_well_log(version, prev_well, new_well, parent_log)
                         if log:
-                            if log.diff_keys:
-                                cumulative_diff_keys.update(set(json.loads(log.diff_keys)))
+                            if log.diffs:
+                                cumulative_diff_keys.update(set(log.diffs.keys()))
                             i += 1
                     else:
                         logger.error(str(('no new well/reagent entry found for', key)))

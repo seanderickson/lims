@@ -102,10 +102,8 @@ def create_library_screening_logs(apps, schema_editor):
         screen_log.key = screen.facility_id
         screen_log.uri = '/'.join([base_uri,screen_log.ref_resource_name,screen_log.key])
          # TODO: the edit UI will set a "screenings" count
-        screen_log.diff_keys = json.dumps(['screening_count'])
         screen_count = screen_to_screening_count.get(screen.facility_id, 0)
-        screen_log.diff_keys = json.dumps(['screening_count'])
-        screen_log.diffs = json.dumps({'screening_count': [screen_count, screen_count+1] })
+        screen_log.diffs = {'screening_count': [screen_count, screen_count+1] }
         screen_count +=1
         screen_to_screening_count[screen.facility_id] = screen_count
         # TODO: actually create the screening_count var on screen
@@ -141,11 +139,10 @@ def create_library_screening_logs(apps, schema_editor):
                  # -- some are legacy records from before ss 2.0
                 adjustment = 0
             new_volume = old_volume-adjustment
-            cp_log.diff_keys = json.dumps(['screening_count','remaining_volume'])
-            cp_log.diffs = json.dumps({
+            cp_log.diffs = {
                 'screening_count': [screen_count, screen_count+1],
                 'remaining_volume': [str(old_volume),str(new_volume)]
-                 })
+                 }
             screen_count +=1
             copyplate_to_screening_count[cp_log.key] = screen_count
             copyplate_to_volume[cp_log.key] = new_volume
@@ -210,7 +207,6 @@ def create_plate_activity_logs(apps, schema_editor):
         log.date_time = create_log_time(_activity['date_of_activity'])
         log.username = _activity['username']
         log.user_id = _activity['screensaver_user_id']
-        log.diff_keys = ['status']
         if "'available'" in log.comment.lower():
             log.diffs = { 'status': ['not_specied','available']}
         elif "'not available'" in log.comment.lower():
@@ -250,7 +246,6 @@ def create_plate_activity_logs(apps, schema_editor):
         log.date_time = create_log_time(_activity['date_of_activity'])
         log.username = _activity['username']
         log.user_id = _activity['screensaver_user_id']
-        log.diff_keys = ['status']
         
         match = status_change_pattern.match(log.comment)
         if not match:
@@ -305,7 +300,6 @@ def create_lab_cherry_pick_logs(apps, schema_editor):
         
         # Note: "plating_activity" is a pseudo-key: this belies the need for 
         # an "activity" controlleed vocabulary for batch activities.
-        cpr_log.diff_keys = json.dumps(['plating_activity'])
         
         # set the new cpap state
         previous_state = 'not_plated'
@@ -319,9 +313,9 @@ def create_lab_cherry_pick_logs(apps, schema_editor):
         else:
             logger.warn('unknown state: %r, %r, %r', cplt.status,cpr,cplt)
             
-        cpr_log.diffs = json.dumps({
+        cpr_log.diffs = {
             'plating_activity': [previous_state, cpap_state]
-            })
+            }
         
         # store other activity information, in case needed
         extra_information['date_of_activity'] = str(activity.date_of_activity)
@@ -344,8 +338,7 @@ def create_lab_cherry_pick_logs(apps, schema_editor):
                 cpap.attempt_ordinal ])
             cpap_log.uri = '/'.join([base_uri,cpap_log.ref_resource_name,cpap_log.key])
             
-            cpap_log.diff_keys = json.dumps(['state'])
-            cpap_log.diffs = json.dumps([previous_state,cpap_state])
+            cpap_log.diffs = { 'state': [previous_state,cpap_state] }
             
             cpap_log.save()
             
@@ -460,7 +453,6 @@ def create_lcp_wva_logs(apps,cpap_parent_logs, schema_editor):
                 log.json_field = str(adj['volume_adjustment'])
                 
                 # Short cut, just record the volume adjustment
-                log.diff_keys = ['volume']
                 log.diffs = {'volume': ['',str(adj['volume_adjustment']) ]}
                 # temporarily store the adjustment in the json field
                 log.json_field = str(adj['volume_adjustment'])
@@ -560,8 +552,7 @@ def create_well_correction_logs(apps, schema_editor):
                     log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
                     
                     # Short cut, just record the volume adjustment
-                    log.diff_keys = ['volume']
-                    log.diffs = {'volume': ['',str(wva.volume) ]}
+                    log.diffs = {'volume': [ None,str(wva.volume) ]}
 
                     # temporarily store the adjustment in the json field
                     log.json_field = str(wva.volume)
@@ -595,8 +586,7 @@ def create_well_correction_logs(apps, schema_editor):
                 log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
             
                 # Short cut, just record the volume adjustment
-                log.diff_keys = ['volume']
-                log.diffs = {'volume': ['',str(wva.volume) ]}
+                log.diffs = {'volume': [ None,str(wva.volume) ]}
 
                 # temporarily store the adjustment in the json field
                 log.json_field = str(wva.volume)
@@ -660,8 +650,7 @@ def create_well_correction_logs(apps, schema_editor):
         log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
         
         # Short cut, just record the volume adjustment
-        log.diff_keys = ['volume']
-        log.diffs = {'volume': ['',str(wva.volume) ]}
+        log.diffs = {'volume': [ None,str(wva.volume) ]}
 
         # temporarily store the adjustment in the json field
         log.json_field = str(wva.volume)
@@ -699,11 +688,10 @@ def create_copywell_adjustments(apps, schema_editor):
     prev_plate_key = None
     initial_plate_vol = None
     current_wellcopy_volume = None
-    diff_keys = json.dumps(['volume'])
     j = 0
     for log in ( apps.get_model('reports', 'ApiLog').objects.all()
             .filter(ref_resource_name='copywell')
-            .filter(diff_keys__contains='volume')
+#             .filter(diff_keys__contains='volume')
             .order_by('key','date_time')):
         plate_key = log.key.split(':')[0]
         if not librarycopyplate_pattern.match(plate_key):
@@ -720,11 +708,10 @@ def create_copywell_adjustments(apps, schema_editor):
             prev_wellcopy_key = log.key
         # TODO: would be better to make a hash than to store in the json_field
         new_volume = current_wellcopy_volume + Decimal(log.json_field)
-        log.diff_keys = diff_keys
-        log.diffs = json.dumps({
+        log.diffs = {
             'volume': [str(current_wellcopy_volume),
                        str(new_volume)],
-           })
+           }
         current_wellcopy_volume = new_volume
         log.json_field = json.dumps({ 'volume_adjustment': log.json_field })
         log.save()

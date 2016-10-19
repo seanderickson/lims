@@ -932,19 +932,18 @@ class ApiResource(SqlAlchemyResource):
         log = self.make_log(request)
         log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
         log.uri = '/'.join([log.ref_resource_name,log.key])
-        log.save()
+#         log.save()
         logger.info('log saved: %r', log)
 
         # get new state, for logging
         try:
             new_data = self._get_detail_response(request,**kwargs_for_log)
-            log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
-            if log:
-                log.save()
+            self.log_patch(request, original_data,new_data,log=log, **kwargs)
         except Exception, e: 
             # FIXME: don't catch - should always have new data after patch
             logger.exception(
                 'exception when logging: %s', kwargs_for_log)
+        log.save()
 
         # TODO: add "Result" data to meta section, see post_list
         
@@ -996,18 +995,16 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log['%s' % id_field] = val
         log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
         log.uri = '/'.join([log.ref_resource_name,log.key])
-        log.save()
         logger.info('log saved: %r', log)
 
         if deserialized:
             try:
                 new_data = self._get_detail_response(request,**kwargs_for_log)
-                log = self.log_patch(request, original_data,new_data,log=log, **kwargs)
-                if log:
-                    log.save()
+                self.log_patch(request, original_data,new_data,log=log, **kwargs)
             except Exception, e: 
                 logger.exception(
                     'exception when logging: %s', kwargs_for_log)
+        log.save()
 
         # TODO: add "Result" data to meta section, see patch_list
         
@@ -1146,8 +1143,7 @@ class ApiResource(SqlAlchemyResource):
             log.parent_log = kwargs.get('parent_log', None)
     
         log.api_action = API_ACTION_DELETE
-        log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
-        log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+        log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
 
@@ -1780,9 +1776,12 @@ class ApiLogResource(ApiResource):
                 'diff_keys': (
                     select([
                         func.array_to_string(func.array_agg(
-                            _logdiffs.c.field_key),LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_logdiffs)
-                    .where(_logdiffs.c.log_id==text('reports_apilog.id'))
+                            literal_column('diffkey')),LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_logdiffs.c.field_key.label('diffkey')])
+                        .select_from(_logdiffs)
+                        .where(_logdiffs.c.log_id==text('reports_apilog.id'))
+                        .order_by(_logdiffs.c.field_key).alias('inner'))
                     ),
                 #  create a full ISO-8601 date format
                 'parent_log_uri': literal_column(

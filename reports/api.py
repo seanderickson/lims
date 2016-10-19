@@ -208,7 +208,7 @@ def compare_dicts(dict1, dict2, excludes=['resource_uri']):
     whereas "not full" only logs the creation; with this strategy, logs 
     must be played backwards to recreate an entity state.
     '''
-    logger.debug('compare dicts: %r, %r, %r', dict1, dict2, full)
+    logger.debug('compare dicts: %r, %r, %r', dict1, dict2)
     original_keys = set(dict1.keys())-set(excludes)
     updated_keys = set(dict2.keys())-set(excludes)
     

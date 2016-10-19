@@ -173,7 +173,7 @@ def create_screensaver_users(apps, schema_editor):
             up = UserProfileClass()
             
             up.username = username 
-            up.email = su.email
+#             up.email = su.email
             up.phone = su.phone
             up.mailing_address = su.mailing_address
             up.comments = su.comments
@@ -184,10 +184,13 @@ def create_screensaver_users(apps, schema_editor):
             up.harvard_id_requested_expiration_date = \
                 su.harvard_id_requested_expiration_date
             up.created_by_username = created_by_username            
-
+            
             up.user = au
-            up.save()
-                
+            try:
+                up.save()
+            except Exception, e:
+                logger.exception('on userprofile save: %r', username)
+                raise    
         su.user = up
         try:
             logger.info('save %r, %s' % (up,up.username))
@@ -196,6 +199,7 @@ def create_screensaver_users(apps, schema_editor):
             i += 1
         except Exception, e:
             logger.exception('unable to save the converted user: %r', su.username )
+            skip_count += 1
     logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
     
 

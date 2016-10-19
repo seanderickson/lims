@@ -72,13 +72,11 @@ def migrate_screen_status(apps,schema_editor):
             log.ref_resource_name = 'screen'
             log.key = screen.facility_id
             log.uri = '/db/api/v1/screen/' + screen.facility_id
-            log.diff_keys = '["status"]'
-            diffs = {}
+            log.diffs = {}
             if prev_item:
-                diffs['status'] = [prev_item.status, status.status]
+                log.diffs['status'] = [prev_item.status, status.status]
             else:
-                diffs['status'] = [None, status.status]
-            log.diffs = json.dumps(diffs)
+                log.diffs['status'] = [None, status.status]
             logger.info('create log: %s: %r' , j, log)
             try:
                 # use a nested atomic block to delimit rollback (the entire

@@ -6930,6 +6930,11 @@ class ScreenResource(DbApiResource):
     def dispatch_screen_detail_uiview(self, request, **kwargs):
         ''' Special method to populate nested entities for the UI '''
         
+        logger.info('dispatch_screen_detail_uiview')
+
+        if request.method.lower() != 'get':
+            return self.dispatch('detail', request, **kwargs)
+        
         _data = self._get_detail_response(request, **kwargs)
         if not _data:
             return Http404
@@ -6993,7 +6998,6 @@ class ScreenResource(DbApiResource):
                 logger.debug('no downloadID: %s' % request.GET )
         
             return response;
-        
         
     def dispatch_screen_attachedfileview(self, request, **kwargs):
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')

@@ -173,34 +173,38 @@ define([
 
       var temp_validate = this.model.validate;
       this.model.validate = function(attrs, options) {
-          errs = {};
-          if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))) {
-            if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))) {
-              errs['max_allowed_data_privacy_expiration_date'] = (
-                'can not be set if the expiration notified date is set');
-            }
-            if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))) {
-              errs['min_allowed_data_privacy_expiration_date'] = (
-                'can not be set if the expiration notified date is set');
-            }
+        errs = {};
+        if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))) {
+          if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))) {
+            errs['max_allowed_data_privacy_expiration_date'] = (
+              'can not be set if the expiration notified date is set');
           }
-          return _.isEmpty(errs) ? null : errs;
-        };
+          if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))) {
+            errs['min_allowed_data_privacy_expiration_date'] = (
+              'can not be set if the expiration notified date is set');
+          }
+        }
+        return _.isEmpty(errs) ? null : errs;
+      };
         
-      var editKeys = self.model.resource.updateKeys();
+      var editableKeys = self.model.resource.updateKeys();
       if (self.model.isNew()) {
-        editKeys = self.model.resource.createKeys();
+        editableKeys = _.union(editableKeys,self.model.resource.createKeys());
       }
-      
-      editKeys = _.filter(editKeys, function(key){
-        return !_.isEmpty(_.intersection(fields[key].visibility, ['l','d']));
+      editableKeys = _.filter(editableKeys, function(key){
+        return ! _.contains(fields[key].visibility, 'billing');
       });
-      
+      var editVisibleKeys = self.model.resource.allEditVisibleKeys();
+      editVisibleKeys = _.filter(editVisibleKeys, function(key){
+        return ! _.contains(fields[key].visibility, 'billing');
+      });
+
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,
         EditView: editView,
-        editKeys: editKeys,
+        editableKeys: editableKeys,
+        editVisibleKeys: editVisibleKeys,
         DetailView: detailView
       });
       view.showEdit = function() {
@@ -1009,8 +1013,13 @@ define([
       var key = 'billing';
       var view = this.tabViews[key];
       if (!view) {
-        var billingKeys = self.model.resource.filterKeys('visibility', 'billing');
         
+        var billingKeys = self.model.resource.filterKeys('visibility', 'billing');
+        var editableKeys = _.intersection(
+          self.model.resource.updateKeys(), billingKeys);
+        var editVisibleKeys = _.intersection(
+          self.model.resource.allEditVisibleKeys(),billingKeys);
+
         var buttons = ['download','history'];
         
         if (appModel.hasPermission('screen', 'write')) {
@@ -1024,8 +1033,8 @@ define([
               model: model, 
               uriStack: delegateStack,
               detailKeys: billingKeys,
-              editKeys: billingKeys,
-              editableKeys: billingKeys,
+              editVisibleKeys: editVisibleKeys,
+              editableKeys: editableKeys,
               buttons: buttons
             });
             self.tabViews[key] = view;

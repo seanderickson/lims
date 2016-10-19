@@ -64,7 +64,7 @@ define([
     var groups = {};
     _.each(keys,function(key){
       var fi = self.fields[key];
-      if (fi.display_options && fi.display_options.group){
+      if (fi && fi.display_options && fi.display_options.group){
         if (!_.has(groups,fi.display_options.group)){
           var newGroup = {
             title: fi.display_options.group,
@@ -744,10 +744,13 @@ define([
     },
 
     createNewModel: function(resourceId, defaults) {
+
       console.log('create new model for: ',resourceId, defaults );
+      
       var self = this;
       var resource = self.getResource(resourceId);
       var defaults = defaults || {};
+      
       _.each(resource.allEditVisibleKeys(), function(key){
         var field = resource.fields[key];
         if (key == 'resource_uri') {
@@ -789,8 +792,6 @@ define([
       });
       var newModel = new NewModel();
       newModel.resource = resource;
-      console.log('url', newModel.url());
-      console.log('new model', newModel);
       
       return newModel;
     },
@@ -829,6 +830,7 @@ define([
           console.log('model retrieved:', model);
           model.resource = resource;
           model.key = key;
+          model.set('id', key); // used by model.isNew(), if set use PATCH on save
           try{
             callBack(model);
           } catch (e) {
@@ -1352,7 +1354,7 @@ define([
             return false;
           }else{
             var values = form.getValue();
-            var resource = self.getResource('vocabularies');
+            var resource = self.getResource('vocabulary');
             var key = values[formKey].toLowerCase().replace(/\W+/g, '_');
             var ordinal = currentVocab.length + 1;
             var max_item = _.max(currentVocab, function(item){ return item.ordinal });

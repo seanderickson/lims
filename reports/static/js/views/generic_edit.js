@@ -83,15 +83,15 @@ define([
       var defaultUnit = this.defaultUnit = options.schema.defaultUnit || 1;
       var units = this.units = [];
       
-      if(! symbol){
+      if (! symbol) {
         throw 'Error: SIUnitFormFilter requires a "symbol" option'; 
       }
-      _.each(this.siunits,function(pair){
-        if(options.schema.maxunit){
-          if(options.schema.maxunit < pair[1]) return;
+      _.each(this.siunits,function(pair) {
+        if (options.schema.maxunit) {
+          if (options.schema.maxunit < pair[1]) return;
         }
-        if(options.schema.minunit){
-          if(options.schema.minunit > pair[1]) return;
+        if (options.schema.minunit) {
+          if (options.schema.minunit > pair[1]) return;
         }
         units.push({ val: pair[1], label: pair[0] + self.symbol });
       });
@@ -124,9 +124,9 @@ define([
     
     render: function() {
       var formModel;
-      if(this.value){
+      if (this.value) {
         formModel= new Backbone.Model(this._findNumberAndUnit(this.value));
-      }else{
+      } else {
         formModel= new Backbone.Model({ number: 0, unit: this.defaultUnit });
       }
       this.nestedForm = new Backbone.Form({
@@ -149,7 +149,7 @@ define([
      */
     getValue: function() {
       var self = this;
-      if (this.nestedForm){
+      if (this.nestedForm) {
         return this._calculate(
             self.multiplier,
             this.nestedForm.getValue()['unit'],
@@ -164,29 +164,29 @@ define([
       this.render();
     },
 
-    _calculate: function(multiplier, si_mult, val){
+    _calculate: function(multiplier, si_mult, val) {
       // run strip after every calculation to round out floating point math errors
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
       }
       val = strip(val * multiplier);
-      if(si_mult > 0){ // if si unit is undefined, assume to be 1
+      if (si_mult > 0) { // if si unit is undefined, assume to be 1
         val = strip(val * si_mult);
       }
       return val;
     },
     
-    _findNumberAndUnit: function(number){
+    _findNumberAndUnit: function(number) {
       var self = this;
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
       }
       number = strip(number/self.multiplier);
-      pair = _.find(this.siunits, function(pair){
+      pair = _.find(this.siunits, function(pair) {
         return pair[1] <= Math.abs(number); 
       });
       
-      if(_.isUndefined(pair)){
+      if (_.isUndefined(pair)) {
         console.log('could not find units for the input number: ' + number);
         return { number:number, unit: ''};
       }
@@ -260,7 +260,7 @@ define([
 
     initialize: function(options) {
         Backbone.Form.editors.Base.prototype.initialize.call(this, options);
-        if (this.value){
+        if (this.value) {
           this.value = new Date(this.value);
         }
     },
@@ -324,7 +324,7 @@ define([
       });
       
       // manually get the input-group-addon click
-      $('#datepicker-icon',el).click(function(e){
+      $('#datepicker-icon',el).click(function(e) {
         input.datepicker().focus();
       });
       this.setValue(this.value);
@@ -350,15 +350,15 @@ define([
     },
 
     _getValue: function() {
-      if(this.binding){
+      if (this.binding) {
         var val = this.binding.onGet(this.value);
-        if(_.isBoolean(val)){
-          if(! val) return 'false';
+        if (_.isBoolean(val)) {
+          if (! val) return 'false';
         }
         return val;
-      }else{
+      } else {
         console.log('no view binding found for disabled field, value', this.value);
-        if(_.isArray(this.value)){
+        if (_.isArray(this.value)) {
           return this.value.join(', ');
         }
         return this.value;
@@ -461,10 +461,10 @@ define([
             itemHtml = itemHtml.append( self._arrayToHtml(option.options) );
             self.id = originalId;
             close = false;
-          }else{
+          } else {
             var val = (option.val || option.val === 0) ? option.val : '';
             itemHtml.append( $('<input type="checkbox" name="'+self.getName()+'" id="'+self.id+'-'+index+'" />').val(val) );
-            if (option.labelHTML){
+            if (option.labelHTML) {
               itemHtml.append( $('<label for="'+self.id+'-'+index+'">').html(option.labelHTML) );
             }
             else {
@@ -499,7 +499,7 @@ define([
       this.$el.attr('multiple', 'multiple');
       this.setOptions(this.schema.options);
       
-      if(this.schema.placeholder){
+      if (this.schema.placeholder) {
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
@@ -512,17 +512,17 @@ define([
       Backbone.Form.editors.Select.prototype.render.apply(this);
       
       this.setOptions(this.schema.options);
-      if(this.schema.placeholder){
+      if (this.schema.placeholder) {
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       
       // if the current value is not in the options, then display it as the placeholder
       var currVal = this.model.get(this.key);
-      if(!_.find(this.schema.options,function(option){
+      if (!_.find(this.schema.options,function(option) {
         return option.val == currVal;
-      })){
+      })) {
         this.$el.attr('data-placeholder', currVal);
-      }else if(this.schema.placeholder){
+      }else if (this.schema.placeholder) {
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
@@ -543,34 +543,30 @@ define([
       
       this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
-      this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
-      this.groupedKeys = this.modelSchema.groupedKeys(this.editKeys);
-      this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
-      if(args.isCreate 
-          || _.isEmpty(_.compact(_.values(this.model.pick(this.model.resource['id_attribute']))))){
-        //this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
-        this.editableKeys = this.modelSchema.createKeys();
+      
+      if (args.editVisibleKeys) {
+        this.editVisibleKeys = args.editVisibleKeys;
+      } else {
+        this.editVisibleKeys = this.modelSchema.allEditVisibleKeys();
       }
-      // Add comment field
-      if( _.propertyOf(this.model.resource,'require_comment_on_save') && 
-          !_.contains(this.editableKeys, 'apilog_comment')){
-        this.editableKeys.push('apilog_comment');
-        this.modelFields = _.extend({
-          'apilog_comment': {
-            edit_type: 'textarea',
-            title: 'Changelog Comment',
-            is_required: true
-          }
-        }, this.modelFields);
+      this.groupedKeys = this.modelSchema.groupedKeys(this.editVisibleKeys);
+      
+      if (args.editableKeys) {
+        this.editableKeys = args.editableKeys;
+      } else { 
+        this.editableKeys = this.modelSchema.updateKeys();
+        if (args.isCreate || this.model.isNew()) {
+          this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
+        }
       }
       this.finalEditableKeys = [];
       
       // look in the uriStack for preset values
       console.log('Editview; uriStack', this.uriStack);
-      if(this.uriStack){
-        for(var i=0; i<this.uriStack.length; ){
+      if (this.uriStack) {
+        for(var i=0; i<this.uriStack.length; ) {
           var key = this.uriStack[i++];
-          if (i<this.uriStack.length){
+          if (i<this.uriStack.length) {
             var val = this.uriStack[i++];
             console.log('key', key, 'val', val);
             this.model.set(key,val);
@@ -583,9 +579,9 @@ define([
       delegateModel.resource = this.model.resource;
       this.delegateDetailView = new DetailView({ model: delegateModel });
       
-      if (args.editTemplate){
+      if (args.editTemplate) {
         this.template = _.template(args.editTemplate);
-      }else{
+      } else {
         this.template = _.template(editTemplate);
       }
       
@@ -714,9 +710,9 @@ define([
         'textarea':
           {
             type: Backbone.Form.editors.TextArea.extend({
-              initialize: function(){
+              initialize: function() {
                 Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
-                if(_.has(this.schema,'rows')){
+                if (_.has(this.schema,'rows')) {
                   this.$el.attr('rows',this.schema['rows']);
                 }
               }
@@ -775,7 +771,7 @@ define([
            fieldAttrs: {}
          };
       
-      _.each(this.editKeys, function(key){
+      _.each(this.editVisibleKeys, function(key) {
 
         var fi = self.modelFields[key];
         var cell_options = fi.display_options;
@@ -784,45 +780,45 @@ define([
         
         fieldSchema['title'] = fi.title;
         var tooltip = fi.description;
-        if (fi.required){
+        if (fi.required) {
           tooltip += ' (required)';
         }
         fieldSchema['fieldAttrs'] = { title: tooltip };
         
-        if(!_.contains(self.editableKeys, key)){
+        if (!_.contains(self.editableKeys, key)) {
         
           console.log('create disabled entry', key, fi['editability'])
           fieldSchema['type'] = DisabledField.extend({
-            initialize: function(){
+            initialize: function() {
               DisabledField.__super__.initialize.apply(this,arguments);
               this.binding = self.delegateDetailView.createBinding(key,fi)
             }
           });
           fieldSchema['editorClass'] = 'form-control-disabled';
 
-        }else{
+        } else {
           
           console.log('build edit schema for key: ',key);
           self.finalEditableKeys.push(key);
-          if(_.has(typeMap, fi.data_type)){
+          if (_.has(typeMap, fi.data_type)) {
             _.extend(fieldSchema, typeMap[fi.data_type]);
           }
-          if(_.has(typeMap, fi.display_type)){
+          if (_.has(typeMap, fi.display_type)) {
             _.extend(fieldSchema, typeMap[fi.display_type]);
           }
-          if(_.has(typeMap, fi.edit_type)){
+          if (_.has(typeMap, fi.edit_type)) {
             _.extend(fieldSchema, typeMap[fi.edit_type]);
           }
           
-          if (cell_options){
+          if (cell_options) {
             _.extend(fieldSchema,cell_options);
             // editorAttrs are available as data for the template compilation
             // TODO: create editorAttrs nested property on cell_options to clean up html
             fieldSchema.editorAttrs = _.extend({},fieldSchema.editorAttrs,cell_options)
           }
-          if(_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)){
+          if (_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)) {
             fieldSchema['options'] = self._createVocabularyChoices(fi);
-            if (!fieldSchema.placeholder){
+            if (!fieldSchema.placeholder) {
               fieldSchema.placeholder = 'choose ' + fieldSchema.title + '...';
             }
           }
@@ -846,7 +842,7 @@ define([
       
       if (_.contains(['integer','float','decimal'],fi.data_type))
       {
-        if (fi.min && !_.isUndefined(fi.min)){
+        if (fi.min && !_.isUndefined(fi.min)) {
           validator = function checkMin(value, formValues) {
             var err = {
                 type: 'Min',
@@ -856,39 +852,39 @@ define([
           };
           validators.unshift(validator);
         }
-        if( !_.isUndefined(fi.range)){
+        if ( !_.isUndefined(fi.range)) {
           validator = function checkRange(value, formValues) {
             
             var last = '';
             var rangeMsg = '';
             var value_ok = false;
             var schema_lower = 0, schema_upper = 0, schema_val;
-            for(var i=0; i<fi.range.length; i++){
+            for(var i=0; i<fi.range.length; i++) {
               schema_val = fi.range[i]
-              if(i>0) rangeMsg += ', ';
-              if(i%2 === 0){
+              if (i>0) rangeMsg += ', ';
+              if (i%2 === 0) {
                 rangeMsg += '> ' + schema_val
-              }else{
+              } else {
                 rangeMsg += '< ' + schema_val
               }
             }
             // compare range in pairs
-            for(i=0; i<fi.range.length; i+=2){
+            for(i=0; i<fi.range.length; i+=2) {
               schema_lower = parseInt(fi.range[i],10)
-              if(fi.range.length > i+1){
+              if (fi.range.length > i+1) {
                 schema_upper = parseInt(fi.range[i+1],10)
-                if(value >schema_lower && value<schema_upper){
+                if (value >schema_lower && value<schema_upper) {
                   value_ok = true;
                   break;
                 }
-              }else{
-                if(value > schema_lower){
+              } else {
+                if (value > schema_lower) {
                   value_ok = true;
                   break; // not nec
                 }
               }
             }
-            if (!value_ok){
+            if (!value_ok) {
               return {
                   type: 'Range',
                   message: 'value not in range: ' + value + ' range: ' + rangeMsg
@@ -899,18 +895,18 @@ define([
         }
       }
 
-      if(fi.required){
+      if (fi.required) {
         validators.unshift('required');
       }
       
-      if(!_.isUndefined(fi.regex) && !_.isEmpty(fi.regex)){
+      if (!_.isUndefined(fi.regex) && !_.isEmpty(fi.regex)) {
         validator = { type: 'regexp', regexp: new RegExp(fi.regex) };
         console.log('create RegExp: ', fi.regex, validator );
-        if(!_.isUndefined(fi.validation_message) && !_.isEmpty(fi.validation_message)){
+        if (!_.isUndefined(fi.validation_message) && !_.isEmpty(fi.validation_message)) {
           validator.message = fi.validation_message;
           // TODO: rework, if req'd, to use tokenized strings (will need 
           // to reimplement backbone-forms
-          //  function(value, formValues){
+          //  function(value, formValues) {
           //    //                TODO: figure out how to get the pending model
           //    return 'value: ' + value + ' is incorrect: ' + Iccbl.formatString(fi.validation_message, formValues);
           //  };
@@ -920,24 +916,24 @@ define([
       return validators;
     },
     
-    _createVocabularyChoices: function(fi){
+    _createVocabularyChoices: function(fi) {
       var choiceHash = fi.choices || [];
-      if(!_.isEmpty(fi.vocabulary_scope_ref)){
+      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
         choiceHash = []
         // replace the fi.choices with the vocabulary, if available
         try{
           var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
-          _.each(_.keys(vocabulary),function(choice){
-            if(vocabulary[choice].is_retired){
+          _.each(_.keys(vocabulary),function(choice) {
+            if (vocabulary[choice].is_retired) {
               console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
-            }else{
+            } else {
               choiceHash.push({ val: choice, label: vocabulary[choice].title });
             }
           });
-          if(fi.edit_type == 'select' && !fi.required ){
+          if (fi.edit_type == 'select' && !fi.required ) {
             choiceHash.unshift({ val: '', label: ''});
           }
-        }catch(e){
+        }catch(e) {
           var msg = 'Vocabulary unavailable: field: ' + fi.key +  
             ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
           console.log(msg,e);
@@ -956,7 +952,7 @@ define([
       return {
         'fieldDefinitions': this.modelFields,
         'keys': _.chain(this.finalEditableKeys),
-        'editKeys': _.chain(this.editKeys),
+        'editKeys': _.chain(this.editVisibleKeys),
         'groupedKeys': _.chain(this.groupedKeys)
       };      
     },	
@@ -973,7 +969,7 @@ define([
     /**
      * Override after render to patch in the multi select
      */
-    afterRender: function(){
+    afterRender: function() {
       var self = this;
       console.log('afterRender...');
 
@@ -986,10 +982,10 @@ define([
         search_contains: true
         });
       
-      _.each(this.editKeys, function(key){
+      _.each(this.editVisibleKeys, function(key) {
 
         var fi = self.modelFields[key];
-        if (fi.edit_type == 'typeahead' && fi.choices){
+        if (fi.edit_type == 'typeahead' && fi.choices) {
           $('[name="'+key +'"]').typeahead({
             autoSelect: false,
             delay: 1,
@@ -1010,32 +1006,32 @@ define([
         selectableOptgroup: true,
         selectableHeader: "<input type='text' class='form-control' autocomplete='off'>",
         selectionHeader: "<input type='text' class='form-control' autocomplete='off'>",
-        afterInit: function(ms){
+        afterInit: function(ms) {
           var that = this,
               $selectableSearch = that.$selectableUl.prev(),
               $selectionSearch = that.$selectionUl.prev(),
               selectableSearchString = '#'+that.$container.attr('id')+' .ms-elem-selectable:not(.ms-selected)',
               selectionSearchString = '#'+that.$container.attr('id')+' .ms-elem-selection.ms-selected';
 
-          that.qs1 = $selectableSearch.quicksearch(selectableSearchString).on('keydown', function(e){
-            if (e.which === 40){
+          that.qs1 = $selectableSearch.quicksearch(selectableSearchString).on('keydown', function(e) {
+            if (e.which === 40) {
               that.$selectableUl.focus();
               return false;
             }
           });
 
-          that.qs2 = $selectionSearch.quicksearch(selectionSearchString).on('keydown', function(e){
-            if (e.which == 40){
+          that.qs2 = $selectionSearch.quicksearch(selectionSearchString).on('keydown', function(e) {
+            if (e.which == 40) {
               that.$selectionUl.focus();
               return false;
             }
           });
         },
-        afterSelect: function(){
+        afterSelect: function() {
           this.qs1.cache();
           this.qs2.cache();
         },
-        afterDeselect: function(){
+        afterDeselect: function() {
           this.qs1.cache();
           this.qs2.cache();
         }
@@ -1049,8 +1045,8 @@ define([
       this.initialValues = this.getValue();
       console.log('Editview initialized, initial values:', this.initialValues);
       
-      _.each(this.modelFields, function(field){
-        if (field.required){
+      _.each(this.modelFields, function(field) {
+        if (field.required) {
           var key = field.key;
           $('[name="'+key +'"').parents('.form-group').addClass('required');
         }
@@ -1066,35 +1062,35 @@ define([
      * - remove nulls/empty strings
      * - sort lists to test equality (TODO: support for ordered lists)
      */
-    _getChangedAttributes: function(model){
+    _getChangedAttributes: function(model) {
       var self = this;
       var changedAttributes = model.changedAttributes();
       console.log('original changedAttributes: ', changedAttributes);
-      if(changedAttributes){
+      if (changedAttributes) {
         changedAttributes = _.pick(changedAttributes, this.finalEditableKeys);
       }
-      changedAttributes = _.omit(changedAttributes, function(value,key,object){
+      changedAttributes = _.omit(changedAttributes, function(value,key,object) {
         var prev;
-        if( _.has(self.initialValues,key)){
+        if ( _.has(self.initialValues,key)) {
           // test if the editor conversion is equivalent
-          if (self.initialValues[key]== value){
+          if (self.initialValues[key]== value) {
             return true;
           }
         }
         
         // equate null to empty string, object, or array
-        if(_.isNull(value)){
+        if (_.isNull(value)) {
           prev = model.previous(key);
-          if(_.isNull(prev)) return true;
-          if(_.isObject(prev) || _.isString(prev) || _.isArray(prev)){
+          if (_.isNull(prev)) return true;
+          if (_.isObject(prev) || _.isString(prev) || _.isArray(prev)) {
             return _.isEmpty(prev);
           }
         }
-        if(_.isObject(value) || _.isString(value) || _.isArray(value)){
-          if(_.isEmpty(value)){
+        if (_.isObject(value) || _.isString(value) || _.isArray(value)) {
+          if (_.isEmpty(value)) {
             prev = model.previous(key);
-            if(_.isNull(prev)) return true;
-            if(_.isObject(prev) || _.isString(prev) || _.isArray(prev)){
+            if (_.isNull(prev)) return true;
+            if (_.isObject(prev) || _.isString(prev) || _.isArray(prev)) {
               return _.isEmpty(prev);
             }
           }
@@ -1104,9 +1100,9 @@ define([
         // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
         // NOTE: JSON does not officially support control-characters, so 
         // newlines should be escaped/unescaped on send/receive in the API (TODO)
-        if(_.isString(value) && _.isString(model.previous(key))){
-          if( value.replace(/(\r\n|\n|\r)/gm,"\n") == 
-              model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") ){
+        if (_.isString(value) && _.isString(model.previous(key))) {
+          if ( value.replace(/(\r\n|\n|\r)/gm,"\n") == 
+              model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") ) {
             return true;
           }
         }
@@ -1132,20 +1128,20 @@ define([
       $('.has-error').removeClass('has-error');
       $('[data-error]').empty();
       errors = this.commit({ validate: true });
-      if(errors){
+      if (errors) {
         console.log('errors in form:', errors);
-        _.each(_.keys(errors), function(key){
+        _.each(_.keys(errors), function(key) {
           var error = errors[key];
-          if (_.has(self.fields, key)){
+          if (_.has(self.fields, key)) {
             $('[name="'+key +'"').parents('.form-group').addClass('has-error');
             console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
           } else if (key=='_others') {
             var other_errors = errors[key];
-            _.each(other_errors, function(error_obj){
+            _.each(other_errors, function(error_obj) {
               console.log('other error', error_obj);
-              _.each(_.keys(error_obj), function(other_key){
+              _.each(_.keys(error_obj), function(other_key) {
                 other_error = error_obj[other_key];
-                if (_.has(self.fields, other_key)){
+                if (_.has(self.fields, other_key)) {
                   $('[key="form-group-'+other_key +'"')
                     .find('[data-error]').append('<br/>' + other_error);
                 } else {
@@ -1160,7 +1156,7 @@ define([
       }
       
       changedAttributes = self._getChangedAttributes(this.model);
-      if (! changedAttributes || _.isEmpty(changedAttributes)){
+      if (! changedAttributes || _.isEmpty(changedAttributes)) {
         appModel.error('no changes were detected');
         return;
       }
@@ -1176,26 +1172,33 @@ define([
       // page, and has the url used to fetch it, rather than the collection url.
       url = options['url'] || _.result(this.model, 'url');
       // TODO: this should be optional (for most resources, to have url end with '/'
-      if( url && url.charAt(url.length-1) != '/'){
+      if ( url && url.charAt(url.length-1) != '/') {
         url += '/';
       }
       
-      // Determine PATCH (update) or POST (create)
-      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
-      if (!_.contains(this.uriStack, '+add') && options['key'] ){
-        self.model.idAttribute = self.model.resource['id_attribute'];
+      if (!  self.model.isNew()) {
         options['patch'] = true;
-        // TODO: check if creating new or updating here
-        // set the id specifically on the model: backbone requires this to 
-        // determine whether a "POST" or "PATCH" will be used
-        this.model.id = options['key'];
+      }        
+      
+//      // Determine PATCH (update) or POST (create)
+//      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
+//      if (!_.contains(this.uriStack, '+add') && options['key'] ) {
+//        self.model.idAttribute = self.model.resource['id_attribute'];
+//        options['patch'] = true;
+//        // TODO: check if creating new or updating here
+//        // set the id specifically on the model: backbone requires this to 
+//        // determine whether a "POST" or "PATCH" will be used
+//        this.model.id = options['key'];
+//      }
+      
+      if ( _.result(this.model.resource,'require_comment_on_save') === true) {
+        appModel.showOkCommentForm( title, function(values) {
+          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+        });
       }
-      
-      headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('apilog_comment');
-      
-      if(!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)){
+      if (!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)) {
         this.saveCallBack(this.model,headers,options, url);
-      }else{
+      } else {
         // Note:
         // Must send { dataType: 'text' } to have the success function 
         // work with jQuery and empty responses ( otherwise, fails on JSON.parse 
@@ -1210,13 +1213,13 @@ define([
             if (self.saveSuccessCallBack) {
               self.saveSuccessCallBack(model);
             } else {
-              if(!options['patch']){
+              if (!options['patch']) {
                 // this is an +add event
                 model = new Backbone.Model(model);
                 var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
                 model.key = self.model.resource.key + '/' + key;
                 appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
-              }else{
+              } else {
                 console.log('trigger remove');
                 self.trigger('remove');
               }
@@ -1228,15 +1231,15 @@ define([
           })
           // NOTE: chained, fail behaves like $.ajax().fail(jqXHR, textstatus, errorThrown)
           // whereas the error callback takes (model, response, options)
-          .fail(function(jqXHR, textStatus, errorThrown){ 
+          .fail(function(jqXHR, textStatus, errorThrown) { 
             
             if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
               var errors = _.result(jqXHR.responseJSON,'errors',null);
-              if(errors){
+              if (errors) {
                 console.log('errors in response:', errors);
-                _.each(_.keys(errors), function(key){
+                _.each(_.keys(errors), function(key) {
                   var error = errors[key];
-                  if (_.has(self.fields, key)){
+                  if (_.has(self.fields, key)) {
                     self.fields[key].setError(error);
                   }
                   $('[name="'+key +'"').parents('.form-group').addClass('has-error');
@@ -1245,9 +1248,9 @@ define([
                 return;
               }
             }
-            if (options['patch']){
+            if (options['patch']) {
               self.model.fetch();
-            }else{
+            } else {
               self.remove();
               appModel.router.back();
             }

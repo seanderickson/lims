@@ -103,7 +103,8 @@ define([
         else if (_.isString(value) && value === '' ) return '-';
         else if (_.isObject(value) && _.isEmpty(value)) return '-';
         else{
-          return _.escape(value);
+//          return _.escape(value);
+          return value;
         }
       }     
 	    binding = {

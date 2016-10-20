@@ -97,3 +97,5 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data.csv
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv" -f db/static/api_init/metahash_fields_screen.csv

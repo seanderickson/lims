@@ -1205,14 +1205,9 @@ define([
       if (!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)) {
         this.saveCallBack(this.model,headers,options, url);
       } else {
-        // Note:
-        // Must send { dataType: 'text' } to have the success function 
-        // work with jQuery and empty responses ( otherwise, fails on JSON.parse 
-        // of the empty response).        
-        //        dataType: 'text', 
-        // The other solution: use "always_return_data" in the tastypie
-        // resource definitions - which we are doing.
         console.log('save, changedAttributes: ', changedAttributes);
+        // NOTE: if model.isNew() (post), backbone save will send all attributes, 
+        // else, (patch) only changedAtributes are sent.
         this.model.save(changedAttributes, options)
           .success(function(model, resp) {
             console.log('success');

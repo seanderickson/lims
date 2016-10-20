@@ -198,9 +198,16 @@ define([
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
         return ! _.contains(fields[key].visibility, 'billing');
       });
-
+      /////
+      // pick just the non-billing fields: prevent backbone save from sending
+      // uninitialized billing fields on create
+      model = new Backbone.Model(this.model.pick(editVisibleKeys));
+      model.resource = this.model.resource;
+      model.urlRoot = this.model.resource.apiUri;
+      /////
+      
       view = new DetailLayout({ 
-        model: this.model, 
+        model: model, 
         uriStack: delegateStack,
         EditView: editView,
         editableKeys: editableKeys,

@@ -202,6 +202,7 @@ define([
       // pick just the non-billing fields: prevent backbone save from sending
       // uninitialized billing fields on create
       model = new Backbone.Model(this.model.pick(editVisibleKeys));
+      model.set('id', this.model.get('id'));
       model.resource = this.model.resource;
       model.urlRoot = this.model.resource.apiUri;
       /////

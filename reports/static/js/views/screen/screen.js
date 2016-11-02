@@ -198,10 +198,12 @@ define([
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
         return ! _.contains(fields[key].visibility, 'billing');
       });
+      var visibleKeys = self.model.resource.detailKeys();
       /////
       // pick just the non-billing fields: prevent backbone save from sending
       // uninitialized billing fields on create
-      model = new Backbone.Model(this.model.pick(editVisibleKeys));
+      var modelKeys = visibleKeys.concat(editVisibleKeys);
+      model = new Backbone.Model(this.model.pick(modelKeys));
       model.set('id', this.model.get('id'));
       model.resource = this.model.resource;
       model.urlRoot = this.model.resource.apiUri;
@@ -563,9 +565,8 @@ define([
         });
         self.listenTo(collection, "MyCollection:delete", function (model) {
           
-          var title = 'Confirm deletion of publication: ' + 
-
-          Iccbl.getTitleFromTitleAttribute(model, resource);
+          var title = 'Confirm deletion of publication: ' +
+            Iccbl.getTitleFromTitleAttribute(model, resource);
           appModel.showOkCommentForm( title, function(values){
             appModel.clearPagePending();
             var headers = {};

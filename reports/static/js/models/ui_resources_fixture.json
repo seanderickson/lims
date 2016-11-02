@@ -129,7 +129,9 @@
         "api_resource": "library",
         "url_root": "/db/api/v1",
         "description": "View library information",
-        "options": {}
+        "options": {
+          "rpp": 500
+        }
     },
     "smallmoleculelibrary": {
         "header_message": "Small Molecule Libraries",

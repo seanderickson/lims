@@ -1159,6 +1159,13 @@ define([
       self.unset('messages');
     },
 
+    
+    
+    /**
+     * Display form with a comment field and "ok" or "cancel".
+     * if "ok" is selected, comment form values are returned to the callback.
+     * FIXME: how is this different than showSaveWithComments?
+     */
     showOkCommentForm: function(title, okCallback){
 
       var self = this;
@@ -1218,6 +1225,11 @@ define([
       
     },    
     
+    /**
+     * Display a "Save Changes?" form with a comment field.
+     * if "ok" is selected, comment form values are returned to the callback.
+     * FIXME: how is this different than showOkCommentForm?
+     */
     showSaveWithComments: function(okCallback){
 
       var self = this;

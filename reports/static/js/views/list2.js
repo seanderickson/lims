@@ -504,7 +504,8 @@ define([
               }
             }
           }
-          self.listModel.set('search', searchHash);
+          self.collection.setSearch(searchHash);
+//          self.listModel.set('search', searchHash);
         });
       }
       var grid = this.grid = new Backgrid.Grid({

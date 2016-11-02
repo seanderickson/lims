@@ -432,8 +432,23 @@ define([
              self.showAddCopy(collection);
            });
            extraControls.push(showAddButton);
-        }        
+        }    
         
+        var concentration_types = self.model.get('concentration_types');
+        if (concentration_types) {
+          copyResource.fields['min_molar_concentration']['visibility'] = [];
+          copyResource.fields['max_molar_concentration']['visibility'] = [];
+          copyResource.fields['min_mg_ml_concentration']['visibility'] = [];
+          copyResource.fields['max_mg_ml_concentration']['visibility'] = [];
+          if (_.contains(concentration_types, 'mg_ml')){
+            copyResource.fields['min_mg_ml_concentration']['visibility'] = ['l','d'];
+            copyResource.fields['max_mg_ml_concentration']['visibility'] = ['l','d'];
+          }        
+          if (_.contains(concentration_types, 'molar')){
+            copyResource.fields['min_molar_concentration']['visibility'] = ['l','d'];
+            copyResource.fields['max_molar_concentration']['visibility'] = ['l','d'];
+          }
+        }
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: copyResource,
@@ -462,6 +477,7 @@ define([
       var copyNameField = _.result(copyResource['fields'], 'name', {});
       var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
       var plateResource = appModel.getResource('librarycopyplate');
+      var plateStatusField = _.result(plateResource['fields'],'status',{});
       var plateWellVolumeField = _.result(plateResource['fields'], 'well_volume', {});
       var plateMgMlConcentrationField = _.result(
         plateResource['fields'], 'mg_ml_concentration', {});
@@ -516,9 +532,22 @@ define([
         template: fieldTemplate 
       };
       
+      formSchema['initial_plate_status'] = {
+        title: 'Initial Plate Status',
+        help: 'Initial status for the plates of this copy (optional)',
+        key: 'initial_plate_status',
+        type: EditView.ChosenSelect,
+        editorClass: 'chosen-select',
+        editorAttrs: { widthClass: 'col-sm-5'},
+        validators: [],
+        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
+        template: fieldTemplate 
+      };
+      
       formSchema['initial_plate_well_volume'] = {
         title: 'Initial Plate Well Volume',
         key: 'initial_plate_well_volume',
+        validators: ['required',EditView.CheckPositiveNonZeroValidator],
         type: EditView.SIunitEditor,
         template: fieldTemplate 
       };
@@ -538,6 +567,7 @@ define([
         help: 'If set, this value overrides the default library well concentration',
         key: 'initial_plate_mg_ml_concentration',
         type: Backbone.Form.editors.Number,
+        validators: [EditView.CheckPositiveNonZeroValidator],
         editorClass: 'form-control',
         template: fieldTemplate 
       };
@@ -550,6 +580,7 @@ define([
         help: 'If set, this value overrides the default library well concentration',
         key: 'initial_plate_molar_concentration',
         type: EditView.SIunitEditor,
+        validators: [EditView.CheckPositiveNonZeroValidator],
         editorClass: 'form-control form-control-zero-padding',
         template: fieldTemplate 
       };
@@ -579,31 +610,22 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs) {
-          var errs = {};
-          
-          var v1 = _.result(attrs, 'initial_plate_mg_ml_concentration');
-          var v2 = _.result(attrs, 'initial_plate_molar_concentration');
-          if (v1 != 0 && v2 != 0 ) {
-            var msg = 'Can not specify both "mg/ml" and "Molar" initial plate concentrations';
-            errs['initial_plate_mg_ml_concentration'] = msg;
-            errs['initial_plate_molar_concentration'] = msg;
+          var errors = {};
+          if (!_.isNull(attrs['initial_plate_mg_ml_concentration'])
+              && !_.isNull(attrs['initial_plate_molar_concentration'])){
+            var msg = 'Must enter either (mg/ml) or (molar)';
+            errors['initial_plate_mg_ml_concentration'] = msg;
+            errors['initial_plate_molar_concentration'] = msg;
+            
           }
-          
-          if (v1 < 0 ) {
-            errs['initial_plate_mg_ml_concentration'] = 'Must be positive';
-          }
-          if (v2 < 0 ) {
-            errs['initial_plate_molar_concentration'] = 'Must be positive';
-          } 
-          
-          if (_.result(attrs, 'initial_plate_well_volume') < 0) {
-            errs['initial_plate_well_volume'] = 'Must be positive';
-          }
-          
-          if (!_.isEmpty(errs)) return errs;
+          if (!_.isEmpty(errors)) return errors;
         }
       });
-      var formFields = new FormFields();
+      var formFields = new FormFields({
+        'initial_plate_mg_ml_concentration': null, 
+        'initial_plate_molar_concentration': null, 
+        'initial_plate_well_volume': null
+      });
       
       var form = new Backbone.Form({
         model: formFields,
@@ -639,10 +661,13 @@ define([
       var dialog = appModel.showModal({
         okText: 'Submit',
         view: _form_el,
-        title: 'Create a new copy for library: ' + self.model.get('name'),
+        title: 'Create a new copy for library: ' + self.model.get('library_name'),
         ok: function(e) {
           e.preventDefault();
-          var errors = form.commit({ validate: true }) || {}; 
+          var errors = form.commit({ validate: true }) || {};
+          var values = form.getValue();
+          
+          form.$el.find('.form-group').removeClass('has-error');
           if (!_.isEmpty(errors) ) {
             _.each(_.keys(errors), function(key) {
               form.$el.find('[name="'+key +'"]')
@@ -650,16 +675,15 @@ define([
             });
             return false;
           }            
-          var values = form.getValue();
           
           if (! values['set_initial_plate_concentration']) {
             delete values['initial_plate_mg_ml_concentration'];
             delete values['initial_plate_molar_concentration'];
           } else {
-            if (values['initial_plate_mg_ml_concentration'] == 0) {
+            if (! values['initial_plate_mg_ml_concentration']) {
               delete values['initial_plate_mg_ml_concentration'];
             }
-            if (values['initial_plate_molar_concentration'] == 0) {
+            if (!values['initial_plate_molar_concentration']) {
               delete values['initial_plate_molar_concentration'];
             }
           }

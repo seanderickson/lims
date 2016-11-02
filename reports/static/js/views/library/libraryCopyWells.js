@@ -137,36 +137,47 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               // Prevent save on update
               if (options.save === false)
                   return;
+              if (!model.hasChanged()) {
+                console.log('no changes');
+                return;
+              }
               
+              var saveModel = new Backbone.Model(model.pick(resource.id_attribute));
+
+              // Because the siUnit cell converts to float, must filter spurious changes
               var has_changes = false;
               var newValue = parseFloat(model.get("volume"));
               var prevValue = parseFloat(model.previous("volume"));
-              if (newValue == prevValue){
-                console.log('no change in volume');
-              } else {
+              // NaN !== NaN
+              if (!_.isNaN(newValue) && newValue !== prevValue){
                 has_changes = true;
+                saveModel.set('volume', model.get('volume'));
+              } else {
+                console.log('no change in volume');
               }
               var newValue = parseFloat(model.get("mg_ml_concentration"));
               var prevValue = parseFloat(model.previous("mg_ml_concentration"));
-              if (newValue == prevValue){
-                console.log('no change in mg_ml_concentration');
-              } else {
+              if (!_.isNaN(newValue) && newValue !== prevValue){
                 has_changes = true;
+                saveModel.set('mg_ml_concentration', model.get('mg_ml_concentration'));
+              } else {
+                console.log('no change in mg_ml_concentration');
               }
               var newValue = parseFloat(model.get("molar_concentration"));
               var prevValue = parseFloat(model.previous("molar_concentration"));
-              if (newValue == prevValue){
-                console.log('no change in molar_concentration');
-              } else {
+              if (!_.isNaN(newValue) && newValue !== prevValue){
                 has_changes = true;
+                saveModel.set('molar_concentration', model.get('molar_concentration'));
+              } else {
+                console.log('no change in molar_concentration');
               }
               
               if (!has_changes) {
                 console.log('no changes');
                 return;
               }
-              model.url = url;
-              changedCollection.add(model);
+//              model.url = url;
+              changedCollection.add(saveModel);
               showSaveButton.show();
               appModel.setPagePending();
             });
@@ -188,28 +199,53 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             appModel.error('No changes to save');
             return;
           }
-          appModel.showSaveWithComments(function(formValues){
-            console.log('form values', formValues);
-            var comments = formValues['comments'];
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = comments;
-            
-            Backbone.sync("patch",changedCollection,
-              {
-                headers: headers,
-                error: function(){
-                  appModel.jqXHRfail.apply(this,arguments);
-                  console.log('error, refetch', arguments);
-                  changedCollection.reset();
-                  collection.fetch({ reset: true });
-                },
-                success: function(){
-                  changedCollection.reset();
-                  collection.fetch({ reset: true });
+          
+          var saveFunction = function() {
+            appModel.showSaveWithComments(function(formValues){
+              console.log('form values', formValues);
+              var comments = formValues['comments'];
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = comments;
+              
+              Backbone.sync("patch",changedCollection,
+                {
+                  headers: headers,
+                  error: function(){
+                    appModel.jqXHRfail.apply(this,arguments);
+                    console.log('error, refetch', arguments);
+                    changedCollection.reset();
+                    collection.fetch({ reset: true });
+                  },
+                  success: function(){
+                    changedCollection.reset();
+                    collection.fetch({ reset: true });
+                  }
                 }
-              }
-            );
-          });
+              );
+            });
+          };
+          var cancelFunction = function(){
+            console.log('cancelled');
+            appModel.clearPagePending();
+            changedCollection.reset();
+            collection.fetch({ reset: true });
+          };
+          // redo; allow edit only for cherry pick plates
+          if (self.copy && !self.copy.get('usage_type') == 'cherry_pick_plates') {
+            appModel.showModal({
+              title: 'Set Copy Well volumes on plate-volume managed Copy Plate?',
+              body: 'This Copy has volumes managed at the Plate level.' + 
+                'If Copy Well volumes are set, this plate may no longer be used for plate screening.',
+              ok: saveFunction,
+              cancel: cancelFunction,
+              cancelText: 'Cancel this operation'
+            });
+          } else {
+            saveFunction();
+          }
+          
+          
+          
         });
       
       }else {

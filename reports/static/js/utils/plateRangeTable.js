@@ -78,7 +78,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'description' : 'Start Plate',
           'order': 1,
           'sortable': true,
-          'cell': TextWrapCell
+          'cell': Iccbl.LinkCell.extend({
+            'hrefTemplate': '#library/{library}/copy/{copy}/plate/{start_plate}'
+          })
         }),
         _.extend({},colTemplate,{
           'name' : 'end_plate',
@@ -86,7 +88,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'description' : 'End Plate',
           'order': 1,
           'sortable': true,
-          'cell': TextWrapCell
+          'cell': Iccbl.LinkCell.extend({
+            'hrefTemplate': '#library/{library}/copy/{copy}/plate/{end_plate}'
+          })
         })
       ];
       

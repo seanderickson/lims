@@ -8,10 +8,11 @@ define([
   'views/list2',
   'views/generic_detail_layout',
   'views/generic_edit',
+  'utils/uploadDataForm',
   'templates/genericResource.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, layout) {
+         EditView, UploadDataForm, layout) {
   
   var LibraryCopyPlateView = Backbone.Layout.extend({
     
@@ -46,7 +47,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var resourceId = 'librarycopyplate';
       var resource = appModel.getResource(resourceId);
 
-      if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+      if (self.model){
+        self.showDetail(self.model);
+      }
+      else if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
               !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // Detail view
         var plate_number = uriStack.shift();
@@ -98,6 +102,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         'role="button" id="showHistoryButton" href="#">',
         'History</a>'
       ].join(''));
+      var showUploadButton = $([
+      '<a class="btn btn-default btn-sm pull-down" ',
+        'role="button" id="patch_resource" href="#">',
+        'Upload data</a>'
+      ].join(''));   
+
+      var extraControls = [];
+      if (appModel.hasPermission(resource.key, 'write')){
+        extraControls = [
+         showEditLocationButton, showEditPlatesButton, showHistoryButton,
+         showUploadButton];
+      }
+      
       showHistoryButton.click(function(e) {
         e.preventDefault();
         var newUriStack = ['apilog','order','-date_time', 'search'];
@@ -114,6 +131,43 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         appModel.router.navigate(route, {trigger: true});
       });
 
+      // Set the visibility of concentration and volume fields based on copywell status
+      if (self.library) {
+        var concentration_types = self.library.get('concentration_types');
+        if (concentration_types) {
+          resource.fields['mg_ml_concentration']['visibility'] = [];
+          resource.fields['min_mg_ml_concentration']['visibility'] = [];
+          resource.fields['max_mg_ml_concentration']['visibility'] = [];
+          resource.fields['molar_concentration']['visibility'] = [];
+          resource.fields['min_molar_concentration']['visibility'] = [];
+          resource.fields['max_molar_concentration']['visibility'] = [];
+          if (_.contains(concentration_types, 'mg_ml')){
+            resource.fields['mg_ml_concentration']['visibility'] = ['l','d'];
+            if (self.copy && self.copy.get('has_copywell_concentrations')) {
+              resource.fields['min_mg_ml_concentration']['visibility'] = ['l','d'];
+              resource.fields['max_mg_ml_concentration']['visibility'] = ['l','d'];
+            }
+          }
+          if (_.contains(concentration_types, 'molar')){
+            resource.fields['molar_concentration']['visibility'] = ['l','d'];
+            if (self.copy && self.copy.get('has_copywell_concentrations')) {
+              resource.fields['min_molar_concentration']['visibility'] = ['l','d'];
+              resource.fields['max_molar_concentration']['visibility'] = ['l','d'];
+            }
+          }
+        }
+        if(self.copy){
+          resource.fields['avg_remaining_volume']['visibility'] = [];
+          resource.fields['min_remaining_volume']['visibility'] = [];
+          resource.fields['max_remaining_volume']['visibility'] = [];
+          if (self.copy.get('has_copywell_volumes')) {
+            resource.fields['avg_remaining_volume']['visibility'] = ['l','d'];
+            resource.fields['min_remaining_volume']['visibility'] = ['l','d'];
+            resource.fields['max_remaining_volume']['visibility'] = ['l','d'];
+          }
+        }
+        
+      }      
       // TODO: extending the passed args to get the "search_data", or other 
       // passed args, grab options explicitly instead 201608
       options = _.extend({
@@ -121,8 +175,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         schemaResult: resource,
         resource: resource,
         url: url,
-        extraControls: [
-          showEditLocationButton, showEditPlatesButton, showHistoryButton]
+        extraControls: extraControls
         }, self._args ) ;
       var view = new ListView(options);
       showEditLocationButton.click(function(e) {
@@ -132,6 +185,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       showEditPlatesButton.click(function(e) {
         e.preventDefault();
         self.batchEditPlatesDialog(view);
+      });
+      showUploadButton.click(function(e){
+        
+        var collection = view.collection;
+        e.preventDefault();
+        UploadDataForm.postUploadFileDialog(
+          collection.url, resource.content_types)
+          .done(function(){
+            collection.fetch({ reset: true });
+          })
+          .fail(function(){
+            appModel.jqXHRfail.apply(this,arguments); 
+          });
       });
       self.listenTo(view, 'update_title', function(val) {
         if(val) {
@@ -162,6 +228,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var formSchema = {};
         var fieldTemplate = appModel._field_template;
         var formTemplate = appModel._form_template;
+        
         formSchema['status'] = {
           title: 'Status',
           key: 'status',
@@ -170,6 +237,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options: appModel.getVocabularySelectOptions('plate.status'),
           template: fieldTemplate 
         };
+        
         formSchema['plate_type'] = {
           title: 'Plate Type',
           key: 'plate_type',
@@ -178,15 +246,57 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options: appModel.getVocabularySelectOptions('plate.type'),
           template: fieldTemplate 
         };
-        formSchema['well_volume'] = {
-          title: 'Initial Well Volume',
-          key: 'well_volume',
-          type: EditView.SIunitEditor,
+        
+        if (self.copy && ! self.copy.get('has_copywell_volumes')) {
+          formSchema['remaining_well_volume'] = {
+            title: 'Remaining Well Volume',
+            key: 'well_volume',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: EditView.SIunitEditor,
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['remaining_well_volume'],
+            self.resource['fields']['remaining_well_volume']['display_options']);
+        }
+        
+        if (self.copy && ! self.copy.get('has_copywell_concentrations')) {
+          formSchema['molar_concentration'] = {
+            title: 'Molar Concentration',
+            key: 'molar_concentration',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: EditView.SIunitEditor,
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['molar_concentration'],
+            self.resource['fields']['molar_concentration']['display_options']);
+          
+          formSchema['mg_ml_concentration'] = {
+            title: 'mg/ml Concentration',
+            key: 'mg_ml_concentration',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: Backbone.Form.editors.Number,
+            editorClass: 'form-control',
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['mg_ml_concentration'],
+            self.resource['fields']['mg_ml_concentration']['display_options']);
+        }
+        
+        formSchema['screening_count'] = {
+          title: 'Screening Count',
+          key: 'screening_count',
+          validators: [EditView.CheckPositiveNonZeroValidator],
+          type: Backbone.Form.editors.Number,
+          editorClass: 'form-control',
           template: fieldTemplate 
         };
         _.extend(
-          formSchema['well_volume'],
-          self.resource['fields']['well_volume']['display_options']);
+          formSchema['screening_count'],
+          self.resource['fields']['screening_count']['display_options']);
+        
         formSchema['comments'] = {
           title: 'Comments',
           key: 'comments',
@@ -200,15 +310,26 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           schema: formSchema,
           validate: function(attrs) {
             var errs = {};
-            if (attrs['status']==null 
-                && attrs['plate_type']==null
-                && attrs['well_volume']==0 ) {
-              errs['error'] = 'Must enter Status, Plate Type, or Initial Well Volume';
+            if (_.isEmpty(attrs)) {
+              errs['error'] = 'Must enter values';
+            }
+            var mgml = attrs['mg_ml_concentration'];
+            var molar = attrs['molar_concentration'];
+            if(_.isNumber(mgml) && mgml != 0 
+                && _.isNumber(molar) && molar != 0){
+              var msg = 'Must enter either (mg/ml) or (molar)';
+              errs['mg_ml_concentration'] = msg;
+              errs['molar_concentration'] = msg;
             }
             if (!_.isEmpty(errs)) return errs;
           }
         });
-        var formFields = new FormFields();
+        var formFields = new FormFields({
+          'screening_count': null,
+          'remaining_well_volume': null,
+          'mg_ml_concentration': null,
+          'molar_concentration': null
+        });
         
         var form = new Backbone.Form({
           model: formFields,
@@ -290,6 +411,33 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           ok: function(e) {
             e.preventDefault();
             var errors = form.commit({ validate: true }) || {}; 
+            var values = form.getValue();
+            
+            if (_.result(values, 'status', null) == null){
+              delete values['status']
+            }
+            if (_.result(values, 'mg_ml_concentration', null) == null){
+              delete values['mg_ml_concentration']
+            }
+            if (_.result(values, 'molar_concentration', null) == null){
+              delete values['molar_concentration']
+            }
+            if (_.result(values, 'screening_count', null) == null){
+              delete values['screening_count']
+            }
+            if (_.result(values, 'remaining_well_volume', null) == null){
+              delete values['remaining_well_volume']
+            }
+            if (_.result(values, 'plate_type', null) == null){
+              delete values['plate_type']
+            }
+            var valueTest = _.clone(values);
+            delete valueTest['comments']
+            if (_.isEmpty(valueTest)){
+              errors['_others'] = [{'error': 'Must fill in at least one value'}];
+            }
+            form.$el.find('.form-group').removeClass('has-error');
+            form.$el.find('.text-danger').remove();
             if (!_.isEmpty(errors) ) {
               _.each(_.keys(errors), function(key) {
                 form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
@@ -299,7 +447,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               });
               return false;
             }            
-            var values = form.getValue()
+            
             submitForm(values);
           }
         });

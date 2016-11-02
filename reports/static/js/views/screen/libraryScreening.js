@@ -167,14 +167,27 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
       });
       args.EditView = editView;
+      // force all fields to be sent to server (including library_plates_screened)
+      // even if unchanged
+      args.fullSaveOnEdit = true; 
       args.DetailView = detailView;
       args.saveSuccessCallBack = function(model){
-        model = new Backbone.Model(model);
-        var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-        model.key = self.model.resource.key + '/' + key;
-        appModel.router.navigate([
-          self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
-          {trigger:true});
+        var meta = _.result(model, 'meta', null);
+        if (meta) {
+          appModel.showJsonMessages(meta);
+        }
+        var objects = _.result(model, 'objects', null)
+        if (objects && objects.length == 1) {
+          model = new Backbone.Model(objects[0]);
+          var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+          model.key = self.model.resource.key + '/' + key;
+          appModel.router.navigate([
+            self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
+            {trigger:true});
+        } else {
+          console.log('no objects in the response', model);
+          appModel.error('Could not display the server response');
+        }
       };
       
       DetailLayout.prototype.initialize.call(this,args);
@@ -190,10 +203,26 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     showEdit: function() {
       var self = this;
       appModel.initializeAdminMode(function(){
-        var userOptions = appModel.getAdminUserOptions();
+//        var userOptions = appModel.getAdminUserOptions();
+//        fields['performed_by_username']['choices'] = (
+//            [{ val: '', label: ''}].concat(userOptions));
         var fields = self.model.resource.fields;
+        var users = appModel.get('users');
+        var userOptions = [
+          { val: self.screen.get('lead_screener_username'), 
+            label: self.screen.get('lead_screener_name') },
+          { val: self.screen.get('lab_head_username'), 
+            label: self.screen.get('lab_name') },
+        ];
+        userOptions = userOptions.concat(_.map(_.zip(
+          self.screen.get('collaborator_usernames'),
+          self.screen.get('collaborator_names')),
+          function(pair){
+          return { val: pair[0], label: pair[1] };
+        }));
         fields['performed_by_username']['choices'] = (
             [{ val: '', label: ''}].concat(userOptions));
+        
         fields['screen_facility_id']['editability'] = [];
         DetailLayout.prototype.showEdit.apply(self,arguments);
       });  

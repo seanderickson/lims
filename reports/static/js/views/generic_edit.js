@@ -16,9 +16,33 @@ define([
 ], function( $, _, Backbone, backbone_forms, 
             multiselect, quicksearch, typeahead, Iccbl, appModel,
             DetailView, editTemplate ) {
+  
+  var CheckPositiveValidator = function CheckPositive(value, formValues) {
+    var err = {
+      type: 'is_positive',
+      message: 'Value must be positive'
+    };
+
+    if (value){
+      if (!_.isNumber(value) || value < 0 ) return err;
+    }
+  };
+  var CheckPositiveNonZeroValidator = function CheckPositiveNonZero(value, formValues) {
+    var err = {
+      type: 'is_positive',
+      message: 'Value must greater than zero'
+    };
+
+    if (value){
+      if (!_.isNumber(value) || value <= 0 ) return err;
+    }
+  };
+  
   var SIunitEditor = Backbone.Form.editors.Base.extend({
     
     tagname: 'siuniteditor',
+    
+//    defaultValue: 0,
     
     fieldTemplate: _.template([
       '<div data-editor class="form-control col-sm-10" title="<%= help %>"  >'
@@ -127,7 +151,7 @@ define([
       if (this.value) {
         formModel= new Backbone.Model(this._findNumberAndUnit(this.value));
       } else {
-        formModel= new Backbone.Model({ number: 0, unit: this.defaultUnit });
+        formModel= new Backbone.Model({ number: null, unit: this.defaultUnit });
       }
       this.nestedForm = new Backbone.Form({
         schema: this.formSchema,
@@ -150,6 +174,9 @@ define([
     getValue: function() {
       var self = this;
       if (this.nestedForm) {
+        if (this.nestedForm.getValue()['number'] === null){
+          return null;
+        }
         return this._calculate(
             self.multiplier,
             this.nestedForm.getValue()['unit'],
@@ -536,6 +563,10 @@ define([
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
       this.saveSuccessCallBack = args.saveSuccessCallBack;
+      this.fullSaveOnEdit = args.fullSaveOnEdit
+      if (!_.isBoolean(this.fullSaveOnEdit)) {
+        this.fullSaveOnEdit = false;
+      }
       
       this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
@@ -1161,10 +1192,14 @@ define([
         return;
       }
       
-      changedAttributes = self._getChangedAttributes(this.model);
-      if (! changedAttributes || _.isEmpty(changedAttributes)) {
-        appModel.error('no changes were detected');
-        return;
+      if (self.fullSaveOnEdit) {
+        changedAttributes = null; // force a full save
+      } else {
+        changedAttributes = self._getChangedAttributes(this.model);
+        if (! changedAttributes || _.isEmpty(changedAttributes)) {
+          appModel.error('no changes were detected');
+          return;
+        }
       }
 
       // Set up options for Backbone sync / AJAX 
@@ -1280,6 +1315,8 @@ define([
   EditView.DatePicker = DatePicker;
   EditView.DisabledField = DisabledField;
   EditView.SIunitEditor = SIunitEditor;
+  EditView.CheckPositiveValidator = CheckPositiveValidator;
+  EditView.CheckPositiveNonZeroValidator = CheckPositiveNonZeroValidator;
   
 	return EditView;
 });

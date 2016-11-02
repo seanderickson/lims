@@ -32,7 +32,7 @@ DATABASES = {
         'PASSWORD': '',
         'HOST': 'dev.pgsql.orchestra:',
         'PORT': '',                      # Set to empty string for default.
-    }
+    },
 }
 
 # Note that the SCREENSAVER_PGSQL variables can be found in the appropriate file at:
@@ -101,7 +101,11 @@ CACHES = {
         'OPTIONS': {
             'MAX_ENTRIES': 50000 
         },
-    }
+    },
+    'screen': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'uniq222#@'
+    },
 }
 
 # if structure image cache directory is available.  see db.api for details.

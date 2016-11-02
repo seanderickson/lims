@@ -91,7 +91,11 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake'
-    }
+    },
+    'screen': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'uniq222#@@!^^1`~'
+    },
 }
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing

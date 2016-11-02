@@ -256,7 +256,7 @@ where r.library_contents_version_id=%s order by well_id;
             parent_log.comment = comment + json.dumps(list(cumulative_diff_keys))
             parent_log.save()
         logger.info('===created %d logs for %r, %r', 
-            library.short_name, i, parent_log.comment)
+            i, library.short_name, parent_log.comment)
     
     def create_well_log(self, version, prev_dict, current_dict, parent_log):
         

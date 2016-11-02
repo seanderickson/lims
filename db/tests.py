@@ -24,11 +24,15 @@ import db.models
 from db.support import lims_utils, screen_result_importer
 from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory
-from reports import ValidationError, HEADER_APILOG_COMMENT
-from reports.api import API_MESSAGE_COMMENTS, API_MESSAGE_CREATED, \
-    API_MESSAGE_SUBMIT_COUNT, API_MESSAGE_UNCHANGED, API_MESSAGE_UPDATED, \
-    API_MESSAGE_ACTION
-from reports.models import ApiLog, UserProfile, UserGroup
+from reports import ValidationError, HEADER_APILOG_COMMENT, _now
+from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
+    API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
+    API_MSG_ACTION, API_MSG_RESULT
+from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
+    API_MSG_SCREENING_ADDED_PLATE_COUNT, API_MSG_SCREENING_DELETED_PLATE_COUNT,\
+    API_MSG_SCREENING_EXTANT_PLATE_COUNT,API_MSG_SCREENING_TOTAL_PLATE_COUNT
+from reports.models import ApiLog, UserProfile, UserGroup, API_ACTION_PATCH,\
+    API_ACTION_CREATE
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
@@ -36,6 +40,7 @@ from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
 from django.core.exceptions import ObjectDoesNotExist
+from decimal import Decimal
 
 
 logger = logging.getLogger(__name__)
@@ -83,14 +88,14 @@ class DBResourceTestCase(IResourceTestCase):
 
     @staticmethod
     def create_small_molecule_test_well(
-        plate, well_index, platesize=384, library_well_type=None):
+        plate, well_index, platesize=384, **kwargs):
         ''' Generate a test well for library initialization'''
         
         library_well_types = [
             'empty','experimental','dmso','library_control' ]
         well_name = lims_utils.well_name_from_index(well_index, platesize)
-        if not library_well_type:
-            library_well_type = library_well_types[well_index%3]
+        library_well_type = kwargs.get(
+            'library_well_type',library_well_types[well_index%3])
         _data = {
             'plate_number': plate, 
             'well_name': well_name,
@@ -98,7 +103,7 @@ class DBResourceTestCase(IResourceTestCase):
             'library_well_type' : library_well_type,
         }
         if library_well_type == 'experimental':
-            _data['molar_concentration'] = float('0.00%d' % (well_index+1))
+            _data['molar_concentration'] = '0.00%d' % (well_index+1)
             _data['vendor_name'] = 'vendorX'
             _data['vendor_identifier'] = 'ID-%d' % well_index
             _data['vendor_batch_id'] = 2
@@ -106,7 +111,9 @@ class DBResourceTestCase(IResourceTestCase):
                 'H%dC%dN%d' % (well_index%10,well_index%11,well_index%12)
             _data['compound_name'] = \
                 ['name-%d'%well_index, 'name-%d'%((well_index+11)%100)]
-            
+    
+        for k,v in kwargs.items():
+            _data[k] = v
         return _data
 
     def create_screen(self, data=None):
@@ -394,10 +401,11 @@ class LibraryResource(DBResourceTestCase):
                 ('substance_id not unique', substance_id, substance_ids))
             substance_ids.add(substance_id)
         
-    def test10_create_library_copy(self):
+    def test10_create_library_copy_specific_wells(self):
 
         logger.info('test10_create_library_copy ...')
         
+        # 1. Create Library
         logger.info('create library a library...')
         start_plate = 1000
         end_plate = 1005
@@ -409,12 +417,13 @@ class LibraryResource(DBResourceTestCase):
             'screen_type': 'small_molecule' })
         short_name = library_data['short_name']
         
+        # 2. Create Library Wells: wells have various concentrations 
         logger.info('create and load well data, plates: %r-%r...', 
             start_plate, end_plate)
-
         well_input_data = {}
         for plate in range(start_plate, end_plate+1):
             for i in range(0,plate_size):
+                # Create test wells, concentrations will be varied
                 well_input = self.create_small_molecule_test_well(
                     plate,i,library_well_type='experimental')
                 well_input_data[well_input['well_id']] = well_input
@@ -429,12 +438,17 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         
-        logger.info('create library copy...')
+        # 3. Create a Library Copy:
+        # - will also create Plates: 
+        # -- initial_well_volume will be set
+        # -- because the well concentrations vary, Plate.concentration fields are not set
+        logger.info('Create library copy...')
         copy_input_data = {
             'library_short_name': library_data['short_name'],
             'name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000040'
+        
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
@@ -443,6 +457,7 @@ class LibraryResource(DBResourceTestCase):
             copy_input_data, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume'])
         
+        # 4. Verify created Plates
         logger.info('Verify plates created...')
         uri = '/'.join([resource_test_uri,'plate'])
         data_for_get={ 'limit': 0 }        
@@ -458,15 +473,24 @@ class LibraryResource(DBResourceTestCase):
         end_plate = int(library_data['end_plate'])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj['objects']),number_of_plates)
-        for obj in new_obj['objects']:
-            self.assertEqual(library_copy['name'],obj['copy_name'])
-            self.assertEqual(
-                float(copy_input_data['initial_plate_well_volume']),float(obj['well_volume']))
-            plate_number = int(obj['plate_number'])
+        for plate_data in new_obj['objects']:
+            self.assertEqual(library_copy['name'],plate_data['copy_name'])
+            plate_number = int(plate_data['plate_number'])
             self.assertTrue(
                 plate_number>=start_plate and plate_number<=end_plate,
-                'wrong plate_number: %r' % obj)
-
+                'wrong plate_number: %r' % plate_data)
+            self.assertEqual(
+                Decimal(copy_input_data['initial_plate_well_volume']),
+                Decimal(plate_data['well_volume']))
+            self.assertTrue(plate_data['molar_concentration'] is None)
+            self.assertTrue(plate_data['mg_ml_concentration'] is None)
+            # Min Molar concentration is set, because copy_wells were created
+            self.assertTrue(plate_data['min_molar_concentration'] is not None)
+            # Min mg/ml concentration is not set, because copy_wells only have molar
+            self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
+            self.assertEqual(plate_data['status'], 'not_specified')
+            
+        # 5. Verify created CopyWells
         logger.info('Verify copy_wells created (check varying concentrations)...')
         uri = '/'.join([
             BASE_URI_DB,
@@ -487,39 +511,44 @@ class LibraryResource(DBResourceTestCase):
         copy_wells_returned = new_obj['objects']
         self.assertEqual(len(copy_wells_returned),len(well_input_data))
 
-        for obj in copy_wells_returned:
-            self.assertEqual(library_copy['name'],obj['copy_name'])
+        for copy_well_data in copy_wells_returned:
+            self.assertEqual(library_copy['name'],copy_well_data['copy_name'])
             self.assertTrue(
-                obj['plate_number'] >= start_plate
-                and obj['plate_number'] <= end_plate,
-                'copy_well returned for wrong plate: %r' % obj )
-            well_input = well_input_data.get(obj['well_id'], None)
+                copy_well_data['plate_number'] >= start_plate
+                and copy_well_data['plate_number'] <= end_plate,
+                'copy_well returned for wrong plate: %r' % copy_well_data )
+            well_input = well_input_data.get(copy_well_data['well_id'], None)
             self.assertTrue(well_input is not None, 
-                'copy well not in wells: %r' % obj)
+                'copy well not in wells: %r' % copy_well_data)
             if well_input['library_well_type'] == 'experimental':
                 self.assertEqual(
-                    float(copy_input_data['initial_plate_well_volume']),
-                    float(obj['initial_volume']))
-                self.assertEqual(obj['initial_volume'], obj['volume'])
+                    Decimal(copy_input_data['initial_plate_well_volume']),
+                    Decimal(copy_well_data['initial_volume']))
                 self.assertEqual(
-                    well_input['molar_concentration'],
-                    float(obj['molar_concentration']), 
-                    'molar concentration mismatch: %r output %r' %(well_input,obj))
+                    copy_well_data['initial_volume'], 
+                    copy_well_data['volume'])
+                self.assertEqual(
+                    Decimal(well_input['molar_concentration']),
+                    Decimal(copy_well_data['molar_concentration']), 
+                    'molar concentration mismatch: %r output %r' 
+                    % (well_input,copy_well_data))
+                self.assertTrue(copy_well_data['mg_ml_concentration'] is None)
             else:
                 self.assertTrue(
-                    obj['initial_volume'] is None,
-                    'non-experimental well has data: %r' % obj)
-                self.assertTrue(obj['volume'] is None,
-                    'non-experimental well has data: %r' % obj)
-                self.assertTrue(obj['molar_concentration'] is None,
-                    'non-experimental well has data: %r' % obj)
-        return (library_data, library_copy, new_obj['objects'])
+                    copy_well_data['initial_volume'] is None,
+                    'non-experimental well has data: %r' % copy_well_data)
+                self.assertTrue(copy_well_data['volume'] is None,
+                    'non-experimental well has data: %r' % copy_well_data)
+                self.assertTrue(copy_well_data['molar_concentration'] is None,
+                    'non-experimental well has data: %r' % copy_well_data)
+        return (library_data, library_copy, copy_wells_returned)
 
     def test10a_create_library_copy_simple_wells(self):
 
         logger.info('test10a_create_library_copy_simple_wells ...')
         logger.info('creates a library wells with single concentration')
         
+        # 1. Create a Library
         logger.info('create library a library...')
         start_plate = 1000
         end_plate = 1005
@@ -531,11 +560,11 @@ class LibraryResource(DBResourceTestCase):
             'screen_type': 'small_molecule' })
         short_name = library_data['short_name']
         
+        # 2. Create Library Wells: wells all have the same concentration 
         logger.info('create and load well data, plates: %r-%r...', 
             start_plate, end_plate)
-
         well_input_data = {}
-        single_molar_concentration = 0.010
+        single_molar_concentration = '0.010'
         for plate in range(start_plate, end_plate+1):
             for i in range(0,plate_size):
                 well_input = self.create_small_molecule_test_well(
@@ -553,7 +582,8 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        
+
+        # 3. Create a Library Copy        
         logger.info('create library copy...')
         copy_input_data = {
             'library_short_name': library_data['short_name'],
@@ -568,6 +598,7 @@ class LibraryResource(DBResourceTestCase):
             copy_input_data, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume'])
         
+        # 4. Verify created Plates
         logger.info('Verify plates created...')
         uri = '/'.join([resource_test_uri,'plate'])
         data_for_get={ 'limit': 0 }        
@@ -583,16 +614,26 @@ class LibraryResource(DBResourceTestCase):
         end_plate = int(library_data['end_plate'])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj['objects']),number_of_plates)
-        for obj in new_obj['objects']:
-            self.assertEqual(library_copy['name'],obj['copy_name'])
-            self.assertEqual(
-                float(copy_input_data['initial_plate_well_volume']),float(obj['well_volume']))
-            plate_number = int(obj['plate_number'])
+        for plate_data in new_obj['objects']:
+            self.assertEqual(library_copy['name'],plate_data['copy_name'])
+            plate_number = int(plate_data['plate_number'])
             self.assertTrue(
                 plate_number>=start_plate and plate_number<=end_plate,
-                'wrong plate_number: %r' % obj)
+                'wrong plate_number: %r' % plate_data)
+            self.assertEqual(
+                Decimal(copy_input_data['initial_plate_well_volume']),
+                Decimal(plate_data['well_volume']))
+            self.assertEqual(
+                Decimal(plate_data['molar_concentration']),
+                Decimal(single_molar_concentration))
+            self.assertEqual(
+                plate_data['molar_concentration'],
+                plate_data['min_molar_concentration'])
+            self.assertTrue(plate_data['mg_ml_concentration'] is None)
+            self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
 
-        logger.info('Verify copy_wells created (check varying concentrations)...')
+        # 5. Verify CopyWell data can be queried, but that all have single concentration
+        logger.info('Verify copy_wells created ()...')
         uri = '/'.join([
             BASE_URI_DB,
             'library',
@@ -612,33 +653,36 @@ class LibraryResource(DBResourceTestCase):
         copy_wells_returned = new_obj['objects']
         self.assertEqual(len(copy_wells_returned),len(well_input_data))
 
-        for obj in copy_wells_returned:
-            self.assertEqual(library_copy['name'],obj['copy_name'])
+        for copy_well_data in copy_wells_returned:
+            self.assertEqual(library_copy['name'],copy_well_data['copy_name'])
             self.assertTrue(
-                obj['plate_number'] >= start_plate
-                and obj['plate_number'] <= end_plate,
-                'copy_well returned for wrong plate: %r' % obj )
-            well_input = well_input_data.get(obj['well_id'], None)
+                copy_well_data['plate_number'] >= start_plate
+                and copy_well_data['plate_number'] <= end_plate,
+                'copy_well returned for wrong plate: %r' % copy_well_data )
+            well_input = well_input_data.get(copy_well_data['well_id'], None)
             self.assertTrue(well_input is not None, 
-                'copy well not in wells: %r' % obj)
+                'copy well not in wells: %r' % copy_well_data)
             if well_input['library_well_type'] == 'experimental':
                 self.assertEqual(
-                    float(copy_input_data['initial_plate_well_volume']),
-                    float(obj['initial_volume']))
-                self.assertEqual(obj['initial_volume'], obj['volume'])
+                    Decimal(copy_input_data['initial_plate_well_volume']),
+                    Decimal(copy_well_data['initial_volume']))
                 self.assertEqual(
-                    well_input['molar_concentration'],
-                    float(obj['molar_concentration']), 
-                    'molar concentration mismatch: %r output %r' %(well_input,obj))
+                    Decimal(copy_well_data['initial_volume']), 
+                    Decimal(copy_well_data['volume']))
+                self.assertEqual(
+                    Decimal(well_input['molar_concentration']),
+                    Decimal(copy_well_data['molar_concentration']), 
+                    'molar concentration mismatch: %r output %r' %(well_input,copy_well_data))
+                self.assertTrue(copy_well_data['mg_ml_concentration'] is None)
             else:
                 self.assertTrue(
-                    obj['initial_volume'] is None,
-                    'non-experimental well has data: %r' % obj)
-                self.assertTrue(obj['volume'] is None,
-                    'non-experimental well has data: %r' % obj)
-                self.assertTrue(obj['molar_concentration'] is None,
-                    'non-experimental well has data: %r' % obj)
-        return (library_data, library_copy, new_obj['objects'])
+                    copy_well_data['initial_volume'] is None,
+                    'non-experimental well has data: %r' % copy_well_data)
+                self.assertTrue(copy_well_data['volume'] is None,
+                    'non-experimental well has data: %r' % copy_well_data)
+                self.assertTrue(copy_well_data['molar_concentration'] is None,
+                    'non-experimental well has data: %r' % copy_well_data)
+        return (library_data, library_copy, copy_wells_returned)
         
     def test11_create_library_copy_invalids(self):
         # TODO: try to create duplicate copy names
@@ -650,7 +694,7 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test12_modify_copy_wells ...')
     
-        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy_specific_wells()
         end_plate = int(library_data['end_plate'])
         start_plate = int(library_data['start_plate'])
         short_name = library_data['short_name']
@@ -693,8 +737,6 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         new_copywell = patch_response
-        self.assertTrue(int(new_copywell['adjustments'])==1, 
-            'Expected adjustments==1, %r' % new_copywell)
         self.assertEqual(
             volume_adjustment, float(new_copywell['consumed_volume']))
         self.assertEqual(
@@ -703,7 +745,7 @@ class LibraryResource(DBResourceTestCase):
     def test13_plate_locations(self):
 
         logger.info('test13_plate_locations ...')
-        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy_specific_wells()
         
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
@@ -869,14 +911,16 @@ class LibraryResource(DBResourceTestCase):
         
         logger.info('test17_batch_edit_copyplate_info ...')
         
-        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy_specific_wells()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
         short_name = library_data['short_name']
         
+        # 1. patch new data to the copyplates
+        
         new_plate_data = {
-            'status': 'not_available',
-            'well_volume': '0.000030', 
+            'status': 'available',
+            'remaining_well_volume': '0.000030', 
             'plate_type': 'nunc_96'
         }
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
@@ -888,7 +932,6 @@ class LibraryResource(DBResourceTestCase):
                 'copy_name': copy_data['name'] }
             }
         
-        logger.info('Patch batch_edit: cred: %r', self.username)
         resp = self.api_client.patch(
             resource_uri,format='json', 
             data=data, 
@@ -900,13 +943,14 @@ class LibraryResource(DBResourceTestCase):
         
         # Inspect meta "Result" section
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
-        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
-        self.assertTrue(patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT]==6, 
+        self.assertTrue(API_MSG_RESULT in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue(API_MSG_SUBMIT_COUNT in patch_response['meta'][API_MSG_RESULT], '%r' % patch_response)
+        self.assertTrue(patch_response['meta'][API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
-            % (API_MESSAGE_SUBMIT_COUNT, patch_response['meta']))
+            % (API_MSG_SUBMIT_COUNT, patch_response['meta']))
         logger.info('patch_response: %r', patch_response)
-        # Get plates as defined
+        
+        # 2. Verify plates
         resource_uri = BASE_URI_DB + '/librarycopyplate'
         resp = self.api_client.get(
             resource_uri,format='json', 
@@ -925,19 +969,78 @@ class LibraryResource(DBResourceTestCase):
             'could not find all of the plates in the range: %r, %r'
             % ([start_plate,end_plate],plates_data))
         
-        plates_data_input = plates_data
-        for plate_data in plates_data_input:
+        plates_data_output = plates_data
+        for plate_data_output in plates_data_output:
             for field in new_plate_data.keys():
                 self.assertTrue(
-                    equivocal(plate_data[field],new_plate_data[field]),
+                    equivocal(plate_data_output[field],new_plate_data[field]),
                     'plate data: expected: %r, rcvd: %r'
-                    % (new_plate_data[field],plate_data[field]))
+                    % (new_plate_data[field],plate_data_output[field]))
+            self.assertEqual(
+                _now().date().strftime("%Y-%m-%d"), plate_data_output['date_plated'],
+                'expected date_plated: %r, %r' %(_now().date(), plate_data_output['date_plated']))
+
+        # 3. patch new data - status to retired
+        new_plate_data['status'] = 'retired'
+        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         
+        data = {
+            'data': { 'plate_info': new_plate_data }, 
+            'search_data': {
+                'library_short_name': library_data['short_name'],
+                'copy_name': copy_data['name'] }
+            }
+        
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data=data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patch_response = self.deserialize(resp)
+        
+        # Inspect meta "Result" section
+        self.assertTrue('meta' in patch_response, '%r' % patch_response)
+        self.assertTrue(API_MSG_RESULT in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue(API_MSG_SUBMIT_COUNT in patch_response['meta'][API_MSG_RESULT], '%r' % patch_response)
+        self.assertTrue(patch_response['meta'][API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            'Wrong "%r" count: %r' 
+            % (API_MSG_SUBMIT_COUNT, patch_response['meta']))
+        logger.info('patch_response: %r', patch_response)
+        
+        # 4. Verify plates status changed to "retired"
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'library_short_name__eq': library_data['short_name'],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        
+        plates_data_output = plates_data
+        for plate_data_output in plates_data_output:
+            self.assertEqual('retired', plate_data_output['status'])
+            self.assertEqual(
+                _now().date().strftime("%Y-%m-%d"), plate_data_output['date_retired'],
+                'expected date_plated: %r, %r' %(_now().date(), plate_data_output['date_plated']))
+
+
     
     def test16_batch_edit_copyplate_location(self):
         
         logger.info('test16_batch_edit_copyplate_location ...')
-        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy_specific_wells()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
         short_name = library_data['short_name']
@@ -968,10 +1071,10 @@ class LibraryResource(DBResourceTestCase):
         
         # Inspect meta "Result" section
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
-        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
-        self.assertTrue(patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT]==6, 
-            'Wrong %r count: %r' % (API_MESSAGE_SUBMIT_COUNT,patch_response['meta']))
+        self.assertTrue(API_MSG_RESULT in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue(API_MSG_SUBMIT_COUNT in patch_response['meta'][API_MSG_RESULT], '%r' % patch_response)
+        self.assertTrue(patch_response['meta'][API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            'Wrong %r count: %r' % (API_MSG_SUBMIT_COUNT,patch_response['meta']))
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -1052,17 +1155,17 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test15_modify_copyplate_info ...')
         
-        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy_specific_wells()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
         short_name = library_data['short_name']
         
         new_plate_data = {
-            'status': 'not_available',
-            'well_volume': '0.000030', 
+            'status': 'available',
+            'remaining_well_volume': '0.000030', 
             'plate_type': 'nunc_96'
         }
-        # Get plates as defined
+        # 1. Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
         resp = self.api_client.get(
             resource_uri,format='json', 
@@ -1085,7 +1188,7 @@ class LibraryResource(DBResourceTestCase):
         for plate_data in plates_data_input:
             plate_data.update(new_plate_data)
 
-        # Patch the plates
+        # 2. Patch the plates
         logger.info('Patch the plates: cred: %r', self.username)
         resp = self.api_client.patch(
             resource_uri,format='json', 
@@ -1096,15 +1199,15 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
-        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(API_MSG_RESULT in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue(API_MSG_SUBMIT_COUNT in patch_response['meta'][API_MSG_RESULT], '%r' % patch_response)
         self.assertTrue(
-            patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT] == (end_plate-start_plate+1),
+            patch_response['meta'][API_MSG_RESULT][API_MSG_SUBMIT_COUNT] == (end_plate-start_plate+1),
             '"%r" : %r, expected: %r' 
-            % (API_MESSAGE_SUBMIT_COUNT,
+            % (API_MSG_SUBMIT_COUNT,
                 patch_response['meta'], (end_plate-start_plate+1)))
         
-        # Verify that the plates have the expected location
+        # 3. Verify that the plates have the expected location
         resp = self.api_client.get(
             resource_uri,format='json', 
             data={ 
@@ -1116,17 +1219,20 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        plates_data = new_obj['objects']
+        plates_data_output = new_obj['objects']
         self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
             'could not find all of the plates in the range: %r, %r'
             % ([start_plate,end_plate],plates_data))
-        for plate_data in plates_data:
+        for plate_data in plates_data_output:
             for field in new_plate_data.keys():
                 self.assertTrue(
                     equivocal(plate_data[field],new_plate_data[field]),
                     'plate data: expected: %r, rcvd: %r'
                     % (new_plate_data[field],plate_data[field]))
-        
+                self.assertEqual(
+                    _now().date().strftime("%Y-%m-%d"), plate_data['date_plated'],
+                    'expected date_plated: %r, %r' %(_now().date(), plate_data['date_plated']))
+
         # Test ApiLogs:
         # plate - one for each plate
         # plate_location - one for each plate addition to the range
@@ -1135,7 +1241,7 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test14_modify_copy_plate_locations ...')
         
-        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy_specific_wells()
         end_plate = library_data['end_plate']
         start_plate = library_data['start_plate']
         short_name = library_data['short_name']
@@ -1183,12 +1289,12 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         self.assertTrue('meta' in patch_response, '%r' % patch_response)
-        self.assertTrue('Result' in patch_response['meta'], '%r' % patch_response)
-        self.assertTrue(API_MESSAGE_SUBMIT_COUNT in patch_response['meta']['Result'], '%r' % patch_response)
+        self.assertTrue(API_MSG_RESULT in patch_response['meta'], '%r' % patch_response)
+        self.assertTrue(API_MSG_SUBMIT_COUNT in patch_response['meta'][API_MSG_RESULT], '%r' % patch_response)
         self.assertTrue(
-            patch_response['meta']['Result'][API_MESSAGE_SUBMIT_COUNT] == (end_plate-start_plate+1),
+            patch_response['meta'][API_MSG_RESULT][API_MSG_SUBMIT_COUNT] == (end_plate-start_plate+1),
             '"%r" : %r, expected: %r' 
-            % (API_MESSAGE_SUBMIT_COUNT,
+            % (API_MSG_SUBMIT_COUNT,
                 patch_response['meta'], (end_plate-start_plate+1)))
         
         # Verify that the plates have the expected location
@@ -2615,7 +2721,6 @@ class ScreenResource(DBResourceTestCase):
         LibraryScreening.objects.all().delete()
         ApiLog.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username='testsuper').delete()
-#         ScreensaverUser.objects.all().delete()
         
     def test1_create_screen(self):
         
@@ -2636,6 +2741,7 @@ class ScreenResource(DBResourceTestCase):
 
     def test2_create_library_screening(self):
         
+        # 1. Set up dependencies
         logger.info('create users...')
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
@@ -2654,15 +2760,16 @@ class ScreenResource(DBResourceTestCase):
         logger.info('set some experimental wells...')
         plate = 1000
         experimental_well_count = 20
-        input_data = [
+        input_well_data = [
             self.create_small_molecule_test_well(
-                plate,i,library_well_type='experimental') 
+                plate,i,library_well_type='experimental',
+                molar_concentration='0.001') 
             for i in range(0,experimental_well_count)]
         resource_name = 'well'
         resource_uri = '/'.join([
             BASE_URI_DB,'library', library1['short_name'],resource_name])
         resp = self.api_client.put(
-            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
             authentication=self.get_credentials(), 
             **{ 'limit': 0, 'includes': '*'} )
         self.assertTrue(
@@ -2670,36 +2777,41 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
 
         logger.info('create library copy...')
-        input_data = {
+        library_copy1_input = {
             'library_short_name': library1['short_name'],
             'name': "A",
-            'usage_type': "library_screening_plates"
-        }        
+            'usage_type': "library_screening_plates",
+            'initial_plate_well_volume': '0.000010',
+            'initial_plate_status': 'available'
+        }  
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,input_data['library_short_name'],input_data['name']])
+            resource_uri,library_copy1_input['library_short_name'],library_copy1_input['name']])
         library_copy1 = self._create_resource(
-            input_data, resource_uri, resource_test_uri)
+            library_copy1_input, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume','initial_plate_status'])
         logger.info('created: %r', library_copy1)
  
-        input_data['library_short_name'] = library2['short_name']
+        library_copy2_input = library_copy1_input.copy()
+        library_copy2_input['library_short_name'] = library2['short_name']
         resource_test_uri = '/'.join([
-            resource_uri,input_data['library_short_name'],input_data['name']])
+            resource_uri,library_copy2_input['library_short_name'],library_copy2_input['name']])
         library_copy2 = self._create_resource(
-            input_data, resource_uri, resource_test_uri)
+            library_copy2_input, resource_uri, resource_test_uri,
+            excludes=['initial_plate_well_volume','initial_plate_status'])
         logger.info('created: %r', library_copy2)
+        
         logger.info('create screen...')        
         screen = self.create_screen({
             'screen_type': 'small_molecule'
             })
 
         lps_format = '{library_short_name}:{name}:{{start_plate}}-{{end_plate}}'
-        library_plates_screened = [
-            lps_format.format(**library_copy1).format(**library1),
-            lps_format.format(**library_copy2).format(
+        plate_range1 = lps_format.format(**library_copy1).format(**library1)
+        plate_range2 = lps_format.format(**library_copy2).format(
                 start_plate=library2['start_plate'],
                 end_plate=int(library2['start_plate']+10))
-        ]
+        library_plates_screened = [ plate_range1, plate_range2 ]
         
         library_screening_input = {
             'screen_facility_id': screen['facility_id'],
@@ -2724,10 +2836,10 @@ class ScreenResource(DBResourceTestCase):
         key = 'screen_facility_id' 
         msg = 'input missing a %r should fail' % key
         logger.info('test %r', msg)
-        input = library_screening_input.copy()
-        del input['screen_facility_id'] 
+        invalid_input1 = library_screening_input.copy()
+        del invalid_input1['screen_facility_id'] 
         errors, resp = self._create_resource(
-            input, resource_uri, resource_test_uri, expect_fail=True)
+            invalid_input1, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
         self.assertTrue(
             find_in_dict(key, errors), 
@@ -2741,10 +2853,10 @@ class ScreenResource(DBResourceTestCase):
             library_short_name='**',name='A').format(**library1)]
         msg = 'invalid format for %r should fail' % key
         logger.info('test %r', msg)
-        input = library_screening_input.copy()
-        input[key] =  value
+        invalid_input2 = library_screening_input.copy()
+        invalid_input2[key] =  value
         errors, resp = self._create_resource(
-            input, resource_uri, resource_test_uri, expect_fail=True)
+            invalid_input2, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
         self.assertTrue(find_in_dict(key, errors), 
             'Error: response error not found: %r, obj: %r' %(key, errors))
@@ -2755,10 +2867,10 @@ class ScreenResource(DBResourceTestCase):
             'start_plate': library1['start_plate'],
             'end_plate': int(library1['start_plate'])-1 }) ]
         msg = 'invalid plate range in %r for  %r should fail' % (value,key)
-        input = library_screening_input.copy()
-        input[key] =  value
+        invalid_input3 = library_screening_input.copy()
+        invalid_input3[key] =  value
         errors, resp = self._create_resource(
-            input, resource_uri, resource_test_uri, expect_fail=True)
+            invalid_input3, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
@@ -2775,20 +2887,77 @@ class ScreenResource(DBResourceTestCase):
         ]
         msg = 'overlapping plate ranges in %r for  %r should fail' % (value,key)
         logger.info('test %r', msg)
-        input = library_screening_input.copy()
-        input[key] =  value
+        invalid_input4 = library_screening_input.copy()
+        invalid_input4[key] =  value
         errors, resp = self._create_resource(
-            input, resource_uri, resource_test_uri, expect_fail=True)
+            invalid_input4, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
         # 5. Finally, create valid input
-        logger.info('test valid input...')
-        library_screening = self._create_resource(
-            library_screening_input, resource_uri, resource_test_uri)
+        logger.info('Patch batch_edit: cred: %r', self.username)
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            data=library_screening_input, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 5.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+        logger.info('resp: %r', resp)
 
-        # Test Screen statistics
+        self.assertTrue('meta' in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp['meta'], '%r' % resp)
+        
+        actual_result_meta = resp['meta'][API_MSG_RESULT]
+        expected_result_meta = {
+            API_MSG_SCREENING_PLATES_UPDATED: 17,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: 17, 
+            API_MSG_SCREENING_DELETED_PLATE_COUNT: 0,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 0,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 17
+        }
+        for k,v in expected_result_meta.items():
+            self.assertEqual(v,actual_result_meta[k], 
+                'k: %r, expected: %r, actual: %r' % (k, v, actual_result_meta))
+        
+        self.assertTrue(len(resp['objects']) == 1)
+        library_screening_output = resp['objects'][0]
+        
+        # 5.b Inspect the returned library screening
+        logger.info('TODO: validate the library screening returned: %r', library_screening_output)
+        
+        for k,v in library_screening_input.items():
+            self.assertEqual(v, library_screening_output[k])
+
+        # 5.c verify new plate volumes (just the first library)
+        # retrieve plates from the server
+        _data_for_get = { 
+            'plate_number__range': [library1['start_plate'],library1['end_plate']],
+            'copy_name__eq': library_copy1['name']
+            }
+        plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            plate_resource_uri, format='json', 
+            authentication=self.get_credentials(), data=_data_for_get)
+        new_obj = self.deserialize(resp)
+        expected_plates = library1['end_plate']-library1['start_plate']+1
+        self.assertTrue(len(new_obj['objects']),expected_plates)
+        
+        expected_remaining_volume = (
+            Decimal(library_copy1_input['initial_plate_well_volume']) - 
+            Decimal(library_screening_input['volume_transferred_per_well_from_library_plates']))
+        for plate_data in new_obj['objects']:
+            logger.info('inspect plate: %r', plate_data)
+            self.assertTrue(
+                Decimal(plate_data['remaining_well_volume'])==expected_remaining_volume,
+                'expected: %r, actual: %r' % (
+                    expected_remaining_volume, plate_data))
+
+        # 5.d. Test Screen statistics
         screen = self.get_screen(screen['facility_id'])
 
         key = 'library_screenings'
@@ -2818,41 +2987,228 @@ class ScreenResource(DBResourceTestCase):
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
 
-        # 7. Test - add a plate_range
-        input = { 
-            'activity_id': library_screening['activity_id'],
-            'library_plates_screened': 
-                library_screening['library_plates_screened'] 
-            }
-        input['library_plates_screened'].append(
-            lps_format.format(**library_copy2).format(
-                start_plate=library2['start_plate']+15,
-                end_plate=int(library2['start_plate']+20)))
-        logger.info('input: %r', input)
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', data=input, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        library_screening = self.deserialize(resp)
+        # 5.e Inspect PATCH logs after adding a plate range
 
-        # 8. Test - delete a plate_range
-        input = { 
-            'activity_id': library_screening['activity_id'],
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'ref_resource_name': 'libraryscreening', 
+            'key': library_screening_output['activity_id'],
+            'api_action': API_ACTION_CREATE
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        logger.info('logs: %r', apilogs)
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('apilog: %r', apilog)
+        self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
+        self.assertTrue('library_plates_screened' in apilog['diff_keys'])
+        self.assertTrue(plate_range1 in apilog['diffs'], 
+            'plate_range1: %r not in diffs: %r'
+            % (plate_range1, apilog['diffs']))
+        
+        self.assertTrue(apilog['child_logs'] == 17, 
+            'wrong child_logs count: %r' % apilog)
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'parent_log_id': apilog['id']
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 17, 
+            'wrong number of child logs returned: %d: %r' 
+            % (len(apilogs), apilogs))
+        apilog = apilogs[0]
+        logger.info('apilog: %r', apilog)
+        self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
+        expected_remaining_volume = (
+            Decimal(library_copy1_input['initial_plate_well_volume']) - 
+            Decimal(library_screening_output['volume_transferred_per_well_from_library_plates']))
+        self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
+        diffs = json.loads(apilog['diffs'])
+        logger.info('diffs: %r', diffs)
+        self.assertEqual(
+            expected_remaining_volume, Decimal(diffs['remaining_well_volume'][1]))
+        
+
+
+        # 7. Test - add a plate_range
+        library_screening_input2 = { 
+            'activity_id': library_screening_output['activity_id'],
             'library_plates_screened': 
-                library_screening['library_plates_screened'][:-1] 
+                library_screening_output['library_plates_screened'] 
             }
-        logger.info('input: %r', input)
+        # add 6 more plates
+        added_plate_range_start = library2['start_plate']+15
+        added_plate_range_end = library2['start_plate']+20
+        added_plate_range = lps_format.format(**library_copy2).format(
+                start_plate=added_plate_range_start,
+                end_plate=added_plate_range_end )
+        library_screening_input2['library_plates_screened'].append(
+            added_plate_range)
+        logger.info('input: %r', library_screening_input2)
         resp = self.api_client.patch(
             resource_uri, 
-            format='json', data=input, 
+            format='json', data=library_screening_input2, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        library_screening = self.deserialize(resp)
+
+        # 7.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+        logger.info('resp: %r', resp)
+
+        self.assertTrue('meta' in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp['meta'], '%r' % resp)
+        actual_result_meta = resp['meta'][API_MSG_RESULT]
+        expected_result_meta = {
+            API_MSG_SCREENING_PLATES_UPDATED: 6,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: 6, 
+            API_MSG_SCREENING_DELETED_PLATE_COUNT: 0,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 17,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 23,
+        }
+        for k,v in expected_result_meta.items():
+            self.assertEqual(v,actual_result_meta[k], 
+                'k: %r, expected: %r, actual: %r' % (k, v, actual_result_meta))
+        
+        self.assertTrue(len(resp['objects']) == 1)
+        library_screening_output2 = resp['objects'][0]
+        for k,v in library_screening_input2.items():
+            self.assertEqual(v, library_screening_output2[k])
+        
+        # 7.c Inspect PATCH logs after adding a plate range
+
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'ref_resource_name': 'libraryscreening', 
+            'key': library_screening_output2['activity_id'],
+            'api_action': API_ACTION_PATCH
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        logger.info('logs: %r', apilogs)
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('apilog: %r', apilog)
+        self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
+        self.assertTrue('library_plates_screened' in apilog['diff_keys'])
+        self.assertTrue(added_plate_range in apilog['diffs'], 
+            'added_plate_range: %r not in diffs: %r'
+            % (added_plate_range, apilog['diffs']))
+        
+        self.assertTrue(apilog['child_logs'] == 6, 
+            'wrong child_logs count: %r' % apilog)
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'parent_log_id': apilog['id']
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 6, 
+            'wrong number of child logs returned: %d: %r' 
+            % (len(apilogs), apilogs))
+        apilog = apilogs[0]
+        logger.info('apilog: %r', apilog)
+        self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
+        expected_remaining_volume = (
+            Decimal(library_copy1_input['initial_plate_well_volume']) - 
+            Decimal(library_screening_output2['volume_transferred_per_well_from_library_plates']))
+        self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
+        diffs = json.loads(apilog['diffs'])
+        logger.info('diffs: %r', diffs)
+        self.assertEqual(
+            expected_remaining_volume, Decimal(diffs['remaining_well_volume'][1]))
+        
+        # 7.e check a modified plate
+        plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
+        modified_plate = self.get_single_resource(plate_resource_uri, {
+            'copy_name': library_copy2['name'],
+            'plate_number': added_plate_range_start })
+        logger.info('modified plate: %r', modified_plate)
+        self.assertTrue(modified_plate is not None)
+        self.assertEqual(
+            expected_remaining_volume, 
+            Decimal(modified_plate['remaining_well_volume']))
+        
+        # 8. Test - delete the first plate_range (6 plates)
+        
+        plate_range_to_delete = library_screening_output2['library_plates_screened'][0]
+        library_screening_input3 = { 
+            'activity_id': library_screening_output2['activity_id'],
+            'library_plates_screened': 
+                library_screening_output2['library_plates_screened'][1:] 
+            }
+        logger.info('input: %r', library_screening_input3)
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=library_screening_input3, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 8.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+        logger.info('resp: %r', resp)
+
+        self.assertTrue('meta' in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp['meta'], '%r' % resp)
+        actual_result_meta = resp['meta'][API_MSG_RESULT]
+        expected_result_meta = {
+            API_MSG_SCREENING_PLATES_UPDATED: 6,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: 0, 
+            API_MSG_SCREENING_DELETED_PLATE_COUNT: 6,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 17,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 17
+        }
+        for k,v in expected_result_meta.items():
+            self.assertEqual(v,actual_result_meta[k], 
+                'k: %r, expected: %r, actual: %r' % (k, v, actual_result_meta))
+        
+        self.assertTrue(len(resp['objects']) == 1)
+        library_screening_output3 = resp['objects'][0]
+        for k,v in library_screening_input3.items():
+            self.assertEqual(v, library_screening_output3[k])
+
+        # verify new plate volumes = initial_plate_well_volume
+        # retrieve plates from the server
+        _data_for_get = { 
+            'plate_number__range': [library1['start_plate'],library1['end_plate']],
+            'copy_name__eq': library_copy1['name']
+            }
+        plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            plate_resource_uri, format='json', 
+            authentication=self.get_credentials(), data=_data_for_get)
+        new_obj = self.deserialize(resp)
+        expected_plates = library1['end_plate']-library1['start_plate']+1
+        self.assertTrue(len(new_obj['objects']),expected_plates)
+        
+        expected_remaining_volume = Decimal(library_copy1_input['initial_plate_well_volume'])
+        for plate_data in new_obj['objects']:
+            self.assertTrue(
+                Decimal(plate_data['remaining_well_volume'])==expected_remaining_volume,
+                'expected: %r, actual: %r' % (
+                    expected_remaining_volume, plate_data))
+            self.assertTrue(
+                Decimal(plate_data['well_volume'])==expected_remaining_volume,
+                'initial well volume expected: %r, actual: %r' % (
+                    expected_remaining_volume, plate_data))
+        
         
         # 9. test valid input with start_plate==end_plate (no end plate)
         
@@ -2872,24 +3228,51 @@ class ScreenResource(DBResourceTestCase):
                 start_plate=library2['start_plate'])
         ]
 
-        input = library_screening_input.copy()
-        input['date_of_activity'] = '2016-08-01'
-        input['library_plates_screened'] =  library_plates_screened
-        data_for_get = { 'date_of_activity__eq': input['date_of_activity']}
-        library_screening = self._create_resource(
-            input, resource_uri, resource_test_uri,
-            data_for_get=data_for_get, excludes=['library_plates_screened'])
+        library_screening_input4 = library_screening_input.copy()
+        library_screening_input4['date_of_activity'] = '2016-08-01'
+        library_screening_input4['library_plates_screened'] =  library_plates_screened
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            data=library_screening_input4, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        # 9.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+
+        self.assertTrue('meta' in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp['meta'], '%r' % resp)
+        actual_result_meta = resp['meta'][API_MSG_RESULT]
+        expected_result_meta = {
+            API_MSG_SCREENING_PLATES_UPDATED: 2,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: 2, 
+            API_MSG_SCREENING_DELETED_PLATE_COUNT: 0,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 0,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 2
+        }
+        for k,v in expected_result_meta.items():
+            self.assertEqual(v,actual_result_meta[k], 
+                'k: %r, expected: %r, actual: %r' % (k, v, actual_result_meta))
+
+        self.assertTrue(len(resp['objects']) == 1)
+        library_screening_output4 = resp['objects'][0]
+        for k,v in library_screening_input4.items():
+            if k == 'library_plates_screened':
+                continue # see next test, below
+            self.assertEqual(v, library_screening_output4[k])
         logger.info('created library screening, with single-plate range: %r',
-            library_screening)
+            library_screening_output4)
         found_count = 0
-        for lps in library_screening['library_plates_screened']:
+        for lps in library_screening_output4['library_plates_screened']:
             for lps_expected in library_plates_screened_return_formatted:
                 if lps_expected==lps:
                     found_count += 1
         self.assertTrue(found_count==2, 
             'single plate test, returned ranges, expected: %r, returned: %r'
             %(library_plates_screened_return_formatted,
-                library_screening['library_plates_screened']))
+                library_screening_output4['library_plates_screened']))
         
         # Test Screen statistics
 
@@ -2900,6 +3283,8 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(screen[key] == expected_value,
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
+        
+        # 10. test deletion of a library screening
         
     def test3_create_publication(self):
 

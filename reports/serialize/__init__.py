@@ -14,6 +14,7 @@ import pytz
 import six
 
 from reports import ValidationError
+from decimal import Decimal
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ def to_simple(data):
     else:
         return force_text(data)
 
-def parse_val(value, key, data_type):
+def parse_val(value, key, data_type, options=None):
     """
     All values are read as strings from the input files, so this function 
     converts them as directed.
@@ -100,8 +101,14 @@ def parse_val(value, key, data_type):
             if(value.lower() == 'true' 
                 or value.lower() == 't' or value == '1'): return True
             return False
-        elif data_type in ['float','decimal']:
+        elif data_type == 'float':
             return float(value)
+        elif data_type == 'decimal':
+            if isinstance(value, float):
+                logger.warn('converting float: %r to decimal: %r',
+                    value, Decimal(str(value)))
+                value = str(value)
+            return Decimal(value)
         elif data_type == 'list':
             if isinstance(value, six.string_types):
                 if value.strip():

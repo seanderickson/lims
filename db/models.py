@@ -118,6 +118,13 @@ class LibraryScreening(Screening):
     class Meta:
         db_table = 'library_screening'
 
+    def __repr__(self):
+        return ('<LibraryScreening(screen=%r, activity_id=%d, '
+            'volume_transferred_per_well_from_library_plates=%r)>' 
+            % ( self.screen.facility_id, self.activity_id, 
+                self.volume_transferred_per_well_from_library_plates))
+
+
 class CherryPickScreening(Screening):
     screeninglink = models.OneToOneField(
         'Screening', primary_key=True, parent_link=True, db_column='activity_id')
@@ -244,6 +251,10 @@ class EquipmentUsed(models.Model):
 #     class Meta:
 #         db_table = 'annotation_value'
 
+# TODO: Assay Plate may be deprecated in the future:
+# Original purpose was to correlate screening data (plates) to data loading plates
+# - data loading plates have been removed
+# - assay plates are not needed to track screening data
 class AssayPlate(models.Model):
     assay_plate_id = models.AutoField(primary_key=True)
     replicate_ordinal = models.IntegerField()
@@ -1295,52 +1306,60 @@ class Copy(models.Model):
     plates_available = models.IntegerField(null=True)
     plate_locations_count = models.IntegerField(null=True)
     
-    # Deprecated - concentration fields: to be removed after copywell migrations
-    primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
-    primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
-    max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
-    well_concentration_dilution_factor = models.DecimalField(null=True, max_digits=8, decimal_places=2)
-    
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
+
+    # Deprecated - concentration fields: to be removed after copywell migrations
+    # primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    # primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    # min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    # max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    # min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    # max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    # well_concentration_dilution_factor = models.DecimalField(null=True, max_digits=8, decimal_places=2)
     class Meta:
         db_table = 'copy'
 
-class CopyScreeningStatistics(models.Model):
-    # Added 20160127 - todo test
-    copy = models.OneToOneField('Copy', primary_key=True) 
-    name = models.TextField()
-    short_name = models.TextField()
-    screening_count = models.IntegerField(null=True)
-    ap_count = models.IntegerField(null=True)
-    dl_count = models.IntegerField(null=True)
-    first_date_data_loaded = models.DateField(null=True)
-    last_date_data_loaded = models.DateField(null=True)
-    first_date_screened = models.DateField(null=True)
-    last_date_screened = models.DateField(null=True)
-    class Meta:
-        db_table = 'copy_screening_statistics'
+    def __repr__(self):
+        return ('<Copy(library.short_name=%r, name=%r, usage_type=%r)>' 
+            % (self.library.short_name, self.name, self.usage_type))
 
-class PlateScreeningStatistics(models.Model):
-    # Added 20160127 - todo test
-    plate = models.OneToOneField('Plate', primary_key=True)
-    plate_number = models.IntegerField(null=True)
-    copy = models.ForeignKey('Copy')
-    copy_name = models.TextField()
-    library_short_name= models.TextField()
-    library = models.ForeignKey('Library')
-    screening_count = models.IntegerField(null=True)
-    ap_count = models.IntegerField(null=True)
-    dl_count = models.IntegerField(null=True)
-    first_date_data_loaded = models.DateField(null=True)
-    last_date_data_loaded = models.DateField(null=True)
-    first_date_screened = models.DateField(null=True)
-    last_date_screened = models.DateField(null=True)
-    class Meta:
-        db_table = 'plate_screening_statistics'
+# # Deprecated: to be calculated on the fly:
+# # Note: this model is not in SS1
+# class CopyScreeningStatistics(models.Model):
+#     # Added 20160127 - todo test
+#     copy = models.OneToOneField('Copy', primary_key=True) 
+#     name = models.TextField()
+#     short_name = models.TextField()
+#     screening_count = models.IntegerField(null=True)
+#     ap_count = models.IntegerField(null=True)
+#     dl_count = models.IntegerField(null=True)
+#     first_date_data_loaded = models.DateField(null=True)
+#     last_date_data_loaded = models.DateField(null=True)
+#     first_date_screened = models.DateField(null=True)
+#     last_date_screened = models.DateField(null=True)
+#     class Meta:
+#         db_table = 'copy_screening_statistics'
+# 
+# # Deprecated: to be calculated on the fly
+# # Note: this model is not in SS1
+# class PlateScreeningStatistics(models.Model):
+#     # Added 20160127 - todo test
+#     plate = models.OneToOneField('Plate', primary_key=True)
+#     plate_number = models.IntegerField(null=True)
+#     copy = models.ForeignKey('Copy')
+#     copy_name = models.TextField()
+#     library_short_name= models.TextField()
+#     library = models.ForeignKey('Library')
+#     screening_count = models.IntegerField(null=True)
+#     ap_count = models.IntegerField(null=True)
+#     dl_count = models.IntegerField(null=True)
+#     first_date_data_loaded = models.DateField(null=True)
+#     last_date_data_loaded = models.DateField(null=True)
+#     first_date_screened = models.DateField(null=True)
+#     last_date_screened = models.DateField(null=True)
+#     class Meta:
+#         db_table = 'plate_screening_statistics'
 
 class Plate(models.Model):
     plate_id = models.AutoField(primary_key=True)
@@ -1350,9 +1369,15 @@ class Plate(models.Model):
     
     well_volume = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
-    remaining_volume = models.FloatField(null=True)
-
-    screening_count = models.IntegerField(null=True)
+    
+    # New
+    remaining_well_volume = models.DecimalField(
+        null=True, max_digits=10, decimal_places=9)
+    screening_count = models.IntegerField(null=True, default=0)
+    # 202161028 - Track the screening_count due to cherry_pick_liquid_transfers
+    # separately - *verify with screening lab*
+    cplt_screening_count = models.IntegerField(null=True, default=0)
+    experimental_well_count = models.IntegerField(null=True)
     
     copy = models.ForeignKey(Copy)
     facility_id = models.TextField()
@@ -1366,23 +1391,22 @@ class Plate(models.Model):
     # New - to be populated by migration
     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    
+    # New - to be populated by migration
+    date_plated = models.DateField(null=True)
+    date_retired = models.DateField(null=True)
 
     # Deprecated: replaced by apilog status change dates
-    retired_activity_id = models.IntegerField(unique=True, null=True)
-    plated_activity_id = models.IntegerField(unique=True, null=True)
+    # retired_activity_id = models.IntegerField(unique=True, null=True)
+    # plated_activity_id = models.IntegerField(unique=True, null=True)
 
-    # Deprecated: calculate based on copy wells
-    avg_remaining_volume = models.FloatField(null=True)
-    min_remaining_volume = models.FloatField(null=True)
-    max_remaining_volume = models.FloatField(null=True)
-    
     # Deprecated - concentration fields: to be removed after copywell migrations
-    min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
-    max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
-    primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
-    primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    # min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    # max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    # min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    # max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
+    # primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)
+    # primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3)
 
     
     date_loaded = models.DateTimeField(null=True)
@@ -1391,7 +1415,8 @@ class Plate(models.Model):
         db_table = 'plate'
         
     def __repr__(self):
-        return u'%s:%d' % (self.copy.name, self.plate_number)
+        return ('<Plate(copy=%r, plate_number=%d, well_volume=%r)>' 
+            % (self.copy.name, self.plate_number, self.well_volume))
 
 
 class CopyWell(models.Model):
@@ -1399,9 +1424,12 @@ class CopyWell(models.Model):
     plate = models.ForeignKey('Plate')
     copy = models.ForeignKey('Copy')
     well = models.ForeignKey('Well')
-    volume = models.FloatField(null=True)
-    initial_volume = models.FloatField(null=True)
-    adjustments = models.IntegerField()
+    volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
+    initial_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
+    
+    # Removed: screening count is tracked only on the plate level, and 
+    # adjustment count is simple count of apilogs for volume changes
+    # adjustments = models.IntegerField()
 
     # New - to be populated by migration
     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12)

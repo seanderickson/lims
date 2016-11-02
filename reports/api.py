@@ -58,12 +58,13 @@ logger = logging.getLogger(__name__)
 URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
 
-API_MESSAGE_SUBMIT_COUNT = 'Data submitted'
-API_MESSAGE_UPDATED = 'Updated'
-API_MESSAGE_CREATED = 'Created'
-API_MESSAGE_UNCHANGED = 'Unchanged'
-API_MESSAGE_COMMENTS = 'Comments'
-API_MESSAGE_ACTION = 'Action'
+API_MSG_SUBMIT_COUNT = 'Data submitted'
+API_MSG_RESULT = 'Result'
+API_MSG_UPDATED = 'Updated'
+API_MSG_CREATED = 'Created'
+API_MSG_UNCHANGED = 'Unchanged'
+API_MSG_COMMENTS = 'Comments'
+API_MSG_ACTION = 'Action'
 
 class Authorization():
 
@@ -586,12 +587,12 @@ class ApiResource(SqlAlchemyResource):
 
         if len(deserialized) == 0:
             meta = { 
-                'Result': {
-                    API_MESSAGE_SUBMIT_COUNT : 0, 
-                    API_MESSAGE_UPDATED: 0, 
-                    API_MESSAGE_CREATED: 0,
-                    API_MESSAGE_UNCHANGED: 0, 
-                    API_MESSAGE_COMMENTS: 'no data patched'
+                API_MSG_RESULT: {
+                    API_MSG_SUBMIT_COUNT : 0, 
+                    API_MSG_UPDATED: 0, 
+                    API_MSG_CREATED: 0,
+                    API_MSG_UNCHANGED: 0, 
+                    API_MSG_COMMENTS: 'no data patched'
                 }
             }
             return self.build_response(
@@ -614,8 +615,8 @@ class ApiResource(SqlAlchemyResource):
             if id_kwargs:
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
-                    id_vals = kwargs_for_log.get(id_param, [])
-                    id_vals.append(idval)
+                    id_vals = kwargs_for_log.get(id_param, set())
+                    id_vals.add(idval)
                     kwargs_for_log[id_param] = id_vals
         try:
             logger.debug('get original state, for logging...')
@@ -651,12 +652,12 @@ class ApiResource(SqlAlchemyResource):
         create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
-            'Result': {
-                API_MESSAGE_SUBMIT_COUNT : patch_count, 
-                API_MESSAGE_UPDATED: update_count, 
-                API_MESSAGE_CREATED: create_count,
-                API_MESSAGE_UNCHANGED: unchanged_count, 
-                API_MESSAGE_COMMENTS: parent_log.comment
+            API_MSG_RESULT: {
+                API_MSG_SUBMIT_COUNT : patch_count, 
+                API_MSG_UPDATED: update_count, 
+                API_MSG_CREATED: create_count,
+                API_MSG_UNCHANGED: unchanged_count, 
+                API_MSG_COMMENTS: parent_log.comment
             }
         }
         if not self._meta.always_return_data:
@@ -777,9 +778,9 @@ class ApiResource(SqlAlchemyResource):
         - The LIMS client will use POST LIST to create and update because
         Django will only "attach" files with POST (not PATCH)
         '''
-        logger.info('patch list, user: %r, resource: %r' 
+        logger.info('post list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
-        logger.debug('patch list: %r' % kwargs)
+        logger.debug('post list: %r' % kwargs)
 
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -793,12 +794,12 @@ class ApiResource(SqlAlchemyResource):
 
         if len(deserialized) == 0:
             meta = { 
-                'Result': {
-                    API_MESSAGE_SUBMIT_COUNT : 0, 
-                    API_MESSAGE_UPDATED: 0, 
-                    API_MESSAGE_CREATED: 0,
-                    API_MESSAGE_UNCHANGED: 0, 
-                    API_MESSAGE_COMMENTS: 'no data posted'
+                API_MSG_RESULT: {
+                    API_MSG_SUBMIT_COUNT : 0, 
+                    API_MSG_UPDATED: 0, 
+                    API_MSG_CREATED: 0,
+                    API_MSG_UNCHANGED: 0, 
+                    API_MSG_COMMENTS: 'no data posted'
                 }
             }
             return self.build_response(
@@ -826,8 +827,8 @@ class ApiResource(SqlAlchemyResource):
             if id_kwargs:
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
-                    id_vals = kwargs_for_log.get(id_param, [])
-                    id_vals.append(idval)
+                    id_vals = kwargs_for_log.get(id_param, set())
+                    id_vals.add(idval)
                     kwargs_for_log[id_param] = id_vals
         try:
             logger.debug('get original state, for logging...')
@@ -869,12 +870,12 @@ class ApiResource(SqlAlchemyResource):
         create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
-            'Result': {
-                API_MESSAGE_SUBMIT_COUNT: patch_count, 
-                API_MESSAGE_UPDATED: update_count, 
-                API_MESSAGE_CREATED: create_count,
-                API_MESSAGE_UNCHANGED: unchanged_count, 
-                API_MESSAGE_COMMENTS: parent_log.comment
+            API_MSG_RESULT: {
+                API_MSG_SUBMIT_COUNT: patch_count, 
+                API_MSG_UPDATED: update_count, 
+                API_MSG_CREATED: create_count,
+                API_MSG_UNCHANGED: unchanged_count, 
+                API_MSG_COMMENTS: parent_log.comment
             }
         }
         if not self._meta.always_return_data:
@@ -897,13 +898,28 @@ class ApiResource(SqlAlchemyResource):
         
         if kwargs.get('data', None):
             # allow for internal data to be passed
-            deserialized = kwargs['data']
+            deserialized = kwargs.pop('data')
         else:
             deserialized = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('post detail %s, %s', deserialized,kwargs)
         
+        _data = self.build_post_detail(request, deserialized, **kwargs)
+        
+        logger.info('post data: %r', _data)
+        return self.build_response(
+            request, _data, response_class=HttpResponse, **kwargs)
+        
+#         if not self._meta.always_return_data:
+#             # TODO: add "Result" data to meta section, see post_list
+#             return HttpResponse(status=200)
+#         else:
+#             response = self.get_detail(request,**kwargs_for_log)
+#             response.status_code = 200
+#             return response
+        
+    def build_post_detail(self, request, deserialized, log=None, **kwargs):
         # Note, find kwargs that are available, validate=False, for if they DNE
         kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         
@@ -913,6 +929,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
 
         original_data = None
+        log = self.make_log(request)
         if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
             # A full id exists, query for the existing state
             try:
@@ -924,36 +941,34 @@ class ApiResource(SqlAlchemyResource):
             if original_data is not None and len(original_data) != 0:
                 raise ValidationError({ 
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
-        obj = self.patch_obj(request, deserialized, **kwargs)
+            original_data = None
+        
+            # NOTE: create a log if possible, with id_attribute, for downstream
+            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute if x in kwargs_for_log])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+            log.save()
+            logger.info('log saved: %r', log)
+
+        obj = self.patch_obj(request, deserialized, log=log, **kwargs)
         for id_field in id_attribute:
-            val = getattr(obj, id_field,None)
-            if val:
-                kwargs_for_log['%s' % id_field] = val
-        log = self.make_log(request)
+            if id_field not in kwargs_for_log:
+                val = getattr(obj, id_field,None)
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
+        # Note: update the log with the id_attribute after object is created
         log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
         log.uri = '/'.join([log.ref_resource_name,log.key])
-#         log.save()
-        logger.info('log saved: %r', log)
-
-        # get new state, for logging
-        try:
-            new_data = self._get_detail_response(request,**kwargs_for_log)
-            self.log_patch(request, original_data,new_data,log=log, **kwargs)
-        except Exception, e: 
-            # FIXME: don't catch - should always have new data after patch
-            logger.exception(
-                'exception when logging: %s', kwargs_for_log)
         log.save()
 
-        # TODO: add "Result" data to meta section, see post_list
+        # get new state, for logging
+        new_data = self._get_detail_response(request,**kwargs_for_log)
+        if not new_data:
+            raise BadRequest('no data found for the new obj created by post: %r', obj)
+        self.log_patch(request, original_data,new_data,log=log, **kwargs)
+        log.save()
         
-        if not self._meta.always_return_data:
-            # TODO: add "Result" data to meta section, see post_list
-            return HttpResponse(status=200)
-        else:
-            response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 200
-            return response
+        # TODO: add "Result" data to meta section, see post_list
+        return new_data
         
     @write_authorization
     @un_cache  
@@ -965,13 +980,28 @@ class ApiResource(SqlAlchemyResource):
         
         if kwargs.get('data', None):
             # allow for internal data to be passed
-            deserialized = kwargs['data']
+            deserialized = kwargs.pop('data')
         else:
             deserialized = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
 
+        
+        _data = self.build_patch_detail(request, deserialized, **kwargs)
+
+        return self.build_response(
+            request, _data, response_class=HttpResponse, **kwargs)
+        
+#         if not self._meta.always_return_data:
+#             return HttpResponse(status=200)
+#         else:
+#             kwargs_for_log['includes'] = '*'
+#             response = self.get_detail(request,**kwargs_for_log)
+#             response.status_code = 200
+#             return response
+
+    def build_patch_detail(self, request, deserialized, **kwargs):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
         schema = self.build_schema()
@@ -982,39 +1012,36 @@ class ApiResource(SqlAlchemyResource):
         if kwargs_for_log:
             try:
                 original_data = self._get_detail_response(request,**kwargs_for_log)
+                logger.info('original data: %r', original_data)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
         # NOTE: creating a log, even if no data have changed (may be comment only)
         log = self.make_log(request)
+        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
+        log.uri = '/'.join([log.ref_resource_name,log.key])
+        log.save()
+
+        obj = None
         if deserialized:
-            obj = self.patch_obj(request, deserialized, **kwargs)
-            for id_field in id_attribute:
+            obj = self.patch_obj(request, deserialized, log=log, **kwargs)
+        
+        for id_field in id_attribute:
+            if id_field not in kwargs_for_log:
                 val = getattr(obj, id_field,None)
                 if val:
                     kwargs_for_log['%s' % id_field] = val
         log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
         log.uri = '/'.join([log.ref_resource_name,log.key])
+        log.save()
         logger.info('log saved: %r', log)
 
-        if deserialized:
-            try:
-                new_data = self._get_detail_response(request,**kwargs_for_log)
-                self.log_patch(request, original_data,new_data,log=log, **kwargs)
-            except Exception, e: 
-                logger.exception(
-                    'exception when logging: %s', kwargs_for_log)
+        new_data = self._get_detail_response(request,**kwargs_for_log)
+        logger.info('new data: %r', new_data)
+        self.log_patch(request, original_data,new_data,log=log, **kwargs)
         log.save()
-
-        # TODO: add "Result" data to meta section, see patch_list
         
-        if not self._meta.always_return_data:
-            return HttpResponse(status=200)
-        else:
-            kwargs_for_log['includes'] = '*'
-            response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 200
-            return response
+        return new_data
 
     @write_authorization
     @un_cache        
@@ -1096,7 +1123,8 @@ class ApiResource(SqlAlchemyResource):
             % self._meta.resource_name )
 
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def delete_detail(self, request, **kwargs):
 
         logger.debug('delete_detail: %s,  %s' 
@@ -1113,16 +1141,16 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('delete detail: %s' %(kwargs_for_log))
         if not kwargs_for_log:
             raise Exception('required id keys %s' % id_attribute)
-        else:
-            try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
-            except Exception as e:
-                logger.exception('original state not obtained')
-                original_data = {}
-
-        with transaction.atomic():
-            
-            self.delete_obj(request, {}, **kwargs_for_log)
+        original_data = self._get_detail_response(request,**kwargs_for_log)
+        log = self.make_log(request)
+        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
+        log.uri = '/'.join([self._meta.resource_name,log.key])
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
+        log.api_action = API_ACTION_DELETE
+        log.save()
+        
+        self.delete_obj(request, {}, log=log, **kwargs_for_log)
 
         # Log
         # TODO: consider log_patches
@@ -1135,14 +1163,6 @@ class ApiResource(SqlAlchemyResource):
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
 
-        log = self.make_log(request)
-        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
-        log.uri = '/'.join([self._meta.resource_name,log.key])
-    
-        if 'parent_log' in kwargs:
-            log.parent_log = kwargs.get('parent_log', None)
-    
-        log.api_action = API_ACTION_DELETE
         log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
@@ -1268,6 +1288,22 @@ class ApiResource(SqlAlchemyResource):
             logger.warn('errors in submitted data: %r, errs: %s', _dict, errors)
         return errors
 
+    @staticmethod
+    def datainterchange_title_function(field_hash):
+        
+        def title_function(key):
+            new_title = key
+            # editable_flags = set(['c','u'])
+            if key in field_hash:
+                fi = field_hash[key]
+                editability = fi.get('editability',[])
+                # if not editability or not (editable_flags | set(editability)):
+                if editability and 'u' not in editability:
+                    new_title = '%s (not updateable)' % key
+            return new_title
+        return title_function
+                 
+        
     @staticmethod    
     def create_vocabulary_rowproxy_generator(field_hash):
         '''
@@ -1354,13 +1390,14 @@ class ApiResource(SqlAlchemyResource):
         if log is None:
             log = self.make_log(request)
 
+        logger.debug('new dict: %r, id_attribute: %r', new_dict, id_attribute)
         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
         log.uri = '/'.join([log.ref_resource_name,log.key])
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
+            logger.info('parent_log: %r', log.parent_log)
         if prev_dict:
-            full = kwargs.get('full', False)
             log.diffs = compare_dicts(prev_dict,new_dict)
             if not log.diffs:
                 if DEBUG_PATCH_LOG:
@@ -1374,6 +1411,10 @@ class ApiResource(SqlAlchemyResource):
             log.diffs = { key: [None,val] for key,val in new_dict.items() if val is not None }
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %s', log)
+    
+        for k,v in kwargs.items():
+            if hasattr(log,k):
+                setattr(log, k, v)
 
         return log
 
@@ -1395,7 +1436,7 @@ class ApiResource(SqlAlchemyResource):
         
         if DEBUG_PATCH_LOG:
             logger.info('log patches: %s' %kwargs)
-            logger.debug('log patches original: %s, =====new data===== %s',
+            logger.info('log patches original: %s, =====new data===== %s',
                 original_data,new_data)
         
         schema = self.build_schema()
@@ -1445,6 +1486,7 @@ class ApiResource(SqlAlchemyResource):
             if DEBUG_PATCH_LOG:
                 logger.info('delete, api log: %r',log)
 
+        logger.debug('logs: %r', logs)
         logs = ApiLog.bulk_create(logs)
 #         logger.debug('bulk create logs: %r', logs)
 #         with get_engine().connect() as conn:
@@ -1693,9 +1735,9 @@ class ApiLogResource(ApiResource):
     def build_list_response(self,request, **kwargs):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
-        parent_log_id = None
-        if 'parent_log_id' in kwargs:
-            parent_log_id = kwargs.pop('parent_log_id')
+#         parent_log_id = None
+#         if 'parent_log_id' in kwargs:
+#             parent_log_id = kwargs.pop('parent_log_id')
             
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -1710,8 +1752,8 @@ class ApiLogResource(ApiResource):
         if DEBUG_GET_LIST: 
             logger.info('manual_field_includes: %r', manual_field_includes)
 
-        if parent_log_id:
-            kwargs['parent_log_id'] = parent_log_id
+#         if parent_log_id:
+#             kwargs['parent_log_id'] = parent_log_id
 
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -1722,22 +1764,22 @@ class ApiLogResource(ApiResource):
         
         filename = self._get_filename(schema, kwargs)
 
-        id = param_hash.pop('id', None)
-        if id:
-            param_hash['id__eq'] = id
-        
-        ref_resource_name = param_hash.pop('ref_resource_name', None)
-        if ref_resource_name:
-            param_hash['ref_resource_name__eq'] = ref_resource_name
-
-        key = param_hash.pop('key', None)
-        if key:
-            param_hash['key__eq'] = key
-
-        date_time = param_hash.pop('date_time', None)
-        if date_time:
-            param_hash['date_time__eq'] = date_time
-
+#         id = param_hash.pop('id', None)
+#         if id:
+#             param_hash['id__eq'] = id
+#         
+#         ref_resource_name = param_hash.pop('ref_resource_name', None)
+#         if ref_resource_name:
+#             param_hash['ref_resource_name__eq'] = ref_resource_name
+# 
+#         key = param_hash.pop('key', None)
+#         if key:
+#             param_hash['key__eq'] = key
+# 
+#         date_time = param_hash.pop('date_time', None)
+#         if date_time:
+#             param_hash['date_time__eq'] = date_time
+            
         try:
             
             # general setup
@@ -1766,8 +1808,8 @@ class ApiLogResource(ApiResource):
  
             # specific setup 
             _log = self.bridge['reports_apilog']
-            _log2 = self.bridge['reports_apilog']
-            _log2 = _log2.alias('parent_log')
+            _parent_log = self.bridge['reports_apilog']
+            _parent_log = _parent_log.alias('parent_log')
             _logdiffs = self.bridge['reports_logdiff']
             
             base_query_tables = ['reports_apilog']
@@ -1792,6 +1834,7 @@ class ApiLogResource(ApiResource):
                     "||':'" 
                     "|| to_char(extract('timezone_minute' from parent_log.date_time),'FM00')" 
                     ).label('parent_log_uri'),
+                'parent_log_id': _parent_log.c.id,
                 'child_logs': literal_column(
                     "(select count(*) from reports_apilog ra where ra.parent_log_id=reports_apilog.id)"
                     ).label('child_logs')
@@ -1811,12 +1854,12 @@ class ApiLogResource(ApiResource):
             # build the query statement
 
             j = join(
-                _log, _log2, _log.c.parent_log_id == _log2.c.id, isouter=True )
+                _log, _parent_log, _log.c.parent_log_id == _parent_log.c.id, isouter=True )
             
             stmt = select(columns.values()).select_from(j)
             
-            if 'parent_log_id' in kwargs:
-                stmt = stmt.where(_log2.c.id == kwargs.pop('parent_log_id'))
+#             if 'parent_log_id' in kwargs:
+#                 stmt = stmt.where(_parent_log.c.id == kwargs.pop('parent_log_id'))
                 
 #             # TODO: implement diff key filtering on the front end
 #             # need to know that "diff_key" is available
@@ -2062,7 +2105,11 @@ class FieldResource(ApiResource):
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-
+        
+        # NOTE: current implementation creates the fields hash in memory:
+        # TODO: sort
+        # TODO: limit
+        
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -2115,7 +2162,36 @@ class FieldResource(ApiResource):
                 logger.info('Field %s/%s not found' % (scope,key))
                 raise Http404('Field %s/%s not found' % (scope,key))
         else:    
-            meta = { 'limit': 0, 'offset': 0, 'total_count': len(fields) }
+
+            limit = param_hash.get('limit', 25)        
+            try:
+                limit = int(limit)
+            except Exception:
+                raise BadRequest(
+                    "Invalid limit '%s' provided. Please provide a positive integer." 
+                    % limit)
+            offset = param_hash.get('offset', 0 )
+            try:
+                offset = int(offset)
+            except Exception:
+                raise BadRequest(
+                    "Invalid offset '%s' provided. Please provide a positive integer." 
+                    % offset)
+            if offset < 0:    
+                offset = -offset
+            
+            if limit > len(fields):
+                limit = len(fields)
+            if offset > len(fields):
+                offset = len(fields)
+            
+            meta = { 'limit': limit, 'offset': offset, 'total_count': len(fields) }
+            
+            if offset > 0:
+                fields = fields[offset:]
+            if limit > 0:
+                fields = fields[:limit]
+            
             if kwargs.get('meta', None):
                 temp = kwargs['meta']
                 temp.update(meta)
@@ -2388,7 +2464,9 @@ class ResourceResource(ApiResource):
         resources = None
         if use_cache and self.use_cache:
             resources = cache.get('resources')
+            logger.debug('using cached resources')
         if not resources:
+            logger.info('not using cached resources')
         
             resources = deepcopy(
                 MetaHash.objects.get_and_parse(
@@ -2411,7 +2489,7 @@ class ResourceResource(ApiResource):
             # for each resource, pull in the fields of the supertype resource
             # todo recursion
             for key,resource in resources.items():
-                logger.debug('resource: %r', resource)
+                logger.debug('resource: %r', key)
                 resource['1'] = resource['key']
                 resource['fields'] = field_hash.get('fields.%s'%key, {})
                 resource['resource_uri'] = '/'.join([
@@ -2468,10 +2546,23 @@ class ResourceResource(ApiResource):
                 resource['create_fields'] = create_fields
                 
                 resource.get('content_types',[]).append('csv')
+                
+                # extend resource specific data
+                self.extend_specific_data(resource)
+                
         if use_cache and self.use_cache:
             cache.set('resources', resources)
 
         return resources
+ 
+    def extend_specific_data(self, resource):
+        key = resource['key']
+        
+        if key == 'field':
+            temp = [ x.scope for x in MetaHash.objects.all()
+                .filter(scope__icontains='fields.').distinct('scope')]
+            resource['extraSelectorOptions'] = { 
+                'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
             
     @write_authorization
     @un_cache        

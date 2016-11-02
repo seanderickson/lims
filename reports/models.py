@@ -137,7 +137,7 @@ class LogDiff(models.Model):
     def __repr__(self):
         return (
             "<LogDiff(ref_resource_name=%r, key=%r, field=%r)>" 
-            % (self.log.ref_resource_name, self.log.key, self.field))
+            % (self.log.ref_resource_name, self.log.key, self.field_key))
 
 API_ACTION_POST = 'POST'
 API_ACTION_PUT = 'PUT'
@@ -176,10 +176,6 @@ class ApiLog(models.Model):
     api_action = models.CharField(
         max_length=10, null=False, choices=API_ACTION_CHOICES)
     
-#     added_keys = models.TextField(null=True)
-#     removed_keys = models.TextField(null=True)
-#     diff_keys = models.TextField(null=True)
-#     diffs = models.TextField(null=True)
     comment = models.TextField(null=True)
     
     parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
@@ -192,7 +188,8 @@ class ApiLog(models.Model):
 
     def __unicode__(self):
         return unicode(str((self.id, self.api_action, self.ref_resource_name, self.key, 
-            str(self.date_time), self.username, self.comment, self.json_field)))
+            str(self.date_time), self.username, 
+            'parent:', self.parent_log.id if self.parent_log else None)))
 
     @staticmethod   
     def json_dumps(obj):
@@ -204,26 +201,6 @@ class ApiLog(models.Model):
         self.diffs = {}
         models.Model.__init__(self, *args, **kwargs)
     
-    def save1(self, **kwargs):
-        ''' override to convert json fields '''
-#         if isinstance(self.added_keys, dict):
-#             self.added_keys = self.json_dumps(self.added_keys)
-#         
-#         if isinstance(self.removed_keys, dict):
-#             self.removed_keys = self.json_dumps(self.removed_keys)
-#         
-#         if isinstance(self.diff_keys, dict):
-#             self.diff_keys = self.json_dumps(self.diff_keys)
-        
-        if isinstance(self.diffs, dict):
-            self.diffs = self.json_dumps(self.diffs)
-        
-        return models.Model.save(self, **kwargs)
-
-    # PRELIMINARY: must rework:
-    # - all logging code
-    # - log queries
-    # - cleanup: drop diff_keys, diff_logs, added_keys, removed_keys
     def save(self, **kwargs):
         ''' override to convert json fields '''
         
@@ -243,7 +220,26 @@ class ApiLog(models.Model):
                     before=diffs[0],
                     after=diffs[1]))
             LogDiff.objects.bulk_create(bulk_create_diffs)
-    
+        else:
+            # Note: this option should not be used for bulk creation
+            for key,diffs in self.diffs.items():
+                assert isinstance(diffs, (list,tuple))
+                assert len(diffs) == 2
+                found = False
+                for logdiff in self.logdiff_set.all():
+                    if logdiff.field_key == key:
+                        logdiff.before = diffs[0]
+                        logdiff.after = diffs[1]
+                        logdiff.save()
+                        found = True
+                if not found:
+                    LogDiff.objects.create(
+                        log=self,
+                        field_key = key,
+                        field_scope = 'fields.%s' % self.ref_resource_name,
+                        before=diffs[0],
+                        after=diffs[1])
+                        
 #     def diff_dict_to_api_log(self, log):
 #         '''
 #         Set the diff fields from a dict

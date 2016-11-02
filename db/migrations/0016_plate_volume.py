@@ -201,7 +201,7 @@ def create_plate_activity_logs(apps, schema_editor):
         log.ref_resource_name = librarycopyplate_resource_name
         log.key = '/'.join([
             _activity['library_short_name'],_activity['copy_name'],
-            str(_activity['plate_number'])])
+            str(int(_activity['plate_number'])).zfill(5)])
         log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
         log.comment = _activity['comments']
         log.date_time = create_log_time(_activity['date_of_activity'])
@@ -240,7 +240,7 @@ def create_plate_activity_logs(apps, schema_editor):
         log.ref_resource_name = librarycopyplate_resource_name
         log.key = '/'.join([
             _activity['library_short_name'],_activity['copy_name'],
-            str(_activity['plate_number'])])
+            str(int(_activity['plate_number'])).zfill(5)])
         log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
         log.comment = _activity['comments']
         log.date_time = create_log_time(_activity['date_of_activity'])
@@ -328,6 +328,11 @@ def create_lab_cherry_pick_logs(apps, schema_editor):
         cpr_log.save()
         
         j = 0
+        # TODO: should organize the logs by Copy Plate, not assay plate
+        # i.e. store plate_number: 
+        copy_plate_screening = {}
+        
+        
         for cpap in cplt.cherrypickassayplate_set.all():
             cpap_log = _child_log_from(cpr_log)
             
@@ -457,22 +462,22 @@ def create_lcp_wva_logs(apps,cpap_parent_logs, schema_editor):
                 # temporarily store the adjustment in the json field
                 log.json_field = str(adj['volume_adjustment'])
 
-# Manual migration 0016 uses all of the WVA's to set the copy well volume
-#                     
-#                     # FIXME: because this list may not contain all wva's for the well,
-#                     # we must do a different, final pass over all wva's for the well 
-#                     # to construct the vol change.
-#                     log.diff_keys = json.dumps(['volume'])
-#                     if log.key in copywells:
-#                         prev_volume = copywells[log.key]
-#                     else:
-#                         prev_volume = round(adj['initial_volume'], 10)
-#                         copywells[log.key] = prev_volume
-#                     
-#                     new_volume = round(prev_volume + float(adj['volume_adjustment']),10)
-#                     log.diffs = json.dumps({ 
-#                         'volume':[prev_volume, new_volume ]})
-#                     copywells[log.key] = new_volume
+                # Fixed: Manual migration 0016 uses all of the WVA's to set the copy well volume
+                #  
+                # # FIXME: because this list may not contain all wva's for the well,
+                # # we must do a different, final pass over all wva's for the well 
+                # # to construct the vol change.
+                # log.diff_keys = json.dumps(['volume'])
+                # if log.key in copywells:
+                #     prev_volume = copywells[log.key]
+                # else:
+                #     prev_volume = round(adj['initial_volume'], 10)
+                #     copywells[log.key] = prev_volume
+                #  
+                # new_volume = round(prev_volume + float(adj['volume_adjustment']),10)
+                # log.diffs = json.dumps({ 
+                #     'volume':[prev_volume, new_volume ]})
+                # copywells[log.key] = new_volume
                 
                 log.comment = adj['comments'] or ''
                 if  adj['legacy_plate_name']:

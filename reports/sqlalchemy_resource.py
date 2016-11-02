@@ -364,8 +364,20 @@ class SqlAlchemyResource(IccblBaseResource):
             if order_by.startswith('-'):
                 field_name = order_by[1:]
                 order_clause = nullslast(desc(column(field_name)))
+                if ( field_name in visible_fields 
+                    and visible_fields[field_name]['data_type'] == 'string'):
+                    order_clause = text(
+                        "(substring({field_name}, '^[0-9]+'))::int desc " # -- cast to integer
+                        ",substring({field_name}, '[^0-9_].*$')  "  # works a text
+                        .format(field_name=field_name))
             else:
                 order_clause = nullsfirst(asc(column(field_name)))
+                if ( field_name in visible_fields 
+                    and visible_fields[field_name]['data_type'] == 'string'):
+                    order_clause = text(
+                        "(substring({field_name}, '^[0-9]+'))::int "
+                        ",substring({field_name}, '[^0-9_].*$') "
+                        .format(field_name=field_name))
             if field_name in visible_fields:
                 order_clauses.append(order_clause)
             else:
@@ -477,6 +489,9 @@ class SqlAlchemyResource(IccblBaseResource):
                     # treat as a field__eq
                     field_name = filter_expr
                     filter_type = 'exact'
+                    if DEBUG_FILTERS:
+                        logger.info('interpret: %r as %r for %r:%r', 
+                            filter_expr, filter_type,field_name, value)
                 else:
                     filter_bits = filter_expr.split(lookup_sep)
                     if len(filter_bits) != 2:

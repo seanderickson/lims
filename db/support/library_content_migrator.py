@@ -136,7 +136,7 @@ where r.library_contents_version_id=%s order by well_id;
         library_ids = [x['library'] for x in (query
                 .values('library')  # actually, library id's here
                 .order_by('library') )]
-        logger.info(str(('libraries to consider', library_ids)))
+        logger.info('libraries to consider: %r', library_ids)
     
         for library in (apps.get_model('db','Library').objects.all()
                         .filter(library_id__in=library_ids)):
@@ -152,7 +152,6 @@ where r.library_contents_version_id=%s order by well_id;
                 if getattr(activity.performed_by, 'user', None):
                     log.user_id = getattr(activity.performed_by.user, 'id', log.username)
                 if not log.user_id:
-                    # logger.info(str(("can't find a user id for version", version, activity)))
                     log.user_id = 1
                 log.date_time = activity.date_created
 #                 log.date_time = make_aware(
@@ -200,10 +199,9 @@ where r.library_contents_version_id=%s order by well_id;
         connection = schema_editor.connection
         
         screen_type = library.screen_type;
-        logger.info(str(('processing: ', library.short_name, 
-           'type', library.screen_type, library.library_type, 
-           'versions',  [version1, version2],
-           'experimental wells', library.experimental_well_count)) )
+        logger.info('processing library: %r, screen type: %r, versions: %r, exp wells: %d ',
+            library.short_name, library.screen_type, [version1, version2],
+            library.experimental_well_count)
         i = 0
         keys = self.sm_keys
         sql = self.sm_sql
@@ -224,7 +222,7 @@ where r.library_contents_version_id=%s order by well_id;
             logger.debug('executed, list: %r', _list)
             
             if len(_list) == 0:
-                logger.error(str(('no wells for ', library.short_name)))
+                logger.error('no wells for %r', library.short_name)
                 continue
 
             cumulative_diff_keys = set()
@@ -236,16 +234,17 @@ where r.library_contents_version_id=%s order by well_id;
                     if new_row:
                         prev_well = dict(zip(keys,row))
                         new_well = dict(zip(keys,new_row))
-                        logger.debug(str(('===create log for ', prev_well['well_id'])))
                         log = self.create_well_log(version, prev_well, new_well, parent_log)
                         if log:
                             if log.diffs:
                                 cumulative_diff_keys.update(set(log.diffs.keys()))
                             i += 1
                     else:
-                        logger.error(str(('no new well/reagent entry found for', key)))
+                        logger.error('no new well/reagent entry found for %r', key)
                     if i>0 and i % 1000 == 0:
-                        logger.info(str(('===created logs for ', library.short_name, i)))
+                        logger.info(
+                            '===created logs for %s: %r-%r, %d', 
+                            library.short_name, version1, version2, i)
             else:
                 prev_well_map = well_map
             
@@ -256,7 +255,8 @@ where r.library_contents_version_id=%s order by well_id;
                 comment += ': '
             parent_log.comment = comment + json.dumps(list(cumulative_diff_keys))
             parent_log.save()
-        logger.info(str(('===created logs for ', library.short_name, parent_log.comment, 'count', i)))
+        logger.info('===created %d logs for %r, %r', 
+            library.short_name, i, parent_log.comment)
     
     def create_well_log(self, version, prev_dict, current_dict, parent_log):
         

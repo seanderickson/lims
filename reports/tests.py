@@ -1045,7 +1045,7 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            logger.info('post response: %r', new_obj)
+            logger.debug('post response: %r', new_obj)
             
         new_obj = self.get_single_resource(resource_test_uri, data_for_get=_data_for_get)
         result,msg = assert_obj1_to_obj2(input_data,new_obj, excludes=excludes)
@@ -1183,7 +1183,7 @@ class IResourceTestCase(SimpleTestCase):
             then these are id keys to check to see if they are being used in 
             the returned resource_uri field
         '''
-        data_for_get.setdefault('limit', 999 )
+        data_for_get.setdefault('limit', 0 )
         data_for_get.setdefault('includes', '*' )
         data_for_get.setdefault( HEADER_APILOG_COMMENT, 'put_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name

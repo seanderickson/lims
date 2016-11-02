@@ -287,7 +287,7 @@ class IccblBaseResource(Resource):
                 return response
             
             except ValidationError as e:
-                logger.exception('Validation error: %r', kwargs)
+                logger.exception('Validation error: %r', e)
                 response = self.build_error_response(
                     request, { 'errors': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:

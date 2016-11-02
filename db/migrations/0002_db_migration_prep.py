@@ -238,58 +238,61 @@ class Migration(migrations.Migration):
                 'db_table': 'substance',
             },
         ),
-        migrations.CreateModel(
-            name='CopyScreeningStatistics',
-            fields=[
-                ('copy', models.OneToOneField(
-                    primary_key=True, serialize=False, to='db.Copy')),
-                ('name', models.TextField()),
-                ('short_name', models.TextField()),
-                ('screening_count', models.IntegerField(null=True)),
-                ('ap_count', models.IntegerField(null=True)),
-                ('dl_count', models.IntegerField(null=True)),
-                ('first_date_data_loaded', models.DateField(null=True)),
-                ('last_date_data_loaded', models.DateField(null=True)),
-                ('first_date_screened', models.DateField(null=True)),
-                ('last_date_screened', models.DateField(null=True)),
-            ],
-            options={
-                'db_table': 'copy_screening_statistics',
-            },
-        ),
-        migrations.CreateModel(
-            name='PlateScreeningStatistics',
-            fields=[
-                ('plate', models.OneToOneField(
-                    primary_key=True, serialize=False, to='db.Plate')),
-                ('plate_number', models.IntegerField(null=True)),
-                ('copy', models.ForeignKey(serialize=False, to='db.Copy')),
-                ('copy_name', models.TextField()),
-                ('library_short_name', models.TextField()),
-                ('library', models.ForeignKey(serialize=False, to='db.Library')),
-                ('screening_count', models.IntegerField(null=True)),
-                ('ap_count', models.IntegerField(null=True)),
-                ('dl_count', models.IntegerField(null=True)),
-                ('first_date_data_loaded', models.DateField(null=True)),
-                ('last_date_data_loaded', models.DateField(null=True)),
-                ('first_date_screened', models.DateField(null=True)),
-                ('last_date_screened', models.DateField(null=True)),
-            ],
-            options={
-                'db_table': 'plate_screening_statistics',
-            },
-        ),
         
-        migrations.AlterField(
-            model_name='platescreeningstatistics',
-            name='copy',
-            field=models.ForeignKey(to='db.Copy'),
-        ),
-        migrations.AlterField(
-            model_name='platescreeningstatistics',
-            name='library',
-            field=models.ForeignKey(to='db.Library'),
-        ),
+#         # FIXME: 20161028- remove after copy mgmnt rework
+#         migrations.CreateModel(
+#             name='CopyScreeningStatistics',
+#             fields=[
+#                 ('copy', models.OneToOneField(
+#                     primary_key=True, serialize=False, to='db.Copy')),
+#                 ('name', models.TextField()),
+#                 ('short_name', models.TextField()),
+#                 ('screening_count', models.IntegerField(null=True)),
+#                 ('ap_count', models.IntegerField(null=True)),
+#                 ('dl_count', models.IntegerField(null=True)),
+#                 ('first_date_data_loaded', models.DateField(null=True)),
+#                 ('last_date_data_loaded', models.DateField(null=True)),
+#                 ('first_date_screened', models.DateField(null=True)),
+#                 ('last_date_screened', models.DateField(null=True)),
+#             ],
+#             options={
+#                 'db_table': 'copy_screening_statistics',
+#             },
+#         ),
+#         # FIXME: 20161028- remove after copy mgmnt rework
+#         migrations.CreateModel(
+#             name='PlateScreeningStatistics',
+#             fields=[
+#                 ('plate', models.OneToOneField(
+#                     primary_key=True, serialize=False, to='db.Plate')),
+#                 ('plate_number', models.IntegerField(null=True)),
+#                 ('copy', models.ForeignKey(serialize=False, to='db.Copy')),
+#                 ('copy_name', models.TextField()),
+#                 ('library_short_name', models.TextField()),
+#                 ('library', models.ForeignKey(serialize=False, to='db.Library')),
+#                 ('screening_count', models.IntegerField(null=True)),
+#                 ('ap_count', models.IntegerField(null=True)),
+#                 ('dl_count', models.IntegerField(null=True)),
+#                 ('first_date_data_loaded', models.DateField(null=True)),
+#                 ('last_date_data_loaded', models.DateField(null=True)),
+#                 ('first_date_screened', models.DateField(null=True)),
+#                 ('last_date_screened', models.DateField(null=True)),
+#             ],
+#             options={
+#                 'db_table': 'plate_screening_statistics',
+#             },
+#         ),
+#         
+#         migrations.AlterField(
+#             model_name='platescreeningstatistics',
+#             name='copy',
+#             field=models.ForeignKey(to='db.Copy'),
+#         ),
+#         migrations.AlterField(
+#             model_name='platescreeningstatistics',
+#             name='library',
+#             field=models.ForeignKey(to='db.Library'),
+#         ),
  
         migrations.AddField(
             model_name='library',
@@ -453,10 +456,6 @@ class Migration(migrations.Migration):
             name='login_id',
             field=models.TextField(unique=True, null=True)),
         migrations.AddField(
-            model_name='plate',
-            name='screening_count', 
-            field=models.IntegerField(null=True)),
-        migrations.AddField(
             model_name='cherrypickassayplate',
             name='status', 
             field=models.TextField(null=True)),
@@ -465,23 +464,21 @@ class Migration(migrations.Migration):
         
         migrations.AddField(
             model_name='plate',
-            name='remaining_volume', 
-            field=models.FloatField(null=True)),
-            
-        # 20161011 - to be removed    
+            name='remaining_well_volume', 
+            field=models.DecimalField(
+                null=True, max_digits=10, decimal_places=9)),
         migrations.AddField(
             model_name='plate',
-            name='avg_remaining_volume', 
-            field=models.FloatField(null=True)),
+            name='experimental_well_count', 
+            field=models.IntegerField(null=True)),
         migrations.AddField(
             model_name='plate',
-            name='min_remaining_volume', 
-            field=models.FloatField(null=True)),
+            name='screening_count', 
+            field=models.IntegerField(null=True)),
         migrations.AddField(
             model_name='plate',
-            name='max_remaining_volume', 
-            field=models.FloatField(null=True)),
-
+            name='cplt_screening_count', 
+            field=models.IntegerField(null=True)),
         migrations.AddField(
             model_name='plate',
             name='mg_ml_concentration',
@@ -493,15 +490,28 @@ class Migration(migrations.Migration):
             field=models.DecimalField(null=True, max_digits=13, decimal_places=12),
         ),
         
+        migrations.AddField(
+            model_name='plate',
+            name='date_plated',
+            field=models.DateField(null=True),
+        ),
+        
+        migrations.AddField(
+            model_name='plate',
+            name='date_retired',
+            field=models.DateField(null=True),
+        ),
+        
+        
         migrations.CreateModel(
             name='CopyWell',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, 
                     auto_created=True, primary_key=True)),
                 # ('plate_number', models.IntegerField()),
-                ('volume', models.FloatField(null=True)),
-                ('initial_volume', models.FloatField(null=True)),
-                ('adjustments', models.IntegerField()),
+                ('volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
+                ('initial_volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
+#                 ('adjustments', models.IntegerField()),
                 ('copy', models.ForeignKey(to='db.Copy')),
                 ('mg_ml_concentration',
                     models.DecimalField(null=True, max_digits=5, decimal_places=3)),

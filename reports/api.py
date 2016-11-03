@@ -595,6 +595,7 @@ class ApiResource(SqlAlchemyResource):
                     API_MSG_COMMENTS: 'no data patched'
                 }
             }
+            logger.info('PATCH list: %r', meta)
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
 
@@ -878,6 +879,7 @@ class ApiResource(SqlAlchemyResource):
                 API_MSG_COMMENTS: parent_log.comment
             }
         }
+        logger.info('POST list: %r', meta)
         if not self._meta.always_return_data:
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse, format=format)
@@ -1289,17 +1291,21 @@ class ApiResource(SqlAlchemyResource):
         return errors
 
     @staticmethod
-    def datainterchange_title_function(field_hash):
+    def datainterchange_title_function(field_hash, id_attribute=[]):
         
         def title_function(key):
-            new_title = key
+            new_title = '%s (not updatable)' % key
             # editable_flags = set(['c','u'])
+            logger.info('key: %r, %r', key, key in field_hash)
             if key in field_hash:
                 fi = field_hash[key]
                 editability = fi.get('editability',[])
+                logger.info('editability: %r', editability)
                 # if not editability or not (editable_flags | set(editability)):
-                if editability and 'u' not in editability:
-                    new_title = '%s (not updateable)' % key
+                if ( (editability and 'u' in editability)
+                    or key in id_attribute):
+                    new_title = key
+            logger.info('new title: %r', new_title)
             return new_title
         return title_function
                  

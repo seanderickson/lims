@@ -397,7 +397,7 @@ class PlateLocationResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
 
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -728,7 +728,7 @@ class LibraryCopyPlateResource(DbApiResource):
         return self.build_list_response(request, **kwargs)
 
     @classmethod
-    def get_librarycopyplate_cte(cls):
+    def get_librarycopyplate_cte(cls, library_id=None, copy_id=None):
         bridge = get_tables()
         _l = bridge['library']
         _c = bridge['copy']
@@ -748,14 +748,22 @@ class LibraryCopyPlateResource(DbApiResource):
                     .label('key'),
                 ])
             .select_from(j))
+        if library_id is not None:
+            plate_table = plate_table.where(_c.c.library_id==library_id)
+        if copy_id is not None:
+            plate_table = plate_table.where(_c.c.copy_id==copy_id)
         return plate_table
         
     @classmethod
-    def get_plate_copywell_statistics_cte(cls):  
+    def get_plate_copywell_statistics_cte(cls, library_id=None, copy_id=None):  
         bridge = get_tables()
         _p = bridge['plate']
         _cw = bridge['copy_well']
+        _c = bridge['copy']
         
+        j = _cw
+        if library_id is not None or copy_id is not None:
+            j = j.join(_c, _cw.c.copy_id==_c.c.copy_id)
         cw_vols = (
             select([
                 _cw.c.plate_id,
@@ -768,8 +776,17 @@ class LibraryCopyPlateResource(DbApiResource):
                 func.min(_cw.c.molar_concentration).label('min_well_molar'),
                 func.max(_cw.c.molar_concentration).label('max_well_molar'),
                 ])
-            .select_from(_cw)
-            .group_by(_cw.c.plate_id)).cte('copy_well_volumes')
+            .select_from(j)
+            .group_by(_cw.c.plate_id))
+        if library_id is not None:
+            cw_vols = cw_vols.where(_c.c.library_id==library_id)
+        if copy_id is not None:
+            cw_vols = cw_vols.where(_c.c.copy_id==copy_id)
+        cw_vols = cw_vols.cte('copy_well_volumes')
+        
+        j2 = _p.outerjoin(cw_vols,_p.c.plate_id==cw_vols.c.plate_id)
+        if library_id is not None:
+            j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
         query = (
             select([
                 _p.c.plate_id,
@@ -780,7 +797,8 @@ class LibraryCopyPlateResource(DbApiResource):
                         * (_p.c.experimental_well_count-cw_vols.c.count)
                         + cw_vols.c.cum_well_vol ) / _p.c.experimental_well_count)],
                     else_=None).label('avg_well_remaining_volume'),
-                _p.c.remaining_well_volume,
+                func.coalesce(_p.c.remaining_well_volume,_p.c.well_volume)
+                    .label('remaining_well_volume'),
                 func.coalesce(cw_vols.c.min_well_vol,
                     _p.c.remaining_well_volume,).label('min_well_remaining_volume'),
                 func.coalesce(cw_vols.c.max_well_vol,
@@ -820,24 +838,37 @@ class LibraryCopyPlateResource(DbApiResource):
                 #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
                 #     .label('max_molar_concentration')),
                 ])
-            .select_from(
-                _p.outerjoin(cw_vols,_p.c.plate_id==cw_vols.c.plate_id))
-            .group_by(_p.c.plate_id, _p.c.experimental_well_count,
+            .select_from(j2)
+            .group_by(
+                _p.c.plate_id, _p.c.experimental_well_count,
                 _p.c.remaining_well_volume,_p.c.well_volume,
+                _p.c.mg_ml_concentration,_p.c.molar_concentration,
                 cw_vols.c.count, cw_vols.c.cum_well_vol,
                 cw_vols.c.min_well_vol, cw_vols.c.max_well_vol,
                 cw_vols.c.min_well_mg_ml,cw_vols.c.max_well_mg_ml,
                 cw_vols.c.min_well_molar, cw_vols.c.max_well_molar,_p.c.copy_id)
             )
+        if library_id is not None:
+            query = query.where(_c.c.library_id==library_id)
+        if copy_id is not None:
+            query = query.where(_p.c.copy_id==copy_id)
         return query
     
     @classmethod
-    def get_plate_screening_statistics_cte(cls):
+    def get_plate_screening_statistics_cte(cls, library_id=None, copy_id=None):
         bridge = get_tables()
         _p = bridge['plate']
         _a = bridge['activity']
         _ls = bridge['library_screening']
         _ap = bridge['assay_plate']
+        _c = bridge['copy']
+
+        j = ( _ap.join(_ls,_ls.c.activity_id==_ap.c.library_screening_id)
+                .join(_a, _a.c.activity_id==_ls.c.activity_id)
+                .join(_p, _ap.c.plate_id==_p.c.plate_id))
+        
+        if library_id is not None:
+            j = j.join(_c, _p.c.copy_id==_c.c.copy_id)
         
         query = (
             select([
@@ -847,12 +878,12 @@ class LibraryCopyPlateResource(DbApiResource):
                 func.min(_a.c.date_of_activity).label('first_date_screened'),
                 func.max(_a.c.date_of_activity).label('last_date_screened')
                 ])
-            .select_from(
-                _ap.join(_ls,_ls.c.activity_id==_ap.c.library_screening_id)
-                    .join(_a, _a.c.activity_id==_ls.c.activity_id)
-                    .join(_p, _ap.c.plate_id==_p.c.plate_id))
+            .select_from(j)
             .group_by(_ap.c.plate_id, _ap.c.plate_number, _p.c.copy_id ) )
-        
+        if library_id is not None:
+            query = query.where(_c.c.library_id == library_id)
+        if copy_id is not None:
+            query = query.where(_p.c.copy_id==copy_id)
         ## TODO: this does not include cherry pick screenings, redo when 
         # cherry pick screenings are reworked:
         # rework: so that source plates are linked to screening activity
@@ -883,6 +914,7 @@ class LibraryCopyPlateResource(DbApiResource):
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
         
+        library_id = None
         library_short_name = param_hash.pop('library_short_name',
             param_hash.get('library_short_name__eq', None))
         if not library_short_name:
@@ -890,12 +922,14 @@ class LibraryCopyPlateResource(DbApiResource):
         else:
             log_key = library_short_name
             param_hash['library_short_name__eq'] = library_short_name
-
+            library_id = Library.objects.get(short_name=library_short_name).library_id
+        
+        copy_id = None
         copy_name = param_hash.pop('copy_name',
             param_hash.get('copy_name', None))
-        if copy_name:
+        if copy_name and library_id:
             param_hash['copy_name__eq'] = copy_name
-            
+            copy_id = Copy.objects.get(library_id=library_id, name=copy_name).copy_id
         plate_number = param_hash.pop('plate_number',
             param_hash.get('plate_number', None))
         if plate_number:
@@ -949,12 +983,19 @@ class LibraryCopyPlateResource(DbApiResource):
             _ls = self.bridge['library_screening']
             _a = self.bridge['activity']
             _ap = self.bridge['assay_plate']
-            _plate_cte = self.get_librarycopyplate_cte().cte('plate_cte')
+            _plate_cte = (
+                self.get_librarycopyplate_cte(
+                    library_id=library_id, copy_id=copy_id )
+                        .cte('plate_cte'))
             _user_cte = ScreensaverUserResource.get_user_cte().cte('user_cte')
-            _plate_statistics = self.get_plate_copywell_statistics_cte()\
-                .cte('plate_statistics')
-            _plate_screening_statistics = self.get_plate_screening_statistics_cte()\
-                .cte('plate_screening_statistics')
+            _plate_statistics = (
+                self.get_plate_copywell_statistics_cte(
+                    library_id=library_id, copy_id=copy_id)
+                        .cte('plate_statistics'))
+            _plate_screening_statistics = (
+                self.get_plate_screening_statistics_cte(
+                    library_id=library_id, copy_id=copy_id)
+                        .cte('plate_screening_statistics'))
             _diff = self.bridge['reports_logdiff']
             
             #   SELECT DISTINCT ON (reports_apilog.key)
@@ -1016,6 +1057,7 @@ class LibraryCopyPlateResource(DbApiResource):
             #     .cte('status_apilogs'))
             
             custom_columns = {
+                'remaining_well_volume': _plate_statistics.c.remaining_well_volume,
                 'avg_remaining_volume': _plate_statistics.c.avg_well_remaining_volume,
                 'min_remaining_volume': _plate_statistics.c.min_well_remaining_volume,
                 'max_remaining_volume': _plate_statistics.c.max_well_remaining_volume,
@@ -1106,7 +1148,11 @@ class LibraryCopyPlateResource(DbApiResource):
                 j = j.outerjoin(_plate_screening_statistics,
                     _p.c.plate_id==_plate_screening_statistics.c.plate_id)
             stmt = select(columns.values()).select_from(j)
-
+            
+            if library_id is not None:
+                stmt = stmt.where(_l.c.library_id==library_id)
+            if copy_id is not None:
+                stmt = stmt.where(_p.c.copy_id==copy_id)
             # general setup
              
             (stmt, count_stmt) = self.wrap_statement(
@@ -1125,7 +1171,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
 
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -3491,6 +3537,7 @@ class CopyWellResource(DbApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
 
+            # TODO: remove this restriction if the query can be optimized
             if filter_expression is None:
                 raise InformationError(
                     key='Input filters ',
@@ -3519,11 +3566,29 @@ class CopyWellResource(DbApiResource):
             _l = self.bridge['library']
             _p = self.bridge['plate']
             _w = self.bridge['well']
+
+            # TODO: optimize query join order copy-plate, then all-copy-plate-well, 
+            # then copy-plate-well to copy_well
+            # copy_plate = (
+            #     select([
+            #         _p.c.plate_id, _c.c.copy_id,
+            #         _p.c.plate_number, _c.c.name,
+            #         _p.c.status, _c.c.usage_type,
+            #         _p.c.well_volume,_p.c.remaining_well_volume,
+            #         _p.c.mg_ml_concentration, _p.c.molar_concentration,
+            #         _p.c.screening_count, _p.c.cplt_screening_count,
+            #         _l.c.short_name ])
+            #     .select_from(_p.join(_c, _p.c.copy_id==_c.c.copy_id)
+            #         .join(_l, _c.c.library_id==_l.c.library_id))
+            #         ).cte('copy_plate')
+            # all_copy_wells = (
+            #     select([_w.c.well_id]))
             
             custom_columns = {
                 'volume': case([
                     (_w.c.library_well_type=='experimental', 
-                         func.coalesce(_cw.c.volume, _p.c.remaining_well_volume) )],
+                         func.coalesce(_cw.c.volume, 
+                             _p.c.remaining_well_volume, _p.c.well_volume) )],
                     else_=None),
                 'initial_volume': case([
                     (_w.c.library_well_type=='experimental', 
@@ -3544,6 +3609,9 @@ class CopyWellResource(DbApiResource):
                         func.coalesce(
                             _cw.c.molar_concentration,_p.c.molar_concentration) )],
                     else_=None),
+                'screening_count': (
+                    (func.coalesce(_p.c.screening_count,0) 
+                        + func.coalesce(_p.c.cplt_screening_count,0))),
                 # 'adjustments': case([
                 #     (_w.c.library_well_type=='experimental', 
                 #         func.coalesce(_cw.c.adjustments, 0) )],
@@ -3580,12 +3648,17 @@ class CopyWellResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by('copy_name', 'plate_number', 'well_id')
             
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
+            
             title_function = None
             if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -3615,11 +3688,42 @@ class CopyWellResource(DbApiResource):
     
     def patch_obj(self, request, deserialized, **kwargs):
         # TODO: optimize for list inputs (see well.patch)
-        logger.info('patch_obj %s', deserialized)
+        logger.debug('patch_obj %s', deserialized)
 
         schema = self.build_schema()
         fields = schema['fields']
         initializer_dict = {}
+        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
+        well_id = id_kwargs['well_id']
+
+        try:
+            well = Well.objects.get(well_id=well_id)
+            library = well.library
+        except ObjectDoesNotExist:
+            msg = 'well not found: %r' % well_id
+            logger.info(msg);
+            raise Http404(msg)
+
+        if well.library_well_type != 'experimental':
+            logger.info('CopyWell patch: ignore non experimental well: %r', well_id)
+            return None
+        
+        copy_name = id_kwargs['copy_name']
+        try:
+            librarycopy = Copy.objects.get(
+                name=copy_name, library=library)
+        except ObjectDoesNotExist:
+            msg = 'copy_name not found: %r' % copy_name
+            logger.info(msg);
+            raise Http404(msg)
+        
+        try:
+            plate = Plate.objects.get(
+                plate_number=well.plate_number, copy=librarycopy)
+        except ObjectDoesNotExist:
+            msg = 'plate not found: %r:%r' % (library.short_name,copy_name)
+            logger.info(msg);
+            raise Http404(msg)
 
         # TODO: wrapper for parsing
         logger.debug('fields: %r, deserialized: %r', fields.keys(), deserialized)
@@ -3628,6 +3732,8 @@ class CopyWellResource(DbApiResource):
                 initializer_dict[key] = parse_val(
                     deserialized.get(key, None), key, fields[key]['data_type']) 
 
+
+        
         volume = initializer_dict.get('volume', None)        
         mg_ml_concentration = initializer_dict.get('mg_ml_concentration', None)
         molar_concentration = initializer_dict.get('molar_concentration', None)
@@ -3636,74 +3742,56 @@ class CopyWellResource(DbApiResource):
         if volume is None and molar_concentration is None and mg_ml_concentration is None:
             msg = (
                 'Must submit one of [volume, mg_ml_concentration, '
-                'molar_concentration]')
+                'molar_concentration]: well: %r' % well_id)
             raise ValidationError({
                 'volume': msg,
                 'mg_ml_concentration': msg,
                 'molar_concentration': msg,
                 })
         
-        id_kwargs = self.get_id(deserialized, **kwargs)
         
         try:
-            well_id = id_kwargs['well_id']
-            try:
-                well = Well.objects.get(well_id=well_id)
-                library = well.library
-            except ObjectDoesNotExist:
-                msg = 'well not found: %r' % well_id
-                logger.info(msg);
-                raise Http404(msg)
+            copywell = CopyWell.objects.get(
+                well=well, copy=librarycopy)
             
-            copy_name = id_kwargs['copy_name']
-            try:
-                librarycopy = Copy.objects.get(
-                    name=copy_name, library=library)
-            except ObjectDoesNotExist:
-                msg = 'copy_name not found: %r' % copy_name
-                logger.info(msg);
-                raise Http404(msg)
-
-            try:
-                copywell = CopyWell.objects.get(
-                    well=well, copy=librarycopy)
-                
-                # FIXME: only "set" adjustments if sent from the user
-                # if volume is not None:
-                #    copywell.adjustments += 1
-            except ObjectDoesNotExist:
-                try:
-                    plate = Plate.objects.get(
-                        plate_number=well.plate_number, copy=librarycopy)
-                except ObjectDoesNotExist:
-                    msg = 'plate not found: %r:%r' % (library.short_name,copy_name)
-                    logger.info(msg);
-                    raise Http404(msg)
-                copywell = CopyWell.objects.create(
-                    well=well, copy=librarycopy, plate=plate)
-                # FIXME: only "set" adjustments if sent from the user
-                # if volume is not None:
-                #    copywell.adjustments += 1
-                copywell.save()
-                logger.info('created cw: %r', copywell)
-
-            if volume is not None:
-                copywell.volume = volume
-            # if adjustments is not None:
-            #     copywell.adjustments = adjustments
-            if mg_ml_concentration is not None:
-                copywell.mg_ml_concentration = mg_ml_concentration
-            if molar_concentration is not None:
-                copywell.molar_concentration = molar_concentration
+            # FIXME: only "set" adjustments if sent from the user
+            # if volume is not None:
+            #    copywell.adjustments += 1
+        except ObjectDoesNotExist:
+            # If creating, check that something is updated from the plate values
+            if plate.remaining_well_volume == volume:
+                volume = None
+            if plate.mg_ml_concentration == mg_ml_concentration:
+                mg_ml_concentration = None
+            if plate.molar_concentration == molar_concentration:
+                molar_concentration = None
             
+            if all(v is None for v in 
+                [volume,mg_ml_concentration,molar_concentration]):
+                logger.info('Nothing to edit for: %r', deserialized)
+                return None
+            
+            copywell = CopyWell.objects.create(
+                well=well, copy=librarycopy, plate=plate)
+            # FIXME: only "set" adjustments if sent from the user
+            # if volume is not None:
+            #    copywell.adjustments += 1
             copywell.save()
-            logger.info('patch_obj done')
-            return copywell
-            
-        except Exception, e:
-            logger.exception('on patch detail')
-            raise e  
-  
+            logger.info('created cw: %r', copywell)
+
+        if volume is not None:
+            copywell.volume = volume
+        # if adjustments is not None:
+        #     copywell.adjustments = adjustments
+        if mg_ml_concentration is not None:
+            copywell.mg_ml_concentration = mg_ml_concentration
+        if molar_concentration is not None:
+            copywell.molar_concentration = molar_concentration
+        
+        copywell.save()
+        logger.info('patch_obj done')
+        return copywell
+
 
 class CherryPickRequestResource(DbApiResource):        
 
@@ -3925,7 +4013,7 @@ class CherryPickRequestResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -4158,7 +4246,7 @@ class CherryPickPlateResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -4445,7 +4533,7 @@ class LibraryCopyResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
 
             compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),
@@ -4788,7 +4876,7 @@ class PublicationResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -5389,7 +5477,7 @@ class AttachedFileResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -6007,7 +6095,7 @@ class ActivityResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -6257,7 +6345,7 @@ class CherryPickScreeningResource(ActivityResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
              
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -6555,7 +6643,7 @@ class LibraryScreeningResource(ActivityResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
              
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -8238,7 +8326,7 @@ class ScreenResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
              
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -8761,7 +8849,7 @@ class UserChecklistItemResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -9193,7 +9281,7 @@ class ScreensaverUserResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -10110,7 +10198,7 @@ class ReagentResource(DbApiResource):
             title_function = lambda key: field_hash[key]['title']
         if is_data_interchange:
             title_function = \
-                DbApiResource.datainterchange_title_function(field_hash)
+                DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
 
         return self.stream_response_from_statement(
             request, stmt, count_stmt, filename,
@@ -11063,7 +11151,7 @@ class LibraryResource(DbApiResource):
                 title_function = lambda key: field_hash[key]['title']
             if is_data_interchange:
                 title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash)
+                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
                 
             if False:
                 logger.info(

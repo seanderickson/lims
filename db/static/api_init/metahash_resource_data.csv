@@ -5,9 +5,9 @@ study,resource,screen,[facility_id],"[facility_id;': ';title]",/reports/api/v1/r
 screenresult,resource,assay_well,[screen_facility_id],[screen_facility_id;/;well_id],/reports/api/v1/resource/screenresult/,0,,"The Screen result resource","Screen Result",[l;d],,,db,,,[xls;sdf],TRUE
 datacolumn,resource,data_column,[data_column_id],[name],/reports/api/v1/resource/datacolumn/,0,,"The Screen Result Datacolumn resource","Data Column",[l;d],,,db,,,[xls],TRUE
 library,resource,library,[short_name],[short_name],/reports/api/v1/resource/library/,0,,"The reagent library resource",Library,[l;d;e;c],,,db,,,[xls],TRUE
-librarycopy,resource,copy,[library_short_name;name],"[library_short_name;': Copy: ';name]",/reports/api/v1/resource/librarycopy/,0,,"A copy of the library","Library Copy",[l;d;e;c],,,db,,,[xls],
-librarycopyplate,resource,plate,[library_short_name;copy_name;plate_number],"[library_short_name;': ';copy_name;': ';plate_number]",/reports/api/v1/resource/librarycopyplate/,0,,"A plate in a copy of the library","Library Copy Plate",[l;d;e],,,db,,,[xls],
-platelocation,resource,plate_location,[room;freezer;shelf;bin],[room;'-';freezer;'-';shelf;'-';bin],/reports/api/v1/resource/platelocation/,0,,"Location of a library copy plate","Plate Location",[l;d;e;c],,,db,,,[xls],
+librarycopy,resource,copy,[library_short_name;name],"[library_short_name;': Copy: ';name]",/reports/api/v1/resource/librarycopy/,0,,"A copy of the library",Copy,[l;d;e;c],,,db,,,[xls],
+librarycopyplate,resource,plate,[library_short_name;copy_name;plate_number],"[library_short_name;': ';copy_name;': ';plate_number]",/reports/api/v1/resource/librarycopyplate/,0,,"A plate in a copy of the library","Copy Plate",[l;d;e],,,db,,,[xls],
+platelocation,resource,plate_location,[room;freezer;shelf;bin],[room;'-';freezer;'-';shelf;'-';bin],/reports/api/v1/resource/platelocation/,0,,"Location of a library copy plate","Copy Plate Location",[l;d;e;c],,,db,,,[xls],
 well,resource,well,[well_id],[well_id],/reports/api/v1/resource/well/,0,,"A well on a library source plate","Library Well",[l;d;e],,,db,,,[xls],
 activity,resource,activity,[activity_id],[activity_id],/reports/api/v1/resource/activity/,0,,"Log of an administrative activity",Activity,[l;d;e;c],,,db,,,[xls],
 serviceactivity,resource,service_activity,[activity_id],"[activity_type;' - ';activity_id]",/reports/api/v1/resource/serviceactivity/,0,,"Log of a service activity performed for a screensaver user","Service Activity",[l;d;e;c],,,db,,activity,[xls],

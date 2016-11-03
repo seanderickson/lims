@@ -926,7 +926,7 @@ define([
     },
     
     /**
-     * A resource (ResourceResource):
+     * Retrieve a resource (ResourceResource) from the local cache:
      * {
           key: "resource",
           scope: "resource",
@@ -961,6 +961,22 @@ define([
         throw "Unknown resource: " + resourceId;
       }
       return uiResources[resourceId];
+    },
+    
+    /**
+     * Deep copy of a Resource.
+     */
+    cloneResource: function(resource){
+      resource = _.clone(resource);
+      resource.fields = _.clone(resource.fields);
+      _.each(_.keys(resource.fields), function(key){
+        var field = resource.fields[key];
+        resource.fields[key] = _.clone(field);
+        _.each(_.keys(field), function(fk){
+          field[fk] = _.clone(field[fk]);
+        });
+      });
+      return resource;
     },
         
     getResourceFromUrl: function(schemaUrl, callback, options){

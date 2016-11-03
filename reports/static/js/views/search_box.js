@@ -319,7 +319,7 @@ define([
         _.each(and_list, function(reversedterms){
           // now reverse each term to put it back in proper non-reversed form
           var terms = reversedterms.split('').reverse().join('');
-          and_array.push(terms.split(/[,\s]+/));
+          and_array.unshift(terms.split(/[,\s]+/));
         });
       });
       return search_array;
@@ -395,7 +395,7 @@ define([
         };
       }else if(search_target == 'librarycopy'){
         matching_hash = {
-          matching_order: ['name','library_short_name'],
+          matching_order: ['library_short_name','name',],
           library_short_name: {
             title: 'Library short name',
             pattern: /\w+/,
@@ -448,6 +448,7 @@ define([
       _.each(search_array, function(and_array){
         var and_hash = {};
         or_list.push(and_hash);
+        var found_matches = [];
         _.each(and_array, function(terms){
           // find out what kind of terms they are
           var clause = ''
@@ -460,7 +461,12 @@ define([
             var testing_val = testing_val.split('-')[0];
           }
           entity = _.find(matching_hash.matching_order,function(key){
-            if(matching_hash[key].pattern.exec(testing_val)) return true;
+            if(matching_hash[key].pattern.exec(testing_val)){
+              if (!_.contains(found_matches,key)){
+                found_matches.push(key);
+                return true;
+              }
+            }
           });
           
           if(_.isEmpty(entity)){

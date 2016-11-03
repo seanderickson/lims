@@ -15,7 +15,7 @@ function($, _, Iccbl, appModel, EditView) {
      * jqXHR.fail(function( jqXHR, textStatus, errorThrown ) {});
      * jqXHR.always(function( data|jqXHR, textStatus, jqXHR|errorThrown ) { });
      */
-    postUploadFileDialog: function(url, content_types, callbackSuccess){
+    postUploadFileDialog: function(url, content_types){
 
       var promise = $.Deferred();
       

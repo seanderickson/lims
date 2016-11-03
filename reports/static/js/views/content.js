@@ -284,7 +284,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         url: url,
       });
       var view = new viewClass({ 
-          model: appModel, 
+//          model: appModel, 
           uriStack: uriStack,
           schemaResult: schemaResult, 
           resource: resource, 

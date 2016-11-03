@@ -87,8 +87,42 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       collection = new Collection({
         url: url,
       });
+
+      resource = appModel.cloneResource(resource);
+      if(self.copy) {
+        resource.fields['copy_usage_type']['visibility'] = ['d'];
+        resource.fields['library_short_name']['visibility'] = ['d'];
+      }
       
+      // Set concentration type visibilty based concentrations found in library wells
+      var concentration_types = self.library.get('concentration_types');
+      resource.fields['mg_ml_concentration']['visibility'] = [];
+      resource.fields['molar_concentration']['visibility'] = [];
+      if (concentration_types) {
+        if (_.contains(concentration_types, 'mg_ml')){
+          resource.fields['mg_ml_concentration']['visibility'] = ['l'];
+        }
+        if (_.contains(concentration_types, 'molar')){
+          resource.fields['molar_concentration']['visibility'] = ['l'];
+        }
+      }
+
       if (appModel.hasPermission(resource.key, 'write')){
+        
+        // Set field visibility based on copy type
+        if(self.copy && self.copy.get('usage_type') == 'cherry_pick_source_plates'){
+          _.each(_.pick(resource['fields'], 
+            ['volume']), 
+            function(field){
+              field['editability'] = ['l','u'];
+            });
+        }
+        _.each(_.pick(resource['fields'], 
+          ['mg_ml_concentration','molar_concentration']), 
+          function(field){
+            field['editability'] = ['l','d'];
+          });
+        
         var showUploadButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="patch_resource" href="#">',
@@ -176,7 +210,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
                 console.log('no changes');
                 return;
               }
-//              model.url = url;
               changedCollection.add(saveModel);
               showSaveButton.show();
               appModel.setPagePending();
@@ -224,36 +257,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               );
             });
           };
-          var cancelFunction = function(){
-            console.log('cancelled');
-            appModel.clearPagePending();
-            changedCollection.reset();
-            collection.fetch({ reset: true });
-          };
-          // redo; allow edit only for cherry pick plates
-          if (self.copy && !self.copy.get('usage_type') == 'cherry_pick_plates') {
-            appModel.showModal({
-              title: 'Set Copy Well volumes on plate-volume managed Copy Plate?',
-              body: 'This Copy has volumes managed at the Plate level.' + 
-                'If Copy Well volumes are set, this plate may no longer be used for plate screening.',
-              ok: saveFunction,
-              cancel: cancelFunction,
-              cancelText: 'Cancel this operation'
-            });
-          } else {
-            saveFunction();
-          }
-          
-          
+          saveFunction();
           
         });
       
-      }else {
-        // Turn off editability on the "volume" field
-        var volume_field = _.result(resource['fields'], 'volume', null);
-        if (volume_field) {
-          volume_field['editability'] = [];
-        }
+      } else { // User does not have write permission
+        _.each(_.values(resource['fields']), function(field){
+          field['editability'] = [];
+        });
       }
       
       var showHistoryButton = $([
@@ -277,18 +288,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.remove();
       });
 
-      var concentration_types = self.library.get('concentration_types');
-      resource.fields['mg_ml_concentration']['visibility'] = [];
-      resource.fields['molar_concentration']['visibility'] = [];
-      if (concentration_types) {
-        if (_.contains(concentration_types, 'mg_ml')){
-          resource.fields['mg_ml_concentration']['visibility'] = ['l'];
-        }
-        if (_.contains(concentration_types, 'molar')){
-          resource.fields['molar_concentration']['visibility'] = ['l'];
-        }
-      }
-      
       var view = new ListView({ 
         _name: 'WellsListView',
         uriStack: uriStack,

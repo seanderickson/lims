@@ -179,11 +179,6 @@
         "rpp": 24,
         "order": []  }
     },
-    "copywell": {
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24 }
-    },
     "reagent": {
       "header_message": "Wells",
       "title": "Well",
@@ -198,22 +193,30 @@
         "rpp": 24,
         "order": []  }
     },
+    "librarycopy": {
+      "title": "Copy",
+      "options": { 
+        "order": []  }
+    },
     "librarycopyplate": {
+      "title": "Copy Plate",
       "detailView": "LibraryCopyPlateView",
       "listView": "LibraryCopyPlateView",
       "options": { 
         "order": []  }
     },
+    "copywell": {
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24 }
+    },
     "platelocation": {
+      "title": "Copy Plate Location",
       "detailView": "PlateLocationView",
       "list_view": "PlateLocationView",
       "api_resource": "platelocation",
       "options": { 
         "search": {"plate_count__gt":0},
-        "order": []  }
-    },
-    "librarycopy": {
-      "options": { 
         "order": []  }
     },
     "userchecklistitem": {

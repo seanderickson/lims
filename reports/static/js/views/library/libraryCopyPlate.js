@@ -86,6 +86,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showList: function(resource, url) {
       var self = this;
       var uriStack = _.clone(this.uriStack);
+      resource = appModel.cloneResource(resource);
+      
       console.log('uriStack', uriStack);
       var showEditLocationButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
@@ -135,12 +137,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       if (self.library) {
         var concentration_types = self.library.get('concentration_types');
         if (concentration_types) {
-          resource.fields['mg_ml_concentration']['visibility'] = [];
-          resource.fields['min_mg_ml_concentration']['visibility'] = [];
-          resource.fields['max_mg_ml_concentration']['visibility'] = [];
-          resource.fields['molar_concentration']['visibility'] = [];
-          resource.fields['min_molar_concentration']['visibility'] = [];
-          resource.fields['max_molar_concentration']['visibility'] = [];
+          _.each(_.pick(resource['fields'], 
+            ['mg_ml_concentration','min_mg_ml_concentration',
+             'max_mg_ml_concentration','molar_concentration',
+             'min_molar_concentration','max_molar_concentration'
+            ]),
+            function(field){
+              field['visibility'] = [];
+            });
+          
           if (_.contains(concentration_types, 'mg_ml')){
             resource.fields['mg_ml_concentration']['visibility'] = ['l','d'];
             if (self.copy && self.copy.get('has_copywell_concentrations')) {
@@ -156,16 +161,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             }
           }
         }
-        if(self.copy){
-          resource.fields['avg_remaining_volume']['visibility'] = [];
-          resource.fields['min_remaining_volume']['visibility'] = [];
-          resource.fields['max_remaining_volume']['visibility'] = [];
-          if (self.copy.get('has_copywell_volumes')) {
-            resource.fields['avg_remaining_volume']['visibility'] = ['l','d'];
-            resource.fields['min_remaining_volume']['visibility'] = ['l','d'];
-            resource.fields['max_remaining_volume']['visibility'] = ['l','d'];
-          }
-        }
+        _.each(_.pick(resource['fields'], 
+          ['avg_remaining_volume','min_remaining_volume',
+           'max_remaining_volume'
+          ]), 
+          function(field){
+            if(self.copy && self.copy.get('has_copywell_volumes')){
+              field['visibility'] = ['l','d'];
+            } else {
+              field['visibility'] = [];
+            }
+        });
         
       }      
       // TODO: extending the passed args to get the "search_data", or other 
@@ -190,8 +196,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         var collection = view.collection;
         e.preventDefault();
+        var url = resource.apiUri;
         UploadDataForm.postUploadFileDialog(
-          collection.url, resource.content_types)
+          url, resource.content_types)
           .done(function(){
             collection.fetch({ reset: true });
           })
@@ -247,42 +254,45 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           template: fieldTemplate 
         };
         
-        if (self.copy && ! self.copy.get('has_copywell_volumes')) {
-          formSchema['remaining_well_volume'] = {
-            title: 'Remaining Well Volume',
-            key: 'well_volume',
-            validators: [EditView.CheckPositiveNonZeroValidator],
-            type: EditView.SIunitEditor,
-            template: fieldTemplate 
-          };
-          _.extend(
-            formSchema['remaining_well_volume'],
-            self.resource['fields']['remaining_well_volume']['display_options']);
+        formSchema['remaining_well_volume'] = {
+          title: 'Remaining Well Volume',
+          key: 'well_volume',
+          validators: [EditView.CheckPositiveNonZeroValidator],
+          type: EditView.SIunitEditor,
+          template: fieldTemplate 
+        };
+        _.extend(
+          formSchema['remaining_well_volume'],
+          self.resource['fields']['remaining_well_volume']['display_options']);
+        if (self.copy && self.copy.get('has_copywell_volumes')) {
+          delete formSchema['remaining_well_volume'];
         }
         
-        if (self.copy && ! self.copy.get('has_copywell_concentrations')) {
-          formSchema['molar_concentration'] = {
-            title: 'Molar Concentration',
-            key: 'molar_concentration',
-            validators: [EditView.CheckPositiveNonZeroValidator],
-            type: EditView.SIunitEditor,
-            template: fieldTemplate 
-          };
-          _.extend(
-            formSchema['molar_concentration'],
-            self.resource['fields']['molar_concentration']['display_options']);
-          
-          formSchema['mg_ml_concentration'] = {
-            title: 'mg/ml Concentration',
-            key: 'mg_ml_concentration',
-            validators: [EditView.CheckPositiveNonZeroValidator],
-            type: Backbone.Form.editors.Number,
-            editorClass: 'form-control',
-            template: fieldTemplate 
-          };
-          _.extend(
-            formSchema['mg_ml_concentration'],
-            self.resource['fields']['mg_ml_concentration']['display_options']);
+        formSchema['molar_concentration'] = {
+          title: 'Molar Concentration',
+          key: 'molar_concentration',
+          validators: [EditView.CheckPositiveNonZeroValidator],
+          type: EditView.SIunitEditor,
+          template: fieldTemplate 
+        };
+        _.extend(
+          formSchema['molar_concentration'],
+          self.resource['fields']['molar_concentration']['display_options']);
+        
+        formSchema['mg_ml_concentration'] = {
+          title: 'mg/ml Concentration',
+          key: 'mg_ml_concentration',
+          validators: [EditView.CheckPositiveNonZeroValidator],
+          type: Backbone.Form.editors.Number,
+          editorClass: 'form-control',
+          template: fieldTemplate 
+        };
+        _.extend(
+          formSchema['mg_ml_concentration'],
+          self.resource['fields']['mg_ml_concentration']['display_options']);
+        if (self.copy && self.copy.get('has_copywell_concentrations')) {
+          delete formSchema['molar_concentration'];
+          delete formSchema['mg_ml_concentration'];
         }
         
         formSchema['screening_count'] = {
@@ -437,7 +447,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               errors['_others'] = [{'error': 'Must fill in at least one value'}];
             }
             form.$el.find('.form-group').removeClass('has-error');
-            form.$el.find('.text-danger').remove();
             if (!_.isEmpty(errors) ) {
               _.each(_.keys(errors), function(key) {
                 form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');

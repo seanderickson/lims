@@ -842,7 +842,8 @@ class LibraryCopyPlateResource(DbApiResource):
             .group_by(
                 _p.c.plate_id, _p.c.experimental_well_count,
                 _p.c.remaining_well_volume,_p.c.well_volume,
-                _p.c.mg_ml_concentration,_p.c.molar_concentration,
+                _p.c.mg_ml_concentration,_p.c.molar_concentration)
+            .group_by(
                 cw_vols.c.count, cw_vols.c.cum_well_vol,
                 cw_vols.c.min_well_vol, cw_vols.c.max_well_vol,
                 cw_vols.c.min_well_mg_ml,cw_vols.c.max_well_mg_ml,

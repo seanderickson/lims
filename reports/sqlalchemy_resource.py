@@ -420,15 +420,23 @@ class SqlAlchemyResource(IccblBaseResource):
 
     @staticmethod
     def build_sqlalchemy_filters(schema, param_hash={}):
+        '''
+        @return (search_expressions, field_keyed hash of expressions)
+        '''
+        
+        
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_FILTERS: 
             logger.info('build_sqlalchemy_filters: param_hash %s', param_hash)
 
         # ordinary filters
-        (filter_expression, filter_fields) = \
-            SqlAlchemyResource.build_sqlalchemy_filters_from_hash(schema, param_hash)
-        
+#         (filter_expression, filter_fields) = \
+#             SqlAlchemyResource.build_sqlalchemy_filter_hash(schema, param_hash)
+        filter_hash = \
+            SqlAlchemyResource.build_sqlalchemy_filter_hash(schema, param_hash)
+        combined_filter_hash = filter_hash
+        filter_expression = and_(*filter_hash.values())
         # Treat the nested "search_data" as sets of params to be OR'd together,
         # then AND'd with the regular filters (if any)
         search_data = param_hash.get('search_data', None)
@@ -446,17 +454,27 @@ class SqlAlchemyResource(IccblBaseResource):
             filter_fields = set(filter_fields)
             for search_hash in search_data:
                 logger.info('search_hash: %s' % search_hash)
-                (search_expression, search_fields) = SqlAlchemyResource.\
-                    build_sqlalchemy_filters_from_hash(schema,search_hash)
-                search_expressions.append(search_expression)
-                filter_fields.update(search_fields)
-
+#                 (search_expression, search_fields) = SqlAlchemyResource.\
+#                     build_sqlalchemy_filter_hash(schema,search_hash)
+                search_filter_hash = SqlAlchemyResource.\
+                    build_sqlalchemy_filter_hash(schema,search_hash)
+#                 search_expressions.append(search_expression)
+                search_expressions.append(*search_filter_hash.values())
+#                 filter_fields.update(search_fields)
+                for field,expression in search_filter_hash.items():
+                    if field in combined_filter_hash:
+                        combined_field_expression = combined_filter_hash[field]
+                        combined_field_expressions = [combined_field_expression,expression]
+                    else:
+                        combined_filter_hash[field] = expression
             if len(search_expressions) > 1:
                 search_expressions = or_(*search_expressions)
             else:
                 search_expressions = search_expressions[0]
-            if filter_expression is not None:
-                filter_expression = and_(search_expressions,filter_expression)
+            if len(filter_hash) > 0 is not None:
+                filter_expression = and_(
+                    search_expressions,
+                    filter_expression)
             else: 
                 filter_expression = search_expressions
                 
@@ -464,24 +482,27 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.info('filter_expression: %s, filter_fields: %s',
                 filter_expression, filter_fields)
         
-        return (filter_expression,filter_fields)
+        return (filter_expression,combined_filter_hash)
     
     @staticmethod
-    def build_sqlalchemy_filters_from_hash(schema, param_hash):
+    def build_sqlalchemy_filter_hash(schema, param_hash):
         '''
-        Attempt to create a SqlAlchemy whereclause out of django style filters:
+        Create a SqlAlchemy whereclause out of django style filters:
         - field_name__filter_expression
+        
+        @return field_keyed hash of expressions for the AND clause
         '''
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
-        logger.debug('build_sqlalchemy_filters_from_hash %r' % param_hash)
+        logger.debug('build_sqlalchemy_filter_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
         if param_hash is None:
             return (None,None)
         
+        filter_hash = {}
         try:
-            expressions = []
-            filtered_fields = []
+#             expressions = []
+#             filtered_fields = []
             
             _values = [] # store values for debug
             for filter_expr, value in param_hash.items():
@@ -633,22 +654,24 @@ class SqlAlchemyResource(IccblBaseResource):
                 if inverted:
                     expression = not_(expression)
                 
-                logger.debug('filter_expr: %r' % filter_expr)
-                expressions.append(expression)
-                filtered_fields.append(field_name)
+                logger.debug('field: %r, filter_expr: %r', field_name, filter_expr)
+                filter_hash[field_name] = expression
+#                 expressions.append(expression)
+#                 filtered_fields.append(field_name)
                 
-            logger.debug('filtered_fields: %s', filtered_fields)
+            logger.debug('filtered_fields: %s', filter_hash.keys())
             if DEBUG_FILTERS:
                 logger.info('values %r', _values)
                 
-            if len(expressions) > 1: 
-                return (and_(*expressions), filtered_fields)
-            elif len(expressions) == 1:
-                return (expressions[0], filtered_fields) 
-            else:
-                return (None, filtered_fields)
+#             if len(filter_hash) > 1: 
+#                 return (and_(*expressions), filtered_fields)
+#             elif len(expressions) == 1:
+#                 return (expressions[0], filtered_fields) 
+#             else:
+#                 return (None, filtered_fields)
+            return filter_hash
         except Exception, e:
-            logger.exception('on build_sqlalchemy_filters_from_hash')
+            logger.exception('on build_sqlalchemy_filter_hash')
             raise e   
 
     def _get_list_response(self,request,**kwargs):

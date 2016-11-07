@@ -728,7 +728,8 @@ class LibraryCopyPlateResource(DbApiResource):
         return self.build_list_response(request, **kwargs)
 
     @classmethod
-    def get_librarycopyplate_cte(cls, filter_hash=None, library_id=None, copy_id=None):
+    def get_librarycopyplate_cte(cls, 
+        filter_hash=None, library_id=None, copy_id=None, plate_ids=None):
         
         logger.info('get_librarycopyplate_cte: filters: %r', filter_hash)
         bridge = get_tables()
@@ -755,7 +756,8 @@ class LibraryCopyPlateResource(DbApiResource):
             plate_table = plate_table.where(_c.c.library_id==library_id)
         if copy_id is not None:
             plate_table = plate_table.where(_c.c.copy_id==copy_id)
-
+        if plate_ids is not None:
+            plate_table = plate_table.where(_p.c.plate_id.in_(plate_ids))
         if filter_hash:
             extra_filters = [v for k,v in filter_hash.items()
                 if k in ['plate_number', 'copy_name']]
@@ -769,7 +771,8 @@ class LibraryCopyPlateResource(DbApiResource):
         return plate_table
         
     @classmethod
-    def get_plate_copywell_statistics_cte(cls, filter_hash=None, library_id=None, copy_id=None):  
+    def get_plate_copywell_statistics_cte(cls, 
+        filter_hash=None, library_id=None, copy_id=None, plate_ids=None):  
         bridge = get_tables()
         _p = bridge['plate']
         _cw = bridge['copy_well']
@@ -796,12 +799,13 @@ class LibraryCopyPlateResource(DbApiResource):
             cw_vols = cw_vols.where(_c.c.library_id==library_id)
         if copy_id is not None:
             cw_vols = cw_vols.where(_c.c.copy_id==copy_id)
+        # TODO: adding plate_ids is not performant here
+        # if plate_ids is not None:
+        #     cw_vols = cw_vols.where(_p.c.plate_id.in_(plate_ids))
         cw_vols = cw_vols.cte('copy_well_volumes')
         
         j2 = _p.outerjoin(cw_vols,_p.c.plate_id==cw_vols.c.plate_id)
         j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
-#         if library_id is not None:
-#             j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
         query = (
             select([
                 _p.c.plate_id,
@@ -856,20 +860,13 @@ class LibraryCopyPlateResource(DbApiResource):
                 #     .label('max_molar_concentration')),
                 ])
             .select_from(j2)
-#             .group_by(
-#                 _p.c.plate_id, _p.c.experimental_well_count,
-#                 _p.c.remaining_well_volume,_p.c.well_volume,
-#                 _p.c.mg_ml_concentration,_p.c.molar_concentration)
-#             .group_by(
-#                 cw_vols.c.count, cw_vols.c.cum_well_vol,
-#                 cw_vols.c.min_well_vol, cw_vols.c.max_well_vol,
-#                 cw_vols.c.min_well_mg_ml,cw_vols.c.max_well_mg_ml,
-#                 cw_vols.c.min_well_molar, cw_vols.c.max_well_molar,_p.c.copy_id)
             )
         if library_id is not None:
             query = query.where(_c.c.library_id==library_id)
         if copy_id is not None:
             query = query.where(_p.c.copy_id==copy_id)
+        if plate_ids is not None:
+            query = query.where(_p.c.plate_id.in_(plate_ids))
 
         if filter_hash:
             extra_filters = [v for k,v in filter_hash.items()
@@ -884,7 +881,8 @@ class LibraryCopyPlateResource(DbApiResource):
         return query
     
     @classmethod
-    def get_plate_screening_statistics_cte(cls, filter_hash=None, library_id=None, copy_id=None):
+    def get_plate_screening_statistics_cte(cls, 
+        filter_hash=None, library_id=None, copy_id=None, plate_ids=None):
         bridge = get_tables()
         _p = bridge['plate']
         _a = bridge['activity']
@@ -896,9 +894,6 @@ class LibraryCopyPlateResource(DbApiResource):
                 .join(_a, _a.c.activity_id==_ls.c.activity_id)
                 .join(_p, _ap.c.plate_id==_p.c.plate_id)
                 .join(_c, _p.c.copy_id==_c.c.copy_id))
-        
-#         if library_id is not None:
-#             j = j.join(_c, _p.c.copy_id==_c.c.copy_id)
         
         query = (
             select([
@@ -916,6 +911,8 @@ class LibraryCopyPlateResource(DbApiResource):
             query = query.where(_c.c.library_id == library_id)
         if copy_id is not None:
             query = query.where(_p.c.copy_id==copy_id)
+        if plate_ids is not None:
+            query = query.where(_p.c.plate_id.in_(plate_ids))
         if filter_hash:
             extra_filters = [v for k,v in filter_hash.items()
                 if k in ['plate_number', 'copy_name']]
@@ -946,11 +943,11 @@ class LibraryCopyPlateResource(DbApiResource):
         schema = super(LibraryCopyPlateResource, self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id', None)
-        # FIXME: copyplatesloaded no longer works - 20160607
-        # because we are not creating "assay_plates" for screen results anymore
-        # can this be modified to show virtual "plates" loaded?
-        loaded_for_screen_id = param_hash.pop('loaded_for_screen_id', None)
-        
+        # NOTE: loaded plates not being shown anymore
+        # # FIXME: copyplatesloaded no longer works - 20160607
+        # # because we are not creating "assay_plates" for screen results anymore
+        # # can this be modified to show virtual "plates" loaded?
+        # loaded_for_screen_id = param_hash.pop('loaded_for_screen_id', None)
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -982,6 +979,12 @@ class LibraryCopyPlateResource(DbApiResource):
         if log_key == '%/%/%':
             log_key = None
         try:
+            plate_ids = None
+            if for_screen_id:
+                with get_engine().connect() as conn:
+                    plate_ids = [x[0] for x in 
+                        conn.execute(
+                            self.get_screen_librarycopyplate_subquery(for_screen_id))]
             
             # general setup
           
@@ -990,10 +993,6 @@ class LibraryCopyPlateResource(DbApiResource):
             (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            logger.debug(
-                'filter_expression: %r, loaded_for_screen_id: %r, '
-                'for_screen_id: %r',
-                filter_expression, loaded_for_screen_id, for_screen_id)
             # if (filter_expression is None
             #         and for_screen_id is None and loaded_for_screen_id is None):
             #     raise InformationError(
@@ -1027,18 +1026,18 @@ class LibraryCopyPlateResource(DbApiResource):
             _plate_cte = (
                 self.get_librarycopyplate_cte(
                     filter_hash=filter_hash,
-                    library_id=library_id, copy_id=copy_id )
+                    library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
                         .cte('plate_cte'))
             _user_cte = ScreensaverUserResource.get_user_cte().cte('user_cte')
             _plate_statistics = (
                 self.get_plate_copywell_statistics_cte(
                     filter_hash=filter_hash,
-                    library_id=library_id, copy_id=copy_id)
+                    library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
                         .cte('plate_statistics'))
             _plate_screening_statistics = (
                 self.get_plate_screening_statistics_cte(
                     filter_hash=filter_hash,
-                    library_id=library_id, copy_id=copy_id)
+                    library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
                         .cte('plate_screening_statistics'))
             _diff = self.bridge['reports_logdiff']
             
@@ -1173,17 +1172,18 @@ class LibraryCopyPlateResource(DbApiResource):
             if set(['status_date','status_performed_by',
                 'status_performed_by_username']) | set(field_hash.keys()):
                 j = j.outerjoin(_status_apilogs,_plate_cte.c.key==_status_apilogs.c.key)
-            if for_screen_id:
-                _subquery = \
-                    self.get_screen_librarycopyplate_subquery(for_screen_id)
-                _subquery = _subquery.cte('screen_lcps')
-                j = j.join(_subquery, _subquery.c.plate_id == _p.c.plate_id)
-            if loaded_for_screen_id:
-                _subquery = \
-                    self.get_screen_loaded_librarycopyplate_subquery(
-                        loaded_for_screen_id)
-                _subquery = _subquery.cte('screen_loaded_lcps')
-                j = j.join(_subquery, _subquery.c.plate_id == _p.c.plate_id)
+#             if for_screen_id:
+#                 _subquery = \
+#                     self.get_screen_librarycopyplate_subquery(for_screen_id)
+#                 _subquery = _subquery.cte('screen_lcps')
+#                 j = j.join(_subquery, _subquery.c.plate_id == _p.c.plate_id)
+            # NOTE: not tracking loaded plates anymore
+            # if loaded_for_screen_id:
+            #     _subquery = \
+            #         self.get_screen_loaded_librarycopyplate_subquery(
+            #             loaded_for_screen_id)
+            #     _subquery = _subquery.cte('screen_loaded_lcps')
+            #     j = j.join(_subquery, _subquery.c.plate_id == _p.c.plate_id)
             if set(['avg_remaining_volume','min_remaining_volume',
                 'max_remaining_volume']) | set(field_hash.keys()):
                 j = j.outerjoin(_plate_statistics,_p.c.plate_id==_plate_statistics.c.plate_id)     
@@ -1193,6 +1193,8 @@ class LibraryCopyPlateResource(DbApiResource):
                     _p.c.plate_id==_plate_screening_statistics.c.plate_id)
             stmt = select(columns.values()).select_from(j)
             
+            if plate_ids is not None:
+                stmt = stmt.where(_p.c.plate_id.in_(plate_ids))
             if library_id is not None:
                 stmt = stmt.where(_l.c.library_id==library_id)
             if copy_id is not None:
@@ -1247,14 +1249,15 @@ class LibraryCopyPlateResource(DbApiResource):
             .where(_screen.c.facility_id == for_screen_id))
         return screen_lcps
 
-    @classmethod
-    def get_screen_loaded_librarycopyplate_subquery(cls, for_screen_id):
-        
-        subquery = cls.get_screen_librarycopyplate_subquery(for_screen_id)
-        _assay_plate = get_tables()['assay_plate']
-        subquery = subquery.where(
-            _assay_plate.c.screen_result_data_loading_id != None)
-        return subquery
+    # NOTE: not tracking loaded plates anymore
+    # @classmethod
+    # def get_screen_loaded_librarycopyplate_subquery(cls, for_screen_id):
+    #     
+    #     subquery = cls.get_screen_librarycopyplate_subquery(for_screen_id)
+    #     _assay_plate = get_tables()['assay_plate']
+    #     subquery = subquery.where(
+    #         _assay_plate.c.screen_result_data_loading_id != None)
+    #     return subquery
 
     def get_id(self, deserialized, validate=False, schema=None, **kwargs):
         id_kwargs = super(LibraryCopyPlateResource, self).get_id(
@@ -7792,12 +7795,13 @@ class ScreenResource(DbApiResource):
         kwargs['for_screen_id'] = kwargs.pop('facility_id')
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
 
-    def dispatch_screen_lcp_loadedview(self, request, **kwargs):
-        # FIXME: copyplatesloaded no longer works - 20160607
-        # because we are not creating "assay_plates" for screen results anymore
-        # can this be modified to show virtual "plates" loaded?
-        kwargs['loaded_for_screen_id'] = kwargs.pop('facility_id')
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+    # NOTE: no longer supporting plates loaded stats
+    # def dispatch_screen_lcp_loadedview(self, request, **kwargs):
+    #     # FIXME: copyplatesloaded no longer works - 20160607
+    #     # because we are not creating "assay_plates" for screen results anymore
+    #     # can this be modified to show virtual "plates" loaded?
+    #     kwargs['loaded_for_screen_id'] = kwargs.pop('facility_id')
+    #     return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
 
     def dispatch_screen_billingview(self, request, **kwargs):
         kwargs['visibilities'] = 'billing'
@@ -11179,10 +11183,11 @@ class LibraryResource(DbApiResource):
             # build the query statement
 
             j = _l
-            if for_screen_id:
-                _subquery = self.get_screen_library_subquery(for_screen_id)
-                j = j.join(_subquery, _subquery.c.library_id == _l.c.library_id)
             stmt = select(columns.values()).select_from(j)
+
+            if for_screen_id:
+                stmt = stmt.where(_l.c.library_id.in_(
+                    self.get_screen_library_ids(for_screen_id)))
 
             # general setup
              
@@ -11220,7 +11225,7 @@ class LibraryResource(DbApiResource):
             raise e  
 
     @classmethod
-    def get_screen_library_subquery(cls, for_screen_id):
+    def get_screen_library_ids(cls, for_screen_id):
         
         bridge = get_tables()
         _screen = bridge['screen']
@@ -11244,13 +11249,15 @@ class LibraryResource(DbApiResource):
                 == _assay_plate.c.library_screening_id)
         j = j.join(_plate, _assay_plate.c.plate_id == _plate.c.plate_id)
         j = j.join(_copy, _copy.c.copy_id == _plate.c.copy_id)
-        screen_libraries = (
-            select([
-                distinct(_copy.c.library_id).label('library_id')])
-            .select_from(j)
-            .where(_screen.c.facility_id == for_screen_id)
-            .cte('screen_libraries'))
-        return screen_libraries
+        with get_engine().connect() as conn:
+            query = (
+                select([
+                    distinct(_copy.c.library_id).label('library_id')])
+                .select_from(j)
+                .where(_screen.c.facility_id == for_screen_id))
+            library_ids = [x[0] for x in 
+                conn.execute(query)]
+            return library_ids
        
     @transaction.atomic()    
     def delete_obj(self, request, deserialized, **kwargs):

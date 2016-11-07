@@ -960,7 +960,8 @@ define([
       if(!_.has(uiResources, resourceId)) {
         throw "Unknown resource: " + resourceId;
       }
-      return uiResources[resourceId];
+//      return uiResources[resourceId];
+      return this.cloneResource(uiResources[resourceId]);
     },
     
     /**

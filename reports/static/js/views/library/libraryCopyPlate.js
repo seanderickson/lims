@@ -50,19 +50,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       if (self.model){
         self.showDetail(self.model);
       }
-      else if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+      else if (!_.isEmpty(uriStack) &&
               !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // Detail view
         var plate_number = uriStack.shift();
         this.consumedStack = [plate_number];
-        _key = library.key + '/' + copy.get('name')+ '/' + plate_number;
+        _key = library.key + '/' + copy.get('copy_name')+ '/' + plate_number;
         appModel.getModel(resourceId, _key, this.showDetail );
       } else {
         // List view
         var url = resource.apiUri;
         if (self.library && self.copy) {
           url = [ 
-              library.resource.apiUri,library.key,'copy',copy.get('name'),
+              library.resource.apiUri,library.key,'copy',copy.get('copy_name'),
               'plate'].join('/');
         }
         console.log('url: ', url);
@@ -125,7 +125,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         if (self.library && self.copy) {
           search['key__icontains'] = [
             self.library.get('short_name'),
-            self.copy.get('name')].join('/');
+            self.copy.get('copy_name')].join('/');
         }
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
@@ -173,7 +173,25 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             }
         });
         
-      }      
+      }  
+      
+      resource.fields['plate_number'].backgridCellType = 
+        Iccbl.LinkCell.extend(_.extend({},
+          resource.fields['plate_number'].display_options,
+          {
+            linkCallback: function(e){
+              e.preventDefault();
+              // re-fetch the full model
+              plate_number = this.model.get('plate_number');
+              this.consumedStack = [plate_number];
+              _key = [this.model.get('library_short_name'),
+                      this.model.get('copy_name'),
+                      plate_number].join('/');
+              appModel.getModel(resource.key, _key, self.showDetail );
+              return;
+            }
+          }));
+      
       // TODO: extending the passed args to get the "search_data", or other 
       // passed args, grab options explicitly instead 201608
       options = _.extend({
@@ -361,7 +379,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           if (self.library && self.copy) {
             search_data = _.result(post_data,'search_data', {});
             search_data['library_short_name'] = self.library.get('short_name');
-            search_data['copy_name'] = self.copy.get('name');
+            search_data['copy_name'] = self.copy.get('copy_name');
             post_data['search_data'] = search_data;
           }            
           
@@ -606,7 +624,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           if (self.library && self.copy) {
             search_data = _.result(post_data,'search_data', {});
             search_data['library_short_name'] = self.library.get('short_name');
-            search_data['copy_name'] = self.copy.get('name');
+            search_data['copy_name'] = self.copy.get('copy_name');
             post_data['search_data'] = search_data;
           }            
           

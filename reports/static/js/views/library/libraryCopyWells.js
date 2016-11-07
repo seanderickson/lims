@@ -42,17 +42,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var library = this.library;
       var copy = this.copy;
       var url = [ 
-          library.resource.apiUri,library.key,'copy',copy.get('name'),
+          library.resource.apiUri,library.key,'copy',copy.get('copy_name'),
           'copywell'].join('/');
       var resourceId = 'copywell';
       var resource = appModel.getResource(resourceId);
 
-      if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+      if (!_.isEmpty(uriStack) &&
               !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // Detail view
         var well_id = uriStack.shift();
         this.consumedStack = [well_id];
-        _key = library.key + '/' + copy.get('name')+ '/' + well_id;
+        _key = library.key + '/' + copy.get('copy_name')+ '/' + well_id;
         appModel.getModel(resourceId, _key, this.showDetail );
       } else {
         // List view
@@ -280,7 +280,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         search['ref_resource_name'] = 'copywell';
         search['key__icontains'] = [
           self.library.get('short_name'),
-          self.copy.get('name')].join('/');
+          self.copy.get('copy_name')].join('/');
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
         console.log('history route: ' + route);
@@ -288,6 +288,42 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.remove();
       });
 
+      resource.fields['copy_name'].backgridCellType = 
+        Iccbl.LinkCell.extend(_.extend({},
+          resource.fields['copy_name'].display_options,
+          {
+            linkCallback: function(e){
+              e.preventDefault();
+              self.trigger('showCopy');
+              return;
+            }
+          }));
+      resource.fields['plate_number'].backgridCellType = 
+        Iccbl.LinkCell.extend(_.extend({},
+          resource.fields['plate_number'].display_options,
+          {
+            linkCallback: function(e){
+              e.preventDefault();
+              console.log('link clicked: ', this.model.get('plate_number'));
+              self.trigger('showPlate', this.model.get('plate_number'));
+              return;
+            }
+          }));
+            
+      resource.fields['well_id'].backgridCellType = 
+        Iccbl.LinkCell.extend(_.extend({},
+          resource.fields['well_id'].display_options,
+          {
+            linkCallback: function(e){
+              e.preventDefault();
+              var well_id = this.model.get('well_id');
+              self.consumedStack = [well_id];
+              _key = [self.library.key, self.copy.get('copy_name'), well_id].join('/');
+              appModel.getModel('copywell', _key, self.showDetail );
+            }
+          }));
+            
+      
       var view = new ListView({ 
         _name: 'WellsListView',
         uriStack: uriStack,

@@ -52,7 +52,7 @@ define([
       var self = this;
       return {
         'base_url': [
-           self.library.resource.key,self.library.key,self.model.resource.key,
+           self.library.resource.key,self.library.key,'copy',
            self.model.key].join('/'),
         'tab_resources': this.tabbed_resources
       }      
@@ -74,7 +74,9 @@ define([
       var key = 'platelocation';
       var resource = appModel.getResource(key);
       var url = [resource.apiUri, 
-                 '?library_copy=' + self.library.get('short_name') + '/' + self.model.get('name')].join('/')
+                 '?library_copy=' + 
+                 self.library.get('short_name') + '/' 
+                 + self.model.get('copy_name')].join('/')
       // use a child container to manage batch edit functionality
       var view = new ListView({
         uriStack: delegateStack,
@@ -89,7 +91,6 @@ define([
     
     setCopyPlates: function(delegateStack) {
       var self = this;
-      var key = 'librarycopyplates';
       // use a child container to manage batch edit functionality
       var view = new LibraryCopyPlateView({
         library: self.library,
@@ -110,6 +111,14 @@ define([
         library: self.library,
         copy: self.model,
         uriStack: delegateStack
+      });
+      
+      view.on('showCopy', function(){
+        self.change_to_tab('detail');
+      });
+      view.on('showPlate', function(plate_number){
+        self.uriStack = [plate_number];
+        self.change_to_tab('plate');
       });
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);

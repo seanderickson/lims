@@ -550,6 +550,10 @@ var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
 var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   className : "link-cell",
 
+  events : {
+    'click A': 'linkCallback',
+  },
+
   /**
    * @property {string} ["string with {model_key} values to interpolate"]
    */
@@ -572,6 +576,10 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
     LinkCell.__super__.initialize.apply(this, arguments);
   },
 
+  linkCallback: function(e){
+    console.log('link clicked, override to handle', e);
+  },
+  
   render : function() {
     var self = this;
     this.$el.empty();
@@ -586,7 +594,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   },
 });
 
-  
+
 var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
   className : "uri-list-cell",
 
@@ -3843,16 +3851,20 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'image': Iccbl.ImageCell
   }
   
-  if(_.has(typeMap,display_type)){
-    if (Iccbl.appModel.DEBUG)
-      console.log('field', key, display_type, 'typemap',typeMap[display_type])
-    var backgridCellType = typeMap[display_type];
-    if(!_.isEmpty(cell_options)){
-      backgridCellType = backgridCellType.extend(cell_options);
+  if (_.has(prop, 'backgridCellType')){
+    backgridCellType = prop.backgridCellType;
+  } else {
+    if(_.has(typeMap,display_type)){
+      if (Iccbl.appModel.DEBUG)
+        console.log('field', key, display_type, 'typemap',typeMap[display_type])
+      var backgridCellType = typeMap[display_type];
+      if(!_.isEmpty(cell_options)){
+        backgridCellType = backgridCellType.extend(cell_options);
+      }
+    }else{
+      if (Iccbl.appModel.DEBUG)
+        console.log('no special cell type for', display_type, 'data_type',data_type);
     }
-  }else{
-    if (Iccbl.appModel.DEBUG)
-      console.log('no special cell type for', display_type, 'data_type',data_type);
   }
   
   column = _.extend(column, {

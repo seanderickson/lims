@@ -404,7 +404,7 @@ define([
           self.setView("#tab_container", view ).render();
           
           console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
-          self.$("#tab_container-title").html('Copy ' + model.get('name'));
+          self.$("#tab_container-title").html('Copy ' + model.get('copy_name'));
         });        
         return;
       }else{
@@ -449,6 +449,34 @@ define([
             copyResource.fields['max_molar_concentration']['visibility'] = ['l','d'];
           }
         }
+        
+        copyResource.fields['copy_name'].backgridCellType = 
+          Iccbl.LinkCell.extend(_.extend({},
+            copyResource.fields['copy_name'].display_options,
+            {
+              linkCallback: function(e){
+                e.preventDefault();
+                // re-fetch the full model
+                copyname = this.model.get('copy_name');
+                var _key = [self.model.key,copyname].join('/');
+                appModel.getModel(copyResource.key, _key, function(model){
+                  view = new LibraryCopyView({
+                    model: model, 
+                    uriStack: [],
+                    library: self.model
+                  });
+                  Backbone.Layout.setupView(view);
+                  self.consumedStack = ['copy',copyname];
+                  self.listenTo(view , 'uriStack:change', self.reportUriStack);
+                  self.setView("#tab_container", view ).render();
+                  
+                  console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
+                  self.$("#tab_container-title").html('Copy ' + model.get('copy_name'));
+                });        
+                return;
+              }
+            }));
+        
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: copyResource,

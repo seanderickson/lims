@@ -451,7 +451,7 @@ class SqlAlchemyResource(IccblBaseResource):
 
             # each item in the search data array is a search hash, to be or'd
             search_expressions = []
-            filter_fields = set(filter_fields)
+            filter_fields = set(filter_hash.keys())
             for search_hash in search_data:
                 logger.info('search_hash: %s' % search_hash)
 #                 (search_expression, search_fields) = SqlAlchemyResource.\
@@ -459,7 +459,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 search_filter_hash = SqlAlchemyResource.\
                     build_sqlalchemy_filter_hash(schema,search_hash)
 #                 search_expressions.append(search_expression)
-                search_expressions.append(*search_filter_hash.values())
+                search_expressions.append(and_(*search_filter_hash.values()))
 #                 filter_fields.update(search_fields)
                 for field,expression in search_filter_hash.items():
                     if field in combined_filter_hash:
@@ -480,7 +480,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 
         if DEBUG_FILTERS: 
             logger.info('filter_expression: %s, filter_fields: %s',
-                filter_expression, filter_fields)
+                filter_expression, combined_filter_hash.keys())
         
         return (filter_expression,combined_filter_hash)
     

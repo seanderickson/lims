@@ -1790,7 +1790,7 @@ class ApiLogResource(ApiResource):
             
             # general setup
           
-            (filter_expression, filter_fields) = SqlAlchemyResource.\
+            (filter_expression, filter_hash) = SqlAlchemyResource.\
                 build_sqlalchemy_filters(schema, param_hash=param_hash)
 
             if filter_expression is None and 'parent_log_id' not in kwargs:
@@ -1800,7 +1800,7 @@ class ApiLogResource(ApiResource):
                                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
+                schema['fields'], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -1846,7 +1846,7 @@ class ApiLogResource(ApiResource):
                     ).label('child_logs')
             }
             
-            if 'date_time' in filter_fields:
+            if 'date_time' in filter_hash:
                 # ISO 8601 only supports millisecond precision, 
                 # but postgres supports microsecond
                 custom_columns['date_time'] = \
@@ -2774,13 +2774,13 @@ class VocabularyResource(ApiResource):
             if DEBUG_GET_LIST: 
                 logger.info('manual_field_includes: %r', manual_field_includes)
   
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             
             if DEBUG_GET_LIST: 
                 logger.info('filter_fields: %r, kwargs: %r', 
-                    filter_fields,kwargs)
+                    filter_hash.keys(),kwargs)
             
             
             original_field_hash = schema['fields']
@@ -2818,7 +2818,7 @@ class VocabularyResource(ApiResource):
             
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                fields_for_sql, filter_fields, manual_field_includes, 
+                fields_for_sql, filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities',[]), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -3252,13 +3252,13 @@ class UserResource(ApiResource):
             if DEBUG_GET_LIST: 
                 logger.info('manual_field_includes: %r', manual_field_includes)
   
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
+                schema['fields'], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -3865,13 +3865,13 @@ class UserGroupResource(ApiResource):
             if DEBUG_GET_LIST: 
                 logger.info('manual_field_includes: %r', manual_field_includes)
   
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
               
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
+                schema['fields'], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -4213,13 +4213,13 @@ class PermissionResource(ApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
+                schema['fields'], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)

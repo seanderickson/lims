@@ -445,14 +445,14 @@ class LibraryResource(DBResourceTestCase):
         logger.info('Create library copy...')
         copy_input_data = {
             'library_short_name': library_data['short_name'],
-            'name': "A",
+            'copy_name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000040'
         
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,copy_input_data['library_short_name'],copy_input_data['name']])
+            resource_uri,copy_input_data['library_short_name'],copy_input_data['copy_name']])
         library_copy = self._create_resource(
             copy_input_data, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume'])
@@ -474,7 +474,7 @@ class LibraryResource(DBResourceTestCase):
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj['objects']),number_of_plates)
         for plate_data in new_obj['objects']:
-            self.assertEqual(library_copy['name'],plate_data['copy_name'])
+            self.assertEqual(library_copy['copy_name'],plate_data['copy_name'])
             plate_number = int(plate_data['plate_number'])
             self.assertTrue(
                 plate_number>=start_plate and plate_number<=end_plate,
@@ -497,7 +497,7 @@ class LibraryResource(DBResourceTestCase):
             'library',
             copy_input_data['library_short_name'],
             'copy',
-            copy_input_data['name'],
+            copy_input_data['copy_name'],
             'copywell'])
         data_for_get={ 'limit': 0 }        
         data_for_get.setdefault('includes', ['*'])
@@ -512,7 +512,7 @@ class LibraryResource(DBResourceTestCase):
         self.assertEqual(len(copy_wells_returned),len(well_input_data))
 
         for copy_well_data in copy_wells_returned:
-            self.assertEqual(library_copy['name'],copy_well_data['copy_name'])
+            self.assertEqual(library_copy['copy_name'],copy_well_data['copy_name'])
             self.assertTrue(
                 copy_well_data['plate_number'] >= start_plate
                 and copy_well_data['plate_number'] <= end_plate,
@@ -587,13 +587,13 @@ class LibraryResource(DBResourceTestCase):
         logger.info('create library copy...')
         copy_input_data = {
             'library_short_name': library_data['short_name'],
-            'name': "A",
+            'copy_name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000040'
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,copy_input_data['library_short_name'],copy_input_data['name']])
+            resource_uri,copy_input_data['library_short_name'],copy_input_data['copy_name']])
         library_copy = self._create_resource(
             copy_input_data, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume'])
@@ -615,7 +615,7 @@ class LibraryResource(DBResourceTestCase):
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj['objects']),number_of_plates)
         for plate_data in new_obj['objects']:
-            self.assertEqual(library_copy['name'],plate_data['copy_name'])
+            self.assertEqual(library_copy['copy_name'],plate_data['copy_name'])
             plate_number = int(plate_data['plate_number'])
             self.assertTrue(
                 plate_number>=start_plate and plate_number<=end_plate,
@@ -639,7 +639,7 @@ class LibraryResource(DBResourceTestCase):
             'library',
             copy_input_data['library_short_name'],
             'copy',
-            copy_input_data['name'],
+            copy_input_data['copy_name'],
             'copywell'])
         data_for_get={ 'limit': 0 }        
         data_for_get.setdefault('includes', ['*'])
@@ -654,7 +654,7 @@ class LibraryResource(DBResourceTestCase):
         self.assertEqual(len(copy_wells_returned),len(well_input_data))
 
         for copy_well_data in copy_wells_returned:
-            self.assertEqual(library_copy['name'],copy_well_data['copy_name'])
+            self.assertEqual(library_copy['copy_name'],copy_well_data['copy_name'])
             self.assertTrue(
                 copy_well_data['plate_number'] >= start_plate
                 and copy_well_data['plate_number'] <= end_plate,
@@ -703,7 +703,7 @@ class LibraryResource(DBResourceTestCase):
         logger.info('retrieve the copy_wells...')
         resource_uri = '/'.join([
             BASE_URI_DB,'library',library_data['short_name'],'copy',
-            copy_data['name'],'copywell'])
+            copy_data['copy_name'],'copywell'])
         data_for_get={ 'limit': 0 }        
         data_for_get.setdefault('includes', ['*'])
         data_for_get['plate_number__eq'] = start_plate
@@ -756,7 +756,7 @@ class LibraryResource(DBResourceTestCase):
         copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
-                name=copy_data['name'],
+                name=copy_data['copy_name'],
                 start_plate=start_plate,
                 end_plate=end_plate,)
         ]
@@ -784,7 +784,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'plate_number__range': [start_plate,end_plate],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -846,7 +846,7 @@ class LibraryResource(DBResourceTestCase):
         copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
-                name=copy_data['name'],
+                name=copy_data['copy_name'],
                 start_plate=start_plate,
                 end_plate=end_plate-2,)
         ]
@@ -888,7 +888,7 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = BASE_URI_DB + '/librarycopyplate'
         data_for_get={ 
             'plate_number__range': [end_plate-1,end_plate],
-            'copy_name__eq': copy_data['name']
+            'copy_name__eq': copy_data['copy_name']
             } 
         resp = self.api_client.get(
             resource_uri,format='json', data=data_for_get,
@@ -929,7 +929,7 @@ class LibraryResource(DBResourceTestCase):
             'data': { 'plate_info': new_plate_data }, 
             'search_data': {
                 'library_short_name': library_data['short_name'],
-                'copy_name': copy_data['name'] }
+                'copy_name': copy_data['copy_name'] }
             }
         
         resp = self.api_client.patch(
@@ -956,7 +956,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'library_short_name__eq': library_data['short_name'],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -988,7 +988,7 @@ class LibraryResource(DBResourceTestCase):
             'data': { 'plate_info': new_plate_data }, 
             'search_data': {
                 'library_short_name': library_data['short_name'],
-                'copy_name': copy_data['name'] }
+                'copy_name': copy_data['copy_name'] }
             }
         
         resp = self.api_client.patch(
@@ -1015,7 +1015,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'library_short_name__eq': library_data['short_name'],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -1056,7 +1056,7 @@ class LibraryResource(DBResourceTestCase):
             'data': { 'plate_location': plate_location_input }, 
             'search_data': {
                 'library_short_name': library_data['short_name'],
-                'copy_name': copy_data['name'] }
+                'copy_name': copy_data['copy_name'] }
             }
         
         logger.info('Patch batch_edit: cred: %r', self.username)
@@ -1082,7 +1082,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'library_short_name__eq': library_data['short_name'],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -1171,7 +1171,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'plate_number__range': [start_plate,end_plate],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -1212,7 +1212,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'plate_number__range': [start_plate,end_plate],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -1256,7 +1256,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'plate_number__range': [start_plate,end_plate],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -1302,7 +1302,7 @@ class LibraryResource(DBResourceTestCase):
             resource_uri,format='json', 
             data={ 
                 'plate_number__range': [start_plate,end_plate],
-                'copy_name__eq': copy_data['name']
+                'copy_name__eq': copy_data['copy_name']
                 }, 
             authentication=self.get_credentials(),)
         self.assertTrue(
@@ -1325,7 +1325,7 @@ class LibraryResource(DBResourceTestCase):
         expected_copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
-                name=copy_data['name'],
+                name=copy_data['copy_name'],
                 start_plate=start_plate,
                 end_plate=end_plate)]
         
@@ -2779,14 +2779,14 @@ class ScreenResource(DBResourceTestCase):
         logger.info('create library copy...')
         library_copy1_input = {
             'library_short_name': library1['short_name'],
-            'name': "A",
+            'copy_name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000010',
             'initial_plate_status': 'available'
         }  
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,library_copy1_input['library_short_name'],library_copy1_input['name']])
+            resource_uri,library_copy1_input['library_short_name'],library_copy1_input['copy_name']])
         library_copy1 = self._create_resource(
             library_copy1_input, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume','initial_plate_status'])
@@ -2795,7 +2795,7 @@ class ScreenResource(DBResourceTestCase):
         library_copy2_input = library_copy1_input.copy()
         library_copy2_input['library_short_name'] = library2['short_name']
         resource_test_uri = '/'.join([
-            resource_uri,library_copy2_input['library_short_name'],library_copy2_input['name']])
+            resource_uri,library_copy2_input['library_short_name'],library_copy2_input['copy_name']])
         library_copy2 = self._create_resource(
             library_copy2_input, resource_uri, resource_test_uri,
             excludes=['initial_plate_well_volume','initial_plate_status'])
@@ -2937,7 +2937,7 @@ class ScreenResource(DBResourceTestCase):
         # retrieve plates from the server
         _data_for_get = { 
             'plate_number__range': [library1['start_plate'],library1['end_plate']],
-            'copy_name__eq': library_copy1['name']
+            'copy_name__eq': library_copy1['copy_name']
             }
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
         resp = self.api_client.get(
@@ -3136,7 +3136,7 @@ class ScreenResource(DBResourceTestCase):
         # 7.e check a modified plate
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
         modified_plate = self.get_single_resource(plate_resource_uri, {
-            'copy_name': library_copy2['name'],
+            'copy_name': library_copy2['copy_name'],
             'plate_number': added_plate_range_start })
         logger.info('modified plate: %r', modified_plate)
         self.assertTrue(modified_plate is not None)
@@ -3188,7 +3188,7 @@ class ScreenResource(DBResourceTestCase):
         # retrieve plates from the server
         _data_for_get = { 
             'plate_number__range': [library1['start_plate'],library1['end_plate']],
-            'copy_name__eq': library_copy1['name']
+            'copy_name__eq': library_copy1['copy_name']
             }
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
         resp = self.api_client.get(

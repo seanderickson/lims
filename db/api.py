@@ -207,13 +207,13 @@ class PlateLocationResource(DbApiResource):
             manual_field_includes = set(param_hash.get('includes', []))
             manual_field_includes.add('plate_location_id')
             
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -728,7 +728,9 @@ class LibraryCopyPlateResource(DbApiResource):
         return self.build_list_response(request, **kwargs)
 
     @classmethod
-    def get_librarycopyplate_cte(cls, library_id=None, copy_id=None):
+    def get_librarycopyplate_cte(cls, filter_hash=None, library_id=None, copy_id=None):
+        
+        logger.info('get_librarycopyplate_cte: filters: %r', filter_hash)
         bridge = get_tables()
         _l = bridge['library']
         _c = bridge['copy']
@@ -743,6 +745,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 func.to_char(_p.c.plate_number,PLATE_NUMBER_SQL_FORMAT).label('plate_number'),
                 _p.c.copy_id,
                 _c.c.library_id,
+                _c.c.name.label('copy_name'),
                 _concat(_l.c.short_name, '/', _c.c.name, '/', 
                     func.to_char(_p.c.plate_number,PLATE_NUMBER_SQL_FORMAT))
                     .label('key'),
@@ -752,10 +755,21 @@ class LibraryCopyPlateResource(DbApiResource):
             plate_table = plate_table.where(_c.c.library_id==library_id)
         if copy_id is not None:
             plate_table = plate_table.where(_c.c.copy_id==copy_id)
+
+        if filter_hash:
+            extra_filters = [v for k,v in filter_hash.items()
+                if k in ['plate_number', 'copy_name']]
+            if extra_filters:
+                plate_table = (
+                    select([literal_column(x) for x in plate_table.columns.keys()])
+                    .select_from(Alias(plate_table))
+                )
+                plate_table = plate_table.where(and_(*extra_filters))
+
         return plate_table
         
     @classmethod
-    def get_plate_copywell_statistics_cte(cls, library_id=None, copy_id=None):  
+    def get_plate_copywell_statistics_cte(cls, filter_hash=None, library_id=None, copy_id=None):  
         bridge = get_tables()
         _p = bridge['plate']
         _cw = bridge['copy_well']
@@ -785,12 +799,15 @@ class LibraryCopyPlateResource(DbApiResource):
         cw_vols = cw_vols.cte('copy_well_volumes')
         
         j2 = _p.outerjoin(cw_vols,_p.c.plate_id==cw_vols.c.plate_id)
-        if library_id is not None:
-            j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
+        j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
+#         if library_id is not None:
+#             j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
         query = (
             select([
                 _p.c.plate_id,
+                _p.c.plate_number,
                 _p.c.copy_id,
+                _c.c.name.label('copy_name'),
                 case([
                     (_p.c.experimental_well_count > 0,
                     ( func.coalesce(_p.c.remaining_well_volume,_p.c.well_volume) 
@@ -839,24 +856,35 @@ class LibraryCopyPlateResource(DbApiResource):
                 #     .label('max_molar_concentration')),
                 ])
             .select_from(j2)
-            .group_by(
-                _p.c.plate_id, _p.c.experimental_well_count,
-                _p.c.remaining_well_volume,_p.c.well_volume,
-                _p.c.mg_ml_concentration,_p.c.molar_concentration)
-            .group_by(
-                cw_vols.c.count, cw_vols.c.cum_well_vol,
-                cw_vols.c.min_well_vol, cw_vols.c.max_well_vol,
-                cw_vols.c.min_well_mg_ml,cw_vols.c.max_well_mg_ml,
-                cw_vols.c.min_well_molar, cw_vols.c.max_well_molar,_p.c.copy_id)
+#             .group_by(
+#                 _p.c.plate_id, _p.c.experimental_well_count,
+#                 _p.c.remaining_well_volume,_p.c.well_volume,
+#                 _p.c.mg_ml_concentration,_p.c.molar_concentration)
+#             .group_by(
+#                 cw_vols.c.count, cw_vols.c.cum_well_vol,
+#                 cw_vols.c.min_well_vol, cw_vols.c.max_well_vol,
+#                 cw_vols.c.min_well_mg_ml,cw_vols.c.max_well_mg_ml,
+#                 cw_vols.c.min_well_molar, cw_vols.c.max_well_molar,_p.c.copy_id)
             )
         if library_id is not None:
             query = query.where(_c.c.library_id==library_id)
         if copy_id is not None:
             query = query.where(_p.c.copy_id==copy_id)
+
+        if filter_hash:
+            extra_filters = [v for k,v in filter_hash.items()
+                if k in ['plate_number', 'copy_name']]
+            if extra_filters:
+                query = (
+                    select([literal_column(x) for x in query.columns.keys()])
+                    .select_from(Alias(query))
+                )
+                query = query.where(and_(*extra_filters))
+        
         return query
     
     @classmethod
-    def get_plate_screening_statistics_cte(cls, library_id=None, copy_id=None):
+    def get_plate_screening_statistics_cte(cls, filter_hash=None, library_id=None, copy_id=None):
         bridge = get_tables()
         _p = bridge['plate']
         _a = bridge['activity']
@@ -866,25 +894,37 @@ class LibraryCopyPlateResource(DbApiResource):
 
         j = ( _ap.join(_ls,_ls.c.activity_id==_ap.c.library_screening_id)
                 .join(_a, _a.c.activity_id==_ls.c.activity_id)
-                .join(_p, _ap.c.plate_id==_p.c.plate_id))
+                .join(_p, _ap.c.plate_id==_p.c.plate_id)
+                .join(_c, _p.c.copy_id==_c.c.copy_id))
         
-        if library_id is not None:
-            j = j.join(_c, _p.c.copy_id==_c.c.copy_id)
+#         if library_id is not None:
+#             j = j.join(_c, _p.c.copy_id==_c.c.copy_id)
         
         query = (
             select([
                 _p.c.copy_id,
+                _c.c.name.label('copy_name'),
                 _ap.c.plate_id,
                 func.to_char(_ap.c.plate_number,PLATE_NUMBER_SQL_FORMAT).label('plate_number'),
                 func.min(_a.c.date_of_activity).label('first_date_screened'),
                 func.max(_a.c.date_of_activity).label('last_date_screened')
                 ])
             .select_from(j)
-            .group_by(_ap.c.plate_id, _ap.c.plate_number, _p.c.copy_id ) )
+            .group_by(_ap.c.plate_id, _ap.c.plate_number, _p.c.copy_id,
+                _c.c.name ) )
         if library_id is not None:
             query = query.where(_c.c.library_id == library_id)
         if copy_id is not None:
             query = query.where(_p.c.copy_id==copy_id)
+        if filter_hash:
+            extra_filters = [v for k,v in filter_hash.items()
+                if k in ['plate_number', 'copy_name']]
+            if extra_filters:
+                query = (
+                    select([literal_column(x) for x in query.columns.keys()])
+                    .select_from(Alias(query))
+                )
+                query = query.where(and_(*extra_filters))
         ## TODO: this does not include cherry pick screenings, redo when 
         # cherry pick screenings are reworked:
         # rework: so that source plates are linked to screening activity
@@ -947,7 +987,7 @@ class LibraryCopyPlateResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
 
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             logger.debug(
@@ -962,7 +1002,7 @@ class LibraryCopyPlateResource(DbApiResource):
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -986,15 +1026,18 @@ class LibraryCopyPlateResource(DbApiResource):
             _ap = self.bridge['assay_plate']
             _plate_cte = (
                 self.get_librarycopyplate_cte(
+                    filter_hash=filter_hash,
                     library_id=library_id, copy_id=copy_id )
                         .cte('plate_cte'))
             _user_cte = ScreensaverUserResource.get_user_cte().cte('user_cte')
             _plate_statistics = (
                 self.get_plate_copywell_statistics_cte(
+                    filter_hash=filter_hash,
                     library_id=library_id, copy_id=copy_id)
                         .cte('plate_statistics'))
             _plate_screening_statistics = (
                 self.get_plate_screening_statistics_cte(
+                    filter_hash=filter_hash,
                     library_id=library_id, copy_id=copy_id)
                         .cte('plate_screening_statistics'))
             _diff = self.bridge['reports_logdiff']
@@ -1766,13 +1809,13 @@ class ScreenResultResource(DbApiResource):
         manual_field_includes.add('assay_well_control_type')
             
         # general setup
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
                               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params )
@@ -1810,7 +1853,7 @@ class ScreenResultResource(DbApiResource):
             }
 
         filter_excluded = True
-        if ('exclude' not in filter_fields 
+        if ('exclude' not in filter_hash 
                 and 'exclude' not in order_params
                 and '-exclude' not in order_params):
             filter_excluded = False
@@ -1828,7 +1871,7 @@ class ScreenResultResource(DbApiResource):
                 fi['scope'] in ['fields.screenresult'] 
                  or fi['key'] in order_params
                  or '-%s' % fi['key'] in order_params
-                 or fi['key'] in filter_fields)]
+                 or fi['key'] in filter_hash)]
         # Using nested selects 
         for fi in [fi for fi in base_fields 
                 if fi.get('is_datacolumn', None)]:
@@ -1857,7 +1900,7 @@ class ScreenResultResource(DbApiResource):
             custom_columns=base_custom_columns) 
         logger.debug('base columns: %r', base_columns)
         # remove is_positive if not needed, to help the query planner
-        if ('is_positive' not in filter_fields 
+        if ('is_positive' not in filter_hash 
                 and 'is_positive' in base_columns
                 and 'is_positive' not in order_params
                 and '-is_positive' not in order_params):
@@ -3193,13 +3236,13 @@ class DataColumnResource(DbApiResource):
                 'name','data_type','decimal_places','ordinal',
                 'screen_facility_id'])
             
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
 
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -3534,7 +3577,7 @@ class CopyWellResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
   
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
 
@@ -3546,7 +3589,7 @@ class CopyWellResource(DbApiResource):
                                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -3863,13 +3906,13 @@ class CherryPickRequestResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
   
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -4119,13 +4162,13 @@ class CherryPickPlateResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
   
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -4367,7 +4410,7 @@ class LibraryCopyResource(DbApiResource):
                 manual_field_includes.add('has_copywell_concentrations')
                 manual_field_includes.add('has_copywell_volumes')
 
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
 
@@ -4378,7 +4421,7 @@ class LibraryCopyResource(DbApiResource):
 
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -4399,10 +4442,12 @@ class LibraryCopyResource(DbApiResource):
             _cw = self.bridge['copy_well']
             _ls = self.bridge['library_screening']
             _plate_statistics = (
-                LibraryCopyPlateResource.get_plate_copywell_statistics_cte()
+                LibraryCopyPlateResource.get_plate_copywell_statistics_cte(
+                    filter_hash=filter_hash)
                     .cte('plate_statistics'))
             _plate_screening_statistics = (
-                LibraryCopyPlateResource.get_plate_screening_statistics_cte()
+                LibraryCopyPlateResource.get_plate_screening_statistics_cte(
+                    filter_hash=filter_hash)
                     .cte('plate_screening_statistics'))
             _copy_statistics = (
                 select([
@@ -4527,7 +4572,7 @@ class LibraryCopyResource(DbApiResource):
                 stmt, order_clauses, filter_expression)
             
             if not order_clauses:
-                stmt = stmt.order_by("library_short_name", "name")
+                stmt = stmt.order_by("library_short_name", "copy_name")
  
             title_function = None
             if use_titles is True:
@@ -4822,13 +4867,13 @@ class PublicationResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -5399,13 +5444,13 @@ class AttachedFileResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -5916,13 +5961,13 @@ class ActivityResource(DbApiResource):
         manual_field_includes.add('activity_class')
         param_hash['includes'] = list(manual_field_includes)
         
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -6013,13 +6058,13 @@ class ActivityResource(DbApiResource):
         manual_field_includes = set(param_hash.get('includes', []))
         manual_field_includes.add('screen_id')
         
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -6162,13 +6207,13 @@ class CherryPickLiquidTransferResource(ActivityResource):
         
         manual_field_includes = set(param_hash.get('includes', []))
         
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -6258,13 +6303,13 @@ class CherryPickScreeningResource(ActivityResource):
         
         manual_field_includes = set(param_hash.get('includes', []))
         
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -6422,13 +6467,13 @@ class LibraryScreeningResource(ActivityResource):
         if library_plates_screened_search:
             manual_field_includes.add('library_plates_screened')
             
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -7404,13 +7449,13 @@ class ServiceActivityResource(ActivityResource):
         # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
         
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -7794,13 +7839,13 @@ class ScreenResource(DbApiResource):
                 'screener_roles1')
             manual_field_includes.add('screensaver_user_role')
         
-        (filter_expression, filter_fields) = \
+        (filter_expression, filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
-            schema['fields'], filter_fields, manual_field_includes,
+            schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
@@ -8735,13 +8780,13 @@ class UserChecklistItemResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -9156,13 +9201,13 @@ class ScreensaverUserResource(DbApiResource):
             manual_field_includes = set(param_hash.get('includes', []))
             exact_fields = set(param_hash.get('exact_fields', []))
         
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -10022,7 +10067,7 @@ class ReagentResource(DbApiResource):
             # general setup
             manual_field_includes = set(param_hash.get('includes', []))
    
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             
@@ -10033,7 +10078,7 @@ class ReagentResource(DbApiResource):
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -11017,13 +11062,13 @@ class LibraryResource(DbApiResource):
             if is_for_detail:
                 manual_field_includes.add('concentration_types')
  
-            (filter_expression, filter_fields) = \
+            (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                 
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
+                schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)

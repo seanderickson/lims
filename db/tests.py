@@ -752,11 +752,11 @@ class LibraryResource(DBResourceTestCase):
         short_name = library_data['short_name']
         
         # 1. Simple test
-        lps_format = '{library_short_name}:{name}:{start_plate}-{end_plate}'
+        lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
         copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
-                name=copy_data['copy_name'],
+                copy_name=copy_data['copy_name'],
                 start_plate=start_plate,
                 end_plate=end_plate,)
         ]
@@ -846,7 +846,7 @@ class LibraryResource(DBResourceTestCase):
         copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
-                name=copy_data['copy_name'],
+                copy_name=copy_data['copy_name'],
                 start_plate=start_plate,
                 end_plate=end_plate-2,)
         ]
@@ -1321,11 +1321,11 @@ class LibraryResource(DBResourceTestCase):
                     % (plate_location_input))
 
         # Verify that the plate range is set on the location:
-        lps_format = '{library_short_name}:{name}:{start_plate}-{end_plate}'
+        lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
         expected_copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
-                name=copy_data['copy_name'],
+                copy_name=copy_data['copy_name'],
                 start_plate=start_plate,
                 end_plate=end_plate)]
         
@@ -2806,7 +2806,7 @@ class ScreenResource(DBResourceTestCase):
             'screen_type': 'small_molecule'
             })
 
-        lps_format = '{library_short_name}:{name}:{{start_plate}}-{{end_plate}}'
+        lps_format = '{library_short_name}:{copy_name}:{{start_plate}}-{{end_plate}}'
         plate_range1 = lps_format.format(**library_copy1).format(**library1)
         plate_range2 = lps_format.format(**library_copy2).format(
                 start_plate=library2['start_plate'],
@@ -2850,7 +2850,7 @@ class ScreenResource(DBResourceTestCase):
         # even though the plate range is correct, this should fail,
         # and the transaction should cancel the creation of the libraryscreening
         value = [ lps_format.format(
-            library_short_name='**',name='A').format(**library1)]
+            library_short_name='**',copy_name='A').format(**library1)]
         msg = 'invalid format for %r should fail' % key
         logger.info('test %r', msg)
         invalid_input2 = library_screening_input.copy()
@@ -3214,9 +3214,9 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('test valid single plate input...')
 
-        single_plate_lps_format = '{library_short_name}:{name}:{{start_plate}}'
+        single_plate_lps_format = '{library_short_name}:{copy_name}:{{start_plate}}'
         single_plate_lps_return_format = \
-            '{library_short_name}:{name}:{{start_plate}}-{{start_plate}}'
+            '{library_short_name}:{copy_name}:{{start_plate}}-{{start_plate}}'
         library_plates_screened = [
             single_plate_lps_format.format(**library_copy1).format(**library1),
             single_plate_lps_format.format(**library_copy2).format(

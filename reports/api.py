@@ -29,7 +29,7 @@ from sqlalchemy import select, asc, text
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
-from sqlalchemy.sql.expression import column, join, distinct
+from sqlalchemy.sql.expression import column, join, distinct, exists
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, \
@@ -51,6 +51,7 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE
 from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
+from sqlalchemy.dialects import postgresql
 
 
 logger = logging.getLogger(__name__)
@@ -1770,22 +1771,6 @@ class ApiLogResource(ApiResource):
         
         filename = self._get_filename(schema, kwargs)
 
-#         id = param_hash.pop('id', None)
-#         if id:
-#             param_hash['id__eq'] = id
-#         
-#         ref_resource_name = param_hash.pop('ref_resource_name', None)
-#         if ref_resource_name:
-#             param_hash['ref_resource_name__eq'] = ref_resource_name
-# 
-#         key = param_hash.pop('key', None)
-#         if key:
-#             param_hash['key__eq'] = key
-# 
-#         date_time = param_hash.pop('date_time', None)
-#         if date_time:
-#             param_hash['date_time__eq'] = date_time
-            
         try:
             
             # general setup
@@ -1864,16 +1849,21 @@ class ApiLogResource(ApiResource):
             
             stmt = select(columns.values()).select_from(j)
             
-#             if 'parent_log_id' in kwargs:
-#                 stmt = stmt.where(_parent_log.c.id == kwargs.pop('parent_log_id'))
-                
-#             # TODO: implement diff key filtering on the front end
-#             # need to know that "diff_key" is available
-#             if 'diff_key' in kwargs:
-#                 stmt = stmt.where(exists(
-#                     select([None]).select_from(_logdiffs)
-#                     .where(_logdiffs.c.log_id==_apilog.c.id)
-#                     .where(_logdiffs.c.field_key==kwargs['diff_key'])))
+            if 'diff_keys' in filter_hash:
+                # manually filter for the diff keys, for performance:
+                # FIXME: "search_data" not supported
+                expression = None
+                for filter_expr,value in param_hash.items():
+                    (field_name, value, filter_type, inverted) = \
+                        SqlAlchemyResource.parse_filter(filter_expr, value)
+                    if field_name == 'diff_keys':
+                        expression = SqlAlchemyResource.build_filter(
+                            'field_key', 'string', filter_type, inverted, value)
+                        stmt = stmt.where(exists(
+                            select([None]).select_from(_logdiffs)
+                                .where(_logdiffs.c.log_id==_log.c.id)
+                                .where(expression)))
+                        break
 
             # general setup
             stmt = stmt.order_by('ref_resource_name','key', 'date_time')
@@ -1938,6 +1928,11 @@ class ApiLogResource(ApiResource):
             
             if 'diffs' in field_hash:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
+            
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 

@@ -50,6 +50,8 @@ import six
 
 logger = logging.getLogger(__name__)
 
+DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
+
 def _concat(*args):
     '''
     Use as a replacement for sqlalchemy.sql.functions.concat
@@ -366,9 +368,10 @@ class SqlAlchemyResource(IccblBaseResource):
                 order_clause = nullslast(desc(column(field_name)))
                 if ( field_name in visible_fields 
                     and visible_fields[field_name]['data_type'] == 'string'):
+                    # For string field ordering, double sort as numeric and text
                     order_clause = text(
-                        "(substring({field_name}, '^[0-9]+'))::int desc " # -- cast to integer
-                        ",substring({field_name}, '[^0-9_].*$')  "  # works a text
+                        "(substring({field_name}, '^[0-9]+'))::int desc " # cast to integer
+                        ",substring({field_name}, '[^0-9_].*$')  "  # works as text
                         .format(field_name=field_name))
             else:
                 order_clause = nullsfirst(asc(column(field_name)))
@@ -389,10 +392,11 @@ class SqlAlchemyResource(IccblBaseResource):
         return order_clauses
     
     @staticmethod
-    def filter_value_to_python(value, param_hash, filter_expr, filter_type):
+    def filter_value_to_python(value, filter_type):
         """
         Turn the string ``value`` into a python object.
         """
+        original_value = value
         if isinstance(value, six.string_types):
             value = urllib.unquote(value).decode('utf-8')
         # Simple values
@@ -405,38 +409,46 @@ class SqlAlchemyResource(IccblBaseResource):
         elif value in ('nil', 'none', 'None', None):
             value = None
 
-        # Split on ',' if not empty string and either an in or range filter.
         if filter_type in ('in', 'range') and len(value):
             if value and hasattr(value, '__iter__'):
                 # value is already a list
                 pass
-            elif hasattr(param_hash, 'getlist'):
-                value = []
-                for part in param_hash.getlist(filter_expr):
-                    value.extend(part.split(LIST_DELIMITER_URL_PARAM))
+            # Removed 20161108
+            # elif hasattr(param_hash, 'getlist'):
+            #     value = []
+            #     for part in param_hash.getlist(filter_expr):
+            #         value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
+        if DEBUG_FILTERS:
+            logger.info('filter_value_to_python: %r: %r', original_value, value)
         return value
 
     @staticmethod
-    def build_sqlalchemy_filters(schema, param_hash={}):
+    def build_sqlalchemy_filters(schema, param_hash):
         '''
-        @return (search_expressions, field_keyed hash of expressions)
+        Build the full SqlAlchemy filter expression for all filters and search:
+        
+        @param param_hash: a hash of filter data:
+        - filters defined as filter_key, filter_value; combined using "AND"
+        - nested "search_data":
+            - an array of hashes of filter_data, to be OR'd together
+            - each hash consists of filter_key, filter_value
+        @return (
+            search_expression - full combined SqlAlchemy search expression
+            combined_filter_hash - field_keyed hash of expressions
+            )
         '''
-        
-        
-        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_FILTERS: 
             logger.info('build_sqlalchemy_filters: param_hash %s', param_hash)
 
         # ordinary filters
-#         (filter_expression, filter_fields) = \
-#             SqlAlchemyResource.build_sqlalchemy_filter_hash(schema, param_hash)
         filter_hash = \
             SqlAlchemyResource.build_sqlalchemy_filter_hash(schema, param_hash)
         combined_filter_hash = filter_hash
         filter_expression = and_(*filter_hash.values())
+
         # Treat the nested "search_data" as sets of params to be OR'd together,
         # then AND'd with the regular filters (if any)
         search_data = param_hash.get('search_data', None)
@@ -454,17 +466,17 @@ class SqlAlchemyResource(IccblBaseResource):
             filter_fields = set(filter_hash.keys())
             for search_hash in search_data:
                 logger.info('search_hash: %s' % search_hash)
-#                 (search_expression, search_fields) = SqlAlchemyResource.\
-#                     build_sqlalchemy_filter_hash(schema,search_hash)
                 search_filter_hash = SqlAlchemyResource.\
                     build_sqlalchemy_filter_hash(schema,search_hash)
-#                 search_expressions.append(search_expression)
                 search_expressions.append(and_(*search_filter_hash.values()))
-#                 filter_fields.update(search_fields)
+                
+                # Append search expressions for each field to a combined hash
                 for field,expression in search_filter_hash.items():
+                    logger.info(
+                        'search filter to combine: %r, %r', field, expression)
                     if field in combined_filter_hash:
-                        combined_field_expression = combined_filter_hash[field]
-                        combined_field_expressions = [combined_field_expression,expression]
+                        combined_filter_hash[field] = \
+                            or_(combined_filter_hash[field], expression)
                     else:
                         combined_filter_hash[field] = expression
             if len(search_expressions) > 1:
@@ -485,6 +497,142 @@ class SqlAlchemyResource(IccblBaseResource):
         return (filter_expression,combined_filter_hash)
     
     @staticmethod
+    def parse_filter(filter_expr, value):
+        if DEBUG_FILTERS:
+            logger.info('parse filter: %r, %r', filter_expr, value)
+        
+        lookup_sep = django.db.models.constants.LOOKUP_SEP
+        if lookup_sep not in filter_expr:
+            # treat as a field__eq
+            field_name = filter_expr
+            filter_type = 'exact'
+            if DEBUG_FILTERS:
+                logger.info('interpret: %r as %r for %r:%r', 
+                    filter_expr, filter_type,field_name, value)
+        else:
+            filter_bits = filter_expr.split(lookup_sep)
+            if len(filter_bits) != 2:
+                logger.warn(
+                    'filter expression %r must be of the form '
+                    '"field_name__expression"' % filter_expr )
+            field_name = filter_bits[0]
+            filter_type = filter_bits[1]
+        inverted = False
+        if field_name and field_name[0] == '-':
+            inverted = True
+            field_name = field_name[1:]
+        if DEBUG_FILTERS:
+            logger.info('build filter expr: field_name, %r, '
+                'filter_type: %r value: %r', 
+                field_name, filter_type, value)
+
+        # 20161108: "param_hash" is sent to filter_value_to_python for obsoleted reason:
+        # - it was the GET.param hash, and was checking if value was a list...
+        #         value = SqlAlchemyResource.filter_value_to_python(
+        #             value, param_hash, filter_expr, filter_type)
+        value = SqlAlchemyResource.filter_value_to_python(
+            value, filter_type)
+            
+        return (field_name, value, filter_type, inverted)
+    
+    @staticmethod
+    def build_filter( 
+        field_name, data_type, filter_type, inverted, value ):
+
+        if DEBUG_FILTERS:
+            logger.info('build filter: %r, %r, %r, %r, %r', 
+                field_name, data_type, filter_type, inverted, value)
+        
+        expression = None
+        col = column(field_name)
+        if data_type in ['integer', 'float', 'decimal']:
+            col = cast(col, sqlalchemy.sql.sqltypes.Numeric)
+        elif data_type == 'boolean':
+            col = cast(col, sqlalchemy.sql.sqltypes.Boolean)
+        if data_type == 'string':
+            col = cast(col, sqlalchemy.sql.sqltypes.Text)
+        if filter_type in ['exact', 'eq']:
+            if data_type == 'string':
+                value = str(value)
+            expression = col == value
+            if data_type == 'list':
+                expression = text(
+                    "'%s'=any(string_to_array(%s,'%s'))" % (value, field_name, LIST_DELIMITER_SQL_ARRAY))
+        elif filter_type == 'about':
+            decimals = 0
+            if '.' in value:
+                decimals = len(value.split('.')[1])
+            expression = func.round(col, decimals) == value
+            if DEBUG_FILTERS:
+                logger.info(
+                    'create "about" expression for: %r, %r, decimals %r', 
+                    field_name, value, decimals)
+        elif filter_type == 'contains':
+            if data_type == 'string':
+                value = str(value)
+            expression = col.contains(value)
+        elif filter_type == 'icontains':
+            if data_type == 'string':
+                value = str(value)
+            expression = col.ilike('%{value}%'.format(value=value))
+        elif filter_type == 'lt':
+            expression = col < value
+        elif filter_type == 'lte':
+            expression = col <= value
+        elif filter_type == 'gt':
+            expression = col > value
+        elif filter_type == 'gte':
+            expression = col >= value
+        elif filter_type == 'is_blank':
+            if data_type == 'string':
+                col = func.trim(col)
+            if value and str(value).lower() == 'true':
+                expression = col == None
+                if data_type == 'string':
+                    expression = col == ''
+            else:
+                expression = col != None
+                if data_type == 'string':
+                    col = func.trim(col)
+                if (data_type == 'string' or 
+                    data_type == 'list'):
+                    expression = col != ''
+        elif filter_type == 'is_null':
+            if value and str(value).lower() == 'true':
+                expression = col == None
+            else:
+                expression = col != None
+            # TODO: test that col <> '' expression is created
+        elif filter_type == 'in':
+            if data_type == 'list': # NOTE: for the list type, interpret "in" as any of the
+                # given values are in the field
+                temp_expressions = []
+                for _val in value:
+                    temp_expressions.append(col.ilike('%{value}%'.format(value=_val)))
+                
+                expression = or_(*temp_expressions)
+            else:
+                expression = col.in_(value)
+        elif filter_type == 'ne':
+            if data_type == 'string':
+                value = str(value)
+            expression = col != value
+        elif filter_type == 'range':
+            if len(value) != 2:
+                logger.error('field: %r, val: %r, '
+                    'range expression must be list of length 2', 
+                    field_name, value)
+            else:
+                expression = col.between(value[0], value[1], symmetric=True)
+        else:
+            logger.error(
+                'field: %r, unknown filter type: %r for value: %r', 
+                field_name, filter_type, value)
+        if inverted:
+            expression = not_(expression)
+        return expression
+
+    @staticmethod
     def build_sqlalchemy_filter_hash(schema, param_hash):
         '''
         Create a SqlAlchemy whereclause out of django style filters:
@@ -492,183 +640,30 @@ class SqlAlchemyResource(IccblBaseResource):
         
         @return field_keyed hash of expressions for the AND clause
         '''
-        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         logger.debug('build_sqlalchemy_filter_hash %r' % param_hash)
-        lookup_sep = django.db.models.constants.LOOKUP_SEP
 
         if param_hash is None:
             return (None,None)
         
         filter_hash = {}
         try:
-#             expressions = []
-#             filtered_fields = []
-            
-            _values = [] # store values for debug
             for filter_expr, value in param_hash.items():
-                if lookup_sep not in filter_expr:
-                    # treat as a field__eq
-                    field_name = filter_expr
-                    filter_type = 'exact'
-                    if DEBUG_FILTERS:
-                        logger.info('interpret: %r as %r for %r:%r', 
-                            filter_expr, filter_type,field_name, value)
-                else:
-                    filter_bits = filter_expr.split(lookup_sep)
-                    if len(filter_bits) != 2:
-                        logger.warn(
-                            'filter expression %r must be of the form '
-                            '"field_name__expression"' % filter_expr )
-                    field_name = filter_bits[0]
-                    filter_type = filter_bits[1]
-                inverted = False
-                if field_name and field_name[0] == '-':
-                    inverted = True
-                    field_name = field_name[1:]
+                
+                (field_name, value, filter_type, inverted) = \
+                    SqlAlchemyResource.parse_filter(filter_expr, value)
+                
                 if not field_name in schema['fields']:
                     logger.debug('unknown filter field: %r, %r', field_name, filter_expr)
                     continue
-                if DEBUG_FILTERS:
-                    logger.info('build filter expr: field_name, %r, '
-                        'filter_type: %r value: %r', 
-                        field_name, filter_type, value)
-    
+                
                 field = schema['fields'][field_name]
-                
-                value = SqlAlchemyResource.filter_value_to_python(
-                    value, param_hash, filter_expr, filter_type)
-                if DEBUG_FILTERS:
-                    logger.info('value : %r', value)
-                _values.append(value)
-                # TODO: all of the Django query terms:
-                # QUERY_TERMS = set([
-                #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 
-                # 'lt', 'lte', 'in',
-                #     'startswith', 'istartswith', 'endswith', 'iendswith', 
-                # 'range', 'year',
-                #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 
-                # 'isnull', 'search',
-                #     'regex', 'iregex',
-                # ])
-                
-                if DEBUG_FILTERS:
-                    logger.info('find filter: %r, %r, %r, %r', 
-                        field_name, filter_type, value, type(value))
-                
-                expression = None
-                col = column(field_name)
-                if field['data_type'] in ['integer','float','decimal']:
-                    col = cast(col,sqlalchemy.sql.sqltypes.Numeric)
-                elif field['data_type'] == 'boolean':
-                    col = cast(col,sqlalchemy.sql.sqltypes.Boolean)
-                if field['data_type'] == 'string':
-                    col = cast(col,sqlalchemy.sql.sqltypes.Text)
+                expression = SqlAlchemyResource.build_filter(
+                    field_name, field['data_type'], filter_type, inverted, value)
+                if expression is not None:
+                    filter_hash[field_name] = expression
 
-                if filter_type in ['exact','eq']:
-                    if field['data_type'] == 'string':
-                        value = str(value)
-                    expression = col == value
-                    if field['data_type'] == 'list':
-                        expression = text(
-                            "'%s'=any(string_to_array(%s,'%s'))"
-                            % (value,field_name,LIST_DELIMITER_SQL_ARRAY))
-                elif filter_type == 'about':
-                    decimals = 0
-                    if '.' in value:
-                        decimals = len(value.split('.')[1])
-                    expression = func.round(col,decimals) == value
-                    if DEBUG_FILTERS:
-                        logger.info(
-                            'create "about" expression for term: %r, %r, decimals %r',
-                            filter_expr,value,'decimals',decimals)
-                elif filter_type == 'contains':
-                    if field['data_type'] == 'string':
-                        value = str(value)
-                    expression = col.contains(value)
-                elif filter_type == 'icontains':
-                    if field['data_type'] == 'string':
-                        value = str(value)
-                    expression = col.ilike('%{value}%'.format(
-                        value=value))
-                elif filter_type == 'lt':
-                    expression = col < value
-                elif filter_type == 'lte':
-                    expression = col <= value
-                elif filter_type == 'gt':
-                    expression = col > value
-                elif filter_type == 'gte':
-                    expression = col >= value
-                elif filter_type == 'is_blank':
-                    if field['data_type'] == 'string':
-                        col = func.trim(col)
-                    if value and str(value).lower() == 'true':
-                        expression = col == None 
-                        if field['data_type'] == 'string':
-                            expression = col == ''
-                    else:
-                        expression = col != None
-                        if field['data_type'] == 'string':
-                            col = func.trim(col)
-                        if ( field['data_type'] == 'string' 
-                             or field['data_type'] == 'list' ):
-                            expression = col != ''
-                elif filter_type == 'is_null':
-                    if value and str(value).lower() == 'true':
-                        expression = col == None 
-                    else:
-                        expression = col != None
-                        
-                    # TODO: test that col <> '' expression is created
-                    
-                elif filter_type == 'in':
-                    if field['data_type'] == 'list':
-                        # NOTE: for the list type, interpret "in" as any of the 
-                        # given values are in the field
-                        temp_expressions = [] 
-                        for _val in value:
-                            temp_expressions.append(col.ilike('%{value}%'.format(
-                                value=_val)))
-                        expression = or_(*temp_expressions)
-                    else:
-                        expression = col.in_(value)
-                elif filter_type == 'ne':
-                    if field['data_type'] == 'string':
-                        value = str(value)
-                    expression = col != value
-                elif filter_type == 'range':
-                    if len(value) != 2:
-                        logger.error(
-                            'field: %r, expr: %r, val: %r, '
-                            'range expression must be list of length 2',
-                            field_name, filter_expr, value)
-                        continue
-                    else:
-                        expression = col.between(
-                            value[0],value[1],symmetric=True)
-                else:
-                    logger.error(
-                        'field: %r, unknown filter type: %r, expr: %r ', 
-                        field_name, filter_type, filter_expr)
-                    continue
-    
-                if inverted:
-                    expression = not_(expression)
-                
-                logger.debug('field: %r, filter_expr: %r', field_name, filter_expr)
-                filter_hash[field_name] = expression
-#                 expressions.append(expression)
-#                 filtered_fields.append(field_name)
-                
-            logger.debug('filtered_fields: %s', filter_hash.keys())
             if DEBUG_FILTERS:
-                logger.info('values %r', _values)
-                
-#             if len(filter_hash) > 1: 
-#                 return (and_(*expressions), filtered_fields)
-#             elif len(expressions) == 1:
-#                 return (expressions[0], filtered_fields) 
-#             else:
-#                 return (None, filtered_fields)
+                logger.info('filtered_fields: %s', filter_hash.keys())
             return filter_hash
         except Exception, e:
             logger.exception('on build_sqlalchemy_filter_hash')

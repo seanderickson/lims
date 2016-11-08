@@ -762,11 +762,13 @@ class LibraryCopyPlateResource(DbApiResource):
             extra_filters = [v for k,v in filter_hash.items()
                 if k in ['plate_number', 'copy_name']]
             if extra_filters:
+                logger.info('extra filters: %r', extra_filters)
                 plate_table = (
                     select([literal_column(x) for x in plate_table.columns.keys()])
                     .select_from(Alias(plate_table))
                 )
-                plate_table = plate_table.where(and_(*extra_filters))
+                # always OR at the subquery level
+                plate_table = plate_table.where(or_(*extra_filters))
 
         return plate_table
         
@@ -869,6 +871,7 @@ class LibraryCopyPlateResource(DbApiResource):
             query = query.where(_p.c.plate_id.in_(plate_ids))
 
         if filter_hash:
+            # Create a subquery and filter on the expressions that match the fields
             extra_filters = [v for k,v in filter_hash.items()
                 if k in ['plate_number', 'copy_name']]
             if extra_filters:
@@ -876,7 +879,8 @@ class LibraryCopyPlateResource(DbApiResource):
                     select([literal_column(x) for x in query.columns.keys()])
                     .select_from(Alias(query))
                 )
-                query = query.where(and_(*extra_filters))
+                # Always OR at the subquery level
+                query = query.where(or_(*extra_filters))
         
         return query
     
@@ -921,7 +925,8 @@ class LibraryCopyPlateResource(DbApiResource):
                     select([literal_column(x) for x in query.columns.keys()])
                     .select_from(Alias(query))
                 )
-                query = query.where(and_(*extra_filters))
+                # Always OR at the subquery level
+                query = query.where(or_(*extra_filters))
         ## TODO: this does not include cherry pick screenings, redo when 
         # cherry pick screenings are reworked:
         # rework: so that source plates are linked to screening activity
@@ -2212,12 +2217,12 @@ class ScreenResultResource(DbApiResource):
                 logger.info('do not use vocabularies: %r', param_hash)
             # FIXME: use closing wrapper
             conn = get_engine().connect()
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.info(
-                    'excute stmt %r...',
-                    str(stmt.compile(
-                        dialect=postgresql.dialect(),
-                        compile_kwargs={"literal_binds": True})))
+#             if logger.isEnabledFor(logging.DEBUG):
+            logger.info(
+                'excute stmt %r...',
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
             result = conn.execute(stmt)
             logger.info('excuted stmt')
             if rowproxy_generator:
@@ -4340,7 +4345,7 @@ class LibraryCopyResource(DbApiResource):
                 self.wrap_view('get_schema'), name="api_get_schema"),
            url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w.\-\+: ]+)"
-                 r"/(?P<name>[^/]+)%s$")  
+                 r"/(?P<copy_name>[^/]+)%s$")  
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
@@ -4348,7 +4353,7 @@ class LibraryCopyResource(DbApiResource):
                 self.wrap_view('search'), name="api_search"),
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w.\-\+: ]+)"
-                 r"/(?P<name>[^/]+)"
+                 r"/(?P<copy_name>[^/]+)"
                  r"/plate%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_librarycopyplateview'),
@@ -4357,7 +4362,7 @@ class LibraryCopyResource(DbApiResource):
 
     def dispatch_librarycopyplateview(self, request, **kwargs):
 
-        kwargs['copy_name'] = kwargs.pop('name')
+#         kwargs['copy_name'] = kwargs.pop('name')
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
         
     def get_detail(self, request, **kwargs):
@@ -4366,10 +4371,10 @@ class LibraryCopyResource(DbApiResource):
         if not library_short_name:
             raise NotImplementedError(
                 'must provide a library_short_name parameter')
-        copy_name = kwargs.get('name', None)
+        copy_name = kwargs.get('copy_name', None)
         if not copy_name:
             raise NotImplementedError(
-                'must provide a copy "name" parameter')
+                'must provide a copy "copy_name" parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -7051,6 +7056,7 @@ class LibraryScreeningResource(ActivityResource):
         plate_numbers = set()
         plate_search = []
         for _data in library_plates_screened:
+            logger.debug('lps data: %r', _data)
             try:
                 copy_name = _data['copy_name']
                 library_short_name = _data['library_short_name']
@@ -7116,7 +7122,7 @@ class LibraryScreeningResource(ActivityResource):
                         ).format(**_data),
                     'copy_name': _data['copy_name'] })
         logger.debug('plate keys: %r, plate_numbers: %r', plate_keys, plate_numbers)
-        logger.info('plate search 1: %r', plate_search)
+        logger.debug('plate search 1: %r', plate_search)
         
         # Create a search criteria to poll the current plate state
         # TODO: cache and log the copy state as well
@@ -7133,7 +7139,7 @@ class LibraryScreeningResource(ActivityResource):
                     plate_range[1] = ap.plate.plate_number
                 existing_ranges[ap.plate.copy_id] = plate_range
         # Cache plate data
-        logger.info('plate search 2: %r', plate_search)
+        logger.debug('plate search 2: %r', plate_search)
         plate_search.extend([{'copy_id': k, 'plate_number__range': v} 
             for k,v in existing_ranges.items()])
         logger.info('plate_search: %r', plate_search)    
@@ -7649,7 +7655,19 @@ class ScreenResource(DbApiResource):
         ]    
         
     def dispatch_screen_detail_uiview(self, request, **kwargs):
-        ''' Special method to populate nested entities for the UI '''
+        ''' 
+        Special method to populate nested entities for the UI 
+        - bypasses the "dispatch" framework call
+        - can use the "search_data" to find the plates
+        -- must be authenticated and authorized
+        '''
+        self.is_authenticated(request)
+        if not self._meta.authorization._is_resource_authorized(
+                self._meta.resource_name,request.user,'read'):
+            raise ImmediateHttpResponse(
+                response=HttpForbidden(
+                    'user: %s, permission: %s/%s not found' 
+                    % (request.user,self._meta.resource_name,'read')))
         
         logger.info('dispatch_screen_detail_uiview')
         
@@ -7679,7 +7697,7 @@ class ScreenResource(DbApiResource):
                     self.get_apilog_resource()._get_list_response_internal(**{
                         'key': _data['facility_id'],
                         'ref_resource_name': 'screen',
-                        'diff_keys': '"status"',
+                        'diff_keys': 'status',
                         'order_by': ['-date_time'],
                         })
                 _data['status_data'] = _status_data
@@ -9620,7 +9638,7 @@ class SilencingReagentResource(DbApiResource):
         
         '''
         logger.info('build silencing reagent columns...')
-        DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_COLS = True or logger.isEnabledFor(logging.DEBUG)
         
         bridge = self.bridge
         
@@ -10940,7 +10958,7 @@ class LibraryResource(DbApiResource):
                 name="api_dispatch_library_copywellview"),
 
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/copy/(?P<name>[^/]+)%s$") 
+                 r"/copy/(?P<copy_name>[^/]+)%s$") 
                  % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyview'),
                 name="api_dispatch_library_copyview"),

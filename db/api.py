@@ -4641,13 +4641,13 @@ class LibraryCopyResource(DbApiResource):
             librarycopy = None
             try:
                 librarycopy = Copy.objects.get(
-                    name=id_kwargs['name'], library=library)
+                    name=id_kwargs['copy_name'], library=library)
                 errors = self.validate(deserialized, patch=True)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist:
                 librarycopy = Copy.objects.create(
-                    name=id_kwargs['name'], library=library)
+                    name=id_kwargs['copy_name'], library=library)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
                     raise ValidationError(errors)
@@ -7679,7 +7679,7 @@ class ScreenResource(DbApiResource):
                     self.get_apilog_resource()._get_list_response_internal(**{
                         'key': _data['facility_id'],
                         'ref_resource_name': 'screen',
-                        'diff_keys__icontains': '"status"',
+                        'diff_keys': '"status"',
                         'order_by': ['-date_time'],
                         })
                 _data['status_data'] = _status_data

@@ -220,17 +220,10 @@ def setUpModule():
 def tearDownModule():
 
     logger.info('=== teardown Module')
-    # FIXME: close the sqlalchemy bridge connection on tearDown
-    # - the right solution probably requires a custom TestRunner
-    # This does not work:
-    # bridge.get_engine().connect().close()
-    # bridge.get_engine().dispose()
-    # bridge = None
-    
     # remove the admin user
-#     ScreensaverUser.objects.all().delete() 
-#     UserProfile.objects.all().delete()
-#     User.objects.all().delete()
+    # ScreensaverUser.objects.all().delete() 
+    # UserProfile.objects.all().delete()
+    # User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
 
@@ -1998,6 +1991,7 @@ class ScreenResultResource(DBResourceTestCase):
 
     def test1_load_example_file(self):
         
+        logger.info('test1_load_example_file...')
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
@@ -2213,7 +2207,8 @@ class ScreenResultResource(DBResourceTestCase):
     
     
     def test2_load_valid_input(self):
-
+        
+        logger.info('test2_load_valid_input...')
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
@@ -2372,6 +2367,7 @@ class ScreenResultResource(DBResourceTestCase):
 
     def test3_mutual_positives(self):
 
+        logger.info('test3_mutual_positives...')
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
@@ -2493,6 +2489,7 @@ class ScreenResultResource(DBResourceTestCase):
         
     def test4_result_value_errors_from_file(self):
         
+        logger.info('test4_result_value_errors_from_file...')
         logger.info('create library...')
         library1 = self.create_library({
             'start_plate': 1, 
@@ -2587,6 +2584,7 @@ class ScreenResultResource(DBResourceTestCase):
 
     def test5_data_column_errors(self):
         
+        logger.info('test5_data_column_errors...')
         logger.info('create library...')
         library1 = self.create_library({
             'start_plate': 1, 
@@ -3475,6 +3473,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
     def test01_create_user_iccbl(self):
 
+        logger.info('test01_create_user_iccbl...')
         # create users using only ecommons, username
         simple_user_input = { 
             'ecommons_id': 'tester01c',
@@ -3496,6 +3495,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
     def test0_create_user(self):
         
+        logger.info('test0_create_user...')
         self.user1 = self.create_screensaveruser({ 'username': 'st1'})
         self.screening_user = self.create_screensaveruser(
             { 'username': 'screening1'})
@@ -3526,6 +3526,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
     def test1_patch_usergroups(self):
         
+        logger.info('test1_patch_usergroups...')
         self.test0_create_user();
         group_patch = { 'objects': [
             { 
@@ -3609,6 +3610,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
     def test2_user_checklist_items(self):
         
+        logger.info('test2_user_checklist_items...')
         self.test0_create_user();
         
         test_username = self.user1['username']
@@ -3655,7 +3657,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         # TODO: checklistitem logs
                     
     def test3_attached_files(self):
-
+        
+        logger.info('test3_attached_files...')
         self.test0_create_user();
 
         # Test using embedded "contents" field               
@@ -3717,7 +3720,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             raise
     
     def test3a_attached_file_filesystem(self):
-        ''' Test attached file from file system '''
+        
+        logger.info('test3a_attached_file_filesystem...')
         
         self.test0_create_user();
 
@@ -3791,7 +3795,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         # TODO: attachedfile logs
     
     def test4_user_agreement_updator(self):
-
+        
+        logger.info('test4_user_agreement_updator...')
         self.test0_create_user();
         group_patch = { 'objects': [
             { 'name': 'smDsl1MutualScreens' },
@@ -4060,6 +4065,7 @@ class ScreensaverUserResource(DBResourceTestCase):
     
     def test5_service_activity(self):
         
+        logger.info('test5_service_activity...')
         self.test0_create_user();
         
         test_username = self.user1['username']

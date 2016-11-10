@@ -240,32 +240,19 @@ class ApiLog(models.Model):
                         before=diffs[0],
                         after=diffs[1])
                         
-#     def diff_dict_to_api_log(self, log):
-#         '''
-#         Set the diff fields from a dict
-#         @param log a dict version of the diff fields
-#         '''
-#         if 'added_keys' in log:
-#             self.added_keys = self.json_dumps(log['added_keys'])
-#         if 'removed_keys' in log:
-#             self.removed_keys = self.json_dumps(log['removed_keys'])
-#         if 'diff_keys' in log:
-#             self.diff_keys = self.json_dumps(log['diff_keys'])
-#         if 'diffs' in log:
-#             self.diffs = self.json_dumps(log['diffs'])
-# 
-#         logger.debug('added: %r, log: %r', self.added_keys, log)
-
     @staticmethod
     def bulk_create(logs):
 
         logger.debug('bulk create logs: %r', logs)
         with transaction.atomic():
             with get_engine().connect() as conn:
-                last_id = int(conn.execute(
-                    'select last_value from reports_apilog_id_seq;').scalar() or 0)
+                last_id = int(
+                    conn.execute(
+                        'select last_value from reports_apilog_id_seq;')
+                        .scalar() or 0)
                 ApiLog.objects.bulk_create(logs)
-                #NOTE: postgresql & django 1.10 only: ids are created on bulk create
+                #NOTE: Before postgresql & django 1.10 only: 
+                # ids must be manually created on bulk create
                 for i,log in enumerate(logs):
                     log.id = last_id+i+1
             
@@ -310,8 +297,8 @@ class ListLog(models.Model):
     
     
 class MetaHash(models.Model):
-    objects                 = MetaManager()
-    #    objects                 = models.Manager() # default manager
+    
+    objects = MetaManager()
     
     scope = models.CharField(max_length=64)
     key = models.CharField(max_length=64)
@@ -393,7 +380,6 @@ class MetaHash(models.Model):
 class Vocabulary(models.Model):
     
     objects                 = MetaManager()
-    #    objects                 = models.Manager() # default manager
     
     scope                   = models.CharField(max_length=128)
     key                     = models.CharField(max_length=128)
@@ -435,12 +421,10 @@ class Vocabulary(models.Model):
 
         
 class Permission(models.Model):
+
     scope = models.CharField(max_length=64) # scope of the permission
     key = models.CharField(max_length=64)  # key of the permission
     type = models.CharField(max_length=35)
-
-#     user_permissions = models.ManyToManyField('reports.UserProfile')
-    
     
     class Meta:
         unique_together = (('scope', 'key', 'type'))    
@@ -450,6 +434,7 @@ class Permission(models.Model):
    
     
 class UserGroup(models.Model):
+    
     name = models.TextField(unique=True)
     title = models.TextField(unique=True, null=True)
     users = models.ManyToManyField('reports.UserProfile')
@@ -506,8 +491,8 @@ class UserGroup(models.Model):
     def __unicode__(self):
         return unicode(str((self.name)) )
 
-# @python_2_unicode_compatible
 class UserProfile(models.Model):
+
     objects = MetaManager()
     
     # link to django.contrib.auth.models.User, note: allow null so that it
@@ -533,11 +518,6 @@ class UserProfile(models.Model):
     created_by_username = models.TextField(null=True)
 
     gender = models.CharField(null=True, max_length=15)    
-
-    # deprecated, move to auth.user
-    #     first_name = models.TextField()
-    #     last_name = models.TextField()
-    # email = models.TextField(null=True)
 
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
@@ -573,6 +553,18 @@ class UserProfile(models.Model):
         temp = self.get_field_hash()
         temp[field] = value;
         self.json_field = json.dumps(temp)
+
+    def get_all_groups(self):
+
+        groups = set()
+        for group in self.usergroup_set.all():
+            groups.add(group)
+            for supergroup in group.super_groups.all():
+                if supergroup in groups:
+                    continue
+                groups.add(supergroup)
+            
+        return groups
     
     @property
     def email(self):

@@ -721,39 +721,29 @@ class SqlAlchemyResource(IccblBaseResource):
         
     #@un_cache
     def _get_detail_response_internal(self, **kwargs):
+        logger.info('kwargs: %r', kwargs)
         request = HttpRequest()
         class User:
-            @staticmethod
-            def is_superuser():
-                return true
+            is_superuser = True
+#             @staticmethod
+#             def is_superuser():
+#                 return true
         request.user = User
         result = self._get_detail_response(request, **kwargs)
         return result
 
     # @un_cache
     def _get_list_response_internal(self, **kwargs):
+        logger.info('kwargs: %r', kwargs)
         request = HttpRequest()
         class User:
-            @staticmethod
-            def is_superuser():
-                return true
+            is_superuser = True
+#             @staticmethod
+#             def is_superuser():
+#                 return true
         request.user = User
         result = self._get_list_response(request, **kwargs)
         return result
-    
-    def get_list(self, request, **kwargs):
-        '''
-        Override the Tastypie/Django ORM get_list method - list/reporting 
-        operations will be handled using SqlAlchemy
-        '''
-        raise NotImplemented(
-            'get_list must be implemented for the SqlAlchemyResource: %r' 
-            % self._meta.resource_name)
-        
-    def build_list_response(self,request, **kwargs):
-        raise NotImplemented(
-            'build_list_response must be implemented for the SqlAlchemyResource: %r' 
-            % self._meta.resource_name)
     
     def _cached_resultproxy(self, conn, stmt, count_stmt, param_hash, limit, offset):
         ''' 

@@ -24,7 +24,8 @@ from django.db.models import Q
 from django.db.models.aggregates import Max
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse, Http404
+from django.http.response import HttpResponse, Http404, HttpResponseBase
+import django.core.exceptions
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, func
@@ -52,6 +53,9 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
 from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 from sqlalchemy.dialects import postgresql
+from tastypie.resources import convert_post_to_put
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.cache import patch_vary_headers, patch_cache_control
 
 
 logger = logging.getLogger(__name__)
@@ -67,13 +71,16 @@ API_MSG_UNCHANGED = 'Unchanged'
 API_MSG_COMMENTS = 'Comments'
 API_MSG_ACTION = 'Action'
 
-class Authorization():
+DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
+
+class Authorization(object):
 
     def _is_resource_authorized(self, resource_name, user, permission_type):
         raise NotImplementedError(
             '_is_resource_authorized must be implemented for %s, %s, %s',
             resource_name, user, permission_type)
-    
+
 class UserGroupAuthorization(Authorization):
     
     @staticmethod
@@ -92,8 +99,6 @@ class UserGroupAuthorization(Authorization):
         return set(resources_user) | set(resources_group)
     
     def _is_resource_authorized(self, resource_name, user, permission_type):
-        
-        DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
@@ -154,7 +159,17 @@ class UserGroupAuthorization(Authorization):
             ,user, permission_str, permissions_group)
         return False
     
+class AllAuthenticatedReadAuthorization(UserGroupAuthorization):
+    ''' Allow read for all authenticated users'''
 
+    def _is_resource_authorized(self, resource_name, user, permission_type):
+        if permission_type == 'read':
+            if user is None:
+                return False
+            return True
+        return super(AllAuthenticatedReadAuthorization,self)._is_resource_authorized(resource_name, user, permission_type)
+
+    
 def write_authorization(_func):
     '''
     Wrapper function to verify write authorization
@@ -165,14 +180,19 @@ def write_authorization(_func):
         
         if not self._meta.authorization._is_resource_authorized(
                 self._meta.resource_name,request.user,'write'):
+            logger.info('write auth failed for: %r, %r', 
+                request.user,self._meta.resource_name)
             raise ImmediateHttpResponse(
                 response=HttpForbidden(
                     'user: %s, permission: %s/%s not found' 
                     % (request.user,self._meta.resource_name,'write')))
-            
+
+        kwargs['schema'] = self.build_schema()
+
         return _func(self, *args, **kwargs)
 
     return _inner
+
 
 def read_authorization(_func):
     '''
@@ -183,10 +203,16 @@ def read_authorization(_func):
         request = args[0]
         if not self._meta.authorization._is_resource_authorized(
                 self._meta.resource_name,request.user,'read'):
+            logger.info('read auth failed for: %r, %r', 
+                request.user,self._meta.resource_name)
             raise ImmediateHttpResponse(
                 response=HttpForbidden(
                     'user: %s, permission: %s/%s not found' 
                     % (request.user,self._meta.resource_name,'read')))
+
+#         kwargs['schema'] = self.build_schema()
+        kwargs['schema'] = self.build_schema(user=request.user)
+        
         return _func(self, *args, **kwargs)
 
     return _inner
@@ -195,6 +221,9 @@ def read_authorization(_func):
 class SuperUserAuthorization(Authorization):
 
     def _is_resource_authorized(self, resource_name, user, permission_type):
+        if DEBUG_AUTHORIZATION:
+            logger.info('Super User Authorization for: %r, %r', 
+                user, user.is_superuser)
         if user.is_superuser:
             return True
         
@@ -223,115 +252,8 @@ def compare_dicts(dict1, dict2, excludes=['resource_uri']):
             if v1 != v2:
                 diffs[key] = [v1,v2]
     return diffs
+
     
-#     log = {'diffs': { key: []}}
-#     
-#     added_keys = list(updated_keys - intersect_keys)
-#     if len(added_keys)>0: 
-#         log['added_keys'] = added_keys
-#         if full:
-#             log['diffs'].update( 
-#                 dict(zip(
-#                     added_keys,
-#                     ([None,dict2[key]] for key in added_keys if dict2[key]) )) )
-#     
-#     removed_keys = list(original_keys- intersect_keys)
-#     if len(removed_keys)>0: 
-#         log['removed_keys'] = removed_keys
-#         if full:
-#             log['diffs'].update(
-#                 dict(zip(
-#                     removed_keys,
-#                     ([dict1[key],None] for key in removed_keys if dict1[key]))))
-#     
-#     diff_keys = list()
-#     for key in intersect_keys:
-#         val1 = dict1[key]
-#         val2 = dict2[key]
-#         # NOTE: Tastypie converts to tz naive on serialization; then it 
-#         # forces it to the default tz upon deserialization (in the the 
-#         # DateTimeField convert method); for the purpose of this comparison,
-#         # then, make both naive.
-#         if isinstance(val2, datetime.datetime):
-#             val2 = make_naive(val2)
-#         if val1 != val2: 
-#             diff_keys.append(key)
-#     # Note, simple equality not used, since the serialization isn't 
-#     # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
-#     # upon serialization to the ISO 8601 format.
-#     #         diff_keys = \
-#     #             list( key for key in intersect_keys 
-#     #                     if dict1[key] != dict2[key])
-# 
-#     if len(diff_keys)>0: 
-#         log['diff_keys'] = diff_keys
-#         log['diffs'].update(
-#             dict(zip(
-#                 diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
-#     
-#     return log
-
-# def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
-#     '''
-#     @param full (default False) 
-#     - a full compare shows added keys as well as diff keys
-#     
-#     Note: "full" logs would log all of the created data in the resource;
-#     whereas "not full" only logs the creation; with this strategy, logs 
-#     must be played backwards to recreate an entity state.
-#     '''
-#     logger.debug('compare dicts: %r, %r, %r', dict1, dict2, full)
-#     original_keys = set(dict1.keys())-set(excludes)
-#     updated_keys = set(dict2.keys())-set(excludes)
-#     
-#     intersect_keys = original_keys.intersection(updated_keys)
-#     log = {'diffs': {}}
-#     
-#     added_keys = list(updated_keys - intersect_keys)
-#     if len(added_keys)>0: 
-#         log['added_keys'] = added_keys
-#         if full:
-#             log['diffs'].update( 
-#                 dict(zip(
-#                     added_keys,
-#                     ([None,dict2[key]] for key in added_keys if dict2[key]) )) )
-#     
-#     removed_keys = list(original_keys- intersect_keys)
-#     if len(removed_keys)>0: 
-#         log['removed_keys'] = removed_keys
-#         if full:
-#             log['diffs'].update(
-#                 dict(zip(
-#                     removed_keys,
-#                     ([dict1[key],None] for key in removed_keys if dict1[key]))))
-#     
-#     diff_keys = list()
-#     for key in intersect_keys:
-#         val1 = dict1[key]
-#         val2 = dict2[key]
-#         # NOTE: Tastypie converts to tz naive on serialization; then it 
-#         # forces it to the default tz upon deserialization (in the the 
-#         # DateTimeField convert method); for the purpose of this comparison,
-#         # then, make both naive.
-#         if isinstance(val2, datetime.datetime):
-#             val2 = make_naive(val2)
-#         if val1 != val2: 
-#             diff_keys.append(key)
-#     # Note, simple equality not used, since the serialization isn't 
-#     # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
-#     # upon serialization to the ISO 8601 format.
-#     #         diff_keys = \
-#     #             list( key for key in intersect_keys 
-#     #                     if dict1[key] != dict2[key])
-# 
-#     if len(diff_keys)>0: 
-#         log['diff_keys'] = diff_keys
-#         log['diffs'].update(
-#             dict(zip(
-#                 diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
-#     
-#     return log
-
 def is_empty_diff(difflog):
     if not difflog:
      return True
@@ -363,6 +285,7 @@ def download_tmp_file(path, filename):
         logger.exception('could not find attached file object for id: %r', id)
         raise e
 
+
 def get_supertype_fields(resource_definition):
     supertype = resource_definition.get('supertype', None)
     if supertype:
@@ -381,6 +304,7 @@ def get_supertype_fields(resource_definition):
         return fields
     else:
         return {}    
+
 
 class ApiLogAuthorization(UserGroupAuthorization):
     '''
@@ -420,15 +344,234 @@ class ApiResource(SqlAlchemyResource):
             self.resource_resource = ResourceResource()
         return self.resource_resource
     
+    def wrap_view(self, view):
+        """
+        Override the tastypie implementation to handle our own ValidationErrors.
+        """
+
+        @csrf_exempt
+        def wrapper(request, *args, **kwargs):
+            DEBUG_WRAPPER = True
+            try:
+                callback = getattr(self, view)
+                if DEBUG_WRAPPER:
+                    msg = ()
+                    if kwargs:
+                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
+                            if len(str(kwargs[key]))<100]
+                    logger.info('callback: %r, %r', view, msg)
+                    logger.info('request: %r', request)
+                else:
+                    logger.info('callback: %r, %r', callback, view)
+                
+                self.is_authenticated(request)
+        
+                response = callback(request, *args, **kwargs)
+                # Our response can vary based on a number of factors, use
+                # the cache class to determine what we should ``Vary`` on so
+                # caches won't return the wrong (cached) version.
+                varies = getattr(self._meta.cache, "varies", [])
+
+                if varies:
+                    patch_vary_headers(response, varies)
+
+                if self._meta.cache.cacheable(request, response):
+                    if self._meta.cache.cache_control():
+                        # If the request is cacheable and we have a
+                        # ``Cache-Control`` available then patch the header.
+                        patch_cache_control(response, **self._meta.cache.cache_control())
+
+                if request.is_ajax() and not response.has_header("Cache-Control"):
+                    # IE excessively caches XMLHttpRequests, so we're disabling
+                    # the browser cache here.
+                    # See http://www.enhanceie.com/ie/bugs.asp for details.
+                    patch_cache_control(response, no_cache=True)
+
+                return response
+            except BadRequest as e:
+                # The message is the first/only arg
+                logger.exception('Bad request exception: %r', e)
+                data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
+                return self.build_error_response(request, data, **kwargs)
+            except InformationError as e:
+                logger.exception('Information error: %r', e)
+                response = self.build_error_response(
+                    request, { 'Messages': e.errors }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+            
+            except ValidationError as e:
+                logger.exception('Validation error: %r', e)
+                response = self.build_error_response(
+                    request, { 'errors': e.errors }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+            except django.core.exceptions.ValidationError as e:
+                logger.exception('Django validation error: %s', e)
+                response = self.build_error_response(
+                    request, { 'errors': e.message_dict }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+                
+            except Exception as e:
+                logger.exception('Unhandled exception: %r', e)
+                if hasattr(e, 'response'):
+                    # A specific response was specified
+                    return e.response
+
+                logger.exception('Unhandled exception: %r', e)
+
+                # A real, non-expected exception.
+                # Handle the case where the full traceback is more helpful
+                # than the serialized error.
+                if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+                    logger.warn('raise tastypie full exception for %r', e)
+                    raise
+
+                # Rather than re-raising, we're going to things similar to
+                # what Django does. The difference is returning a serialized
+                # error message.
+                logger.exception('handle 500 error %r...', str(e))
+                return self._handle_500(request, e)
+
+        return wrapper
+    
     def get_schema(self, request, **kwargs):
     
         return self.build_response(request, self.build_schema(), **kwargs)
 
-    def build_schema(self):
-        logger.debug('build schema for: %r', self._meta.resource_name)
-        return self.get_resource_resource()._get_resource_schema(
-            self._meta.resource_name)
+    def dispatch_list(self, request, **kwargs):
+        """
+        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
+        the entire list of resources.
 
+        Relies on ``Resource.dispatch`` for the heavy-lifting.
+        """
+#         kwargs['schema'] = self.build_schema()
+                
+        return self.dispatch('list', request, **kwargs)
+
+    def dispatch_detail(self, request, **kwargs):
+        """
+        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) on
+        a single resource.
+
+        Relies on ``Resource.dispatch`` for the heavy-lifting.
+        """
+        return self.dispatch('detail', request, **kwargs)
+
+    def dispatch(self, request_type, request, **kwargs):
+        """
+        Override tastypie method to eliminate much unneeded functionality:
+        - 'allowed' methods
+        - HTTP_X_HTTP_METHOD_OVERRIDE
+        - throttling
+        - verification check of the response class 
+        Other modifications:
+        - use of the "downloadID" cookie
+        """
+        
+        # allowed_methods = getattr(
+        #     self._meta, "%s_allowed_methods" % request_type, None)
+        # 
+        # if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
+        #     request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
+        # 
+        # request_method = self.method_check(request, allowed=allowed_methods)
+        request_method = request.method.lower()
+        method = getattr(self, "%s_%s" 
+            % (request_method, request_type), None)
+
+        if method is None:
+            raise ImmediateHttpResponse(response=HttpNotImplemented())
+
+#         self.is_authenticated(request)
+        # self.throttle_check(request)
+
+        # All clear. Process the request.
+        convert_post_to_put(request)
+        logger.info('calling method: %s.%s_%s', 
+            self._meta.resource_name, request_method, request_type)
+        response = method(request, **kwargs)
+
+        # # Add the throttled request.
+        # self.log_throttled_access(request)
+
+        # # If what comes back isn't a ``HttpResponse``, assume that the
+        # # request was accepted and that some action occurred. This also
+        # # prevents Django from freaking out.
+        if not isinstance(response, HttpResponseBase):
+            return HttpNoContent()
+        
+        # Custom ICCB parameter: set cookie to tell the browser javascript
+        # UI that the download request is finished
+        downloadID = request.GET.get('downloadID', None)
+        if downloadID:
+            logger.info('set cookie "downloadID" %r', downloadID )
+            response.set_cookie('downloadID', downloadID)
+        else:
+            logger.debug('no downloadID: %s' % request.GET )
+
+        return response
+
+    @read_authorization
+    def get_detail(self, request, **kwargs):
+        '''
+        Override the Tastypie 
+        operations will be handled using SqlAlchemy
+        '''
+        raise NotImplemented(
+            'get_detail must be implemented for resource: %r' 
+            % self._meta.resource_name)
+    
+    @read_authorization
+    def get_list(self, request, **kwargs):
+        '''
+        Override the Tastypie 
+        operations will be handled using SqlAlchemy
+        '''
+        raise NotImplemented(
+            'get_list must be implemented for resource: %r' 
+            % self._meta.resource_name)
+        
+    def build_list_response(self,request, **kwargs):
+        raise NotImplemented(
+            'build_list_response must be implemented for the SqlAlchemyResource: %r' 
+            % self._meta.resource_name)
+
+    def build_schema(self, user=None):
+        
+        logger.debug('build schema for: %r', self._meta.resource_name)
+        schema = self.get_resource_resource()._get_resource_schema(
+            self._meta.resource_name, user=user)
+        
+        return schema
+    
+    
     def get_resource_uri(self, deserialized, **kwargs):
         ids = [self._meta.resource_name]
         ids.extend(self.get_id(deserialized,**kwargs).values())
@@ -463,8 +606,9 @@ class ApiResource(SqlAlchemyResource):
             else:
                 not_found.append(id_field)
         if not_found:
-            logger.debug(
-                'not all id fields found: %r: in %r', not_found,deserialized)
+            logger.error(
+                'not all id fields found: %r: in %r, id_attribute: %r, resource: %r',
+                not_found,deserialized, id_attribute, schema['key'])
             if validate:
                 raise ValidationError({
                     k:'required' for k in not_found })
@@ -493,12 +637,13 @@ class ApiResource(SqlAlchemyResource):
         else:
             return dict(zip(id_attribute,keys))
 
-    def parse(self,deserialized, create=False, fields=None):
+    def parse(self,deserialized, create=False, fields=None, schema=None):
         ''' parse schema fields from the deserialized dict '''
 
         mutable_fields = fields        
         if fields is None:
-            schema = self.build_schema()
+            if schema is None:
+                schema = self.build_schema()
             fields = schema['fields']
             mutable_fields = []
             for field in fields.values():
@@ -516,6 +661,7 @@ class ApiResource(SqlAlchemyResource):
                     deserialized.get(key,None), key,field['data_type']) 
         return initializer_dict
     
+    @read_authorization
     def search(self, request, **kwargs):
         '''
         Treats a POST request like a GET (with posted search_data)
@@ -609,7 +755,9 @@ class ApiResource(SqlAlchemyResource):
             return self.patch_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
-        schema = self.build_schema()
+        schema = kwargs['schema']
+        
+        
         kwargs_for_log = kwargs.copy()
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
@@ -705,7 +853,7 @@ class ApiResource(SqlAlchemyResource):
         #     return self.put_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for _data in deserialized:
@@ -740,7 +888,7 @@ class ApiResource(SqlAlchemyResource):
         self._meta.queryset.delete()
         new_objs = []
         for _dict in deserialized:
-            new_objs.append(self.put_obj(request, _dict))
+            new_objs.append(self.put_obj(request, _dict, **kwargs))
 
         # Get new state, for logging
         # After patch, the id keys must be present
@@ -817,11 +965,11 @@ class ApiResource(SqlAlchemyResource):
             return self.post_detail(request, **kwargs)
 
         # Limit the potential candidates for logging to found id_kwargs
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
         # Limit the potential candidates for logging to found id_kwargs
-        schema = self.build_schema()
+#         schema = self.build_schema()
         kwargs_for_log = kwargs.copy()
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
@@ -910,23 +1058,16 @@ class ApiResource(SqlAlchemyResource):
         
         _data = self.build_post_detail(request, deserialized, **kwargs)
         
-        logger.info('post data: %r', _data)
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
         
-#         if not self._meta.always_return_data:
-#             # TODO: add "Result" data to meta section, see post_list
-#             return HttpResponse(status=200)
-#         else:
-#             response = self.get_detail(request,**kwargs_for_log)
-#             response.status_code = 200
-#             return response
-        
     def build_post_detail(self, request, deserialized, log=None, **kwargs):
+        ''' Inner post detail method, returns native dict '''
+
         # Note, find kwargs that are available, validate=False, for if they DNE
         kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
         logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
@@ -989,25 +1130,16 @@ class ApiResource(SqlAlchemyResource):
                 request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
-
         
         _data = self.build_patch_detail(request, deserialized, **kwargs)
 
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
-        
-#         if not self._meta.always_return_data:
-#             return HttpResponse(status=200)
-#         else:
-#             kwargs_for_log['includes'] = '*'
-#             response = self.get_detail(request,**kwargs_for_log)
-#             response.status_code = 200
-#             return response
 
     def build_patch_detail(self, request, deserialized, **kwargs):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -1040,14 +1172,14 @@ class ApiResource(SqlAlchemyResource):
         logger.info('log saved: %r', log)
 
         new_data = self._get_detail_response(request,**kwargs_for_log)
-        logger.info('new data: %r', new_data)
         self.log_patch(request, original_data,new_data,log=log, **kwargs)
         log.save()
         
         return new_data
 
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def put_detail(self, request, **kwargs):
         '''
         PUT is used to create or overwrite a resource; idempotent
@@ -1076,7 +1208,7 @@ class ApiResource(SqlAlchemyResource):
         # the ID keys on create (use POST/PATCH)
         
         kwargs_for_log = self.get_id(deserialized, validate=True, **kwargs)
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         # kwargs_for_log = {}
         # for id_field in id_attribute:
@@ -1117,9 +1249,9 @@ class ApiResource(SqlAlchemyResource):
             response.status_code = 200
             return response
 
-
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def delete_list(self, request, **kwargs):
         logger.info('delete list...')
         raise NotImplementedError('delete_list is not implemented for %s'
@@ -1135,7 +1267,7 @@ class ApiResource(SqlAlchemyResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = {}
         for id_field in id_attribute:
@@ -1163,7 +1295,7 @@ class ApiResource(SqlAlchemyResource):
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
         
-        schema = self.build_schema()
+#         schema = self.build_schema()
         id_attribute = schema['id_attribute']
 
         log.diffs = { k:[v,None] for k,v in original_data.items()}
@@ -1172,8 +1304,9 @@ class ApiResource(SqlAlchemyResource):
 
         return HttpNoContent()
 
+    @write_authorization
     @un_cache        
-    @transaction.atomic()    
+    @transaction.atomic    
     def put_obj(self,request, deserialized, **kwargs):
         try:
             self.delete_obj(request, deserialized, **kwargs)
@@ -1182,9 +1315,15 @@ class ApiResource(SqlAlchemyResource):
         
         return self.patch_obj(request, deserialized, **kwargs)            
 
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete obj must be implemented')
     
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
@@ -1403,7 +1542,6 @@ class ApiResource(SqlAlchemyResource):
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
-            logger.info('parent_log: %r', log.parent_log)
         if prev_dict:
             log.diffs = compare_dicts(prev_dict,new_dict)
             if not log.diffs:
@@ -1426,7 +1564,7 @@ class ApiResource(SqlAlchemyResource):
         return log
 
     @transaction.atomic
-    def log_patches(self,request, original_data, new_data, **kwargs):
+    def log_patches(self,request, original_data, new_data, schema=None, **kwargs):
         '''
         log differences between dicts having the same identity in the arrays:
         @param original_data - data from before the API action
@@ -1446,7 +1584,8 @@ class ApiResource(SqlAlchemyResource):
             logger.info('log patches original: %s, =====new data===== %s',
                 original_data,new_data)
         
-        schema = self.build_schema()
+        if schema is None:
+            schema = self.build_schema()
         id_attribute = schema['id_attribute']
         
         deleted_items = list(original_data)        
@@ -1706,6 +1845,7 @@ class ApiLogResource(ApiResource):
         self.clear_cache()
         return self.build_response(request, 'ok', **kwargs)
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         id = kwargs.get('id', None)
@@ -1732,6 +1872,7 @@ class ApiLogResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
@@ -1742,10 +1883,6 @@ class ApiLogResource(ApiResource):
     def build_list_response(self,request, **kwargs):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
-#         parent_log_id = None
-#         if 'parent_log_id' in kwargs:
-#             parent_log_id = kwargs.pop('parent_log_id')
-            
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -1758,9 +1895,6 @@ class ApiLogResource(ApiResource):
         manual_field_includes.add('id')
         if DEBUG_GET_LIST: 
             logger.info('manual_field_includes: %r', manual_field_includes)
-
-#         if parent_log_id:
-#             kwargs['parent_log_id'] = parent_log_id
 
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -1947,8 +2081,8 @@ class ApiLogResource(ApiResource):
             logger.exception('on get_list')
             raise e  
     
-    def build_schema(self):
-        schema = super(ApiLogResource,self).build_schema()
+    def build_schema(self, user=None):
+        schema = super(ApiLogResource,self).build_schema(user=user)
         temp = [ x.key for x in 
             MetaHash.objects.all().filter(scope='resource').distinct('key')]
         schema['extraSelectorOptions'] = { 
@@ -1979,7 +2113,7 @@ class FieldResource(ApiResource):
             scope__startswith="fields.").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= UserGroupAuthorization()        
+        authorization= AllAuthenticatedReadAuthorization()
         ordering = []
         filtering = {} 
         serializer = LimsSerializer()
@@ -2004,7 +2138,7 @@ class FieldResource(ApiResource):
     def create_fields(self):
         pass
 
-    def build_schema(self):
+    def build_schema(self, user=None):
         # start with the default schema for bootstrapping
         default_field = {
             'data_type': 'string',
@@ -2093,6 +2227,7 @@ class FieldResource(ApiResource):
 
         return schema
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
@@ -2104,7 +2239,6 @@ class FieldResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self,request, **kwargs):
         
         # NOTE: current implementation creates the fields hash in memory:
@@ -2237,22 +2371,26 @@ class FieldResource(ApiResource):
     
     @write_authorization
     @un_cache        
+    @transaction.atomic    
     def delete_list(self, request, **kwargs):
         MetaHash.objects.all().filter(scope__icontains='fields.').delete()
 
-    @transaction.atomic()    
+    @write_authorization
     @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         logger.info('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('deserialized: %r', deserialized)
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -2313,7 +2451,7 @@ class ResourceResource(ApiResource):
             scope="resource").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= UserGroupAuthorization()        
+        authorization= AllAuthenticatedReadAuthorization()
         ordering = []
         filtering = {} 
         serializer = LimsSerializer()
@@ -2352,7 +2490,7 @@ class ResourceResource(ApiResource):
         cache.delete('resources');
 #         cache.delete('resource_listing')
         
-    def _get_resource_schema(self,key):
+    def _get_resource_schema(self,key, user=None):
         ''' For internal callers
         '''
         resources = self._build_resources()
@@ -2360,8 +2498,29 @@ class ResourceResource(ApiResource):
         if key not in resources:
             raise BadRequest('Resource is not initialized: %r', key)
         
-        return resources[key]
-
+        schema =  resources[key]
+        if user is not None:
+            if not user.is_superuser:
+                # Filter fields with "view_groups" set
+                schema = deepcopy(schema)
+                usergroups = set([x.name for x in user.userprofile.get_all_groups()])
+                logger.info('user: %r, groups: %r', user, usergroups)
+                fields = deepcopy(schema['fields'])
+                filtered_fields = {}
+                for key, field in fields.items():
+                    include = True
+                    if key not in schema['id_attribute']:
+                        view_groups = field.get('view_groups',None)
+                        if view_groups is not None:
+                            if not set(view_groups) & usergroups:
+                                include = False
+                    if include is True:
+                        filtered_fields[key] = field
+                    else:
+                        logger.info('filtered field: %r', key)
+                schema['fields'] = filtered_fields
+        return schema
+    
     @read_authorization
     def get_list(self,request,**kwargs):
         '''
@@ -2371,6 +2530,7 @@ class ResourceResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
          
+    @read_authorization
     def get_detail(self, request, **kwargs):
         '''
         For external callers - Dispatch GET detail
@@ -2380,7 +2540,7 @@ class ResourceResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
 
-    def build_schema(self):
+    def build_schema(self, user=None):
         '''
         Override resource method - bootstrap the "Resource" resource schema
         '''
@@ -2388,9 +2548,7 @@ class ResourceResource(ApiResource):
         # get the resource fields
         request = HttpRequest()
         class User:
-            @staticmethod
-            def is_superuser():
-                return true
+            is_superuser = True
         request.user = User
         resource_fields = self.get_field_resource()._get_list_response(
             request=request, scope='fields.resource')
@@ -2416,7 +2574,6 @@ class ResourceResource(ApiResource):
         
         return resource_schema
     
-    @read_authorization
     def build_list_response(self,request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2467,7 +2624,8 @@ class ResourceResource(ApiResource):
             resources = cache.get('resources')
             logger.debug('using cached resources')
         if not resources:
-            logger.info('not using cached resources')
+            if DEBUG_RESOURCES:
+                logger.info('not using cached resources')
         
             resources = deepcopy(
                 MetaHash.objects.get_and_parse(
@@ -2510,8 +2668,9 @@ class ResourceResource(ApiResource):
                             'fields.%s' % supertype, None)
                         if not supertype_fields:
                             # ok, if the supertype is not built yet
-                            logger.warning('no fields for supertype: %r, %r', 
-                                supertype, field_hash.keys())
+                            if DEBUG_RESOURCES:
+                                logger.warning('no fields for supertype: %r, %r', 
+                                    supertype, field_hash.keys())
                         else:
                             # explicitly copy out all supertype fields, then update 
                             # with fields from the current resource
@@ -2566,24 +2725,28 @@ class ResourceResource(ApiResource):
                 'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
             
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def delete_list(self, request, **kwargs):
         MetaHash.objects.all().filter(scope='resource').delete()
 
-    @transaction.atomic()    
-    @un_cache        
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
-        logger.info('delete: %r', id_kwargs)
+        if DEBUG_RESOURCES:
+            logger.info('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
-    @transaction.atomic()    
-    @un_cache        
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('patch_obj: %r', deserialized)
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -2602,8 +2765,9 @@ class ResourceResource(ApiResource):
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
-                logger.info('Metahash resource %s does not exist, creating',
-                    id_kwargs)
+                if DEBUG_RESOURCES:
+                    logger.info('Metahash resource %s does not exist, creating',
+                        id_kwargs)
                 field = MetaHash(**id_kwargs)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
@@ -2626,8 +2790,9 @@ class ResourceResource(ApiResource):
                     
             field.json_field = json.dumps(json_obj)
             field.save()
-                    
-            logger.info('patch_obj Resource done')
+            
+            if DEBUG_RESOURCES:
+                logger.info('patch_obj Resource done')
             return field
             
         except Exception, e:
@@ -2647,7 +2812,7 @@ class VocabularyResource(ApiResource):
             'scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= UserGroupAuthorization() #SuperUserAuthorization()        
+        authorization= UserGroupAuthorization()        
         ordering = []
         serializer = LimsSerializer()
         excludes = [] #['json_field']
@@ -2669,17 +2834,17 @@ class VocabularyResource(ApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
 
-    def build_schema(self):
+    def build_schema(self, user=None):
         schema = super(VocabularyResource,self).build_schema()
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
         return schema
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
         key = kwargs.get('key', None)
         if not key:
-            logger.info('no key provided')
             raise NotImplementedError('must provide a key parameter')
         
         scope = kwargs.get('scope', None)
@@ -2693,6 +2858,7 @@ class VocabularyResource(ApiResource):
         
         
     def _get_list_response(self, request, key=None, **kwargs):
+        ''' For internal callers '''
         
         # FIXME: check request params for caching
         vocabularies = cache.get('vocabularies')
@@ -2748,7 +2914,7 @@ class VocabularyResource(ApiResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
 
         filename = self._get_filename(schema, kwargs)
 
@@ -2918,9 +3084,10 @@ class VocabularyResource(ApiResource):
             request=HttpRequest()
             request.session = Session()
             class User:
-                @staticmethod
-                def is_superuser():
-                    return true
+                is_superuser = True
+#                 @staticmethod
+#                 def is_superuser():
+#                     return true
             request.user = User
             _data = self._get_list_response(request=request,**kwargs)
             for v in _data:
@@ -2951,28 +3118,35 @@ class VocabularyResource(ApiResource):
         cache.delete('vocabularies');
 
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def delete_list(self, request, **kwargs):
         Vocabulary.objects.all().delete()
 
-    @un_cache
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def put_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
         result = super(VocabularyResource, self).put_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         logger.debug('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -3037,9 +3211,9 @@ class UserResource(ApiResource):
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
         
-        # FIXME: should override UserGroupAuthorization, should allow user to view
-        # (1) record by default: their own.
-        authorization = SuperUserAuthorization()
+        # TODO: implement field filtering: users can only see other users details
+        # if in readEverythingAdmin group
+        authorization = UserGroupAuthorization()
         ordering = []
         serializer = LimsSerializer()
         excludes = [] #['json_field']
@@ -3084,9 +3258,9 @@ class UserResource(ApiResource):
         return PermissionResource().dispatch('list', request, **kwargs)    
 
 
-    def build_schema(self):
+    def build_schema(self, user=None):
         
-        schema = super(UserResource,self).build_schema()
+        schema = super(UserResource,self).build_schema(user=user)
         try:
             if 'usergroups' in schema['fields']: # may be blank on initiation
                 schema['fields']['usergroups']['choices'] = \
@@ -3196,6 +3370,7 @@ class UserResource(ApiResource):
 
         return custom_columns
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         username = kwargs.get('username', None)
@@ -3213,7 +3388,6 @@ class UserResource(ApiResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
     def build_list_response(self,request, **kwargs):
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
@@ -3329,12 +3503,16 @@ class UserResource(ApiResource):
                         % (deserialized,kwargs) )
         return id_kwargs
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
         id_kwargs = self.get_id(deserialized,**kwargs)
         UserProfile.objects.get(**id_kwargs).delete()
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
 
         logger.debug('patch_obj: %r, %r', deserialized,kwargs)
@@ -3343,7 +3521,7 @@ class UserResource(ApiResource):
         username = id_kwargs.get('username', None)
         ecommons_id = id_kwargs.get('ecommons_id', None)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
 
         auth_user_fields = { name:val for name,val in fields.items() 
@@ -3528,6 +3706,8 @@ class UserGroupResource(ApiResource):
 #         return self.patch_obj(request, deserialized, **kwargs)
     
     @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def delete_detail(self,deserialized, **kwargs):
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -3541,17 +3721,21 @@ class UserGroupResource(ApiResource):
         except ObjectDoesNotExist,e:
             return HttpResponse(status=404)
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
         name = self.find_name(deserialized,**kwargs)
         UserGroup.objects.get(name=name).delete()
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache 
+    @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
 
         name = self.find_name(deserialized,**kwargs)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
 
         group_fields = { name:val for name,val in fields.items() 
@@ -3799,6 +3983,7 @@ class UserGroupResource(ApiResource):
 
         return group_all_users.cte('gau')
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         name = kwargs.get('name', None)
@@ -3816,7 +4001,6 @@ class UserGroupResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
         return self.build_list_response(request, **kwargs)
-
         
     def build_list_response(self,request, **kwargs):
 
@@ -4141,7 +4325,7 @@ class PermissionResource(ApiResource):
                 if perm.scope==r.scope and perm.key==r.key:
                     found = True
             if not found:
-                logger.info('initialize permission: %r:%r'
+                logger.debug('initialize permission: %r:%r'
                     % (r.scope, r.key))
                 for ptype in permissionTypes:
                     p = Permission.objects.create(
@@ -4160,6 +4344,7 @@ class PermissionResource(ApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         scope = kwargs.get('scope', None)
@@ -4174,12 +4359,12 @@ class PermissionResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self,request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4191,7 +4376,7 @@ class PermissionResource(ApiResource):
             use_vocab = False
             use_titles = False
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)

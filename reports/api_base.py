@@ -53,14 +53,6 @@ class IccblBaseResource(Resource):
     -- control application specific caching
     """
 
-#     content_types = {
-#                      'xls': XLS_MIMETYPE,
-#                      'xlsx': XLSX_MIMETYPE,
-#                      'csv': CSV_MIMETYPE,
-#                      'sdf': SDF_MIMETYPE,
-#                      'json': JSON_MIMETYPE,
-#                      }
-
     def clear_cache(self):
         logger.debug('clearing the cache from resource: %s (all caches cleared)' 
             % self._meta.resource_name)
@@ -155,10 +147,6 @@ class IccblBaseResource(Resource):
          
         return self._meta.serializer.get_accept_content_type(request,format=format)
         
-#     def get_serialize_format(self, request, format=None):
-#         
-#         return self._meta.serializer.get_serialize_format(request, format=format)
-
     def build_response(self, request, data, response_class=HttpResponse, **kwargs):
         
         content_type = self._meta.serializer.get_content_type(
@@ -223,190 +211,120 @@ class IccblBaseResource(Resource):
         }
         return self.build_error_response(request, data, response_class=response_class)
         
-    def wrap_view(self, view):
-        """
-        Override the tastypie implementation to handle our own ValidationErrors.
-        """
+#     def wrap_view(self, view):
+#         """
+#         Override the tastypie implementation to handle our own ValidationErrors.
+#         """
+# 
+#         @csrf_exempt
+#         def wrapper(request, *args, **kwargs):
+#             DEBUG_WRAPPER = True
+#             try:
+#                 callback = getattr(self, view)
+#                 if DEBUG_WRAPPER:
+#                     msg = ()
+#                     if kwargs:
+#                         msg = [ (key,kwargs[key]) for key in kwargs.keys() 
+#                             if len(str(kwargs[key]))<100]
+#                     logger.info('callback: %r, %r', view, msg)
+#                     logger.info('request: %r', request)
+#                 else:
+#                     logger.info('callback: %r, %r', callback, view)
+#                 
+#                 response = callback(request, *args, **kwargs)
+#                 # Our response can vary based on a number of factors, use
+#                 # the cache class to determine what we should ``Vary`` on so
+#                 # caches won't return the wrong (cached) version.
+#                 varies = getattr(self._meta.cache, "varies", [])
+# 
+#                 if varies:
+#                     patch_vary_headers(response, varies)
+# 
+#                 if self._meta.cache.cacheable(request, response):
+#                     if self._meta.cache.cache_control():
+#                         # If the request is cacheable and we have a
+#                         # ``Cache-Control`` available then patch the header.
+#                         patch_cache_control(response, **self._meta.cache.cache_control())
+# 
+#                 if request.is_ajax() and not response.has_header("Cache-Control"):
+#                     # IE excessively caches XMLHttpRequests, so we're disabling
+#                     # the browser cache here.
+#                     # See http://www.enhanceie.com/ie/bugs.asp for details.
+#                     patch_cache_control(response, no_cache=True)
+# 
+#                 return response
+#             except BadRequest as e:
+#                 logger.exception('bad request...')
+#                 # for BadRequest, the message is the first/only arg
+#                 logger.exception('Bad request exception: %r', e)
+#                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
+#                 return self.build_error_response(request, data, **kwargs)
+#             except InformationError as e:
+#                 logger.exception('Information error: %r', e)
+#                 response = self.build_error_response(
+#                     request, { 'Messages': e.errors }, **kwargs)
+#                 if 'xls' in response['Content-Type']:
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % 'errors'
+#                     downloadID = request.GET.get('downloadID', None)
+#                     if downloadID:
+#                         logger.info('set cookie "downloadID" %r', downloadID )
+#                         response.set_cookie('downloadID', downloadID)
+#                     else:
+#                         logger.debug('no downloadID: %s' % request.GET )
+#                 return response
+#             
+#             except ValidationError as e:
+#                 logger.exception('Validation error: %r', e)
+#                 response = self.build_error_response(
+#                     request, { 'errors': e.errors }, **kwargs)
+#                 if 'xls' in response['Content-Type']:
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % 'errors'
+#                     downloadID = request.GET.get('downloadID', None)
+#                     if downloadID:
+#                         logger.info('set cookie "downloadID" %r', downloadID )
+#                         response.set_cookie('downloadID', downloadID)
+#                     else:
+#                         logger.debug('no downloadID: %s' % request.GET )
+#                 return response
+#             except django.core.exceptions.ValidationError as e:
+#                 logger.exception('Django validation error: %s', e)
+#                 response = self.build_error_response(
+#                     request, { 'errors': e.message_dict }, **kwargs)
+#                 if 'xls' in response['Content-Type']:
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % 'errors'
+#                     downloadID = request.GET.get('downloadID', None)
+#                     if downloadID:
+#                         logger.info('set cookie "downloadID" %r', downloadID )
+#                         response.set_cookie('downloadID', downloadID)
+#                     else:
+#                         logger.debug('no downloadID: %s' % request.GET )
+#                 return response
+#                 
+#             except Exception as e:
+#                 logger.exception('Unhandled exception: %r', e)
+#                 if hasattr(e, 'response'):
+#                     # A specific response was specified
+#                     return e.response
+# 
+#                 logger.exception('Unhandled exception: %r', e)
+# 
+#                 # A real, non-expected exception.
+#                 # Handle the case where the full traceback is more helpful
+#                 # than the serialized error.
+#                 if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+#                     logger.warn('raise tastypie full exception for %r', e)
+#                     raise
+# 
+#                 # Rather than re-raising, we're going to things similar to
+#                 # what Django does. The difference is returning a serialized
+#                 # error message.
+#                 logger.exception('handle 500 error %r...', str(e))
+#                 return self._handle_500(request, e)
+# 
+#         return wrapper
 
-        @csrf_exempt
-        def wrapper(request, *args, **kwargs):
-            DEBUG_WRAPPER = True
-            try:
-                callback = getattr(self, view)
-                if DEBUG_WRAPPER:
-                    msg = ()
-                    if kwargs:
-                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
-                            if len(str(kwargs[key]))<100]
-                    logger.info('callback: %r, %r', view, msg)
-                    logger.info('request: %r', request)
-                else:
-                    logger.info('callback: %r, %r', callback, view)
-
-                response = callback(request, *args, **kwargs)
-                # Our response can vary based on a number of factors, use
-                # the cache class to determine what we should ``Vary`` on so
-                # caches won't return the wrong (cached) version.
-                varies = getattr(self._meta.cache, "varies", [])
-
-                if varies:
-                    patch_vary_headers(response, varies)
-
-                if self._meta.cache.cacheable(request, response):
-                    if self._meta.cache.cache_control():
-                        # If the request is cacheable and we have a
-                        # ``Cache-Control`` available then patch the header.
-                        patch_cache_control(response, **self._meta.cache.cache_control())
-
-                if request.is_ajax() and not response.has_header("Cache-Control"):
-                    # IE excessively caches XMLHttpRequests, so we're disabling
-                    # the browser cache here.
-                    # See http://www.enhanceie.com/ie/bugs.asp for details.
-                    patch_cache_control(response, no_cache=True)
-
-                return response
-            except BadRequest as e:
-                logger.exception('bad request...')
-                # for BadRequest, the message is the first/only arg
-                logger.exception('Bad request exception: %r', e)
-                data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-                return self.build_error_response(request, data, **kwargs)
-            except InformationError as e:
-                logger.exception('Information error: %r', e)
-                response = self.build_error_response(
-                    request, { 'Messages': e.errors }, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-            
-            except ValidationError as e:
-                logger.exception('Validation error: %r', e)
-                response = self.build_error_response(
-                    request, { 'errors': e.errors }, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-            except django.core.exceptions.ValidationError as e:
-                logger.exception('Django validation error: %s', e)
-                response = self.build_error_response(
-                    request, { 'errors': e.message_dict }, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-                
-            except Exception as e:
-                logger.exception('Unhandled exception: %r', e)
-                if hasattr(e, 'response'):
-                    # A specific response was specified
-                    return e.response
-
-                logger.exception('Unhandled exception: %r', e)
-
-                # A real, non-expected exception.
-                # Handle the case where the full traceback is more helpful
-                # than the serialized error.
-                if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-                    logger.warn('raise tastypie full exception for %r', e)
-                    raise
-
-                # Rather than re-raising, we're going to things similar to
-                # what Django does. The difference is returning a serialized
-                # error message.
-                logger.exception('handle 500 error %r...', str(e))
-                return self._handle_500(request, e)
-
-        return wrapper
-
-    def dispatch_list(self, request, **kwargs):
-        """
-        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
-        the entire list of resources.
-
-        Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
-        return self.dispatch('list', request, **kwargs)
-
-    def dispatch_detail(self, request, **kwargs):
-        """
-        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) on
-        a single resource.
-
-        Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
-        return self.dispatch('detail', request, **kwargs)
-
-    def dispatch(self, request_type, request, **kwargs):
-        """
-        Override tastypie method to eliminate much unneeded functionality:
-        - 'allowed' methods
-        - HTTP_X_HTTP_METHOD_OVERRIDE
-        - throttling
-        - verification check of the response class 
-        Other modifications:
-        - use of the "downloadID" cookie
-        """
-        
-        # allowed_methods = getattr(
-        #     self._meta, "%s_allowed_methods" % request_type, None)
-        # 
-        # if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
-        #     request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
-        # 
-        # request_method = self.method_check(request, allowed=allowed_methods)
-        request_method = request.method.lower()
-        method = getattr(self, "%s_%s" 
-            % (request_method, request_type), None)
-
-        if method is None:
-            raise ImmediateHttpResponse(response=HttpNotImplemented())
-
-        self.is_authenticated(request)
-        # self.throttle_check(request)
-
-        # All clear. Process the request.
-        convert_post_to_put(request)
-        logger.info('calling method: %s_%s, kwargs: %r',
-            request_method, request_type,kwargs)
-        response = method(request, **kwargs)
-
-        # # Add the throttled request.
-        # self.log_throttled_access(request)
-
-        # # If what comes back isn't a ``HttpResponse``, assume that the
-        # # request was accepted and that some action occurred. This also
-        # # prevents Django from freaking out.
-        if not isinstance(response, HttpResponseBase):
-            return HttpNoContent()
-        
-        # Custom ICCB parameter: set cookie to tell the browser javascript
-        # UI that the download request is finished
-        downloadID = request.GET.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.debug('no downloadID: %s' % request.GET )
-
-        return response
+    
        

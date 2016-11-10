@@ -123,10 +123,10 @@ class DbApiResource(reports.api.ApiResource):
         return self.resource_resource
 
     
-    def build_schema(self):
+    def build_schema(self, user=None):
         logger.debug('build schema for: %r', self._meta.resource_name)
         return self.get_resource_resource()._get_resource_schema(
-            self._meta.resource_name)
+            self._meta.resource_name, user=user)
     
 
 class PlateLocationResource(DbApiResource):        
@@ -164,9 +164,8 @@ class PlateLocationResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
-        
-        logger.info('kwargs: %r', kwargs)
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -184,7 +183,6 @@ class PlateLocationResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -432,7 +430,7 @@ class PlateLocationResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -481,10 +479,13 @@ class PlateLocationResource(DbApiResource):
             return self.build_response(
                 request,  {'meta': meta }, response_class=HttpResponse, **kwargs)
             
-        
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
-        logger.info('patch platelocation, kwargs: %r, %r', deserialized, kwargs)
+        logger.info('patch platelocation')
+        schema = kwargs['schema']
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
 
         with transaction.atomic():
@@ -504,7 +505,8 @@ class PlateLocationResource(DbApiResource):
             
             copy_plate_ranges = deserialized.get(
                 'copy_plate_ranges', [])
-            all_plates = self._find_plates(copy_plate_ranges)
+            all_plates = self._find_plates(
+                schema['fields']['copy_plate_ranges']['regex'], copy_plate_ranges)
             
             # get the old plate locations, for logging
             plate_log_hash = {}
@@ -561,13 +563,13 @@ class PlateLocationResource(DbApiResource):
             
             return plate_logs
             
-    def _find_plates(self, copy_plate_ranges):
+    def _find_plates(self, regex_string, copy_plate_ranges):
         logger.info('find copy_plate_ranges: %r', copy_plate_ranges)
         # parse library_plate_ranges
-        schema = self.build_schema()
+#         schema = self.build_schema()
         
         # E.G. Regex: /(([^:]+):)?(\w+):(\d+)-(\d+)/
-        regex_string = schema['fields']['copy_plate_ranges']['regex']
+#         regex_string = schema['fields']['copy_plate_ranges']['regex']
         matcher = re.compile(regex_string)
         
         # Expand the copy_plate_ranges
@@ -705,9 +707,9 @@ class LibraryCopyPlateResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
         
-        logger.info('kwargs: %r', kwargs)
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
             logger.info('no library_short_name provided')
@@ -933,7 +935,6 @@ class LibraryCopyPlateResource(DbApiResource):
         
         return query
         
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -951,8 +952,6 @@ class LibraryCopyPlateResource(DbApiResource):
         # NOTE: loaded plates not being shown anymore
         # # FIXME: copyplatesloaded no longer works - 20160607
         # # because we are not creating "assay_plates" for screen results anymore
-        # # can this be modified to show virtual "plates" loaded?
-        # loaded_for_screen_id = param_hash.pop('loaded_for_screen_id', None)
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -1177,11 +1176,11 @@ class LibraryCopyPlateResource(DbApiResource):
             if set(['status_date','status_performed_by',
                 'status_performed_by_username']) | set(field_hash.keys()):
                 j = j.outerjoin(_status_apilogs,_plate_cte.c.key==_status_apilogs.c.key)
-#             if for_screen_id:
-#                 _subquery = \
-#                     self.get_screen_librarycopyplate_subquery(for_screen_id)
-#                 _subquery = _subquery.cte('screen_lcps')
-#                 j = j.join(_subquery, _subquery.c.plate_id == _p.c.plate_id)
+            # if for_screen_id:
+            #     _subquery = \
+            #         self.get_screen_librarycopyplate_subquery(for_screen_id)
+            #     _subquery = _subquery.cte('screen_lcps')
+            #     j = j.join(_subquery, _subquery.c.plate_id == _p.c.plate_id)
             # NOTE: not tracking loaded plates anymore
             # if loaded_for_screen_id:
             #     _subquery = \
@@ -1272,8 +1271,9 @@ class LibraryCopyPlateResource(DbApiResource):
             id_kwargs['plate_number'] = str(int(id_kwargs['plate_number'])).zfill(5)
         return id_kwargs
     
-    @un_cache
-    @transaction.atomic
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def batch_edit(self, request, **kwargs):
         '''
         Batch edit is like patch, except:
@@ -1313,8 +1313,6 @@ class LibraryCopyPlateResource(DbApiResource):
         if plate_info_data is not None:
             # Find all of the plates
             kwargs['search_data'] = deserialized.pop('search_data', {})
-            logger.info('batch_edit: %r, %r, %r', 
-                param_hash, deserialized, request)
             kwargs['includes'] = ['plate_id']
             original_data = self._get_list_response(request, **kwargs)
             
@@ -1336,8 +1334,6 @@ class LibraryCopyPlateResource(DbApiResource):
             logger.info('batch update complete, logging...')
             
             new_data = self._get_list_response(request, **kwargs)
-            
-            logger.info('new_data: %r', new_data)
             
             parent_log = self.make_log(request)
             parent_log.key = self._meta.resource_name
@@ -1379,8 +1375,6 @@ class LibraryCopyPlateResource(DbApiResource):
     
             # Find all of the plates
             kwargs['search_data'] = deserialized.pop('search_data', {})
-            logger.info('batch_edit: %r, %r, %r', 
-                param_hash, deserialized, request)
             original_data = self._get_list_response(request, **kwargs)
             
             if not original_data:
@@ -1426,10 +1420,13 @@ class LibraryCopyPlateResource(DbApiResource):
                 **kwargs)
             return response
     
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('patch obj, deserialized: %r', deserialized)
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
 
         id_kwargs = self.get_id(deserialized, **kwargs)
@@ -1716,6 +1713,7 @@ class ScreenResultResource(DbApiResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         facility_id = kwargs.get('screen_facility_id', None)
@@ -2004,7 +2002,6 @@ class ScreenResultResource(DbApiResource):
         else:
             logger.info('using cached well_query: %r', cachedQuery)
             
-            
         ######
         # Now that query_index table is populated, use it to build the 
         # output query
@@ -2081,7 +2078,6 @@ class ScreenResultResource(DbApiResource):
           
         return (field_hash, columns, stmt, count_stmt, cachedQuery)
     
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2217,12 +2213,12 @@ class ScreenResultResource(DbApiResource):
                 logger.info('do not use vocabularies: %r', param_hash)
             # FIXME: use closing wrapper
             conn = get_engine().connect()
-#             if logger.isEnabledFor(logging.DEBUG):
-            logger.info(
-                'excute stmt %r...',
-                str(stmt.compile(
-                    dialect=postgresql.dialect(),
-                    compile_kwargs={"literal_binds": True})))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.info(
+                    'excute stmt %r...',
+                    str(stmt.compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True})))
             result = conn.execute(stmt)
             logger.info('excuted stmt')
             if rowproxy_generator:
@@ -2446,7 +2442,7 @@ class ScreenResultResource(DbApiResource):
     
     def build_schema(
             self, screenresult=None, show_mutual_positives=False,
-            other_screens=[]):
+            other_screens=None, user=None):
         
         screen_facility_id = None
         if screenresult:
@@ -2459,12 +2455,12 @@ class ScreenResultResource(DbApiResource):
         
         if data is None:
             logger.info('not cached: %s', cache_key)
-            data = super(ScreenResultResource, self).build_schema()
+            data = super(ScreenResultResource, self).build_schema(user=user)
             
             if screenresult:
                 try:
                     well_schema = self.get_reagent_resource().build_schema(
-                        screenresult.screen.screen_type)
+                        screenresult.screen.screen_type, user=user)
                     newfields = {}
                     newfields.update(well_schema['fields'])
                     for key,field in newfields.items():
@@ -2599,14 +2595,12 @@ class ScreenResultResource(DbApiResource):
     @write_authorization
     @un_cache        
     def delete_list(self, request, **kwargs):
-        logger.info('delete screen result from list: %r', kwargs)
         return self.delete_detail(request, **kwargs)
     
     @write_authorization
     @un_cache
-    @transaction.atomic()
+    @transaction.atomic
     def delete_detail(self, request, **kwargs):
-        logger.info('deleting screen result %r', kwargs)
         if 'screen_facility_id' not in kwargs:
             raise BadRequest('screen_facility_id is required')
         screen_facility_id = kwargs['screen_facility_id']
@@ -2636,9 +2630,9 @@ class ScreenResultResource(DbApiResource):
         return tastypie.http.HttpNoContent()
             
     @write_authorization
-    @un_cache        
+    @un_cache 
+    @transaction.atomic       
     def patch_detail(self, request, **kwargs):
-        logger.info('patching screen result %r', kwargs)
         if 'screen_facility_id' not in kwargs:
             raise BadRequest('screen_facility_id is required')
         screen_facility_id = kwargs['screen_facility_id']
@@ -2658,7 +2652,7 @@ class ScreenResultResource(DbApiResource):
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
         self.clear_cache(all=True)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
 
         screen = Screen.objects.get(facility_id=screen_facility_id)
@@ -2897,7 +2891,7 @@ class ScreenResultResource(DbApiResource):
         logger.debug('rv_initializer: %r', rv_initializer)
         return rv_initializer
     
-    @transaction.atomic()
+    @transaction.atomic
     def create_result_values(
             self, screen_result, result_values, sheet_col_to_datacolumn,
             screenresult_log):
@@ -3124,7 +3118,7 @@ class ScreenResultResource(DbApiResource):
     #     # in this screen result
         
 
-    @transaction.atomic()
+    @transaction.atomic
     def create_data_loading_statistics(self, screen_result):
         with get_engine().connect() as conn:
             # NOTE: mixing Django connection with SQA connection
@@ -3202,6 +3196,7 @@ class DataColumnResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         data_column_id = kwargs.get('data_column_id', None)
@@ -3218,7 +3213,6 @@ class DataColumnResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
         
         logger.info('build datacolumn response...')
@@ -3441,13 +3435,14 @@ class DataColumnResource(DbApiResource):
         _dict['data_column_id'] = dc.data_column_id
         return (columnName, _dict)
 
-
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache
+    @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
         logger.debug('patch_obj %s', deserialized)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         # FIXME: default values
         initializer_dict = {
@@ -3530,6 +3525,8 @@ class CopyWellResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
+
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         library_short_name = kwargs.get('library_short_name', None)
@@ -3554,7 +3551,6 @@ class CopyWellResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -3724,25 +3720,23 @@ class CopyWellResource(DbApiResource):
             logger.exception('on get list')
             raise e  
 
-    @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_list must be implemented')
                 
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete_obj is not implemented')
     
-#     @write_authorization
-#     @un_cache
-#     @transaction.atomic
-#     def patch_list(self, request, **kwargs):
-#         return DbApiResource.patch_list(self, request, **kwargs)
-    
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         # TODO: optimize for list inputs (see well.patch)
         logger.debug('patch_obj %s', deserialized)
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
@@ -3875,6 +3869,7 @@ class CherryPickRequestResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
@@ -3884,12 +3879,12 @@ class CherryPickRequestResource(DbApiResource):
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4115,6 +4110,7 @@ class CherryPickPlateResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
@@ -4134,12 +4130,12 @@ class CherryPickPlateResource(DbApiResource):
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4362,9 +4358,9 @@ class LibraryCopyResource(DbApiResource):
 
     def dispatch_librarycopyplateview(self, request, **kwargs):
 
-#         kwargs['copy_name'] = kwargs.pop('name')
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
         
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         library_short_name = kwargs.get(u'library_short_name', None)
@@ -4379,12 +4375,12 @@ class LibraryCopyResource(DbApiResource):
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
     
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4610,18 +4606,22 @@ class LibraryCopyResource(DbApiResource):
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_list must be implemented')
                 
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
 
         id_kwargs = self.get_id(deserialized, **kwargs)
         ScreensaverUser.objects.get(**id_kwargs).delete()
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache
+    @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
         logger.info('patch_obj %s', deserialized)
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
 
@@ -4829,6 +4829,7 @@ class PublicationResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ] 
         
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         publication_id = kwargs.get('publication_id', None)
@@ -4845,7 +4846,6 @@ class PublicationResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4856,7 +4856,7 @@ class PublicationResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
         
         logger.info('params: %r', param_hash.keys())
         
@@ -4970,7 +4970,7 @@ class PublicationResource(DbApiResource):
         param_hash.update(kwargs)
         logger.info('create publication: %s' % param_hash)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         id_attribute = resource = schema['id_attribute']
 
@@ -5099,7 +5099,7 @@ class PublicationResource(DbApiResource):
     def delete_detail(self, request, **kwargs):
 
         logger.info('delete publication...')
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
     
         publication_id = kwargs.get('publication_id', None)
@@ -5243,7 +5243,7 @@ class AttachedFileResource(DbApiResource):
         logger.info('post attached file')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         id_attribute = schema['id_attribute']
         initializer_dict = {}
@@ -5389,7 +5389,7 @@ class AttachedFileResource(DbApiResource):
 
         af.delete()
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = resource = schema['id_attribute']
 
         log = self.make_log(request, **kwargs)
@@ -5405,6 +5405,7 @@ class AttachedFileResource(DbApiResource):
 
         return tastypie.http.HttpNoContent()
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         attached_file_id = kwargs.get('attached_file_id', None)
@@ -5421,7 +5422,6 @@ class AttachedFileResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -5432,7 +5432,7 @@ class AttachedFileResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -5609,6 +5609,7 @@ class UserAgreementResource(AttachedFileResource):
         raise NotImplementedError(
             "Patch detail is not implemented for AttachedFiles")
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         attached_file_id = kwargs.get('attached_file_id', None)
@@ -5633,7 +5634,6 @@ class UserAgreementResource(AttachedFileResource):
                 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.info('post user agreement: %s' % param_hash)
         
         type = param_hash.pop('type', None)
         if not type:
@@ -5845,11 +5845,12 @@ class ActivityResource(DbApiResource):
             self.screen_resource = ScreenResource()
         return self.screen_resource
 
-    def build_schema(self):
+    def build_schema(self, user=None):
          
-        schema = super(ActivityResource, self).build_schema()
+        schema = super(ActivityResource, self).build_schema(user=user)
         return schema
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
  
         activity_id = kwargs.pop('activity_id', None)
@@ -5862,6 +5863,7 @@ class ActivityResource(DbApiResource):
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
@@ -6120,7 +6122,6 @@ class ActivityResource(DbApiResource):
         
         return (field_hash, columns, stmt, count_stmt)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -6131,7 +6132,7 @@ class ActivityResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -6195,9 +6196,6 @@ class CherryPickLiquidTransferResource(ActivityResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
     
-    def build_schema(self):
-        return DbApiResource.build_schema(self)
-
     def get_custom_columns(self, alias_qualifier):
         '''
         Convenience method for subclasses: reusable custom columns
@@ -6301,9 +6299,6 @@ class CherryPickScreeningResource(ActivityResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
-    def build_schema(self):
-        return DbApiResource.build_schema(self)
-
     def get_query(self, param_hash):
         
         # general setup
@@ -6380,7 +6375,7 @@ class CherryPickScreeningResource(ActivityResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
          
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -6459,15 +6454,12 @@ class LibraryScreeningResource(ActivityResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
-    def build_schema(self):
-        return DbApiResource.build_schema(self)
-
-    def get_query(self, param_hash):
+    def get_query(self, schema, param_hash):
         '''  LibraryScreeningResource
         '''
 
         # general setup
-        schema = self.build_schema()
+#         schema = self.build_schema()
         
         manual_field_includes = set(param_hash.get('includes', []))
         
@@ -6595,14 +6587,14 @@ class LibraryScreeningResource(ActivityResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
          
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
  
         try:
              
-            (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
+            (field_hash, columns, stmt, count_stmt) = self.get_query(schema, param_hash)
              
             rowproxy_generator = None
             if use_vocab is True:
@@ -6756,7 +6748,7 @@ class LibraryScreeningResource(ActivityResource):
     def build_patch_detail(self, request, deserialized, log=None, **kwargs):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -6805,7 +6797,7 @@ class LibraryScreeningResource(ActivityResource):
     def build_post_detail(self, request, deserialized, log=None, **kwargs):
         kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
         logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
@@ -6862,21 +6854,12 @@ class LibraryScreeningResource(ActivityResource):
         
         return _data
 
-        
-#         if not self._meta.always_return_data:
-#             return HttpResponse(status=200)
-#         else:
-#             kwargs_for_log['includes'] = '*'
-#             response = self.get_detail(request,**kwargs_for_log)
-#             response.status_code = 200
-#             return response
-
-
-
-        
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         ls_log = kwargs.get('log', None)
@@ -6947,7 +6930,7 @@ class LibraryScreeningResource(ActivityResource):
                     key='library_plates_screened', 
                     msg='required')
             plate_meta = self._set_assay_plates(
-                request,
+                request, schema, 
                 library_screening, library_plates_screened,
                 current_volume_tranferred_per_well, 
                 new_volume_transferred_per_well,
@@ -7004,8 +6987,8 @@ class LibraryScreeningResource(ActivityResource):
             # library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
             screen.save()
     
-    @transaction.atomic()    
-    def _set_assay_plates(self, request, library_screening, library_plates_screened,
+    @transaction.atomic    
+    def _set_assay_plates(self, request, schema, library_screening, library_plates_screened,
         current_volume_tranferred_per_well, new_volume_transferred_per_well,
         ls_log):
         '''
@@ -7018,7 +7001,7 @@ class LibraryScreeningResource(ActivityResource):
         logger.info('set assay plates screened for: %r, %r', 
             library_screening, library_plates_screened)
         # parse library_plate_ranges
-        schema = self.build_schema()
+#         schema = self.build_schema()
         
         # E.G. Regex: /(([^:]+):)?(\w+):(\d+)-(\d+)/
         regex_string = schema['fields']['library_plates_screened']['regex']
@@ -7265,7 +7248,9 @@ class LibraryScreeningResource(ActivityResource):
             API_MSG_SCREENING_DELETED_PLATE_COUNT: len(deleted_plates)
             }
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, log=None, **kwargs):
         
         raise NotImplementedError(
@@ -7343,13 +7328,12 @@ class ServiceActivityResource(ActivityResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
 
-    def build_schema(self):
-        return DbApiResource.build_schema(self)
-    
-    @transaction.atomic()
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         # TODO: wrapper for parsing
@@ -7431,6 +7415,9 @@ class ServiceActivityResource(ActivityResource):
             logger.exception('on patch_obj')
             raise e
     
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def delete_obj(self, request, deserialized, **kwargs):
 
         activity_id = kwargs.get('activity_id', None)
@@ -7825,6 +7812,7 @@ class ScreenResource(DbApiResource):
         kwargs['visibilities'] = 'billing'
         return self.dispatch('detail', request, **kwargs)    
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
@@ -7834,16 +7822,17 @@ class ScreenResource(DbApiResource):
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
         return self.build_list_response(request, **kwargs)
 
-    def get_query(self, param_hash):
+    def get_query(self, schema, param_hash):
         
         DEBUG_SCREEN = False or logger.isEnabledFor(logging.DEBUG)
-        schema = self.build_schema()
+#         schema = self.build_schema()
         screens_for_username = param_hash.get('screens_for_username', None)
         # general setup
 
@@ -8282,7 +8271,7 @@ class ScreenResource(DbApiResource):
                 'experimental_well_count': 
                     literal_column('screen_result.experimental_well_count'),
                 'pin_transfer_approved_by_username': literal_column("'tbd'"),
-                'pin_transfer_date_approved': literal_column("'tbd'"),
+                'pin_transfer_date_approved': literal_column("'0000-00-00'"),
                 'pin_transfer_comments': literal_column("'tbd'"),
                 'keywords': (
                     select([
@@ -8336,21 +8325,8 @@ class ScreenResource(DbApiResource):
                 screener_role_cte.c.username == screens_for_username)
 
         # general setup
-#         facility_id_ordering = set(['facility_id','-facility_id']) & set(order_params)
-#         if facility_id_ordering:
-#             order_params = (set(order_params)-facility_id_ordering)
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-#         if 'facility_id' in order_params:
-#             stmt = stmt.order_by(text(
-#                 "(substring(facility_id, '^[0-9]+'))::int -- cast to integer "
-#                 ",substring(facility_id, '[^0-9_].*$'); -- works as text)) "))
-#         if '-facility_id' in order_params:
-#             stmt = stmt.order_by(text(
-#                 "(substring(facility_id, '^[0-9]+'))::int desc -- cast to integer "
-#                 ",substring(facility_id, '[^0-9_].*$'); -- works as text)) "))
-         
-#         stmt = stmt.order_by('facility_id')
         if DEBUG_SCREEN: 
             logger.info(
                 'stmt: %s',
@@ -8360,7 +8336,6 @@ class ScreenResource(DbApiResource):
           
         return (field_hash, columns, stmt, count_stmt)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
         ''' 
         ScreenResource
@@ -8375,14 +8350,14 @@ class ScreenResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
          
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
  
         try:
              
-            (field_hash, columns, stmt, count_stmt) = self.get_query(param_hash)
+            (field_hash, columns, stmt, count_stmt) = self.get_query(schema, param_hash)
              
             rowproxy_generator = None
             if use_vocab is True:
@@ -8467,7 +8442,9 @@ class ScreenResource(DbApiResource):
         )
         return screener_roles
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, **kwargs)
@@ -8502,7 +8479,7 @@ class ScreenResource(DbApiResource):
         POST is used to create or update a resource; not idempotent;
         - The LIMS client will use POST to create exclusively
         '''
-        logger.info('post_detail, screen: %r', kwargs)
+        logger.info('post_detail, screen')
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
@@ -8537,6 +8514,9 @@ class ScreenResource(DbApiResource):
         
         return self.patch_detail(request,**kwargs)
         
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
@@ -8702,10 +8682,9 @@ class StudyResource(ScreenResource):
     def __init__(self, **kwargs):
         super(StudyResource, self).__init__(**kwargs)
             
-    def build_schema(self):
+    def build_schema(self, user=None):
         # Bypass Screen schema
-        schema = DbApiResource.build_schema(self)
-        logger.debug('schema: %r', schema)
+        schema = DbApiResource.build_schema(self, user=user)
         return schema
 
     
@@ -8754,6 +8733,7 @@ class UserChecklistItemResource(DbApiResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         username = kwargs.get('username', None)
@@ -8769,12 +8749,12 @@ class UserChecklistItemResource(DbApiResource):
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
         
+    @read_authorization
     def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -8785,7 +8765,7 @@ class UserChecklistItemResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -8932,14 +8912,19 @@ class UserChecklistItemResource(DbApiResource):
             logger.exception('on get list')
             raise e  
 
+    @write_authorization
+    @un_cache
+    @transaction.atomic
     def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError(
             'delete obj is not implemented for UserChecklistItem')
     
+    @write_authorization
+    @un_cache
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
         logger.info('patch checklist item: %r', deserialized)
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         # TODO: wrapper for parsing
@@ -9105,9 +9090,9 @@ class ScreensaverUserResource(DbApiResource):
     def dispatch_user_serviceactivitydetailview(self, request, **kwargs):
         return ServiceActivityResource().dispatch('detail', request, **kwargs)    
     
-    def build_schema(self):
+    def build_schema(self, user=None):
         
-        schema = super(ScreensaverUserResource, self).build_schema()
+        schema = super(ScreensaverUserResource, self).build_schema(user=user)
         sub_schema = self.get_user_resource().build_schema();
         fields = {}
         fields.update(sub_schema['fields'])
@@ -9174,13 +9159,15 @@ class ScreensaverUserResource(DbApiResource):
             self.user_resource = UserResource()
         return self.user_resource
         
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         screensaver_user_id = kwargs.get('screensaver_user_id', None)
         username = kwargs.get('username', None)
-        if not (screensaver_user_id or username):
+        ecommons_id = kwargs.get('ecommons_id', None)
+        if screensaver_user_id is None and username is None and ecommons_id is None:
             logger.info(
-                'no screensaver_user_id or username provided: %r', kwargs)
+                'no screensaver_user_id, username or ecommons_id provided: %r', kwargs.keys())
             raise NotImplementedError(
                 'must provide a screensaver_user_id or username parameter')
 
@@ -9194,7 +9181,6 @@ class ScreensaverUserResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -9205,16 +9191,17 @@ class ScreensaverUserResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = self.build_schema()
+        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
-        screensaver_user_id = param_hash.pop('screensaver_user_id', None)
-        if screensaver_user_id:
-            param_hash['screensaver_user_id__eq'] = screensaver_user_id
-        username = param_hash.pop('username', None)
-        if username:
-            param_hash['username__eq'] = username
+#         screensaver_user_id = param_hash.pop('screensaver_user_id', None)
+#         if screensaver_user_id:
+#             param_hash['screensaver_user_id__eq'] = screensaver_user_id
+#         username = param_hash.pop('username', None)
+#         if username:
+#             param_hash['username__eq'] = username
+            
 
         try:
             
@@ -9364,11 +9351,12 @@ class ScreensaverUserResource(DbApiResource):
             logger.exception('on get_list')
             raise e  
 
-    @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_list must be implemented')
                 
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, **kwargs)
@@ -9389,10 +9377,12 @@ class ScreensaverUserResource(DbApiResource):
                 raise ValueError, '%s, nor was an ecommons_id specified' % e
         return id_kwargs
                 
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache
+    @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
-        schema = self.build_schema()
+        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         # TODO: wrapper for parsing
@@ -9638,7 +9628,7 @@ class SilencingReagentResource(DbApiResource):
         
         '''
         logger.info('build silencing reagent columns...')
-        DEBUG_BUILD_COLS = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
         
         bridge = self.bridge
         
@@ -10328,13 +10318,13 @@ class ReagentResource(DbApiResource):
                 'cannot build schema - library def needed'
                 'no library found for short_name: %r' % library_short_name)
                 
-    def build_schema(self, library_classification=None):
+    def build_schema(self, library_classification=None, user=None):
         logger.info('build reagent schema for library_classification: %r',
             library_classification)
-        schema = deepcopy(super(ReagentResource, self).build_schema())
+        schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
         if library_classification:
             sub_data = self.get_reagent_resource(
-                library_classification).build_schema()
+                library_classification).build_schema(user=user)
             
             newfields = {}
             newfields.update(sub_data['fields'])
@@ -10345,7 +10335,7 @@ class ReagentResource(DbApiResource):
                 if k != 'fields' and k in sub_data:
                     schema[k] = sub_data[k]
             
-        well_schema = WellResource().build_schema()
+        well_schema = WellResource().build_schema(user=user)
         schema['fields'].update(well_schema['fields'])
 
         logger.debug('schema: %r', schema)
@@ -10557,28 +10547,22 @@ class WellResource(DbApiResource):
                 'cannot build schema - library def needed'
                 'no library found for short_name: %r' % library_short_name)
                 
-    def build_schema(self, library_classification=None):
-        data = super(WellResource, self).build_schema()
+    def build_schema(self, library_classification=None, user=None):
+
+        data = super(WellResource, self).build_schema(user=user)
         
         if library_classification:
             sub_data = self.get_reagent_resource().build_schema(
-                library_classification=library_classification)
+                library_classification=library_classification, user=user)
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])
             data['fields'] = newfields
             
             data['content_types'] = sub_data['content_types']
-#         temp = [ 
-#             x.title.lower() 
-#                 for x in 
-#                 Vocabulary.objects.all().filter(scope='library.well_type')]
-#         data['extraSelectorOptions'] = { 
-#             'label': 'Type',
-#             'searchColumn': 'library_well_type',
-#             'options': temp }
         return data
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         well_id = kwargs.get('well_id', None)
@@ -10650,7 +10634,7 @@ class WellResource(DbApiResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
-        schema = self.build_schema()
+        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
@@ -10819,7 +10803,6 @@ class WellResource(DbApiResource):
             return self.build_response(
                 request,  {'meta': meta }, response_class=HttpResponse, **kwargs)
 
-    @transaction.atomic()    
     def patch_obj(self, request, deserialized, **kwargs):
         
         raise NotImplementedError('patch obj must be implemented')
@@ -11021,7 +11004,6 @@ class LibraryResource(DbApiResource):
  
     def dispatch_library_copyplateview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
-        logger.info('kwargs: %r', kwargs)
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
 
     def dispatch_library_copywellview(self, request, **kwargs):
@@ -11040,6 +11022,7 @@ class LibraryResource(DbApiResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
 
         library_short_name = kwargs.pop('short_name', None)
@@ -11050,7 +11033,6 @@ class LibraryResource(DbApiResource):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
-        logger.info('get_detail: %r', kwargs)
         return self.build_list_response(request, **kwargs)
         
     @read_authorization
@@ -11059,7 +11041,6 @@ class LibraryResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    @read_authorization
     def build_list_response(self, request, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -11277,13 +11258,17 @@ class LibraryResource(DbApiResource):
                 conn.execute(query)]
             return library_ids
        
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, **kwargs)
         Library.objects.get(**id_kwargs).delete()
     
-    @transaction.atomic()    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         logger.info('patch library: %r', deserialized)
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)

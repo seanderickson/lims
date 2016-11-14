@@ -4,13 +4,15 @@
 # - useful if the HTTP server doesn't support basic authentication
 # TODO: we can probably do this with curl and a form definition?
 ###
-import requests
-from requests import Request
 import argparse
-import logging
-from urlparse import urlparse
-import sys
 import getpass
+import logging
+import sys
+from urlparse import urlparse
+
+from requests import Request
+import requests
+
 
 DEBUG=False
 LOGIN_FORM = '/db/login/'
@@ -61,9 +63,9 @@ def get_logged_in_session(username, password, base_url,
     prepped = s.prepare_request(r)
     
     # Post the login request to the url
-    logger.info(str(('post the login request', r.url, r.method)))
+    logger.info('post the login request: url: %r, method: %r', r.url, r.method)
     r = s.send(prepped)
-    logger.info(str(('response', r.status_code)))
+    logger.info('response code: %r', r.status_code)
     if DEBUG:
         sys.stderr.write('login response: %s\n' % r.content )
     
@@ -110,12 +112,12 @@ def delete(url, request_or_session, headers):
     if r.status_code not in [204]:
         raise Exception("Error: status: %s, %s" 
                         % (r.status_code, r.content))
-    logger.info(str(('DELETE', url, r.status_code)))
+    logger.info('DELETE: %r, response.status_code: %r', url, r.status_code)
     return r
 
-
 def get(url,request_or_session,headers): 
-    logger.info(str(('GET', url)))
+
+    logger.info('GET: %r', url)
     r = request_or_session.get(url,headers=headers)
     
     if r.status_code not in [200]:
@@ -123,10 +125,12 @@ def get(url,request_or_session,headers):
                         % (r.status_code, r.content))
     return r
        
-    
-def put(url,request_or_session,headers ):
+def put(url, request_or_session, file, headers=None ):
+
     with open(file) as f:
         
+        if headers == None:
+            headers = {}
         headers['Referer']=url
         headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
         if DEBUG:
@@ -146,9 +150,12 @@ def put(url,request_or_session,headers ):
                             % (r.status_code, r.headers, r.content))
         return r
     
-def patch(url,request_or_session,file, headers={} ):
+def patch(url,request_or_session,file, headers=None ):
+    
     with open(file) as f:
         
+        if headers == None:
+            headers = {}
         headers['Referer']=url
         headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
         if DEBUG:
@@ -211,8 +218,6 @@ if __name__ == "__main__":
             header = x.split(":")
             headers[header[0]]=header[1]
     
-    logger.info(str(('headers: ', headers)))
-
     url = args.url
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)

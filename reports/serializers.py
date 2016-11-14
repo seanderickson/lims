@@ -43,7 +43,7 @@ class BaseSerializer(object):
     def __init__(self, content_types=None):
 
         self.content_types = content_types or {}    
-        content_types['json'] = JSON_MIMETYPE
+        self.content_types['json'] = JSON_MIMETYPE
 
     @staticmethod
     def get_content(resp):

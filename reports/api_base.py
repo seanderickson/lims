@@ -16,14 +16,17 @@ from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent,\
     HttpApplicationError
 from tastypie.resources import Resource, convert_post_to_put, sanitize
 
-from reports import HEADER_APILOG_COMMENT, ValidationError, InformationError, _now
-from reports.models import ApiLog
+from reports import ValidationError, InformationError
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.signals import got_request_exception
-import six
-
+from django.utils import six
+from reports.serializers import BaseSerializer
+from tastypie.authentication import Authentication
+from tastypie.cache import NoCache
+from django.conf.urls import url, patterns
+from tastypie.utils.urls import trailing_slash
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +48,335 @@ def un_cache(_func):
 
     return _inner
 
+class Authorization(object):
 
-class IccblBaseResource(Resource):
+    def _is_resource_authorized(self, resource_name, user, permission_type):
+        raise NotImplementedError(
+            '_is_resource_authorized must be implemented for %s, %s, %s',
+            resource_name, user, permission_type)
+
+class ResourceOptions(object):
+    """
+    A configuration class for ``Resource``.
+
+    Provides sane defaults and the logic needed to augment these settings with
+    the internal ``class Meta`` used on ``Resource`` subclasses.
+    """
+    serializer = BaseSerializer()
+    authentication = Authentication()
+    authorization = Authorization()
+    cache = NoCache()
+    api_name = None
+    resource_name = None
+    alt_resource_name = None
+    object_class = None
+    queryset = None
+    always_return_data = False
+    collection_name = 'objects'
+    detail_uri_name = 'pk'
+
+    def __new__(cls, meta=None):
+        overrides = {}
+
+        # Handle overrides.
+        if meta:
+            for override_name in dir(meta):
+                # No internals please.
+                if not override_name.startswith('_'):
+                    overrides[override_name] = getattr(meta, override_name)
+
+        if six.PY3:
+            return object.__new__(type('ResourceOptions', (cls,), overrides))
+        else:
+            return object.__new__(type(b'ResourceOptions', (cls,), overrides))
+
+class DeclarativeMetaclass(type):
+
+    def __new__(cls, name, bases, attrs):
+        new_class = super(DeclarativeMetaclass, cls).__new__(cls, name, bases, attrs)
+        opts = getattr(new_class, 'Meta', None)
+        new_class._meta = ResourceOptions(opts)
+
+        return new_class
+
+
+class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     """
     Override tastypie.resources.Resource:
     -- use StreamingHttpResponse or the HttpResponse
     -- control application specific caching
     """
+
+    def __init__(self, api_name=None):
+
+        if not api_name is None:
+            self._meta.api_name = api_name
+
+    def base_urls(self):
+        """
+        The standard URLs this ``Resource`` should respond to.
+        """
+        return [
+            url(r"^(?P<resource_name>%s)%s$" % (
+                self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+            url(r"^(?P<resource_name>%s)/schema%s$" % (
+                self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<%s>.*?)%s$" % (
+                self._meta.resource_name, self._meta.detail_uri_name, 
+                trailing_slash()), self.wrap_view('dispatch_detail'), 
+                name="api_dispatch_detail"),
+        ]
+    def prepend_urls(self):
+        """
+        A hook for adding your own URLs or matching before the default URLs.
+        """
+        return []
+
+    @property
+    def urls(self):
+        """
+        The endpoints this ``Resource`` responds to.
+
+        Mostly a standard URLconf, this is suitable for either automatic use
+        when registered with an ``Api`` class or for including directly in
+        a URLconf should you choose to.
+        """
+        urls = self.prepend_urls()
+        urls += self.base_urls()
+        urlpatterns = patterns('',
+            *urls
+        )
+        return urlpatterns
+    
+    def is_authenticated(self, request):
+        """
+        Handles checking if the user is authenticated and dealing with
+        unauthenticated users.
+
+        Mostly a hook, this uses class assigned to ``authentication`` from
+        ``Resource._meta``.
+        """
+        # Authenticate the request as needed.
+        auth_result = self._meta.authentication.is_authenticated(request)
+
+        if isinstance(auth_result, HttpResponse):
+            raise ImmediateHttpResponse(response=auth_result)
+
+        if not auth_result is True:
+            raise ImmediateHttpResponse(response=http.HttpUnauthorized())
+
+    def error_response(self, request, errors, response_class=None):
+        """
+        Extracts the common "which-format/serialize/return-error-response"
+        cycle.
+
+        Should be used as much as possible to return errors.
+        """
+        if response_class is None:
+            response_class = http.HttpBadRequest
+
+        desired_format = None
+
+        if request:
+            if request.GET.get('callback', None) is None:
+                try:
+                    desired_format = self.determine_format(request)
+                except BadRequest:
+                    pass  # Fall through to default handler below
+            else:
+                # JSONP can cause extra breakage.
+                desired_format = 'application/json'
+
+        if not desired_format:
+            desired_format = self._meta.default_format
+
+        try:
+            serialized = self.serialize(request, errors, desired_format)
+        except BadRequest as e:
+            error = "Additional errors occurred, but serialization of those errors failed."
+
+            if settings.DEBUG:
+                error += " %s" % e
+
+            return response_class(content=error, content_type='text/plain')
+
+        return response_class(
+            content=serialized, content_type=build_content_type(desired_format))
+    
+    def dispatch_list(self, request, **kwargs):
+        """
+        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
+        the entire list of resources.
+
+        Relies on ``Resource.dispatch`` for the heavy-lifting.
+        """
+        return self.dispatch('list', request, **kwargs)
+
+    def dispatch_detail(self, request, **kwargs):
+        """
+        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) on
+        a single resource.
+
+        Relies on ``Resource.dispatch`` for the heavy-lifting.
+        """
+        return self.dispatch('detail', request, **kwargs)
+
+    def dispatch(self, request_type, request, **kwargs):
+        """
+        From original Tastypie structure:
+        - lookup the API method
+        - authenticate
+        Other modifications:
+        - use of the "downloadID" cookie
+        """
+        
+        request_method = request.method.lower()
+        method = getattr(self, "%s_%s" 
+            % (request_method, request_type), None)
+
+        if method is None:
+            raise ImmediateHttpResponse(response=HttpNotImplemented())
+
+#         self.is_authenticated(request)
+        convert_post_to_put(request)
+        logger.info('calling method: %s.%s_%s', 
+            self._meta.resource_name, request_method, request_type)
+        response = method(request, **kwargs)
+
+        # # If what comes back isn't a ``HttpResponse``, assume that the
+        # # request was accepted and that some action occurred. This also
+        # # prevents Django from freaking out.
+        if not isinstance(response, HttpResponseBase):
+            return HttpNoContent()
+        
+        # Custom ICCB parameter: set cookie to tell the browser javascript
+        # UI that the download request is finished
+        downloadID = request.GET.get('downloadID', None)
+        if downloadID:
+            logger.info('set cookie "downloadID" %r', downloadID )
+            response.set_cookie('downloadID', downloadID)
+        else:
+            logger.debug('no downloadID: %s' % request.GET )
+
+        return response
+
+    def wrap_view(self, view):
+        """
+        Override the tastypie implementation to handle our own ValidationErrors.
+        """
+
+        @csrf_exempt
+        def wrapper(request, *args, **kwargs):
+            DEBUG_WRAPPER = True
+            try:
+                callback = getattr(self, view)
+                if DEBUG_WRAPPER:
+                    msg = ()
+                    if kwargs:
+                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
+                            if len(str(kwargs[key]))<100]
+                    logger.info('callback: %r, %r', view, msg)
+                    logger.info('request: %r', request)
+                else:
+                    logger.info('callback: %r, %r', callback, view)
+                
+                self.is_authenticated(request)
+        
+                response = callback(request, *args, **kwargs)
+                # Our response can vary based on a number of factors, use
+                # the cache class to determine what we should ``Vary`` on so
+                # caches won't return the wrong (cached) version.
+                varies = getattr(self._meta.cache, "varies", [])
+
+                if varies:
+                    patch_vary_headers(response, varies)
+
+                if self._meta.cache.cacheable(request, response):
+                    if self._meta.cache.cache_control():
+                        # If the request is cacheable and we have a
+                        # ``Cache-Control`` available then patch the header.
+                        patch_cache_control(response, **self._meta.cache.cache_control())
+
+                if request.is_ajax() and not response.has_header("Cache-Control"):
+                    # IE excessively caches XMLHttpRequests, so we're disabling
+                    # the browser cache here.
+                    # See http://www.enhanceie.com/ie/bugs.asp for details.
+                    patch_cache_control(response, no_cache=True)
+
+                return response
+            except BadRequest as e:
+                # The message is the first/only arg
+                logger.exception('Bad request exception: %r', e)
+                data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
+                return self.build_error_response(request, data, **kwargs)
+            except InformationError as e:
+                logger.exception('Information error: %r', e)
+                response = self.build_error_response(
+                    request, { 'Messages': e.errors }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+            
+            except ValidationError as e:
+                logger.exception('Validation error: %r', e)
+                response = self.build_error_response(
+                    request, { 'errors': e.errors }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+            except django.core.exceptions.ValidationError as e:
+                logger.exception('Django validation error: %s', e)
+                response = self.build_error_response(
+                    request, { 'errors': e.message_dict }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+                
+            except Exception as e:
+                logger.exception('Unhandled exception: %r', e)
+                if hasattr(e, 'response'):
+                    # A specific response was specified
+                    return e.response
+
+                logger.exception('Unhandled exception: %r', e)
+
+                # A real, non-expected exception.
+                # Handle the case where the full traceback is more helpful
+                # than the serialized error.
+                if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+                    logger.warn('raise tastypie full exception for %r', e)
+                    raise
+
+                # Rather than re-raising, we're going to things similar to
+                # what Django does. The difference is returning a serialized
+                # error message.
+                logger.exception('handle 500 error %r...', str(e))
+                return self._handle_500(request, e)
+
+        return wrapper
 
     def clear_cache(self):
         logger.debug('clearing the cache from resource: %s (all caches cleared)' 
@@ -207,124 +532,11 @@ class IccblBaseResource(Resource):
 
         # Prep the data going out.
         data = {
-            "error_message": getattr(settings, 'TASTYPIE_CANNED_ERROR', "Sorry, this request could not be processed. Please try again later."),
+            "error_message": getattr(
+                settings, 
+                'TASTYPIE_CANNED_ERROR', 
+                "Sorry, this request could not be processed. Please try again later."),
         }
         return self.build_error_response(request, data, response_class=response_class)
         
-#     def wrap_view(self, view):
-#         """
-#         Override the tastypie implementation to handle our own ValidationErrors.
-#         """
-# 
-#         @csrf_exempt
-#         def wrapper(request, *args, **kwargs):
-#             DEBUG_WRAPPER = True
-#             try:
-#                 callback = getattr(self, view)
-#                 if DEBUG_WRAPPER:
-#                     msg = ()
-#                     if kwargs:
-#                         msg = [ (key,kwargs[key]) for key in kwargs.keys() 
-#                             if len(str(kwargs[key]))<100]
-#                     logger.info('callback: %r, %r', view, msg)
-#                     logger.info('request: %r', request)
-#                 else:
-#                     logger.info('callback: %r, %r', callback, view)
-#                 
-#                 response = callback(request, *args, **kwargs)
-#                 # Our response can vary based on a number of factors, use
-#                 # the cache class to determine what we should ``Vary`` on so
-#                 # caches won't return the wrong (cached) version.
-#                 varies = getattr(self._meta.cache, "varies", [])
-# 
-#                 if varies:
-#                     patch_vary_headers(response, varies)
-# 
-#                 if self._meta.cache.cacheable(request, response):
-#                     if self._meta.cache.cache_control():
-#                         # If the request is cacheable and we have a
-#                         # ``Cache-Control`` available then patch the header.
-#                         patch_cache_control(response, **self._meta.cache.cache_control())
-# 
-#                 if request.is_ajax() and not response.has_header("Cache-Control"):
-#                     # IE excessively caches XMLHttpRequests, so we're disabling
-#                     # the browser cache here.
-#                     # See http://www.enhanceie.com/ie/bugs.asp for details.
-#                     patch_cache_control(response, no_cache=True)
-# 
-#                 return response
-#             except BadRequest as e:
-#                 logger.exception('bad request...')
-#                 # for BadRequest, the message is the first/only arg
-#                 logger.exception('Bad request exception: %r', e)
-#                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-#                 return self.build_error_response(request, data, **kwargs)
-#             except InformationError as e:
-#                 logger.exception('Information error: %r', e)
-#                 response = self.build_error_response(
-#                     request, { 'Messages': e.errors }, **kwargs)
-#                 if 'xls' in response['Content-Type']:
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % 'errors'
-#                     downloadID = request.GET.get('downloadID', None)
-#                     if downloadID:
-#                         logger.info('set cookie "downloadID" %r', downloadID )
-#                         response.set_cookie('downloadID', downloadID)
-#                     else:
-#                         logger.debug('no downloadID: %s' % request.GET )
-#                 return response
-#             
-#             except ValidationError as e:
-#                 logger.exception('Validation error: %r', e)
-#                 response = self.build_error_response(
-#                     request, { 'errors': e.errors }, **kwargs)
-#                 if 'xls' in response['Content-Type']:
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % 'errors'
-#                     downloadID = request.GET.get('downloadID', None)
-#                     if downloadID:
-#                         logger.info('set cookie "downloadID" %r', downloadID )
-#                         response.set_cookie('downloadID', downloadID)
-#                     else:
-#                         logger.debug('no downloadID: %s' % request.GET )
-#                 return response
-#             except django.core.exceptions.ValidationError as e:
-#                 logger.exception('Django validation error: %s', e)
-#                 response = self.build_error_response(
-#                     request, { 'errors': e.message_dict }, **kwargs)
-#                 if 'xls' in response['Content-Type']:
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % 'errors'
-#                     downloadID = request.GET.get('downloadID', None)
-#                     if downloadID:
-#                         logger.info('set cookie "downloadID" %r', downloadID )
-#                         response.set_cookie('downloadID', downloadID)
-#                     else:
-#                         logger.debug('no downloadID: %s' % request.GET )
-#                 return response
-#                 
-#             except Exception as e:
-#                 logger.exception('Unhandled exception: %r', e)
-#                 if hasattr(e, 'response'):
-#                     # A specific response was specified
-#                     return e.response
-# 
-#                 logger.exception('Unhandled exception: %r', e)
-# 
-#                 # A real, non-expected exception.
-#                 # Handle the case where the full traceback is more helpful
-#                 # than the serialized error.
-#                 if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-#                     logger.warn('raise tastypie full exception for %r', e)
-#                     raise
-# 
-#                 # Rather than re-raising, we're going to things similar to
-#                 # what Django does. The difference is returning a serialized
-#                 # error message.
-#                 logger.exception('handle 500 error %r...', str(e))
-#                 return self._handle_500(request, e)
-# 
-#         return wrapper
-
-    
        

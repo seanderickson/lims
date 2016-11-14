@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 
 from copy import deepcopy
-import datetime
 from functools import wraps
 import json
 import logging
@@ -18,6 +17,7 @@ from django.contrib.auth.models import User as DjangoUser
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
+import django.core.exceptions
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Q
@@ -25,8 +25,8 @@ from django.db.models.aggregates import Max
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
 from django.http.response import HttpResponse, Http404, HttpResponseBase
-import django.core.exceptions
 from sqlalchemy import select, asc, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
@@ -36,15 +36,14 @@ from tastypie.authentication import BasicAuthentication, SessionAuthentication, 
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, \
     BadRequest
 from tastypie.http import HttpForbidden, HttpNotFound, \
-    HttpNoContent, HttpBadRequest
-from tastypie.utils.timezone import make_naive
+    HttpNoContent
 from tastypie.utils.urls import trailing_slash
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError
 from reports import ValidationError, _now
-from reports.api_base import IccblBaseResource, un_cache
+from reports.api_base import IccblBaseResource, un_cache, Authorization
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, ListLog, Permission, \
                            UserGroup, UserProfile, API_ACTION_DELETE, \
                            API_ACTION_CREATE
@@ -52,10 +51,6 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE
 from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
-from sqlalchemy.dialects import postgresql
-from tastypie.resources import convert_post_to_put
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.cache import patch_vary_headers, patch_cache_control
 
 
 logger = logging.getLogger(__name__)
@@ -74,12 +69,6 @@ API_MSG_ACTION = 'Action'
 DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
 
-class Authorization(object):
-
-    def _is_resource_authorized(self, resource_name, user, permission_type):
-        raise NotImplementedError(
-            '_is_resource_authorized must be implemented for %s, %s, %s',
-            resource_name, user, permission_type)
 
 class UserGroupAuthorization(Authorization):
     
@@ -201,6 +190,7 @@ def read_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
+        logger.info('self: %r', self)
         if not self._meta.authorization._is_resource_authorized(
                 self._meta.resource_name,request.user,'read'):
             logger.info('read auth failed for: %r, %r', 
@@ -344,199 +334,9 @@ class ApiResource(SqlAlchemyResource):
             self.resource_resource = ResourceResource()
         return self.resource_resource
     
-    def wrap_view(self, view):
-        """
-        Override the tastypie implementation to handle our own ValidationErrors.
-        """
-
-        @csrf_exempt
-        def wrapper(request, *args, **kwargs):
-            DEBUG_WRAPPER = True
-            try:
-                callback = getattr(self, view)
-                if DEBUG_WRAPPER:
-                    msg = ()
-                    if kwargs:
-                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
-                            if len(str(kwargs[key]))<100]
-                    logger.info('callback: %r, %r', view, msg)
-                    logger.info('request: %r', request)
-                else:
-                    logger.info('callback: %r, %r', callback, view)
-                
-                self.is_authenticated(request)
-        
-                response = callback(request, *args, **kwargs)
-                # Our response can vary based on a number of factors, use
-                # the cache class to determine what we should ``Vary`` on so
-                # caches won't return the wrong (cached) version.
-                varies = getattr(self._meta.cache, "varies", [])
-
-                if varies:
-                    patch_vary_headers(response, varies)
-
-                if self._meta.cache.cacheable(request, response):
-                    if self._meta.cache.cache_control():
-                        # If the request is cacheable and we have a
-                        # ``Cache-Control`` available then patch the header.
-                        patch_cache_control(response, **self._meta.cache.cache_control())
-
-                if request.is_ajax() and not response.has_header("Cache-Control"):
-                    # IE excessively caches XMLHttpRequests, so we're disabling
-                    # the browser cache here.
-                    # See http://www.enhanceie.com/ie/bugs.asp for details.
-                    patch_cache_control(response, no_cache=True)
-
-                return response
-            except BadRequest as e:
-                # The message is the first/only arg
-                logger.exception('Bad request exception: %r', e)
-                data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-                return self.build_error_response(request, data, **kwargs)
-            except InformationError as e:
-                logger.exception('Information error: %r', e)
-                response = self.build_error_response(
-                    request, { 'Messages': e.errors }, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-            
-            except ValidationError as e:
-                logger.exception('Validation error: %r', e)
-                response = self.build_error_response(
-                    request, { 'errors': e.errors }, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-            except django.core.exceptions.ValidationError as e:
-                logger.exception('Django validation error: %s', e)
-                response = self.build_error_response(
-                    request, { 'errors': e.message_dict }, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-                
-            except Exception as e:
-                logger.exception('Unhandled exception: %r', e)
-                if hasattr(e, 'response'):
-                    # A specific response was specified
-                    return e.response
-
-                logger.exception('Unhandled exception: %r', e)
-
-                # A real, non-expected exception.
-                # Handle the case where the full traceback is more helpful
-                # than the serialized error.
-                if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-                    logger.warn('raise tastypie full exception for %r', e)
-                    raise
-
-                # Rather than re-raising, we're going to things similar to
-                # what Django does. The difference is returning a serialized
-                # error message.
-                logger.exception('handle 500 error %r...', str(e))
-                return self._handle_500(request, e)
-
-        return wrapper
-    
     def get_schema(self, request, **kwargs):
     
         return self.build_response(request, self.build_schema(), **kwargs)
-
-    def dispatch_list(self, request, **kwargs):
-        """
-        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
-        the entire list of resources.
-
-        Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
-#         kwargs['schema'] = self.build_schema()
-                
-        return self.dispatch('list', request, **kwargs)
-
-    def dispatch_detail(self, request, **kwargs):
-        """
-        A view for handling the various HTTP methods (GET/POST/PUT/DELETE) on
-        a single resource.
-
-        Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
-        return self.dispatch('detail', request, **kwargs)
-
-    def dispatch(self, request_type, request, **kwargs):
-        """
-        Override tastypie method to eliminate much unneeded functionality:
-        - 'allowed' methods
-        - HTTP_X_HTTP_METHOD_OVERRIDE
-        - throttling
-        - verification check of the response class 
-        Other modifications:
-        - use of the "downloadID" cookie
-        """
-        
-        # allowed_methods = getattr(
-        #     self._meta, "%s_allowed_methods" % request_type, None)
-        # 
-        # if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
-        #     request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
-        # 
-        # request_method = self.method_check(request, allowed=allowed_methods)
-        request_method = request.method.lower()
-        method = getattr(self, "%s_%s" 
-            % (request_method, request_type), None)
-
-        if method is None:
-            raise ImmediateHttpResponse(response=HttpNotImplemented())
-
-#         self.is_authenticated(request)
-        # self.throttle_check(request)
-
-        # All clear. Process the request.
-        convert_post_to_put(request)
-        logger.info('calling method: %s.%s_%s', 
-            self._meta.resource_name, request_method, request_type)
-        response = method(request, **kwargs)
-
-        # # Add the throttled request.
-        # self.log_throttled_access(request)
-
-        # # If what comes back isn't a ``HttpResponse``, assume that the
-        # # request was accepted and that some action occurred. This also
-        # # prevents Django from freaking out.
-        if not isinstance(response, HttpResponseBase):
-            return HttpNoContent()
-        
-        # Custom ICCB parameter: set cookie to tell the browser javascript
-        # UI that the download request is finished
-        downloadID = request.GET.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.debug('no downloadID: %s' % request.GET )
-
-        return response
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -922,7 +722,7 @@ class ApiResource(SqlAlchemyResource):
     @write_authorization
     @un_cache        
     @transaction.atomic
-    def post_list(self, request, **kwargs):
+    def post_list(self, request, schema=None, **kwargs):
         '''
         POST is used to create or update a resource; not idempotent;
         - The LIMS client will use POST LIST to create and update because
@@ -965,7 +765,10 @@ class ApiResource(SqlAlchemyResource):
             return self.post_detail(request, **kwargs)
 
         # Limit the potential candidates for logging to found id_kwargs
-        schema = kwargs['schema']
+#         schema = kwargs['schema']
+
+        if schema is None:
+            raise Exception('schema not initialized')
         id_attribute = schema['id_attribute']
         
         # Limit the potential candidates for logging to found id_kwargs
@@ -1260,14 +1063,16 @@ class ApiResource(SqlAlchemyResource):
     @write_authorization
     @un_cache 
     @transaction.atomic       
-    def delete_detail(self, request, **kwargs):
+    def delete_detail(self, request, schema=None, **kwargs):
 
         logger.debug('delete_detail: %s,  %s' 
             % (self._meta.resource_name, kwargs))
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = kwargs['schema']
+        if schema is None:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = {}
         for id_field in id_attribute:
@@ -1295,13 +1100,13 @@ class ApiResource(SqlAlchemyResource):
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
         
-#         schema = self.build_schema()
         id_attribute = schema['id_attribute']
 
         log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
 
+        # TODO: return meta information
         return HttpNoContent()
 
     @write_authorization
@@ -1516,11 +1321,12 @@ class ApiResource(SqlAlchemyResource):
                     setattr(log, key, value)
         return log
 
-    def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
+    def log_patch(self, request, prev_dict, new_dict, log=None, 
+            id_attribute=None, **kwargs):
         # new
         DEBUG_PATCH_LOG = False
         
-        id_attribute = kwargs.get('id_attribute', None)
+#         id_attribute = kwargs.get('id_attribute', None)
         if id_attribute is None:
             schema = self.build_schema()
             id_attribute = schema['id_attribute']
@@ -3695,16 +3501,6 @@ class UserGroupResource(ApiResource):
             raise NotImplementedError('must provide a group "name" parameter')
         return name
     
-#     @transaction.atomic()    
-#     def put_obj(self,request, deserialized, **kwargs):
-#         
-#         try:
-#             self.delete_obj(request, deserialized, **kwargs)
-#         except ObjectDoesNotExist,e:
-#             pass 
-#         
-#         return self.patch_obj(request, deserialized, **kwargs)
-    
     @write_authorization
     @un_cache 
     @transaction.atomic       
@@ -3792,7 +3588,8 @@ class UserGroupResource(ApiResource):
                         except ObjectDoesNotExist, e:
                             logger.info('no such user: %r, %r, %r', 
                                 u, user_key, initializer_dict)
-                            raise e
+                            raise Exception(
+                                'group: %r, no such user: %r', initializer_dict, u)
                 elif key == 'super_groups':
                     usergroup.super_groups.clear()
                     for ug in val:
@@ -3806,7 +3603,8 @@ class UserGroupResource(ApiResource):
                             logger.warn(
                                 'no such supergroup: %r, initializer: %r',
                                 ug_key,initializer_dict)
-                            raise e
+                            raise Exception(
+                                'group: %r, no such supergroup: %r', initializer_dict, ug)
                 elif key == 'sub_groups':
                     usergroup.sub_groups.clear()
                     for ug in val:
@@ -3821,7 +3619,8 @@ class UserGroupResource(ApiResource):
                             logger.warn(
                                 'no such subgroup: %r, initializer: %r',
                                 ug_key,initializer_dict)
-                            raise e
+                            raise Exception(
+                                'group: %r, no such subgroup: %r', initializer_dict, ug)
                 elif key in group_fields and hasattr(usergroup,key):
                     setattr(usergroup,key,val)
                 else:
@@ -4316,7 +4115,8 @@ class PermissionResource(ApiResource):
         # create all of the permissions on startup
         resources = MetaHash.objects.filter(
             Q(scope='resource')|Q(scope__contains='fields.'))
-        query = self._meta.queryset._clone()
+#         query = self._meta.queryset._clone()
+        query = Permission.objects.all()
         permissionTypes = Vocabulary.objects.all().filter(
             scope='permission.type')
         for r in resources:

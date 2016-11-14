@@ -2006,6 +2006,8 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
     
     def test0_create_user(self):
         
+        logger.info('test0_create_user...')
+        
         # the simplest of tests, create some simple users
         self.bootstrap_items = { 'objects': [   
             {
@@ -2060,7 +2062,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         @param test_log set to false so that only the first time tests the logs
         '''
         
-        logger.info('==== test2_patch_user_permissions =====: %r', test_log)
+        logger.info('test2_patch_user_permissions...')
         self.test1_create_user_with_permissions(test_log=test_log)
         
         logger.debug('==== test2_patch_user_permissions start =====')
@@ -2070,6 +2072,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         input_data,output_data = self._patch_test(
             'user', filename, data_for_get=data_for_get)
         
+        logger.info('patched output: %r', output_data)
         # # test the logs
         
     def test3_user_read_permissions(self):
@@ -2079,11 +2082,11 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         - done in prev test: create a new user (as superuser)
         - done in prev test: assign some permissions (as superuser)
         '''
-        
+        logger.info('test3_user_read_permissions...')
         self.test2_patch_user_permissions(test_log=False)
                 
         # assign password to the test user
-        username = 'sde4'
+        username = 'sde1'
         password = 'testpass1'
         user = User.objects.get(username=username)
         user.set_password(password)
@@ -2091,7 +2094,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
 
         # Try to do some unauthorized actions
 
-        resource_uri = BASE_URI + '/field'
+        resource_uri = BASE_URI + '/vocabulary'
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
@@ -2103,7 +2106,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         
         user_patch = {
             'resource_uri': 'user/' + username,
-            'permissions': ['resource/field/read'] };
+            'permissions': ['resource/vocabulary/read'] };
 
         uri = BASE_URI + '/user/' + username
         logger.debug('add permission to user: %r: %r', user_patch, uri)
@@ -2131,7 +2134,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         - done in prev test: create a new user (as superuser)
         - done in prev test: assign some permissions (as superuser)
         '''
-
+        logger.info('test4_user_write_permissions...')
         self.test2_patch_user_permissions(test_log=False)
                 
         # assign password to the test user
@@ -2195,7 +2198,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         super(UserGroupResource, self).setUp()
 
     def test2_create_usergroup_with_permissions(self):
-
+        logger.info('test2_create_usergroup_with_permissions...')
         #create users
         self.test1_create_user_with_permissions(test_log=False)
         
@@ -2207,7 +2210,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             keys_not_to_check=['sub_groups'])
 
     def test3_patch_users_groups(self):
-
+        logger.info('test3_patch_users_groups...')
         self.test2_create_usergroup_with_permissions()
         
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
@@ -2224,6 +2227,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         - done in prev test: assign some permissions (as superuser)
         - add/remove users to groups (as superuser)
         '''
+        logger.info('test4_user_group_permissions...')
         
         self.test2_create_usergroup_with_permissions()
                         
@@ -2234,8 +2238,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         user.set_password(password)
         user.save()
 
-        # 1 read test - should have permission through group
-        resource_uri = BASE_URI + '/field'
+        # 1 read test - should have permission through group 3
+        resource_uri = BASE_URI + '/user'
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
@@ -2244,10 +2248,10 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             (resp.status_code, self.get_content(resp)))
         
         # now patch this user's usergroups, 
-        # removing the user from the group 'testgroup1'
-        # which will remove the permissions as well 
+        # removing the user from the group 'testgroup3,2'
+        # which will remove the permissions for the "user" resource as well 
         user_patch = {
-            'usergroups': ['testGroup3'] };
+            'usergroups': ['testGroup1'] };
 
         logger.debug('reset this users groups and remove testGroup1: %r', user_patch)
         uri = BASE_URI + '/user' + '/' + username
@@ -2268,10 +2272,12 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         self.assertTrue(
-            new_obj['usergroups'] == ['testGroup3'],
+            new_obj['usergroups'] == ['testGroup1'],
             ('wrong usergroups', new_obj))
         
         # now try again as the updated user:
+        logger.info('test user: %r, resource: %r',
+            username, resource_uri)
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
@@ -2288,6 +2294,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         - done in prev test: assign some permissions (as superuser)
         - add/remove users to groups (as superuser)
         '''
+        logger.info('test5_usergroup_can_contain_group_permissions...')
         
         self.test2_create_usergroup_with_permissions()
                         
@@ -2308,7 +2315,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             (resp.status_code, self.get_content(resp)))
         
         # now create a new group, with previous user's group as a member,
-        # then add permissions to this new group to read (vocabulary)
+        # then add permissions to this new group to read (user)
         # note: double nest the groups also as a test
         usergroup_patch = { 'objects': [
             {
@@ -2358,7 +2365,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
                      'in testGroup6 permissions', testGroup6['all_permissions']))
         
         # 2 read test - user has permissions through inherited permissions,
-        resource_uri = BASE_URI + '/vocabulary'
+        resource_uri = BASE_URI + '/user'
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
@@ -2374,6 +2381,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         - done in prev test: create a new user (as superuser)
         - add/remove users to groups (as superuser)
         '''
+        logger.info('test6_usergroup_can_contain_group_users...')
         
         self.test2_create_usergroup_with_permissions()
                         

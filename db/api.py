@@ -6,20 +6,15 @@ import hashlib
 import io
 import json
 import logging
-import os
-import os.path
 import re
-import sys
 from tempfile import SpooledTemporaryFile
 import time
 import urllib
-from wsgiref.util import FileWrapper
 
 from aldjemy.core import get_engine, get_tables
 import aldjemy.core
 from django.conf import settings
 from django.conf.urls import url
-from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.cache import caches
 from django.core.exceptions import ObjectDoesNotExist
@@ -45,10 +40,9 @@ import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
-from tastypie.exceptions import BadRequest, NotFound
+from tastypie.exceptions import BadRequest
 from tastypie.http import HttpNotFound
 import tastypie.http
-from tastypie.utils.mime import build_content_type
 from tastypie.utils.urls import trailing_slash
 
 from db.models import ScreensaverUser, Screen, \
@@ -91,10 +85,8 @@ from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
-import reports.sqlalchemy_resource
 from decimal import Decimal
 import six
-from sqlalchemy.dialects.oracle.cx_oracle import _OracleBinary
 
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
@@ -183,7 +175,7 @@ class PlateLocationResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -194,7 +186,9 @@ class PlateLocationResource(DbApiResource):
             use_vocab = False
             use_titles = False
             
-        schema = super(PlateLocationResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+            # schema = super(PlateLocationResource, self).build_schema()
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
         
@@ -935,7 +929,7 @@ class LibraryCopyPlateResource(DbApiResource):
         
         return query
         
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -946,7 +940,9 @@ class LibraryCopyPlateResource(DbApiResource):
             use_vocab = False
             use_titles = False
 
-        schema = super(LibraryCopyPlateResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+            # schema = super(LibraryCopyPlateResource, self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id', None)
         # NOTE: loaded plates not being shown anymore
@@ -3551,7 +3547,7 @@ class CopyWellResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -3563,7 +3559,9 @@ class CopyWellResource(DbApiResource):
             use_titles = False
         is_for_detail = kwargs.pop('is_for_detail', False)
 
-        schema = super(CopyWellResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+            # schema = super(CopyWellResource, self).build_schema()
         filename = self._get_filename(schema, kwargs)
         well_id = param_hash.pop('well_id', None)
         if well_id:
@@ -3885,7 +3883,7 @@ class CherryPickRequestResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -3897,7 +3895,9 @@ class CherryPickRequestResource(DbApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        schema = super(CherryPickRequestResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+            # schema = super(CherryPickRequestResource, self).build_schema()
         filename = self._get_filename(schema, kwargs)
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id:
@@ -4136,7 +4136,7 @@ class CherryPickPlateResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -4146,7 +4146,9 @@ class CherryPickPlateResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = super(CherryPickPlateResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+            # schema = super(CherryPickPlateResource, self).build_schema()
 
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -4381,7 +4383,7 @@ class LibraryCopyResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
     
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -4391,7 +4393,9 @@ class LibraryCopyResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = super(LibraryCopyResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+            # schema = super(LibraryCopyResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
@@ -11041,7 +11045,7 @@ class LibraryResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self, request, **kwargs):
+    def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -11051,7 +11055,9 @@ class LibraryResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = super(LibraryResource, self).build_schema()
+        if schema is None:
+            raise Exception('schema not initialized')
+#             schema = super(LibraryResource, self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         for_screen_id = param_hash.pop('for_screen_id', None)

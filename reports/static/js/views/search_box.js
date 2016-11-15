@@ -211,16 +211,25 @@ define([
         e.preventDefault();
         var errors = form2.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          console.log('form2 errors, abort submit: ' + JSON.stringify(errors));
           $form2.find('#copyplate').addClass(self.errorClass);
           return;
         }else{
           $form2.find('#copyplate').removeClass(self.errorClass);
         }
-        var copy_plate = self.form2.getValue()['copyplate'];
-        if (copy_plate) {
-          var search_array = self.parse_search_val(copy_plate);
-          console.log('parsed: ', copy_plate);
+        var copy_plate_search_entry = self.form2.getValue()['copyplate'];
+        if (copy_plate_search_entry) {
+          var search_array = self.parse_search_val(copy_plate_search_entry);
+          if (search_array.length > appModel.MAX_SEARCH_ARRAY_SIZE ){
+            appModel.showModalMessage({
+              title: 'Please try your search again',
+              body: Iccbl.formatString(
+                appModel.MSG_SEARCH_SIZE_EXCEEDED, {
+                  size_limit: appModel.MAX_SEARCH_ARRAY_SIZE,
+                  actual_size: search_array.length
+                })
+            });
+            return;
+          }
           matching_hash = {
             matching_order: ['plate_number','copy_name'],
             copy_name: {
@@ -272,10 +281,20 @@ define([
         }else{
           $form3.find('#well').removeClass(self.errorClass);
         }
-        var well_search = self.form3.getValue()['well'];
-        if (well_search) {
-          var search_array = self.parse_search_val(well_search);
-          console.log('parsed: ', search_array);
+        var well_search_entry = self.form3.getValue()['well'];
+        if (well_search_entry) {
+          var search_array = self.parse_search_val(well_search_entry);
+          if (search_array.length > appModel.MAX_SEARCH_ARRAY_SIZE ){
+            appModel.showModalMessage({
+              title: 'Please try your search again',
+              body: Iccbl.formatString(
+                appModel.MSG_SEARCH_SIZE_EXCEEDED, {
+                  size_limit: appModel.MAX_SEARCH_ARRAY_SIZE,
+                  actual_size: search_array.length
+                })
+            });
+            return;
+          }
           matching_hash = {
             matching_order: ['plate_number','well_id','well_name'],
             plate_number: {

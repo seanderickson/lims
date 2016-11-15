@@ -851,26 +851,28 @@ define([
       });
     },
     
-    
     getMenu: function(){
       var self = this;
       var currentUser = this.getCurrentUser();
       var menu = this.get('menu');
       
-      if(!currentUser.is_superuser 
-          && !_.contains(currentUser.usergroups, 'readEverythingAdmin')){
-        // TODO: use permissions here
-        menu.submenus = _.omit(menu.submenus, 'admin');
+      if(!currentUser.is_superuser) { 
         
-        // TODO: iterate over each menu: if user doesn't have read perm for 
-        // resource, omit
+        // Use permissions to show only allowed menus for the user
         var new_submenus = {}
         _.each(_.keys(menu.submenus), function(key){
-          if(self.hasPermission(key)){
+          // 'reports' and 'admin' are visible for the admins
+          if ( (key == 'reports' || key == 'admin')
+            && _.contains(currentUser.usergroups, 'readEverythingAdmin')){
+
             new_submenus[key] = menu.submenus[key];
           }else{
-            console.log('user: ' + currentUser.username 
-                + ', doesnt have permission to view the menu: ' + key );
+            if(self.hasPermission(key)){
+              new_submenus[key] = menu.submenus[key];
+            }else{
+              console.log('user: ' + currentUser.username 
+                  + ', doesnt have permission to view the menu: ' + key );
+            }
           }
         });
         menu.submenus = new_submenus;
@@ -1782,7 +1784,10 @@ define([
   appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
   appState.SEARCH_DELIMITER = SEARCH_DELIMITER;
   appState.HEADER_APILOG_COMMENT = 'X-APILOG-COMMENT';
-
+  appState.MAX_SEARCH_ARRAY_SIZE = 100;
+  appState.MSG_SEARCH_SIZE_EXCEEDED = 
+    'Maximum allowed search terms: {size_limit}' + 
+    ', number of terms entered: {actual_size}';
   Iccbl.appModel = appState;
   
   return appState;

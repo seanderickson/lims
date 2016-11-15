@@ -3632,8 +3632,8 @@ class UserGroupResource(ApiResource):
                 elif key in group_fields and hasattr(usergroup,key):
                     setattr(usergroup,key,val)
                 else:
-                    logger.warn(
-                        'unknown attribute: %r:%r in %r', 
+                    logger.debug(
+                        'unknown attribute: %r:%r, usergroup: %r, initializer: %r', 
                         key, val, usergroup,initializer_dict)
             usergroup.save()
             return usergroup

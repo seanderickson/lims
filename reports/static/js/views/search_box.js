@@ -294,7 +294,7 @@ define([
                   var plate_number = match[1];
                   if (plate_number.length < 5){
                     var pad = "00000"
-                    plate_number = pad.substring(0, pad.length - plate_number.length) + plate_number;
+                    (pad+plate_number).substring(plate_number.length);
                   }
                   var well_row = match[2].toUpperCase();
                   var well_col = match[3];

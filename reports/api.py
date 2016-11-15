@@ -3269,6 +3269,11 @@ class UserResource(ApiResource):
             (stmt,count_stmt) = \
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
+#             compiled_stmt = str(stmt.compile(
+#                 dialect=postgresql.dialect(),
+#                 compile_kwargs={"literal_binds": True}))
+#             logger.info('compiled_stmt %s', compiled_stmt)
+            
             title_function = None
             if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']
@@ -3716,7 +3721,7 @@ class UserGroupResource(ApiResource):
             group_supergroup_rpt = (
                 select([
                     _ug2.c.id,
-                    _ug2.c.name,
+                    _ug2.c.name.label('supergroup_name'),
                     select([
                         func.array_agg(distinct(_ug1.c.id))])
                     .select_from(group_all_supergroups)
@@ -3886,6 +3891,7 @@ class UserGroupResource(ApiResource):
             _ug1 = _ug.alias('ug1')
             _ug2 = _ug.alias('ug2')
             _ug3 = _ug.alias('ug3')
+            _ug4 = _ug.alias('ug4')
             custom_columns = {
                 'resource_uri': (
                     func.array_to_string(
@@ -3972,10 +3978,10 @@ class UserGroupResource(ApiResource):
                 'all_super_groups': (
                     select([
                         func.array_to_string(
-                            func.array_agg(text('supergroup.name')),
+                            func.array_agg(text('supergroup.supergroup_name')),
                             LIST_DELIMITER_SQL_ARRAY)])
                     .select_from(
-                        select([_ug1.c.name])
+                        select([distinct(_ug1.c.name).label('supergroup_name')])
                         .select_from(group_all_supergroups)
                         .where(and_(
                             _ug1.c.id==text('any(group_sg_rpt.sg_ids)'),
@@ -3983,26 +3989,49 @@ class UserGroupResource(ApiResource):
                                 ==text('reports_usergroup.id')))
                         .order_by(_ug1.c.name).alias('supergroup')
                     )),
+                # NOTE: for orchestra/pgsql 8.4 compatability, MUST use group/agg
+                # here, see following notes for this
                 'all_sub_groups': (
-                    select([
-                        func.array_to_string(
-                            func.array_agg(text('subgroup.name')),
-                            LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(
-                        select([group_all_supergroups.c.name])
-                        .select_from(group_all_supergroups)
-                        .where(text(
-                            'reports_usergroup.id=any(group_sg_rpt.sg_ids)'))
-                        .order_by(group_all_supergroups.c.name)
-                        .alias('subgroup')
-                    )),
+                    func.array_to_string(
+                            func.array_agg(group_all_supergroups.c.supergroup_name),
+                            LIST_DELIMITER_SQL_ARRAY)
+                            ),
+                # NOTE: follows also does not work on orchestra/pg 8.4 ??
+                # 'all_sub_groups': (
+                #     select([
+                #         func.array_to_string(
+                #             func.array_agg(text('subgroup.name')),
+                #             LIST_DELIMITER_SQL_ARRAY)])
+                #     .select_from(
+                #         select([distinct(_ug4.c.name)])
+                #         .select_from(
+                #             _ug4.join(group_all_subgroups,
+                #                 _ug4.c.id==func.any(group_all_subgroups.c.subgroup_ids)))
+                #         .where(group_all_subgroups.c.id==text('reports_usergroup.id'))
+                #         .order_by(_ug4.c.name)
+                #         .alias('subgroup')
+                #     )),
+                # NOTE: following form produces no results on orchestra/pg 8.4 ??
+                # 'all_sub_groups': (
+                #     select([
+                #         func.array_to_string(
+                #             func.array_agg(text('subgroup.supergroup_name')),
+                #             LIST_DELIMITER_SQL_ARRAY)])
+                #     .select_from(
+                #         select([distinct(group_all_supergroups.c.supergroup_name)])
+                #         .select_from(group_all_supergroups)
+                #         .where(text(
+                #             'reports_usergroup.id=any(group_sg_rpt.sg_ids)'))
+                #         .order_by(group_all_supergroups.c.supergroup_name)
+                #         .alias('subgroup')
+                #     )),
                 'all_users': (
                     select([
                         func.array_to_string(
                             func.array_agg(text('inneruser.username')),
                             LIST_DELIMITER_SQL_ARRAY)])
                     .select_from( 
-                        select([_up.c.username])
+                        select([distinct(_up.c.username)])
                         .select_from(group_all_users)
                         .where(_up.c.id==text('any(gau.userprofile_ids)'))
                         .where(
@@ -4017,14 +4046,23 @@ class UserGroupResource(ApiResource):
 
             # build the query statement
             
-            j = _ug
+            j = _ug.join(group_all_supergroups,
+                 _ug.c.id==func.any(group_all_supergroups.c.sg_ids))
             stmt = select(columns.values()).select_from(j)
+            # NOTE: for orchestra/pgsql 8.4 compatability, the all_subgroups 
+            # requires the use of group/agg here, see notes above for this
+            stmt = stmt.group_by(_ug.c.id, _ug.c.name)
             stmt = stmt.order_by('name')
             # general setup
              
             (stmt,count_stmt) = \
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
+                        
             title_function = None
             if use_titles is True:
                 title_function = lambda key: field_hash[key]['title']

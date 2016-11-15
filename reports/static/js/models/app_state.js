@@ -157,7 +157,10 @@ define([
       this.getModel('user', window.user, 
         function(model){
           console.log('user model:', model);
+          // NOTE that Backbone.Model.toJSON returns a shallow copy as a object,
+          // not as a JSON string.
           self.currentUser = model.toJSON();
+          self.set('currentUser', model);
           console.log('Current user: ' + JSON.stringify(self.currentUser));
           
           if(callBack) callBack(); 
@@ -854,7 +857,8 @@ define([
       var currentUser = this.getCurrentUser();
       var menu = this.get('menu');
       
-      if(!currentUser.is_superuser){
+      if(!currentUser.is_superuser 
+          && !_.contains(currentUser.usergroups, 'readEverythingAdmin')){
         // TODO: use permissions here
         menu.submenus = _.omit(menu.submenus, 'admin');
         
@@ -1717,7 +1721,9 @@ define([
       $modal.empty();
       $modal.html(modalDialog.$el);
       $modal.on('show.bs.modal', function () {
-        $('.modal-content').css('height',$( window ).height()*0.95);
+//        $('.modal-content').css('height',$( window ).height()*0.95);
+        $('.modal-content').css('height', 'auto');
+        $('.modal-content').css('max-height','100%');
       });      
       $modal.on('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();

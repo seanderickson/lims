@@ -3597,6 +3597,7 @@ class UserGroupResource(ApiResource):
                                 'group: %r, no such user: %r', initializer_dict, u)
                 elif key == 'super_groups':
                     usergroup.super_groups.clear()
+                    usergroup.save()
                     for ug in val:
                         ug_key = self.find_key_from_resource_uri(ug)
                         try:
@@ -3612,6 +3613,7 @@ class UserGroupResource(ApiResource):
                                 'group: %r, no such supergroup: %r', initializer_dict, ug)
                 elif key == 'sub_groups':
                     usergroup.sub_groups.clear()
+                    usergroup.save()
                     for ug in val:
                         ug_key = self.find_key_from_resource_uri(ug)
                         try:
@@ -4047,7 +4049,7 @@ class UserGroupResource(ApiResource):
             # build the query statement
             
             j = _ug.join(group_all_supergroups,
-                 _ug.c.id==func.any(group_all_supergroups.c.sg_ids))
+                 _ug.c.id==func.any(group_all_supergroups.c.sg_ids),isouter=True)
             stmt = select(columns.values()).select_from(j)
             # NOTE: for orchestra/pgsql 8.4 compatability, the all_subgroups 
             # requires the use of group/agg here, see notes above for this

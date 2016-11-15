@@ -110,11 +110,13 @@ def parse_val(value, key, data_type, options=None):
                 value = str(value)
             return Decimal(value)
         elif data_type == 'list':
+            if value is None:
+                return []
             if isinstance(value, six.string_types):
                 if value.strip():
                     return (value,) # convert string to list
                 else:
-                    return None
+                    return []
             return value # otherwise, better be a list
         else:
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))

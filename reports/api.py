@@ -3546,11 +3546,12 @@ class UserGroupResource(ApiResource):
 
             initializer_dict = {}
             for key in fields.keys():
-                if deserialized.get(key,None):
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key, 
-                        fields[key]['data_type']) 
+#                 if deserialized.get(key,None) is not None:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key,None), key, 
+                    fields[key]['data_type']) 
 
+            logger.info('initializer_dict: %r', initializer_dict)
             usergroup = None
             try:
                 usergroup = UserGroup.objects.get(name=name)

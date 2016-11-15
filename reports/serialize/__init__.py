@@ -83,6 +83,8 @@ def parse_val(value, key, data_type, options=None):
             or value == u'n/a'):
             if data_type == 'string': 
                 return ''
+            elif data_type == 'list':
+                return []
             else:  
                 return None
         if data_type == 'string':
@@ -110,8 +112,6 @@ def parse_val(value, key, data_type, options=None):
                 value = str(value)
             return Decimal(value)
         elif data_type == 'list':
-            if value is None:
-                return []
             if isinstance(value, six.string_types):
                 if value.strip():
                     return (value,) # convert string to list

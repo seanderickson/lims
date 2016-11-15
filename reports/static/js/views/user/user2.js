@@ -78,8 +78,9 @@ define([
 
       var pUserModel = this.model.clone();
       pUserModel.key = this.model.key;
-      var resource = _.extend({},this.model.resource);
-      resource = _.extend({}, this.model.resource );
+      var resource = appModel.getResource(this.model.resource.key);
+//      var resource = _.extend({},this.model.resource);
+//      resource = _.extend({}, this.model.resource );
       resource.fields = _.pick(
         this.model.resource.fields,
         ['username','first_name','last_name','usergroups','permissions']);
@@ -96,6 +97,7 @@ define([
       
       var view = new DetailLayout({ 
         model: pUserModel, 
+        buttons: ['history'],
         uriStack: delegateStack,
         DetailView: UserGroupPermissionView
       });

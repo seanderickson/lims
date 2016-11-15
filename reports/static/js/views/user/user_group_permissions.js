@@ -23,24 +23,10 @@ define([
       this.consumedStack = [];
       this.subviews = {};
 
-      var buttons = this.buttons = args.buttons || ['download','history','back','edit'];
-      if(! appModel.hasPermission(self.model.resource.key, 'edit')){
-        this.buttons = _.without(this.buttons,'edit');
-      }
-      if(! appModel.getCurrentUser().is_superuser){
-        this.buttons = _.without(this.buttons,'delete');
-      }
+      // NOTE: edit of groups/permissions is handled on the main user page
+      var buttons = this.buttons = ['download','history','back'];
     },
 
-//    events: {
-//      'click button#edit': 'clickEdit'
-//    },
-//
-//    clickEdit: function(event){
-//      event.preventDefault();
-//      this.showEdit();
-//    },
-    
     afterRender: function(){
       var delegateStack = _.clone(this.uriStack);
       this.showDetail(delegateStack);

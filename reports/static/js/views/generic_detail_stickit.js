@@ -239,7 +239,7 @@ define([
         }else{
           return value;
         }
-      }
+      };
 
       function linkGetter(value){
         var _options = _.extend(
@@ -262,21 +262,43 @@ define([
         }else{
           return value;
         }
-      }
+      };
       
       function linkListGetter(values){  
-        var modelValues = values;
-        var finalValues = values;
         if(values){
+          var modelValues = values;
+          var _options = _.extend(
+            { hrefTemplate: '#', target: '_self' }, cell_options );                
+          // use the display options if needed for backward compatibility
+          if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
+            _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
+            _options.target = '_self';
+          } 
           var vocabulary = getVocabulary();
           if(vocabulary){
-            finalValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
+            modelValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
           }
-          // NOTE: hack in the defaultGetter for vocabularies
-          return _.map(finalValues, _.compose(linkGetter,defaultGetter)).join(', ');
+          var output = [];
+          _.each(modelValues, function(value){
+            var text = _.result(vocabulary, value, value);
+            if(value && !_.isNull(value) && value != '-' ){
+              var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
+              var _html = '<a ' + 
+                'id="' + key + '" ' + 
+                'href="' + interpolatedVal + '" ' +
+                'target="' + _options.target + '" ' +
+                'tabIndex=-1 ' +
+                '>' + text + '</a>';
+              output.push(_html);
+            }else{
+              output.push(value);
+            }
+          });
+          
+          return output.join(',');
         }
-        return finalValues;
-      }
+        return values;
+      };
 
       display_type_formatters = {
         'link': linkGetter,

@@ -3858,6 +3858,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if (Iccbl.appModel.DEBUG)
         console.log('field', key, display_type, 'typemap',typeMap[display_type])
       var backgridCellType = typeMap[display_type];
+      
+      if (display_type=='link' && data_type=='list'){
+        backgridCellType = Iccbl.UriListCell;
+      }
+      
       if(!_.isEmpty(cell_options)){
         backgridCellType = backgridCellType.extend(cell_options);
       }

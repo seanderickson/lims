@@ -2296,21 +2296,24 @@ class ResourceResource(ApiResource):
         cache.delete('resources');
 #         cache.delete('resource_listing')
         
-    def _get_resource_schema(self,key, user=None):
+    def _get_resource_schema(self,resource_key, user=None):
         ''' For internal callers
         '''
         resources = self._build_resources()
         
-        if key not in resources:
-            raise BadRequest('Resource is not initialized: %r', key)
+        if resource_key not in resources:
+            raise BadRequest('Resource is not initialized: %r', resource_key)
         
-        schema =  resources[key]
+        schema =  resources[resource_key]
         if user is not None:
             if not user.is_superuser:
                 # Filter fields with "view_groups" set
                 schema = deepcopy(schema)
                 usergroups = set([x.name for x in user.userprofile.get_all_groups()])
-                logger.info('user: %r, groups: %r', user, usergroups)
+                if DEBUG_AUTHORIZATION:
+                    logger.info(
+                        'filter fields for %r, user: %r, groups: %r', 
+                        resource_key, user, usergroups)
                 fields = deepcopy(schema['fields'])
                 filtered_fields = {}
                 for key, field in fields.items():
@@ -2320,10 +2323,20 @@ class ResourceResource(ApiResource):
                         if view_groups:
                             if not set(view_groups) & usergroups:
                                 include = False
+                                if DEBUG_AUTHORIZATION:
+                                    logger.info(
+                                        'disallowed field: %r with view_groups: %r', 
+                                        key, view_groups)
+                            else:
+                                if DEBUG_AUTHORIZATION:
+                                    logger.info(
+                                        'allowed field: %r with view_groups: %r', 
+                                        key, view_groups)
                     if include is True:
                         filtered_fields[key] = field
                     else:
-                        logger.info('filtered field: %r', key)
+                        if DEBUG_AUTHORIZATION:
+                            logger.info('filtered field: %r', key)
                 schema['fields'] = filtered_fields
         return schema
     

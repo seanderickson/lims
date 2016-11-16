@@ -2316,8 +2316,8 @@ class ResourceResource(ApiResource):
                 for key, field in fields.items():
                     include = True
                     if key not in schema['id_attribute']:
-                        view_groups = field.get('view_groups',None)
-                        if view_groups is not None:
+                        view_groups = field.get('view_groups',[])
+                        if view_groups:
                             if not set(view_groups) & usergroups:
                                 include = False
                     if include is True:
@@ -4051,6 +4051,8 @@ class UserGroupResource(ApiResource):
             
             j = _ug.join(group_all_supergroups,
                  _ug.c.id==func.any(group_all_supergroups.c.sg_ids),isouter=True)
+            j = j.join(group_all_users,
+                _ug.c.id==group_all_users.c.id, isouter=True)
             stmt = select(columns.values()).select_from(j)
             # NOTE: for orchestra/pgsql 8.4 compatability, the all_subgroups 
             # requires the use of group/agg here, see notes above for this
@@ -4061,10 +4063,10 @@ class UserGroupResource(ApiResource):
             (stmt,count_stmt) = \
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
                         
             title_function = None
             if use_titles is True:

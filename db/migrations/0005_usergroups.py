@@ -16,6 +16,9 @@ from db.support.data_converter import default_converter
 from lims.base_settings import PROJECT_ROOT
 
 
+# IF false, do not migrate user's roles
+IS_PRODUCTION_READY = False
+
 logger = logging.getLogger(__name__)
 
 def create_roles(apps, schema_editor):
@@ -78,8 +81,13 @@ def create_roles(apps, schema_editor):
             role = user_group_new_names.get(ssrole,ssrole)
             if role in role_group_map:
                 ug = role_group_map[role]
-                ug.users.add(up)
-                ug.save()
+                if IS_PRODUCTION_READY:
+                    ug.users.add(up)
+                    ug.save()
+                else:
+                    logger.info(
+                        'role: %r, not assigned, setting '
+                        'IS_PRODUCTION_READY is False', role)
                 roles_assigned += 1
             else:
                 logger.error('unknown group: %s',role)

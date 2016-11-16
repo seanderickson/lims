@@ -113,8 +113,9 @@ define([
           outerSelf._addVocabularyButton(
             this, 'transfection_agent', 'transfection_agent', 'Transfection Agent');
          
-          outerSelf._addVocabularyButton(
-            this, 'species', 'screen.species', 'Screened Species');
+          // 2016-11-15 removed per JAS
+          //outerSelf._addVocabularyButton(
+          //  this, 'species', 'screen.species', 'Screened Species');
 
           function screenTypeSettings(screen_type){
             if (screen_type == 'small_molecule'){
@@ -932,7 +933,7 @@ define([
       var addButton = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="add_' + fieldKey + '_button" href="#">',
-          'Add</a>'
+          'Add a vocabulary item...</a>'
         ].join(''));
       addButton.click(function(event) {
         event.preventDefault();

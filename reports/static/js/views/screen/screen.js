@@ -121,9 +121,12 @@ define([
             if (screen_type == 'small_molecule'){
               form.$el.find('div[key="title"]').parent().prepend(
                 '<span id="title-sm-screen">A screen for compounds that...</span>');
+              form.$el.find('div[data-fields="transfection_agent"]').hide();
             }else{
               form.$el.find('#title-sm-screen').remove();
+              form.$el.find('div[data-fields="transfection_agent"]').show();
             }
+            
           });
           EditView.prototype.afterRender.apply(this,arguments);
         }

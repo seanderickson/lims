@@ -115,18 +115,26 @@ define([
          
           outerSelf._addVocabularyButton(
             this, 'species', 'screen.species', 'Screened Species');
-          
-          this.on('change', function(e){
-            var screen_type = form.getValue('screen_type');
+
+          function screenTypeSettings(screen_type){
             if (screen_type == 'small_molecule'){
               form.$el.find('div[key="title"]').parent().prepend(
                 '<span id="title-sm-screen">A screen for compounds that...</span>');
               form.$el.find('div[data-fields="transfection_agent"]').hide();
+              form.$el.find('div[data-fields="perturbagen_ug_ml_concentration"]').hide();
+              form.$el.find('div[data-fields="perturbagen_molar_concentration"]').hide();
             }else{
               form.$el.find('#title-sm-screen').remove();
               form.$el.find('div[data-fields="transfection_agent"]').show();
+              form.$el.find('div[data-fields="perturbagen_ug_ml_concentration"]').hide();
+              form.$el.find('div[data-fields="perturbagen_molar_concentration"]').show();
             }
-            
+          };
+
+          screenTypeSettings(this.model.get('screen_type'));
+          
+          this.on('change', function(e){
+            screenTypeSettings(form.getValue('screen_type'));
           });
           EditView.prototype.afterRender.apply(this,arguments);
         }

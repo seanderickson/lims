@@ -106,6 +106,7 @@ define([
       }
       var editView = EditView.extend({
         afterRender: function() {
+          var form = this;
           outerSelf._addVocabularyButton(
             this, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
          
@@ -114,6 +115,16 @@ define([
          
           outerSelf._addVocabularyButton(
             this, 'species', 'screen.species', 'Screened Species');
+          
+          this.on('change', function(e){
+            var screen_type = form.getValue('screen_type');
+            if (screen_type == 'small_molecule'){
+              form.$el.find('div[key="title"]').parent().prepend(
+                '<span id="title-sm-screen">A screen for compounds that...</span>');
+            }else{
+              form.$el.find('#title-sm-screen').remove();
+            }
+          });
           EditView.prototype.afterRender.apply(this,arguments);
         }
       });
@@ -128,6 +139,7 @@ define([
           DetailView.prototype.afterRender.apply(this,arguments);
           
           if (self.model.get('project_phase')=='annotation') {
+            // do nothing
           } else {
             self.createStatusHistoryTable($('#screen_extra_information'));
             self.createActivitySummary($('#screen_extra_information'));
@@ -145,6 +157,10 @@ define([
             if (!self.model.has('transfection_agent')) {
               $('#transfection_agent').closest('tr').remove();
             }
+            if (self.model.get('screen_type')=='small_molecule'){
+              $('#title').prepend('<span><small>A screen for compounds that...</small><span><br/>');
+            }
+            
           }
           
         },

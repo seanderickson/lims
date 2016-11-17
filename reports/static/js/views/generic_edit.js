@@ -563,7 +563,7 @@ define([
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
       this.saveSuccessCallBack = args.saveSuccessCallBack;
-      this.fullSaveOnEdit = args.fullSaveOnEdit
+      this.fullSaveOnEdit = args.fullSaveOnEdit;
       if (!_.isBoolean(this.fullSaveOnEdit)) {
         this.fullSaveOnEdit = false;
       }
@@ -1221,16 +1221,16 @@ define([
         options['patch'] = true;
       }        
       
-//      // Determine PATCH (update) or POST (create)
-//      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
-//      if (!_.contains(this.uriStack, '+add') && options['key'] ) {
-//        self.model.idAttribute = self.model.resource['id_attribute'];
-//        options['patch'] = true;
-//        // TODO: check if creating new or updating here
-//        // set the id specifically on the model: backbone requires this to 
-//        // determine whether a "POST" or "PATCH" will be used
-//        this.model.id = options['key'];
-//      }
+      //      // Determine PATCH (update) or POST (create)
+      //      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
+      //      if (!_.contains(this.uriStack, '+add') && options['key'] ) {
+      //        self.model.idAttribute = self.model.resource['id_attribute'];
+      //        options['patch'] = true;
+      //        // TODO: check if creating new or updating here
+      //        // set the id specifically on the model: backbone requires this to 
+      //        // determine whether a "POST" or "PATCH" will be used
+      //        this.model.id = options['key'];
+      //      }
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {
         appModel.showOkCommentForm( title, function(values) {
@@ -1249,16 +1249,19 @@ define([
             if (self.saveSuccessCallBack) {
               self.saveSuccessCallBack(model);
             } else {
-              if (!options['patch']) {
+              // Note removed 201611 - force a reload of all edits, 
+              // will run extra render operations
+              //if (!options['patch']) {
                 // this is an +add event
                 model = new Backbone.Model(model);
                 var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
                 model.key = self.model.resource.key + '/' + key;
                 appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
-              } else {
-                console.log('trigger remove');
-                self.trigger('remove');
-              }
+              //} else {
+              //  // just remove the edit view and use the model to refresh
+              //  console.log('trigger remove');
+              //  self.trigger('remove');
+              //}
             }
           })
           .done(function(model, resp) {

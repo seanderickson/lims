@@ -117,6 +117,28 @@ define([
     },
 
     initialize : function() {
+      var self = this;
+      this.on('change:users', function(){
+        self.unset('adminUsers');
+        self.unset('principal_investigators');
+        self.unset('userOptions');
+        self.unset('adminUserOptions');
+      });
+      this.on('change:screens', function(){
+        self.unset('screenOptions');
+      });
+      this.on('change:libraries', function(){
+        self.unset('libraryOptions');
+        self.unset('screeningLibraryOptions-small_molecule');
+        self.unset('screeningLibraryOptions-rnai');
+        self.unset('platedLibraryOptions');
+      });
+      this.on('change:usergroups', function(){
+        self.unset('userGroupOptions');
+      });
+      this.on('change:platelocations', function(){
+        self.unset('locationHash')
+      });
       _.bindAll(this,'error',
         'setCurrentUser','getResources','getVocabularies',
         'getAdminUserOptions','getUserOptions','getUserGroupOptions',
@@ -667,7 +689,7 @@ define([
         }else{
           var msg = Iccbl.formatString(
             'vocabulary: {vocabulary} is misconfigured: rawData: {rawData}',
-            { vocabulary: _.result(this, "vocabulary_scope_ref"),
+            { vocabulary: scope,
               rawData: val 
             });
           console.log(msg);
@@ -1723,7 +1745,7 @@ define([
       $modal.empty();
       $modal.html(modalDialog.$el);
       $modal.on('show.bs.modal', function () {
-//        $('.modal-content').css('height',$( window ).height()*0.95);
+        // $('.modal-content').css('height',$( window ).height()*0.95);
         $('.modal-content').css('height', 'auto');
         $('.modal-content').css('max-height','100%');
       });      

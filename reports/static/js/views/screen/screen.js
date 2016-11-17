@@ -26,6 +26,7 @@ define([
 
     initialize: function(args) {
       var self = this;
+      self.args = args;
       this._classname = 'ScreenView';
 
       this.tabbed_resources = this.screen_tabbed_resources;
@@ -117,15 +118,16 @@ define([
           //outerSelf._addVocabularyButton(
           //  this, 'species', 'screen.species', 'Screened Species');
 
+          form.$el.find('div[key="title"]').parent().prepend(
+            '<span id="title-sm-screen">A screen for compounds that...</span>');
           function screenTypeSettings(screen_type){
             if (screen_type == 'small_molecule'){
-              form.$el.find('div[key="title"]').parent().prepend(
-                '<span id="title-sm-screen">A screen for compounds that...</span>');
+              form.$el.find('#title-sm-screen').show();
               form.$el.find('div[data-fields="transfection_agent"]').hide();
               form.$el.find('div[data-fields="perturbagen_ug_ml_concentration"]').hide();
               form.$el.find('div[data-fields="perturbagen_molar_concentration"]').hide();
             }else{
-              form.$el.find('#title-sm-screen').remove();
+              form.$el.find('#title-sm-screen').hide();
               form.$el.find('div[data-fields="transfection_agent"]').show();
               form.$el.find('div[data-fields="perturbagen_ug_ml_concentration"]').hide();
               form.$el.find('div[data-fields="perturbagen_molar_concentration"]').show();
@@ -133,9 +135,12 @@ define([
           };
 
           screenTypeSettings(this.model.get('screen_type'));
-          
-          this.on('change', function(e){
+          // Note the "screen_type:change" syntax is backwards from Backbone
+          form.on('screen_type:change', function(e){
             screenTypeSettings(form.getValue('screen_type'));
+          });
+          form.on('status:change', function(e){
+            form.setValue('status_date', new Date());
           });
           EditView.prototype.afterRender.apply(this,arguments);
         }
@@ -153,9 +158,9 @@ define([
           if (self.model.get('project_phase')=='annotation') {
             // do nothing
           } else {
-            self.createStatusHistoryTable($('#screen_extra_information'));
-            self.createActivitySummary($('#screen_extra_information'));
-            self.createCprTable($('#screen_extra_information'));
+            self.createStatusHistoryTable($('#status_table'));
+            self.createActivitySummary($('#activity_summary'));
+            self.createCprTable($('#cpr_table'));
             self.createPublicationTable(this.$el.find('#publications'));
             self.createAttachedFileTable(this.$el.find('#attached_files'));
             
@@ -201,7 +206,7 @@ define([
 
       var temp_validate = this.model.validate;
       this.model.validate = function(attrs, options) {
-        errs = {};
+        errs = temp_validate();
         if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))) {
           if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))) {
             errs['max_allowed_data_privacy_expiration_date'] = (
@@ -237,14 +242,14 @@ define([
       model.urlRoot = this.model.resource.apiUri;
       /////
       
-      view = new DetailLayout({ 
+      view = new DetailLayout(_.extend(self.args, { 
         model: model, 
         uriStack: delegateStack,
         EditView: editView,
         editableKeys: editableKeys,
         editVisibleKeys: editVisibleKeys,
         DetailView: detailView
-      });
+      }));
       view.showEdit = function() {
         appModel.initializeAdminMode(function() {
           var userOptions = appModel.getUserOptions();
@@ -275,16 +280,17 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-      var cell = $('<div id="activity_summary" class="row"/>');
-      $target_el.append(cell);
-
+//      var cell = $('<div id="activity_summary" class="row"/>');
+//      $target_el.append(cell);
+      $target_el.empty();
+      
       function build_table(collection) {
           if (collection.isEmpty()) {
             return;
           }
           var activity = collection.at(0);
           
-          cell.append($([
+          $target_el.append($([
             '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
             '<div id="" class="col-xs-12" >',
             '<table id="activity_summary" class="table-condensed data-list">',
@@ -757,8 +763,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: cprResource.apiUri 
       });
-      var cell = $('<div id="cpr_table" class="row"/>');
-      $target_el.append(cell);
+      $target_el.empty();
       
       function build_table(collection) {
         if (collection.isEmpty()) {
@@ -810,7 +815,7 @@ define([
         colModel.comparator = 'order';
         colModel.sort();
 
-        cell.append($([
+        $target_el.append($([
           '<div class="col-xs-12"><strong>',
           'Recent <a href="#screen/' + self.model.get('facility_id'),
           '/cherrypicks">Cherry Pick Requests</a></strong></div>',
@@ -821,7 +826,7 @@ define([
           collection: collection,
           className: 'backgrid table-striped table-condensed table-hover '
         });
-        cell.find('#cprs').html(_grid.render().$el);
+        $target_el.find('#cprs').html(_grid.render().$el);
         
       }
       
@@ -850,8 +855,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: apilogResource.apiUri 
       });
-      var cell = $('<div id="status_table" class="row"/>');
-      $target_el.append(cell);
+      $target_el.empty();
       
       function build_table(collection) {
         if (collection.isEmpty()) {
@@ -859,7 +863,11 @@ define([
         }
         collection.each(function(model) {
           var diffs = JSON.parse(model.get('diffs'));
-          model.set('status', appModel.getVocabularyTitle('screen.status', diffs.status[1]));
+          if (!_.isEmpty(diffs.status[1])){
+            model.set('status', appModel.getVocabularyTitle('screen.status', diffs.status[1]));
+          }else{
+            collection.remove(model);
+          }
         });
         var TextWrapCell = Backgrid.Cell.extend({
           className: 'text-wrap-cell'
@@ -896,7 +904,7 @@ define([
 
         $('#status').closest('tr').remove();
         $('#status_date').closest('tr').remove();
-        cell.append($([
+        $target_el.append($([
           '<div class="col-xs-12"><strong>Status Items</strong></div>',
           '<div class="col-xs-12" id="status_items"/>'].join('')));
         
@@ -905,7 +913,7 @@ define([
           collection: collection,
           className: 'backgrid table-striped table-condensed table-hover '
         });
-        cell.find('#status_items').html(status_grid.render().$el);
+        $target_el.find('#status_items').html(status_grid.render().$el);
         
       }
       

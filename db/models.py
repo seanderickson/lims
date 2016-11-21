@@ -551,7 +551,11 @@ class Screen(models.Model):
     pubchem_deposited_date = models.DateField(null=True)
     pubchem_assay_id = models.IntegerField(null=True)
 
+    # Old
     pin_transfer_admin_activity = models.ForeignKey(AdministrativeActivity, null=True)
+#     # New
+#     pin_transfer_date_approved = models.DateField(null=True)
+#     pin_transfer_approval_comment = models.TextField(null=True)
     
     abase_study_id = models.TextField()
     abase_protocol_id = models.TextField()
@@ -606,39 +610,21 @@ class Screen(models.Model):
     # transfection_agent = models.ForeignKey('TransfectionAgent', null=True)
     
     def clean(self):
-        if ( self.min_allowed_data_privacy_expiration_date is not None
-            or self.max_allowed_data_privacy_expiration_date is not None):
-            if ( self.min_allowed_data_privacy_expiration_date 
-                    > self.max_allowed_data_privacy_expiration_date):
-                temp = self.max_allowed_data_privacy_expiration_date
-                self.max_allowed_data_privacy_expiration_date = \
-                    self.min_allowed_data_privacy_expiration_date
-                self.min_allowed_data_privacy_expiration_date = temp
-            if self.data_privacy_expiration_date is not None:
-                if ( self.data_privacy_expiration_date 
-                        > self.max_allowed_data_privacy_expiration_date ):
-                    self.data_privacy_expiration_date = \
-                        self.max_allowed_data_privacy_expiration_date
-                if ( self.data_privacy_expiration_date 
-                        < self.min_allowed_data_privacy_expiration_date ):
-                    self.data_privacy_expiration_date = \
-                        self.min_allowed_data_privacy_expiration_date
-            elif self.min_allowed_data_privacy_expiration_date is not None:
-                self.data_privacy_expiration_date = \
-                    self.min_allowed_data_privacy_expiration_date
-            else:
-                self.data_privacy_expiration_date = \
-                    self.max_allowed_data_privacy_expiration_date
-
-        errs = {}
-        if not self.data_privacy_expiration_date:
-            if self.min_allowed_data_privacy_expiration_date:
-                errs['data_privacy_expiration_date'] = \
-                    'can not be null if min/max dates are set'
         
-        if errs:
-            raise ValidationError(errs)
-    
+        min = self.min_allowed_data_privacy_expiration_date or datetime.date.min
+        max = self.max_allowed_data_privacy_expiration_date or datetime.date.max
+        if ( min > max):
+            temp = max
+            max = min
+            min = temp
+        if self.data_privacy_expiration_date is not None:
+            if ( self.data_privacy_expiration_date > max ):
+                self.data_privacy_expiration_date = max
+            if ( self.data_privacy_expiration_date < min ):
+                self.data_privacy_expiration_date = min
+        else:
+            self.data_privacy_expiration_date = min
+
     class Meta:
         db_table = 'screen'
         
@@ -1031,7 +1017,7 @@ class WellQueryIndex(models.Model):
 # create a substance table, as an easy way of creating the substance_id_seq
 class Substance(models.Model):
     
-    comment = models.TextField()
+    comment = models.TextField(null=True)
     
     def __unicode__(self):
         return unicode(str(self.id)) 

@@ -10,8 +10,6 @@ from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db import transaction
-from django.utils import timezone
-from django.utils.encoding import python_2_unicode_compatible
 from tastypie.utils.dict import dict_strip_unicode_keys
 from aldjemy.core import get_engine
 
@@ -19,9 +17,11 @@ from aldjemy.core import get_engine
 logger = logging.getLogger(__name__)
 
 
-class GetOrNoneManager(models.Manager):
-    """Adds get_or_none method to objects
-    """
+class MetaManager(models.Manager):
+
+    def __init__(self, **kwargs):
+        super(MetaManager,self).__init__(**kwargs)
+
     def get_or_none(self, function=None, **kwargs):
         try:
             x = self.get(**kwargs)
@@ -31,12 +31,6 @@ class GetOrNoneManager(models.Manager):
                 return x
         except self.model.DoesNotExist: 
             return None
-
-
-class MetaManager(GetOrNoneManager):
-
-    def __init__(self, **kwargs):
-        super(MetaManager,self).__init__(**kwargs)
 
     def get_and_parse(self, scope='', field_definition_scope='fields.field', 
                       clear=False):
@@ -59,7 +53,7 @@ class MetaManager(GetOrNoneManager):
             cache.delete('metahash:'+scope)
             
         if not metahash:
-            metahash = self.get_and_parse_int(
+            metahash = self._get_and_parse(
                 scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
             logger.debug(
@@ -70,7 +64,7 @@ class MetaManager(GetOrNoneManager):
         return metahash
 
 
-    def get_and_parse_int(self, scope='', 
+    def _get_and_parse(self, scope='', 
                           field_definition_scope='fields.field'):
         '''
         non-cached Query the metahash table for data identified by "scope", 
@@ -109,7 +103,6 @@ class MetaManager(GetOrNoneManager):
             
             if parsed_object.get(u'vocabulary_scope_ref'):
                 vocab_ref = parsed_object['vocabulary_scope_ref']
-                logger.debug(str(('vocab_ref', vocab_ref)))
                 parsed_object['choices'] = [
                     x.key for x in Vocabulary.objects.all().filter(
                         scope=vocab_ref)]
@@ -186,20 +179,22 @@ class ApiLog(models.Model):
     class Meta:
         unique_together = (('ref_resource_name', 'key', 'date_time'))    
 
-    def __unicode__(self):
-        return unicode(str((self.id, self.api_action, self.ref_resource_name, self.key, 
-            str(self.date_time), self.username, 
-            'parent:', self.parent_log.id if self.parent_log else None)))
+    def __init__(self, *args, **kwargs):
+        self.diffs = {}
+        models.Model.__init__(self, *args, **kwargs)
+    
+    def __repr__(self):
+        return (
+            '<ApiLog(id=%d, api_action=%r, ref_resource_name=%r, '
+            'key=%r, date_time=%r)>'
+            % (self.id, self.api_action, self.ref_resource_name, self.key,
+               self.date_time))
 
     @staticmethod   
     def json_dumps(obj):
         return json.dumps(
             obj, skipkeys=False,check_circular=True, allow_nan=True, 
             default=lambda x: str(x), cls=DjangoJSONEncoder)
-    
-    def __init__(self, *args, **kwargs):
-        self.diffs = {}
-        models.Model.__init__(self, *args, **kwargs)
     
     def save(self, **kwargs):
         ''' override to convert json fields '''
@@ -242,6 +237,9 @@ class ApiLog(models.Model):
                         
     @staticmethod
     def bulk_create(logs):
+        '''
+        Utility method - bulk create/save ApiLog instances
+        '''
 
         logger.debug('bulk create logs: %r', logs)
         with transaction.atomic():
@@ -270,31 +268,6 @@ class ApiLog(models.Model):
                 LogDiff.objects.bulk_create(bulk_create_diffs)
             
             return logs
-        
-class ListLog(models.Model):
-    '''
-    A model that holds the keys for the items created in a "put_list"
-    '''
-    
-    apilog = models.ForeignKey('ApiLog')
-
-    # name of the resource, i.e. "apilog" or "screen", "user", etc.
-    ref_resource_name = models.CharField(max_length=64)
-
-    # full public key of the resource instance being logged (may be composite, 
-    # separted by '/')
-    key = models.CharField(max_length=128)
-
-    uri = models.TextField()
-    
-    class Meta:
-        # TODO: must be apilog and either of(('ref_resource_name', 'key'),'uri')
-        # -- so probably better to handle in software
-        unique_together = (('apilog', 'ref_resource_name', 'key','uri'))    
-    
-    def __unicode__(self):
-        return unicode(str((self.ref_resource_name, self.key, self.uri )))
-    
     
 class MetaHash(models.Model):
     
@@ -354,29 +327,24 @@ class MetaHash(models.Model):
         # else False )
         return True if self.json_field_type else False
                 
-    def model_to_dict(self, scope=None):
+    def model_to_dict(self, scope):
         '''
         Specialized model_to_dict for JSON containing tables defined using the 
         Metahash Manager.
-        - scope = "fields.<model_name>" - the scope of the field definitions in 
-        the metahash table for this object.
-        - the scope is used to query the "fields" definitions in the metahash - 
-            the construct we are using to define all publicly available fields; 
-            json or 'real'
+        @param scope for finding field definitions in the metahash table.
+        e.g. "fields.<model_name>" 
         '''
-        assert scope, (
-            'Must define the scope (used to query the field definitions '
-            'in the metahash)')
         fields = MetaHash.objects.get_and_parse(scope=scope)
         dict = {}
         for key in fields.keys():
             dict[key] = self.get_field(key)
         return dict
     
-    def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.id, self.alias)))
-    
-    
+    def __repr__(self):
+        return (
+            '<MetaHash(id=%d, scope=%r, key=%r)>'
+            % (self.id, self.scope, self.key))
+
 class Vocabulary(models.Model):
     
     objects                 = MetaManager()
@@ -408,7 +376,7 @@ class Vocabulary(models.Model):
             return temp[field]
         else:
             # Note, json_field is sparse, not padded with empty attributes
-            logger.debug(str((self,'field not found: ',field))) 
+            logger.debug('%r, field not found: %r',self, field) 
             return None
             
     def set_field(self, field, value):
@@ -416,8 +384,10 @@ class Vocabulary(models.Model):
         temp[field] = value;
         self.json_field = json.dumps(temp)
     
-    def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.ordinal)))
+    def __repr__(self):
+        return (
+            '<Vocabulary(scope=%r, key=%r, ordinal=%r)>'
+            % (self.scope, self.key, self.ordinal))
 
         
 class Permission(models.Model):
@@ -429,8 +399,10 @@ class Permission(models.Model):
     class Meta:
         unique_together = (('scope', 'key', 'type'))    
         
-    def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.type)))
+    def __repr__(self):
+        return (
+            '<Permission(scope=%r, key=%r, type=%r)>'
+            % (self.scope, self.key, self.type))
    
     
 class UserGroup(models.Model):
@@ -488,8 +460,10 @@ class UserGroup(models.Model):
         
         return list(users)
         
-    def __unicode__(self):
-        return unicode(str((self.name)) )
+    def __repr__(self):
+        return (
+            '<UserGroup(name=%r)>'
+            % (self.name))
 
 class UserProfile(models.Model):
 
@@ -522,37 +496,38 @@ class UserProfile(models.Model):
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
 
-    # required if the field is a JSON field; choices are from the TastyPie 
-    # field types
-    json_field_type = models.CharField(
-        max_length=128, null=True); 
-    
-    # This is the "meta" field, it contains "virtual" json fields
-    json_field = models.TextField(null=True)     
+    # # required if the field is a JSON field; choices are from the TastyPie 
+    # # field types
+    # json_field_type = models.CharField(
+    #     max_length=128, null=True); 
+    # 
+    # # This is the "meta" field, it contains "virtual" json fields
+    # json_field = models.TextField(null=True)     
 
-    def __str__(self):
-        return ('UserProfile: { ecommons_id: %r, username: %r, auth_user: %r }'
-            % (self.ecommons_id, self.username, self.user )) 
+    def __repr__(self):
+        return (
+            '<UserProfile(username=%r, id=%d, auth_user=%d)>'
+            % (self.username, self.id, self.user.id))
     
-    def get_field_hash(self):
-        if self.json_field:
-            return json.loads(self.json_field)
-        else:
-            return {}
-    
-    def get_field(self, field):
-        temp = self.get_field_hash()
-        if(field in temp):
-            return temp[field]
-        else:
-            # Note, json_field is sparse, not padded with empty attributes
-            logger.debug(str((self,'field not found: ',field))) 
-            return None
-            
-    def set_field(self, field, value):
-        temp = self.get_field_hash()
-        temp[field] = value;
-        self.json_field = json.dumps(temp)
+    # def get_field_hash(self):
+    #     if self.json_field:
+    #         return json.loads(self.json_field)
+    #     else:
+    #         return {}
+    # 
+    # def get_field(self, field):
+    #     temp = self.get_field_hash()
+    #     if(field in temp):
+    #         return temp[field]
+    #     else:
+    #         # Note, json_field is sparse, not padded with empty attributes
+    #         logger.debug(str((self,'field not found: ',field))) 
+    #         return None
+    #         
+    # def set_field(self, field, value):
+    #     temp = self.get_field_hash()
+    #     temp[field] = value;
+    #     self.json_field = json.dumps(temp)
 
     def get_all_groups(self):
 
@@ -580,6 +555,29 @@ class UserProfile(models.Model):
         return self.user.last_name
     
 
+# class ListLog(models.Model):
+#     '''
+#     A model that holds the keys for the items created in a "put_list"
+#     '''
+#     
+#     apilog = models.ForeignKey('ApiLog')
+# 
+#     # name of the resource, i.e. "apilog" or "screen", "user", etc.
+#     ref_resource_name = models.CharField(max_length=64)
+# 
+#     # full public key of the resource instance being logged (may be composite, 
+#     # separted by '/')
+#     key = models.CharField(max_length=128)
+# 
+#     uri = models.TextField()
+#     
+#     class Meta:
+#         # TODO: must be apilog and either of(('ref_resource_name', 'key'),'uri')
+#         # -- so probably better to handle in software
+#         unique_together = (('apilog', 'ref_resource_name', 'key','uri'))    
+#     
+#     def __unicode__(self):
+#         return unicode(str((self.ref_resource_name, self.key, self.uri )))
 
 # # 
 # ## proof-of-concept: Typed Record table with virtual field support:

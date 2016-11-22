@@ -28,12 +28,23 @@ class Migration(migrations.Migration):
             model_name='attachedfile',
             name='attached_file_type',
         ),
+        migrations.DeleteModel(
+            name='AttachedFileType'),
 
         # TODO Reinstate: after migration finished
         # migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
         # migrations.RunSQL('DROP TABLE screen_cell_line; '),
-        migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
-        migrations.RunSQL('DROP TABLE transfection_agent; '),
+#         migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
+        
+        migrations.RemoveField(
+            model_name='screen',
+            name='transfection_agent'),
+        
+#         migrations.RunSQL('DROP TABLE transfection_agent; '),
+        
+        migrations.DeleteModel(
+            name='transfectionagent'),
+        
         migrations.RunSQL(
             'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
         migrations.RemoveField(
@@ -47,6 +58,26 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='ScreenFundingSupportLink',
         ),
+        
+        migrations.DeleteModel(
+            name='CellLine'),
+            
+        migrations.DeleteModel(
+            name='ScreenStatusItem'),
+            
+        migrations.DeleteModel(
+            name='TransfectionAgent'),
+            
+        migrations.DeleteModel(
+            name='LibraryContentsVersion'),
+            
+        migrations.RemoveField(
+            model_name='ScreeningRoomUser',
+            name='last_notified_smua_checklist_item_event'),
+
+        migrations.RemoveField(
+            model_name='ScreeningRoomUser',
+            name='last_notified_rnaiua_checklist_item_event'),
 
         # TODO: service_activity depends on funding support
         migrations.RunSQL('DROP TABLE funding_support; '),
@@ -90,6 +121,9 @@ class Migration(migrations.Migration):
             model_name='well',
             name='latest_released_reagent',
         ),
+        migrations.RemoveField(
+            model_name='reagent', name='library_contents_version'),
+            
         migrations.DeleteModel(
             name='AnnotationValue',
         ),

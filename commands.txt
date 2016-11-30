@@ -18,6 +18,8 @@ PROFILE_LOG_BASE='/tmp'
 PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-20141031T193039.prof 
 
 #####
+# NOTE: 20161102 - this is not working - changes related to mod_wsgi?
+# 
 # EXAMPLE login interaction using cookies with curl
 # NOTE: basic authentication is not set up on Orchestra; 
 # because the wsgi client does not communicate credentials with the apache server
@@ -72,10 +74,15 @@ PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions.csv -U sde
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
+# PATCH-only user updates (usergroups/permissions) on the server:
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ \
   -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 \
   -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
+# PATCH usergroups
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
+  -X PATCH http://localhost:8000/reports/api/v1/usergroup \
+  --data-binary @lims/static/production_data/screensaver_usergroups-prod.csv
 #####
 # run all tests
 ./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing

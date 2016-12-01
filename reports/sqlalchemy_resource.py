@@ -33,10 +33,11 @@ from tastypie.utils.mime import build_content_type
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
-    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_DATA_INTERCHANGE
+    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_DATA_INTERCHANGE, HTTP_PARAM_USE_TITLES,\
+    HTTP_PARAM_USE_VOCAB
 from reports.api_base import IccblBaseResource, un_cache
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE,\
-    JSON_MIMETYPE, CSV_MIMETYPE
+    JSON_MIMETYPE, CSV_MIMETYPE, parse_val
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
 from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
@@ -136,6 +137,14 @@ class SqlAlchemyResource(IccblBaseResource):
             val = _dict.get(key,[])
             if isinstance(val, basestring):
                 _dict[key] = [val]
+        
+        # Parse known boolean params for convenience
+        http_boolean_params = [
+            HTTP_PARAM_DATA_INTERCHANGE,HTTP_PARAM_RAW_LISTS,
+            HTTP_PARAM_USE_VOCAB, HTTP_PARAM_USE_TITLES]
+        for key in http_boolean_params:
+            _dict[key] = parse_val(
+                _dict.get(key, False),key, 'boolean')
         
         return _dict    
     

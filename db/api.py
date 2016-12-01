@@ -384,12 +384,14 @@ class PlateLocationResource(DbApiResource):
                 
                 rowproxy_generator = create_copy_plate_ranges_gen(rowproxy_generator)
 
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
 
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -1212,12 +1214,14 @@ class LibraryCopyPlateResource(DbApiResource):
                 compile_kwargs={"literal_binds": True}))
             logger.info('compiled_stmt %s', compiled_stmt)
          
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
 
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -3324,9 +3328,11 @@ class DataColumnResource(DbApiResource):
             
             stmt = stmt.order_by('ordinal')
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -3699,12 +3705,14 @@ class CopyWellResource(DbApiResource):
                 compile_kwargs={"literal_binds": True}))
             logger.info('compiled_stmt %s', compiled_stmt)
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -4055,12 +4063,14 @@ class CherryPickRequestResource(DbApiResource):
                 stmt = stmt.order_by(
                     nullslast(desc(column('cherry_pick_request_id'))))
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -4291,12 +4301,14 @@ class CherryPickPlateResource(DbApiResource):
                 stmt = stmt.order_by(
                     nullslast(desc(column('cherry_pick_request_id'))))
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -4582,12 +4594,14 @@ class LibraryCopyResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by("library_short_name", "copy_name")
  
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
 
             compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),
@@ -4929,12 +4943,14 @@ class PublicationResource(DbApiResource):
                 stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.order_by('-publication_id')
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -5530,12 +5546,14 @@ class AttachedFileResource(DbApiResource):
             # compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
             # logger.info('compiled_stmt %s', compiled_stmt)
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -6149,12 +6167,14 @@ class ActivityResource(DbApiResource):
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -6393,12 +6413,14 @@ class CherryPickScreeningResource(ActivityResource):
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
   
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
              
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -6688,12 +6710,14 @@ class LibraryScreeningResource(ActivityResource):
             if 'library_plates_screened' in field_hash:
                 rowproxy_generator = create_lcp_gen(rowproxy_generator)
                     
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
              
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -8388,12 +8412,14 @@ class ScreenResource(DbApiResource):
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
                     
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
              
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -8968,12 +8994,14 @@ class UserChecklistItemResource(DbApiResource):
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -9407,12 +9435,14 @@ class ScreensaverUserResource(DbApiResource):
                 str(stmt.compile(
                     dialect=postgresql.dialect(),
                     compile_kwargs={"literal_binds": True})))
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -10327,12 +10357,14 @@ class ReagentResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
-        title_function = None
-        if use_titles is True:
-            title_function = lambda key: field_hash[key]['title']
+        def title_function(key):
+            if use_titles is True:
+                return field_hash[key]['title']
+            else:
+                return key
         if is_data_interchange:
-            title_function = \
-                DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
 
         return self.stream_response_from_statement(
             request, stmt, count_stmt, filename,
@@ -11274,12 +11306,14 @@ class LibraryResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by("short_name")
             
-            title_function = None
-            if use_titles is True:
-                title_function = lambda key: field_hash[key]['title']
+            def title_function(key):
+                if use_titles is True:
+                    return field_hash[key]['title']
+                else:
+                    return key
             if is_data_interchange:
-                title_function = \
-                    DbApiResource.datainterchange_title_function(field_hash,schema['id_attribute'])
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
                 
             if False:
                 logger.info(

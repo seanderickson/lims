@@ -40,10 +40,10 @@ class Migration(migrations.Migration):
             model_name='screen',
             name='transfection_agent'),
         
+        # Leave as SQL, django makemigrations complains
 #         migrations.RunSQL('DROP TABLE transfection_agent; '),
-        
-        migrations.DeleteModel(
-            name='transfectionagent'),
+        # migrations.DeleteModel(
+        #     name='TransfectionAgent'),
         
         migrations.RunSQL(
             'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
             
         migrations.DeleteModel(
             name='TransfectionAgent'),
-            
+                  
         migrations.DeleteModel(
             name='LibraryContentsVersion'),
             

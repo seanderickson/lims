@@ -7,9 +7,6 @@ import os
 
 from django.db import migrations, models
 
-from lims.base_settings import PROJECT_ROOT
-from reports.utils.gray_codes import create_substance_id
-from db.models import create_id
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +27,6 @@ class Migration(migrations.Migration):
         ),
         migrations.DeleteModel(
             name='AttachedFileType'),
-
-        # TODO Reinstate: after migration finished
-        # migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
-        # migrations.RunSQL('DROP TABLE screen_cell_line; '),
-#         migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
-        
-        migrations.RemoveField(
-            model_name='screen',
-            name='transfection_agent'),
-        
-        # Leave as SQL, django makemigrations complains
-#         migrations.RunSQL('DROP TABLE transfection_agent; '),
-        # migrations.DeleteModel(
-        #     name='TransfectionAgent'),
         
         migrations.RunSQL(
             'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
@@ -65,9 +48,17 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='ScreenStatusItem'),
             
+        migrations.RemoveField(
+            model_name='screen',
+            name='transfection_agent',
+        ),
         migrations.DeleteModel(
             name='TransfectionAgent'),
                   
+        migrations.RemoveField(
+            model_name='reagent',
+            name='library_contents_version',
+        ),
         migrations.DeleteModel(
             name='LibraryContentsVersion'),
             
@@ -98,32 +89,33 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='screensaveruser',
             name='lab_head',
-            field=models.ForeignKey(related_name='lab_member', to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(
+                related_name='lab_member', to='db.ScreensaverUser', null=True),
         ),
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='volume_approved_by',
             field=models.ForeignKey(
-                related_name='approved_cherry_pick', to='db.ScreensaverUser', null=True),
+                related_name='approved_cherry_pick', to='db.ScreensaverUser', 
+                null=True),
         ),
-        
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='requested_by',
-            field=models.ForeignKey(related_name='requested_cherry_pick', to='db.ScreensaverUser'),
+            field=models.ForeignKey(
+                related_name='requested_cherry_pick', to='db.ScreensaverUser'),
         ),
         migrations.AlterField(
             model_name='screensaveruser',
             name='lab_head',
-            field=models.ForeignKey(related_name='lab_member', blank=True, to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(
+                related_name='lab_member', blank=True, to='db.ScreensaverUser', 
+                null=True),
         ),
         migrations.RemoveField(
             model_name='well',
             name='latest_released_reagent',
         ),
-        migrations.RemoveField(
-            model_name='reagent', name='library_contents_version'),
-            
         migrations.DeleteModel(
             name='AnnotationValue',
         ),
@@ -133,8 +125,4 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='StudyReagentLink',
         ),
-
-        
-#         migrations.DeleteModel('ScreeningRoomUser'),
-#         migrations.DeleteModel('LabHead'),
     ]

@@ -121,6 +121,7 @@ define([
           form.$el.find('div[key="title"]').parent().prepend(
             '<span id="title-sm-screen">A screen for compounds that...</span>');
           function screenTypeSettings(screen_type){
+            // TODO: 20161128 - adjust visible fields based on the screen type
             if (screen_type == 'small_molecule'){
               form.$el.find('#title-sm-screen').show();
               form.$el.find('div[data-fields="transfection_agent"]').hide();
@@ -173,6 +174,10 @@ define([
             }
             if (!self.model.has('transfection_agent')) {
               $('#transfection_agent').closest('tr').remove();
+            }
+            if (!self.model.has('pin_transfer_approved_by_username')) {
+              $('#pin_transfer_date_approved').closest('tr').remove();
+              $('#pin_transfer_comments').closest('tr').remove();
             }
             if (self.model.get('screen_type')=='small_molecule'){
               $('#title').prepend('<span><small>A screen for compounds that...</small><span><br/>');
@@ -259,6 +264,8 @@ define([
           fields['lab_head_username']['choices'] = (
               appModel.getPrincipalInvestigatorOptions() );
           fields['publishable_protocol_entered_by']['choices'] = (
+              appModel.getAdminUserOptions() );
+          fields['pin_transfer_approved_by_username']['choices'] = (
               appModel.getAdminUserOptions() );
           // TODO: this should default only after pp value is entered
           //view.model.set('publishable_protocol_entered_by',

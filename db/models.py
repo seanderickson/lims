@@ -368,7 +368,7 @@ class AttachedFile(models.Model):
     def __repr__(self):
         return (
             '<AttachedFile(attached_file_id=%d, filename=%r, '
-            'type=$r, date_created=%r)' 
+            'type=$r, date_created=%r)>' 
             % ( self.attached_file_id, self.filename, self.type, 
                 self.date_created) )
 
@@ -394,7 +394,7 @@ class UserChecklistItem(models.Model):
     def __repr__(self):
         return (
             'UserChecklistItem(screensaver_user=%r, item_group=%r, '
-            'item_name=%r, status=%r)' 
+            'item_name=%r, status=%r)>' 
             % (self.screensaver_user, self.item_group,self.item_name,
                self.status)) 
 
@@ -435,7 +435,7 @@ class CherryPickRequest(models.Model):
         
     def __repr__(self):
         return (
-            'CherryPickRequest(id=%r, screen=%r)' 
+            '<CherryPickRequest(id=%r, screen=%r)>' 
             % (self.cherry_pick_request_id, self.screen.facility_id)) 
 
 class CherryPickRequestEmptyWell(models.Model):
@@ -461,8 +461,8 @@ class LabCherryPick(models.Model):
 
     def __repr__(self):
         return (
-            'LabCherryPick(id=%r, cpr_id=%r, source_well=%r, '
-            'assay_plate_row=%d, assay_plate_column=%d)' 
+            '<LabCherryPick(id=%r, cpr_id=%r, source_well=%r, '
+            'assay_plate_row=%d, assay_plate_column=%d)>' 
             % (self.lab_cherry_pick_id, 
                self.cherry_pick_request.cherry_pick_request_id, 
                self.source_well.well_id, self.assay_plate_row,
@@ -513,7 +513,7 @@ class Publication(models.Model):
 
     def __repr__(self):
         return (
-            'Publication(id=%r, title=%r, screen=%r, reagent=%r)'
+            '<Publication(id=%r, title=%r, screen=%r, reagent=%r)>'
             % (self.publication_id, self.screen.facility_id, 
                self.reagent.reagent_id)) 
 
@@ -582,11 +582,10 @@ class Screen(models.Model):
     pubchem_deposited_date = models.DateField(null=True)
     pubchem_assay_id = models.IntegerField(null=True)
 
-    # Old
-    pin_transfer_admin_activity = \
-        models.ForeignKey(AdministrativeActivity, null=True)
+    pin_transfer_admin_activity = models.ForeignKey(
+        'Activity', null=True, related_name='pin_transfer_approved_screen')
 #     # New
-#     pin_transfer_date_approved = models.DateField(null=True)
+#     pin_transfer_approved_by = models.ForeignKey('ScreensaverUser', null=True)
 #     pin_transfer_approval_comment = models.TextField(null=True)
     
     abase_study_id = models.TextField()
@@ -837,7 +836,7 @@ class ScreensaverUser(models.Model):
         
     def __repr__(self):
         return (
-            '<ScreensaverUser(screensaver_user_id: %r, username: %r)' 
+            '<ScreensaverUser(screensaver_user_id: %r, username: %r)>' 
             % (self.screensaver_user_id, self.username ))
 
     def __str__(self):
@@ -867,7 +866,7 @@ class ScreeningRoomUser(models.Model):
 
     def __repr__(self):
         return (
-            '<ScreeningRoomUser(screensaver_user_id: %r, username: %r)' 
+            '<ScreeningRoomUser(screensaver_user_id: %r, username: %r)>' 
             % (self.screensaver_user.screensaver_user_id, 
                self.screensaver_user.username ))
 
@@ -891,7 +890,7 @@ class LabHead(models.Model):
     def __repr__(self):
         return (
             '<LabHead(screensaver_user_id: %r, username: %r, '
-            'lab_affiliation: %r)' 
+            'lab_affiliation: %r)>' 
             % (self.screensaver_user.screensaver_user_id, 
                self.screensaver_user.username, self.lab_affiliation.title ))
 
@@ -974,7 +973,7 @@ class Well(models.Model):
 
     def __repr__(self):
         return (
-            '<Well(well_id: %r, library: %r)' 
+            '<Well(well_id: %r, library: %r)>' 
             % (self.well_id, self.library.short_name ))
         
 
@@ -999,7 +998,7 @@ class CachedQuery(models.Model):
 
     def __repr__(self):
         return (
-            '<CachedQuery(id: %r, uri: %r, username: %r, count:%d)' 
+            '<CachedQuery(id: %r, uri: %r, username: %r, count:%d)>' 
             % (self.id, self.uri, self.username, self.count ))
 
 class WellQueryIndex(models.Model):
@@ -1013,7 +1012,7 @@ class WellQueryIndex(models.Model):
 
     def __repr__(self):
         return (
-            '<WellQueryIndex(id: %r, well: %r, query: %r)' 
+            '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
             % (self.id, self.well, self.query ))
         
 # TODO: unused
@@ -1050,7 +1049,7 @@ class Reagent(models.Model):
 
     def __repr__(self):
         return (
-            '<Reagent(id: %r, well_id: %r, library: %r)' 
+            '<Reagent(id: %r, well_id: %r, library: %r)>' 
             % (self.reagent_id, self.well.well_id, 
                self.well.library.short_name ))
 
@@ -1073,7 +1072,7 @@ class SilencingReagent(Reagent):
 
     def __repr__(self):
         return (
-            '<SilencingReagent(id: %r, well_id: %r, library: %r)' 
+            '<SilencingReagent(id: %r, well_id: %r, library: %r)>' 
             % (self.reagent_id, self.well.well_id, 
                self.well.library.short_name ))
 
@@ -1090,7 +1089,7 @@ class Gene(models.Model):
 
     def __repr__(self):
         return (
-            '<Gene(id: %r, entrezegene_id: %r, gene_name: %r)' 
+            '<Gene(id: %r, entrezegene_id: %r, gene_name: %r)>' 
             % (self.gene_id, self.entrezgene_id, self.gene_name ))
 
 
@@ -1130,7 +1129,7 @@ class SmallMoleculeReagent(Reagent):
 
     def __repr__(self):
         return (
-            '<SmallMoleculeReagent(id: %r, well_id: %r, library: %r)' 
+            '<SmallMoleculeReagent(id: %r, well_id: %r, library: %r)>' 
             % (self.reagent_id, self.well.well_id, 
                self.well.library.short_name ))
 
@@ -1242,7 +1241,7 @@ class Library(models.Model):
     def __repr__(self):
         return (
             '<Library(id: %r, short_name: %r, '
-            'screen_type: %r, library_type: %r)' 
+            'screen_type: %r, library_type: %r)>' 
             % (self.library_id, self.short_name, 
                self.screen_type, self.library_type ))
 
@@ -1379,8 +1378,8 @@ class SchemaHistory(models.Model):
 
     def __repr__(self):
         return (
-            'SchemaHistory(screensaver_revision=%r, date_updated=%r, '
-            'comment=%r)'
+            '<SchemaHistory(screensaver_revision=%r, date_updated=%r, '
+            'comment=%r)>'
             % (self.screensaver_revision, self.date_updated, 
                self.comment)) 
 
@@ -1416,7 +1415,7 @@ class ChecklistItem(models.Model):
     def __repr__(self):
         return (
             '<ChecklistItem(checklist_item_id=%d, checklist_item_group=%r, '
-            'item_name=%r)' 
+            'item_name=%r)>' 
             % ( self.checklist_item_id, self.checklist_item_group, 
                 self.item_name))
 

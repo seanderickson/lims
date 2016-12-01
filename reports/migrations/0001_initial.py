@@ -28,16 +28,16 @@ class Migration(migrations.Migration):
                 ('parent_log', models.ForeignKey(related_name='child_logs', to='reports.ApiLog', null=True)),
             ],
         ),
-        migrations.CreateModel(
-            name='ListLog',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('ref_resource_name', models.CharField(max_length=64)),
-                ('key', models.CharField(max_length=128)),
-                ('uri', models.TextField()),
-                ('apilog', models.ForeignKey(to='reports.ApiLog')),
-            ],
-        ),
+#         migrations.CreateModel(
+#             name='ListLog',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('ref_resource_name', models.CharField(max_length=64)),
+#                 ('key', models.CharField(max_length=128)),
+#                 ('uri', models.TextField()),
+#                 ('apilog', models.ForeignKey(to='reports.ApiLog')),
+#             ],
+#         ),
         migrations.CreateModel(
             name='LogDiff',
             fields=[
@@ -46,7 +46,8 @@ class Migration(migrations.Migration):
                 ('field_scope', models.TextField()),
                 ('before', models.TextField(null=True)),
                 ('after', models.TextField(null=True)),
-                ('log', models.ForeignKey(to='reports.ApiLog')),
+                ('log', models.ForeignKey(
+                    to='reports.ApiLog', on_delete=models.CASCADE)),
             ],
         ),
         migrations.CreateModel(
@@ -95,8 +96,8 @@ class Migration(migrations.Migration):
                 ('harvard_id_requested_expiration_date', models.DateField(null=True)),
                 ('created_by_username', models.TextField(null=True)),
                 ('gender', models.CharField(max_length=15, null=True)),
-                ('json_field_type', models.CharField(max_length=128, null=True)),
-                ('json_field', models.TextField(null=True)),
+#                 ('json_field_type', models.CharField(max_length=128, null=True)),
+#                 ('json_field', models.TextField(null=True)),
                 ('permissions', models.ManyToManyField(to='reports.Permission')),
                 ('user', models.OneToOneField(null=True, to=settings.AUTH_USER_MODEL)),
             ],
@@ -134,10 +135,10 @@ class Migration(migrations.Migration):
             name='logdiff',
             unique_together=set([('log', 'field_key', 'field_scope')]),
         ),
-        migrations.AlterUniqueTogether(
-            name='listlog',
-            unique_together=set([('apilog', 'ref_resource_name', 'key', 'uri')]),
-        ),
+#         migrations.AlterUniqueTogether(
+#             name='listlog',
+#             unique_together=set([('apilog', 'ref_resource_name', 'key', 'uri')]),
+#         ),
         migrations.AlterUniqueTogether(
             name='apilog',
             unique_together=set([('ref_resource_name', 'key', 'date_time')]),

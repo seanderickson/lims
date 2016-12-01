@@ -1606,7 +1606,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screen',
             name='pin_transfer_admin_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity', null=True),
+            field=models.ForeignKey(to='db.Activity', null=True,
+                related_name='pin_transfer_approved_screen'),
         ),
         migrations.AddField(
             model_name='libraryupdateactivity',

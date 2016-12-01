@@ -2721,7 +2721,8 @@ class ScreenResource(DBResourceTestCase):
         ScreensaverUser.objects.all().exclude(username='testsuper').delete()
         
     def test1_create_screen(self):
-        
+
+        logger.info('test1_create_screen...')        
         data = {
             'screen_type': 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
@@ -2738,8 +2739,10 @@ class ScreenResource(DBResourceTestCase):
         logger.debug('screen created: %r', screen_item)
 
     def test2_create_library_screening(self):
-        
-        # 1. Set up dependencies
+
+        logger.info('test2_create_library_screening...')
+                
+        # Set up dependencies
         logger.info('create users...')
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
@@ -3393,6 +3396,8 @@ class ScreenResource(DBResourceTestCase):
         
     def test4_delete_publication(self):
         
+        logger.info('test4_delete_publication...')
+        
         publication_received = self.test3_create_publication()
         resource_uri = '/'.join([
             BASE_URI_DB, 'screen',publication_received['screen_facility_id'],
@@ -3441,7 +3446,81 @@ class ScreenResource(DBResourceTestCase):
             logger.exception('exception when trying to locate: %r', uri)
             raise
     
+    def test5_pin_transfer_approval(self):
+        
+        logger.info('test5_pin_transfer_approval...')
+        # Create a Screen
+        data = {
+            'screen_type': 'small_molecule',
+        }
+        screen_item = self.create_screen(data=data)
+        
+        self.assertTrue(
+            'facility_id' in screen_item, 
+            'the facility_id was not created')
+        
+        for key, value in data.items():
+            self.assertEqual(value, screen_item[key], 
+                'key %r, val: %r not expected: %r' 
+                % (key, value, screen_item[key]))
 
+        logger.info('screen created: %r', screen_item)
+
+        self.screening_user = self.create_screensaveruser({ 
+            'username': 'screening1'
+        })
+
+        # 1. Set the pin_transfer data
+        pin_transfer_data_expected = {
+            'pin_transfer_approved_by_username': self.screening_user['username'],
+            'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
+            'pin_transfer_comments': 'test pin_transfer_comments' }
+        
+        screen_update_data = {
+            'facility_id': screen_item['facility_id']
+            }
+        
+        for key, val in pin_transfer_data_expected.items():
+            screen_update_data[key] = val
+        resource_uri = BASE_URI_DB + '/screen/' + screen_update_data['facility_id']
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=screen_update_data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        logger.info('get the updated pin_transfer screen data')
+        new_screen_item = self.get_single_resource(resource_uri)
+        logger.info('retrieved: %r', new_screen_item)
+        for key,val in pin_transfer_data_expected.items():
+            self.assertEqual(new_screen_item[key],pin_transfer_data_expected[key],
+                'key: %r, %r, %r' % (key,new_screen_item[key],pin_transfer_data_expected[key]))
+            
+        # 2. Modify the pin_transfer comment
+        screen_update_data = {
+            'facility_id': screen_item['facility_id']
+            }
+        screen_update_data['pin_transfer_comments'] = 'New test pin transfer comment'
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=screen_update_data,
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        logger.info('get the updated pin_transfer screen data')
+        new_screen_item = self.get_single_resource(resource_uri)
+        for key,val in pin_transfer_data_expected.items():
+            if key == 'pin_transfer_comments':
+                self.assertEqual(new_screen_item[key],screen_update_data[key])
+            else:
+                self.assertEqual(new_screen_item[key],pin_transfer_data_expected[key],
+                    'key: %r, %r, %r' % (key,new_screen_item[key],pin_transfer_data_expected[key]))
+        
+        
 class MutualScreensTest(DBResourceTestCase,ResourceTestCase):
     
     def test_mutual_positives_to_screen(self):

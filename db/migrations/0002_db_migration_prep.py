@@ -89,7 +89,9 @@ def convert_django_autofields(apps, schema_editor):
 def _alter_table_reference(db, sub_table, fk_column, 
                         new_parent, new_parent_column, new_primary_key=None,
                         null_ok=True ):
-    
+    '''
+    Purpose, flatten the table hierarchy for specified tables.
+    '''
     # alter table molfile rename column reagent_id to smr_reagent_id;
     # alter table molfile add column reagent_id integer;
     # update molfile set reagent_id = smr_reagent_id;
@@ -131,6 +133,10 @@ def _alter_table_reference(db, sub_table, fk_column,
     
 
 def alter_table_parents(apps, schema_editor):
+    '''
+    Flatten the inheritance hierarchy for reagent tables
+    '''
+    
     db = schema_editor
     _alter_table_reference(
         db,'molfile','reagent_id', 'reagent', 'reagent_id', 'reagent_id')
@@ -149,6 +155,11 @@ def alter_table_parents(apps, schema_editor):
 
 
 def alter_table_references(apps, schema_editor):
+    '''
+    Flatten the inheritance hierarchy for these tables:
+    - move ScreeningRoomUser to ScreensaverUser
+    - move AdministrativeActivity to Activity
+    '''
     db = schema_editor
     
     # move foreign key from screening_room_user to screensaver_user
@@ -173,6 +184,10 @@ def alter_table_references(apps, schema_editor):
     _alter_table_reference(
         db,'screen', 'lab_head_id','screensaver_user', 
         'screensaver_user_id', null_ok=True)
+
+    _alter_table_reference(
+        db,'screen', 'pin_transfer_admin_activity_id','activity', 
+        'activity_id', null_ok=True)
 
 
 def add_timezone_to_timestamp_fields(apps, schema_editor):
@@ -232,68 +247,13 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, 
                     auto_created=True, primary_key=True)),
-                ('comment', models.TextField()),
+                ('comment', models.TextField(null=True)),
             ],
             options={
                 'db_table': 'substance',
             },
         ),
         
-#         # FIXME: 20161028- remove after copy mgmnt rework
-#         migrations.CreateModel(
-#             name='CopyScreeningStatistics',
-#             fields=[
-#                 ('copy', models.OneToOneField(
-#                     primary_key=True, serialize=False, to='db.Copy')),
-#                 ('name', models.TextField()),
-#                 ('short_name', models.TextField()),
-#                 ('screening_count', models.IntegerField(null=True)),
-#                 ('ap_count', models.IntegerField(null=True)),
-#                 ('dl_count', models.IntegerField(null=True)),
-#                 ('first_date_data_loaded', models.DateField(null=True)),
-#                 ('last_date_data_loaded', models.DateField(null=True)),
-#                 ('first_date_screened', models.DateField(null=True)),
-#                 ('last_date_screened', models.DateField(null=True)),
-#             ],
-#             options={
-#                 'db_table': 'copy_screening_statistics',
-#             },
-#         ),
-#         # FIXME: 20161028- remove after copy mgmnt rework
-#         migrations.CreateModel(
-#             name='PlateScreeningStatistics',
-#             fields=[
-#                 ('plate', models.OneToOneField(
-#                     primary_key=True, serialize=False, to='db.Plate')),
-#                 ('plate_number', models.IntegerField(null=True)),
-#                 ('copy', models.ForeignKey(serialize=False, to='db.Copy')),
-#                 ('copy_name', models.TextField()),
-#                 ('library_short_name', models.TextField()),
-#                 ('library', models.ForeignKey(serialize=False, to='db.Library')),
-#                 ('screening_count', models.IntegerField(null=True)),
-#                 ('ap_count', models.IntegerField(null=True)),
-#                 ('dl_count', models.IntegerField(null=True)),
-#                 ('first_date_data_loaded', models.DateField(null=True)),
-#                 ('last_date_data_loaded', models.DateField(null=True)),
-#                 ('first_date_screened', models.DateField(null=True)),
-#                 ('last_date_screened', models.DateField(null=True)),
-#             ],
-#             options={
-#                 'db_table': 'plate_screening_statistics',
-#             },
-#         ),
-#         
-#         migrations.AlterField(
-#             model_name='platescreeningstatistics',
-#             name='copy',
-#             field=models.ForeignKey(to='db.Copy'),
-#         ),
-#         migrations.AlterField(
-#             model_name='platescreeningstatistics',
-#             name='library',
-#             field=models.ForeignKey(to='db.Library'),
-#         ),
- 
         migrations.AddField(
             model_name='library',
             name='version_number',
@@ -333,6 +293,24 @@ class Migration(migrations.Migration):
             name='status',
             field=models.TextField(null=True),
         ),
+
+#         migrations.AddField(
+#             model_name='screen',
+#             name='pin_transfer_date_approved',
+#             field=models.DateField(null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='screen',
+#             name='pin_transfer_approved_by',
+#             field=models.ForeignKey('ScreensaverUser', null=True, 
+#                 related_name='pin_transfer_approved_screen')
+#         ),
+#         migrations.AddField(
+#             model_name='screen',
+#             name='pin_transfer_approval_comment',
+#             field=models.TextField(null=True),
+#         ),
+        
         migrations.AddField(
             model_name='silencingreagent',
             name='vendor_gene',

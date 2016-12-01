@@ -48,11 +48,11 @@ from tastypie.utils.urls import trailing_slash
 from db.models import ScreensaverUser, Screen, \
     ScreenResult, DataColumn, Library, Plate, Copy, \
     CopyWell, UserFacilityUsageRole, \
-    PlateLocation, Reagent, Well, LibraryContentsVersion, Activity, \
+    PlateLocation, Reagent, Well, Activity, \
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
-    CachedQuery, ChecklistItemEvent, UserChecklistItem, AttachedFile, \
+    CachedQuery, UserChecklistItem, AttachedFile, \
     ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
@@ -7542,6 +7542,7 @@ class ScreenResource(DbApiResource):
         self.libraryscreening_resource = None
          
     def clear_cache(self):
+        logger.info('clear screen caches')
         DbApiResource.clear_cache(self)
         caches['screen'].clear()
    
@@ -7649,7 +7650,6 @@ class ScreenResource(DbApiResource):
         ''' 
         Special method to populate nested entities for the UI 
         - bypasses the "dispatch" framework call
-        - can use the "search_data" to find the plates
         -- must be authenticated and authorized
         '''
         self.is_authenticated(request)
@@ -7716,14 +7716,11 @@ class ScreenResource(DbApiResource):
                 
                 # TODO: publications
                 
-                
-                
-                
                 screen_cache.set(cache_key, _data)
         else:
             logger.info('cache key set: %s', cache_key)
-
                 
+        # Serialize
         # FIXME: refactor to generalize serialization:
         # see build_response method (needs rework)
         content_type = self.get_accept_content_type(
@@ -7836,7 +7833,6 @@ class ScreenResource(DbApiResource):
     def get_query(self, schema, param_hash):
         
         DEBUG_SCREEN = False or logger.isEnabledFor(logging.DEBUG)
-#         schema = self.build_schema()
         screens_for_username = param_hash.get('screens_for_username', None)
         # general setup
 
@@ -7907,12 +7903,27 @@ class ScreenResource(DbApiResource):
                 _concat(
                     _collaborator.c.name, ' <', _collaborator.c.email, '>'
                     ).label('fullname')])
-                .select_from(_collaborator.join(
-                    _screen_collaborators,
-                    _collaborator.c.screensaver_user_id 
-                        == _screen_collaborators.c.screensaveruser_id))
-                .order_by(_collaborator.c.username))
+            .select_from(_collaborator.join(
+                _screen_collaborators,
+                _collaborator.c.screensaver_user_id 
+                    == _screen_collaborators.c.screensaveruser_id))
+            .order_by(_collaborator.c.username))
         collaborators = collaborators.cte('collaborators')
+
+        pin_transfer_approval = (
+            select([
+                _screen.c.screen_id,
+                _user_cte.c.username,_user_cte.c.name,
+                _activity.c.date_of_activity, _activity.c.comments])
+            .select_from(
+                _activity.join(
+                    _user_cte, 
+                    _activity.c.performed_by_id==_user_cte.c.screensaver_user_id)
+                .join(
+                    _screen, 
+                    _activity.c.activity_id==_screen.c.pin_transfer_admin_activity_id))
+            )
+        pin_transfer_approval = pin_transfer_approval.cte('pta')
 
         # create a cte for the max screened replicates_per_assay_plate
         # - cross join version:
@@ -8274,9 +8285,14 @@ class ScreenResource(DbApiResource):
                     new_screen_result.c.date_loaded,
                 'experimental_well_count': 
                     literal_column('screen_result.experimental_well_count'),
-                'pin_transfer_approved_by_username': literal_column("'tbd'"),
-                'pin_transfer_date_approved': literal_column("'0000-00-00'"),
-                'pin_transfer_comments': literal_column("'tbd'"),
+                'pin_transfer_approved_by_name': 
+                    pin_transfer_approval.c.name,
+                'pin_transfer_approved_by_username': 
+                    pin_transfer_approval.c.username,
+                'pin_transfer_date_approved': 
+                    pin_transfer_approval.c.date_of_activity,
+                'pin_transfer_comments': 
+                    pin_transfer_approval.c.comments,
                 'keywords': (
                     select([
                         func.array_to_string(
@@ -8319,9 +8335,13 @@ class ScreenResource(DbApiResource):
             j = j.join(
                 screener_role_cte,
                 screener_role_cte.c.screen_id == _screen.c.screen_id)
-
+        
         j = j.join(new_screen_result,
             _screen.c.screen_id == new_screen_result.c.screen_id)
+        
+        j = j.join(pin_transfer_approval,
+            _screen.c.screen_id == pin_transfer_approval.c.screen_id, isouter=True)
+        
         stmt = select(columns.values()).select_from(j)
 
         if screens_for_username:
@@ -8571,7 +8591,18 @@ class ScreenResource(DbApiResource):
                             key=_key,
                             msg='No such username: %r' % collaborator_username)
                 initializer_dict['collaborators'] = collaborators
-
+            _key = 'pin_transfer_approved_by_username'
+            pin_transfer_approved_by = None
+            if _key in initializer_dict:
+                try:
+                    pin_transfer_approved_by = (
+                        ScreensaverUser.objects.get(
+                            username=initializer_dict[_key]))
+                except ObjectDoesNotExist:
+                    raise ValidationError(
+                        key=_key,
+                        msg='No such username: %r' % initializer_dict[_key])
+            
             related_initializer = {}
             related_initializer['cell_lines'] = \
                 initializer_dict.pop('cell_lines', None)
@@ -8590,6 +8621,7 @@ class ScreenResource(DbApiResource):
             screen.clean()
             screen.save()
             logger.info('save/created screen: %r', screen)
+            
             # related objects
             
             _key = 'cell_lines'
@@ -8622,7 +8654,47 @@ class ScreenResource(DbApiResource):
                         ScreenFundingSupports.objects.create(
                             screen=screen,
                             funding_support=funding_support)
+            
+            # Set the pin transfer approval data
+            pin_transfer_date_approved = \
+                initializer_dict.get('pin_transfer_date_approved',None)
+            pin_transfer_comments = \
+                initializer_dict.get('pin_transfer_comments', None)
 
+            if pin_transfer_approved_by is not None:
+                if screen.pin_transfer_admin_activity is None:
+                    activity = \
+                        Activity(performed_by=pin_transfer_approved_by)
+                    activity.date_of_activity = \
+                        activity.date_created
+                    activity.save()
+                    screen.pin_transfer_admin_activity = activity
+                    screen.save()
+                    logger.info('created pta: %r', 
+                        screen.pin_transfer_admin_activity)
+                else:
+                    screen.pin_transfer_admin_activity.performed_by = \
+                        pin_transfer_approved_by
+                    screen.pin_transfer_admin_activity.save()
+            if screen.pin_transfer_admin_activity is None:
+                # secondary pin transfer validation
+                if pin_transfer_date_approved is not None:
+                    raise ValidationError(
+                        key='pin_transfer_date_approved',
+                        msg='requires pin_transfer_approved_by_username')    
+                if pin_transfer_comments is not None:
+                    raise ValidationError(
+                        key='pin_transfer_comments',
+                        msg='requires pin_transfer_approved_by_username')    
+            else:
+                if pin_transfer_date_approved is not None:
+                    screen.pin_transfer_admin_activity.date_of_activity = \
+                        pin_transfer_date_approved
+                if pin_transfer_comments is not None:
+                    screen.pin_transfer_admin_activity.comments = \
+                        pin_transfer_comments
+                screen.pin_transfer_admin_activity.save()
+                
             # TODO: determine if this is still used
             _key = 'keywords'
             _val = related_initializer.get(_key, None)

@@ -115,6 +115,7 @@ class MetaManager(models.Manager):
 
 class LogDiff(models.Model):
     
+    # reference to the parent ApiLog, note that Django emulates the CASCADE delete
     log = models.ForeignKey('ApiLog', on_delete=models.CASCADE)
     
     #field = models.ForeignKey('Metahash')

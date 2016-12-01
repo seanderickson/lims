@@ -44,7 +44,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization
-from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, ListLog, Permission, \
+from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, API_ACTION_DELETE, \
                            API_ACTION_CREATE
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
@@ -190,7 +190,8 @@ def read_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
-        logger.info('self: %r', self)
+        if DEBUG_AUTHORIZATION:
+            logger.info('read auth for: %r', self._meta.resource_name)
         if not self._meta.authorization._is_resource_authorized(
                 self._meta.resource_name,request.user,'read'):
             logger.info('read auth failed for: %r, %r', 
@@ -200,7 +201,6 @@ def read_authorization(_func):
                     'user: %s, permission: %s/%s not found' 
                     % (request.user,self._meta.resource_name,'read')))
 
-#         kwargs['schema'] = self.build_schema()
         kwargs['schema'] = self.build_schema(user=request.user)
         
         return _func(self, *args, **kwargs)

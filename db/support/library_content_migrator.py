@@ -9,13 +9,9 @@ from django.db import models
 from django.db.models import Count
 from django.forms.models import model_to_dict
 from django.utils import timezone
-# from django.utils.timezone import make_aware
-# from tastypie.bundle import Bundle
-# from tastypie.resources import Resource
 
 from db.api import SmallMoleculeReagentResource, WellResource, \
     SilencingReagentResource, NaturalProductReagentResource, LibraryResource
-from db.models import SmallMoleculeReagent
 from reports.api import compare_dicts, is_empty_diff
 from reports.models import ApiLog
 

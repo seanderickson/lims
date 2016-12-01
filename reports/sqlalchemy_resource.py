@@ -883,9 +883,12 @@ class SqlAlchemyResource(IccblBaseResource):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
         logger.info('stream_response_from_statement: %r', self._meta.resource_name )
+        temp_param_hash = param_hash.copy()
+        if 'schema' in temp_param_hash:
+            del temp_param_hash['schema']
         if DEBUG_STREAMING:
             logger.info('stream_response_from_statement: %r, %r', 
-                self._meta.resource_name, param_hash)
+                self._meta.resource_name,temp_param_hash)
         limit = param_hash.get('limit', 25)        
         try:
             limit = int(limit)
@@ -919,7 +922,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     str(stmt.compile(
                             dialect=postgresql.dialect(), 
                             compile_kwargs={"literal_binds": True})), 
-                    param_hash)
+                    temp_param_hash)
                 logger.info(
                     'count stmt %s', 
                     str(count_stmt.compile(
@@ -927,7 +930,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         compile_kwargs={"literal_binds": True})))
             
             content_type = self.get_accept_content_type(request, format=param_hash.get('format', None))
-            logger.debug('---- content_type: %r, hash: %r', content_type, param_hash)
+            logger.debug('---- content_type: %r, hash: %r', content_type, temp_param_hash)
             result = None
             if content_type == JSON_MIMETYPE:
                 logger.info(
@@ -938,7 +941,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     cache_hit = self._cached_resultproxy(
                         conn, stmt, count_stmt, param_hash, limit, offset)
                     if cache_hit:
-                        logger.info('cache hit')
+                        logger.info('cache hit: %r', output_filename)
                         result = cache_hit['cached_result']
                         count = cache_hit['count']
                     else:

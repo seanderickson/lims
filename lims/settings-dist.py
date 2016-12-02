@@ -93,6 +93,9 @@ CACHES = {
     }
 }
 
+# if structure image cache directory is available.  see db.api for details.
+WELL_STRUCTURE_IMAGE_DIR='/images/structure-images'
+
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.

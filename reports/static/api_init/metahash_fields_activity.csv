@@ -1,7 +1,0 @@
-key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted,nested_resource
-activity_id,fields.activity,/reports/api/v1/metahash/fields.activity/activity_id/,1,,integer,TRUE,"Activity ID","Activity ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,,,
-date_created,fields.activity,/reports/api/v1/metahash/fields.activity/date_created/,4,,date,TRUE,"The date the activity was recorded","Date Recorded",TRUE,,,"[list,detail]",,,,,
-date_of_activity,fields.activity,/reports/api/v1/metahash/fields.activity/date_of_activity/,3,,date,TRUE,"The date the activity was performed","Date Performed",TRUE,,,"[list,detail,edit]",,,,,
-activity_type,fields.activity,/reports/api/v1/metahash/fields.activity/activity_type/,2,,string,TRUE,"The type of the activity","Activity Type",TRUE,,,"[list,detail]",,,,,
-performed_by,fields.activity,/reports/api/v1/metahash/fields.activity/performed_by/,5,,nested,FALSE,"The person that performed the activity","Performed By",FALSE,,,"[list,detail]",,Iccbl.LinkCell,screensaveruser/{performed_by_id},,screensaveruser
-comments,fields.activity,/reports/api/v1/metahash/fields.activity/comments/,7,,string,TRUE,comments,Comments,TRUE,,,"[list,detail,edit]",,,,,

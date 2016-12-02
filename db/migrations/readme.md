@@ -1,17 +1,32 @@
 ######## Migrations for an existing Screensaver installation  #####
 
 meta:
-# can recreate the initial script at any time using 
-mv db/migrations db/migrations.bak # to save the migrations
-./manage.py schemamigration db --initial # regenerate 001 script
-# now if the db has changed, can generate a migration script for it:
-./manage.py schemamigration db --auto
-# compare this migration to the previous, move the model changes up to the previous 
+
+-- Note: existing migrations are intended for migrating an existing screensaver 
+-- database to the new database schema.
+-- Therefore, these should not be used to create a new instance.
+-- instead, the migrations directory should be removed and recreated with 
+-- makemigrations, which will generate an initial migration by inspecting the 
+-- models.py file, and then manage.py migrate --fake-initial should be run.
+
+
+-- Recreating the migration initial file (for clean installs of the app).
+-- New Django >= 1.7
+
+./manage.py makemigrations db
+./manage.py migrate --fake-initial
+-- OLD: Django < 1.7 
+-- ./manage.py schemamigration db --initial # regenerate 001 script
+-- # now if the db has changed, can generate a migration script for it:
+-- ./manage.py schemamigration db --auto
 
 
 0001 - initial
 
-- should be faked, as the datbase is already existent 
+- should be faked, if the datbase is already existent, or,
+-- if new project, run only this migration. 
+-- Note: this migration represents the legacy Screensaver schema; all updates
+-- to the schema are contained in subsequent migrations.
 ./manage.py migrate db 0001 --fake  
 
 

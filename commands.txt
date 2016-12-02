@@ -1,0 +1,108 @@
+# Useful dev commands:
+
+# copy production settings to server:
+scp /home/sde4/workspace/iccbl-lims/lims/static/production_data/* orchestra.med.harvard.edu:/www/dev.screensaver2.med.harvard.edu/support/production_data/
+
+# run migration script for branch library1 using repo: seanderickson
+
+bash -x ./migration.sh library1 seanderickson migration.properties
+
+#####
+# to profile
+# add the profile path to the settings.py
+# base path for profiling
+PROFILE_LOG_BASE='/tmp'
+# add a decorator to a function:
+    @profile("unlimited_get_list.prof")
+# then analyze the outpufile:
+PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-20141031T193039.prof 
+
+#####
+# NOTE: 20161102 - this is not working - changes related to mod_wsgi?
+# 
+# EXAMPLE login interaction using cookies with curl
+# NOTE: basic authentication is not set up on Orchestra; 
+# because the wsgi client does not communicate credentials with the apache server
+curl -k --cookie-jar cookiefile \
+  -H "Referer: https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/" \
+  -X GET  "https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/"
+curl -k --cookie cookiefile  \
+  -H "Referer: https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/" \
+  -H "X-CSRFTOKEN: `grep csrftoken cookiefile | awk '{print $7}'`"  \
+  --user sde -X POST  "https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/"
+
+#####
+# EXAMPLE interaction using "django_requests.py" utility to do the form authentication
+# NOTE: basic authentication is not set up on Orchestra; 
+# because the wsgi client does not communicate credentials with the apache server
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -f lims/static/production_data/screensaver_users-prod-patch.csv -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/user --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
+
+
+#####
+screen result upload test:
+# EXAMPLE post screenresult: canonical use of the API
+
+curl -v --dump-header - -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -H "Accept: application/json" --user sde -X POST http://localhost:8000/db/api/v1/screenresult/1379 --data-binary @db/static/test_data/screens/ScreenResultTest_1_valid.xlsx
+
+# Other patterns:
+$ curl -v --user sde -F xls=@db/static/test_data/screens/ScreenResultTest_115.xls \
+   http://localhost:8000/db/api/v1/screenresult/1356
+
+curl -v --user sde -H 'Content-Type: application/xls' \
+  "http://localhost:8000/db/api/v1/screenresult/1356?&limit=0&format=xls&use_vocabularies=true&raw_lists=true" \
+  -o ScreenResult1356.xlsx
+
+screen importer test
+(iccbl-env) $ PYTHONPATH=. python db/support/screen_result_importer.py -f db/static/test_data/screens/ScreenRe
+sultTest_115.xls | python -m json.tool
+
+#####
+# upload library contents
+# use "PUT" to clear and recreate reagents
+curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: application/json" --user sde -X PUT http://localhost:8000/db/api/v1/library/test4100/well --data-binary @db/static/test_data/libraries/test_small_molecule_4100_4129.sdf
+# use "POST" to update
+curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: application/json" --user sde -X POST http://localhost:8000/db/api/v1/library/test5/well --data-binary @db/static/test_data/libraries/clean_data_1170-1171.sdf
+
+#####
+# Re-initialize the meta data for the site
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ -f ./reports/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -f ./db/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
+
+# set up default testing users (note, will delete existing users)
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions.csv -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions_patch.csv -U sde
+
+# PATCH-only user updates (usergroups/permissions) on the server:
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ \
+  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 \
+  -f lims/static/production_data/api_init_actions_patch.csv -U sde
+
+# PATCH usergroups
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
+  -X PATCH http://localhost:8000/reports/api/v1/usergroup \
+  --data-binary @lims/static/production_data/screensaver_usergroups-prod.csv
+#####
+# run all tests
+./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing
+
+# run tests without the test db
+./manage.py test reports.tests.SDFSerializerTest.test2_clean_data_sdf --settings=lims.settings_testing_nodb
+
+# re-use the database and avoid reinitializing the metahash
+./manage.py test --keepdb
+
+#####
+# upload single meta data files
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
+
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
+
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
+
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data.csv
+
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv" -f db/static/api_init/metahash_fields_screen.csv

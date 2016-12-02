@@ -11,18 +11,18 @@
   <%
 		var submenu = menu['submenus'][key];
     if( submenu['expanded'] ) {
-	    console.log('get submenus for: ' + key + ', ' + JSON.stringify(submenu['submenus']));
+	    // console.log('get submenus for: ' + key + ', ' + JSON.stringify(submenu['submenus']));
 	    var submenus = submenu['submenus'];
 	    if( !_.isEmpty(submenus)){
   %>
         <ul  class="menu nav-sidebar">
   <%
 				_.each(_.keys(submenus), function(key){
-			    var ui_resource = ui_resources[key];
-			    if(_.isUndefined(ui_resource)){
-			      console.log('error, undefined ui_resource:' + JSON.stringify(key) );
+			    if(!_.has(ui_resources,key)){
+			      console.log('menu.html: error, undefined ui_resource:' + JSON.stringify(key) );
 			    }else{
-			      console.log('found ' + key);
+            var ui_resource = ui_resources[key];
+			      // console.log('found ' + key);
    %>
             <li  class="" id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
    <%

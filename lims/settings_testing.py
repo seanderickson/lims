@@ -1,23 +1,21 @@
 # Django settings for 1km project
+import sys
 
 try:
     from settings import *
 except ImportError:
-    import sys
     print >>sys.stderr, '''Settings not defined.  Please configure a version of
     settings.py for this site.'''
-    del sys
     
 import os.path
 
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
-
-# make tests faster
-# use from the command line with testing like
-# ./manage.py test --settings=lims.testing-settings
-SOUTH_TESTS_MIGRATE = False
+# set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
+# environments, so that the test database can be destroyed
+import sqlalchemy.pool
+SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
 
 # FIXME: sqllite3 db does not work - errors on "DISTINCT ON" clause
 # DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
@@ -31,7 +29,7 @@ LOGGING = {
             'format': '%(levelname)s %(asctime)s %(module)s:%(lineno)d %(process)d %(thread)d %(message)s'
         },
         'simple': {
-            'format': '%(levelname)s %(msecs)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
+            'format': '%(levelname)s %(asctime)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
         },
     },
     'filters': {
@@ -70,6 +68,11 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
+        'db.api': {  # set a default handler
+            'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'INFO',
+        },        
         'lims': {  # set a default handler
             'handlers': ['logfile'],
             'propagate': False,
@@ -77,30 +80,46 @@ LOGGING = {
         },               
         'reports': {  # set a default handler
             'handlers': ['logfile'],
-            'propagate': True,
+            'propagate': False,
             'level': 'INFO',
         },
+        'reports.api': {  # set a default handler
+            'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'INFO',
+        },
+        # suppress streaming errors (i.e. image not found)
+        'reports.serialize.streaming_serializers': {  
+            'handlers': ['logfile'],
+            'propagate': True,
+            'level': 'WARN',
+        },        
+        'db.views': {  
+            'handlers': ['logfile'],
+            'propagate': True,
+            'level': 'WARN',
+        },        
         'db.tests': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
         'lims.tests': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },               
         'reports.tests': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'INFO',
+            'level': 'DEBUG',
         },        
         'django': {  # set a default handler
             'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
-        'utils': {  # for SQL
+        'django.db.backends': {  # for SQL
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
@@ -112,3 +131,19 @@ LOGGING = {
         },        
     }
 }
+
+TEST_RUNNER='reports.tests.IccblTestRunner'
+
+# disable migrations while testing
+# see http://stackoverflow.com/questions/25161425/disable-migrations-when-running-unit-tests-in-django-1-7
+class DisableMigrations(object):
+
+    def __contains__(self, item):
+        return True
+
+    def __getitem__(self, item):
+        return "notmigrations"
+
+if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
+    print 'tests in progres, no migrations...'
+    MIGRATION_MODULES = DisableMigrations()

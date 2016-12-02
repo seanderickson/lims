@@ -8,23 +8,28 @@ define([
     'models/app_state',
     'views/generic_detail_stickit',
     'views/generic_edit',
-    'text!templates/generic-detail-layout.html',
+    'templates/generic-detail-layout.html',
 
 ], function($, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
             DetailView, EditView, layoutTemplate ) {
 
-	var DetailLayout = Backbone.Layout.extend({
-	  
-	  initialize: function(args) {
-	    console.log('---- initialize detail layout');
+  var DetailLayout = Backbone.Layout.extend({
+
+    initialize: function(args) {
+      console.log('---- initialize detail layout', args);
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-	    this.subviews = {};
-      _.bindAll(this, 'showDetail');
-      _.bindAll(this, 'showEdit');
-	  },
+      this.subviews = {};
+      this.args = args;
+      this.DetailView = args.DetailView || DetailView;
+      this.EditView = args.EditView || EditView;
+      this.modelSchema = args.modelSchema || this.model.resource;
+      this.modelFields = args.modelFields || this.modelSchema.fields;
+      this.title = args.title;
+      _.bindAll(this, 'showDetail', 'showEdit');
+    },
 
-	  events: {
+    events: {
       'click button#download': 'download',
       'click button#delete': 'delete',
       'click button#edit': 'clickEdit',
@@ -37,76 +42,76 @@ define([
       return {
         'title': Iccbl.getTitleFromTitleAttribute(
             this.model,
-            this.model.resource.schema),
+            this.model.resource),
       }      
     },    
   
     template: _.template(layoutTemplate),
     
     showDetail: function() {
+      var self = this;
       var view = this.subviews['detail'];
       if (!view) {
-        view = new DetailView({ model: this.model});
+        view = new this.DetailView(
+          _.extend({}, self.args, { model: this.model }));
         this.subviews['detail'] = view;
       }
       this.setView("#detail_content", view ).render();
+      this.reportUriStack([]);
+      return view;
     },
     
     clickEdit: function(event){
       event.preventDefault();
       this.reportUriStack(['edit']);
-      this.showEdit();
+      this.showEdit('edit');
     },
-    
+
     showEdit: function() {
-      var view = this.subviews['edit'];
-      if (!view) {
-        view = new EditView({ model: this.model, uriStack: ['edit'] });
-        Backbone.Layout.setupView(view);
-        this.subviews['edit'] = view;
-      }
-      this.listenTo(view,'remove',function(){
-        this.showDetail();
+      console.log('showEdit: editView: ',EditView);
+      var self = this;
+      view = new this.EditView(_.extend({}, self.args, 
+        { 
+          model: self.model, 
+          uriStack: self.uriStack 
+        }));
+      Backbone.Layout.setupView(view);
+      self.listenTo(view,'remove',function(){
+        self.removeView(view);
+        self.showDetail();
       });
-      
-      this.setView("#detail_content", view ).render();
-    },    
-    
-    showAdd: function() {
-      var view = this.subviews['add'];
-      if (!view) {
-        view = new EditView({ model: this.model, uriStack: ['add'] });
-        Backbone.Layout.setupView(view);
-        this.subviews['add'] = view;
-      }
-      this.listenTo(view,'remove',function(){
-        this.showDetail();
-      });
-      this.setView("#detail_content", view ).render();
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#detail_content", view ).render();
+      return view;
     },
     
     afterRender: function(){
+      if (this.title){
+        this.$el.find('#content_title').html(this.title).show();
+      }
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == 'edit') {
-          this.showEdit();
+          this.uriStack.push(viewId);
+          this.showEdit(viewId);
           return;
         }else if (viewId == '+add') {
-          this.showAdd();
+          this.uriStack.push(viewId);
+          this.showEdit(viewId);
           return;
         }
       }
       this.showDetail();
     },
      
-    download: function(event){
-      $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
+    download: function(e){
+      e.preventDefault();
+      appModel.download(this.model.url, this.model.resource);
     },
 
     cancel: function(event){
       event.preventDefault();
-      this.remove();
-      appModel.router.back();
+      this.showDetail();
     },    
     
     back: function(event){
@@ -119,21 +124,18 @@ define([
       event.preventDefault();
       var self = this;
       
-      var newUriStack = ['apilog','search'];
+      var newUriStack = ['apilog','order','-date_time', 'search'];
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
-      search['key'] = this.model.key;
-      newUriStack.push(
-          _.map(
-            _.pairs(search), 
-            function(keyval) {
-              return keyval.join('=');
-            }).join(','));
-      newUriStack.push('order/-date_time');
+
+      //search['key'] = this.model.key;
+      search['key'] = encodeURIComponent(this.model.key);
+      
+      newUriStack.push(appModel.createSearchString(search));
       var route = newUriStack.join('/');
       console.log('history route: ' + route);
       appModel.router.navigate(route, {trigger: true});
-      this.remove();
+//      this.remove();
     },
 
     onClose: function() {
@@ -144,6 +146,7 @@ define([
      * Child view bubble up URI stack change event
      */
     reportUriStack: function(reportedUriStack) {
+      console.log('reportUriStack --- ' );
       var consumedStack = this.consumedStack || [];
       var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );
@@ -153,39 +156,3 @@ define([
 	
 	return DetailLayout;
 });
-
-
-
-
-//    delete: function(event){
-//      event.preventDefault();
-//      var self = this;
-//      console.log('delete: ' + JSON.stringify(this.model));
-//      var model = this.model;
-//      var modalDialog = new Backbone.View({
-//        el: _.template(
-//            modalOkCancel, { body: "Please confirm deletion of record: '" + 
-//            model.get('toString') + "'", title: "Please confirm deletion" } ),
-//        events: {
-//          'click #modal-cancel':function(event) {
-//              event.preventDefault();
-//              $('#modal').modal('hide'); // TODO: read-up on modal!
-//                                          // this is not ideal with
-//                                          // the reference to template
-//                                          // elements!
-//          },
-//          'click #modal-ok':function(event) {
-//              event.preventDefault();
-//              model.destroy();
-//              $('#modal').modal('hide');
-//              self.$el.empty();
-//              self.trigger('remove');
-//              self._router.back();
-//          }
-//        },
-//      });
-//      modalDialog.render();
-//      $('#modal').empty();
-//      $('#modal').html(modalDialog.$el);
-//      $('#modal').modal();
-//    },

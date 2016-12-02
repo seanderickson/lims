@@ -1,26 +1,57 @@
 body {
 /* 	background-color: #e3e3e3; */
-  background-color: #c5d2db;
+/*   background-color: #c5d2db; */
 }
 
-/* .loading1 { */
-/*     background:rgba(0,0,0,0.3); */
-/* } */
+#menu {
+  background-color: rgba(197, 210, 219, 0.3);
+}
+@media (min-width: 568px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 992px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 1200px) {
+  .container {
+    width: ;
+  }
+}  
 
-/* #loading { */
-/*     position:fixed; */
-/*     z-index:999; */
-/*     top:0; */
-/*     left:0; */
-/*     width:100%; */
-/*     height: 100%; */
-/*     background: url( "{{ STATIC_URL }}/images/ajax-loading2.gif" ) */
-/*         50% 20% */
-/*         no-repeat; */
-/* } */
+
+/** 
+  Sticky footer styles:
+  - note: reapply this style in the webpack-injected css here.
+**/
+html {
+  position: relative;
+  min-height: 100%;
+}
+body {
+  /* Margin bottom by footer height */
+  margin-bottom: 60px;
+}
+#footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  /* Set the fixed height of the footer here */
+  height: 60px;
+  background-color: #f5f5f5;
+}
+/** end Sticky footer styles **/
+
 
 #title {
 	  word-wrap:break-word;
+}
+
+.label-cell {
+    color: black;
 }
 
 .panel-heading .accordion-toggle:after {
@@ -35,24 +66,24 @@ body {
     content: "\e080";    /* adjust as needed, taken from bootstrap.css */
 }
 
-
 /** bootstrap overrides **/
 
 @media screen{
-
   .well {
     padding: 5px;
   }
-
-
   .nav-header {
     padding: 3px 0px;
   }
-  
 	.nav-sidebar {
 	  padding: 0px;
 	  padding-left: 5px;
 	}
+}
+
+media="screen"
+.input-group-addon, .input-group-btn, .input-group .form-control {
+display: inherit;
 }
 
 div#application_div > .one-space {
@@ -60,10 +91,6 @@ div#application_div > .one-space {
     padding-left: 2px;
     padding-top: 4px;
 }
-
-/* #application_div { */
-/*     padding-left: 6px; */
-/* } */
 
 .no-space [class*="col"] {
     margin-left: 0;
@@ -78,8 +105,13 @@ div#application_div > .one-space {
     padding-top: 4px;
 }
 
-
 /** menu list styling from bootstrap 2.3.2 **/
+.well  {
+ margin-bottom: 5px;
+}
+.panel {
+ margin-bottom: 5px;
+}
 
 .menu {
   list-style: none;
@@ -102,7 +134,7 @@ padding: 3px 15px;
 .menu > li > a:hover,
 .menu > li > a:focus {
   text-decoration: none;
-  background-color: #eeeeee;
+  background-color: #dddddd;
 }
 
 .hover  li > a:hover,
@@ -111,39 +143,205 @@ padding: 3px 15px;
   background-color: #eeeeee !important;
 }
 
+.nav-tabs > li.active > a {
+  text-decoration: none;
+  background-color: rgba(197, 210, 219, 0.3);
+}
+
 /** backgrid.css overrides **/
 
 .backgrid {
   border: 1px solid #DDD;
 }
-.backgrid th,
+.backgrid thead th,
 .backgrid td {
   border: 1px solid #DDD;
+/*   vertical-align: top; */
 }
 div.backgrid-paginator {
   display: inline;
 /*  text-align: left; */
 }
 
-ul.backgrid-paginator {
+.backgrid-paginator ul{
   display: inline;
+}
+
+.backgrid td.edited,
+.backgrid tbody tr:nth-child(odd) td.edited {
+  background-color: rgba(0, 255, 0, 0.15);
+  outline: 1px solid green;
+}
+
+
+/** Styles for using a table for detail view (may use data-list style instead, below)*/
+
+td.dl-title {
   text-align: left;
+  background: #dddddd;
+  font-weight:bold;
+  border-style: solid;
+  border-color: #f5f5f5;  
+}
+.table > tbody > tr > td.dl-title {
+  border-top: 1px solid transparent;
 }
 
-/** other **/
-
-/** TODO: for detail view - develop a better container for showing long text 
-  and this may not be needed **/
-dd {
-  white-space: nowrap;
-  overflow-x: auto;
+td.dl-data {
+ border-top: 1px solid transparent !important;
 }
 
+/** Styles for using a data-list for detail view (may use table stye instead, above)*/
 
-
-#content {
-	/* style choice:
-	   for pages with too many columns, will contain them in the parent,
-	   with a scrollbar on the bottom */
-/*   overflow-x: auto;  */
+.dl-horizontal dt {
+  white-space: normal;
+  overflow-x: inherit;
 }
+.dl-horizontal  dd {
+  white-space: normal;
+  overflow-x: inherit;
+}
+
+/*DL, DT, DD TAGS LIST DATA*/
+ 
+dl dt {
+    background:#dddddd;
+/*     color:#fff; */    
+    float:left; 
+    font-weight:bold; 
+    margin-right:10px; 
+/*     padding:5px;   */
+    width:100px; 
+    vertical-align: bottom;
+}
+ 
+dl dd {
+    margin:2px 0; 
+    vertical-align: bottom;
+/*     padding:5px 0; */
+}
+
+.form-group.required .control-label:after {
+  content:" *";
+  color:red;
+}
+
+.form-horizontal .control-label{
+  padding-top: 7px; 
+}
+.form-horizontal *{
+	min-height: 0px; 
+	margin-bottom: 0px;
+	list-style: none;
+}
+li.form-horizontal {
+  display: inline;
+  padding-left: 0px;
+  padding-right: 5px;
+}
+ul.form-horizontal {
+  display: inline;
+  padding-left: 5px;
+}
+
+ul.chosen-choices {
+  display: block;
+  padding-left: 5px;
+}
+
+.form-control-disabled {
+  padding-top: 5px;
+  min-height: 1eM;
+}
+
+.iccbl-headerfield-form * {
+	padding: 0 0 0 0;
+}
+
+.iccbl-headerfield-form .form-group{
+  margin-bottom: 5px;
+}
+
+.iccbl-headerfield-form input[type=number]{
+/*   padding: 0 0 0 0 !important; */
+  width: 6em !important;
+/*   border: 0px; */
+}
+
+.iccbl-headerfield-number select{
+/*   padding: 0 0 0 0 !important; */
+  width: 3em !important;
+}
+
+.input-full {
+ min-width: 100%;
+}
+/** 
+todo: these selectors should be redone 
+**/
+
+.iccbl-headerfield-text *{
+/*   padding: 0 0 0 0 !important; */
+  width: 9em !important;
+}
+
+.iccbl-headerfield-form-last-row *{
+	padding: 0 0 0 0;
+}
+
+.iccbl-nested-form * {
+  padding: 0 0 0 0;
+}
+
+.iccbl-nested-form input{
+  padding-left: 12px !important;
+  border-top: 0px;
+}
+
+.iccbl-nested-form-unit select{
+/*   padding: 0 0 0 0 !important; */
+  width: 4eM !important;
+  border-left: 0px;
+}
+
+.form-horizontal .form-control{
+  padding-right: 0px; 
+}
+
+.form-control-zero-padding {
+ padding: 0px;
+ border-left: 0px;
+ border-right: 0px;
+ border-top: 0px;
+}
+
+td.text-wrap-cell {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: top;
+}
+
+.ms-container ul{
+  display: block;
+}
+
+.ms-container li{
+  display: block;
+}
+
+.multiselect2 .ms-container {
+  width: auto;
+}
+
+/* Turn off chosen height for multi-select so that the bootstrap height 
+   can be applied */
+@media screen {
+ .chosen-container-multi .chosen-choices li.search-field input[type="text"] {
+    height: 32px; 
+  }
+}
+
+.150_width {
+ width: 150px;
+}
+

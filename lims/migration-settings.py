@@ -14,11 +14,6 @@ import os.path
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
 
-# A sample logging configuration. The only tangible logging
-# performed by this configuration is to send an email to
-# the site admins on every HTTP 500 error when DEBUG=False.
-# See http://docs.djangoproject.com/en/dev/topics/logging for
-# more details on how to customize your logging configuration.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -27,7 +22,10 @@ LOGGING = {
             'format': '%(levelname)s %(asctime)s %(module)s:%(lineno)d %(process)d %(thread)d %(message)s'
         },
         'simple': {
-            'format': '%(levelname)s %(msecs)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
+            'format': '%(levelname)s %(asctime)s: %(name)s:%(lineno)d: %(message)s'
+        },
+        'simple1': {
+            'format': '%(levelname)s %(msecs)s: %(name)s:%(lineno)d: %(message)s'
         },
     },
     'filters': {
@@ -36,23 +34,33 @@ LOGGING = {
         }
     },
     'handlers': {
-        'logfile': {
-            'level':'DEBUG',
-            'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/iccbl-testing.log",
-            'maxBytes': 5000000,
-            'backupCount': 2,
-            'formatter': 'simple',
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler'
         },
         'console':{
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },  
+        'logfile': {
+            'level':'DEBUG',
+            'class':'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver-migration.log",
+            'maxBytes': 5000000,
+            'backupCount': 2,
+            'formatter': 'simple',
+        },
     },
     'loggers': {
-        'django.request': {
+        '': {  # set a default handler
             'handlers': ['logfile'],
+            'propagate': True,
+            'level': 'INFO',
+        },        
+        'django.request': {
+            'handlers': ['mail_admins'],
             'level': 'ERROR',
             'propagate': False,
         },
@@ -61,13 +69,8 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
-        'db.support': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
         'lims': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },               
@@ -75,36 +78,26 @@ LOGGING = {
             'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
-        },
-        'db.tests': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
         },        
-        'lims.tests': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },               
-        'reports.tests': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
-        'django': {  # set a default handler
+        'django.db': {  # for SQL
             'handlers': ['logfile'],
             'propagate': False,
-            'level': 'DEBUG',
+            'level': 'INFO',
         },        
-        'utils': {  # for SQL
+        'django.db.backends': {  # for SQL
+            'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'INFO',
+        },        
+        'utils': {  # 
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
         },        
         'tastypie': {  # set a default handler
             'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
+            'propagate': True,
+            'level': 'DEBUG',
         },        
     }
 }

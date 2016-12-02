@@ -1,0 +1,3 @@
+name,usergroups
+testGroup4,[testGroup3]
+testGroup5,"[testGroup1; testGroup2; testGroup4]"

@@ -5,7 +5,7 @@ define([
     'layoutmanager',
     'iccbl_backgrid',
     'models/app_state',
-    'text!templates/menu.html'
+    'templates/menu.html'
 ], function($, _, Backbone, layoutmanager, Iccbl, appModel, menuTemplate) {
   
     var MenuView = Backbone.Layout.extend({
@@ -80,7 +80,14 @@ define([
           appModel.set({'menu':menus});
           this.render();
         }
+        this.ui_resource_id = ui_resource_id;
         this.$('#' + ui_resource_id).addClass('active');
+      },
+      
+      afterRender: function(){
+        if(this.ui_resource_id){
+          this.$('#' + this.ui_resource_id).addClass('active');
+        }
       },
 
       find_submenu_path : function(menu, id){
@@ -121,7 +128,6 @@ define([
         var self = this;
         event.preventDefault();
 
-        // TODO: 20140618: test remove messages
         appModel.unset('messages');
         
         var ui_resource_id = event.currentTarget.id;
@@ -171,7 +177,12 @@ define([
               appModel.set({'menu':menus});
               this.render();
 
-              appModel.setUriStack([ui_resource_id]);
+              if( ui_resource_id == 'reports'){
+                appModel.setUriStack([]);
+                return;
+              }else{
+                appModel.setUriStack([ui_resource_id]);
+              }
           }
         }
         this.$('li').removeClass('active');
@@ -179,6 +190,9 @@ define([
         $('.nav').children('li').removeClass('active');
         this.$('#' + ui_resource_id).addClass('active');
         this.updateTopMenu(ui_resource_id);
+
+        // Clear out error messages after navigating away from page
+        appModel.unset('messages');
       }
    
     });

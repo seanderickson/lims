@@ -1,10 +1,9 @@
 # Django settings for lims project
 
+import sys
 import os
 import django.template
 
-# Force the new url syntax 
-django.template.add_to_builtins('django.templatetags.future')
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -34,9 +33,8 @@ ALLOWED_HOSTS = []
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
-# although not all choices may be available on all operating systems.
-# In a Windows environment this must be set to your system time zone.
-TIME_ZONE = 'US/Eastern'
+# FIXME: set to the local time zone for the installation
+TIME_ZONE = 'UTC'
 
 # Language code for this installation. All choices can be found here:
 # http://www.i18nguy.com/unicode/language-identifiers.html
@@ -72,7 +70,7 @@ STATIC_ROOT = ''
 
 # URL prefix for static files.
 # Example: "http://example.com/static/", "http://static.example.com/"
-STATIC_URL = '/static/'
+STATIC_URL = '/_static/'
 
 # Additional locations of static files
 STATICFILES_DIRS = (
@@ -135,8 +133,6 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_tables2', # for UI tabling
-    'south',
     'tastypie', # manual says this is "not necessary, but useful"
     'reports',
     'lims',
@@ -152,6 +148,28 @@ SOUTH_TESTS_MIGRATE = False
 
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/lims'
+
+# directory for temp files created on download
+TEMP_FILE_DIR='/tmp'
+
+# base path for profiling
+PROFILE_LOG_BASE='/tmp'
+
+# if structure image cache directory is available.  see db.api for details.
+WELL_STRUCTURE_IMAGE_DIR=''
+
+# maximum rows to cache in the database table well_query_index
+# see db/api.ScreenResultResource
+MAX_WELL_INDEXES_TO_CACHE=3e+08
+
+MAX_ROWS_FOR_CACHE_RESULTPROXY=10e+4
+
+# set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
+# environments, so that the test database can be destroyed
+# import sqlalchemy.pool
+# SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
+
+
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

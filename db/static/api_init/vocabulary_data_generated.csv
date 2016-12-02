@@ -1,0 +1,78 @@
+resource_uri,key,scope,ordinal,title,description
+/reports/api/v1/vocabulary/serviceactivity.type/assay_dev_consult/,assay_dev_consult,serviceactivity.type,0,assay_dev_consult,
+/reports/api/v1/vocabulary/serviceactivity.type/automation/,automation,serviceactivity.type,1,automation,
+/reports/api/v1/vocabulary/serviceactivity.type/image_analysis/,image_analysis,serviceactivity.type,2,image_analysis,
+/reports/api/v1/vocabulary/serviceactivity.type/informatics/,informatics,serviceactivity.type,3,informatics,
+/reports/api/v1/vocabulary/serviceactivity.type/medchem_analytical/,medchem_analytical,serviceactivity.type,4,medchem_analytical,
+/reports/api/v1/vocabulary/serviceactivity.type/medchem_consult/,medchem_consult,serviceactivity.type,5,medchem_consult,
+/reports/api/v1/vocabulary/serviceactivity.type/medchem_synthesis/,medchem_synthesis,serviceactivity.type,6,medchem_synthesis,
+/reports/api/v1/vocabulary/serviceactivity.type/other/,other,serviceactivity.type,7,other,
+/reports/api/v1/vocabulary/serviceactivity.type/training_acumen/,training_acumen,serviceactivity.type,8,training_acumen,
+/reports/api/v1/vocabulary/serviceactivity.type/training_biomekfx/,training_biomekfx,serviceactivity.type,9,training_biomekfx,
+/reports/api/v1/vocabulary/serviceactivity.type/training_combi/,training_combi,serviceactivity.type,10,training_combi,
+/reports/api/v1/vocabulary/serviceactivity.type/training_combi_nl/,training_combi_nl,serviceactivity.type,11,training_combi_nl,
+/reports/api/v1/vocabulary/serviceactivity.type/training_cybio/,training_cybio,serviceactivity.type,12,training_cybio,
+/reports/api/v1/vocabulary/serviceactivity.type/training_envision/,training_envision,serviceactivity.type,13,training_envision,
+/reports/api/v1/vocabulary/serviceactivity.type/training_flexstation_iii/,training_flexstation_iii,serviceactivity.type,14,training_flexstation_iii,
+/reports/api/v1/vocabulary/serviceactivity.type/training_hp_d300/,training_hp_d300,serviceactivity.type,15,training_hp_d300,
+/reports/api/v1/vocabulary/serviceactivity.type/training_ixm/,training_ixm,serviceactivity.type,16,training_ixm,
+/reports/api/v1/vocabulary/serviceactivity.type/training_lumina_ii/,training_lumina_ii,serviceactivity.type,17,training_lumina_ii,
+/reports/api/v1/vocabulary/serviceactivity.type/training_m5/,training_m5,serviceactivity.type,18,training_m5,
+/reports/api/v1/vocabulary/serviceactivity.type/training_octet/,training_octet,serviceactivity.type,19,training_octet,
+/reports/api/v1/vocabulary/serviceactivity.type/training_other/,training_other,serviceactivity.type,20,training_other,
+/reports/api/v1/vocabulary/serviceactivity.type/training_qpcr_abi/,training_qpcr_abi,serviceactivity.type,21,training_qpcr_abi,
+/reports/api/v1/vocabulary/serviceactivity.type/training_qpcr_qstudio_7_flex/,training_qpcr_qstudio_7_flex,serviceactivity.type,22,training_qpcr_qstudio_7_flex,
+/reports/api/v1/vocabulary/serviceactivity.type/training_qpcr_roche/,training_qpcr_roche,serviceactivity.type,23,training_qpcr_roche,
+/reports/api/v1/vocabulary/serviceactivity.type/training_velos/,training_velos,serviceactivity.type,24,training_velos,
+/reports/api/v1/vocabulary/serviceactivity.type/training_wellmate/,training_wellmate,serviceactivity.type,25,training_wellmate,
+/reports/api/v1/vocabulary/screen.species/bacteria/,bacteria,screen.species,1,bacteria,
+/reports/api/v1/vocabulary/screen.species/c_elegans/,c_elegans,screen.species,2,c_elegans,
+/reports/api/v1/vocabulary/screen.species/drosophila/,drosophila,screen.species,3,drosophila,
+/reports/api/v1/vocabulary/screen.species/human/,human,screen.species,4,human,
+/reports/api/v1/vocabulary/screen.species/mouse/,mouse,screen.species,5,mouse,
+/reports/api/v1/vocabulary/screen.species/other/,other,screen.species,6,other,
+/reports/api/v1/vocabulary/screen.species/yeast/,yeast,screen.species,7,yeast,
+/reports/api/v1/vocabulary/screen.species/zebrafish/,zebrafish,screen.species,8,zebrafish,
+/reports/api/v1/vocabulary/screen.assay_type/biochemical/,biochemical,screen.assay_type,1,biochemical,
+/reports/api/v1/vocabulary/screen.assay_type/cell_based/,cell_based,screen.assay_type,2,cell_based,
+/reports/api/v1/vocabulary/screen.assay_type/multi_cellular_organism/,multi_cellular_organism,screen.assay_type,3,multi_cellular_organism,
+/reports/api/v1/vocabulary/study.type/in_silico/,in_silico,study.type,1,"In silico",
+/reports/api/v1/vocabulary/study.type/in_vitro/,in_vitro,study.type,2,"In vitro",
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/absorbance/,absorbance,datacolumn.assay_readout_type,1,absorbance,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fluorescence_activated_cell_sorting/,fluorescence_activated_cell_sorting,datacolumn.assay_readout_type,2,fluorescence_activated_cell_sorting,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fluorescence_intensity/,fluorescence_intensity,datacolumn.assay_readout_type,3,fluorescence_intensity,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fp/,fp,datacolumn.assay_readout_type,4,fp,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fret/,fret,datacolumn.assay_readout_type,5,fret,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/imaging/,imaging,datacolumn.assay_readout_type,6,imaging,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/luminescence/,luminescence,datacolumn.assay_readout_type,7,luminescence,
+/reports/api/v1/vocabulary/datacolumn.assay_readout_type/unspecified/,unspecified,datacolumn.assay_readout_type,8,unspecified,
+/reports/api/v1/vocabulary/library.solvent/dmso/,dmso,library.solvent,1,DMSO,DMSO
+/reports/api/v1/vocabulary/library.solvent/rnai_buffer/,rnai_buffer,library.solvent,2,"RNAi buffer","RNAi buffer"
+/reports/api/v1/vocabulary/library.solvent/other_aqueous/,other_aqueous,library.solvent,3,"Other (aqueous)","Other (aqueous)"
+/reports/api/v1/vocabulary/screen.type/small_molecule/,small_molecule,screen.type,1,"Small Molecule","A small molecule screen"
+/reports/api/v1/vocabulary/screen.type/rnai/,rnai,screen.type,2,RNAi,"An RNAi Screen"
+/reports/api/v1/vocabulary/library.type/commercial/,commercial,library.type,1,Commercial,"A commercial llibrary"
+/reports/api/v1/vocabulary/library.type/dos/,dos,library.type,2,DOS,DOS
+/reports/api/v1/vocabulary/library.type/annotation/,annotation,library.type,4,Annotation,Annotation
+/reports/api/v1/vocabulary/library.type/academic_collection/,academic_collection,library.type,5,"Academic Collection","Academic Collection"
+/reports/api/v1/vocabulary/library.type/nih_mlp/,nih_mlp,library.type,6,NIH-MLP,NIH-MLP
+/reports/api/v1/vocabulary/library.type/known_bioactives/,known_bioactives,library.type,7,"Known Bioactives","Known Bioactives"
+/reports/api/v1/vocabulary/library.type/nci/,nci,library.type,8,NCI,NCI
+/reports/api/v1/vocabulary/library.type/natural_products/,natural_products,library.type,9,"Natural Products","Natural Products"
+/reports/api/v1/vocabulary/library.type/sirna/,sirna,library.type,10,siRNA,siRNA
+/reports/api/v1/vocabulary/library.type/shrna/,shrna,library.type,11,shRNA,shRNA
+/reports/api/v1/vocabulary/library.type/mirna_inhibitor/,mirna_inhibitor,library.type,12,"miRNA Inhibitor","miRNA Inhibitor"
+/reports/api/v1/vocabulary/library.type/mirna_mimic/,mirna_mimic,library.type,13,"miRNA Mimic","miRNA Mimic"
+/reports/api/v1/vocabulary/library.type/other/,other,library.type,14,Other,Other
+/reports/api/v1/vocabulary/library.type/discrete/,discrete,library.type,15,Discrete,Discrete
+/reports/api/v1/vocabulary/library.type/fragment/,fragment,library.type,3,Fragment,Fragment
+/reports/api/v1/vocabulary/library.screening_status/not_yet_plated/,not_yet_plated,library.screening_status,1,"Not Yet Plated","Not Yet Plated"
+/reports/api/v1/vocabulary/library.screening_status/not_allowed/,not_allowed,library.screening_status,2,"Not Allowed","Not Allowed"
+/reports/api/v1/vocabulary/library.screening_status/retired/,retired,library.screening_status,3,Retired,Retired
+/reports/api/v1/vocabulary/library.screening_status/requires_permission/,requires_permission,library.screening_status,4,"Requires Permission","Requires Permission"
+/reports/api/v1/vocabulary/library.screening_status/not_recommended/,not_recommended,library.screening_status,5,"Not Recommended","Not Recommended"
+/reports/api/v1/vocabulary/library.screening_status/allowed/,allowed,library.screening_status,6,Allowed,Allowed
+/reports/api/v1/vocabulary/screen.project_phase/primary_screen/,primary_screen,screen.project_phase,1,"Primary Screen","Primary Screen"
+/reports/api/v1/vocabulary/screen.project_phase/counter_screen/,counter_screen,screen.project_phase,2,"Counter Screen","Counter Screen"
+/reports/api/v1/vocabulary/screen.project_phase/follow_up_screen/,follow_up_screen,screen.project_phase,3,"Follow Up Screen","Follow Up Screen"
+/reports/api/v1/vocabulary/screen.project_phase/annotation/,annotation,screen.project_phase,4,Annotation,Annotation

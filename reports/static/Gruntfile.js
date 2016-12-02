@@ -10,6 +10,8 @@ module.exports = function (grunt) {
   gruntConfig.connect = {
     server: {
       options: {
+        //hostname: '*',
+        //keepalive: true,
         port: 8008,
         base: '.',
         debug: true
@@ -27,7 +29,9 @@ module.exports = function (grunt) {
         //        reporter: 'List',
         run: false,
         timeout: 25000,
-        log: true
+        log: true,
+        logErrors: true,
+        retries: 1
       }
     }
     
@@ -36,7 +40,7 @@ module.exports = function (grunt) {
   gruntConfig.bowercopy = {
     options: {
         srcPrefix: 'bower_components',
-        clean: true
+        clean: false
     },
     scripts: {
         options: {
@@ -46,8 +50,8 @@ module.exports = function (grunt) {
           'require.js' : 'requirejs/require.js',
           'jquery.js' : 'jquery/dist/jquery.js',
           'underscore.js' : 'underscore/underscore.js', 
-          'backbone.js' : 'backbone-amd/backbone.js', 
-          'backbone-pageable.js' : 'backbone-pageable/lib/backbone-pageable.js',
+          'backbone.js' : 'backbone/backbone.js', 
+          'backbone.paginator.js': 'backbone.paginator/lib/backbone.paginator.js',
           'backgrid.js' : 'backgrid/lib/backgrid.js',
           'backgrid-filter.js' : 'backgrid-filter/backgrid-filter.js',
           'backgrid-paginator.js' : 'backgrid-paginator/backgrid-paginator.js',
@@ -55,11 +59,16 @@ module.exports = function (grunt) {
           'backbone.stickit.js' : 'backbone.stickit/backbone.stickit.js',
           'Backbone.ModelBinder.js' : 'Backbone.ModelBinder/Backbone.ModelBinder.js',
           'backbone-forms.js' : 'backbone-forms/distribution/backbone-forms.js',
+          'backbone-forms-list.js' : 'backbone-forms/distribution/editors/list.js',
           'backbone.layoutmanager.js' : 'layoutmanager/backbone.layoutmanager.js',
-          'lunr.js' : 'lunr.js/lunr.js',
-          'text.js' : 'requirejs-text/text.js', 
-          'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js'
-        }
+          'lunr.js' : 'lunr/lunr.js',
+          'text.js' : 'text/text.js', 
+          'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js',
+          'multiselect.js' : 'multiselect/js/jquery.multi-select.js',
+          'jquery.quicksearch.js': 'quicksearch/dist/jquery.quicksearch.js',
+          'bootstrap-datepicker.js': 'bootstrap-datepicker/dist/js/bootstrap-datepicker.js',
+          'chosen.js': 'chosen/chosen.jquery.min.js'
+        } 
     }, 
     css: {
       options: {
@@ -69,7 +78,17 @@ module.exports = function (grunt) {
         'bootstrap.css': 'bootstrap/dist/css/bootstrap.css',
         'backgrid.css': 'backgrid/lib/backgrid.css',
         'backgrid-paginator.css': 'backgrid-paginator/backgrid-paginator.css',
-        'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css'
+        'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css',
+        'multi-select.css': 'multiselect/css/multi-select.css',
+        'chosen.css': 'chosen/chosen.min.css',
+        'chosen.bootstrap.css': 'chosen-bootstrap/chosen.bootstrap.css',
+        'bootstrap-datepicker3.css': 'bootstrap-datepicker/dist/css/bootstrap-datepicker3.css'
+      }
+    },
+    images: {
+      files: {
+        'css/img/switch.png' : 'multiselect/img/switch.png',
+        'css/external/chosen-sprite.png' : 'chosen/chosen-sprite.png'
       }
     },
     fonts: {

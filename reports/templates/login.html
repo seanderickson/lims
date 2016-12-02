@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+
 {% comment %}
 Login page to authenticate users.
 {% endcomment %}
 
 {% block head %}
+    <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap.min.css" />
     <title>HMS LINCS DB | Login</title>
     <style type="text/css">
       body {
@@ -14,7 +16,7 @@ Login page to authenticate users.
 
       .form-signin {
         postion: fixed;
-        top: 50%;
+        top: 30%;
         max-width: 300px;
         padding: 19px 29px 29px;
         margin: 30px auto 20px;
@@ -48,22 +50,39 @@ Login page to authenticate users.
 	    logged in as: {{ user }}<br/>
 	    <a href="{% url "logout" %}">Log out</a>
 	  {% else %}
-		{% if form.errors %}
-			<p>Login failed. Please try again or contact the administrator of this site.</p>
-		{% endif %}
-	      <form class="form-signin" method="post" action="{{ login_url }}">
-          {% csrf_token %}
-	        <h2 class="form-signin-heading">Please sign in</h2>
-	        <input type="text" class="input-block-level" name="{{ form.username.name }}" placeholder="{{ form.username.label }}">
-	        <input type="password" class="input-block-level" name="{{ form.password.name }}" placeholder="{{ form.password.label }}">
-	        <button class="btn btn-large btn-primary" type="submit" value='login' >Sign in</button>
-	        <div class='message'>
-        Screensaver confidentiality notice here.
-			</div>
-			<input type="hidden" name="next" value="{{ next }}" />
-	      </form>
+      <form class="form-signin" method="post" action="{{ login_url }}">
+        {% csrf_token %}
+        <h2 class="form-signin-heading">Please sign in</h2>
+        <input type="text" class="input-block-level" name="{{ form.username.name }}" placeholder="{{ form.username.label }}">
+        <input type="password" class="input-block-level" name="{{ form.password.name }}" placeholder="{{ form.password.label }}">
+        <button class="btn btn-large btn-primary" type="submit" value='login' >Sign in</button>
+  			<input type="hidden" name="next" value="{{ next }}" />
+      </form>
 	  {% endif %}
-
+    {% if form.errors %}
+      <div class='row'>
+      <div class='col-sm-6 col-sm-offset-3'>
+      <div class="panel panel-danger">
+      <div class="panel-heading">
+        Login failed. Please try again or contact the administrator of this site.
+      </div>
+      {% if form.non_field_errors %}
+        <div class="panel-body">          
+        <ul class='form-errors'>
+          {% for error in form.non_field_errors %}
+              <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+        </div>
+        {% endif %}
+      </div></div></div>
+    {% endif %}
+<div class='row'><div class='col-sm-10 col-sm-offset-1'>
+    <div class='well panel-info'>
+      Information in this database is confidential and is to be shared only among members of the ICCB-Longwood screening community. By logging into this database, I am agreeing to hold in confidence all information that I learn, download, or print until the information is publicly available. Thus, deposition of information into this database does not constitute a public disclosure and those who deposit information, including myself, can preserve their ability to publish and patent the results of their work if they so choose.          
+    </div>
+</div>
+</div>
     </div> <!-- /container -->
 
 {% endblock %}

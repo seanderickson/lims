@@ -1,3 +1,4 @@
 resource_uri,permissions
-/reports/api/v1/user/bra2/,"[permission/resource/user/read,permission/resource/user/write]"
-/reports/api/v1/user/tester4/,"[permission/resource/usergroup/read,permission/resource/library/read]"
+/reports/api/v1/user/bra2,[resource/user/read;resource/user/write]
+/reports/api/v1/user/tester4,[resource/usergroup/read;resource/library/read]
+/reports/api/v1/user/sde,[resource/field/read;resource/field/write;resource/resource/read;resource/screen/write]

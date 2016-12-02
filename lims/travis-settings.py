@@ -91,8 +91,17 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake'
-    }
+    },
+    'screen': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'uniq222#@@!^^1`~'
+    },
 }
+
+# set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
+# environments, so that the test database can be destroyed
+import sqlalchemy.pool
+SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
@@ -119,11 +128,6 @@ LOGGING = {
         }
     },
     'handlers': {
-        'mail_admins': {
-            'level': 'ERROR',
-            'filters': ['require_debug_false'],
-            'class': 'django.utils.log.AdminEmailHandler'
-        },
         'console':{
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
@@ -132,8 +136,8 @@ LOGGING = {
     },
     'loggers': {
         'django.request': {
-            'handlers': ['mail_admins'],
-            'level': 'ERROR',
+            'handlers': ['console'],
+            'level': 'WARN',
             'propagate': False,
         },
         'db': {  # set a default handler
@@ -154,7 +158,7 @@ LOGGING = {
         'reports': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'ERROR',
+            'level': 'WARN',
         },        
         'django.db': {  # for SQL
             'handlers': ['console'],
@@ -164,7 +168,7 @@ LOGGING = {
         'utils': {  # 
             'handlers': ['console'],
             'propagate': True,
-            'level': 'INFO',
+            'level': 'WARN',
         },        
         'tastypie': {  # set a default handler
             'handlers': ['console'],
@@ -173,3 +177,18 @@ LOGGING = {
         },        
     }
 }
+
+TEST_RUNNER='reports.tests.IccblTestRunner'
+
+# disable migrations while testing
+# see http://stackoverflow.com/questions/25161425/disable-migrations-when-running-unit-tests-in-django-1-7
+class DisableMigrations(object):
+
+    def __contains__(self, item):
+        return True
+
+    def __getitem__(self, item):
+        return "notmigrations"
+
+if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
+    MIGRATION_MODULES = DisableMigrations()

@@ -1,11 +1,10 @@
-key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted
-name,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/name/,0,,string,TRUE,"The group name",Name,TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,,
-users,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/users/,9,,Checkboxes,TRUE,"Users in the group","User URI List",TRUE,,,,,,,
-super_groups,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/super_groups/,3,,embedded,FALSE,"Usergroups this group is a member of (inherits permissions from)","Super Groups",FALSE,,,"[list,detail]",,,,
-permissions,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/permissions/,2,,embedded,TRUE,"Permissions for the group",Permissions,TRUE,,,"[list,detail]",,,,
-user_list,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/user_list/,1,,string,TRUE,"User usernames assigned to this group",Usernames,TRUE,,,"[list,detail]",,,,
-is_for_user,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/is_for_user/,5,,boolean,TRUE,"Is the user in the group","Is For User",TRUE,,,,,,,
-is_for_group,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/is_for_group/,6,,boolean,TRUE,"Is the (super)group assigned to this group?","Is Member",TRUE,,,,,,,
-sub_groups,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/sub_groups/,4,,embedded,FALSE,"Usergroups that are a member of this group (inherits users from)","Sub Groups",FALSE,,,"[list,detail]",,,,
-all_users,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/all_users/,7,,uri_list,FALSE,"All users, including those from subgroups","All Users",FALSE,,,[detail],,,,
-all_permissions,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/all_permissions/,8,,uri_list,FALSE,"All permissions, including those from superGroups","All Permissions",FALSE,,,[detail],,,,
+key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,edit_type,alias,is_restricted,display_options
+name,fields.usergroup,/reports/api/v1/field/fields.usergroup/name/,,,0,,TRUE,"The group name",Name,TRUE,,,[l;d],[c],string,link,,,,"{ 'hrefTemplate': '#usergroup/{name}' }"
+users,fields.usergroup,/reports/api/v1/field/fields.usergroup/users/,custom,,1,,TRUE,"Usernames of users in the group",Users,TRUE,,,[l;d],[c;u],list,link,multiselect2,,,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }"
+super_groups,fields.usergroup,/reports/api/v1/field/fields.usergroup/super_groups/,custom,,2,,TRUE,"Usergroups this group is a member of (inherits permissions from)","Super Groups",TRUE,,,[l;d],[c;u],list,link,multiselect2,,,"{ 'hrefTemplate': '#usergroup/{__val__}' }"
+sub_groups,fields.usergroup,/reports/api/v1/field/fields.usergroup/sub_groups/,custom,,3,,TRUE,"Usergroups that are members of this group (inherits users from)","Sub Groups",TRUE,,,[l;d],[c;u],list,link,multiselect2,,,"{ 'hrefTemplate': '#usergroup/{__val__}' }"
+permissions,fields.usergroup,/reports/api/v1/field/fields.usergroup/permissions/,custom,,4,,TRUE,"Permissions for the group",Permissions,TRUE,,,[l;d],[c;u],list,,multiselect2,,,
+all_sub_groups,fields.usergroup,/reports/api/v1/field/fields.usergroup/all_sub_groups/,custom,,5,,TRUE,"All usergroups in the subgroup tree from this group; this group inherits users from all subgroups.","All Sub Groups",TRUE,,,[l;d],,list,link,,,,"{ 'hrefTemplate': '#usergroup/{__val__}' }"
+all_super_groups,fields.usergroup,/reports/api/v1/field/fields.usergroup/all_super_groups/,custom,,6,,TRUE,"All usergroups that are in this groups supergroup tree; this group inherits permissions from all supergroups.","All Super Groups",TRUE,,,[l;d],,list,link,,,,"{ 'hrefTemplate': '#usergroup/{__val__}' }"
+all_users,fields.usergroup,/reports/api/v1/field/fields.usergroup/all_users/,custom,,7,,TRUE,"All users, including those from subgroups","All Users",TRUE,,,[l;d],,list,link,,,,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }"
+all_permissions,fields.usergroup,/reports/api/v1/field/fields.usergroup/all_permissions/,custom,,8,,TRUE,"All permissions, including those from superGroups","All Permissions",TRUE,,,[l;d],,list,,,,,

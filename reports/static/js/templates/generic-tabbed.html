@@ -1,4 +1,4 @@
-<div class="tabbable">
+<div class="tabbable" id='generic-tabbed-container'>
     <ul class="nav nav-tabs">
     <%
         _.each(_.keys(tab_resources), function(key){
@@ -7,14 +7,20 @@
                 console.log('error, undefined ui_resource:' + JSON.stringify(key) );
             }else{
     %>
-                 <li id="<%= key %>" title="<%=tab_resource.description %>"><a href="#"><%= tab_resource.title %></a></li>
+                 <li id="<%= key %>" title="<%=tab_resource.description %>"><a href="#<%= base_url %>/<%= key %>"><%= tab_resource.title %></a></li>
     <%
             }
         });
     %>
     </ul>
-    <div class="tab-content">
-        <div class="tab-pane active" id="tab_container">
+    <div class="tab-content panel">
+        <div class="tab-pane active" id='tab-pane' >
+            <div class="row" id="tab_container-title-row">
+                <div class="col-sm-12 panel" id="tab_container-title"></div>
+            </div>
+            <div class="row" >
+                <div class="col-sm-12" id="tab_container"/>
+            </div>
         </div>
     </div>
 </div>

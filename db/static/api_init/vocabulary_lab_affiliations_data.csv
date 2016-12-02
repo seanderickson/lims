@@ -1,0 +1,157 @@
+resource_uri,key,scope,ordinal,title,comment
+vocabulary/labaffiliation.category/broad_icg/,broad_icg,labaffiliation.category,4,Broad/ICG,Broad/ICG
+vocabulary/labaffiliation.category/harvard_fas/,harvard_fas,labaffiliation.category,3,"Harvard FAS","Harvard FAS"
+vocabulary/labaffiliation.category/hms/,hms,labaffiliation.category,0,HMS,HMS
+vocabulary/labaffiliation.category/hms_affiliated_hospital/,hms_affiliated_hospital,labaffiliation.category,1,"HMS Affiliated Hospital","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category/hsph/,hsph,labaffiliation.category,2,HSPH,HSPH
+vocabulary/labaffiliation.category/other/,other,labaffiliation.category,5,Other,Other
+vocabulary/labaffiliation.category.broad_icg/broad_institute_and_harvard/,broad_institute_and_harvard,labaffiliation.category.broad_icg,7,"Broad Institute and Harvard University",Broad/ICG
+vocabulary/labaffiliation.category.harvard_fas/harvard_chemistry_and_chemical_biology_department/,harvard_chemistry_and_chemical_biology_department,labaffiliation.category.harvard_fas,8,"Harvard University, Chemistry and Chemical Biology Department","Harvard FAS"
+vocabulary/labaffiliation.category.harvard_fas/harvard_molecular_and_cellular_biology_department/,harvard_molecular_and_cellular_biology_department,labaffiliation.category.harvard_fas,9,"Harvard University, Molecular and Cellular Biology Department","Harvard FAS"
+vocabulary/labaffiliation.category.harvard_fas/harvard_organismic_and_evolutionary_biology_department/,harvard_organismic_and_evolutionary_biology_department,labaffiliation.category.harvard_fas,10,"Harvard University, Organismic and Evolutionary Biology Department","Harvard FAS"
+vocabulary/labaffiliation.category.harvard_fas/harvard_school_engineering_and_applied_sciences/,harvard_school_engineering_and_applied_sciences,labaffiliation.category.harvard_fas,11,"Harvard University, School of Engineering and Applied Sciences","Harvard FAS"
+vocabulary/labaffiliation.category.hms/hms_bcmp_department/,hms_bcmp_department,labaffiliation.category.hms,12,"Harvard Medical School, BCMP Department",HMS
+vocabulary/labaffiliation.category.hms/hms_cell_biology_department/,hms_cell_biology_department,labaffiliation.category.hms,13,"Harvard Medical School, Cell Biology Department",HMS
+vocabulary/labaffiliation.category.hms/hms_department_microbiology_and_immunobiology/,hms_department_microbiology_and_immunobiology,labaffiliation.category.hms,14,"Harvard Medical School, Department of Microbiology and Immunobiology",HMS
+vocabulary/labaffiliation.category.hms/hms_genetics_department/,hms_genetics_department,labaffiliation.category.hms,15,"Harvard Medical School, Genetics Department",HMS
+vocabulary/labaffiliation.category.hms/hms_iccb/,hms_iccb,labaffiliation.category.hms,16,"Harvard Medical School, Institute of Chemistry and Cell Biology",HMS
+vocabulary/labaffiliation.category.hms/hms_neurobiology_department/,hms_neurobiology_department,labaffiliation.category.hms,17,"Harvard Medical School, Neurobiology Department",HMS
+vocabulary/labaffiliation.category.hms/hms_schepens_eye_research_institute/,hms_schepens_eye_research_institute,labaffiliation.category.hms,18,"Harvard Medical School, Schepens Eye Research Institute",HMS
+vocabulary/labaffiliation.category.hms/hms_systems_biology_department/,hms_systems_biology_department,labaffiliation.category.hms,19,"Harvard Medical School, Systems Biology Department",HMS
+vocabulary/labaffiliation.category.hms/mclean_hospital/,mclean_hospital,labaffiliation.category.hms,20,"McLean Hospital",HMS
+vocabulary/labaffiliation.category.hms/riparian_pharma/,riparian_pharma,labaffiliation.category.hms,21,"Riparian Pharma",HMS
+vocabulary/labaffiliation.category.hms_affiliated_hospital/bidmc/,bidmc,labaffiliation.category.hms_affiliated_hospital,22,"Beth Israel Deaconess Medical Center","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/boston_childrens_hospital/,boston_childrens_hospital,labaffiliation.category.hms_affiliated_hospital,23,"Boston Children's Hospital","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/brigham_and_womens_hospital/,brigham_and_womens_hospital,labaffiliation.category.hms_affiliated_hospital,24,"Brigham and Women's Hospital","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/dfci/,dfci,labaffiliation.category.hms_affiliated_hospital,25,"Dana Farber Cancer Institute","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/dfci_and_hms_bcmp_department/,dfci_and_hms_bcmp_department,labaffiliation.category.hms_affiliated_hospital,26,"Dana Farber Cancer Institute and Harvard Medical School, BCMP Department","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/joslin_diabetes_center/,joslin_diabetes_center,labaffiliation.category.hms_affiliated_hospital,27,"Joslin Diabetes Center","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/massachusetts_eye_and_ear_institute/,massachusetts_eye_and_ear_institute,labaffiliation.category.hms_affiliated_hospital,28,"Massachusetts Eye and Ear Institute","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hms_affiliated_hospital/massachusetts_general_hospital/,massachusetts_general_hospital,labaffiliation.category.hms_affiliated_hospital,29,"Massachusetts General Hospital","HMS Affiliated Hospital"
+vocabulary/labaffiliation.category.hsph/harvard_school_public_health/,harvard_school_public_health,labaffiliation.category.hsph,30,"Harvard School of Public Health",HSPH
+vocabulary/labaffiliation.category.other/albany_medical_college/,albany_medical_college,labaffiliation.category.other,31,"Albany Medical College",Other
+vocabulary/labaffiliation.category.other/albert_einstein_college_medicine/,albert_einstein_college_medicine,labaffiliation.category.other,32,"Albert Einstein College of Medicine",Other
+vocabulary/labaffiliation.category.other/argonne_national_laboratory/,argonne_national_laboratory,labaffiliation.category.other,33,"Argonne National Laboratory",Other
+vocabulary/labaffiliation.category.other/arietis_corporation/,arietis_corporation,labaffiliation.category.other,34,"Arietis Corporation",Other
+vocabulary/labaffiliation.category.other/boston_biomedical_research_institute/,boston_biomedical_research_institute,labaffiliation.category.other,35,"Boston Biomedical Research Institute",Other
+vocabulary/labaffiliation.category.other/boston_college/,boston_college,labaffiliation.category.other,36,"Boston College",Other
+vocabulary/labaffiliation.category.other/boston_university/,boston_university,labaffiliation.category.other,37,"Boston University",Other
+vocabulary/labaffiliation.category.other/boston_university_medical_center/,boston_university_medical_center,labaffiliation.category.other,38,"Boston University Medical Center",Other
+vocabulary/labaffiliation.category.other/brandeis_university/,brandeis_university,labaffiliation.category.other,39,"Brandeis University",Other
+vocabulary/labaffiliation.category.other/brown_university/,brown_university,labaffiliation.category.other,40,"Brown University",Other
+vocabulary/labaffiliation.category.other/calasia_pharmaceuticals_inc/,calasia_pharmaceuticals_inc,labaffiliation.category.other,41,"CalAsia Pharmaceuticals, Inc.",Other
+vocabulary/labaffiliation.category.other/california_institute_technology/,california_institute_technology,labaffiliation.category.other,42,"California Institute of Technology",Other
+vocabulary/labaffiliation.category.other/cellicon_biotechnologies_inc/,cellicon_biotechnologies_inc,labaffiliation.category.other,43,"Cellicon Biotechnologies, Inc.",Other
+vocabulary/labaffiliation.category.other/center_for_genomic_research/,center_for_genomic_research,labaffiliation.category.other,44,"Center for Genomic Research",Other
+vocabulary/labaffiliation.category.other/central_michigan_university/,central_michigan_university,labaffiliation.category.other,45,"Central Michigan University",Other
+vocabulary/labaffiliation.category.other/clemson_university/,clemson_university,labaffiliation.category.other,46,"Clemson University",Other
+vocabulary/labaffiliation.category.other/cleveland_clinic/,cleveland_clinic,labaffiliation.category.other,47,"Cleveland Clinic",Other
+vocabulary/labaffiliation.category.other/colorado_state_university/,colorado_state_university,labaffiliation.category.other,48,"Colorado State University",Other
+vocabulary/labaffiliation.category.other/columbia_university_medical_center/,columbia_university_medical_center,labaffiliation.category.other,49,"Columbia University Medical Center",Other
+vocabulary/labaffiliation.category.other/cubist_pharmaceuticals/,cubist_pharmaceuticals,labaffiliation.category.other,50,"Cubist Pharmaceuticals",Other
+vocabulary/labaffiliation.category.other/dartmouth_medical_school/,dartmouth_medical_school,labaffiliation.category.other,51,"Dartmouth Medical School",Other
+vocabulary/labaffiliation.category.other/dkfz_german_cancer_research_center/,dkfz_german_cancer_research_center,labaffiliation.category.other,52,"DKFZ German Cancer Research Center",Other
+vocabulary/labaffiliation.category.other/draper/,draper,labaffiliation.category.other,53,Draper,Other
+vocabulary/labaffiliation.category.other/duke_university/,duke_university,labaffiliation.category.other,54,"Duke University",Other
+vocabulary/labaffiliation.category.other/embl_embl_grenoble/,embl_embl_grenoble,labaffiliation.category.other,55,"European Molecular Biology Laboratory (EMBL), Grenoble",Other
+vocabulary/labaffiliation.category.other/forsyth_institute/,forsyth_institute,labaffiliation.category.other,56,"Forsyth Institute",Other
+vocabulary/labaffiliation.category.other/fox_chase_cancer_center/,fox_chase_cancer_center,labaffiliation.category.other,57,"Fox Chase Cancer Center",Other
+vocabulary/labaffiliation.category.other/fred_hutchinson_cancer_research_center/,fred_hutchinson_cancer_research_center,labaffiliation.category.other,58,"Fred Hutchinson Cancer Research Center",Other
+vocabulary/labaffiliation.category.other/georgetown_university_school_medicine/,georgetown_university_school_medicine,labaffiliation.category.other,59,"Georgetown University School of Medicine",Other
+vocabulary/labaffiliation.category.other/harvard_laboratory_for_drug_discovery_neurodegeneration/,harvard_laboratory_for_drug_discovery_neurodegeneration,labaffiliation.category.other,60,"Harvard University, Laboratory for Drug Discovery in Neurodegeneration",Other
+vocabulary/labaffiliation.category.other/hubrecht_laboratory_for_developmental_biology/,hubrecht_laboratory_for_developmental_biology,labaffiliation.category.other,61,"Hubrecht Laboratory for Developmental Biology",Other
+vocabulary/labaffiliation.category.other/integral_molecular/,integral_molecular,labaffiliation.category.other,62,"Integral Molecular",Other
+vocabulary/labaffiliation.category.other/irb_barcelona_spain/,irb_barcelona_spain,labaffiliation.category.other,63,"IRB Barcelona (Spain)",Other
+vocabulary/labaffiliation.category.other/kings_college_london/,kings_college_london,labaffiliation.category.other,64,"Kings College London",Other
+vocabulary/labaffiliation.category.other/l2_diagnostics/,l2_diagnostics,labaffiliation.category.other,65,"L2 Diagnostics",Other
+vocabulary/labaffiliation.category.other/massachusetts_institute_technology/,massachusetts_institute_technology,labaffiliation.category.other,66,"Massachusetts Institute of Technology",Other
+vocabulary/labaffiliation.category.other/mcgill_university/,mcgill_university,labaffiliation.category.other,67,"McGill University",Other
+vocabulary/labaffiliation.category.other/medical_college_wisconsin/,medical_college_wisconsin,labaffiliation.category.other,68,"Medical College of Wisconsin",Other
+vocabulary/labaffiliation.category.other/michigan_state_university/,michigan_state_university,labaffiliation.category.other,69,"Michigan State University",Other
+vocabulary/labaffiliation.category.other/microbiotix/,microbiotix,labaffiliation.category.other,70,Microbiotix,Other
+vocabulary/labaffiliation.category.other/millenium_pharmaceuticals/,millenium_pharmaceuticals,labaffiliation.category.other,71,"Millenium Pharmaceuticals",Other
+vocabulary/labaffiliation.category.other/mount_sinai_school_medicine/,mount_sinai_school_medicine,labaffiliation.category.other,72,"Mount Sinai School of Medicine",Other
+vocabulary/labaffiliation.category.other/myosyntax/,myosyntax,labaffiliation.category.other,73,Myosyntax,Other
+vocabulary/labaffiliation.category.other/national_institute_allergy_and_infectious_disease/,national_institute_allergy_and_infectious_disease,labaffiliation.category.other,74,"National Institute of Allergy and Infectious Disease",Other
+vocabulary/labaffiliation.category.other/national_institutes_health/,national_institutes_health,labaffiliation.category.other,75,"National Institutes of Health",Other
+vocabulary/labaffiliation.category.other/national_university_singapore/,national_university_singapore,labaffiliation.category.other,76,"National University of Singapore",Other
+vocabulary/labaffiliation.category.other/new_england_primate_research_center/,new_england_primate_research_center,labaffiliation.category.other,77,"New England Primate Research Center",Other
+vocabulary/labaffiliation.category.other/new_york_medical_college/,new_york_medical_college,labaffiliation.category.other,78,"New York Medical College",Other
+vocabulary/labaffiliation.category.other/new_york_university_nyu/,new_york_university_nyu,labaffiliation.category.other,79,"New York University (NYU)",Other
+vocabulary/labaffiliation.category.other/northeastern_university/,northeastern_university,labaffiliation.category.other,80,"Northeastern University",Other
+vocabulary/labaffiliation.category.other/northwestern_university/,northwestern_university,labaffiliation.category.other,81,"Northwestern University",Other
+vocabulary/labaffiliation.category.other/novobiotic_pharmaceuticals/,novobiotic_pharmaceuticals,labaffiliation.category.other,82,"Novobiotic Pharmaceuticals",Other
+vocabulary/labaffiliation.category.other/oregon_health_science_university/,oregon_health_science_university,labaffiliation.category.other,83,"Oregon Health & Science University",Other
+vocabulary/labaffiliation.category.other/oregon_state_university/,oregon_state_university,labaffiliation.category.other,84,"Oregon State University",Other
+vocabulary/labaffiliation.category.other/orig3n/,orig3n,labaffiliation.category.other,85,ORIG3N,Other
+vocabulary/labaffiliation.category.other/pennsylvania_state_university/,pennsylvania_state_university,labaffiliation.category.other,86,"Pennsylvania State University",Other
+vocabulary/labaffiliation.category.other/princeton_university/,princeton_university,labaffiliation.category.other,87,"Princeton University",Other
+vocabulary/labaffiliation.category.other/ribonovix_inc/,ribonovix_inc,labaffiliation.category.other,88,"RiboNovix, Inc.",Other
+vocabulary/labaffiliation.category.other/salk_institute/,salk_institute,labaffiliation.category.other,89,"Salk Institute",Other
+vocabulary/labaffiliation.category.other/samuel_lunenfield_research_institute_mount_sinai_hospital/,samuel_lunenfield_research_institute_mount_sinai_hospital,labaffiliation.category.other,90,"Samuel Lunenfield Research Institute/Mount Sinai Hospital",Other
+vocabulary/labaffiliation.category.other/seahorse_bioscience/,seahorse_bioscience,labaffiliation.category.other,91,"Seahorse Bioscience",Other
+vocabulary/labaffiliation.category.other/sirga_advanced_biopharma_inc/,sirga_advanced_biopharma_inc,labaffiliation.category.other,92,"Sirga Advanced Biopharma, Inc.",Other
+vocabulary/labaffiliation.category.other/st_andrew_s_university_scotland/,st_andrew_s_university_scotland,labaffiliation.category.other,93,"St. Andrew's University, Scotland",Other
+vocabulary/labaffiliation.category.other/stanford_research_institute/,stanford_research_institute,labaffiliation.category.other,94,"Stanford Research Institute",Other
+vocabulary/labaffiliation.category.other/stony_brook_university/,stony_brook_university,labaffiliation.category.other,95,"Stony Brook University",Other
+vocabulary/labaffiliation.category.other/syros_pharmaceuticals/,syros_pharmaceuticals,labaffiliation.category.other,96,"Syros Pharmaceuticals",Other
+vocabulary/labaffiliation.category.other/tensha_therapeutics/,tensha_therapeutics,labaffiliation.category.other,97,"Tensha Therapeutics",Other
+vocabulary/labaffiliation.category.other/texas_a_university/,texas_a_university,labaffiliation.category.other,98,"Texas A&M University",Other
+vocabulary/labaffiliation.category.other/molecular_sciences_institute/,molecular_sciences_institute,labaffiliation.category.other,99,"The Molecular Sciences Institute",Other
+vocabulary/labaffiliation.category.other/ohio_state_university/,ohio_state_university,labaffiliation.category.other,100,"The Ohio State University",Other
+vocabulary/labaffiliation.category.other/rothberg_institute_for_childhood_diseases/,rothberg_institute_for_childhood_diseases,labaffiliation.category.other,101,"The Rothberg Institute for Childhood Diseases",Other
+vocabulary/labaffiliation.category.other/salk_institute_san_diego_california/,salk_institute_san_diego_california,labaffiliation.category.other,102,"The Salk Institute, San Diego California",Other
+vocabulary/labaffiliation.category.other/scripps_research_institute/,scripps_research_institute,labaffiliation.category.other,103,"The Scripps Research Institute",Other
+vocabulary/labaffiliation.category.other/thomas_jefferson_university/,thomas_jefferson_university,labaffiliation.category.other,104,"Thomas Jefferson University",Other
+vocabulary/labaffiliation.category.other/tufts/,tufts,labaffiliation.category.other,105,"Tufts University",Other
+vocabulary/labaffiliation.category.other/tufts_school_medicine/,tufts_school_medicine,labaffiliation.category.other,106,"Tufts University School of Medicine",Other
+vocabulary/labaffiliation.category.other/tufts_school_veterinary_medicine/,tufts_school_veterinary_medicine,labaffiliation.category.other,107,"Tufts University School of Veterinary Medicine",Other
+vocabulary/labaffiliation.category.other/university_alabama_birmingham/,university_alabama_birmingham,labaffiliation.category.other,108,"University of Alabama, Birmingham",Other
+vocabulary/labaffiliation.category.other/university_arizona_tucson/,university_arizona_tucson,labaffiliation.category.other,109,"University of Arizona, Tucson",Other
+vocabulary/labaffiliation.category.other/university_bern/,university_bern,labaffiliation.category.other,110,"University of Bern",Other
+vocabulary/labaffiliation.category.other/uc_berkeley/,uc_berkeley,labaffiliation.category.other,111,"University of California Berkeley",Other
+vocabulary/labaffiliation.category.other/uc_davis/,uc_davis,labaffiliation.category.other,112,"University of California Davis",Other
+vocabulary/labaffiliation.category.other/uc_los_angeles/,uc_los_angeles,labaffiliation.category.other,113,"University of California Los Angeles",Other
+vocabulary/labaffiliation.category.other/uc_riverside/,uc_riverside,labaffiliation.category.other,114,"University of California Riverside",Other
+vocabulary/labaffiliation.category.other/university_chicago/,university_chicago,labaffiliation.category.other,115,"University of Chicago",Other
+vocabulary/labaffiliation.category.other/university_colorado/,university_colorado,labaffiliation.category.other,116,"University of Colorado",Other
+vocabulary/labaffiliation.category.other/university_colorado_health_sciences_center/,university_colorado_health_sciences_center,labaffiliation.category.other,117,"University of Colorado Health Sciences Center",Other
+vocabulary/labaffiliation.category.other/university_connecticut/,university_connecticut,labaffiliation.category.other,118,"University of Connecticut",Other
+vocabulary/labaffiliation.category.other/university_copenhagen/,university_copenhagen,labaffiliation.category.other,119,"University of Copenhagen",Other
+vocabulary/labaffiliation.category.other/university_helsinki/,university_helsinki,labaffiliation.category.other,120,"University of Helsinki",Other
+vocabulary/labaffiliation.category.other/university_houston/,university_houston,labaffiliation.category.other,121,"University of Houston",Other
+vocabulary/labaffiliation.category.other/university_illinois_at_chicago/,university_illinois_at_chicago,labaffiliation.category.other,122,"University of Illinois at Chicago",Other
+vocabulary/labaffiliation.category.other/university_illinois_at_urbana_champaign/,university_illinois_at_urbana_champaign,labaffiliation.category.other,123,"University of Illinois at Urbana-Champaign",Other
+vocabulary/labaffiliation.category.other/university_louisiana_at_monroe/,university_louisiana_at_monroe,labaffiliation.category.other,124,"University of Louisiana at Monroe",Other
+vocabulary/labaffiliation.category.other/university_maine/,university_maine,labaffiliation.category.other,125,"University of Maine",Other
+vocabulary/labaffiliation.category.other/university_maryland_college_park/,university_maryland_college_park,labaffiliation.category.other,126,"University of Maryland, College Park",Other
+vocabulary/labaffiliation.category.other/umass_amherst/,umass_amherst,labaffiliation.category.other,127,"University of Massachusetts, Amherst",Other
+vocabulary/labaffiliation.category.other/umass_dartmouth/,umass_dartmouth,labaffiliation.category.other,128,"University of Massachusetts, Dartmouth",Other
+vocabulary/labaffiliation.category.other/umass_lowell/,umass_lowell,labaffiliation.category.other,129,"University of Massachusetts, Lowell",Other
+vocabulary/labaffiliation.category.other/umass_medical_school/,umass_medical_school,labaffiliation.category.other,130,"University of Massachusetts Medical School",Other
+vocabulary/labaffiliation.category.other/university_miami/,university_miami,labaffiliation.category.other,131,"University of Miami",Other
+vocabulary/labaffiliation.category.other/university_michigan/,university_michigan,labaffiliation.category.other,132,"University of Michigan",Other
+vocabulary/labaffiliation.category.other/university_minnesota/,university_minnesota,labaffiliation.category.other,133,"University of Minnesota",Other
+vocabulary/labaffiliation.category.other/university_montana/,university_montana,labaffiliation.category.other,134,"University of Montana",Other
+vocabulary/labaffiliation.category.other/university_nevada_las_vegas/,university_nevada_las_vegas,labaffiliation.category.other,135,"University of Nevada - Las Vegas",Other
+vocabulary/labaffiliation.category.other/university_northern_colorado/,university_northern_colorado,labaffiliation.category.other,136,"University of Northern Colorado",Other
+vocabulary/labaffiliation.category.other/university_pennsylvania/,university_pennsylvania,labaffiliation.category.other,137,"University of Pennsylvania",Other
+vocabulary/labaffiliation.category.other/university_pittsburgh/,university_pittsburgh,labaffiliation.category.other,138,"University of Pittsburgh",Other
+vocabulary/labaffiliation.category.other/university_rochester/,university_rochester,labaffiliation.category.other,139,"University of Rochester",Other
+vocabulary/labaffiliation.category.other/university_sao_paulo/,university_sao_paulo,labaffiliation.category.other,140,"University of Sao Paulo",Other
+vocabulary/labaffiliation.category.other/university_southern_california/,university_southern_california,labaffiliation.category.other,141,"University of Southern California",Other
+vocabulary/labaffiliation.category.other/university_southern_mississippi/,university_southern_mississippi,labaffiliation.category.other,142,"University of Southern Mississippi",Other
+vocabulary/labaffiliation.category.other/university_texas_md_anderson/,university_texas_md_anderson,labaffiliation.category.other,143,"University of Texas, MD Anderson",Other
+vocabulary/labaffiliation.category.other/university_texas_medical_branch/,university_texas_medical_branch,labaffiliation.category.other,144,"University of Texas, Medical Branch",Other
+vocabulary/labaffiliation.category.other/university_vermont/,university_vermont,labaffiliation.category.other,145,"University of Vermont",Other
+vocabulary/labaffiliation.category.other/university_washington/,university_washington,labaffiliation.category.other,146,"University of Washington",Other
+vocabulary/labaffiliation.category.other/university_wisconsin/,university_wisconsin,labaffiliation.category.other,147,"University of Wisconsin",Other
+vocabulary/labaffiliation.category.other/vanderbilt_university_medical_center/,vanderbilt_university_medical_center,labaffiliation.category.other,148,"Vanderbilt University Medical Center",Other
+vocabulary/labaffiliation.category.other/wadsworth_center/,wadsworth_center,labaffiliation.category.other,149,"Wadsworth Center",Other
+vocabulary/labaffiliation.category.other/walter_reed_army_institute_for_research/,walter_reed_army_institute_for_research,labaffiliation.category.other,150,"Walter Reed Army Institute for Research",Other
+vocabulary/labaffiliation.category.other/warren_alpert_medical_school_brown_university/,warren_alpert_medical_school_brown_university,labaffiliation.category.other,151,"Warren Alpert Medical School of Brown University",Other
+vocabulary/labaffiliation.category.other/washington_university_school_medicine/,washington_university_school_medicine,labaffiliation.category.other,152,"Washington University School of Medicine",Other
+vocabulary/labaffiliation.category.other/weill_cornell_medical_college/,weill_cornell_medical_college,labaffiliation.category.other,153,"Weill Cornell Medical College",Other
+vocabulary/labaffiliation.category.other/western_new_england_university/,western_new_england_university,labaffiliation.category.other,154,"Western New England University",Other
+vocabulary/labaffiliation.category.other/yale_university/,yale_university,labaffiliation.category.other,155,"Yale University",Other
+vocabulary/labaffiliation.category.other/yumanity_therapeutics/,yumanity_therapeutics,labaffiliation.category.other,156,"Yumanity Therapeutics",Other

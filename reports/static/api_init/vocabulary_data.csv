@@ -1,0 +1,48 @@
+key,scope,resource_uri,ordinal,comment,description,title
+l,field.visibility,/reports/api/v1/vocabulary/field.visibility/l/,1,,"Allow visibility in list views","Visible in list views"
+d,field.visibility,/reports/api/v1/vocabulary/field.visibility/d/,2,,"Allow visibility in detail views","Visible in detail views"
+e,field.visibility,/reports/api/v1/vocabulary/field.visibility/e/,3,,"Visible in edit views","Visible in edit views"
+summary,field.visibility,/reports/api/v1/vocabulary/field.visibility/summary/,4,,"Visible in summary views (if available)","Visible in summary views"
+billing,field.visibility,/reports/api/v1/vocabulary/field.visibility/billing/,5,,"Visible in billing views","Visible in billing views"
+c,field.editability,/reports/api/v1/vocabulary/field.editability/c/,1,,"Visible on creation","Visible on creation"
+u,field.editability,/reports/api/v1/vocabulary/field.editability/u/,2,,"Visible on update","Visible on update"
+l,field.editability,/reports/api/v1/vocabulary/field.editability/l/,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"
+l,resource.visibility,/reports/api/v1/vocabulary/resource.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
+d,resource.visibility,/reports/api/v1/vocabulary/resource.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
+c,resource.visibility,/reports/api/v1/vocabulary/resource.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
+e,resource.visibility,/reports/api/v1/vocabulary/resource.visibility/edit/,5,,"Allow edit visibility","Visible in edit views"
+string,field.data_type,/reports/api/v1/vocabulary/field.data_type/string/,1,,"String fields may contain any characters",String
+boolean,field.data_type,/reports/api/v1/vocabulary/field.data_type/boolean/,2,,"One of ['true','false','t','f'] - case insensitive",Boolean
+date,field.data_type,/reports/api/v1/vocabulary/field.data_type/date/,3,,Date,Date
+datetime,field.data_type,/reports/api/v1/vocabulary/field.data_type/datetime/,4,,"Date with time",Datetime
+list,field.data_type,/reports/api/v1/vocabulary/field.data_type/list/,5,,"List of strings",List
+float,field.data_type,/reports/api/v1/vocabulary/field.data_type/float/,6,,"Float field type",Float
+decimal,field.data_type,/reports/api/v1/vocabulary/field.data_type/decimal/,7,,"Decimal - float value with precision specified",Decimal
+integer,field.data_type,/reports/api/v1/vocabulary/field.data_type/integer/,8,,Integer,Integer
+link,field.display_type,/reports/api/v1/vocabulary/field.display_type/link/,1,,"Hyperlink field - see display options",link
+image,field.display_type,/reports/api/v1/vocabulary/field.display_type/image/,9,"This value will actually be the URI that serves the image.","Image URI",Image
+siunit,field.display_type,/reports/api/v1/vocabulary/field.display_type/siunit/,2,,"A numeric value that is displayed with SI units and prefix","SI Unit"
+select,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/select/,1,,"Select a single value from a controlled vocabulary",Select
+multiselect,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect/,2,,"Checkbox select multiple values from a controlled vocabulary",Multi-select
+multiselect2,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect2/,3,,"Dual column multi-select",Multi-select2
+multiselect3,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect3/,4,,"Chosen Multiselect",Multi-select3
+textarea,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/textarea/,4,,TextArea,TextArea
+typeahead,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/typeahead/,5,"Text box with search","Text Box with search","Text with search"
+custom,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/custom/,6,"A custom UI element will be used to edit this field","Custom implementation",Custom
+fields.CharField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
+fields.ListField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
+fields.BooleanField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField
+fields.DateField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.DateField/,3,,"A tastypie fields.DateField",DateField
+fields.DecimalField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField
+fields.FloatField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField
+fields.IntegerField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField
+CsvBooleanField,field.json_field_type,/reports/api/v1/vocabulary/field.json_field_type/CsvBooleanField/,10,,"A boolean field","A boolean field"
+read,permission.type,/reports/api/v1/vocabulary/permission.type/read/,1,,"permission to read the resource",Read
+write,permission.type,/reports/api/v1/vocabulary/permission.type/write/,2,,"permission to write the resource",Write
+json,resource.content_type,/reports/api/v1/vocabulary/resource.content_type/json/,0,,application/json,JSON
+csv,resource.content_type,/reports/api/v1/vocabulary/resource.content_type/csv/,1,,text/csv,CSV
+xls,resource.content_type,/reports/api/v1/vocabulary/resource.content_type/xls/,2,"The Excel 2007+ XLSX file format",application/xls,XLS
+sdf,resource.content_type,/reports/api/v1/vocabulary/resource.content_type/sdf/,3,"see http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip",chemical/x-mdl-sdfile,SDF-molfile
+female,user.gender,/reports/api/v1/vocabulary/user.gender/female/,1,,Female,Female
+male,user.gender,/reports/api/v1/vocabulary/user.gender/male/,2,,Male,Male
+other,user.gender,/reports/api/v1/vocabulary/user.gender/other/,3,,Other,Other

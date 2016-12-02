@@ -1,18 +1,25 @@
 {% extends "lims/base.html" %}
 {% block head %}
 
-<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/backgrid.css" />
-<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/backgrid-paginator.css" />
-<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/backgrid-filter.css" />
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/backgrid.css" /> -->
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/backgrid-paginator.css" /> -->
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/backgrid-filter.css" /> -->
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/hmsiccbl.css" /> -->
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/multi-select.css" media="screen" > -->
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/bootstrap-datepicker3.css" media="screen" > -->
+<!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/chosen.bootstrap.css" media="screen" > -->
+<link rel="shortcut icon" type="image/png" href="{{STATIC_URL}}/images/favicon.ico?v=1"/>
 <!-- <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/external/elementTransitions.css" /> -->
 
 <title>Screensaver 2</title>
 
-<script data-main="{{ STATIC_URL }}js/main" src="{{ STATIC_URL }}js/libs/require.js"></script>
-
+<script src="{{ STATIC_URL }}bundle.js" ></script>
+<!-- <script data-main="{{ STATIC_URL }}js/main" src="{{ STATIC_URL }}js/libs/require.js"></script>
+ -->
 {% endblock %}
 
 {% block application%}
-<!--   <div id="application_div"  class="container-fluid"/> -->
-  <div id="application_div"  class="container-fluid"/>
+<div id="application_div"  class="container-fluid">
+<div id="initial">Loading...</div>
+</div>
 {% endblock %}

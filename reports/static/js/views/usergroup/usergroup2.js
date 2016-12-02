@@ -2,35 +2,24 @@ define([
     'jquery',
     'underscore',
     'backbone',
-    'backbone_pageable',
     'iccbl_backgrid',
     'layoutmanager',
     'models/app_state',
     'views/generic_detail_layout',
-    'views/list',
-    'views/simple-list',
-    'views/usergroup/users',
-    'views/usergroup/permissions',
-    'views/usergroup/super_groups',
-    'text!templates/generic-tabbed.html',
-], function($, _, Backbone, BackbonePageableCollection, Iccbl, layoutmanager, 
-            appModel, DetailLayout, 
-            ListView, SimpleListView, UsersView, PermissionsView, SuperGroupsView, layout) {
+    'views/generic_edit',
+    'views/list2',
+    'templates/generic-tabbed.html',
+], function($, _, Backbone, Iccbl, layoutmanager, 
+            appModel, DetailLayout, EditView,
+            ListView, layout) {
 
-  // for compatibility with require.js, attach PageableCollection in the 
-  // right place on the Backbone object
-  // see https://github.com/wyuenho/backbone-pageable/issues/62
-  Backbone.PageableCollection = BackbonePageableCollection;
-
-  // TODO: create a genericTabbedLayout base class?
   var UserView = Backbone.Layout.extend({
 
     initialize: function(args) {
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
-      this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
+      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource);
       
       _.bindAll(this, 'click_tab');
     },
@@ -42,29 +31,31 @@ define([
           description: 'Group Details', 
           title: 'Group Details', 
           invoke: 'setDetail' },
-        user: { 
+        users: { 
           description: 'Group Users', 
           title: 'Group Users', 
           invoke: 'setUsers' },
         supergroups: { 
           description: 'Groups that this group inherits permissions from', 
-          title: 'Permission Groups', 
+          title: 'Permission Super Groups', 
           invoke: 'setPermissionGroups' },
-        permission: { 
-          description: 'Group Permissions', 
-          title: 'Group Permissions', 
-          invoke: 'setPermissions' },
+        subgroups: { 
+          description: 'Groups that this group inherits users from', 
+          title: 'User Subgroups', 
+          invoke: 'setSubgroups' },
     },
     
     events: {
-      'click li': 'click_tab',
+      'click ul.nav-tabs >li': 'click_tab',
     },
 
     /**
      * Layoutmanager hook
      */
     serialize: function() {
+      var self = this;
       return {
+        'base_url': self.model.resource.key + '/' + self.model.key,
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -78,6 +69,10 @@ define([
         viewId = this.uriStack.shift();
         if(viewId == '+add'){
           this.uriStack.unshift(viewId);
+          viewId = 'detail';
+        }
+        if(viewId == 'edit'){
+          this.uriStack.unshift(viewId); 
           viewId = 'detail';
         }
         if (!_.has(this.tabbed_resources, viewId)){
@@ -123,7 +118,6 @@ define([
 
       if(_.has(this.tabbed_resources, key)){
         var delegateStack = _.clone(this.uriStack);
-//        delegateStack.push(key);
         if(!_.isUndefined(this.tabbed_resources[key].alias)){
           key = this.tabbed_resources[key].alias;
         }
@@ -151,11 +145,32 @@ define([
     },
     
     setDetail: function(delegateStack){
+      var self = this;
       var key = 'detail';
       
       var view = this.tabViews[key];
+      
+      this.model.resource.fields['permissions']['choices'] = appModel.get('permissionOptions');
+      
+      var editView = EditView.extend({});
+      
       if ( !view ) {
-        view = new DetailLayout({ model: this.model, uriStack: delegateStack});
+        view = new DetailLayout({ 
+          model: this.model, 
+          uriStack: delegateStack,
+          EditView: editView
+        });
+        view.showEdit = function(){
+          appModel.initializeAdminMode(function(){
+            var fields = self.model.resource.fields;
+            var options = appModel.getUserGroupOptions();
+            fields['super_groups']['choices'] = options;
+            fields['sub_groups']['choices'] = options;
+            fields['users']['choices'] = appModel.getUserOptions();
+            fields['permissions']['choices'] = appModel.getPermissionsOptions();
+            DetailLayout.prototype.showEdit.call(view,arguments);
+          });  
+        };
         this.tabViews[key] = view;
       }
       // NOTE: have to re-listen after removing a view
@@ -168,47 +183,64 @@ define([
     
     setUsers: function(delegateStack){
       var self = this;
+      var key = 'users';
       var resource = appModel.getResource('user');
-      var key = resource.key;
-      var view = this.tabViews[key];
-      if ( !view ) {      
-        view = new UsersView({ model: this.model, uriStack: delegateStack });
-        self.tabViews[key] = view;
-      }
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'users'].join('/');
+      view = new ListView({ 
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url
+      });
+      Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
+      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
+      this.setView("#tab_container", view ).render();
     },
-
-    setPermissionGroups: function(delegateStack){
+    
+    setSubgroups: function(delegateStack){
       var self = this;
-      var key = 'supergroups';
-      var view = this.tabViews[key];
-      if ( !view ) {      
-        view = new SuperGroupsView({ model: this.model, uriStack: delegateStack });
-        self.tabViews[key] = view;
-      }
+      var key = 'subgroups';
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'subgroups'].join('/');
+      view = new ListView({ 
+        uriStack: _.clone(delegateStack),
+        schemaResult: self.model.resource,
+        resource: self.model.resource,
+        url: url
+      });
+      Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
+      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
+      this.setView("#tab_container", view ).render();
       
     },
     
-    setPermissions: function(delegateStack){
+    setPermissionGroups: function(delegateStack){
       var self = this;
-      var key = 'permission';
-      var view = this.tabViews[key];
-      if ( !view ) {      
-        view = new PermissionsView({ model: this.model, uriStack: delegateStack });
-        self.tabViews[key] = view;
-      }
+      var key = 'supergroups';
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'supergroups'].join('/');
+      view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: self.model.resource,
+        resource: self.model.resource,
+        url: url
+      }});
+      Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
+      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
+      this.setView("#tab_container", view ).render();
     },
     
     onClose: function() {
-      // TODO: is this necessary when using Backbone LayoutManager
       this.tabViews = {};
       this.remove();
     }

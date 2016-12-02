@@ -1,0 +1,13 @@
+key,scope,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,required
+publication_id,fields.publication,,,0,,integer,link,"{ 'hrefTemplate': '#publication/{publication_id}' }",,TRUE,"Internal publication ID","Publication ID",TRUE,,,[d],,
+pubmed_id,fields.publication,,,1,,string,link,"{ 'hrefTemplate': 'http://www.ncbi.nlm.nih.gov/pubmed?cmd=Search&term={pubmed_id}%5BPMID%5D', 'target': '_blank' }",,,"Pubmed ID","Pubmed ID",,,,[l;d],,
+pubmed_central_id,fields.publication,,,2,,integer,link,"{ 'hrefTemplate': 'http://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pubmed_central_id}/', 'target': '_blank' }",,,"Pubmed Central ID","Pubmed Central ID",,,,[l;d],,
+title,fields.publication,,,3,,string,link,"{ 'hrefTemplate': '#publication/{publication_id}' }",,,Title,Title,,,,[l;d],,TRUE
+authors,fields.publication,,,4,,string,,,,,Authors,Authors,,,,[d],,
+journal,fields.publication,,,5,,string,,,,,Journal,Journal,,,,[d],,
+volume,fields.publication,,,6,,string,,,,,Volume,Volume,,,,[d],,
+year_published,fields.publication,,,7,,string,,,,,"Year Published","Year Published",,,,[d],,
+pages,fields.publication,,,8,,string,,,,,Pages,Pages,,,,[d],,
+attached_file_id,fields.publication,attached_file,attached_file_id,10,,integer,link,"{ 'hrefTemplate': '#attachedfile/{attached_file_id}' }",,,"Attached File ID","Attached File ID",,,,[d],,
+attached_filename,fields.publication,attached_file,filename,11,,string,link,"{ 'hrefTemplate': '/db/publication/{publication_id}/attached_file' }",,,"Attached File Name","Attached File",,,,[l;d],,
+screen_facility_id,fields.publication,screen,facility_id,12,,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}' }",,,"Screen Facility ID","Screen Facility ID",,,,[d],,

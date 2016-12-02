@@ -1,11 +1,73 @@
-<dl class="dl-horizontal">
-        <% 
-        keys.each(function(key) {
-         %>
-            <dt id="title-<%=key %>" title='' />
-            <dd id="<%=key %>">&nbsp;</dd>
-     <% }); %>
-</dl>
+<div id="generic-detail-top">
+  <div class="row">
+    <div class="col-sm-12" id="generic-detail-buttonpanel">
+<% 
+// add only the edit button on the top for now
+if (buttons) {
+%>
+    <% 
+    buttons.each(function(key) {
+    %>
+        <button type="button" class="btn btn-default btn-sm pull-right" id="<%=key %>" name="<%=key %>" ></button>
+    <% 
+    }); 
+    %>
+<% 
+}  
+%>
+    </div>
+  </div>
+</div>
+
+<table class='table table-condensed data-list'>
+<% 
+  (groupedKeys).each(function(key) { 
+%>
+<% 
+    if(! _.isObject(key)) 
+    {
+%>
+     <tr>
+        <td class='col-xs-2 dl-title small' id="title-<%=key %>" title='' />
+        <td class='col-xs-6 dl-data small' id="<%=key %>">&nbsp;</td>
+     </tr>
+<% 
+    }else{
+      var group = key;
+%>
+      <tr>
+        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
+        <td class='col-xs-10 dl-data small' >
+        <div class='row'>
+          <div class='col-xs-12'>
+<% 
+%>
+<% 
+%>
+          <table class='table-condensed data-list'>
+<% 
+        _   .each(group.fields, function(groupKey){
+%>
+            <tr>
+              <td class='dl-title' id="title-<%=groupKey %>" title='' />
+              <td class='dl-data' id="<%=groupKey %>">&nbsp;</td>
+            </tr>
+<%
+            });
+%>
+          </table>
+<%
+%>
+          </div>
+        </div>
+        </td>
+      </tr>
+<% 
+    }
+  }); 
+%>
+</table>
+
 <form id='generic-form' class="form-horizontal" >
     <div class="controls">
         <% 

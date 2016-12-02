@@ -1,0 +1,3 @@
+key,scope,table,field,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource
+activity_id,fields.cplt,activity,,/reports/api/v1/field/fields.cplt/activity_id/,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}/serviceactivity/{activity_id}' }",,,
+cherry_pick_request_id,fields.cplt,custom,,/reports/api/v1/field/fields.cplt/cherry_pick_request_id/,3,,TRUE,"Cherry Pick Request ID","Cherry Pick Request ID",TRUE,,,[l;d;e],,string,link,"{ 'hrefTemplate': '#cherrypickrequest/{cherry_pick_request_id}' }",,,

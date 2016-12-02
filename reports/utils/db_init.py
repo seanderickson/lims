@@ -1,5 +1,10 @@
+# Use this to load api metadata initialization files that are detailed in the
+# "api_init_actions" file:
+# See static/api_init/api_init_actions.csv
+
+
+from __future__ import unicode_literals
 import json
-import logging
 import requests
 import sys, os
 from urlparse import urlparse
@@ -8,8 +13,9 @@ import getpass
 
 from django_requests import get_logged_in_session
 
-import reports.utils.serialize
+import reports.serialize.csvutils as csvutils
 
+import logging
 logger = logging.getLogger(__name__)
 
 # TODO: this replaces /reports/management/commands/db_init.py - sde4 - 201404
@@ -19,14 +25,17 @@ class ApiError(Exception):
     
     def __init__(self, url, action, result):
         err_msg = ''
+        logger.exception('result.content: %r', result.content)
         try:
             json_status = result.json()
             if json_status and 'error_message' in json_status:
                 err_msg = json_status['error_message']
+            else:
+                err_msg = str(result.content)
         except ValueError,e:
             logger.warn('There is no json in the response')
             logger.warn(str(('-----raw response text-------', result.text)) )
-            err_msg = result.content
+            err_msg = str(result.content)
 
         self.message = str((
             url,'action',action, result.reason, result.status_code, err_msg )) \
@@ -48,12 +57,12 @@ def delete(obj_url, headers, session=None, authentication=None):
             r = requests.delete(obj_url, auth=authentication, headers=headers,verify=False)
         
         if(r.status_code != 204):
-            print "ERROR", r, r.text
+            print "DELETE ERROR", r, r.text
             raise ApiError(obj_url,'DELETE',r)
         print 'DELETE: ', obj_url, ' ,response:', r.status_code
         logger.info(str(('DELETE', obj_url)))
     except Exception, e:
-        logger.error(str(('exception recorded while contacting server', e)))
+        logger.error(str(('delete', obj_url, 'exception recorded while contacting server', e)))
         raise e
 
 def put(input_file, obj_url,headers, session=None, authentication=None):
@@ -64,8 +73,9 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
                     obj_url, headers=headers, data=f.read(),verify=False)
             elif authentication:
                 r = requests.put(
-                    obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if(r.status_code != 200):
+                    obj_url, auth=authentication, 
+                    headers=headers, data=f.read(),verify=False)
+            if not r.status_code in [200,201,202]:
                 raise ApiError(obj_url,'PUT',r)
             print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
                    r.status_code, ', count: ',len(r.json()['objects']))
@@ -82,7 +92,7 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
         logger.warn(str((
             'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
             tb.tb_lineno, extype, ex)))
-        logger.error(str(('exception recorded while contacting server', e)))
+        logger.error(str(('put', obj_url, 'exception recorded while contacting server', e)))
         raise e
     
 def patch(patch_file, obj_url,headers, session=None, authentication=None):
@@ -95,11 +105,12 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
             elif authentication:
                 r = requests.patch(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if(r.status_code not in [200,202,204]):
-                
+            if(r.status_code not in [200,201,202,204]):
+                # TODO: only 200
                 raise ApiError(obj_url,'PATCH',r)
+            # TODO: show "Result" section of meta
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
-                    r.status_code,', count: ',len(r.json()['objects']))
+                    r.status_code,', result: ',r.json()['meta']['Result'])
             if(logger.isEnabledFor(logging.DEBUG)):
                 logger.debug('--- PATCHED objects:')
                 try:
@@ -109,7 +120,7 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
                     logger.debug('----no json object to report')
                     logger.debug(str(('text response', r.text)))
     except Exception, e:
-        logger.error(str(('exception recorded while contacting server', e)))
+        logger.exception('on patch: %s', obj_url)
         raise e
 
 
@@ -148,7 +159,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
-
     CONTENT_TYPES =   { 
         'json': {'content-type': 'application/json'},
         'csv':  {'content-type': 'text/csv'},
@@ -164,15 +174,16 @@ if __name__ == "__main__":
     
     headers ={}
 
-    #### log in using django form-based auth, and keep the sesion
+    #### log in using django form-based auth, and keep the session
     session = get_logged_in_session(
         args.username, password, base_url)
     # django session based auth requires a csrf token
     headers['X-CSRFToken'] = session.cookies['csrftoken']
-    
+    # always accept json for debugging the returned values
+    headers['Accept'] = 'application/json'
     
     with open(args.input_actions_file) as input_file:
-        api_init_actions = reports.utils.serialize.from_csv(input_file)
+        api_init_actions = csvutils.from_csv(input_file)
 
         for action in api_init_actions:
             
@@ -190,6 +201,7 @@ if __name__ == "__main__":
             
             else:
                 data_file = os.path.join(args.input_dir,action['file'])
+                print 'Data File: ', data_file
                 extension = os.path.splitext(data_file)[1].strip('.')
                 headers.update(CONTENT_TYPES[extension])
                         

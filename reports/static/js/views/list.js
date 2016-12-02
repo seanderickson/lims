@@ -2,29 +2,29 @@ define([
   'jquery',
   'underscore',
   'backbone',
-  'backbone_pageable',
+//  'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
-  'text!templates/rows-per-page.html',
-  'text!templates/list.html',
-  'text!templates/modal_ok_cancel.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, 
+  'templates/rows-per-page.html',
+  'templates/list.html',
+  'templates/modal_ok_cancel.html',
+], function($, _, Backbone, Backgrid,  Iccbl, 
 	rowsPerPageTemplate, listTemplate, modalTemplate ){
 
-  // for compatibility with require.js, attach PageableCollection in the right 
-// place on the Backbone object
-  // see https://github.com/wyuenho/backbone-pageable/issues/62
-  Backbone.PageableCollection = BackbonePageableCollection;
+//  // for compatibility with require.js, attach PageableCollection in the right 
+//// place on the Backbone object
+//  // see https://github.com/wyuenho/backbone-pageable/issues/62
+//  Backbone.PageableCollection = BackbonePageableCollection;
 
   var ajaxStart = function(){
       $('#loading').fadeIn({duration:100});
   };
-  var ajaxComplete = function(){
-      $('#loading').fadeOut({duration:100});
-  };
-  $(document).bind("ajaxComplete", function(){
-      ajaxComplete(); // TODO: bind this closer to the collection
-  });
+//  var ajaxComplete = function(){
+//      $('#loading').fadeOut({duration:100});
+//  };
+//  $(document).bind("ajaxComplete", function(){
+//      ajaxComplete(); // TODO: bind this closer to the collection
+//  });
 
   var ListView = Backbone.View.extend({
 
@@ -291,7 +291,7 @@ define([
       }
 
       var columns = Iccbl.createBackgridColModel(
-  		this._options.schemaResult.fields, Iccbl.MyHeaderCell);
+        this._options.schemaResult.fields, [],{}, Iccbl.MyHeaderCell);
 
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
@@ -311,7 +311,7 @@ define([
                   // set on create, from the Meta Hash
                   var defaults = {};
 
-                  id_attributes = self._options.schemaResult['resource_definition']['id_attribute']
+                  id_attributes = self._options.schemaResult['id_attribute']
                   _.each(schemaResult.fields, function(value, key){
                       if (key == 'resource_uri') {
                           defaults[key] = self._options.url;
@@ -360,8 +360,8 @@ define([
 
       // TODO: work out the specifics of communication complete event.  
       // the following are superceded by the global handler for "ajaxComplete"
-      this.listenTo(self.collection, 'error', ajaxComplete);
-      this.listenTo(self.collection, 'complete', ajaxComplete);
+//      this.listenTo(self.collection, 'error', ajaxComplete);
+//      this.listenTo(self.collection, 'complete', ajaxComplete);
       console.log('list view initialized');
     },
 

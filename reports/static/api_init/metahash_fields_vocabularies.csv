@@ -1,7 +1,0 @@
-key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,is_restricted
-comment,fields.vocabularies,/reports/api/v1/metahash/fields.vocabularies/comment/,3,"comment on the comment!",string,TRUE,"The comment is additional information displayed in the detail view",Comment,TRUE,fields.CharField,,"[detail,edit]",,,
-description,fields.vocabularies,/reports/api/v1/metahash/fields.vocabularies/description/,4,,string,TRUE,"The description is used in tooltips and other queues to the user",Description,TRUE,fields.CharField,,"[list,detail,edit]",,,
-key,fields.vocabularies,/reports/api/v1/metahash/fields.vocabularies/key/,0,"This is a composite key, along with scope",string,TRUE,"The key field",Key,TRUE,,,"[list,detail,edit]",,,
-scope,fields.vocabularies,/reports/api/v1/metahash/fields.vocabularies/scope/,1,"This is a composite key, along with key",string,TRUE,"The scope field",Scope,TRUE,,,"[list,detail,edit]",,,
-title,fields.vocabularies,/reports/api/v1/metahash/fields.vocabularies/title/,3,"The title of this field",string,TRUE,"The title is the label that is displayed to the end user",Title,TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,
-ordinal,fields.vocabularies,/reports/api/v1/metahash/fields.vocabularies/ordinal/,2,"The sort order counts from 0, if two are equal in a set, then secondary sort is by key (alpha)",integer,TRUE,"The order field determines sort order","Order By",TRUE,,,"[list,detail,edit]",,,

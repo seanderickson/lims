@@ -32,7 +32,7 @@ DATABASES = {
         'PASSWORD': '',
         'HOST': 'dev.pgsql.orchestra:',
         'PORT': '',                      # Set to empty string for default.
-    }
+    },
 }
 
 # Note that the SCREENSAVER_PGSQL variables can be found in the appropriate file at:
@@ -88,11 +88,28 @@ STATICFILES_DIRS = (
 STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-#    'django.contrib.staticfiles.finders.DefaultStorageFinder',
 )
 
 # Make this unique, and don't share it with anybody.
-SECRET_KEY = 'x1gg450))screensaver2-lims2014001212045'
+SECRET_KEY = 'tell_no_one1_xxxw##!!!xsls%%#)*@'
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 50000 
+        },
+    },
+    'screen': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'uniq222#@'
+    },
+}
+
+# if structure image cache directory is available.  see db.api for details.
+WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
 
 LOGGING = {
     'version': 1,
@@ -114,7 +131,6 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-#            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver2.log",
             'filename': "/www/dev.screensaver2.med.harvard.edu/support/logs/screensaver2.log",
             'maxBytes': 5000000,
             'backupCount': 2,

@@ -1,0 +1,17 @@
+{
+   "natural_key": "detail1",
+   "name": "Detail Test 1",
+   "field1": 1,
+   "field2": "a test string",
+   "field3": "2014-09-17",
+   "field4": "choice_3",
+   "field5": ["choice_7","choice_11","choice_21"],
+   "field7": 8.199,
+   "field8": 0.00233,
+   "field9": "Test Link",
+   "field10": ["Link 1", "Link 2", "Link 3", "Link 4"],
+   "field50": ["choice_4","choice_1","choice_17"],
+   "field11": true,
+   "field12": 18977802.288566,
+   "field13": ["jtstr1","ststr3","ststr1"]
+}

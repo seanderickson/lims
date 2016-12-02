@@ -166,29 +166,6 @@ class AdministrativeActivity(models.Model):
     class Meta:
         db_table = 'administrative_activity'
 
-# Deprecated - migrate to CopyWell
-class WellVolumeAdjustment(models.Model):
-    
-    well_volume_adjustment_id = models.AutoField(primary_key=True)
-    well = models.ForeignKey('Well')
-    lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True)
-    well_volume_correction_activity = \
-        models.ForeignKey('WellVolumeCorrectionActivity', null=True)
-    volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
-    copy = models.ForeignKey('Copy')
-
-    class Meta:
-        db_table = 'well_volume_adjustment'
-
-    def __repr__(self):
-        return (
-            '<WVA(id=%d, well=%r, lab_cherry_pick=%d '
-            'well_volume_correction_activity=%d, volume=%r )>' 
-            % (self.well_volume_adjustment_id, 
-               self.lab_cherry_pick.lab_cherry_pick_id, 
-               self.well_volume_correction_activity.activity_id,
-               self.volume))
-
 # Deprecate - remove after plate well volume migration
 class WellVolumeCorrectionActivity(models.Model):
     
@@ -445,6 +422,22 @@ class CherryPickRequestEmptyWell(models.Model):
     class Meta:
         db_table = 'cherry_pick_request_empty_well'
 
+class RnaiCherryPickRequest(models.Model):
+    
+    cherry_pick_request = \
+        models.OneToOneField(CherryPickRequest, primary_key=True)
+    
+    class Meta:
+        db_table = 'rnai_cherry_pick_request'
+
+class ScreenerCherryPick(models.Model):
+    
+    screener_cherry_pick_id = models.AutoField(primary_key=True)
+    cherry_pick_request = models.ForeignKey(CherryPickRequest)
+    screened_well = models.ForeignKey('Well')
+    class Meta:
+        db_table = 'screener_cherry_pick'
+
 class LabCherryPick(models.Model):
     
     lab_cherry_pick_id = models.AutoField(primary_key=True)
@@ -468,6 +461,28 @@ class LabCherryPick(models.Model):
                self.source_well.well_id, self.assay_plate_row,
                self.assay_plate_column)) 
 
+# Deprecated - migrate to CopyWell
+class WellVolumeAdjustment(models.Model):
+    
+    well_volume_adjustment_id = models.AutoField(primary_key=True)
+    well = models.ForeignKey('Well')
+    lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True)
+    well_volume_correction_activity = \
+        models.ForeignKey('WellVolumeCorrectionActivity', null=True)
+    volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
+    copy = models.ForeignKey('Copy')
+
+    class Meta:
+        db_table = 'well_volume_adjustment'
+
+    def __repr__(self):
+        return (
+            '<WVA(id=%d, well=%r, lab_cherry_pick=%d '
+            'well_volume_correction_activity=%d, volume=%r )>' 
+            % (self.well_volume_adjustment_id, 
+               self.lab_cherry_pick.lab_cherry_pick_id, 
+               self.well_volume_correction_activity.activity_id,
+               self.volume))
 
 class CherryPickAssayPlate(models.Model):
     
@@ -480,7 +495,7 @@ class CherryPickAssayPlate(models.Model):
     assay_plate_type = models.TextField()
     legacy_plate_name = models.TextField()
     cherry_pick_assay_plate_type = models.CharField(max_length=31)
-    status = models.TextField(null=True)
+#     status = models.TextField(null=True)
 
     class Meta:
         unique_together = ((
@@ -516,22 +531,6 @@ class Publication(models.Model):
             '<Publication(id=%r, title=%r, screen=%r, reagent=%r)>'
             % (self.publication_id, self.screen.facility_id, 
                self.reagent.reagent_id)) 
-
-class RnaiCherryPickRequest(models.Model):
-    
-    cherry_pick_request = \
-        models.OneToOneField(CherryPickRequest, primary_key=True)
-    
-    class Meta:
-        db_table = 'rnai_cherry_pick_request'
-
-class ScreenerCherryPick(models.Model):
-    
-    screener_cherry_pick_id = models.AutoField(primary_key=True)
-    cherry_pick_request = models.ForeignKey(CherryPickRequest)
-    screened_well = models.ForeignKey('Well')
-    class Meta:
-        db_table = 'screener_cherry_pick'
 
 class Screen(models.Model):
 

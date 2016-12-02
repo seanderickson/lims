@@ -428,9 +428,7 @@ def create_vocabularies(apps, schema_editor):
     create_simple_vocabularies(apps)
     create_attached_file_type_vocab(apps)
     create_checklist_vocabularies(apps)
-
     create_lab_affiliation_vocab(apps)
-    
     
 
 def update_facility_usage_roles(apps, schema_editor):

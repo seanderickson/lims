@@ -433,10 +433,12 @@ class Migration(migrations.Migration):
             model_name='screensaveruser',
             name='login_id',
             field=models.TextField(unique=True, null=True)),
-        migrations.AddField(
-            model_name='cherrypickassayplate',
-            name='status', 
-            field=models.TextField(null=True)),
+        
+        # TODO: not implemented yet
+#         migrations.AddField(
+#             model_name='cherrypickassayplate',
+#             name='status', 
+#             field=models.TextField(null=True)),
 
         # IN PROGRESS - well volume/concentration related fields
         

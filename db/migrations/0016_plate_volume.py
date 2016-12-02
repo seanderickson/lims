@@ -506,6 +506,11 @@ def create_lcp_wva_logs(apps,cpap_parent_logs, schema_editor):
         
     
 def create_well_correction_logs(apps, schema_editor):
+    '''
+    Scan all WVA's:
+    - if WVA.comment matches a Cherry Pick ID, assign the WVA to the CP
+    
+    '''
     
     logger.info('create well correction logs...')
     
@@ -518,6 +523,9 @@ def create_well_correction_logs(apps, schema_editor):
     for wvac in query:
         activity = wvac.activity.activity
         matched = False
+        
+        # TODO: can look at activity.lab_cherry_pick.cherry_pick
+        
         if activity.comments:
             matched = cp_pattern.match(activity.comments)
             if matched:
@@ -685,7 +693,9 @@ def create_copywell_adjustments(apps, schema_editor):
                 plate.copy.name,
                 str(plate.plate_number).zfill(5)))
         copy_plate_initial_volumes[key] = plate.well_volume
-         
+    
+    # TODO: track the plate.cplt_screening_count
+    
     logger.info(
         'plate volume map built, iterate through copywells for %d plates...',
         len(copy_plate_initial_volumes))

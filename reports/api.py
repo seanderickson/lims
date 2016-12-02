@@ -1820,11 +1820,10 @@ class ApiLogResource(ApiResource):
                     request.user, 'read')
                 stmt = stmt.where(column('ref_resource_name').in_(resources))
             
-            def title_function(key):
-                if use_titles is True:
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
                     return field_hash[key]['title']
-                else:
-                    return key
             
             def create_diff_generator(generator):
                 bridge = self.bridge
@@ -2872,11 +2871,10 @@ class VocabularyResource(ApiResource):
             (stmt,count_stmt) = self.wrap_statement(
                 stmt,order_clauses,filter_expression )
             
-            def title_function(key):
-                if use_titles is True:
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
                     return field_hash[key]['title']
-                else:
-                    return key
             
             logger.info('vocabularies done, stream response...')
             return self.stream_response_from_statement(
@@ -3290,11 +3288,10 @@ class UserResource(ApiResource):
 #                 compile_kwargs={"literal_binds": True}))
 #             logger.info('compiled_stmt %s', compiled_stmt)
             
-            def title_function(key):
-                if use_titles is True:
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
                     return field_hash[key]['title']
-                else:
-                    return key
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -4086,11 +4083,10 @@ class UserGroupResource(ApiResource):
                 compile_kwargs={"literal_binds": True}))
             logger.info('compiled_stmt %s', compiled_stmt)
                         
-            def title_function(key):
-                if use_titles is True:
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
                     return field_hash[key]['title']
-                else:
-                    return key
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -4323,11 +4319,10 @@ class PermissionResource(ApiResource):
             (stmt,count_stmt) = self.wrap_statement(
                 stmt,order_clauses,filter_expression )
             
-            def title_function(key):
-                if use_titles is True:
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
                     return field_hash[key]['title']
-                else:
-                    return key
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 

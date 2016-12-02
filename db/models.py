@@ -827,7 +827,6 @@ class ScreensaverUser(models.Model):
         related_name='lab_member')
     
     # If this field, if set, designates user as a "Lab Head"
-    lab_head_affiliation = models.ForeignKey('LabAffiliation', null=True)
     lab_head_affiliation = models.TextField(null=True)
 
     class Meta:

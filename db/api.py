@@ -3935,8 +3935,10 @@ class CherryPickRequestResource(DbApiResource):
             _su = self.bridge['screensaver_user']
             _lhsu = _su.alias('lhsu')
             _user_cte = ScreensaverUserResource.get_user_cte().cte('users_cpr')
-            affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-            affiliation_table = affiliation_table.cte('la')
+            
+#             affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+#             affiliation_table = affiliation_table.cte('la')
+            lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
             
             custom_columns = {
                 'screen_facility_id': literal_column(
@@ -3949,23 +3951,25 @@ class CherryPickRequestResource(DbApiResource):
                     '  from screensaver_user su '
                     '  where su.screensaver_user_id=cherry_pick_request.requested_by_id )'
                     ).label('requested_by_name'),
-                'lab_name':
-                    (select([_concat(
-                        _lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
-                        affiliation_table.c.title,
-                        ' (', affiliation_table.c.category, ')')])
-                        .select_from(
-                            _lhsu.join(
-                                affiliation_table,
-                                affiliation_table.c.affiliation_name 
-                                    == _lhsu.c.lab_head_affiliation))
-                        .where(
-                            _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-                'lab_head_username':
-                    (select([_lhsu.c.username])
-                        .select_from(_lhsu)
-                        .where(
-                            _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+                'lab_name': lab_head_table.c.lab_name_full,
+                'lab_head_username': lab_head_table.c.username,
+#                 'lab_name':
+#                     (select([_concat(
+#                         _lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
+#                         affiliation_table.c.title,
+#                         ' (', affiliation_table.c.category, ')')])
+#                         .select_from(
+#                             _lhsu.join(
+#                                 affiliation_table,
+#                                 affiliation_table.c.affiliation_name 
+#                                     == _lhsu.c.lab_head_affiliation))
+#                         .where(
+#                             _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+#                 'lab_head_username':
+#                     (select([_lhsu.c.username])
+#                         .select_from(_lhsu)
+#                         .where(
+#                             _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
                 'lead_screener_name': literal_column(
                     '( select su.first_name || $$ $$ || su.last_name'
                     '  from screensaver_user su '
@@ -4042,6 +4046,11 @@ class CherryPickRequestResource(DbApiResource):
                 ' order by cherry_pick_request_id ) as lcp ')
             # _count_lcp_stmt = _count_lcp_stmt.alias('lcp') 
             j = join(_cpr, _screen, _cpr.c.screen_id == _screen.c.screen_id)
+            j = j.join(
+                lab_head_table, 
+                lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id,
+                isouter=True)
+            
             j = j.join(_count_lcp_stmt,
                 _cpr.c.cherry_pick_request_id 
                     == literal_column('lcp.cherry_pick_request_id'),
@@ -5893,9 +5902,12 @@ class ActivityResource(DbApiResource):
         _activity = self.bridge['activity']
         _su = self.bridge['screensaver_user']
         _lhsu = _su.alias('lhsu_la')
-        affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-        affiliation_table = affiliation_table.cte('affiliation_%s' % alias_qualifier)
         _sfs = self.bridge['screen_funding_supports']
+
+#         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+#         affiliation_table = affiliation_table.cte('affiliation_%s' % alias_qualifier)
+        lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
+
         
         return {
             'performed_by_name': (
@@ -5910,32 +5922,44 @@ class ActivityResource(DbApiResource):
                     .where(_performed_by.c.screensaver_user_id 
                         == _activity.c.performed_by_id)
                 ),
-            'screen_lab_name':
-                (select([func.array_to_string(array(
-                        [_lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
-                         affiliation_table.c.title,
-                         ' (', affiliation_table.c.category, ')']), '')])
-                    .select_from(
-                        _lhsu.join(
-                            affiliation_table,
-                            affiliation_table.c.affiliation_name 
-                                == _lhsu.c.lab_head_affiliation))
-                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-            'screen_lab_affiliation': 
-                (select([_concat(
-                        affiliation_table.c.title, ' (',
-                        affiliation_table.c.category, ')')])
-                    .select_from(
-                        _lhsu.join(
-                            affiliation_table,
-                            affiliation_table.c.affiliation_name 
-                                == _lhsu.c.lab_head_affiliation))
-                    .where(
-                        _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-            'screen_lab_head_username':
-                (select([_lhsu.c.username])
-                    .select_from(_lhsu)
-                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+            'screen_lab_affiliation': (
+                select([lab_head_table.c.lab_affiliation])
+                .select_from(lab_head_table)
+                .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'screen_lab_name': (
+                select([lab_head_table.c.lab_name_full])
+                .select_from(lab_head_table)
+                .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'screen_lab_head_username': (
+                select([lab_head_table.c.username])
+                .select_from(lab_head_table)
+                .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'screen_lab_name':
+#                 (select([func.array_to_string(array(
+#                         [_lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
+#                          affiliation_table.c.title,
+#                          ' (', affiliation_table.c.category, ')']), '')])
+#                     .select_from(
+#                         _lhsu.join(
+#                             affiliation_table,
+#                             affiliation_table.c.affiliation_name 
+#                                 == _lhsu.c.lab_head_affiliation))
+#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+#             'screen_lab_affiliation': 
+#                 (select([_concat(
+#                         affiliation_table.c.title, ' (',
+#                         affiliation_table.c.category, ')')])
+#                     .select_from(
+#                         _lhsu.join(
+#                             affiliation_table,
+#                             affiliation_table.c.affiliation_name 
+#                                 == _lhsu.c.lab_head_affiliation))
+#                     .where(
+#                         _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+#             'screen_lab_head_username':
+#                 (select([_lhsu.c.username])
+#                     .select_from(_lhsu)
+#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
             'screen_funding_supports':
                 select([func.array_to_string(
                     func.array_agg(literal_column('funding_support')
@@ -8071,8 +8095,11 @@ class ScreenResource(DbApiResource):
                 _screen.c.facility_id == facility_id)
         new_screen_result = new_screen_result.cte('screen_result')
             
-        affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-        affiliation_table = affiliation_table.cte('la')
+#         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+#         affiliation_table = affiliation_table.cte('la')
+
+        lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
+
 
         try:
             custom_columns = {
@@ -8092,31 +8119,34 @@ class ScreenResource(DbApiResource):
                     .select_from(collaborators)
                     .where(collaborators.c.screen_id 
                         == literal_column('screen.screen_id'))),
-                'lab_affiliation': (
-                    select([
-                        _concat(
-                            affiliation_table.c.title, ' (',
-                            affiliation_table.c.category, ')')])
-                    .select_from(
-                        _lhsu.join(affiliation_table,
-                            affiliation_table.c.affiliation_name 
-                                == _lhsu.c.lab_head_affiliation))
-                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-                'lab_name': (
-                    select([
-                        _concat(
-                            _lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
-                            affiliation_table.c.title,
-                            ' (', affiliation_table.c.category, ')')])
-                    .select_from(
-                        _lhsu.join(affiliation_table,
-                            affiliation_table.c.affiliation_name 
-                                == _lhsu.c.lab_head_affiliation))
-                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-                'lab_head_username': (
-                    select([_lhsu.c.username])
-                    .select_from(_lhsu)
-                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+                'lab_affiliation': lab_head_table.c.lab_affiliation,
+                'lab_name': lab_head_table.c.lab_name_full,
+                'lab_head_username': lab_head_table.c.username,
+#                 'lab_affiliation': (
+#                     select([
+#                         _concat(
+#                             affiliation_table.c.title, ' (',
+#                             affiliation_table.c.category, ')')])
+#                     .select_from(
+#                         _lhsu.join(affiliation_table,
+#                             affiliation_table.c.affiliation_name 
+#                                 == _lhsu.c.lab_head_affiliation))
+#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+#                 'lab_name': (
+#                     select([
+#                         _concat(
+#                             _lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
+#                             affiliation_table.c.title,
+#                             ' (', affiliation_table.c.category, ')')])
+#                     .select_from(
+#                         _lhsu.join(affiliation_table,
+#                             affiliation_table.c.affiliation_name 
+#                                 == _lhsu.c.lab_head_affiliation))
+#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+#                 'lab_head_username': (
+#                     select([_lhsu.c.username])
+#                     .select_from(_lhsu)
+#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
                 'lead_screener_name': (
                     select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
                     .select_from(_su)
@@ -8350,6 +8380,11 @@ class ScreenResource(DbApiResource):
         
         j = j.join(pin_transfer_approval,
             _screen.c.screen_id == pin_transfer_approval.c.screen_id, isouter=True)
+        
+        j = j.join(
+            lab_head_table, 
+            lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id,
+            isouter=True)
         
         stmt = select(columns.values()).select_from(j)
 
@@ -9235,10 +9270,41 @@ class ScreensaverUserResource(DbApiResource):
                 _su.c.screensaver_user_id,
                 _au.c.username,
                 _concat(_au.c.first_name, ' ', _au.c.last_name).label('name'),
+                _concat(_au.c.last_name, ', ', _au.c.first_name).label('last_first'),
                 _au.c.email
                 ])
             .select_from(j))
         return user_table
+        
+    @classmethod
+    def get_lab_head_cte(cls):
+        
+        affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte().cte('lab_affil')
+        _user = ScreensaverUserResource.get_user_cte().cte('lab_head_users')
+        bridge = get_tables()
+        _su = bridge['screensaver_user']
+        
+        lab_head_table = (
+            select([
+                _user.c.screensaver_user_id,
+                _user.c.name,
+                _user.c.username,
+                _concat(
+                    affiliation_table.c.title, ' (',
+                    affiliation_table.c.category, ')').label('lab_affiliation'),
+                func.array_to_string(
+                    array([
+                        _user.c.last_first,
+                        ' - ', affiliation_table.c.title,
+                        ' (', affiliation_table.c.category, ')']), '').label('lab_name_full'),
+                ])
+            .select_from(
+                _user.join(
+                    _su, _user.c.screensaver_user_id==_su.c.screensaver_user_id)
+                .join(affiliation_table, 
+                    _su.c.lab_head_affiliation==affiliation_table.c.affiliation_name ))
+            )
+        return lab_head_table
         
     def get_user_resource(self):
 
@@ -9282,13 +9348,6 @@ class ScreensaverUserResource(DbApiResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
-#         screensaver_user_id = param_hash.pop('screensaver_user_id', None)
-#         if screensaver_user_id:
-#             param_hash['screensaver_user_id__eq'] = screensaver_user_id
-#         username = param_hash.pop('username', None)
-#         if username:
-#             param_hash['username__eq'] = username
-            
 
         try:
             
@@ -9324,8 +9383,9 @@ class ScreensaverUserResource(DbApiResource):
             _fur = self.bridge['user_facility_usage_role']
             _lhsu = _su.alias('lhsu')
             
-            affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-            affiliation_table = affiliation_table.cte('la')
+#             affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte().cte('la')
+            
+            lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
             
             custom_columns = {
                 'name': literal_column(
@@ -9355,23 +9415,25 @@ class ScreensaverUserResource(DbApiResource):
                             _s.c.screen_id == _screen_collab.c.screen_id))
                     .where(_screen_collab.c.screensaveruser_id 
                         == _su.c.screensaver_user_id)),
-                'lab_name': (
-                    select([
-                        func.array_to_string(
-                            array([
-                                _lhsu.c.last_name, ', ', _lhsu.c.first_name,
-                                ' - ', affiliation_table.c.title,
-                                ' (', affiliation_table.c.category, ')']), '')])
-                    .select_from(
-                        _lhsu.join(
-                            affiliation_table,
-                            affiliation_table.c.affiliation_name 
-                                == _lhsu.c.lab_head_affiliation))
-                    .where(_lhsu.c.screensaver_user_id == _su.c.lab_head_id)),
-                'lab_head_username': (
-                    select([_lhsu.c.username])
-                    .select_from(_lhsu)
-                    .where(_lhsu.c.screensaver_user_id == _su.c.lab_head_id)),
+                'lab_name': lab_head_table.c.lab_name_full,
+                'lab_head_username': lab_head_table.c.username,
+#                 'lab_name': (
+#                     select([
+#                         func.array_to_string(
+#                             array([
+#                                 _lhsu.c.last_name, ', ', _lhsu.c.first_name,
+#                                 ' - ', affiliation_table.c.title,
+#                                 ' (', affiliation_table.c.category, ')']), '')])
+#                     .select_from(
+#                         _lhsu.join(
+#                             affiliation_table,
+#                             affiliation_table.c.affiliation_name 
+#                                 == _lhsu.c.lab_head_affiliation))
+#                     .where(_lhsu.c.screensaver_user_id == _su.c.lab_head_id)),
+#                 'lab_head_username': (
+#                     select([_lhsu.c.username])
+#                     .select_from(_lhsu)
+#                     .where(_lhsu.c.screensaver_user_id == _su.c.lab_head_id)),
                 'facility_usage_roles': (
                     select([
                         func.array_to_string(
@@ -9405,6 +9467,12 @@ class ScreensaverUserResource(DbApiResource):
             j = _su
             j = j.join(_up, _su.c.user_id == _up.c.id)
             j = j.join(_au, _up.c.user_id == _au.c.id)
+            
+            j = j.join(
+                lab_head_table, 
+                _su.c.lab_head_id==lab_head_table.c.screensaver_user_id,
+                isouter=True)
+            
             stmt = select(columns.values()).select_from(j)
             # natural ordering
             stmt = stmt.order_by(_au.c.last_name, _au.c.first_name)

@@ -10339,10 +10339,10 @@ class ReagentResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
         if is_data_interchange:
             title_function = DbApiResource.datainterchange_title_function(
                 field_hash,schema['id_attribute'])

@@ -627,11 +627,14 @@ class Migration(migrations.Migration):
             name='screencelllines',
             unique_together=set([('screen', 'cell_line')]),
         ),
+        
+        # NOTE: temporary for migration
         migrations.AddField(
             model_name='screen',
-            name='transfection_agent',
+            name='transfection_agent_text',
             field=models.TextField(null=True),
         ),
+        
         migrations.CreateModel(
             name='UserFacilityUsageRole',
             fields=[

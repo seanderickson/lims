@@ -493,9 +493,11 @@ class Migration(migrations.Migration):
         # Transfer the transfection_agent vocab from the transfection_agent
         # table to the screen.transfection_agent field
         migrations.RunSQL('''
-            update screen set transfection_agent = value 
+            update screen set transfection_agent_text = value 
             from transfection_agent ta 
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
+        
+        
         migrations.RunPython(update_facility_usage_roles),
     ]

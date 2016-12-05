@@ -55,15 +55,6 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='ScreenStatusItem'),
             
-        migrations.RemoveField(
-            model_name='screen',
-            name='transfection_agent',
-        ),
-        migrations.RenameField(
-            model_name='screen', 
-            old_name='transfection_agent_text', 
-            new_name='transfection_agent'
-        ),
         
         migrations.DeleteModel(
             name='TransfectionAgent'),

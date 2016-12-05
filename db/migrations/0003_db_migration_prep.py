@@ -498,6 +498,15 @@ class Migration(migrations.Migration):
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
         
+        migrations.RemoveField(
+            model_name='screen',
+            name='transfection_agent',
+        ),
+        migrations.RenameField(
+            model_name='screen', 
+            old_name='transfection_agent_text', 
+            new_name='transfection_agent'
+        ),
         
         migrations.RunPython(update_facility_usage_roles),
     ]

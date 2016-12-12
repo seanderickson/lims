@@ -6,6 +6,8 @@ SELECT
 current_timestamp,
 'create new copywell data using assay plate information';
 
+select current_time;
+
 /**
   Create copywell entries as needed for:
   - well volume adjustments
@@ -299,9 +301,6 @@ alter table copy_well
   add constraint well_id_refs_well_id 
   foreign key (well_id) 
   references well;
-
-
-COMMIT;
 
 /**
 vacuum analyze;

@@ -28,8 +28,6 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='AttachedFileType'),
         
-        migrations.RunSQL(
-            'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
         migrations.RemoveField(
             model_name='screenfundingsupportlink',
             name='funding_support',
@@ -45,6 +43,9 @@ class Migration(migrations.Migration):
             model_name='serviceactivity',
             name='funding_support_link',
         ),
+        # Note: funding_support_link is an alias for funding_support_id
+        # migrations.RunSQL(
+        #     'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
         migrations.DeleteModel(
             name='FundingSupport',
         ),
@@ -96,6 +97,8 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(
                 related_name='lab_member', to='db.ScreensaverUser', null=True),
         ),
+
+        
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='volume_approved_by',
@@ -129,4 +132,26 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='StudyReagentLink',
         ),
+        
+        
+        migrations.RemoveField(
+            model_name='copy',
+            name='well_concentration_dilution_factor',
+        ),
+        migrations.RemoveField(
+            model_name='plate',
+            name='plated_activity_id',
+        ),
+        migrations.RemoveField(
+            model_name='plate',
+            name='retired_activity_id',
+        ),
+        
+        # TODO: remove lab head as separate model
+        migrations.AlterField(
+            model_name='labhead',
+            name='screensaver_user',
+            field=models.OneToOneField(primary_key=True, serialize=False, to='db.ScreensaverUser'),
+        ),
+        
     ]

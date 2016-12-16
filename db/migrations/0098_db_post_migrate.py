@@ -76,7 +76,7 @@ class Migration(migrations.Migration):
             name='last_notified_rnaiua_checklist_item_event'),
 
         # TODO: service_activity depends on funding support
-        migrations.RunSQL('DROP TABLE funding_support; '),
+#         migrations.RunSQL('DROP TABLE funding_support; '),
         
         migrations.RemoveField(
             model_name='datacolumnderivedfromlink',

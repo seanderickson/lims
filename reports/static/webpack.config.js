@@ -1,10 +1,22 @@
 var path = require('path')
 var webpack = require("webpack");
+const AssetsPlugin = require('assets-webpack-plugin');
+const assetsPluginInstance = new AssetsPlugin({
+    update: true,
+    path: path.join(__dirname, '..','..','lims'),
+    filename: 'webpack_bundle_hash_setting.py',  
+    processOutput: function (assets) {
+        console.log('assets: ' , assets);
+        var hash = assets.main.js.match(/.*bundle\.([^.]+)\.js/)[1]
+        console.log('AssetsPlugin parsed hash: ' + hash);
+        return 'LIMS_BUNDLE_HASH="' + hash + '"\n';
+    }
+});
 module.exports = {
   context: path.resolve(__dirname, 'js'),
   entry: './main',
   output: {
-    filename: 'bundle.js',
+    filename: 'bundle.[hash].js',
     // with css?sourceMap; the public path must be a full URL for fonts to load
     // see: https://github.com/webpack/css-loader/issues/29
     publicPath: 'http://localhost:8000/_static/'
@@ -21,6 +33,7 @@ module.exports = {
       backgrid_paginator: 'backgrid-paginator',
       backbone_stickit: 'backbone.stickit',
       backgrid_filter: 'backgrid-filter',
+      backgrid_select_all: 'backgrid-select-all',
       chosen: 'jquery-chosen/chosen.jquery.min',
       quicksearch: 'jquery.quicksearch/dist/jquery.quicksearch.min.js',
       layoutmanager: 'layoutmanager/backbone.layoutmanager'
@@ -46,5 +59,8 @@ module.exports = {
         loader: 'file?name=css/fonts/[name].[ext]'
       }    
     ]
-  }
+  },
+  plugins: [
+    assetsPluginInstance
+  ]
 };

@@ -4,6 +4,13 @@ import sys
 import os
 import django.template
 
+try:
+    from webpack_bundle_hash_setting import *
+except ImportError:
+    import sys
+    print >>sys.stderr, '''bundle_setting not defined.  Please configure a version of
+    bundle_setting.py for this site.'''
+    del sys
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -102,8 +109,10 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     "django.core.context_processors.static",
     "django.contrib.messages.context_processors.messages",
     "django.core.context_processors.request",
+    "lims.webpack_bundle_hash_name_processor.bundle_context_processor",    
 #     "lims.context_processors.login_url_with_redirect",
 )
+    
 
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',

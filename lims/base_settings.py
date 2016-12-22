@@ -4,14 +4,6 @@ import sys
 import os
 import django.template
 
-try:
-    from webpack_bundle_hash_setting import *
-except ImportError:
-    import sys
-    print >>sys.stderr, '''bundle_setting not defined.  Please configure a version of
-    bundle_setting.py for this site.'''
-    del sys
-
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 DEBUG = True

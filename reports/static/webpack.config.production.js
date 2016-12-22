@@ -1,17 +1,11 @@
 var path = require('path')
 var webpack = require("webpack");
 const AssetsPlugin = require('assets-webpack-plugin');
+
 const assetsPluginInstance = new AssetsPlugin({
-    update: true,
-    path: path.join(__dirname, '..','..','lims'),
-    filename: 'webpack_bundle_hash_setting.py',  
-    processOutput: function (assets) {
-        console.log('assets: ' , assets);
-        var hash = assets.main.js.match(/.*bundle\.([^.]+)\.js/)[1]
-        console.log('AssetsPlugin parsed hash: ' + hash);
-        return 'LIMS_BUNDLE_HASH="' + hash + '"\n';
-    }
+    filename: 'bundle_name.json'
 });
+
 module.exports = {
   context: path.resolve(__dirname, 'js'),
   entry: './main',

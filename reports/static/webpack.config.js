@@ -1,17 +1,38 @@
 var path = require('path')
 var webpack = require("webpack");
+
+// Use the "assets-webpack-plugin" plugin to generate a webpack bundle with
+// a hash value in the bundle name, as in "bundle.[hash_value].js"
+// (for cache busting).
+// See: https://github.com/kossnocorp/assets-webpack-plugin
+//
+// - The configured assetsPluginInstance will generate the settings file:
+//
+// [project_dir]/reports/static/bundle_name.js, e.g.:
+// {"main":{"js":"http://localhost:8000/_static/bundle.c026caedeb210bd3ec0a.js"}}
 const AssetsPlugin = require('assets-webpack-plugin');
+// Implement the default processOutput for debug information
 const assetsPluginInstance = new AssetsPlugin({
-    update: true,
-    path: path.join(__dirname, '..','..','lims'),
-    filename: 'webpack_bundle_hash_setting.py',  
+    filename: 'bundle_name.json',
     processOutput: function (assets) {
         console.log('assets: ' , assets);
-        var hash = assets.main.js.match(/.*bundle\.([^.]+)\.js/)[1]
-        console.log('AssetsPlugin parsed hash: ' + hash);
-        return 'LIMS_BUNDLE_HASH="' + hash + '"\n';
+        return JSON.stringify(assets);
     }
 });
+
+// Write to a text file
+//const assetsPluginInstance = new AssetsPlugin({
+//    update: true,
+//    path: path.join(__dirname, '..','..','lims'),
+//    filename: 'webpack_bundle_hash_setting.py',  
+//    processOutput: function (assets) {
+//        console.log('assets: ' , assets);
+//        var hash = assets.main.js.match(/.*bundle\.([^.]+)\.js/)[1]
+//        console.log('AssetsPlugin parsed hash: ' + hash);
+//        return 'LIMS_BUNDLE_HASH="' + hash + '"\n';
+//    }
+//});
+
 module.exports = {
   context: path.resolve(__dirname, 'js'),
   entry: './main',

@@ -35,6 +35,7 @@ define([
       if (!_options.schemaResult){
         _options.schemaResult = resource;
       }
+      self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       var uriStack = args.uriStack || [];
@@ -44,7 +45,8 @@ define([
             rpp: 25,
             page: 1,
             order: {},
-            search: {}}
+            search: {},
+            includes: [] }
         });
 
 //      var preset_searches = {};
@@ -253,10 +255,15 @@ define([
     },
     
     reportState: function(args) {
+      console.log('report state', args);
       var self = this;
       var newStack = [];
       var previousStack = self.currentStack;
       
+      // Note: this is repeated in the specific change listeners
+      $('#clear_sorts').toggle(!_.isEmpty(self.listModel.get('order')));
+      $('#clear_searches').toggle(!_.isEmpty(self.listModel.get('search')));
+     
       // If a suffix was consumed, then put it back
       if(self.urlSuffix != ""){
         newStack = self.urlSuffix.split('/');
@@ -432,12 +439,88 @@ define([
           appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
-//      this.listenTo(this.listModel, 'change:search', function(){
-//        // TODO: this listener should be set in the collection initializer
-//        var searchHash = _.clone(self.listModel.get('search'));
-//        self.collection.setSearch(searchHash);
-//      });
-
+      this.listenTo(this.listModel, 'change:search', function(){
+        // TODO: this listener should be set in the collection initializer
+        var searchHash = _.clone(self.listModel.get('search'));
+        // Note: this is repeated in reportState
+        $('#clear_searches').toggle(!_.isEmpty(searchHash));
+        
+        self.collection.setSearch(searchHash);
+      });
+      
+      this.listenTo(this.listModel, 'change:order', function(){
+        // Note: this is repeated in reportState
+        $('#clear_sorts').toggle(!_.isEmpty(self.listModel.get('order')));
+        
+      });
+      
+      // New 20161213
+      this.listenTo(
+        this.listModel, 
+        'change:includes', 
+        function(model, changed, options){
+          
+          var reset = true;
+          if (options && options.reset === false){
+            reset = options.reset;
+          }
+          
+          console.log('includes changed from ',
+            self.listModel.previous('includes'), 'to', 
+            self.listModel.get('includes'));
+          
+          var toAdd = [];
+          var toRemove = [];
+          var previous = self.listModel.previous('includes');
+          var current = self.listModel.get('includes');
+          _.each(previous, function(p){
+            if(! _.contains(current, p)){
+              if(p.charAt(0)=='-'){
+                toAdd.push(p.slice(1));
+              }else{
+                toRemove.push(p);
+              }
+            }
+          });
+          _.each(current, function(c){
+            if(! _.contains(previous, c)){
+              if(c.charAt(0)=='-'){
+                toRemove.push(c.slice(1));
+              }else{
+                toAdd.push(c);
+              }
+            }
+          });
+          
+          console.log('toRemove:', toRemove, 'toAdd', toAdd);
+          
+          _.each(toAdd, function(key){
+            var column = self.grid.columns.findWhere({ name: key });
+            if (!column){
+              var field = self._options.schemaResult.fields[key];
+              self.grid.insertColumn(
+                Iccbl.createBackgridColumn(
+                    key,field,
+                    self.collection.state.orderStack));
+            }
+          });
+          _.each(toRemove, function(key){
+            column =  self.grid.columns.find(function(column){
+              if(column.get('name') == key){
+                self.grid.removeColumn(column);
+                return true;
+              }
+            });
+          });          
+          
+          if(reset){
+            self.collection.fetch();
+          }
+          
+          // trigger an event to notify new header forms to self-display
+          self.collection.trigger("MyServerSideFilter:search", 
+            self.listModel.get('search'), self.collection);
+      });
 
       if(self.collection instanceof Backbone.PageableCollection){
         var paginator = self.paginator = new Backgrid.Extension.Paginator({
@@ -508,9 +591,16 @@ define([
 //          self.listModel.set('search', searchHash);
         });
       }
+      
+      var body = Iccbl.MultiSortBody;
+      if (self._options.body) {
+        body = body.extend(self._options.body);
+      }
+      
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
-        body: Iccbl.MultiSortBody,
+        body: body,
+        row: self._options.row,
         collection: self.collection,
         className: "backgrid col-sm-12 table-striped table-condensed table-hover"
       });
@@ -674,6 +764,8 @@ define([
     
     /** Build the select columns dialog **/
     select_columns: function(event){
+
+      console.log('x select_columns...');
       
       var self = this;
       var form_template = [
@@ -726,6 +818,7 @@ define([
       var default_visible = {};
       var _optgroups_shown = [];
       var defaultScope = 'fields.' + self._options.resource.key;
+      console.log('defaultScope: ' , defaultScope);
       var orderedKeys = _.sortBy(_.keys(_fields), function(key){
         return _fields[key]['ordinal'];
       });
@@ -948,27 +1041,31 @@ define([
                 other_screens.push(field['screen_facility_id']);
                 value = false; // stop processing this value
               }else{
-                self.grid.insertColumn(
-                    Iccbl.createBackgridColumn(
-                        key,field,
-                        self.collection.state.orderStack));
+                // 20161213 - Moved to listModel listener
+//                self.grid.insertColumn(
+//                    Iccbl.createBackgridColumn(
+//                        key,field,
+//                        self.collection.state.orderStack));
               }
             }
             if(!value && default_visible[key]){
               new_includes.unshift('-' + key);
-              column =  self.grid.columns.find(function(column){
-                if(column.get('name') == key){
-                  self.grid.removeColumn(column);
-                  return true;
-                }
-              });
+              
+              // 20161213 - Moved to listModel listener
+//              column =  self.grid.columns.find(function(column){
+//                if(column.get('name') == key){
+//                  self.grid.removeColumn(column);
+//                  return true;
+//                }
+//              });
             }else if(!value){
-              column =  self.grid.columns.find(function(column){
-                if(column.get('name') == key){
-                  self.grid.removeColumn(column);
-                  return true;
-                }
-              });
+              // 20161213 - Moved to listModel listener
+//              column =  self.grid.columns.find(function(column){
+//                if(column.get('name') == key){
+//                  self.grid.removeColumn(column);
+//                  return true;
+//                }
+//              });
             }
             if(value && !default_visible[key]){
               new_includes.unshift(key);
@@ -979,12 +1076,13 @@ define([
             self.show_other_screens(other_screens);
           }else{
             self.listModel.set({'includes': new_includes });
-            self.collection.fetch();
-            
-            // trigger an event to notify new header forms to self-display
-            self.collection.trigger("MyServerSideFilter:search", 
-              self.listModel.get('search'), self.collection);
-            }
+            // New 20161213 - use listmodel event listener instead            
+            //self.collection.fetch();
+            //
+            //// trigger an event to notify new header forms to self-display
+            //self.collection.trigger("MyServerSideFilter:search", 
+            //  self.listModel.get('search'), self.collection);
+          }
         },
         view: _form_el,
         title: 'Select columns'  
@@ -1014,11 +1112,12 @@ define([
         var searchHash = _.clone(self.listModel.get('search'));
         searchHash['other_screens'] = other_screens;
         self.listModel.set('search',searchHash);
-        self.collection.fetch();
-        
-        // trigger an event to notify new header forms to self-display
-        self.collection.trigger("MyServerSideFilter:search", 
-          self.listModel.get('search'), self.collection);
+        // New 20161213 see listmodel change listener
+        //self.collection.fetch();
+        //
+        //// trigger an event to notify new header forms to self-display
+        //self.collection.trigger("MyServerSideFilter:search", 
+        //  self.listModel.get('search'), self.collection);
         
       },
       { other_screens: other_screens });
@@ -1053,11 +1152,13 @@ define([
           var searchHash = _.clone(self.listModel.get('search'));
           searchHash['show_mutual_positives'] = 'true';
           self.listModel.set('search',searchHash);
-          self.collection.fetch();
-          
-          // trigger an event to notify new header forms to self-display
-          self.collection.trigger("MyServerSideFilter:search", 
-            self.listModel.get('search'), self.collection);
+
+          // New 20161213 - use listmodel event listener instead            
+          //self.collection.fetch();
+          //
+          //// trigger an event to notify new header forms to self-display
+          //self.collection.trigger("MyServerSideFilter:search", 
+          //  self.listModel.get('search'), self.collection);
           
         },
         { show_mutual_positives: true});

@@ -821,6 +821,16 @@ define([
       return newModel;
     },
     
+    _get_screen_members: function(model){
+      // FIXME: should extend the Model for Screen
+      var members = _.object(
+        model.get('collaborator_usernames'),
+        model.get('collaborator_names'));
+      members[model.get('lead_screener_username')] = model.get('lead_screener_name');
+      members[model.get('lab_head_username')] = model.get('lab_head_name');
+      return members;
+    },
+    
     /**
      * Get a model from the server
      */
@@ -1748,7 +1758,10 @@ define([
         // $('.modal-content').css('height',$( window ).height()*0.95);
         $('.modal-content').css('height', 'auto');
         $('.modal-content').css('max-height','100%');
-      });      
+      });   
+      if (options.width){
+        $('.modal-dialog').css('width', options.width);
+      }
       $modal.on('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();
       });
@@ -1771,7 +1784,7 @@ define([
   var appState = new AppState();
   
   appState._form_template = _.template([
-     '<div class="form-horizontal container" id="add_value_field" >',
+     '<div class="form-horizontal container" id="_form_template" >',
      '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
      "</form>",
      "</div>"].join(''));      

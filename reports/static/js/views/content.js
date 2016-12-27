@@ -13,20 +13,24 @@ define([
   'views/library/libraryCopyPlate',
   'views/screen/screen',
   'views/screen/libraryScreening',
+  'views/screen/cherryPickRequest',
   'views/plateLocation',
   'views/user/user2',
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
   'utils/uploadDataForm',
   'test/detailTest',
+  'utils/wellSelector',
   'templates/content.html',
   'templates/welcome.html',
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView, 
-         ScreenView, LibraryScreeningView, PlateLocationView, UserAdminView, 
-         UserView, UserGroupAdminView, UploadDataForm, DetailTestView, layout, 
+         ScreenView, LibraryScreeningView, CherryPickRequestView,
+         PlateLocationView, UserAdminView, 
+         UserView, UserGroupAdminView, UploadDataForm, DetailTestView, 
+         WellSelectorView, layout, 
          welcomeLayout, aboutLayout) {
   
   var VIEWS = {
@@ -37,11 +41,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'LibraryCopyPlateView': LibraryCopyPlateView,
     'ScreenView': ScreenView,
     'LibraryScreeningView': LibraryScreeningView,
+    'CherryPickRequestView': CherryPickRequestView,
     'PlateLocationView': PlateLocationView,
     'UserView': UserView,
     'UserAdminView': UserAdminView,
     'UserGroupAdminView': UserGroupAdminView,
-    'DetailTestView': DetailTestView
+    'DetailTestView': DetailTestView,
+    'WellSelectorView': WellSelectorView
   };
     
   var ContentView = Iccbl.UriContainerView.extend({
@@ -111,6 +117,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var self = this;
       this.$('#content_title').html("Detail Test");
       var view = new DetailTestView({uriStack: uriStack});
+      self.setView('#content', view).render();
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+    },
+    
+    // Show a mock well selector view to test UI components
+    showWellSelectorTest: function(uriStack){
+      var self = this;
+      this.$('#content_title').html("Well Selector Test");
+      var view = new WellSelectorView({
+        uriStack: uriStack
+      });
       self.setView('#content', view).render();
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
     },
@@ -348,6 +365,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           this.consumedStack.push(uriStack.shift());
           self.showDetailTest(uriStack);
           return;
+        }else if (uriStack[0] == 'wellselectortest'){
+          this.consumedStack.push(uriStack.shift());
+          self.showWellSelectorTest(uriStack);
         }
         uiResourceId = uriStack.shift();
         this.consumedStack.push(uiResourceId);

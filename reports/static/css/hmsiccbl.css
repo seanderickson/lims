@@ -173,6 +173,31 @@ div.backgrid-paginator {
   outline: 1px solid green;
 }
 
+.backgrid td.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
+.backgrid th.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
+.backgrid tbody tr.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
+.wellselector {
+  width: auto;
+}
+
+.wellselector tbody tr td {
+  padding: 1px 1px 1px 1px;
+}
+
+.wellselector .select-row-cell {
+  padding: 5px;
+  font-weight: bold;
+  text-align: center;
+}
 
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 

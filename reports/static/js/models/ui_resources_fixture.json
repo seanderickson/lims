@@ -63,6 +63,11 @@
       "list_view": "ListView",
       "api_resource": "libraryscreening"
     },
+    "cherrypickrequest": {
+      "detailView": "CherryPickRequestView",
+      "list_view": "ListView",
+      "api_resource": "cherrypickrequest"
+    },
     "externallibraryscreening": {
       "api_resource": "libraryscreening"
     },
@@ -231,6 +236,12 @@
       "route": "list/detailtest",
       "list_view": "ListView",
       "detailView": "DetailTestView",
+      "api_resource": "reagent"
+    },
+    "wellselectortest": {
+      "header_message": "Well Selector Test View",
+      "title": "Well Selector Test View",
+      "detailView": "WellSelectorView",
       "api_resource": "reagent"
     }
 }

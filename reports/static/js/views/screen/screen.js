@@ -10,7 +10,8 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/screen/screenSummary', 
-  'views/screen/screenData',  
+  'views/screen/screenData',
+  'views/screen/cherryPickRequest',
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
   'views/generic_edit',
@@ -19,7 +20,8 @@ define([
   'utils/tabbedController',
   'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            ScreenSummaryView, ScreenDataView, DetailLayout, DetailView, EditView, 
+            ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
+            DetailLayout, DetailView, EditView, 
             ListView, UploadDataForm, TabbedController, screenTemplate) {
 
   var ScreenView = TabbedController.extend({
@@ -69,11 +71,11 @@ define([
         invoke : 'setData',
         permission: 'screenresult'
       },
-      cherrypicks: {
+      cherrypickrequest: {
         description : 'Cherry Pick Requests',
         title : 'Cherry Picks',
         invoke : 'setCherryPicks',
-        permission: 'cherrypick'
+        permission: 'cherrypickrequest'
       },
       activities: {
         description : 'Activities',
@@ -121,7 +123,7 @@ define([
           form.$el.find('div[key="title"]').parent().prepend(
             '<span id="title-sm-screen">A screen for compounds that...</span>');
           function screenTypeSettings(screen_type){
-            // TODO: 20161128 - adjust visible fields based on the screen type
+            // 20161128 - adjust visible fields based on the screen type
             if (screen_type == 'small_molecule'){
               form.$el.find('#title-sm-screen').show();
               form.$el.find('div[data-fields="transfection_agent"]').hide();
@@ -190,6 +192,7 @@ define([
         serialize: function() {
           console.log('serialize...');
           var data = DetailView.prototype.serialize.apply(this,arguments);
+          // special handling of the grouped keys for the screen template
           var informationKeys = [];
           var groupedKeys = [];
           data['groupedKeys'].each(function(groupKey) {
@@ -287,8 +290,6 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-//      var cell = $('<div id="activity_summary" class="row"/>');
-//      $target_el.append(cell);
       $target_el.empty();
       
       function build_table(collection) {
@@ -825,7 +826,7 @@ define([
         $target_el.append($([
           '<div class="col-xs-12"><strong>',
           'Recent <a href="#screen/' + self.model.get('facility_id'),
-          '/cherrypicks">Cherry Pick Requests</a></strong></div>',
+          '/cherrypick">Cherry Pick Requests</a></strong></div>',
           '<div class="col-xs-12" id="cprs"/>'].join('')));
         
         var _grid = new Backgrid.Grid({
@@ -969,33 +970,182 @@ define([
     
     setCherryPicks: function(delegateStack) {
       var self = this;
-      var key = 'cherryPicks';
-      var view = this.tabViews[key];
-      
-      if (!view) {
-        var self = this;
-        var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
-        var resource = appModel.getResource('cherrypickrequest');
-        var view = new ListView({ 
-          uriStack: _.clone(delegateStack),
-          schemaResult: resource,
-          resource: resource,
+      var cpResource = appModel.getResource('cherrypickrequest'); 
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail view
+        var cherryPickRequestId = delegateStack.shift();
+        self.consumedStack.push(cherryPickRequestId);
+        var _key = cherryPickRequestId;
+        appModel.getModel(cpResource.key, _key, function(model){
+          view = new CherryPickRequestView({
+            model: model, 
+            uriStack: _.clone(delegateStack),
+            screen: self.model
+          });
+          Backbone.Layout.setupView(view);
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+          
+          console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
+          self.$("#tab_container-title").html('Cherry Pick Request: ' + cherryPickRequestId);
+        });        
+        return;
+      }else{
+        // List view
+        var extraControls = [];
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'cherrypicks'].join('/');
+        var Collection = Iccbl.MyCollection.extend({
+          url: url
+        });
+        collection = new Collection({
           url: url,
-          extraControls: []
+        });
+        
+        if (appModel.hasPermission(cpResource.key, 'write')){
+          var showAddButton = $([
+             '<a class="btn btn-default btn-sm pull-down" ',
+               'role="button" id="add_resource" href="#">',
+               'Add</a>'
+             ].join(''));   
+           showAddButton.click(function(e){
+             e.preventDefault();
+
+             appModel.initializeAdminMode(function() {
+               self.showAddCherryPick(collection);
+             });
+           });
+           extraControls.push(showAddButton);
+        }    
+        
+        cpResource.fields['cherry_pick_request_id'].backgridCellType = 
+          Iccbl.LinkCell.extend(_.extend({},
+            cpResource.fields['cherry_pick_request_id'].display_options,
+            {
+              linkCallback: function(e){
+                e.preventDefault();
+                // re-fetch the full model
+                var _key = this.model.get('cherry_pick_request_id');
+                appModel.getModel(cpResource.key, _key, function(model){
+                  view = new CherryPickRequestView({
+                    model: model, 
+                    uriStack: [],
+                    screen: self.model
+                  });
+                  Backbone.Layout.setupView(view);
+                  self.consumedStack = ['cherrypickrequest',_key];
+                  self.listenTo(view , 'uriStack:change', self.reportUriStack);
+                  self.setView("#tab_container", view ).render();
+                  
+                  console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
+                  self.$("#tab_container-title").html(
+                    'Cherry Pick Request: ' + model.get('cherry_pick_request_id'));
+                });        
+                return;
+              }
+            }));
+        
+        view = new ListView({ 
+          uriStack: _.clone(delegateStack),
+          schemaResult: cpResource,
+          resource: cpResource,
+          url: url,
+          collection: collection,
+          extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.$("#tab_container-title").empty();
         self.setView("#tab_container", view ).render();
-        this.$('li').removeClass('active');
-        this.$('#'+key).addClass('active');
-
-      } else {
-        self.listenTo(view , 'uriStack:change', this.reportUriStack);
-        self.setView("#tab_container", view ).render();
-        self.reportUriStack([]);
       }
     },
+    
+//    _get_screen_members: function(model){
+//      
+//      var members = _.object(
+//        model.get('collaborator_usernames'),
+//        model.get('collaborator_names'));
+//      members[model.get('lead_screener_username')] = model.get('lead_screener_name');
+//      members[model.get('lab_head_username')] = model.get('lab_head_name');
+//      return members;
+//    },
+    
+    showAddCherryPick: function() {
+      console.log('add cherry pick request');
+      var self = this;
+
+      var defaults = _.extend(
+        {}, 
+        _.pick(
+          self.model.attributes, 
+          ['screen_type','project_id', 'project_phase', 'lab_head_username', 
+           'lab_name', 'lead_screener_username', 'lead_screener_name']),
+        {
+          screen_facility_id: self.model.get('facility_id'),
+          screen_title: self.model.get('title'),
+          date_requested: Iccbl.getISODateString(new Date()),
+          requested_by_username: self.model.get('lead_screener_username')
+      });
+      
+      if (self.model.get('screen_type') == 'small_molecule'){
+        defaults['transfer_volume_per_well_requested'] = '0.0000016';
+        defaults['transfer_volume_per_well_approved'] = '0.0000016';
+      }
+      
+      var newModel = appModel.createNewModel('cherrypickrequest', defaults);
+
+      newModel.resource.fields['requested_by_username'].choices = 
+        appModel._get_screen_members(self.model);
+      newModel.resource.fields['volume_approved_by_username'].choices = 
+        appModel.getAdminUserOptions();
+      
+      var view = new CherryPickRequestView({ 
+        model: newModel, 
+        screen: self.model,
+        uriStack: ['+add']
+      });
+      
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+
+      
+      this.consumedStack = ['cherrypickrequest','+add'];
+      self.reportUriStack([]);
+    },
+    
+//    setCherryPicks1: function(delegateStack) {
+//      var self = this;
+//      var key = 'cherrypickrequest';
+//      var view = this.tabViews[key];
+//      
+//      if (!view) {
+//        var self = this;
+//        var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
+//        var resource = appModel.getResource('cherrypickrequest');
+//        var view = new ListView({ 
+//          uriStack: _.clone(delegateStack),
+//          schemaResult: resource,
+//          resource: resource,
+//          url: url,
+//          extraControls: []
+//        });
+//        Backbone.Layout.setupView(view);
+//        self.reportUriStack([]);
+//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//        self.setView("#tab_container", view ).render();
+//        this.$('li').removeClass('active');
+//        this.$('#'+key).addClass('active');
+//
+//      } else {
+//        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+//        self.setView("#tab_container", view ).render();
+//        self.reportUriStack([]);
+//      }
+//    },
 
     setActivities: function(delegateStack) {
       var self = this;

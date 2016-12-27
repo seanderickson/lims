@@ -1,8 +1,8 @@
 define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
-        'backgrid_filter', 'backgrid_paginator', 
+        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all',
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
-             BackgridFilter, layoutmanager ) {
+             BackgridFilter, BackgridSelectAll, layoutmanager ) {
 
 var root = window;
   
@@ -15,6 +15,18 @@ var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
 var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 
+
+/**
+ */
+var rowToLetter = Iccbl.rowToLetter = function(i){
+  if (i<26){
+    return 'ABCDEFGHIJKLMNOP'[i];
+  } else {
+    var rem = i%16;
+    var part = parseInt(i/16)-1;
+    return rowToLetter(part) + rowToLetter(rem);
+  }
+};
 
 /**
  * Format a string of containing "replacement fields" surrounded by 
@@ -51,7 +63,7 @@ var formatString = Iccbl.formatString = function(
       }
     });
   return interpolatedString;
-}
+};
 
 
 /**
@@ -358,6 +370,10 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
         }else{
           if( model.has(item) ){
             var val = model.get(item);
+            if (!_.has(fields,item)){
+              throw Exception(
+                'Title property: ' + item + ', not present on model: ', schema.key );
+            }
             if (!_.isEmpty(fields[item].vocabulary_scope_ref)){
               val = Iccbl.appModel.getVocabularyTitle(fields[item].vocabulary_scope_ref,val);
             }
@@ -535,6 +551,17 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
     });
   }
 });
+
+var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
+  initialize: function(){
+    BooleanCell.__super__.initialize.apply(this, arguments);
+    var self = this;
+    this.model.on('change:'+this.column.get("name") , function(){
+      self.$el.addClass('edited');
+    });
+  }  
+  
+})
 
 var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
   initialize: function(){
@@ -1332,6 +1359,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     var self = this;
     var oldsearchHash = _.clone(self.listModel.get('search'));
     oldsearchHash = _.extend(oldsearchHash, searchHash);
+    if(options && options.reset && self.state.currentPage != 1){
+      self.state.currentPage = 1;
+    }
     self.listModel.set({
       'search' : oldsearchHash
     });
@@ -1341,12 +1371,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         return self.listModel.get('search')[key] || null;
       };
     });
-    if(options && options.reset){
-      console.log('collection.addSearch: reset');
-      self.getFirstPage({reset: true, fetch: true}).fail(
-        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-      );
-    }
+// Removed 20161213, see search listener in list2.js
+//    if(options && options.reset && self.state.currentPage != 1){
+//      console.log('collection.addSearch: reset');
+//      self.getFirstPage({reset: true, fetch: true}).fail(
+//        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+//      );
+//    }
   },
 
   /**
@@ -1370,15 +1401,18 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       });
     }
     if(found){
+      
+      self.state.currentPage = 1;
       self.listModel.set({
         'search' : searchHash
       });
-      if(options && options.reset){
-        console.log('collection.clearSearch: reset');
-        self.getFirstPage({reset: true, fetch: true}).fail(
-          function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-        );
-      }
+// Removed 20161213, see search listener in list2.js
+//      if(options && options.reset){
+//        console.log('collection.clearSearch: reset');
+//        self.getFirstPage({reset: true, fetch: true}).fail(
+//          function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+//        );
+//      }
     }
   },
 
@@ -3848,7 +3882,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'siunit': Iccbl.SIUnitsCell,
     'float': Iccbl.NumberCell, //'Number',
     'decimal': Iccbl.DecimalCell,
-    'image': Iccbl.ImageCell
+    'image': Iccbl.ImageCell,
+    'boolean': Iccbl.BooleanCell
   }
   
   if (_.has(prop, 'backgridCellType')){

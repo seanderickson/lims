@@ -7,10 +7,9 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/list2',
-  'views/screen/libraryScreening',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            ListView, LibraryScreeningView, TabbedController) {
+            ListView, TabbedController) {
   
   var ScreenDataView = TabbedController.extend({
     

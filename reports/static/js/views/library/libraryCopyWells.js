@@ -94,7 +94,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         resource.fields['library_short_name']['visibility'] = ['d'];
       }
       
-      // Set concentration type visibilty based concentrations found in library wells
+      // Set concentration type visibility based concentrations found in library wells
       var concentration_types = self.library.get('concentration_types');
       resource.fields['mg_ml_concentration']['visibility'] = [];
       resource.fields['molar_concentration']['visibility'] = [];

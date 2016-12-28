@@ -21,6 +21,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     
       var self = this;
       WellColumnSelectorHeader.__super__.initialize.apply(this, arguments);
+      var colNumber = parseInt(this.column.get('name'));
       
       this.listenTo(this.collection, "select-column", function (colNumber, selected) {
         var colNumber = parseInt(colNumber);
@@ -29,45 +30,50 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
         });
       });
       
-      var colNumber = parseInt(this.column.get('name'));
-      
       this.listenTo(this.collection, 'change:' + colNumber, function(){
-        var hasFalse = self.collection.find(function(model){
-          return model.get(colNumber)===false;
-        });
-        var selected = _.isUndefined(hasFalse);
-        self.checkbox().prop('checked', selected);
-        if (selected){
-          self.$el.addClass('selected')
-        } else {
-          self.$el.removeClass('selected')
-        }
+        self.renderSelection();
       });
+    },
+    
+    /**
+     * @return true if the column cells are all selected.
+     */
+    isColumnSelected: function(){
+      var self = this;
+      var colNumber = parseInt(this.column.get('name'));
+      var hasFalse = self.collection.find(function(model){
+        return model.get(colNumber)===false;
+      });
+      return _.isUndefined(hasFalse);
     },
     
     cellClicked: function(e) {
       var checked = this.checkbox().prop("checked");
       checked = !checked;
       this.checkbox().prop("checked", checked);
-      this.$el.parent().toggleClass("selected", checked);
       
       // Because the col does not have a state model, fire a select-column event
       this.collection.trigger("select-column", this.column.get('name'), checked);
-    
     },
 
-    /**
-       Returns the checkbox.
-     */
     checkbox: function () {
       return this.$el.find("input[type=checkbox]");
     },
       
+    renderSelection: function(){
+      var self = this;
+      var selected = self.isColumnSelected();
+      self.checkbox().prop('checked', selected);
+      this.$el.toggleClass("selected", selected);
+    },
+    
     render : function() {
       var self = this;
       WellColumnSelectorHeader.__super__.render.apply(this);
+      var isSelected = self.isColumnSelected();
       var columnSelector = $('<input type="checkbox" style="display: none;" >');
       this.$el.prepend(columnSelector);
+      self.renderSelection();
       return this;
     }
   });
@@ -75,7 +81,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
   
   /**
    * Modified from Backgrid.Extension.SelectRowCell
-   * 
    */
   var RowSelectorCell = Backgrid.Cell.extend({
   
@@ -114,30 +119,44 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       this.listenTo(model, "select-row", function (model, selected) {
         if (selected) {
           console.log('select row');
-          _.each(self.model.keys(), function(key){
-            if (key=='row') return;
-            self.model.set(key,true);
-          });
+          self.model.set(_.object(_.map(
+            _.keys(self.model.omit('row')),
+            function(key){
+              return [key, true];
+            }
+          )));
         } else {
-          _.each(self.model.keys(), function(key){
-            if (key=='row') return;
-            self.model.set(key,false);
-          });
-          
+          self.model.set(_.object(_.map(
+            _.keys(self.model.omit('row')),
+            function(key){
+              return [key, false];
+            }
+          )));
         }
       });
       
       this.listenTo(model, 'change', function(model, options){
-        var isSelected = true;
-        _.each(self.model.keys(), function(key){
-          if (key=='row') return;
-          if (self.model.get(key)===false){
-            isSelected = false;
-          }
-        });
-        self.checkbox().prop('checked',isSelected);
-        this.$el.parent().toggleClass("selected", isSelected);
+        self.renderSelection();
       });
+      _.bindAll(this, 'isRowSelected','renderSelection');
+    },
+    
+    renderSelection: function(){
+      var isSelected = this.isRowSelected();
+      this.checkbox().prop('checked',isSelected);
+      this.$el.toggleClass("selected", isSelected);
+    },
+
+    /**
+     * @return true if all the cells in the row are selected
+     */
+    isRowSelected: function() {
+      var self = this;
+      var hasFalse = _.find(self.model.keys(), function(key){
+        if (key=='row') return false;
+        if (self.model.get(key)===false) return true;
+      });
+      return _.isUndefined(hasFalse);
     },
     
     /**
@@ -179,24 +198,10 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       }
     },
   
-//    /**
-//       When the checkbox's value changes, this method will trigger a Backbone
-//       `select-row` event with a reference of the model and the
-//       checkbox's `checked` value.
-//    */
-//    onChange: function () {
-//      var checked = this.checkbox().prop("checked");
-//      this.$el.parent().toggleClass("selected", checked);
-//      
-//      // Because the row does not have a state model, fire a select-row event
-//      this.model.trigger("select-row", this.model, checked);
-//    },        
-    
     cellClicked: function(e) {
       var checked = this.checkbox().prop("checked");
       checked = !checked;
       this.checkbox().prop("checked", checked);
-      this.$el.parent().toggleClass("selected", checked);
       
       // Because the row does not have a state model, fire a select-row event
       this.model.trigger("select-row", this.model, checked);
@@ -212,6 +217,8 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       this.$el.append(rowSelector);
       this.$el.append(Iccbl.rowToLetter(
         parseInt(this.model.get('row'))));
+      this.renderSelection();
+
       this.delegateEvents();
       return this;
     }
@@ -219,7 +226,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
   
   var WellSelectorCell = Backgrid.Cell.extend({
 
-    
     /** @property */
     tagName: "td",
   
@@ -249,24 +255,27 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       if (Backgrid.callByNeed(column.renderable(), column, model)) $el.addClass("renderable");
 
       this.listenTo(model, "change:" + column.get("name"), function () {
-        this.render();
+        self.renderSelection();
       });
-    
+      
+      _.bindAll(this,'cellClicked', 'getValue');
     },
     
     cellClicked: function(e) {
-      
-      var model = this.model;
-      var row = this.model.get('row');
-      var columnNumber = parseInt(this.column.get("name"));
-      var val = this.model.get(columnNumber);
-      console.log('row', row, 'columnNumber', columnNumber, 'val', val, 'model', model);
-     
-      if (val===false){
-        this.model.set(columnNumber, true);
-      }else{
-        this.model.set(columnNumber, false);
-      }
+      var self = this;
+      // Toggle
+      var columnNumber = parseInt(self.column.get("name"));
+      self.model.set(columnNumber, !self.getValue());
+    },
+    
+    getValue: function(){
+      var self = this;
+      var columnNumber = parseInt(self.column.get("name"));
+      return self.model.get(columnNumber);
+    },
+    
+    renderSelection: function() {
+      this.$el.toggleClass("selected", this.getValue());
     },
     
     render: function () {
@@ -280,11 +289,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
 
       this.$el.empty();
       this.$el.append(Iccbl.rowToLetter(row) + columnNumber);
-      if (val===true){
-        this.$el.addClass('selected');
-      }else{
-        this.$el.removeClass('selected');
-      }
+      this.renderSelection();
       return this;
     }
     

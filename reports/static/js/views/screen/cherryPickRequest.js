@@ -75,6 +75,7 @@ define([
           var editForm = this;
           console.log('after render...');
 
+          var fieldKey = 'wells_to_leave_empty';
           var wellsToLeaveEmptyButton = $([
             '<a class="btn btn-default btn-sm" ',
               'role="button" id="wellsToLeaveEmpty_button" href="#">',
@@ -82,9 +83,10 @@ define([
             ].join(''));
           wellsToLeaveEmptyButton.click(function(event) {
             event.preventDefault();
-            self.showWellsToLeaveEmptyDialog(editForm);
+            var currentValue = $('[name="'+ fieldKey + '"]').val();
+            console.log('wells_to_leave_empty current value', currentValue);
+            self.showWellsToLeaveEmptyDialog(editForm, currentValue);
           });
-          var fieldKey = 'wells_to_leave_empty';
           this.$el.find('div[data-fields="' + fieldKey + '"]')
             .find('div[data-editor]').append(wellsToLeaveEmptyButton);
           
@@ -131,12 +133,13 @@ define([
       
     },
 
-    showWellsToLeaveEmptyDialog: function(editForm){
+    showWellsToLeaveEmptyDialog: function(editForm, currentValue){
       var self = this;
       var rowCollection = new Backbone.Collection();
       
+      var currentValue = currentValue || self.model.get('wells_to_leave_empty');
       var wellSelector = new WellSelector({
-        wellSelections: self.model.get('wells_to_leave_empty')
+        wellSelections: currentValue
       });
       var el = wellSelector.render().el;
       appModel.showModal({

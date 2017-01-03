@@ -331,7 +331,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       console.log('wellSelections', wellSelections);
       if (!_.isEmpty(wellSelections)){
         _.each(wellSelections.split(/\s*,\s*/), function(wellSelection){
-          var colMatch = wellSelection.match(/col:\s*(\d)/i);
+          var colMatch = wellSelection.match(/col:\s*(\d{1,2})/i);
           if (colMatch !== null){
             var col = parseInt(colMatch[1]);
             rowCollection.each(function(rowModel){
@@ -427,7 +427,42 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       });
       _grid.render();          
       
+      var clearSelectionsButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="save_button_selected" href="#">',
+          'Clear</a>'
+        ].join(''));
+      clearSelectionsButton.click(function(e){
+        e.preventDefault();
+        self.rowCollection.each(function(model){
+          model.set(_.object(_.map(
+            _.keys(model.omit('row')),
+            function(key){
+              return [key, false];
+            }
+          )));
+        });
+      });
+      var selectAllButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="save_button_selected" href="#">',
+          'Select all</a>'
+        ].join(''));
+      selectAllButton.click(function(e){
+        e.preventDefault();
+        self.rowCollection.each(function(model){
+          model.set(_.object(_.map(
+            _.keys(model.omit('row')),
+            function(key){
+              return [key, true];
+            }
+          )));
+        });
+      });
+      
       $('#resource_content').html(_grid.el);
+      $('#resource_content').prepend(selectAllButton);
+      $('#resource_content').prepend(clearSelectionsButton);
     },
     
     getSelectedWells: function(){

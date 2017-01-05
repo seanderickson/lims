@@ -276,6 +276,7 @@ define([
           DetailLayout.prototype.showEdit.apply(view,arguments);
         });  
       };
+      this.$("#tab_container-title").html("");
 
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
@@ -799,7 +800,7 @@ define([
             'order': 1,
             'sortable': true,
             'cell': Iccbl.LinkCell.extend({
-              hrefTemplate: '#cherrypickrequest/{cherry_pick_request_id}'
+              hrefTemplate: '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}'
             })
           }),
           _.extend({},colTemplate,{
@@ -975,21 +976,32 @@ define([
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail view
         var cherryPickRequestId = delegateStack.shift();
-        self.consumedStack.push(cherryPickRequestId);
-        var _key = cherryPickRequestId;
-        appModel.getModel(cpResource.key, _key, function(model){
-          view = new CherryPickRequestView({
-            model: model, 
-            uriStack: _.clone(delegateStack),
-            screen: self.model
-          });
-          Backbone.Layout.setupView(view);
-          self.listenTo(view , 'uriStack:change', self.reportUriStack);
-          self.setView("#tab_container", view ).render();
-          
-          console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
-          self.$("#tab_container-title").html('Cherry Pick Request: ' + cherryPickRequestId);
-        });        
+        if (cherryPickRequestId == '+add'){
+           appModel.initializeAdminMode(function() {
+             self.showAddCherryPick();
+           });
+        } else {
+          self.consumedStack.push(cherryPickRequestId);
+          var _key = cherryPickRequestId;
+          appModel.getModel(cpResource.key, _key, function(model){
+            view = new CherryPickRequestView({
+              model: model, 
+              uriStack: _.clone(delegateStack),
+              screen: self.model
+            });
+            Backbone.Layout.setupView(view);
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            self.setView("#tab_container", view ).render();
+            
+            console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
+            self.$("#tab_container-title").html(
+              Iccbl.formatString(
+                '<H4 id="title">CPR: <a href="#screen/{screen_facility_id}/' + 
+                'cherrypickrequest/{cherry_pick_request_id}" >{cherry_pick_request_id}</a>' +
+                '</H4>',
+                model));
+          });        
+        }
         return;
       }else{
         // List view
@@ -1014,7 +1026,7 @@ define([
              e.preventDefault();
 
              appModel.initializeAdminMode(function() {
-               self.showAddCherryPick(collection);
+               self.showAddCherryPick();
              });
            });
            extraControls.push(showAddButton);

@@ -8,8 +8,37 @@ define([
 ], 
 function($, _, Backgrid, Iccbl, appModel, genericLayout) {
   
-
+  /** Clicking this cell toggles the entire grid **/
+  var ToggleColumnHeader = Backgrid.HeaderCell.extend({
+    
+    /** @property */
+    events: {
+      "click": "cellClicked",
+    },
+    
+    /** Clicking this cell toggles the entire grid **/
+    cellClicked: function(e) {
+      this.collection.each(function(model){
+        model.set(_.object(_.map(
+          _.keys(model.omit('row')),
+          function(key){
+            return [key, !model.get(key)];
+          }
+        )));
+      });
+    },
+    
+    render: function(){
+      ToggleColumnHeader.__super__.render.apply(this);
+      this.$el.attr('title', 'Toggle the grid values');
+      return this;
+    }
+  });
+  
+  /** Clicking this cell sets/unsets the entire column **/
   var WellColumnSelectorHeader = Backgrid.HeaderCell.extend({
+    
+    className: 'wellselector',
     
     /** @property */
     events: {
@@ -79,9 +108,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
   });
   
   
-  /**
-   * Modified from Backgrid.Extension.SelectRowCell
-   */
+  /** Clicking this cell sets/unsets the entire row **/
   var RowSelectorCell = Backgrid.Cell.extend({
   
     /** @property */
@@ -300,14 +327,20 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     template: _.template(genericLayout),
 
     initialize: function(options) {
-      
+      var self = this;
       console.log('initialize wellselector');
       
       var options = options || {};
       
-      var plate_size = 384;
-      var nCols = this.nCols = options.nCols || 24;
-      var nRows = this.nRows = options.nRows || 16;
+      var plate_size = options.plateSize || 384;
+      var nCols = 24;
+      var nRows = 16;
+      if (plate_size === 96){
+        nCols = 12;
+        nRows = 8;
+      }
+      self.nCols = nCols;
+      self.nRows = nRows;
       
       var wellSelections = options.wellSelections || '';
 
@@ -334,6 +367,9 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
           var colMatch = wellSelection.match(/col:\s*(\d{1,2})/i);
           if (colMatch !== null){
             var col = parseInt(colMatch[1]);
+            if (col > nCols){
+              throw 'Selection is out of the column range: ' + wellSelection;
+            }
             rowCollection.each(function(rowModel){
               rowModel.set(col,true);
             });
@@ -353,14 +389,19 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
                   rowModel.set(key,true);
                 }
               });
+            } else {
+              throw 'Selection is out of the row range: ' + wellSelection;
             }
             return;
           }
           
-          var wellMatch = wellSelection.match(/(([a-zA-Z]{1,2})(\d{1,2}))/);
+          var wellMatch = wellSelection.match(/([a-zA-Z]{1,2})(\d{1,2})/);
           if (wellMatch != null){
-            var row = wellMatch[2].toUpperCase();
-            var col = parseInt(wellMatch[3]);
+            var row = wellMatch[1].toUpperCase();
+            var col = parseInt(wellMatch[2]);
+            if (col > nCols){
+              throw 'Selection is out of the column range: ' + wellSelection;
+            }
             console.log('set row,', row, 'col', col);
             rowModel = rowCollection.find(function(model){
               if (Iccbl.rowToLetter(model.get('row'))==row){
@@ -402,7 +443,8 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
           'order': 1,
           'sortable': false,
           'editable': false,
-          'cell': RowSelectorCell
+          'cell': RowSelectorCell,
+          'headerCell': ToggleColumnHeader
           
         }),
       ];
@@ -421,7 +463,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       }
       var colModel = new Backgrid.Columns(columns);
       var _grid = new Backgrid.Grid({
-        className: 'wellselector backgrid table-striped table-condensed table-hover', 
+        className: 'wellselector ', 
         columns: colModel,
         collection: self.rowCollection
       });

@@ -195,6 +195,7 @@ define([
         el: '#search-box-2'
       });
       
+      ///// Well search
       var schema3 = {};
       schema3['well'] = {
         title: 'Search for Wells',
@@ -220,6 +221,35 @@ define([
         model: formFields3,
         template: self.formTemplate,
         el: '#search-box-3'
+      });
+      
+      ///// Cherry Pick Request
+      var schema4 = {};
+      schema4['cpr'] = {
+        title: 'CPR #',
+        key: 'cpr',
+        help: 'enter a Cherry Pick ID',
+        placeholder: 'e.g. 44443',
+        key:  'search_value', // TODO: "key" not needed>?
+        type: 'Number',
+        template: self.fieldTemplate,
+        editorClass: 'form-control'
+      };
+      var FormFields4 = Backbone.Model.extend({
+        schema: schema4,
+        validate: function(attrs) {
+          var errors = {};
+          if (!_.isEmpty(errors)) return errors;
+        }
+      });
+      var formFields4 = new FormFields4({
+        cpr: null
+      });
+      
+      var form4 = self.form4 = new Backbone.Form({
+        model: formFields4,
+        template: self.formTemplate,
+        el: '#search-box-4'
       });
       
       this.listenTo(appModel, 'change:uriStack' , this.uriStackChange );
@@ -297,6 +327,7 @@ define([
         }
       });
       
+      ///// Well
       var form3 = this.form3;
       var $form3 = this.form3.render().$el;
       $('#search-box-3').html($form3);
@@ -306,9 +337,9 @@ define([
 
       $form3.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
-        var errors = form2.commit({ validate: true }); 
+        var errors = form3.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          console.log('form2 errors, abort submit: ' + JSON.stringify(errors));
+          console.log('form3 errors, abort submit: ' + JSON.stringify(errors));
           $form3.find('#well').addClass(self.errorClass);
           return;
         }else{
@@ -391,6 +422,31 @@ define([
           self.submit_searches('reagent', searches_parsed.or_list);
         }
       });
+
+      ///// CPR
+      var form4 = this.form4;
+      var $form4 = this.form4.render().$el;
+      $('#search-box-4').html($form4);
+      $form4.append([
+          '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+          ].join(''));
+
+      $form4.find('[ type="submit" ]').click(function(e){
+        e.preventDefault();
+        var errors = form4.commit({ validate: true }); 
+        if(!_.isEmpty(errors)){
+          console.log('form4 errors, abort submit: ' + JSON.stringify(errors));
+          $form3.find('#cpr').addClass(self.errorClass);
+          return;
+        }else{
+          $form3.find('#cpr').removeClass(self.errorClass);
+        }
+        var cpr_id = self.form4.getValue()['cpr'];
+        var resource = appModel.getResource('cherrypickrequest');
+        var _route = ['#', resource.key,cpr_id].join('/');
+        appModel.set('routing_options', {replace: false});  
+        appModel.router.navigate(_route, {trigger:true});
+      });      
       
       console.log('setup single selects using chosen...');
       // See http://harvesthq.github.io/chosen/

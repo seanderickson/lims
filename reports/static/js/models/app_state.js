@@ -1175,12 +1175,16 @@ define([
      * Set flag to signal that the current page has pending changes;
      * (see setUriStack; modal confirm dialog will be triggered).
      */
-    setPagePending: function(callback){
+    setPagePending: function(callback, message){
       var val = callback || true;
       this.set({'pagePending': val});
+      if (!_.isUndefined(message)){
+        this.set({'pagePendingMessage': message });
+      }
     },
     clearPagePending: function(){
       this.unset('pagePending');
+      this.unset('pagePendingMessage');
     },    
     isPagePending: function(){
       return this.has('pagePending');
@@ -1201,8 +1205,9 @@ define([
       if(! self.isPagePending()){
         options.ok();
       }else{
-        options.title = 'Please confirm';
-        options.body = "Pending changes in the page: continue anyway?";
+        options.title = options.title || 'Please confirm';
+        var pendingMessage = self.get('pagePendingMessage') || "Pending changes in the page: continue anyway?";
+        options.body = options.body || pendingMessage;
         var pendingFunction = this.get('pagePending');
         if(_.isFunction(pendingFunction)){
           options.cancel = pendingFunction;
@@ -1761,6 +1766,12 @@ define([
       });   
       if (options.width){
         $('.modal-dialog').css('width', options.width);
+      }
+      if (options.css){
+        $('.modal-dialog').css(options.css);
+      }
+      if (options.css_modal_content){
+        $('.modal-content').css(options.css_modal_content);
       }
       $modal.on('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();

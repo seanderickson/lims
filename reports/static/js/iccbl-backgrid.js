@@ -20,10 +20,10 @@ var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
  */
 var rowToLetter = Iccbl.rowToLetter = function(i){
   if (i<26){
-    return 'ABCDEFGHIJKLMNOP'[i];
+    return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i];
   } else {
-    var rem = i%16;
-    var part = parseInt(i/16)-1;
+    var rem = i%26;
+    var part = parseInt(i/26)-1;
     return rowToLetter(part) + rowToLetter(rem);
   }
 };

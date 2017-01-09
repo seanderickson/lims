@@ -51,5 +51,8 @@ module.exports = {
         loader: 'file?name=css/fonts/[name].[ext]'
       }    
     ]
-  }
+  },
+  plugins: [
+    assetsPluginInstance
+  ]
 };

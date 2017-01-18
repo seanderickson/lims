@@ -106,6 +106,9 @@ API_MSG_SCREENING_EXTANT_PLATE_COUNT = 'Extant plates'
 API_MSG_SCREENING_ADDED_PLATE_COUNT = 'Added plates'
 API_MSG_SCREENING_DELETED_PLATE_COUNT = 'Deleted plates'
 API_MSG_SCREENING_TOTAL_PLATE_COUNT = 'Library Plate Count'
+API_MSG_SCP_CREATED = 'created'
+API_MSG_SCP_UNSELECTED = 'unselected'
+API_MSG_SCP_RESELECTED = 'reselected'         
 API_MSG_LCPS_CREATED = 'Lab Cherry Picks Created'
 API_MSG_LCPS_ASSIGNED = 'Assigned to Copies'
 API_MSG_LCPS_UNFULFILLED = 'Unfulfilled'
@@ -5022,49 +5025,6 @@ class CherryPickRequestResource(DbApiResource):
 #                                 source_well=well,
 #                                 screener_cherry_pick=screener_cherry_pick)
             
-            if 'selection_updates' in deserialized:
-                raw_selection_updates = deserialized['selection_updates']
-                if len(raw_selection_updates) == 0:
-                    pass
-                else:
-                    (cherry_pick_wells, warn_msg) = self.find_wells(raw_selection_updates)
-                    final_warn_msg.extend(warn_msg)
-                    logger.info(
-                        'found screener_cherry_picks: %r', cherry_pick_wells)
-                    for well in cherry_pick_wells:
-                        found = False
-                        for scp in cpr.screener_cherry_picks.all().filter(
-                            screened_well_id=well):
-                            if scp.selected is not True:
-                                scp.selected = True;
-                                scp.save()
-                            found = True
-                        if found is False:
-                            screener_cherry_pick = ScreenerCherryPick.objects.create(
-                                cherry_pick_request=cpr,
-                                screened_well=well,
-                                selected=True)
-                            
-            if 'deselect_updates' in deserialized:
-                raw_deselect_updates = deserialized['deselect_updates']
-                if len(raw_deselect_updates) == 0:
-                    pass
-                else:
-                    (cherry_pick_wells, warn_msg) = self.find_wells(raw_deselect_updates)
-                    final_warn_msg.extend(warn_msg)
-                    logger.info(
-                        'found screener_cherry_picks: %r', cherry_pick_wells)
-                    for well in cherry_pick_wells:
-                        found = False
-                        for scp in cpr.screener_cherry_picks.all().filter(
-                            screened_well_id=well):
-                            if scp.selected is True:
-                                scp.selected = False;
-                                scp.save()
-                            found = True
-                        if found is False:
-                            logger.info('Trying to deselect an unselected '
-                                'screener cherry pick: %r', well)
                     
             if 'lcp_selection_updates' in deserialized:
                 self.validate_cpr_for_plating(cpr) 
@@ -5305,8 +5265,6 @@ class CherryPickRequestResource(DbApiResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
-        logger.info('param hash: %r', param_hash)
-         
         cherry_pick_request_id = param_hash['cherry_pick_request_id']
         logger.info(
             'dispatch_plate_lab_cherrypicks for: %r...', cherry_pick_request_id)
@@ -5742,7 +5700,12 @@ class ScreenerCherryPickResource(DbApiResource):
     @un_cache        
     @transaction.atomic
     def patch_list(self, request, **kwargs):
-        # allow patch list to change selections
+        '''
+        Allow patch list for changing selections only 
+         - no new picks can be created through patch, picks can only be
+         created on the "patch_detail" with the 
+         cherry_pick_request.screener_cherry_picks attribute
+        '''
         
         if 'cherry_pick_request_id' not in kwargs:
             raise BadRequest('cherry_pick_request_id')
@@ -5787,7 +5750,17 @@ class ScreenerCherryPickResource(DbApiResource):
         
         original_selections = { scp_data['screened_well_id']: scp_data
             for scp_data in original_data }
-
+        current_selections = {}
+        for scp_data in original_data:
+            screened_well_id = scp_data['screened_well_id']
+            searched_well_id = scp_data['searched_well_id']
+            if scp_data['selected'] is True:
+                if searched_well_id in current_selections:
+                    raise ProgrammingError(
+                        'Original ScreenerCherryPicks have a duplicate:'
+                        'searched_well: %r, has >1 selection: %r'
+                        % (searched_well_id, original_data))
+                current_selections[searched_well_id] = screened_well_id
         # Validate selections are valid and allowed:
         required_for_patch = set([
             'screened_well_id', 'searched_well_id', 'selected'])
@@ -5823,6 +5796,12 @@ class ScreenerCherryPickResource(DbApiResource):
                                     msg=(
                                         'only one well can be selected for '
                                         'the searched_well_id: %r' % searched_well_id))
+                if ( searched_well_id in current_selections
+                    and searched_well_id not in selection_updates):
+                    selection_updates[searched_well_id] = {
+                        'selected': False,
+                        'searched_well_id': searched_well_id }
+                    
         original_scps = { 
             scp.screened_well_id: scp 
                 for scp in cpr.screener_cherry_picks.all() }
@@ -5875,12 +5854,12 @@ class ScreenerCherryPickResource(DbApiResource):
             for screened_well_id in scps_to_reselect:
                 original_scps[screened_well_id].selected = True
                 original_scps[screened_well_id].save()
-                 
+        
         _data = {
             API_RESULT_META: {
-                'created': '%r' % scps_to_create,
-                'unselected': '%r' % scps_to_unselect,
-                'reselected': '%r' % scps_to_reselect,
+                API_MSG_SCP_CREATED: '%r' % scps_to_create,
+                API_MSG_SCP_UNSELECTED: '%r' % scps_to_unselect,
+                API_MSG_SCP_RESELECTED: '%r' % scps_to_reselect,
                 'messages': messages
                 }}
         return self.build_response(
@@ -6088,78 +6067,6 @@ class ScreenerCherryPickResource(DbApiResource):
                         .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id))))
                     ).cte('combined')
 
-
-
-                
-#                 _current_scps = (
-#                     select([
-#                         _scp.c.screener_cherry_pick_id,
-#                         _scp.c.screened_well_id,
-#                         _scp.c.searched_well_id,
-#                         _well.c.plate_number.label('searched_library_plate'),
-#                         _scp.c.selected,
-#                         _scp.c.cherry_pick_request_id,
-#                         _reagent.c.vendor_identifier, 
-#                         _reagent.c.vendor_name])
-#                     .select_from(
-#                         _scp.join(_reagent, _scp.c.screened_well_id==_reagent.c.well_id)
-#                             .join(_well,_scp.c.screened_well_id==_well.c.well_id)
-#                             .join(_library, _well.c.library_id==_library.c.library_id))
-#                     .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id)
-# #                     .where(_scp.c.selected==True)
-#                     ).cte('current_scps')
-#                 combined_scps = union(
-#                     select([
-#                         _current_scps.c.screener_cherry_pick_id,
-#                         _current_scps.c.screened_well_id,
-#                         _current_scps.c.searched_well_id,
-#                         _current_scps.c.selected,
-#                         _current_scps.c.cherry_pick_request_id,
-#                         _current_scps.c.vendor_identifier])
-#                     .select_from(_current_scps),
-#                     select([
-#                         literal_column("0"),
-# #                         case([(_reagent.c.well_id==_current_scps.c.screened_well_id,
-# #                             _current_scps.c.screener_cherry_pick_id)], else_=text("0")),
-#                         _reagent.c.well_id.label('screened_well_id'),
-#                         _current_scps.c.searched_well_id.label('searched_well_id'),
-# #                         and_(_current_scps.c.selected, 
-# #                             _current_scps.c.screened_well_id==_reagent.c.well_id,
-# #                             _current_scps.c.searched_well_id==_current_scps.c.screened_well_id).label('selected'),
-#                         literal_column('false').label('selected'),
-#                         literal_column(cherry_pick_request_id).label('cherry_pick_request_id'),
-#                         _reagent.c.vendor_identifier
-#                         ])
-#                     .select_from(
-#                         _reagent.join(
-#                             _current_scps, 
-#                             and_(_reagent.c.vendor_identifier
-#                                     == _current_scps.c.vendor_identifier,
-#                                  _reagent.c.vendor_name
-#                                     ==_current_scps.c.vendor_name)))
-#                     .where(_current_scps.c.screened_well_id!=_reagent.c.well_id)
-# #                     .where(_current_scps.c.screened_well_id==_current_scps.c.searched_well_id)
-# 
-# #                     .where(_reagent.c.well_id!=_current_scps.c.screened_well_id)
-# #                     .select_from(_reagent)
-# # #                     .select_from(
-# # #                         _reagent.join(
-# # #                             _current_scps, 
-# # #                             and_(_reagent.c.vendor_identifier
-# # #                                     == _current_scps.c.vendor_identifier,
-# # #                                  _reagent.c.vendor_name
-# # #                                     ==_current_scps.c.vendor_name)))
-# #                     .where(and_(
-# #                         _reagent.c.vendor_identifier
-# #                             == _current_scps.c.vendor_identifier,
-# #                         _reagent.c.vendor_name
-# #                             ==_current_scps.c.vendor_name,
-# #                         _current_scps.c.searched_well_id!=_reagent.c.well_id,
-# # #                         _current_scps.c.screened_well_id!=_current_scps.c.searched_well_id,
-# # #                         _current_scps.c.selected==True,
-# #                         ))
-#                     ).cte('cte_combined')
-                    
                 working_scp = combined_scps
             else:
                 working_scp = _scp

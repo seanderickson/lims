@@ -104,3 +104,12 @@ M  END'''
 class SubstanceFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = db.models.Substance
+
+class LabAffiliationFactory(factory.Factory):
+
+    category = factory.Sequence(lambda n: 'LAC_'+ str(n) )
+    key = factory.Sequence(lambda n: 'lab_'+ str(n) )
+    title = factory.Sequence(lambda n: 'Lab Title '+ str(n) )    
+    description = factory.Sequence(lambda n: 'Lab Description '+ str(n) )    
+    ordinal = factory.Sequence(lambda n: n)
+    

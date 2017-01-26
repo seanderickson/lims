@@ -110,7 +110,7 @@ define([
             event.preventDefault();
             var currentValue = $('[name="'+ fieldKey + '"]').val();
             console.log('wells_to_leave_empty current value', currentValue);
-            self.showWellsToLeaveEmptyDialog(editForm, currentValue);
+            self.showWellsToLeaveEmptyDialog(editForm, currentValue, true);
           });
           this.$el.find('div[data-fields="' + fieldKey + '"]')
             .find('div[data-editor]').append(wellsToLeaveEmptyButton);
@@ -128,13 +128,27 @@ define([
           self.screen.resource.key,self.screen.key,'cherrypickrequest',self.model.key].join('/'), 
           {trigger:true});
       };
-      
+      detailView = DetailView.extend({
+        afterRender: function() {
+          console.log('afterrender...');
+          DetailView.prototype.afterRender.apply(this,arguments);
+          var detail_self = this;
+          var empty_wells_link = $(
+            '<a href="#">' + self.model.get('wells_to_leave_empty') + '</a>');
+          empty_wells_link.click(function(e){
+            e.preventDefault();
+            self.showWellsToLeaveEmptyDialog();
+          });
+          detail_self.$el.find('#wells_to_leave_empty').html(empty_wells_link);
+        }
+      });
       view = new DetailLayout(_.extend(self.args, { 
         model: this.model,
         uriStack: delegateStack, 
         buttons: buttons,
         saveSuccessCallBack: saveSuccessCallBack,
-        EditView: editView
+        EditView: editView,
+        DetailView: detailView
       }));
       view.showEdit = function() {
         var innerself = this;
@@ -155,33 +169,42 @@ define([
       
     },
 
-    showWellsToLeaveEmptyDialog: function(editForm, currentValue){
+    showWellsToLeaveEmptyDialog: function(editForm, currentValue, editable){
       var self = this;
       var rowCollection = new Backbone.Collection();
-      
-      if (_.isUndefined(currentValue)){
-        currentValue || self.model.get('wells_to_leave_empty');
+      if (_.isUndefined(editable)){
+        editable = false;
       }
+      if (_.isUndefined(currentValue)){
+        currentValue = self.model.get('wells_to_leave_empty');
+      }
+      console.log('current_value', currentValue);
       var assay_plate_type = $('[name="assay_plate_type"]').val();
       if (_.isEmpty(assay_plate_type)){
-        appModel.error('must define the assay plate type');
-        return;
+        assay_plate_type = self.model.get('assay_plate_type');
+        if (_.isEmpty(assay_plate_type)){
+          appModel.error('must define the assay plate type');
+          return;
+        }
       }
       var plateSize = 384;
-      var width = 900;
       if (assay_plate_type.includes('96')){
         plateSize = 96;
-        width = 450;
       }
       try {
         var wellSelector = new WellSelector({
           plateSize: plateSize,
-          wellSelections: currentValue
+          wellSelections: currentValue,
+          editable: editable
         });
         var el = wellSelector.render().el;
-        appModel.showModal({
-//          width: 'auto',
-          
+
+        var title = 'Select wells to leave empty';
+        if (!editable){
+          title = "Wells to leave empty";
+        }
+
+        var modalDialog = appModel.showModal({
           css: { 
               display: 'table',
               width: 'auto'
@@ -191,9 +214,12 @@ define([
           },
           okText: 'ok',
           view: el,
-          title: 'Select wells to leave empty',
+          title: title,
           ok: function(e) {
             e.preventDefault();
+            
+            if (!editable) return;
+            
             console.log('selected wells: ', wellSelector.getSelectedWells());
             editForm.setValue('wells_to_leave_empty', 
               wellSelector.getSelectedWells().join(', '));
@@ -202,6 +228,10 @@ define([
               wellSelector.getSelectedWells().join(','));
           }              
         });
+        if (! editable){
+          modalDialog.$el.find('#modal-cancel').hide();
+        }
+        
       } catch(e) {
         console.log('uncaught error: ' + e);
         appModel.error('Error with selection: ' + e);
@@ -239,6 +269,7 @@ define([
 
       function createLcpView(schemaResult){
         var lcp_selection_updates = {};
+        var selectionUpdateCollection = new Backbone.Collection();
         var url = [self.model.resource.apiUri,self.model.key,
           'lab_cherry_pick'].join('/');
 
@@ -247,24 +278,17 @@ define([
         }
         
         var extraControls = [];
-        var setSelectedLcpButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'style="display: none; " ',
-            'role="button" id="save_button_lcp_selected" href="#">',
-            'Save Selections</a>'
-          ].join(''));
-        extraControls.push(setSelectedLcpButton);
         var showCopyWellsControl = $([
             '<label class="checkbox-inline" ',
             'title="Show all available Cherry Pick Source Plate copies" >',
-            '  <input id="showCopyWells" type="checkbox">show Copy Wells',
+            '  <input id="showCopyWells" type="checkbox">show Available Cherry Pick Source Wells',
             '</label>'
           ].join(''));
         extraControls.push(showCopyWellsControl);
         var showAllCopyWellsControl = $([
             '<label class="checkbox-inline" ',
-            'title="Show all available and retired copies">',
-            '  <input id="showAllCopyWells" type="checkbox">show All Copy Wells',
+            'title="Show all available and retired Cherry Pick Source and Library Screening copies">',
+            '  <input id="showAllCopyWells" type="checkbox">show Retired Library Screening Wells',
             '</label>'
           ].join(''));
         extraControls.push(showAllCopyWellsControl);
@@ -275,20 +299,44 @@ define([
           ].join(''));
         extraControls.push(showUnfulfilledWellsControl);
 
-        var plateSelectedButton = $([
+        var setSelectedLcpButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'style="display: none; " ',
-            'role="button" id="plate_selected_button" href="#">',
-            'Submit Selections for Plating</a>'
+            'role="button" id="save_button_lcp_selected" href="#">',
+            'Save Selections</a>'
           ].join(''));
-        extraControls.push(plateSelectedButton);
-
+        extraControls.push(setSelectedLcpButton);
+        var reserveAndMapSelectedButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+//            'style="display: none; " ',
+            'role="button" id="reserve_map_selected_button" href="#">',
+            'Reserve Selections and Map to Plates</a>'
+          ].join(''));
+        extraControls.push(reserveAndMapSelectedButton);
+//        var overrideWellVolumeControl = $([
+//            '<label class="checkbox-inline" ',
+//            'title="If chosen wellcopy volumes are insufficient, select to override">',
+//            '  <input id="overrideWellVolume" type="checkbox">override Well Volumes',
+//            '</label>'
+//          ].join(''));
+        
+        
+        var previousSourceWell = null;
         var SelectedLcpRow = Backgrid.Row.extend({
           render: function() {
             console.log('render');
-            if (this.model.has('selected_copy_name')) {
-              if (this.model.get('selected_copy_name')==this.model.get('source_copy_name')) {
-                this.$el.addClass('selected');
+            
+            var searchHash = this.model.collection.listModel.get('search');
+            if (_.result(searchHash,'show_copy_wells')=='true'
+              || _.result(searchHash,'show_available_and_retired_copy_wells')=='true' ){
+              if (this.model.has('selected_copy_name')) {
+                if (this.model.get('selected_copy_name')==this.model.get('source_copy_name')) {
+                  this.$el.addClass('selected');
+                }
+              }
+              if (this.model.get('source_well_id')!==previousSourceWell){
+                previousSourceWell = this.model.get('source_well_id');
+                this.$el.closest('tr').css('border-top','2px solid black');
               }
             }
             return SelectedLcpRow.__super__.render.apply(this, arguments);
@@ -346,7 +394,7 @@ define([
               searchHash['show_copy_wells'] = 'true';
 
               showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              delete searchHash['show_all_available_copy_wells'];
+              delete searchHash['show_available_and_retired_copy_wells'];
               view.listModel.set('search',searchHash);
             } else {
               // make sure unset
@@ -385,14 +433,14 @@ define([
                  'source_copy_usage_type','source_plate_status'],includes);
               view.listModel.set({ includes: includes}, {reset: false});
               var searchHash = _.clone(view.listModel.get('search'));
-              searchHash['show_all_available_copy_wells'] = 'true';
+              searchHash['show_available_and_retired_copy_wells'] = 'true';
               
               showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
               delete searchHash['show_copy_wells'];
               view.listModel.set('search',searchHash);
             } else {
               var searchHash = _.clone(view.listModel.get('search'));
-              if (!_.has(searchHash,'show_all_available_copy_wells')) {
+              if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
                 return;
               }
               // make sure unset
@@ -402,8 +450,8 @@ define([
                 'selected','source_copy_well_volume','volume_approved',
                 'source_copy_usage_type','source_plate_status');
               view.listModel.set({ includes: includes}, {reset: false});
-              if (_.has(searchHash,'show_all_available_copy_wells')) {
-                delete searchHash['show_all_available_copy_wells'];
+              if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
+                delete searchHash['show_available_and_retired_copy_wells'];
                 view.listModel.set('search',searchHash);
               }
             }
@@ -423,8 +471,8 @@ define([
             && initialSearchHash.show_copy_wells.toLowerCase()=='true') {
           showCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
         }
-        if (_.has(initialSearchHash, 'show_all_available_copy_wells')
-            && initialSearchHash.show_all_available_copy_wells.toLowerCase()=='true') {
+        if (_.has(initialSearchHash, 'show_available_and_retired_copy_wells')
+            && initialSearchHash.show_available_and_retired_copy_wells.toLowerCase()=='true') {
           showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
           showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
         }
@@ -434,6 +482,26 @@ define([
         }
 
         // Manage selection updates
+        
+        
+        
+        
+        
+        
+        
+        /////////////////// FIXME REDO like SCP's
+        
+//        
+//        view.collection.on('change', function(model){
+//          console.log('collection changed', arguments);
+//          selectionUpdateCollection
+        
+        
+        
+        
+        
+        
+        
         view.collection.on('change', function(model){
           console.log('collection changed', arguments);
 //          var copy_well = Iccbl.formatString('{source_well_id}/{source_copy_name}', model);
@@ -453,14 +521,16 @@ define([
             _.each(view.collection.where({'source_well_id':source_well_id}),
               function(model){
                 if (model.get('source_copy_name')!==current_copy_name){
-                  model.set('selected', false);
+                  model.set({'selected': false});
                 }
             });
           } else {
             // deselection
             // if it was in the updates, then remove it
             if (_.has(lcp_selection_updates, source_well_id)) {
-              delete lcp_selection_updates[source_well_id];
+              if (lcp_selection_updates[source_well_id]==source_copy_id){
+                delete lcp_selection_updates[source_well_id];
+              }
             } else {
               // otherwise, was not already in the updates, so it must be a deselection
               lcp_selection_updates[source_well_id] = null;
@@ -489,33 +559,111 @@ define([
             });
           }
         });
-
-        plateSelectedButton.click(function(e){
-          // Preliminary - 20170104
+        
+        reserveAndMapSelectedButton.click(function(e){
+          
           e.preventDefault();
           console.log('submit selections for plating');
           var plate_lab_cherrypicks_url = [
-            self.model.resource.apiUri,self.model.key, 'plate_lab_cherrypicks'].join('/');
+            self.model.resource.apiUri,self.model.key, 
+            'reserve_map_lab_cherry_picks'].join('/');
           var headers = {}; // can be used to send a comment
-          function processClick(){
+
+          function processClick(overrideInsufficient){
+            
+            var data = new FormData();
+            // send API_PARAM_VOLUME_OVERRIDE = 'volume_override'
+            data.append('volume_override', overrideInsufficient);
+
             $.ajax({
               url: plate_lab_cherrypicks_url,     
-//              data: JSON.stringify({
-//                selection_updates: selection_updates,
-//                deselect_updates: deselect_updates
-//              }),
               cache: false,
-              contentType: 'application/json', 
+              contentType: false,
+              processData: false,
               dataType: 'json', // what is expected back from the server
+              data: data,
               type: 'POST',
               headers: headers
+            
             }).done(function(data, textStatus, jqXHR){
+            
               console.log('submitted', arguments);
-//              self.change_to_tab('labcherrypicks');
+              // Show result message
+              console.log('done', data);
+              // TODO: refactor success message parsing
+              if (_.isObject(data) && !_.isString(data)){
+                data = _.result(_.result(data,'meta',data),'Result',data);
+                var msg_rows = appModel.dict_to_rows(data);
+                var bodyMsg = msg_rows;
+                if (_.isArray(msg_rows) && msg_rows.length > 1){
+                  bodyMsg = _.map(msg_rows, function(msg_row){
+                    return msg_row.join(': ');
+                  }).join('<br>');
+                }
+                var title = 'Lab Cherry Pick Plating result';
+                appModel.showModalMessage({
+                  body: bodyMsg,
+                  title: title  
+                });
+              }else{
+                console.log('data should have been parsed as json', data);
+                appModel.showModalMessage({
+                  title: 'Lab Cherry Pick Plating result',
+                  okText: 'ok',
+                  body: 'success'
+                });
+              }
+              console.log('reload...');
+
+              // Show the cherry pick plate tab
+              self.tabbed_resources['cherrypickplates'] = 
+                  self.cherry_pick_tabbed_resources['cherrypickplates'];
+              self.uriStack = ['labcherrypicks'];
+              // remove the child view before calling render, to prevent
+              // it from being rendered twice, and calling afterRender twice
+              self.removeView('#tab_container');
+              self.render();
+              
             }).fail(function(jqXHR, textStatus, errorThrown){
-              appModel.jqXHRfail.apply(this,arguments); 
+              console.log('errors', arguments);
+              
+              var overridden = false;
+              var jsonError = _.result(jqXHR, 'responseJSON');
+              if (!_.isUndefined(jsonError)){
+                var error = _.result(jsonError, 'errors');
+                error = _.result(error,'transfer_volume_per_well_approved');
+                if (!_.isUndefined(error)){
+                  // Check for "volume_override" required message
+                  if (error.length==1 && error[0].includes('volume_override')){
+                    overridden = true;
+                    appModel.showModal({
+                      title: 'Insufficient volume for copy wells in lab cherry picks',
+                      body: error,
+                      okText: 'Override',
+                      ok: function() {
+                        var overrideInsufficient = true;
+                        processClick(overrideInsufficient);
+                      },
+                      cancel: function() {
+                        appModel.jqXHRfail.apply(jqXHR,textStatus,errorThrown); 
+                      }
+                    });
+                  }
+                }
+              }
+              if (overridden == false){
+                appModel.jqXHRfail.apply(this,arguments); 
+              }
             });
           };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
+            });
+          }else{
+            processClick();
+          }
+          
         });
         
         setSelectedLcpButton.click(function(e){
@@ -729,6 +877,13 @@ define([
       var deselect_updates = [];
       var extraControls = [];
       
+      var Collection = Backbone.Collection.extend({
+          modelId: function(attrs) {
+            return Iccbl.getIdFromIdAttribute( attrs, schemaResult);
+          }
+      })
+      var selectionUpdateCollection = new Collection();
+      
       // Show the delete button
       // TODO: When should delete be disabled?
       if (self.model.get('number_plates') == 0){
@@ -796,20 +951,64 @@ define([
         //schemaResult.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
         setDuplexLcpsButton.show();
       }
-      
+      if(self.model.get('has_alternate_screener_cherry_pick_selections') === true){
+        schemaResult['fields']['searched_well_id']['visibility'] = ['l','d'];
+        schemaResult['fields']['selected']['visibility'] = ['l','d'];
+      }      
+
       var SelectedScpRow = Backgrid.Row.extend({
-        render: function() {
-          console.log('render');
-          if (this.model.has('searched_well_id')) {
-            if (this.model.get('searched_well_id')==this.model.get('screened_well_id')) {
-              this.$el.addClass('selected');
+        initialize: function () {
+          var self = this;
+          SelectedScpRow.__super__.initialize.apply(this, arguments);
+          
+          this.listenTo(this.model.collection, 'show_other_reagents', function(){
+            console.log('event:', arguments);
+            self._setStyle();
+          });
+        },
+        
+        _setStyle: function(){
+          var searchHash = this.model.collection.listModel.get('search');
+          if(self.model.get('has_alternate_screener_cherry_pick_selections') === true
+              || _.result(searchHash,'show_other_reagents')=='true')
+          {
+            if (this.model.get('searched_well_id')
+                ==this.model.get('screened_well_id')) {
+              this.$el.closest('tr').addClass('selector_row_group');
             }
+          } else {
+            this.$el.closest('tr').removeClass('selector_row_group');
           }
-          return SelectedScpRow.__super__.render.apply(this, arguments);
+          if (_.result(searchHash,'show_other_reagents')=='true'){
+            if (this.model.has('searched_well_id')) {
+              if (this.model.get('selected')) {
+                this.$el.addClass('selected');
+              }
+            } 
+          } else {
+            this.$el.removeClass('selected');
+          }
+        },
+        
+        render: function() {
+          SelectedScpRow.__super__.render.apply(this, arguments);
+          this._setStyle();
+          return this;
+        }
+      });
+
+      var ListViewSelect = ListView.extend({
+        afterRender: function(){
+          ListViewSelect.__super__.afterRender.apply(this, arguments);
+          // Backgrid specific: all column headers are given a class for their
+          // column name: in this case the "selected" class has other meaning, 
+          // so remove it
+          this.$('th').removeClass('selected');
+          return this;
         }
       });
       
-      var view = new ListView({ 
+      var view = new ListViewSelect({ 
         uriStack: _.clone(delegateStack),
         schemaResult: schemaResult,
         resource: schemaResult,
@@ -829,15 +1028,55 @@ define([
       // submit as Lab Cherry Picks
       setLcpsButton.click(function(e){
         e.preventDefault();
-        var set_lab_cherrypicks_url = [
-          self.model.resource.apiUri,self.model.key, 'set_lab_cherrypicks'].join('/');
+
+        function processClick(){
+          
+          var set_lab_cherry_picks_url = [
+            self.model.resource.apiUri,self.model.key, 'set_lab_cherry_picks'].join('/');
+          var headers = {}; // can be used to send a comment
+          $.ajax({
+            url: set_lab_cherry_picks_url,     
+  //          data: JSON.stringify({
+  //            selection_updates: selection_updates,
+  //            deselect_updates: deselect_updates
+  //          }),
+            cache: false,
+            contentType: 'application/json', 
+            dataType: 'json', // what is expected back from the server
+            type: 'POST',
+            headers: headers
+          }).done(function(data, textStatus, jqXHR){
+            console.log('submitted', arguments);
+            self.change_to_tab('labcherrypicks');
+          }).fail(function(jqXHR, textStatus, errorThrown){
+            appModel.jqXHRfail.apply(this,arguments); 
+          });
+        };
+        
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+        
+        
+      });
+
+      // submit as Lab Cherry Picks
+      setDuplexLcpsButton.click(function(e){
+        e.preventDefault();
+        var set_lab_cherry_picks_url = [
+          self.model.resource.apiUri,self.model.key, 
+          'set_duplex_lab_cherrypicks'].join('/');
         var headers = {}; // can be used to send a comment
         $.ajax({
-          url: set_lab_cherrypicks_url,     
-          data: JSON.stringify({
-            selection_updates: selection_updates,
-            deselect_updates: deselect_updates
-          }),
+          url: set_lab_cherry_picks_url,     
+//          data: JSON.stringify({
+//            selection_updates: selection_updates,
+//            deselect_updates: deselect_updates
+//          }),
           cache: false,
           contentType: 'application/json', 
           dataType: 'json', // what is expected back from the server
@@ -852,16 +1091,24 @@ define([
       });
 
       // Manage selection updates
+      view.collection.on('add', function(model){
+        // cache the 'selected' property for update management
+        model.set(
+          { selected_on_server: model.get('selected') },
+          { silent: true }
+        );
+      });
       view.collection.on('change', function(model){
         console.log('collection changed', arguments);
+        var current_well_search = model.get('searched_well_id');
+        var current_well = model.get('screened_well_id');
+        
+        if (model.get('selected') != model.get('selected_on_server')) {
+          selectionUpdateCollection.add(model);
+        } else {
+          selectionUpdateCollection.remove(model);
+        }
         if (model.get('selected')) {
-          var current_well_search = model.get('searched_well_id');
-          var current_well = model.get('screened_well_id');
-          selection_updates.push(model.get('screened_well_id'));
-          deselect_updates = _.without(
-            deselect_updates, 
-            model.get('screened_well_id'));
-
           // unselect others in the group
           _.each(view.collection.where({'searched_well_id':current_well_search}),
             function(model){
@@ -869,14 +1116,8 @@ define([
                 model.set('selected', false);
               }
           });
-          
-        } else {
-          selection_updates = _.without(
-            selection_updates, 
-            model.get('screened_well_id'));
-          deselect_updates.push(model.get('screened_well_id'));
         }
-        if (!_.isEmpty(selection_updates) || !_.isEmpty(deselect_updates)) {
+        if (!selectionUpdateCollection.isEmpty()){
           appModel.setPagePending(null, 'Selection updates are unsaved, continue anyway?');
           setSelectedButton.show();
         } else {
@@ -887,30 +1128,31 @@ define([
       // Make sure that on reset actions (page changes), that selections are persisted
       view.collection.on('reset', function(){
         console.log('reset event...');
-        if (!_.isEmpty(selection_updates)){
-          view.collection.each(function(model){
-            if (_.contains(selection_updates, model.get('screened_well_id'))){
-              model.set('selected', true);
-            }
-          });
-        }
-        if (!_.isEmpty(deselect_updates)) {
-          view.collection.each(function(model){
-            if (_.contains(deselect_updates, model.get('screened_well_id'))){
-              model.set('selected', false);
-            }
-          });
-        }
+        // Note: on "reset" the "add" methods aren't being called
+        view.collection.each(function(model){
+          model.set(
+            { selected_on_server: model.get('selected') },
+            { silent: true }
+          );
+        });
+        selectionUpdateCollection.each(function(model){
+          // TODO: if the id_attribute is set properly, can use collection.get(model)
+          var retrievedModel = view.collection.get(model);
+          if (!_.isUndefined(retrievedModel)){
+              retrievedModel.set('selected', model.get('selected'));
+          }
+       });
+
       });
       setSelectedButton.click(function(e){
         e.preventDefault();
-        console.log('selected', selection_updates,deselect_updates);
-        if (_.isEmpty(selection_updates) && _.isEmpty(deselect_updates)) {
+        console.log('selection updates', selectionUpdateCollection);
+        if (selectionUpdateCollection.isEmpty()) {
           appModel.error('No changes to save');
           return;
         }
-        
-        self.saveScreenerCherryPicksSelected(selection_updates,deselect_updates)
+        selectionUpdateCollection.url = view.collection.url;
+        selectionUpdateCollection.sync('patch', selectionUpdateCollection)
           .done(function(data, textStatus, jqXHR){
             console.log('success', data);
             if (_.isObject(data) && !_.isString(data)){
@@ -936,12 +1178,12 @@ define([
               });
             }
             
-            selection_updates = [];
-            deselect_updates = [];
             setSelectedButton.hide();
+            selectionUpdateCollection.reset(null); // clear
             view.collection.fetch({ reset: true });
-          })
-          .fail(function(jqXHR, textStatus, errorThrown){
+
+          }).fail(function(jqXHR, textStatus, errorThrown){
+            console.log('fail', arguments);
             appModel.jqXHRfail.apply(this,arguments); 
           });
       });
@@ -972,6 +1214,10 @@ define([
               view.listModel.set('search',searchHash);
             }
           }
+          // see note above about removing the 'selected' backgrid th class
+          view.$('th').removeClass('selected');
+          view.collection.trigger('show_other_reagents');
+          
         };
         if(appModel.isPagePending()){
           appModel.requestPageChange({
@@ -987,41 +1233,7 @@ define([
         showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',true);
       }
     },
-    
-    saveScreenerCherryPicksSelected: function(
-        selection_updates, deselect_updates) {
-      var self = this;
-      var promise = $.Deferred();
-      
-      appModel.showSaveWithComments(function(formValues){
-        console.log('form values', formValues);
-        var comments = formValues['comments'];
-        var headers = {};
-        headers[appModel.HEADER_APILOG_COMMENT] = comments;
-        
-        var cp_patch_url = [
-          self.model.resource.apiUri,self.model.key].join('/');
-        $.ajax({
-          url: cp_patch_url,    
-          data: JSON.stringify({
-            selection_updates: selection_updates,
-            deselect_updates: deselect_updates
-          }),
-          cache: false,
-          contentType: 'application/json', 
-          dataType: 'json', // what is expected back from the server
-          type: 'PATCH',
-          headers: headers
-        }).done(function(data, textStatus, jqXHR){ 
-          promise.resolveWith(this,arguments); 
-        }).fail(function(jqXHR, textStatus, errorThrown){
-          promise.rejectWith(this,arguments);
-        })
-      });
-      // return a restricted Promise
-      return promise.promise();
-    }
-    
+  
   });
   
   return CherryPickView;

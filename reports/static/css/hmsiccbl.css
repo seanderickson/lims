@@ -224,6 +224,11 @@ th.wellselector.selected {
   background-color: rgba(255, 0, 0, .3);
 }
 
+/** Styles for the SCP, LCP table selector **/
+tr.selector_row_group {
+  border-top: 2px solid black;
+}
+
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 
 td.dl-title {

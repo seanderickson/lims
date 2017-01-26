@@ -11,6 +11,10 @@ from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
 from reports.utils.gray_codes import create_substance_id
+from db.support import lims_utils
+from db import WELL_NAME_PATTERN
+import re
+from django.db.models.deletion import SET_NULL
 
 
 logger = logging.getLogger(__name__)
@@ -77,23 +81,6 @@ class LabActivity(Activity):
             % (self.activity_id, self.performed_by, self.screen.facility_id,
                 self.volume_transferred_per_well_from_library_plates))
 
-class CherryPickLiquidTransfer(LabActivity):
-    
-    labactivitylink = models.OneToOneField(
-        'LabActivity', primary_key=True, parent_link=True, 
-        db_column='activity_id')
-    status = models.TextField()
-    
-    class Meta:
-        db_table = 'cherry_pick_liquid_transfer'
-
-    def __repr__(self):
-        return (
-            '<CPLT(activity_id=%r, performed_by=%r, '
-            'screen=%r, volume=%r)>' 
-            % (self.activity_id, self.performed_by, self.screen.facility_id,
-                self.volume_transferred_per_well_from_library_plates))
-
 class Screening(LabActivity):
     
     labactivitylink = models.OneToOneField(
@@ -138,25 +125,6 @@ class LibraryScreening(Screening):
             'screen=%r, volume=%r)>' 
             % (self.activity_id, self.performed_by, self.screen.facility_id,
                 self.volume_transferred_per_well_from_library_plates))
-
-
-class CherryPickScreening(Screening):
-    
-    screeninglink = models.OneToOneField(
-        'Screening', primary_key=True, parent_link=True, 
-        db_column='activity_id')
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-
-    class Meta:
-        db_table = 'cherry_pick_screening'
-
-    def __repr__(self):
-        return (
-            '<CherryPickScreening(activity_id=%r, performed_by=%r, '
-            'screen=%r, cpr=%d )>' 
-            % (self.activity_id, self.performed_by, self.screen.facility_id,
-                self.cherry_pick_request.id))
-
 
 # Deprecated - migrate
 class AdministrativeActivity(models.Model):
@@ -245,15 +213,6 @@ class CopyUpdateActivity(models.Model):
     class Meta:
         db_table = 'copy_update_activity'
 
-# Deprecate - migration
-class CherryPickRequestUpdateActivity(models.Model):
-    
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    update_activity = models.OneToOneField('AdministrativeActivity', unique=True)
-    class Meta:
-        db_table = 'cherry_pick_request_update_activity'
-
-
 class EquipmentUsed(models.Model):
     
     equipment_used_id = models.AutoField(primary_key=True)
@@ -296,7 +255,8 @@ class AssayPlate(models.Model):
             % (self.assay_plate_id, self.replicate_ordinal, self.plate_number, 
                self.plate.copy_name, self.screen.facility_id, 
                self.library_screening.activity_id ))
-        
+      
+# Purpose: AssayWell serves as a "row" of a ScreenResult        
 class AssayWell(models.Model):
     
     assay_well_id = models.AutoField(primary_key=True)
@@ -375,46 +335,190 @@ class UserChecklistItem(models.Model):
             % (self.screensaver_user, self.item_group,self.item_name,
                self.status)) 
 
+# ##### NEW CHERRY PICK #####
+# 
+# 
+# class CherryPickRequest2(models.Model):
+# 
+#     screen = models.ForeignKey('Screen')
+#     requested_by = models.ForeignKey('ScreensaverUser', 
+#         related_name='requested_cherry_pick2')
+#     volume_approved_by = models.ForeignKey('ScreensaverUser', 
+#         null=True, related_name='approved_cherry_pick2')
+#     transfer_volume_per_well_requested = \
+#         models.DecimalField(null=True, max_digits=10, decimal_places=9)
+#     transfer_volume_per_well_approved = \
+#         models.DecimalField(null=True, max_digits=10, decimal_places=9)
+#     date_requested = models.DateField()
+#     date_volume_approved = models.DateField(null=True)
+# 
+#     comments = models.TextField()
+#     assay_plate_type = models.TextField()
+#     assay_protocol_comments = models.TextField()
+#     cherry_pick_assay_protocols_followed = models.TextField()
+#     cherry_pick_followup_results_status = models.TextField()
+#     
+#     # True when screener requested a random layout for the cherry pick plates
+#     is_randomized_assay_plate_layout = models.BooleanField(default=False)
+#     
+#     # True when cherry picks from the same source plate should always be 
+#     # mapped to the same cherry pick plate
+#     keep_source_plate_cherry_picks_together = models.BooleanField(default=True)
+#     
+#     # Not used
+#     max_skipped_wells_per_plate = models.IntegerField(null=True)
+#     
+#     class Meta:
+#         db_table = 'cherry_pick_request2'
+#         
+#     def __repr__(self):
+#         return (
+#             '<CherryPickRequest2(id=%r, screen=%r, requested_by=%r)>' 
+#             % (self.id, self.screen.facility_id. self.requested_by)) 
+# 
+# class CherryPickWell(models.Model):
+# 
+#     cherry_pick_request = models.ForeignKey(
+#         'CherryPickRequest2', related_name='wells')
+# 
+#     # This is the well entered by the screener:
+#     # Could be a "pool" well that is mapped to the "duplex" well (if SiRNA)    
+#     screener_source_well = models.ForeignKey('Well')
+#     
+#     # This is the well that is actually picked:
+#     # Could be the "duplex" well for the "pool" well (if SiRNA)
+#     source_well = models.ForeignKey('Well')
+#     
+#     # If set, pick is "Reserved"
+#     copy = models.ForeignKey('Copy', null=True)
+#     
+#     # [Unfulfilled, Reserved, Mapped, Plated, Screened, Canceled, (Failed)]
+#     status = models.TextField(null=True)
+# 
+#     # Purpose: row/col for the CherryPickAssayPlate    
+#     destination_well = models.TextField(null=True)
+# 
+#     # TODO: remove
+#     # attempts = models.IntegerField(null=True)
+# 
+#     class Meta:
+#         db_table = 'cherry_pick_well'
+#         
+#     def __repr__(self):
+#         return (
+#             '<CherryPickWell(source_well=%r, copy=%r, screen=%r )>' 
+#             % (self.source_well, self.copy, self.cpr.screen.facility_id)) 
+
+##### END NEW CHERRY PICK #####
+
+
+
 class CherryPickRequest(models.Model):
     
     cherry_pick_request_id = models.AutoField(primary_key=True)
-    # TODO: give cpr a natural key: [screen id/CPR ordinal]
     screen = models.ForeignKey('Screen')
-    comments = models.TextField()
-    requested_by = models.ForeignKey('ScreensaverUser', 
-        related_name='requested_cherry_pick')
-    is_randomized_assay_plate_layout = models.BooleanField()
-    legacy_cherry_pick_request_number = models.IntegerField(null=True)
-    volume_approved_by = models.ForeignKey('ScreensaverUser', 
-        null=True, related_name='approved_cherry_pick')
-    number_unfulfilled_lab_cherry_picks = models.IntegerField()
-    assay_plate_type = models.TextField()
-    transfer_volume_per_well_approved = \
-        models.DecimalField(null=True, max_digits=10, decimal_places=9)
+
     transfer_volume_per_well_requested = \
         models.DecimalField(null=True, max_digits=10, decimal_places=9)
+    requested_by = models.ForeignKey('ScreensaverUser', 
+        related_name='requested_cherry_pick')
     date_requested = models.DateField()
+
+    transfer_volume_per_well_approved = \
+        models.DecimalField(null=True, max_digits=10, decimal_places=9)
+    volume_approved_by = models.ForeignKey('ScreensaverUser', 
+        null=True, related_name='approved_cherry_pick')
     date_volume_approved = models.DateField(null=True)
-    assay_protocol_comments = models.TextField()
-    cherry_pick_assay_protocols_followed = models.TextField()
-    cherry_pick_followup_results_status = models.TextField()
+
+    comments = models.TextField(null=True)
+    assay_plate_type = models.TextField()
+    assay_protocol_comments = models.TextField(null=True)
+    cherry_pick_assay_protocols_followed = models.TextField(null=True)
+    cherry_pick_followup_results_status = models.TextField(null=True)
+
+    # True when screener requested a random layout for the cherry pick plates
+    is_randomized_assay_plate_layout = models.BooleanField(default=False)
+    # True when cherry picks from the same source plate should always be 
+    # mapped to the same cherry pick plate
+    keep_source_plate_cherry_picks_together = models.BooleanField(default=True)
+
+    # deprecated: calculate dynamically
+    number_unfulfilled_lab_cherry_picks = models.IntegerField(null=True)
+    
+    legacy_cherry_pick_request_number = models.IntegerField(null=True)
+    
     date_created = models.DateTimeField(default=timezone.now)
+
+    # New
+    wells_to_leave_empty = models.TextField(null=True)
+    # New - (last) date when the lab_cherry_picks are reserved and mapped to plates
+    date_volume_reserved = models.DateField(null=True)
+
+
+    # Legacy Field
+    date_loaded = models.DateTimeField(null=True)
+    # Legacy Field
+    date_publicly_available = models.DateTimeField(null=True)
+    # Legacy Field
     created_by = \
         models.ForeignKey('ScreensaverUser', null=True,
             related_name='created_cherry_pick')
-    keep_source_plate_cherry_picks_together = models.BooleanField()
-    date_loaded = models.DateTimeField(null=True)
-    date_publicly_available = models.DateTimeField(null=True)
+
+    
+    # TODO: not used
     max_skipped_wells_per_plate = models.IntegerField(null=True)
     
     class Meta:
         db_table = 'cherry_pick_request'
         
+        
+    @property
+    def assay_plate_size(self):
+        if not self.assay_plate_type: 
+            return 0
+        parts = self.assay_plate_type.split('_')
+        if len(parts) != 2:
+            raise ValidationError(
+                key='assay_plate_type', 
+                msg='not a recognized type: %r' % assay_plate_type)
+        plate_size = int(parts[1])
+        return plate_size
+        
+    @property
+    def assay_plate_available_wells(self):
+        assay_plate_size = self.assay_plate_size
+        if assay_plate_size == 0:
+            raise ValidationError(
+                key='assay_plate_type',
+                msg='Is not valid')
+        
+        available_wells = []
+        wells_to_leave_empty_list = []
+        if self.wells_to_leave_empty:
+            wells_to_leave_empty_list = re.split(
+                r'\s*,\s*', self.wells_to_leave_empty)
+        row_specifier = 'Row:%s'
+        col_specifier = 'Col:%d'
+        for i in range(0,assay_plate_size):
+            well_name = lims_utils.well_name_from_index(i, assay_plate_size)
+            wellmatch = WELL_NAME_PATTERN.match(well_name)
+            row = wellmatch.group(1)
+            col = int(wellmatch.group(2))
+            if row_specifier % row in wells_to_leave_empty_list:
+                continue
+            if col_specifier % col in wells_to_leave_empty_list:
+                continue
+            if well_name in wells_to_leave_empty_list:
+                continue
+            available_wells.append(well_name)
+        return available_wells
+    
     def __repr__(self):
         return (
-            '<CherryPickRequest(id=%r, screen=%r)>' 
+            '<CherryPickRequest(cherry_pick_request_id=%r, screen=%r)>' 
             % (self.cherry_pick_request_id, self.screen.facility_id)) 
 
+# DEPRECATED, replaced by cpr.wells_to_leave_empty
 class CherryPickRequestEmptyWell(models.Model):
     
     cherry_pick_request = models.ForeignKey(CherryPickRequest)
@@ -422,6 +526,95 @@ class CherryPickRequestEmptyWell(models.Model):
     class Meta:
         db_table = 'cherry_pick_request_empty_well'
 
+class ScreenerCherryPick(models.Model):
+    
+    screener_cherry_pick_id = models.AutoField(primary_key=True)
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', related_name='screener_cherry_picks')
+    screened_well = models.ForeignKey('Well')
+    
+    # New
+    selected = models.NullBooleanField(null=True)
+    searched_well = models.ForeignKey('Well', 
+        related_name='searched_screener_cherry_pick', null=True)
+    
+    class Meta:
+        db_table = 'screener_cherry_pick'
+
+    def __repr__(self):
+        return (
+            '<ScreenerCherryPick(screener_cherry_pick_id=%d, cpr_id=%d, '
+            'screened_well=%r)>'
+            % (self.screener_cherry_pick_id, 
+               self.cherry_pick_request.cherry_pick_request_id,
+               self.screened_well.well_id))
+
+# Purpose: 
+# LabCherryPick is the "deconvoluted" well corresponding to the ScreenerCherryPick:
+# - in the case of SiRNA "pool" wells being mapped to "duplex" wells
+# - will be the same well in the case of the Small Molecule libraries
+class LabCherryPick(models.Model):
+    
+    lab_cherry_pick_id = models.AutoField(primary_key=True)
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', related_name='lab_cherry_picks')
+    screener_cherry_pick = models.ForeignKey('ScreenerCherryPick')
+    source_well = models.ForeignKey('Well')
+    cherry_pick_assay_plate = \
+        models.ForeignKey('CherryPickAssayPlate', null=True, on_delete=SET_NULL)
+    assay_plate_row = models.IntegerField(null=True)
+    assay_plate_column = models.IntegerField(null=True)
+    
+    copy = models.ForeignKey('Copy', null=True, 
+        related_name='copy_lab_cherry_picks')
+    reserved = models.NullBooleanField()
+    
+#     # [Unfulfilled, Reserved, Mapped, Plated, Screened, Canceled, (Failed)]
+#     status = models.TextField(null=True)
+
+    class Meta:
+        db_table = 'lab_cherry_pick'
+
+    def __repr__(self):
+        return (
+            '<LabCherryPick(lab_cherry_pick_id=%r, cpr_id=%r, source_well=%r, '
+            'copy=%r, cherry_pick_assay_plate=%r,'
+            'assay_plate_row=%r, assay_plate_column=%r)>' 
+            % (self.lab_cherry_pick_id, self.cherry_pick_request_id, 
+               self.source_well.well_id, self.copy, self.cherry_pick_assay_plate, 
+               self.assay_plate_row,
+               self.assay_plate_column)) 
+
+# Purpose:
+# - assign plate_ordinal to LabCherryPick wells
+# - record each attempt for a cherry pick (support for "failed")
+# - record the "plating" activity
+class CherryPickAssayPlate(models.Model):
+    
+    cherry_pick_assay_plate_id = models.AutoField(primary_key=True)
+    cherry_pick_request = models.ForeignKey('CherryPickRequest',
+        related_name='cherry_pick_assay_plates')
+    plate_ordinal = models.IntegerField()
+    attempt_ordinal = models.IntegerField()
+    cherry_pick_liquid_transfer = \
+        models.ForeignKey('CherryPickLiquidTransfer', null=True)
+    assay_plate_type = models.TextField()
+    legacy_plate_name = models.TextField(null=True)
+    cherry_pick_assay_plate_type = models.CharField(max_length=31)
+    
+    # Deprecated
+    # status = models.TextField(null=True)
+
+    # New - when set, the assay plate is "plated"
+    plating_activity_date = models.DateField(null=True)
+
+    class Meta:
+        unique_together = ((
+            'cherry_pick_request', 'plate_ordinal','attempt_ordinal'))    
+        db_table = 'cherry_pick_assay_plate'
+
+# Purpose: to cast CherryPickRequest for SiRNA screens
+# Deprecate
 class RnaiCherryPickRequest(models.Model):
     
     cherry_pick_request = \
@@ -430,38 +623,62 @@ class RnaiCherryPickRequest(models.Model):
     class Meta:
         db_table = 'rnai_cherry_pick_request'
 
-class ScreenerCherryPick(models.Model):
+# Purpose: 
+# - to record updates to the CPR; 
+# - to record manual edit of the source copies chosen
+# Deprecate - migration
+class CherryPickRequestUpdateActivity(models.Model):
     
-    screener_cherry_pick_id = models.AutoField(primary_key=True)
-    cherry_pick_request = models.ForeignKey(CherryPickRequest)
-    screened_well = models.ForeignKey('Well')
-    class Meta:
-        db_table = 'screener_cherry_pick'
-
-class LabCherryPick(models.Model):
-    
-    lab_cherry_pick_id = models.AutoField(primary_key=True)
     cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    screener_cherry_pick = models.ForeignKey('ScreenerCherryPick')
-    source_well = models.ForeignKey('Well')
-    cherry_pick_assay_plate = \
-        models.ForeignKey('CherryPickAssayPlate', null=True)
-    assay_plate_row = models.IntegerField(null=True)
-    assay_plate_column = models.IntegerField(null=True)
+    update_activity = models.OneToOneField('AdministrativeActivity', unique=True)
+    class Meta:
+        db_table = 'cherry_pick_request_update_activity'
+
+
+# Purpose, to record a "Screening" activity for the plates of a Cherry Pick
+# Deprecate 
+# TODO: replace with Cherry Pick Status change
+class CherryPickScreening(Screening):
+    
+    screeninglink = models.OneToOneField(
+        'Screening', primary_key=True, parent_link=True, 
+        db_column='activity_id')
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
 
     class Meta:
-        db_table = 'lab_cherry_pick'
+        db_table = 'cherry_pick_screening'
 
     def __repr__(self):
         return (
-            '<LabCherryPick(id=%r, cpr_id=%r, source_well=%r, '
-            'assay_plate_row=%d, assay_plate_column=%d)>' 
-            % (self.lab_cherry_pick_id, 
-               self.cherry_pick_request.cherry_pick_request_id, 
-               self.source_well.well_id, self.assay_plate_row,
-               self.assay_plate_column)) 
+            '<CherryPickScreening(activity_id=%r, performed_by=%r, '
+            'screen=%r, cpr=%d )>' 
+            % (self.activity_id, self.performed_by, self.screen.facility_id,
+                self.cherry_pick_request.id))
 
-# Deprecated - migrate to CopyWell
+# Purpose: to record the "Cherry Pick Plate Activity"
+# Deprecate
+# TODO: record plating as a status on cherry pick/CPAP
+class CherryPickLiquidTransfer(LabActivity):
+    
+    labactivitylink = models.OneToOneField(
+        'LabActivity', primary_key=True, parent_link=True, 
+        db_column='activity_id')
+    status = models.TextField()
+    
+    class Meta:
+        db_table = 'cherry_pick_liquid_transfer'
+
+    def __repr__(self):
+        return (
+            '<CPLT(activity_id=%r, performed_by=%r, '
+            'screen=%r, volume=%r)>' 
+            % (self.activity_id, self.performed_by, self.screen.facility_id,
+                self.volume_transferred_per_well_from_library_plates))
+
+# Purpose:
+# Record LabCherryPick volume deallocations
+# Record manual well volume adjustments
+# Deprecated - migrate to CopyWell & ApiLog records
 class WellVolumeAdjustment(models.Model):
     
     well_volume_adjustment_id = models.AutoField(primary_key=True)
@@ -484,24 +701,9 @@ class WellVolumeAdjustment(models.Model):
                self.well_volume_correction_activity.activity_id,
                self.volume))
 
-class CherryPickAssayPlate(models.Model):
-    
-    cherry_pick_assay_plate_id = models.AutoField(primary_key=True)
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    plate_ordinal = models.IntegerField()
-    attempt_ordinal = models.IntegerField()
-    cherry_pick_liquid_transfer = \
-        models.ForeignKey('CherryPickLiquidTransfer', null=True)
-    assay_plate_type = models.TextField()
-    legacy_plate_name = models.TextField()
-    cherry_pick_assay_plate_type = models.CharField(max_length=31)
-#     status = models.TextField(null=True)
-
-    class Meta:
-        unique_together = ((
-            'cherry_pick_request', 'plate_ordinal','attempt_ordinal'))    
-        db_table = 'cherry_pick_assay_plate'
-
+# Purpose:
+# - record the CherryPickScreening activity
+# TODO: deprecate: use a status on the CherryPick instead
 class CherryPickAssayPlateScreeningLink(models.Model):
     
     cherry_pick_assay_plate = models.ForeignKey(CherryPickAssayPlate)
@@ -892,7 +1094,8 @@ class LabHead(models.Model):
             % (self.screensaver_user.screensaver_user_id, 
                self.screensaver_user.username, self.lab_affiliation.title ))
 
-# TODO: remove, see migration 0004
+# TODO: remove, see migration 0004 - labaffiliation is now a vocabulary
+# Deprecated
 class LabAffiliation(models.Model):
 
     affiliation_name = models.TextField(unique=True)
@@ -902,6 +1105,7 @@ class LabAffiliation(models.Model):
     class Meta:
         db_table = 'lab_affiliation'
 
+# New
 class UserFacilityUsageRole(models.Model):
     
     screensaver_user = models.ForeignKey('ScreensaverUser')
@@ -1331,7 +1535,8 @@ class CopyWell(models.Model):
     # Removed: screening count is tracked only on the plate level, and 
     # adjustment count is simple count of apilogs for volume changes
     # adjustments = models.IntegerField()
-
+    cherry_pick_screening_count = models.IntegerField(null=True)
+    
     # New - to be populated by migration
     molar_concentration = \
         models.DecimalField(null=True, max_digits=13, decimal_places=12)
@@ -1435,6 +1640,7 @@ class ChecklistItemEvent(models.Model):
         db_table = 'checklist_item_event'
 
 # TODO: remove per discussion with Jen
+# Deprecated
 class ScreenKeyword(models.Model):
     
     screen = models.ForeignKey('Screen', related_name='keywords')

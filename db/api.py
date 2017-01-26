@@ -101,6 +101,9 @@ from django.db.utils import ProgrammingError
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
 MAX_SPOOLFILE_SIZE = 100*1024
+
+# TODO: API constants: move to an API-accessible properties file
+API_MSG_COPYWELLS_DEALLOCATED = 'copywells deallocated'
 API_MSG_SCREENING_PLATES_UPDATED = 'Library Plates updated'
 API_MSG_SCREENING_EXTANT_PLATE_COUNT = 'Extant plates'
 API_MSG_SCREENING_ADDED_PLATE_COUNT = 'Added plates'
@@ -109,12 +112,31 @@ API_MSG_SCREENING_TOTAL_PLATE_COUNT = 'Library Plate Count'
 API_MSG_SCP_CREATED = 'created'
 API_MSG_SCP_UNSELECTED = 'unselected'
 API_MSG_SCP_RESELECTED = 'reselected'         
+API_MSG_LCP_CHANGED = 'changed'
+API_MSG_LCP_DESELECTED = 'deselected'
+API_MSG_LCP_SELECTED = 'selected'
 API_MSG_LCPS_CREATED = 'Lab Cherry Picks Created'
 API_MSG_LCPS_ASSIGNED = 'Assigned to Copies'
 API_MSG_LCPS_UNFULFILLED = 'Unfulfilled'
-API_PARAM_VOLUME_OVERRIDE = 'volume_override'
-API_PARAM_PLATE_MAPPING_OVERRIDE = 'plate_mapping_override_required'
+API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume'
+API_MSG_LCPS_VOLUME_OVERRIDDEN = 'Insufficient volume overridden'
+API_MSG_LCPS_REMOVED = 'Lab Cherry Picks Removed'
+API_MSG_LCP_PLATES_ASSIGNED = 'lab cherry picks assigned'
+API_MSG_LCP_ASSAY_PLATES_PLATED = 'cherry_pick_assay_plates plated'
+API_MSG_LCP_ASSAY_PLATES_CREATED = 'cherry_pick_assay_plates created'
+API_MSG_CPR_ASSAY_PLATES_REMOVED = 'cherry_pick_assay_plates removed'
+API_MSG_PLATING_CANCELED = 'plating canceled'
 
+VOCAB_LCP_STATUS_SELECTED = 'selected'
+VOCAB_LCP_STATUS_UNFULFILLED = 'unfulfilled'
+VOCAB_LCP_STATUS_PLATED = 'plated'
+
+# API_PARAM_PLATE_MAPPING_OVERRIDE = 'plate_mapping_override'
+API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents'
+API_PARAM_SHOW_COPY_WELLS = 'show_copy_wells'
+API_PARAM_SHOW_RETIRED_COPY_WELlS = 'show_available_and_retired_copy_wells'
+API_PARAM_SHOW_UNFULFILLED = 'show_unfulfilled'
+API_PARAM_VOLUME_OVERRIDE = 'volume_override'
 
 logger = logging.getLogger(__name__)
     
@@ -3501,6 +3523,8 @@ class DataColumnResource(DbApiResource):
 
 class CopyWellResource(DbApiResource):
     
+    COPYWELL_KEY = '{library_short_name}/{copy_name}/{well_id}'
+    
     class Meta:
         
         queryset = CopyWell.objects.all().order_by('well_id')
@@ -3516,6 +3540,12 @@ class CopyWellResource(DbApiResource):
     def __init__(self, **kwargs):
 
         super(CopyWellResource, self).__init__(**kwargs)
+        self.plate_resource = None
+        
+    def get_plate_resource(self):
+        if self.plate_resource is None: 
+            self.plate_resource = LibraryCopyPlateResource()
+        return self.plate_resource
 
     def prepend_urls(self):
         
@@ -3719,10 +3749,10 @@ class CopyWellResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by('copy_name', 'plate_number', 'well_id')
             
-            compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if use_titles is True:
@@ -3801,8 +3831,6 @@ class CopyWellResource(DbApiResource):
             if deserialized.get(key, None) is not None:
                 initializer_dict[key] = parse_val(
                     deserialized.get(key, None), key, fields[key]['data_type']) 
-
-
         
         volume = initializer_dict.get('volume', None)        
         mg_ml_concentration = initializer_dict.get('mg_ml_concentration', None)
@@ -3818,8 +3846,6 @@ class CopyWellResource(DbApiResource):
                 'mg_ml_concentration': msg,
                 'molar_concentration': msg,
                 })
-        
-        
         try:
             copywell = CopyWell.objects.get(
                 well=well, copy=librarycopy)
@@ -3842,7 +3868,8 @@ class CopyWellResource(DbApiResource):
                 return None
             
             copywell = CopyWell.objects.create(
-                well=well, copy=librarycopy, plate=plate)
+                well=well, copy=librarycopy, plate=plate,
+                initial_volume = plate.remaining_well_volume)
             # FIXME: only "set" adjustments if sent from the user
             # if volume is not None:
             #    copywell.adjustments += 1
@@ -3861,7 +3888,84 @@ class CopyWellResource(DbApiResource):
         copywell.save()
         logger.info('patch_obj done')
         return { API_RESULT_OBJ: copywell }
+    
+    @un_cache
+    @transaction.atomic
+    def deallocate_cherry_pick_volumes(
+        self, cpr, lab_cherry_picks_to_deallocate, parent_log):
 
+        copywells_deallocated = []
+        plates_adjusted = set()
+        # find copy-wells
+        for lcp in lab_cherry_picks_to_deallocate:
+            copy = lcp.copy
+            if copy is None:
+                raise ProgrammingError('LabCherryPick is already deallocated: %r', lcp)
+            plate = Plate.objects.get(
+                plate_number=lcp.source_well.plate_number, 
+                copy=lcp.copy)
+            plates_adjusted.add(plate)
+            copy_name = self.COPYWELL_KEY.format(
+                well_id=lcp.source_well.well_id,
+                library_short_name=copy.library.short_name,
+                copy_name=copy.name)
+            try:
+                copywell = CopyWell.objects.get(
+                    well=lcp.source_well, copy=lcp.copy)
+                
+            except ObjectDoesNotExist:
+                logger.error('copywell to deallocate not located: %r', copy_name)
+                
+            log = self.make_child_log(parent_log)
+            log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+            new_volume = copywell.volume + cpr.transfer_volume_per_well_approved
+            if copywell.cherry_pick_screening_count > 0:
+                current_cp_screening_count = copywell.cherry_pick_screening_count
+                new_cp_screening_count =  current_cp_screening_count - 1
+                log.diffs = {
+                    'volume': [copywell.volume, new_volume],
+                    'cherry_pick_screening_count': [
+                        current_cp_screening_count, 
+                        new_cp_screening_count]
+                    }
+                log.parent_log = parent_log
+                logger.info('copywell adjusted: %r, %r', log, log.diffs)
+                log.save()
+                copywell.cherry_pick_screening_count = new_cp_screening_count
+            # adjust volume
+            copywell.volume = new_volume
+            copywell.save()
+            copywells_deallocated.append(copywell)
+        logger.info('copywells_deallocated: %r', copywells_deallocated)    
+        logger.info('plates_adjusted: %r', plates_adjusted)
+        for plate in plates_adjusted:
+            plate_log = self.get_plate_resource().make_child_log(parent_log)
+            plate_log.key = '/'.join([
+                copy.library.short_name, plate.copy.name, str(plate.plate_number)])
+            plate_log.uri = '/'.join([log.ref_resource_name,log.key])
+            if plate.cplt_screening_count < 1:
+                logger.warn('deallocation: plate: %r, cplt_screening_count is already 0',
+                    plate_log.key)
+                new_cp_screening_count = 0
+            else:
+                new_plate_cplt_screening_count = plate.cplt_screening_count-1
+            plate_log.diffs = {
+                'cplt_screening_count': [
+                    plate.cplt_screening_count,
+                    new_plate_cplt_screening_count ],
+                }
+            plate_log.save()
+            plate.cplt_screening_count = new_cp_screening_count
+            plate.save()
+            
+        return { 
+            'cpr': cpr.cherry_pick_request_id,
+            API_MSG_COPYWELLS_DEALLOCATED: len(copywells_deallocated),
+            'plates_adjusted': len(plates_adjusted)
+         }
+        
+        
     def reserve_cherry_pick_volumes(self, cpr, lab_cherry_picks_to_plate, parent_log):
         
         copywells_adjusted = []
@@ -3885,7 +3989,7 @@ class CopyWellResource(DbApiResource):
                         copy=lcp.copy, 
                         plate=plate,
                         volume=plate.remaining_well_volume,
-                        initial_volume=plate.well_volume)
+                        initial_volume=plate.remaining_well_volume)
                     
                 except ObjectDoesNotExist:
                     msg = ('plate not found: %r:%r' 
@@ -3914,11 +4018,11 @@ class CopyWellResource(DbApiResource):
             copywell.save()
             copywells_adjusted.append(copywell)
             
-        
+        logger.info('plates_adjusted: %r', plates_adjusted)
         for plate in plates_adjusted:
-            plate_log = self.make_child_log(parent_log)
+            plate_log = self.get_plate_resource().make_child_log(parent_log)
             plate_log.key = '/'.join([
-                copy.library.short_name, copy.name, str(plate.plate_number)])
+                copy.library.short_name, plate.copy.name, str(plate.plate_number)])
             plate_log.uri = '/'.join([log.ref_resource_name,log.key])
             new_plate_cplt_screening_count = plate.cplt_screening_count +1
             plate_log.diffs = {
@@ -3932,7 +4036,8 @@ class CopyWellResource(DbApiResource):
             
         return { 
             API_RESULT_META: { 
-                'copywells_adjusted': len(copywells_adjusted),
+                'cpr': cpr.cherry_pick_request_id,
+                'copywells allocated': len(copywells_adjusted),
                 'plates_adjusted': len(plates_adjusted)
              }
          }
@@ -4432,6 +4537,7 @@ class CopyWellResource(DbApiResource):
 #         return wells
 
 class CherryPickRequestResource(DbApiResource):        
+    LCP_COPYWELL_KEY = '{library_short_name}/{source_copy_name}/{source_well_id}'
 
     class Meta:
     
@@ -4513,8 +4619,8 @@ class CherryPickRequestResource(DbApiResource):
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/screener_cherry_pick%s$") 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_screener_cherrypick_view'),
-                name="api_dispatch_screener_cherrypick_view"),
+                self.wrap_view('dispatch_screener_cherry_pick_view'),
+                name="api_dispatch_screener_cherry_pick_view"),
             url((r"^(?P<resource_name>%s)/(?P<cherry_pick_request_id>[\d]+)"
                  r"/screener_cherry_pick/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -4525,8 +4631,8 @@ class CherryPickRequestResource(DbApiResource):
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/lab_cherry_pick%s$") 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_lab_cherrypick_view'),
-                name="api_dispatch_lab_cherrypick_view"),
+                self.wrap_view('dispatch_lab_cherry_pick_view'),
+                name="api_dispatch_lab_cherry_pick_view"),
             url((r"^(?P<resource_name>%s)/(?P<cherry_pick_request_id>[\d]+)"
                  r"/lab_cherry_pick/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -4541,16 +4647,16 @@ class CherryPickRequestResource(DbApiResource):
                 name="api_dispatch_cherry_pick_plate_view"),
             
             url(r"^(?P<resource_name>%s)"
-                r"/(?P<cherry_pick_request_id>[\d]+)/set_lab_cherrypicks%s$" 
+                r"/(?P<cherry_pick_request_id>[\d]+)/set_lab_cherry_picks%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_set_lab_cherrypicks'), 
-                name="api_dispatch_set_lab_cherrypicks"),
+                self.wrap_view('dispatch_set_lab_cherry_picks'), 
+                name="api_dispatch_set_lab_cherry_picks"),
 
             url(r"^(?P<resource_name>%s)"
-                r"/(?P<cherry_pick_request_id>[\d]+)/set_duplex_lab_cherrypicks%s$" 
+                r"/(?P<cherry_pick_request_id>[\d]+)/set_duplex_lab_cherry_picks%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_set_duplex_lab_cherrypicks'), 
-                name="api_dispatch_set_duplex_lab_cherrypicks"),
+                self.wrap_view('dispatch_set_duplex_lab_cherry_picks'), 
+                name="api_dispatch_set_duplex_lab_cherry_picks"),
 
 #             url(r"^(?P<resource_name>%s)"
 #                 r"/(?P<cherry_pick_request_id>[\d]+)/plate_lab_cherrypicks%s$" 
@@ -4559,13 +4665,35 @@ class CherryPickRequestResource(DbApiResource):
 #                 name="api_dispatch_plate_lab_cherrypicks"),
 
             url(r"^(?P<resource_name>%s)"
-                r"/(?P<cherry_pick_request_id>[\d]+)/reserve_map_lab_cherrypicks%s$" 
+                r"/(?P<cherry_pick_request_id>[\d]+)/reserve_map_lab_cherry_picks%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_reserve_map_lab_cherrypicks'), 
-                name="dispatch_reserve_map_lab_cherrypicks"),
-        
-        
+                self.wrap_view('dispatch_reserve_map_lab_cherry_picks'), 
+                name="api_dispatch_reserve_map_lab_cherry_picks"),
+                
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)/cancel_reservation%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_cancel_reservation'), 
+                name="api_dispatch_cancel_reservation"),
+                
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)/delete_lab_cherry_picks%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_delete_lab_cherry_picks'), 
+                name="api_delete_lab_cherry_picks"),
+                
         ]
+    
+#     def make_log(self, request, **kwargs):
+#         log = DbApiResource.make_log(self, request, **kwargs)
+#         log.ref_resource_name = self._meta.resource_name
+#         log.key = kwargs.get('cherry_pick_request_id', None)
+#         cpr = CherryPickRequest.objects.get(pk=log.key)
+#         log.uri = '/'.join([
+#             'screen',cpr.screen.facility_id,log.ref_resource_name,log.key])
+#         logger.info('make cpr log: %r', log)
+#         return log;
+        
     def get_scp_schema(self, request, **kwargs):
         return self.get_screenercherrypick_resource().get_schema(request, **kwargs)    
 
@@ -4573,11 +4701,11 @@ class CherryPickRequestResource(DbApiResource):
         return self.get_labcherrypick_resource().get_schema(request, **kwargs)    
         
     @read_authorization
-    def dispatch_screener_cherrypick_view(self, request, **kwargs):
+    def dispatch_screener_cherry_pick_view(self, request, **kwargs):
         return self.get_screenercherrypick_resource().dispatch('list', request, **kwargs)
     
     @read_authorization
-    def dispatch_lab_cherrypick_view(self, request, **kwargs):
+    def dispatch_lab_cherry_pick_view(self, request, **kwargs):
         return self.get_labcherrypick_resource().dispatch('list', request, **kwargs)    
 
     def dispatch_cherry_pick_plate_view(self, request, **kwargs):
@@ -4625,6 +4753,7 @@ class CherryPickRequestResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             manual_field_includes.add('has_pool_screener_cherry_picks')
+            manual_field_includes.add('has_alternate_screener_cherry_pick_selections')
             
             (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
@@ -4651,7 +4780,7 @@ class CherryPickRequestResource(DbApiResource):
             _su = self.bridge['screensaver_user']
             _lhsu = _su.alias('lhsu')
             _user_cte = ScreensaverUserResource.get_user_cte().cte('users_cpr')
-            _screener_cherry_pick = self.bridge['screener_cherry_pick']
+            _scp = self.bridge['screener_cherry_pick']
             _sirna_pool_duplexes = self.bridge['silencing_reagent_duplex_wells']
             _well = self.bridge['well']
             _library = self.bridge['library']
@@ -4703,28 +4832,39 @@ class CherryPickRequestResource(DbApiResource):
                         func.array_agg(literal_column('screened_well_id')), 
                         LIST_DELIMITER_SQL_ARRAY) ])
                     .select_from(
-                        select([_screener_cherry_pick.c.screened_well_id])
-                            .select_from(_screener_cherry_pick)
-                            .where(_screener_cherry_pick.c.cherry_pick_request_id
+                        select([_scp.c.screened_well_id])
+                            .select_from(_scp)
+                            # NOTE: when doing an inner select, must use literal_column,
+                            # otherwise SQalchemy thinks it is another table to add
+                            .where(_scp.c.cherry_pick_request_id
                                 ==literal_column('cherry_pick_request.cherry_pick_request_id'))
+                            .where(_scp.c.selected)
                             .order_by('screened_well_id').alias('inner_cpwells'))
                         ),
                 'screener_cherry_pick_count': (
                     select([func.count(None)])
-                        .select_from(_screener_cherry_pick)
-                        .where(_screener_cherry_pick.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id)),
+                        .select_from(_scp)
+                        .where(_scp.c.cherry_pick_request_id
+                            ==_cpr.c.cherry_pick_request_id)
+                        .where(_scp.c.selected)),
                 'has_pool_screener_cherry_picks': (
                     select([func.count(None)>0])
                         .select_from(
-                            _screener_cherry_pick.join(
+                            _scp.join(
                                 _well, 
-                                _screener_cherry_pick.c.screened_well_id
+                                _scp.c.screened_well_id
                                     ==_well.c.well_id)
                             .join(_library, _well.c.library_id==_library.c.library_id))
                         .where(_library.c.is_pool==True)
-                        .where(_screener_cherry_pick.c.cherry_pick_request_id
+                        .where(_scp.c.cherry_pick_request_id
                             ==_cpr.c.cherry_pick_request_id).limit(1)),
+                'has_alternate_screener_cherry_pick_selections': (
+                    select([func.count(None)>0])
+                        .select_from(_scp)
+                        .where(_scp.c.cherry_pick_request_id
+                            ==_cpr.c.cherry_pick_request_id)
+                        .where(_scp.c.searched_well_id==_scp.c.screened_well_id)
+                    )
             }
             
             columns = self.build_sqlalchemy_columns(
@@ -4793,8 +4933,8 @@ class CherryPickRequestResource(DbApiResource):
         return DbApiResource.post_detail(self, request, **kwargs)
 
     @write_authorization
-    @un_cache  
     @transaction.atomic      
+    @un_cache  
     def patch_detail(self, request, **kwargs):
         '''
         Override to generate informational summary for callee
@@ -4833,13 +4973,18 @@ class CherryPickRequestResource(DbApiResource):
 
         # get new state, for logging
         new_data = self._get_detail_response(request,**kwargs_for_log)
+        logger.debug('original: %r, new: %r', original_data, new_data)
         log = self.log_patch(
-            request, original_data,new_data,log=log, **kwargs_for_log)
+            request, original_data,new_data,log=log,
+            excludes=['screener_cherry_picks'],
+            **kwargs_for_log)
         # Set the log URI using the containing screen URI
-        log.uri = '/'.join([
-            'screen',new_data['screen_facility_id'],log.ref_resource_name,log.key])
-        log.save()
-
+        if log:
+            log.uri = '/'.join([
+                'screen',new_data['screen_facility_id'],log.ref_resource_name,log.key])
+            log.save()
+            logger.debug('log info: %r, %r', log, log.diffs )
+        
         meta = { API_MSG_RESULT: 'success' }
         if API_MSG_RESULT in patch_response:
             meta = { API_MSG_RESULT: patch_response[API_MSG_RESULT] }
@@ -4848,8 +4993,8 @@ class CherryPickRequestResource(DbApiResource):
             
     
     @write_authorization
-    @un_cache
     @transaction.atomic
+    @un_cache
     def patch_obj(self, request, deserialized, **kwargs):
         
 
@@ -4991,6 +5136,28 @@ class CherryPickRequestResource(DbApiResource):
                 cpr.save()
                 
             if 'screener_cherry_picks' in deserialized:
+                plated_assay_plates_query = \
+                    cpr.cherry_pick_assay_plates.filter(
+                        plating_activity_date__isnull=False)                
+                if plated_assay_plates_query.exists():
+                    raise ValidationError({
+                        'plating_activity_date': 
+                            ('Screener cherry picks may not be reassigned after plating'),
+                        API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+                        API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+                })
+                
+                if cpr.lab_cherry_picks.exists():
+                    raise ValidationError({
+                        'total_number_lcps': 
+                            ('Lab cherry picks already assigned: (%d); '
+                            'delete lab cherry picks to change '
+                            'screener cherry pick selections' 
+                            % cpr.lab_cherry_picks.count()),
+                        API_MSG_LCPS_CREATED: cpr.lab_cherry_picks.count()
+                    })
+                
+                
                 raw_screener_cps = deserialized['screener_cherry_picks']
                 if len(raw_screener_cps) == 0:
                     logger.info('removing screener_cherry_picks')
@@ -5025,98 +5192,7 @@ class CherryPickRequestResource(DbApiResource):
 #                                 source_well=well,
 #                                 screener_cherry_pick=screener_cherry_pick)
             
-                    
-            if 'lcp_selection_updates' in deserialized:
-                self.validate_cpr_for_plating(cpr) 
-                raw_lcp_selection_updates = deserialized['lcp_selection_updates']
-                logger.info('raw_lcp_selection_updates: %r', raw_lcp_selection_updates)
-                if len(raw_lcp_selection_updates) == 0:
-                    pass
-                else:
-                    if not cpr.lab_cherry_picks.all().exists():
-                        raise ValidationError(
-                            key='lcp_selection_updates', 
-                            msg='No Lab Cherry Picks have been created')
-                    
-                # FIXME SECTION ==================                   
-                if cpr.lab_cherry_picks.filter(cherry_pick_assay_plate__isnull=False).exists():
-                    reassign_plates = parse_val(
-                        param_hash.get(API_PARAM_PLATE_MAPPING_OVERRIDE, False),
-                        API_PARAM_PLATE_MAPPING_OVERRIDE, 'boolean')
-                    if reassign_plates is not True:
-                        raise ValidationError(
-                            key='number_plates', 
-                            msg=(
-                                'Lab cherry pick plates already assigned'
-                                'requires "%s"' % API_PARAM_PLATE_MAPPING_OVERRIDE))
-        
-                        # de-allocate copy volumes:
-                        lab_cherry_picks_to_deallocate = (
-                            cpr.lab_cherry_picks
-                                .filter(cherry_pick_assay_plate__isnull=False)
-                                .order_by('copy__name','source_well__plate_number') )
-        
-                        copywell_deallocation_meta = \
-                            self.get_copywell_resource().deallocate_cherry_pick_volumes(
-                                cpr, lab_cherry_picks_to_plate, parent_log)
-                    
-                    else:
-        
-                        cpap_query = CherryPickAssayPlate.objects.filter(cherry_pick_request=cpr)
-                        previous_number_of_plates = cpap_query.count()
-                        logger.info('delete previous CPR plate assignments: %d', previous_number_of_plates)
-                        status_messages.append('Previous plate mapping overwritten, plates: %d', 
-                            previous_number_of_plates)
-                        cpap_query.delete()
-                        query = cpr.lab_cherry_picks.filter(cherry_pick_assay_plate__isnull=False)
-                        query.update(cherry_pick_assay_plate=None)
-                        query.update(assay_plate_row=None)
-                        query.update(assay_plate_column=None)
-                        # TODO: 
-                        # submit a copy well adjustment job, with logging, to reallocate volumes
 
-                # END FIXME SECTION ==================                   
-
-
-                changed = []
-                deselected = []
-                selected = []
-                for selected_well_id,copy_id in raw_lcp_selection_updates.items():
-                    logger.info('consider lcp selection update: %r: %r',
-                        selected_well_id, copy_id)
-                    lcp = cpr.lab_cherry_picks.all().filter(
-                        source_well_id=selected_well_id)
-                    if not lcp.exists():
-                        raise ValidationError(
-                            key='lcp_selection_updates',
-                            msg='Unknown lab cherry pick: %r' % selected_well_id)
-                    if lcp.count() > 1:
-                        raise BadRequest(
-                            'More than one lab cherry pick found for source well: %r', 
-                            selected_well_id)
-                    lcp = lcp[0]
-                    if copy_id is not None:
-                        copy = Copy.objects.get(copy_id=copy_id)
-                        logger.info('updated lcp: %r, copy: %r to copy: %r',
-                            lcp,lcp.copy,copy)
-                        if lcp.copy is not None:
-                            changed.append(
-                                '%s changed from %s to %s'
-                                % (selected_well_id,lcp.copy.name, copy.name))
-                        else:
-                            selected.append('%s set to %s' 
-                                % (selected_well_id, copy.name))
-                        lcp.copy = copy
-                        lcp.save()
-                    else:
-                        logger.info('remove copy: %r from lcp: %r', lcp.copy, lcp)
-                        deselected.append('%s, deselected: %s'
-                            % (selected_well_id, lcp.copy.name))
-                        lcp.copy = None
-                        lcp.save()
-                    result_msg['Changed'] = changed
-                    result_msg['Selected'] = selected
-                    result_msg['Deselected'] = deselected
                             
             response = { API_RESULT_OBJ: cpr, API_MSG_RESULT: {} }
             if final_warn_msg:
@@ -5144,12 +5220,11 @@ class CherryPickRequestResource(DbApiResource):
         logger.info('find wells for patterns: %r', cherry_pick_well_patterns)
         if not isinstance(cherry_pick_well_patterns, (list,tuple)):
             cherry_pick_well_patterns = (cherry_pick_well_patterns,)
+
+        PLATE_PATTERN = re.compile(r'^(\d{1,5})$')
         wells = []
-        
         errors = []
         warnings = []
-        
-        PLATE_PATTERN = re.compile(r'^(\d{1,5})$')
         
         # Process the patterns by line
         for _line in cherry_pick_well_patterns:
@@ -5248,14 +5323,8 @@ class CherryPickRequestResource(DbApiResource):
     
     @write_authorization
     @transaction.atomic
-    def dispatch_plate_lab_cherrypicks(self, request, **kwargs):
-        pass
-    
-    @write_authorization
-    @transaction.atomic
     @un_cache
-    def dispatch_reserve_map_lab_cherrypicks(self, request, **kwargs):
-        logger.info('dispatch_reserve_map_lab_cherrypicks...')
+    def dispatch_reserve_map_lab_cherry_picks(self, request, **kwargs):
         
         request_method = request.method.lower()
         if request_method != 'post':
@@ -5264,18 +5333,21 @@ class CherryPickRequestResource(DbApiResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        
         cherry_pick_request_id = param_hash['cherry_pick_request_id']
         logger.info(
-            'dispatch_plate_lab_cherrypicks for: %r...', cherry_pick_request_id)
-         
-        schema = super(CherryPickRequestResource, self).build_schema()
-         
+            'dispatch_reserve_map_lab_cherry_picks for: %r...', 
+            cherry_pick_request_id)
+        # schema = super(CherryPickRequestResource, self).build_schema()
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cherry_pick_request_id)
+        if not cpr.lab_cherry_picks.filter(copy__isnull=False).exists():
+            raise ValidationError(
+                key='total_number_lcps', 
+                msg='No (fulfilled) Lab Cherry Picks have been created')
+        
+        
         self.validate_cpr_for_plating(cpr) 
         
-        # Create log
         parent_log = self.make_log(request)
         parent_log.key = str(cpr.cherry_pick_request_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
@@ -5283,37 +5355,34 @@ class CherryPickRequestResource(DbApiResource):
         
         previous_date_reserved = cpr.date_volume_reserved
         cpr.date_volume_reserved = _now().date() 
+        cpr.save()
         parent_log.diffs = {
             'date_volume_reserved': [previous_date_reserved, cpr.date_volume_reserved ]}
-        
-        # question: what is the mapping attribute? 
-        # - # reserved lcps?
-        # - # mapped lcps?
-        
-#         if cpr.cherrypickassayplate_set.exists():
-#             # find the last plating activity
-#             log_query = (
-#                 ApiLog.objects.filter(
-#                     ref_resource_name = parent_log.ref_resource_name,
-#                     key = parent_log.key,
-#                     logdiff__field_key='plating_activity_date')
-#                 .order_by('-date_time')
-#             if not log_query.exists():
-#                 logger.warn('unable to find the previous plating activity log')
-                
-        cpr.save()
         
         status_messages = []
         copywell_deallocation_meta = None
         previous_number_of_plates = None           
         
         logger.info('check for previous plating assignments...')
-        if cpr.lab_cherry_picks.filter(cherry_pick_assay_plate__isnull=False).exists():
-            raise ValidationError(
-                key='number_plates', 
-                msg=(
-                    'Lab cherry pick plates already assigned'
-                    'requires "%s"' % API_PARAM_PLATE_MAPPING_OVERRIDE))
+        allocated_lcps_query = cpr.lab_cherry_picks.filter(
+            cherry_pick_assay_plate__isnull=False)
+        if allocated_lcps_query.exists():
+            plated_assay_plates_query = \
+                cpr.cherry_pick_assay_plates.filter(
+                    plating_activity_date__isnull=False)                
+            if plated_assay_plates_query.exists():
+                raise ValidationError({
+                    'plating_activity_date': 
+                        ('Lab Cherry Picks may not be reassigned after plating'),
+                    API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+                    API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+            })
+            raise ValidationError({
+                'number_plates': 
+                    ('Lab cherry pick plates already assigned; '
+                    'reservation must be canceled before reassignment is allowed'),
+                API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
+            })
         
         plate_size = cpr.assay_plate_size
         # Get the plate size
@@ -5341,25 +5410,42 @@ class CherryPickRequestResource(DbApiResource):
         for lcp in lab_cherry_picks_to_plate:
             
             lcp_cw = lab_cherry_pick_copywells[lcp.source_well_id]
-            logger.debug('consider lcp_cw: %r', lcp_cw)
-            if ( Decimal(lcp_cw['source_copy_well_volume'])
-                < cpr.transfer_volume_per_well_approved ):
-                unfulfillable_wells.append(lcp.source_well_id)
+            copywell_name = self.LCP_COPYWELL_KEY.format(**lcp_cw)
+            lcp_scwv = Decimal(lcp_cw['source_copy_well_volume'])
+            logger.debug('consider lcp_cw: %r, %r to %r', 
+                copywell_name, lcp_scwv, cpr.transfer_volume_per_well_approved)
+            if ( lcp_scwv < cpr.transfer_volume_per_well_approved ):
+                unfulfillable_wells.append(copywell_name)
         if unfulfillable_wells and override_well_volume is not True:
-            raise ValidationError(
-                key='transfer_volume_per_well_approved',
-                msg='insufficient volume: %r, "%s" required' 
-                    % (unfulfillable_wells, API_PARAM_VOLUME_OVERRIDE))
+            raise ValidationError({
+                'transfer_volume_per_well_approved':
+                    '%s: %r, "%s" required' 
+                        % (API_MSG_LCPS_INSUFFICIENT_VOLUME, 
+                           unfulfillable_wells, API_PARAM_VOLUME_OVERRIDE),
+                API_MSG_LCPS_INSUFFICIENT_VOLUME: unfulfillable_wells,
+                API_PARAM_VOLUME_OVERRIDE: 'required',
+                
+            })
         elif unfulfillable_wells:
-            status_messages.append(
+            logger.info(
                 'Override: unfulfillable wells: %r' % unfulfillable_wells)
-
+        else:
+            logger.info('all wells are fulfillable')
         logger.info('Reserve copy volumes...')
         copywell_reservation_meta = \
             self.get_copywell_resource().reserve_cherry_pick_volumes(
                 cpr, lab_cherry_picks_to_plate, parent_log)
         
-        logger.info('Create the assay_plates...')            
+        logger.info('Create the assay_plates...')  
+        
+        # FIXME: cpr.keep_source_plate_cherry_picks_together:
+        # - no need to "pack" bins, just iterate through lcps, by copy-plate
+        
+        # cpr.is_randomized_assay_plate_layout
+        # - if true, randomize the plate layout wells
+        if cpr.is_randomized_assay_plate_layout:
+            available_assay_plate_wells = random.shuffle(available_assay_plate_wells)
+                  
         next_plate_ordinal = [0]
         def create_next_assay_plate():
             assay_plate = CherryPickAssayPlate.objects.create(
@@ -5395,9 +5481,10 @@ class CherryPickRequestResource(DbApiResource):
         for packed_bin in packed_bins:
             if packed_bin not in ordered_bins:
                 ordered_bins.append(packed_bin)
-                partially_packed_copy_plate = [copy_plate 
-                    for package in packed_bin
-                        if len(lcp_by_copy_plate[package['name']]) > package['size'] ]
+                partially_packed_copy_plate = [
+                    copy_plate 
+                        for package in packed_bin
+                            if len(lcp_by_copy_plate[package['name']]) > package['size'] ]
                 if len(partially_packed_copy_plate) > 1:
                     raise ProgrammingError(
                         'Packed bins should not contain more than one '
@@ -5421,7 +5508,7 @@ class CherryPickRequestResource(DbApiResource):
                 size = package['size']
                 copy_plate_lcps = lcp_by_copy_plate[copy_plate]
                 lcps = copy_plate_lcps[:size]
-                lcp_by_copy_plate[copy_plate] = copy_plate_lcps[size:]
+                lcp_by_copy_plate[copy_plate] = lcps
                 
                 for lcp in lcps:
                     lcp.cherry_pick_assay_plate = assay_plate
@@ -5430,7 +5517,6 @@ class CherryPickRequestResource(DbApiResource):
                     lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
                     assay_plate_well_index += 1
                     lcp.save()
-        logger.info('Cherry Pick Plates created: %d', len(lcp_by_copy_plate))
         # verify that all lcps have been assigned
         for copy_plate, lcps in lcp_by_copy_plate.items():
             for lcp in lcps:
@@ -5445,34 +5531,275 @@ class CherryPickRequestResource(DbApiResource):
         parent_log.save()
         
         # return some stats
+        cpap_assignments = [ 
+            (ap.cherry_pick_assay_plate_id, ap.labcherrypick_set.all().count()) 
+               for ap in assay_plates_created ]
         
-        meta = { 
-            API_MSG_RESULT: 'copy_plate_picks assigned: %r' 
-                % [(copy_name, len(lcps)) 
-                    for copy_name,lcps in lcp_by_copy_plate.items() ]}
-        
-        meta.update(copywell_reservation_meta[API_RESULT_META])
-        
-#         if copywell_deallocation_meta:
-#             meta.update(copywell_deallocation_meta[API_RESULT_META])
+        _meta = {
+            API_MSG_LCP_PLATES_ASSIGNED: [(copy_name, len(lcps)) 
+                for copy_name,lcps in lcp_by_copy_plate.items() ],
+            API_MSG_LCP_ASSAY_PLATES_CREATED: cpap_assignments
+        }
+        _meta.update(copywell_reservation_meta[API_RESULT_META])
+        if unfulfillable_wells:
+            _meta[API_MSG_LCPS_VOLUME_OVERRIDDEN] = unfulfillable_wells
         
         return self.build_response(
-            request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
-        
+            request, { API_RESULT_META: _meta }, 
+            response_class=HttpResponse, **kwargs)
     
     @write_authorization
     @transaction.atomic
     @un_cache
-    def dispatch_set_duplex_lab_cherrypicks(self, request, **kwargs):
+    def dispatch_delete_lab_cherry_picks(self, request, **kwargs):
+        
+        request_method = request.method.lower()
+        if request_method != 'post':
+            raise BadRequest('Only POST is allowed')
+        convert_post_to_put(request)
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        cpr_id = param_hash['cherry_pick_request_id']
+        logger.info('dispatch_cancel_reservation: %r', cpr_id) 
+        schema = super(CherryPickRequestResource, self).build_schema()
+         
+        cpr = CherryPickRequest.objects.get(
+            cherry_pick_request_id=cpr_id)
+        lcp_query = cpr.lab_cherry_picks.all() 
+        if lcp_query.exists():
+            allocated_lcp_query = lcp_query.filter(cherry_pick_assay_plate__isnull=False)
+            if allocated_lcp_query.exists():
+                plated_assay_plates_query = \
+                    cpr.cherry_pick_assay_plates.filter(
+                        plating_activity_date__isnull=False)                
+                if plated_assay_plates_query.exists():
+                    raise ValidationError({
+                        'plating_activity_date': 
+                            ('Lab Cherry Picks may not be deleted after plating'),
+                        API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+                        API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+                })
+                raise ValidationError({
+                    'number_plates': 
+                        ('Lab cherry pick plates already assigned; '
+                        'cancel reservation to deallocate plates'),
+                    API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
+                })
+
+            original_cpr = self._get_detail_response_internal(**{
+                'cherry_pick_request_id': cpr_id })
+            parent_log = self.make_log(request)
+            parent_log.key = str(cpr_id)
+            parent_log.uri = '/'.join([
+                'screen',cpr.screen.facility_id,
+                parent_log.ref_resource_name,parent_log.key])        
+            parent_log.comment = API_MSG_LCPS_REMOVED
+            
+            meta = {}
+            meta[API_MSG_LCPS_REMOVED] = cpr.lab_cherry_picks.all().count()
+            cpr.lab_cherry_picks.all().delete()
+    
+            new_cpr = self._get_detail_response_internal(**{
+                'cherry_pick_request_id': cpr_id })
+            parent_log = self.log_patch(
+                request, original_cpr, new_cpr, parent_log, 
+                excludes=['screener_cherry_picks'])
+            parent_log.save()
+            
+            return self.build_response(
+                request,  {API_RESULT_META: meta }, 
+                response_class=HttpResponse, **kwargs)
+    
+        # Empty response if no action taken
+        return HttpRequest
+
+    @write_authorization
+    @transaction.atomic
+    @un_cache
+    def dispatch_cancel_reservation(self, request, **kwargs):
+        
+        request_method = request.method.lower()
+        if request_method != 'post':
+            raise BadRequest('Only POST is allowed')
+        convert_post_to_put(request)
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        cpr_id = param_hash['cherry_pick_request_id']
+        logger.info('dispatch_cancel_reservation: %r', cpr_id) 
+        schema = super(CherryPickRequestResource, self).build_schema()
+         
+        cpr = CherryPickRequest.objects.get(
+            cherry_pick_request_id=cpr_id)
+        lcp_query = cpr.lab_cherry_picks.all() 
+        if lcp_query.exists():
+            allocated_lcp_query = lcp_query.filter(cherry_pick_assay_plate__isnull=False)
+            if allocated_lcp_query.exists():
+           
+                original_cpr = self._get_detail_response_internal(**{
+                    'cherry_pick_request_id': cpr_id })
+                parent_log = self.make_log(request)
+                parent_log.key = str(cpr_id)
+                parent_log.uri = '/'.join([
+                    'screen',cpr.screen.facility_id,
+                    parent_log.ref_resource_name,parent_log.key])        
+        
+                meta = self._cancel_reservation(cpr, parent_log)
+
+                new_cpr = self._get_detail_response_internal(**{
+                    'cherry_pick_request_id': cpr_id })
+                parent_log = self.log_patch(
+                    request, original_cpr, new_cpr, parent_log, 
+                    excludes=['screener_cherry_picks'])
+                parent_log.save()
+                
+                return self.build_response(
+                    request,  {API_RESULT_META: meta }, 
+                    response_class=HttpResponse, **kwargs)
+    
+        # Empty response if no action taken
+        return HttpRequest
+    
+    def _cancel_reservation(self, cpr, parent_log):
+        logger.info(
+            '_cancel_reservation for: %r...', cpr)
+        
+        cpr_id = cpr.cherry_pick_request_id 
+        meta = {}    
+        
+        if not cpr.screener_cherry_picks.filter(selected=True).exists():
+            logger.warn('No screener cherry picks found for %r', cpr)
+
+        lcp_query = cpr.lab_cherry_picks.all() 
+        if lcp_query.exists():
+            allocated_lcp_query = lcp_query.filter(cherry_pick_assay_plate__isnull=False)
+            if allocated_lcp_query.exists():
+                if cpr.cherry_pick_assay_plates.filter(
+                    plating_activity_date__isnull=False).exists():
+                    raise ValidationError({
+                        'plating_activity_date': 
+                            ('Lab Cherry Picks may not be reassigned after plating'),
+                    })
+                lab_cherry_picks_to_deallocate = (
+                    cpr.lab_cherry_picks
+                        .filter(cherry_pick_assay_plate__isnull=False)
+                        .order_by('copy__name','source_well__plate_number') )
+                logger.info('lcps to deallocate: %r', 
+                    [str(lcp.source_well) for lcp in lab_cherry_picks_to_deallocate])
+                parent_log.comment = API_MSG_PLATING_CANCELED
+                parent_log.save()
+                result_meta = \
+                    self.get_copywell_resource().deallocate_cherry_pick_volumes(
+                        cpr, lab_cherry_picks_to_deallocate, parent_log)
+                meta.update(result_meta)
+                
+                cpr.date_volume_reserved = None
+                cpr.save()
+
+                logger.info('removing previous cherry pick assay plates for: %r, %d', 
+                    cpr, cpr.cherry_pick_assay_plates.count())
+                meta[API_MSG_CPR_ASSAY_PLATES_REMOVED] = \
+                    cpr.cherry_pick_assay_plates.count()
+                cpr.cherry_pick_assay_plates.all().delete()
+                logger.info('cpr.lab_cherry_picks after assay plate delete: %r', 
+                    [str(lcp) for lcp in cpr.lab_cherry_picks.all()])
+            else:
+                logger.warn('No assay plates to cancel for %r', cpr)
+        else:
+            logger.warn('No lab cherry picks to cancel for %r', cpr)
+        
+        return meta
+    
+    @write_authorization
+    @transaction.atomic
+    @un_cache
+    def dispatch_set_duplex_lab_cherry_picks(self, request, **kwargs):
         raise NotImplementedError('todo')
         pass
     
     
+#     @write_authorization
+#     @transaction.atomic
+#     @un_cache
+#     def dispatch_set_screener_cherrypicks(self, request, **kwargs):
+#         logger.info('dispatch_set_screener_cherrypicks')
+#         
+#         request_method = request.method.lower()
+#         if request_method != 'post':
+#             raise BadRequest('Only POST is allowed')
+#         convert_post_to_put(request)
+# 
+#         param_hash = self._convert_request_to_dict(request)
+#         param_hash.update(kwargs)
+#          
+#         cpr_id = param_hash['cherry_pick_request_id']
+#         logger.info(
+#             'dispatch_set_lab_cherry_picks for: %r...', cpr_id)
+#          
+#         schema = super(CherryPickRequestResource, self).build_schema()
+#          
+#         cpr = CherryPickRequest.objects.get(
+#             cherry_pick_request_id=cpr_id)
+#         if not cpr.screener_cherry_picks.filter(selected=True).exists():
+#             raise ValidationError(
+#                 key='screener_cherry_picks', 
+#                 msg='No Screener Cherry Picks have been submitted')
+#         
+#         original_cpr = self._get_detail_response_internal(**{
+#             'cherry_pick_request_id': cpr_id })
+#         
+#         meta = {}    
+#     
+#                 plated_assay_plates_query = \
+#                     cpr.cherry_pick_assay_plates.filter(
+#                         plating_activity_date__isnull=False)                
+#                 if plated_assay_plates_query.exists():
+#                     raise ValidationError({
+#                         'plating_activity_date': 
+#                             ('Screener cherry picks may not be reassigned after plating'),
+#                         API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+#                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+#                 })
+#                 
+#                 if cpr.lab_cherry_picks.exists():
+#                     raise ValidationError({
+#                         'total_number_lcps': 
+#                             ('Lab cherry picks already assigned: (%d); '
+#                             'delete lab cherry picks to change '
+#                             'screener cherry pick selections' 
+#                             % cpr.lab_cherry_picks.count()),
+#                         API_MSG_LCPS_CREATED: cpr.lab_cherry_picks.count()
+#                     })
+#                 
+#                 
+#                 raw_screener_cps = deserialized['screener_cherry_picks']
+#                 if len(raw_screener_cps) == 0:
+#                     logger.info('removing screener_cherry_picks')
+#                     # FIXME: remove lab_cherry_picks, iif:
+#                     # - not plated
+#                     # - replace allocate well volumes
+#                     # - create a log for the action
+#                     warn_msg = 'Deleted %d Screener Cherry Picks' % cpr.screener_cherry_picks.all().count()
+#                     cpr.screener_cherry_picks.all().delete()
+#                     cpr.save()
+#                 else:
+#                     (cherry_pick_wells, warn_msg) = self.find_wells(raw_screener_cps)
+#                     final_warn_msg.extend(warn_msg)
+#                     logger.info(
+#                         'found screener_cherry_picks: %d', len(cherry_pick_wells))
+#                     for well in cherry_pick_wells:
+#                         screener_cherry_pick = ScreenerCherryPick.objects.create(
+#                             cherry_pick_request=cpr,
+#                             screened_well=well,
+#                             searched_well=well,
+#                             selected=True)
+    
     @write_authorization
     @transaction.atomic
     @un_cache
-    def dispatch_set_lab_cherrypicks(self, request, **kwargs):
-        logger.info('dispatch_set_lab_cherrypicks')
+    def dispatch_set_lab_cherry_picks(self, request, **kwargs):
+        logger.info('dispatch_set_lab_cherry_picks')
         request_method = request.method.lower()
         if request_method != 'post':
             raise BadRequest('Only POST is allowed')
@@ -5481,48 +5808,90 @@ class CherryPickRequestResource(DbApiResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
          
-        cherry_pick_request_id = param_hash['cherry_pick_request_id']
+        cpr_id = param_hash['cherry_pick_request_id']
         logger.info(
-            'dispatch_set_lab_cherrypicks for: %r...', cherry_pick_request_id)
+            'dispatch_set_lab_cherry_picks for: %r...', cpr_id)
          
         schema = super(CherryPickRequestResource, self).build_schema()
          
         cpr = CherryPickRequest.objects.get(
-            cherry_pick_request_id=cherry_pick_request_id)
-         
+            cherry_pick_request_id=cpr_id)
         if not cpr.screener_cherry_picks.filter(selected=True).exists():
             raise ValidationError(
                 key='screener_cherry_picks', 
                 msg='No Screener Cherry Picks have been submitted')
         
+        original_cpr = self._get_detail_response_internal(**{
+            'cherry_pick_request_id': cpr_id })
+        
         meta = {}    
-        if cpr.lab_cherry_picks.all().exists():
-            logger.info('removing previous lab cherry picks')
+        
+        parent_log = self.make_log(request)
+        parent_log.key = str(cpr_id)
+        parent_log.uri = '/'.join([
+            'screen',cpr.screen.facility_id,
+            parent_log.ref_resource_name,parent_log.key])        
+#         parent_log.save()
+        
+        lcp_query = cpr.lab_cherry_picks.all() 
+        if lcp_query.exists():
+            if cpr.lab_cherry_picks.exists():
+                raise ValidationError({
+                    'total_number_lcps': 
+                        ('Lab cherry picks already assigned: (%d); '
+                        'delete lab cherry picks to change '
+                        'screener cherry pick selections' 
+                        % cpr.lab_cherry_picks.count()),
+                    API_MSG_LCPS_CREATED: cpr.lab_cherry_picks.count()
+                })
             
-            # TODO: disallow if plated
+#             allocated_lcp_query = lcp_query.filter(cherry_pick_assay_plate__isnull=False)
+#             if allocated_lcp_query.exists():
+#                 plated_assay_plates_query = \
+#                     cpr.cherry_pick_assay_plates.filter(
+#                         plating_activity_date__isnull=False)                
+#                 if plated_assay_plates_query.exists():
+#                     raise ValidationError({
+#                         'plating_activity_date': 
+#                             ('Lab Cherry Picks may not be reassigned after plating'),
+#                         API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+#                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+#                 })
+#                 raise ValidationError({
+#                     'number_plates': 
+#                         ('Lab cherry pick plates already assigned; '
+#                         'cancel reservation to deallocate plates'),
+#                     API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
+#                 })
+#             logger.info('removing previous lab cherry picks for %r, %d', 
+#                 cpr, cpr.lab_cherry_picks.all().count())
+#             meta[API_MSG_LCPS_REMOVED] = cpr.lab_cherry_picks.all().count()
+#             cpr.lab_cherry_picks.all().delete()
+#         
+#         logger.info('meta: %r', meta)
             
-            # TODO: de-allocate if allocated
-            
-            
-            meta[API_MSG_WARNING] = 'removed %d previous lab cherry picks' \
-                % cpr.lab_cherry_picks.all().count()
-            cpr.lab_cherry_picks.all().delete()
-            
+        lcps_created = []
         for scp in cpr.screener_cherry_picks.filter(selected=True):
            lab_cherry_pick = LabCherryPick.objects.create(
                 cherry_pick_request=cpr,
                 source_well=scp.screened_well,
                 screener_cherry_pick=scp)
-        
+           lcps_created.append(lab_cherry_pick)
+        self.get_labcherrypick_resource().clear_cache()
+        meta[API_MSG_LCPS_CREATED] = len(lcps_created)
         # TODO: better message handling
         meta_action = self._find_copies(cpr)
-        if API_MSG_WARNING in meta_action:
-            new_meta = meta_action
-            new_meta[API_MSG_WARNING] = [meta[API_MSG_WARNING],meta_action[API_MSG_WARNING]]
-            meta.update(new_meta)
-        else:
-            meta = meta.update(meta_action)
-           
+        if meta_action:
+            meta.update(meta_action)
+        
+        new_cpr = self._get_detail_response_internal(**{
+            'cherry_pick_request_id': cpr_id })
+        self.log_patch(request, original_cpr, new_cpr, parent_log, 
+            excludes=['screener_cherry_picks'])
+        parent_log.json_field = meta
+        parent_log.save()
+        logger.info('set_lab_cherry_picks: log: %r, %r', parent_log, parent_log.diffs)
+        
         return self.build_response(
             request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
 
@@ -5541,7 +5910,7 @@ class CherryPickRequestResource(DbApiResource):
             self.get_labcherrypick_resource()._get_list_response_internal(
                 **{
                     'cherry_pick_request_id': cpr.cherry_pick_request_id,
-                    'show_copy_wells': True,
+                    API_PARAM_SHOW_COPY_WELLS: True,
                     'source_copy_well_volume__gte': cpr.transfer_volume_per_well_approved, 
                     'includes': '*'
                 })
@@ -5614,7 +5983,7 @@ class CherryPickRequestResource(DbApiResource):
                 API_MSG_LCPS_ASSIGNED: lcp_assigned_count,
                 API_MSG_LCPS_UNFULFILLED: (total_count-lcp_assigned_count)
             }
-            meta[API_MSG_RESULT] = meta
+#             meta[API_MSG_RESULT] = meta
         return meta
 
     def _get_minimal_copy_set(self,copy_set, pick_copy_sets ):
@@ -5664,6 +6033,7 @@ class ScreenerCherryPickResource(DbApiResource):
         super(ScreenerCherryPickResource, self).__init__(**kwargs)
         self.sr_resource = None
         self.reagent_resource = None
+        self.cpr_resource = None
         
     def get_sr_resource(self):
         if self.sr_resource is None:
@@ -5674,6 +6044,11 @@ class ScreenerCherryPickResource(DbApiResource):
         if self.reagent_resource is None:
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
+    
+    def get_cpr_resource(self):
+        if self.cpr_resource is None:
+            self.cpr_resource = CherryPickRequestResource()
+        return self.cpr_resource
     
     def prepend_urls(self):
         
@@ -5697,8 +6072,8 @@ class ScreenerCherryPickResource(DbApiResource):
     
 
     @write_authorization
-    @un_cache        
     @transaction.atomic
+    @un_cache        
     def patch_list(self, request, **kwargs):
         '''
         Allow patch list for changing selections only 
@@ -5714,39 +6089,33 @@ class ScreenerCherryPickResource(DbApiResource):
         logger.info(
             'patch_list: cpr: %r, screen: %r...', cpr, cpr.screen.facility_id)
          
+        if cpr.lab_cherry_picks.exists():
+            raise ValidationError({
+                'total_number_lcps': 
+                    ('Lab cherry picks already assigned: (%d); '
+                    'delete lab cherry picks to change '
+                    'screener cherry pick selections' 
+                    % cpr.lab_cherry_picks.count()),
+                API_MSG_LCPS_CREATED: cpr.lab_cherry_picks.count()
+            })
+            
         deserialized = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
-#         kwargs_for_log = kwargs.copy()
-#         for id_field in id_attribute:
-#             ids = set()
-#             # Test for each id key; it's ok on create for ids to be None
-#             # TODO: this could be optimized to make the query smaller
-#             for _dict in [x for x in deserialized if x.get(id_field, None)]:
-#                 ids.add(_dict.get(id_field))
-#             if ids:
-#                 kwargs_for_log['%s__in' % id_field] = \
-#                     LIST_DELIMITER_URL_PARAM.join(ids)
-# 
-#         logger.info('get original state, for logging')
-#         original_data = self._get_list_response(request, **kwargs_for_log)
-#         
-#         if not original_data:
-#             raise ValidationError(
-#                 key='screener_cherry_picks', msg='patch may only be used to modify selections')
-        
-#         original_selections = { scp['screened_well_id']: scp for scp in original_data }
+
+        original_cpr_data = self.get_cpr_resource()._get_detail_response_internal(**{
+            'cherry_pick_request_id': cpr.cherry_pick_request_id })
         
         original_data = self._get_list_response(request, **{
             'cherry_pick_request_id': kwargs['cherry_pick_request_id'],
-            'show_other_reagents': True })
+            API_PARAM_SHOW_OTHER_REAGENTS: True })
         if not original_data: 
             raise BadRequest(
                 'Cannot set Screener Cherry Picks using patch; '
-                'must use the cherry pick request selection update instead')
+                'must use the cherry pick request selection patch instead')
         
         original_selections = { scp_data['screened_well_id']: scp_data
             for scp_data in original_data }
@@ -5787,6 +6156,7 @@ class ScreenerCherryPickResource(DbApiResource):
         for screened_well_id,selection_update in selection_updates.items():
             if selection_update['selected'] is True:
                 searched_well_id = selection_update['searched_well_id']
+                
                 for other_well_id, su2 in selection_updates.items():
                     if other_well_id != screened_well_id:
                         if su2['searched_well_id'] == searched_well_id:
@@ -5801,12 +6171,28 @@ class ScreenerCherryPickResource(DbApiResource):
                     selection_updates[searched_well_id] = {
                         'selected': False,
                         'searched_well_id': searched_well_id }
+        # make sure others in group are deselected. 
+        # Fixme: tidy up this logic
+        for scp_data in original_data:
+            if scp_data['selected'] is True:
+                for selection_update in selection_updates.values():
+                    if selection_update['searched_well_id']==scp_data['searched_well_id']:
+                        if selection_update['selected'] is True:
+                            scp_data['selected'] = False
+                            selection_updates[scp_data['screened_well_id']] = \
+                                scp_data
+                            break
+        
+        if not selection_updates:
+            return HttpResponse
+        
+        logger.info('selection updates: %r', selection_updates)
                     
         original_scps = { 
             scp.screened_well_id: scp 
                 for scp in cpr.screener_cherry_picks.all() }
         
-        logger.info('original_scps: %r', original_scps.keys())
+        logger.debug('original_scps: %r', original_scps.keys())
         
         messages = []
         scps_to_create = []
@@ -5828,11 +6214,17 @@ class ScreenerCherryPickResource(DbApiResource):
                     if original_scps[screened_well_id].selected is True:
                         scps_to_unselect.append(screened_well_id)
                     else:
-                        logger.info(
+                        messages.append(
                             'not currently selected: %r', screened_well_id)
                 else:
-                    logger.info(
+                    messages.append(
                         'not unselecting, well not found in original_scps: %r', screened_well_id)
+        
+        if not scps_to_create and not scps_to_reselect and not scps_to_unselect:
+            _data = { API_RESULT_META: messages }
+            return self.build_response(
+                request, _data, response_class=HttpResponse, **kwargs)
+        
         if scps_to_create:
             (cherry_pick_wells, warn_msg) = \
                 CherryPickRequestResource.find_wells(scps_to_create)
@@ -5846,6 +6238,9 @@ class ScreenerCherryPickResource(DbApiResource):
                     screened_well=well,
                     searched_well_id=searched_well_id,
                     selected=True)
+                
+                # TODO: if selected well is restricted library, 'requires permission'
+                # add user warning message
         if scps_to_unselect:
             for screened_well_id in scps_to_unselect:
                 original_scps[screened_well_id].selected = False
@@ -5855,13 +6250,35 @@ class ScreenerCherryPickResource(DbApiResource):
                 original_scps[screened_well_id].selected = True
                 original_scps[screened_well_id].save()
         
-        _data = {
-            API_RESULT_META: {
-                API_MSG_SCP_CREATED: '%r' % scps_to_create,
-                API_MSG_SCP_UNSELECTED: '%r' % scps_to_unselect,
-                API_MSG_SCP_RESELECTED: '%r' % scps_to_reselect,
-                'messages': messages
-                }}
+        result_message = {
+            API_MSG_SCP_CREATED: '%r' % scps_to_create,
+            API_MSG_SCP_UNSELECTED: '%r' % scps_to_unselect,
+            API_MSG_SCP_RESELECTED: '%r' % scps_to_reselect
+        }
+        if messages:
+            result_message[API_MSG_COMMENTS] = messages
+        
+        self.get_cpr_resource().clear_cache()
+        new_cpr_data = self.get_cpr_resource()._get_detail_response_internal(
+            **{ 'cherry_pick_request_id': cpr.cherry_pick_request_id })
+        logger.debug('old cpr: %r, new cpr: %r', original_cpr_data, new_cpr_data)
+        log = self.get_cpr_resource().make_log(request)
+        log.key = str(cpr.cherry_pick_request_id)
+        log.uri = '/'.join([
+            'screen',cpr.screen.facility_id,log.ref_resource_name,log.key])        
+        log.json_field = result_message
+        self.get_cpr_resource().log_patch(
+            request, original_cpr_data,new_cpr_data, 
+            excludes=['screener_cherry_picks'])
+        logger.info('cpr_log: %r, %r',log, log.diffs)
+        # Note: because the actual screener cherry picks are not being logged, 
+        # log the count, even if it has not changed
+        log.diffs['screener_cherry_pick_count'] = [
+            original_cpr_data['screener_cherry_pick_count'],
+            new_cpr_data['screener_cherry_pick_count']]
+        log.save()
+        
+        _data = { API_RESULT_META: result_message }
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
 
@@ -5960,8 +6377,8 @@ class ScreenerCherryPickResource(DbApiResource):
             param_hash['source_well_id__eq'] = source_well_id
 
         show_other_reagents = parse_val(
-            param_hash.get('show_other_reagents', None),
-            'show_other_reagents', 'boolean')
+            param_hash.get(API_PARAM_SHOW_OTHER_REAGENTS, None),
+            API_PARAM_SHOW_OTHER_REAGENTS, 'boolean')
         try:
             
             # Note: build schema for each request to use the subtype
@@ -5971,9 +6388,12 @@ class ScreenerCherryPickResource(DbApiResource):
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            manual_field_includes.add('searched_library_plate')
+#             manual_field_includes.add('searched_library_plate')
             manual_field_includes.add('searched_well_id')
-  
+            manual_field_includes.add('selected')
+            manual_field_includes.add('cherry_pick_request_id')
+            
+            
             (filter_expression, filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
@@ -6015,7 +6435,7 @@ class ScreenerCherryPickResource(DbApiResource):
                         _scp.c.screener_cherry_pick_id,
                         _scp.c.screened_well_id,
                         _scp.c.searched_well_id,
-                        _well.c.plate_number.label('searched_library_plate'),
+#                         _well.c.plate_number.label('searched_library_plate'),
                         _scp.c.selected,
                         _scp.c.cherry_pick_request_id,
                         _reagent.c.vendor_identifier, 
@@ -6073,12 +6493,13 @@ class ScreenerCherryPickResource(DbApiResource):
                 
             custom_columns = {
                 'screener_cherry_pick_id': working_scp.c.screener_cherry_pick_id,
-                'selected': (
-                    select([_scp.c.selected]).select_from(_scp)
-                        .where(_scp.c.screener_cherry_pick_id
-                            ==working_scp.c.screener_cherry_pick_id)),
+#                 'selected': (
+#                     select([_scp.c.selected]).select_from(_scp)
+#                         .where(_scp.c.screener_cherry_pick_id
+#                             ==working_scp.c.screener_cherry_pick_id)),
                 'screened_well_id': working_scp.c.screened_well_id,
                 'selected': working_scp.c.selected,
+#                 'selected_on_server': working_scp.c.selected,
                 'cherry_pick_request_id': working_scp.c.cherry_pick_request_id,
 # Does not work for pool-duplex LCP's
 #                 'status': case([
@@ -6186,6 +6607,7 @@ class LabCherryPickResource(DbApiResource):
         super(LabCherryPickResource, self).__init__(**kwargs)
         self.sr_resource = None
         self.reagent_resource = None
+        self.cpr_resource = None
         
     def get_sr_resource(self):
         if self.sr_resource is None:
@@ -6196,6 +6618,11 @@ class LabCherryPickResource(DbApiResource):
         if self.reagent_resource is None:
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
+
+    def get_cpr_resource(self):
+        if self.cpr_resource is None:
+            self.cpr_resource = CherryPickRequestResource()
+        return self.cpr_resource
     
     def prepend_urls(self):
         
@@ -6210,6 +6637,280 @@ class LabCherryPickResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
+        
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def patch_list(self, request, **kwargs):
+
+        if 'cherry_pick_request_id' not in kwargs:
+            raise BadRequest('cherry_pick_request_id')
+        cpr = CherryPickRequest.objects.get(
+            cherry_pick_request_id=kwargs['cherry_pick_request_id'])
+        logger.info(
+            'patch_list: cpr: %r, screen: %r...', cpr, cpr.screen.facility_id)
+         
+        deserialized = self.deserialize(request)
+        if self._meta.collection_name in deserialized:
+            deserialized = deserialized[self._meta.collection_name]
+        logger.info('patch lcps: %r', deserialized)
+        
+        schema = kwargs['schema']
+        id_attribute = schema['id_attribute']
+        COPYWELL_KEY = CherryPickRequestResource.LCP_COPYWELL_KEY
+        
+        self.get_cpr_resource().validate_cpr_for_plating(cpr) 
+
+        if not cpr.lab_cherry_picks.all().exists():
+            raise ValidationError(
+                key='lcp_selection_updates', 
+                msg='No Lab Cherry Picks have been created')
+        current_lcps = { 
+            lcp.source_well_id:lcp for lcp in cpr.lab_cherry_picks.all() }
+
+        parent_log = self.make_log(request)
+        parent_log.key = str(cpr.cherry_pick_request_id)
+        parent_log.uri = '/'.join([
+            'screen',cpr.screen.facility_id,
+            parent_log.ref_resource_name,parent_log.key])        
+        parent_log.save()
+
+        if cpr.lab_cherry_picks.filter(cherry_pick_assay_plate__isnull=False).exists():
+            plated_assay_plates_query = \
+                cpr.cherry_pick_assay_plates.filter(
+                    plating_activity_date__isnull=False)                
+            if plated_assay_plates_query.exists():
+                raise ValidationError({
+                    'plating_activity_date': 
+                        ('Lab Cherry Picks may not be reassigned after plating'),
+                    API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+                    API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+                })
+            raise ValidationError({
+                'number_plates': 
+                    ('Lab cherry pick plates already assigned; '
+                    'cancel reservation to deallocate plates'),
+                API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
+            })
+            
+#             self.get_cpr_resource().dispatch_set_lab_cherry_picks(request,)
+                
+        logger.info('current lcps: %r', current_lcps)
+        # Validate selections are valid and allowed:
+        required_for_patch = set([
+            'source_well_id', 'selected'])
+        copies = {}
+        selection_updates = {}
+        for selection_update in deserialized:
+            if not required_for_patch.issubset(set(selection_update.keys())):
+                raise ValidationError(
+                    key='required_fields',
+                    msg=(
+                        'record: %r, missing fields: %r'
+                        % (selection_update,
+                        required_for_patch-set(selection_update.keys())))
+                    )
+            copy_id_fields = ['source_copy_id','source_copy_name']
+            if 'source_copy_id' not in selection_update.keys():
+                if 'source_copy_name' not in selection_update.keys():
+                    raise ValidationError(
+                        key='required_fields',
+                        msg=('record: %r, must contain either: %r'
+                            % (selection_update,copy_id_fields)))
+            if set(copy_id_fields).issubset(set(selection_updates.keys())):
+                raise ValidationError(
+                    key='copy_id_fields',
+                    msg='May only include one of: %r' % copy_id_fields)
+
+            source_well_id = selection_update.get('source_well_id')
+            if source_well_id not in current_lcps:
+                raise ValidationError(
+                    key='source_well_id', 
+                    msg='not a current lab cherry pick: %r' % source_well_id)
+            
+            # locate copies:
+            copy = None
+            source_copy_id = selection_update.get('source_copy_id', None)
+            if source_copy_id:
+                copy = Copy.objects.get(copy_id=source_copy_id)
+            else:
+                source_copy_name = selection_update.get('source_copy_name')
+                plate_number = lims_utils.well_id_plate_number(source_well_id)
+                plate = Plate.objects.get(
+                    plate_number=plate_number,copy__name=source_copy_name)
+                copy = plate.copy
+            selection_update['copy'] = copy
+            selection_update['source_copy_name'] = copy.name
+            selection_update['library_short_name'] = copy.library.short_name
+            selection_updates[source_well_id] = selection_update
+        
+        logger.info('selection_updates: %r', selection_updates)
+        
+        changed = []
+        deselected = []
+        selected = []
+        for source_well_id, selection_update in selection_updates.items():
+            selection_copy_name = COPYWELL_KEY.format(**selection_update)
+            current_lcp = current_lcps[source_well_id]
+            current_copy_name = None
+            if current_lcp.copy is not None:
+                current_copy_name = COPYWELL_KEY.format(
+                    library_short_name=current_lcp.copy.library.short_name,
+                    source_copy_name=current_lcp.copy.name,
+                    source_well_id=source_well_id)
+            logger.info('current lcp: %r, %r', current_copy_name, current_lcp)
+            logger.info('selection_update: %r', selection_copy_name)
+            if selection_update['selected'] is True: 
+                if selection_copy_name != current_copy_name:
+                    if current_copy_name is None:
+                        selected.append(selection_copy_name)
+                    else:
+                        changed.append([
+                            current_copy_name, selection_copy_name])
+                    current_lcp.copy = selection_update['copy']
+                    current_lcp.save()
+                else:
+                    logger.info('lcp is already selected: %r, %r', 
+                        current_copy_name, selection_update)
+            else:
+                if selection_copy_name == current_copy_name:
+                    deselected.append(current_copy_name)
+                    current_lcp.copy = None
+                    current_lcp.save()
+                else:
+                    logger.info('lcp is already unselected: %r, %r', 
+                        current_copy_name, selection_update)
+
+        # Check for insufficient well volumes
+        unfulfillable_wells = []
+        new_lab_cherry_pick_copywells = \
+            self._get_list_response_internal(
+                **{
+                    'cherry_pick_request_id': cpr.cherry_pick_request_id,
+                    'source_copy_name__is_null': False,
+                    'includes': '*'
+                })
+        for lcp_cw in new_lab_cherry_pick_copywells:
+            name = COPYWELL_KEY.format(**lcp_cw)
+            logger.info('consider lcp_cw: %r, %r', name, Decimal(lcp_cw['source_copy_well_volume']))
+            if ( Decimal(lcp_cw['source_copy_well_volume'])
+                < cpr.transfer_volume_per_well_approved ):
+                unfulfillable_wells.append(COPYWELL_KEY.format(**lcp_cw))
+        warning_messages = {}
+        if unfulfillable_wells:
+            warning_messages[API_MSG_LCPS_INSUFFICIENT_VOLUME] = unfulfillable_wells
+
+        _data = {
+            API_RESULT_META: {
+                API_MSG_LCP_CHANGED: changed,
+                API_MSG_LCP_DESELECTED: deselected,
+                API_MSG_LCP_SELECTED: selected,
+                API_MSG_WARNING: warning_messages,
+                }}
+        # TODO: log lcp count on cpr
+        # parent_log.diffs = { 
+#             total_number_lcps: [],
+#             number_unfulfilled_lab_cherry_picks: []
+#             }
+        parent_log.json_field = _data
+        parent_log.save()
+        
+        return self.build_response(
+            request, _data, response_class=HttpResponse, **kwargs)
+                    
+#         # TODO: copied from old cpr patch section
+#         
+#         raw_lcp_selection_updates = deserialized['lcp_selection_updates']
+#         logger.info('raw_lcp_selection_updates: %r', raw_lcp_selection_updates)
+#         if len(raw_lcp_selection_updates) == 0:
+#             pass
+#         else:
+#             if not cpr.lab_cherry_picks.all().exists():
+#                 raise ValidationError(
+#                     key='lcp_selection_updates', 
+#                     msg='No Lab Cherry Picks have been created')
+#             
+#         # FIXME SECTION: if assay plates exist ==================                   
+#         if cpr.lab_cherry_picks.filter(
+#             cherry_pick_assay_plate__isnull=False).exists():
+#             reassign_plates = parse_val(
+#                 param_hash.get(API_PARAM_PLATE_MAPPING_OVERRIDE, False),
+#                 API_PARAM_PLATE_MAPPING_OVERRIDE, 'boolean')
+#             if reassign_plates is not True:
+#                 raise ValidationError(
+#                     key='number_plates', 
+#                     msg=(
+#                         'Lab cherry pick plates already assigned'
+#                         'requires "%s"' % API_PARAM_PLATE_MAPPING_OVERRIDE))
+# 
+#                 # de-allocate copy volumes:
+#                 lab_cherry_picks_to_deallocate = (
+#                     cpr.lab_cherry_picks
+#                         .filter(cherry_pick_assay_plate__isnull=False)
+#                         .order_by('copy__name','source_well__plate_number') )
+# 
+#                 copywell_deallocation_meta = \
+#                     self.get_copywell_resource().deallocate_cherry_pick_volumes(
+#                         cpr, lab_cherry_picks_to_plate, parent_log)
+#             
+#             else:
+# 
+#                 cpap_query = CherryPickAssayPlate.objects.filter(cherry_pick_request=cpr)
+#                 previous_number_of_plates = cpap_query.count()
+#                 logger.info('delete previous CPR plate assignments: %d', previous_number_of_plates)
+#                 status_messages.append('Previous plate mapping overwritten, plates: %d', 
+#                     previous_number_of_plates)
+#                 cpap_query.delete()
+#                 query = cpr.lab_cherry_picks.filter(cherry_pick_assay_plate__isnull=False)
+#                 query.update(cherry_pick_assay_plate=None)
+#                 query.update(assay_plate_row=None)
+#                 query.update(assay_plate_column=None)
+#                 # TODO: 
+#                 # submit a copy well adjustment job, with logging, to reallocate volumes
+# 
+#         # END FIXME SECTION ==================                   
+# 
+# 
+#         changed = []
+#         deselected = []
+#         selected = []
+#         for selected_well_id,copy_id in raw_lcp_selection_updates.items():
+#             logger.info('consider lcp selection update: %r: %r',
+#                 selected_well_id, copy_id)
+#             lcp = cpr.lab_cherry_picks.all().filter(
+#                 source_well_id=selected_well_id)
+#             if not lcp.exists():
+#                 raise ValidationError(
+#                     key='lcp_selection_updates',
+#                     msg='Unknown lab cherry pick: %r' % selected_well_id)
+#             if lcp.count() > 1:
+#                 raise BadRequest(
+#                     'More than one lab cherry pick found for source well: %r', 
+#                     selected_well_id)
+#             lcp = lcp[0]
+#             if copy_id is not None:
+#                 copy = Copy.objects.get(copy_id=copy_id)
+#                 logger.info('updated lcp: %r, copy: %r to copy: %r',
+#                     lcp,lcp.copy,copy)
+#                 if lcp.copy is not None:
+#                     changed.append(
+#                         '%s changed from %s to %s'
+#                         % (selected_well_id,lcp.copy.name, copy.name))
+#                 else:
+#                     selected.append('%s set to %s' 
+#                         % (selected_well_id, copy.name))
+#                 lcp.copy = copy
+#                 lcp.save()
+#             else:
+#                 logger.info('remove copy: %r from lcp: %r', lcp.copy, lcp)
+#                 deselected.append('%s, deselected: %s'
+#                     % (selected_well_id, lcp.copy.name))
+#                 lcp.copy = None
+#                 lcp.save()
+#             result_msg['Changed'] = changed
+#             result_msg['Selected'] = selected
+#             result_msg['Deselected'] = deselected
+        
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -6300,16 +7001,17 @@ class LabCherryPickResource(DbApiResource):
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cherry_pick_request_id)
         show_copy_wells = parse_val(
-            param_hash.get('show_copy_wells', False),
-            'show_copy_wells', 'boolean')
-        logger.info('show_copy_wells: %r', show_copy_wells)
+            param_hash.get(API_PARAM_SHOW_COPY_WELLS, False),
+            API_PARAM_SHOW_COPY_WELLS, 'boolean')
+        logger.info('%r: %r', API_PARAM_SHOW_COPY_WELLS,show_copy_wells)
         show_available_and_retired_copy_wells = parse_val(
-            param_hash.get('show_available_and_retired_copy_wells', False),
-            'show_available_and_retired_copy_wells', 'boolean')
-        logger.info('show_available_and_retired_copy_wells: %r', show_available_and_retired_copy_wells)
+            param_hash.get(API_PARAM_SHOW_RETIRED_COPY_WELlS, False),
+            API_PARAM_SHOW_RETIRED_COPY_WELlS, 'boolean')
+        logger.info('%r: %r', 
+            API_PARAM_SHOW_RETIRED_COPY_WELlS,show_available_and_retired_copy_wells)
         show_unfulfilled = parse_val(
-            param_hash.get('show_unfulfilled', False),
-            'show_unfulfilled', 'boolean')
+            param_hash.get(API_PARAM_SHOW_UNFULFILLED, False),
+            API_PARAM_SHOW_UNFULFILLED, 'boolean')
         try:
             
             # Note: build schema for each request to use the subtype
@@ -6415,11 +7117,11 @@ class LabCherryPickResource(DbApiResource):
                 'status': case([
                     (and_(_lcp.c.copy_id==_copy.c.copy_id,
                           _lcp.c.cherry_pick_assay_plate_id==None,), 
-                        text("'selected'") ),
+                        text("'%s'"%VOCAB_LCP_STATUS_SELECTED) ),
                     (and_(_lcp.c.copy_id==_copy.c.copy_id,
                           _lcp.c.cherry_pick_assay_plate_id!=None,), 
-                        text("'plated'") )],
-                    else_=text("'unfulfilled'")),
+                        text("'%s'"%VOCAB_LCP_STATUS_PLATED) )],
+                    else_=text("'%s'"%VOCAB_LCP_STATUS_UNFULFILLED)),
                 'destination_well': (
                     case([
                         (_lcp.c.assay_plate_row!=None,
@@ -6508,10 +7210,10 @@ class LabCherryPickResource(DbApiResource):
                     'status': case([
                         (and_(_lcp.c.copy_id==_copy.c.copy_id,
                               _lcp.c.cherry_pick_assay_plate_id==None,), 
-                            text("'selected'") ),
+                            text("'%s'"%VOCAB_LCP_STATUS_SELECTED) ),
                         (and_(_lcp.c.copy_id==_copy.c.copy_id,
                               _lcp.c.cherry_pick_assay_plate_id!=None,), 
-                            text("'plated'") )],
+                            text("'%s'"%VOCAB_LCP_STATUS_PLATED) )],
                         else_=text("''")),
 #                     'source_copy_well_volume': case([
 #                         (_well.c.library_well_type=='experimental', 
@@ -12828,8 +13530,8 @@ class ReagentResource(DbApiResource):
             _well = self.bridge['well']
             _reagent = self.bridge['reagent']
             _library = self.bridge['library']
-            _screener_cherry_pick = self.bridge['screener_cherry_pick']
-            _lab_cherry_pick = self.bridge['lab_cherry_pick']
+            _scp = self.bridge['screener_cherry_pick']
+            _lcp = self.bridge['lab_cherry_pick']
 
             j = _well.join(
                 _reagent, _well.c.well_id == _reagent.c.well_id, isouter=True)
@@ -12859,11 +13561,11 @@ class ReagentResource(DbApiResource):
                 custom_columns['pool_well'] = pool_wells.c.pool_well_id
             
             if cherry_pick_request_id_screener is not None:
-                j = j.join(_screener_cherry_pick,
-                    _screener_cherry_pick.c.screened_well_id==_well.c.well_id)
+                j = j.join(_scp,
+                    _scp.c.screened_well_id==_well.c.well_id)
             if cherry_pick_request_id_lab is not None:
-                j = j.join(_lab_cherry_pick,
-                    _lab_cherry_pick.c.source_well_id==_well.c.well_id)
+                j = j.join(_lcp,
+                    _lcp.c.source_well_id==_well.c.well_id)
                 
             
             columns = self.build_sqlalchemy_columns(
@@ -12875,11 +13577,11 @@ class ReagentResource(DbApiResource):
                 stmt = stmt.where(_well.c.library_id == library.library_id) 
             if cherry_pick_request_id_screener is not None:
                 stmt = stmt.where(
-                    _screener_cherry_pick.c.cherry_pick_request_id
+                    _scp.c.cherry_pick_request_id
                         ==cherry_pick_request_id_screener)
             if cherry_pick_request_id_lab is not None:
                 stmt = stmt.where(
-                    _lab_cherry_pick.c.cherry_pick_request_id
+                    _lcp.c.cherry_pick_request_id
                         ==cherry_pick_request_id_lab)
                 
             # Could use the library param to limit the column building exercise

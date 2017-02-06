@@ -24,6 +24,7 @@ CSV_MIMETYPE = 'text/csv'
 XLS_MIMETYPE = 'application/xls'
 XLSX_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 SDF_MIMETYPE = 'chemical/x-mdl-sdfile'
+ZIP_MIMETYPE = 'application/zip'
 
 def make_local_time(datetime_obj):
     '''

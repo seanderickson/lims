@@ -129,6 +129,21 @@ def numerical_equivalency(val, val2):
 # Values are submitted, then read back as json from the API.
 ####
 
+def decode_from_utf8(val):
+    '''
+    Convert all values to unicode for comparison
+    - NOTE: csv package does not support unicode, it returns bytes, so decode
+    byte strings for comparison.
+    '''
+    try:
+        if isinstance(val, str):
+            # if string value, then decode back to unicode, assuming utf-8 encoding
+            val = val.decode('utf-8')
+        return val
+    except Exception, e:
+        logger.exception('decode: %r, %r', val, type(val))
+        raise
+    
 def equivocal(val1, val2):
     '''
     Test for equivalence between string,number,boolean,or list where:
@@ -156,12 +171,20 @@ def equivocal(val1, val2):
         
     
     if isinstance(val1, basestring):
-        val1 = str(val1)
+        # val1 = str(val1)
+        # if string value, then decode back to unicode
+        val1 = decode_from_utf8(val1)
         if hasattr(val2, "__getitem__") or hasattr(val2, "__iter__"): 
             # allow single item lists to be equal to string
             if len(val2) == 1:
                 val2 = val2[0]
-        val2 = str(val2)
+#         val2 = str(val2)
+        val2 = decode_from_utf8(val2)
+#         if isinstance(val2, basestring):
+#             # if string value, then decode back to unicode
+#             val2 = val2.decode()
+#         else:
+#             val2 = str(val2)
         if val1 != val2:
             if (is_boolean(val1) and 
                     parse_val(val1,'testval1','boolean')
@@ -181,7 +204,8 @@ def equivocal(val1, val2):
                 if val2 and len(val2) > 0:
                     return False, ('val1', val1, 'list val2 not empty', val2 )
             if v not in val2:
-                if v not in [str(v2) for v2 in val2]:
+                v = decode_from_utf8(v)
+                if v not in [decode_from_utf8(v2) for v2 in val2]:
                     return False, ('val1', val1, 'val2', val2 )
     return True, ('val1', val1, 'val2', val2 )
     
@@ -501,12 +525,14 @@ class BaselineTest(TestCase):
 class SerializerTest(TestCase):
 
     def test_csv(self):
+        # NOTE this tests the obsoleted (non-streaming) Serializers;
+        # new serializer uses csv.writer
         logger.debug('======== test_csv =========')
         directory = APP_ROOT_DIR
         serializer = CSVSerializer() 
         
-        input = [['one','two', 'three', 'four', 'five','six'],
-                ['uno', '2', 'true', 'false', '',['a','b','c']]]
+        input = [['one','two', 'three', 'four', 'five','six','seven'    ],
+                ['uno', '2', 'true', 'false', '',['a','b','c'], u'\u03bc']]
         
         input_data = csvutils.from_csv_iterate(input)
         for obj in input_data:
@@ -516,12 +542,13 @@ class SerializerTest(TestCase):
             self.assertTrue(obj['four']=='false')
             self.assertTrue(obj['five']=='')
             self.assertTrue(obj['six']==['a','b','c'])
+            self.assertTrue(obj['seven']==u'\u03bc')
         csv_data = serializer.to_csv(input_data, root=None)
 
-        with open(directory + '/reports/test/test_csv_.csv', 'w') as f:
+        with open(directory + '/reports/test_csv_.csv', 'w') as f:
             f.write(csv_data)
             
-        with open(directory + '/reports/test/test_csv_.csv') as fin:    
+        with open(directory + '/reports/test_csv_.csv') as fin:    
             final_data = serializer.from_csv(fin.read(), root=None)
             for obj in final_data:
                 self.assertTrue(obj['one']=='uno')
@@ -530,6 +557,7 @@ class SerializerTest(TestCase):
                 self.assertTrue(obj['four']=='false')
                 self.assertTrue(obj['five']=='')
                 self.assertTrue(obj['six']==['a','b','c'])
+                self.assertTrue(obj['seven']==u'\u03bc')
         
         # TODO: delete the file
 

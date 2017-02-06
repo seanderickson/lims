@@ -85,7 +85,7 @@ def write_rows_to_sheet(wb, sheet_rows, sheet_basename,
                 sheet.write_string(filerow,i,key)
             filerow += 1
         for i, (key,val) in enumerate(values.items()):
-            val = csvutils.csv_convert(
+            val = csvutils.convert_list_vals(
                 val, delimiter=LIST_DELIMITER_XLS,
                 list_brackets=list_brackets)
             if val is not None:
@@ -138,7 +138,7 @@ def generic_xls_write_workbook(file, data):
 def generic_write_rows_to_sheet(rows, sheet):
     for row,values in enumerate(rows):
         for i, val in enumerate(values):
-            val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+            val = csvutils.convert_list_vals(val, delimiter=LIST_DELIMITER_XLS)
             if val is not None:
                 if len(val) > 32767: 
                     logger.error('warn, row too long, %d, key: %r, len: %d', 

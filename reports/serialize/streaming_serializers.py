@@ -20,7 +20,7 @@ from zipfile import ZipFile
 
 from django.conf import settings
 from django.core.urlresolvers import resolve
-from django.http.response import StreamingHttpResponse
+from django.http.response import StreamingHttpResponse, Http404
 import six
 import xlsxwriter
 
@@ -155,9 +155,14 @@ def image_generator(rows, image_keys, request):
                         fullpath = request.build_absolute_uri(val)
                         logger.debug('image exists: %r, abs_uri: %r', val, fullpath)
                         row[key] = fullpath
+                    except Http404, e:
+                        logger.info('no image found at: %r', val)
+#                         logger.info('no image at: %r, %r', val,e)
                     except Exception, e:
-                        logger.info('no image at: %r, %r', val,e)
-                        row[key] = None
+                        logger.exception(
+                            'image could not be retrieved: %r, e: %r',
+                            val, e)
+                    row[key] = None
         yield row
 
 
@@ -224,7 +229,7 @@ def csv_generator(data, title_function=None, list_brackets=None):
                 yield csvwriter.writerow(titles)
 
             yield csvwriter.writerow([
-                csvutils.csv_convert(val, list_brackets=list_brackets) 
+                csvutils.csv_list_convert(val, list_brackets=list_brackets) 
                     for val in row.values()])
         logger.debug('wrote %d rows to csv', rownum)
     except Exception, e:
@@ -370,7 +375,7 @@ def get_xls_response(
                             sheet.write_string(filerow,i,title)
                         filerow += 1
                     for i, (key,val) in enumerate(values.items()):
-                        val = csvutils.csv_convert(
+                        val = csvutils.convert_list_vals(
                             val, delimiter=LIST_DELIMITER_XLS,
                             list_brackets=list_brackets)
                         if val is not None:
@@ -411,8 +416,7 @@ def get_xls_response(
   
         content_type = '%s; charset=utf-8' % XLSX_MIMETYPE
         if len(file_names_to_zip) >1:
-            # create a temp zip file
-            content_type='application/zip; charset=utf-8'
+            content_type = '%s; charset=utf-8' % ZIP_MIMETYPE
             temp_file = os.path.join('/tmp',str(time.clock()))
             logger.info('temp ZIP file: %r', temp_file)
   
@@ -454,6 +458,8 @@ def get_xls_response_all_images_to_one_file(
     # using XlsxWriter for constant memory usage
     max_rows_per_sheet = 2**20
 
+    # Open with delete=False; file will be closed and deleted 
+    # by the FileWrapper1 instance when streaming is finished.
     with  NamedTemporaryFile(delete=False) as temp_file:
 
         logger.info('save to file; %r...', output_filename)
@@ -479,12 +485,13 @@ def get_xls_response_all_images_to_one_file(
 class FileWrapper1:
     """
     Wrapper to convert file-like objects to iterables
-        - modified to delete the file after iterating
+        - modified to delete the file after iterating (use only with temporary files)
     """
 
-    def __init__(self, filelike, blksize=8192):
+    def __init__(self, filelike, delete_on_close=True, blksize=8192):
         self.filelike = filelike
         self.blksize = blksize
+        self.delete_on_close = delete_on_close
 
     def __getitem__(self,key):
         data = self.filelike.read(self.blksize)
@@ -510,7 +517,10 @@ class FileWrapper1:
         # Modify: delete file after iterating
         logger.info('done writing to response...')
         self.filelike.close()
-        os.remove(self.filelike.name)
+        
+        if self.delete_on_close is True:
+            logger.info('removing file %r', self.filelike.name)
+            os.remove(self.filelike.name)
         
         raise StopIteration
 
@@ -537,6 +547,45 @@ def generic_xlsx_response(data):
     response['Content-Type'] = XLSX_MIMETYPE
     return response
 
+# def zip_file_response(files, output_filename):
+#     '''
+#     Return a StreamingHttpResponse containing the zip file for the given files.
+#     @param files to include in the zip response 
+#     '''
+#     # Open with delete=False; file will be closed and deleted 
+#     # by the FileWrapper1 instance when streaming is finished.
+#     with  NamedTemporaryFile(delete=False) as temp_file:
+#         
+#         with ZipFile(temp_file, 'w') as zip_file:
+#             for _file in files:
+#                 zip_file.write(_file, os.path.basename(_file))
+#         logger.info('wrote file %r', temp_file)
+#         logger.info('saved temp file for; %r', output_filename)
+#     
+#         temp_file.seek(0, os.SEEK_END)
+#         size = temp_file.tell()
+#         temp_file.seek(0)   
+# 
+# 
+#     filename = '%s.zip' % output_filename
+#     logger.info('download zip file: %r, %r',filename)
+#     _file = file(temp_file.name)
+#     response = StreamingHttpResponse(FileWrapper1(_file)) 
+#     response['Content-Length'] = size
+#     response['Content-Type'] = '%s; charset=utf-8' % ZIP_MIMETYPE
+#     response['Content-Disposition'] = \
+#         'attachment; filename=%s.xlsx' % output_filename
+#     return response
+
+    
+    wrapper = FileWrapper(_file)
+    response = StreamingHttpResponse(
+        wrapper, content_type='%s; charset=utf-8' % ZIP_MIMETYPE) 
+    response['Content-Length'] = os.path.getsize(temp_file)
+    response['Content-Disposition'] = \
+        'attachment; filename=%s' % filename
+    return response
+    
 
 # def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
 #     if DEBUG_STREAMING: logger.info('meta: %r', meta )
@@ -926,7 +975,7 @@ def generic_xlsx_response(data):
 #         content_type = '%s; charset=utf-8' % XLSX_MIMETYPE
 #         if len(file_names_to_zip) >1:
 #             # create a temp zip file
-#             content_type='application/zip; charset=utf-8'
+#             content_type = '%s; charset=utf-8' % ZIP_MIMETYPE
 #             temp_file = os.path.join('/tmp',str(time.clock()))
 #             logger.info('temp ZIP file: %r', temp_file)
 #  

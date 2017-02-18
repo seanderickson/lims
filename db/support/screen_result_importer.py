@@ -13,11 +13,12 @@ from db.support.data_converter import default_converter
 from reports.serialize import parse_val
 from collections import OrderedDict
 from xlsxwriter.utility import xl_col_to_name
+from db.support import lims_utils
 logger = logging.getLogger(__name__)
 
 from reports.serialize.xlsutils import sheet_cols, sheet_rows, \
     workbook_sheets, generic_xls_write_workbook
-
+from db import WELL_NAME_PATTERN
 
 PARTITION_POSITIVE_MAPPING = {
     'NP': 0,
@@ -71,7 +72,6 @@ RESULT_VALUE_FIELD_MAP = OrderedDict((
     ('type', 'assay_well_control_type'),
     ('exclude', 'exclude'),
 ))
-WELLNAME_MATCHER = re.compile(r'^[a-pA-P]{1,2}\d{1,2}$')
 
 
 def data_column_field_mapper(fields):
@@ -214,13 +214,13 @@ def parse_result_row(i,parsed_columns,result_row):
     plate_number = parse_val(val, meta_key, 'integer')
     meta_key = 'well_name'
     val = result_row[meta_key]
-    if WELLNAME_MATCHER.match(val):
+    if WELL_NAME_PATTERN.match(val):
         wellname = val
     else:
         raise ParseError(
             key=i, 
             msg=('well_name val %r does not follow the pattern: %r'
-            % (val, WELLNAME_MATCHER.pattern))) 
+            % (val, WELL_NAME_PATTERN.pattern))) 
     parsed_row['well_id'] = \
         '%s:%s' % (str(plate_number).zfill(5), wellname)
     
@@ -333,13 +333,13 @@ def parse_result_row(i,parsed_columns,result_row):
     plate_number = parse_val(val, meta_key, 'integer')
     meta_key = 'well_name'
     val = result_row[meta_key]
-    if WELLNAME_MATCHER.match(val):
+    if WELL_NAME_PATTERN.match(val):
         wellname = val
     else:
         raise ParseError(
             key=i, 
             msg=('well_name val %r does not follow the pattern: %r'
-            % (val, WELLNAME_MATCHER.pattern))) 
+            % (val, WELL_NAME_PATTERN.pattern))) 
     parsed_row['well_id'] = \
         '%s:%s' % (str(plate_number).zfill(5), wellname)
     

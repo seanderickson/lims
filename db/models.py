@@ -55,10 +55,10 @@ class ServiceActivity(models.Model):
 
     def __repr__(self):
         return (
-            '<ServiceActivity(activity_id=%r, performed_by=%r, '
+            '<ServiceActivity(activity=%r, '
             'service_activity_type=%r, serviced_screen=%r, serviced_user=%r)>' 
-            % (self.activity_id, self.performed_by, self.service_activity_type,
-               self.serviced_screen.facility_id, self.serviced_user.username))
+            % (self.activity, self.service_activity_type,
+               self.serviced_screen, self.serviced_user.username))
 
 
 class LabActivity(Activity):
@@ -536,7 +536,7 @@ class ScreenerCherryPick(models.Model):
     # New
     selected = models.NullBooleanField(null=True)
     searched_well = models.ForeignKey('Well', 
-        related_name='searched_screener_cherry_pick', null=True)
+        related_name='searched_screener_cherry_pick', null=False)
     
     class Meta:
         db_table = 'screener_cherry_pick'
@@ -567,7 +567,9 @@ class LabCherryPick(models.Model):
     
     copy = models.ForeignKey('Copy', null=True, 
         related_name='copy_lab_cherry_picks')
-    reserved = models.NullBooleanField()
+    
+    # Deprecated, to remove
+#     reserved = models.NullBooleanField()
     
 #     # [Unfulfilled, Reserved, Mapped, Plated, Screened, Canceled, (Failed)]
 #     status = models.TextField(null=True)
@@ -595,18 +597,27 @@ class CherryPickAssayPlate(models.Model):
     cherry_pick_request = models.ForeignKey('CherryPickRequest',
         related_name='cherry_pick_assay_plates')
     plate_ordinal = models.IntegerField()
-    attempt_ordinal = models.IntegerField()
-    cherry_pick_liquid_transfer = \
-        models.ForeignKey('CherryPickLiquidTransfer', null=True)
     assay_plate_type = models.TextField()
-    legacy_plate_name = models.TextField(null=True)
-    cherry_pick_assay_plate_type = models.CharField(max_length=31)
+
+    # New - when set, the assay plate is "plated"
+    plating_date = models.DateField(null=True)
+    plated_by = models.ForeignKey('ScreensaverUser', 
+        null=True, related_name='plated_cherry_pick_plates')
+
+    screening_date = models.DateField(null=True)
+    screened_by = models.ForeignKey('ScreensaverUser', 
+        null=True, related_name='screened_cherry_pick_plates')
     
     # Deprecated
     # status = models.TextField(null=True)
-
-    # New - when set, the assay plate is "plated"
-    plating_activity_date = models.DateField(null=True)
+    attempt_ordinal = models.IntegerField()
+    cherry_pick_liquid_transfer = \
+        models.ForeignKey('CherryPickLiquidTransfer', null=True)
+    legacy_plate_name = models.TextField(null=True)
+    
+    # TODO: creted to distinguish between:
+    # "LegacyCherryPickAssayPlate" and "CherryPickAssayPlate"
+    cherry_pick_assay_plate_type = models.CharField(max_length=31)
 
     class Meta:
         unique_together = ((
@@ -731,8 +742,8 @@ class Publication(models.Model):
     def __repr__(self):
         return (
             '<Publication(id=%r, title=%r, screen=%r, reagent=%r)>'
-            % (self.publication_id, self.screen.facility_id, 
-               self.reagent.reagent_id)) 
+            % (self.publication_id, self.title, self.screen, 
+               self.reagent)) 
 
 class Screen(models.Model):
 
@@ -846,6 +857,12 @@ class Screen(models.Model):
     
     # cell_line = models.ForeignKey('CellLine', null=True) 
     # transfection_agent = models.ForeignKey('TransfectionAgent', null=True)
+    
+    def get_screen_users(self):
+        users = [user for user in self.collaborators.all()]
+        users.append(self.lead_screener)
+        users.append(self.lab_head)
+        return users
     
     def clean(self):
         
@@ -981,7 +998,7 @@ class DataColumn(models.Model):
     def __repr__(self):
         return (
             "<DataColumn(id=%r, screen=%r, ordinal=%d, name=%r)>" 
-            % (self.data_column_id, self.screen.facility_id, self.ordinal, 
+            % (self.data_column_id, self.screen_result.screen, self.ordinal, 
                self.name))
 
 @python_2_unicode_compatible
@@ -1200,7 +1217,7 @@ class CachedQuery(models.Model):
 
     def __repr__(self):
         return (
-            '<CachedQuery(id: %r, uri: %r, username: %r, count:%d)>' 
+            '<CachedQuery(id: %r, uri: %r, username: %r, count:%r)>' 
             % (self.id, self.uri, self.username, self.count ))
 
 class WellQueryIndex(models.Model):
@@ -1243,7 +1260,7 @@ class Reagent(models.Model):
     # library_contents_version = \
     #     models.ForeignKey('LibraryContentsVersion', null=True)
 
-    well = models.ForeignKey('Well', null=True) # , related_name='well_reagent')
+    well = models.ForeignKey('Well', null=True, related_name='reagents') # , related_name='well_reagent')
     vendor_batch_id = models.TextField()
 
     class Meta:

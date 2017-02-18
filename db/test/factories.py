@@ -30,6 +30,7 @@ class LibraryFactory(factory.django.DjangoModelFactory):
     short_name = factory.Sequence(lambda n: 'library_'+ str(n) )
     library_name = factory.Sequence(lambda n: 'library_'+ str(n) + '_long' )
     screen_type = 'small_molecule'
+    screening_status = 'allowed'
     solvent = 'dmso'
     library_type = 'commercial'
     start_plate = factory.Sequence(lambda n: str(n*10) )

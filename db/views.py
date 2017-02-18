@@ -19,6 +19,8 @@ from db.models import ScreensaverUser, Reagent, AttachedFile, Publication
 from reports.api import UserGroupAuthorization
 from db.api import ScreenAuthorization
 from django.core.exceptions import ObjectDoesNotExist
+from tastypie.exceptions import ImmediateHttpResponse
+from tastypie.http import HttpForbidden
 
 
 logger = logging.getLogger(__name__)
@@ -30,11 +32,22 @@ def main(request):
     return render(request, 'db/index.html', {'search': search})
 
 def well_image(request, well_id):
-    
-    if not request.user.is_authenticated():
+    if not hasattr(request, 'user'):
         raise ImmediateHttpResponse(response=HttpForbidden(
-            'user %r is not authorized for well_image view' % request.user ))
-
+            'Request object must be initialized with a "User" object: %r' 
+            % request.user))
+    user = request.user
+    if hasattr(user,'is_superuser') and user.is_superuser is not True:
+        if not hasattr(user,'is_authenticated'):
+            # TODO: replace tastypie error classes
+            raise ImmediateHttpResponse(response=HttpForbidden(
+                'Request.user object is invalid: %r, %r, user object can not be authenticated' 
+                % (user, type(user))))
+        if not user.is_authenticated():
+            raise ImmediateHttpResponse(response=HttpForbidden(
+                'user %r is not authorized for well_image view' % user ))
+        # TODO: use group authorization
+        
     match = WELL_ID_PATTERN.match(well_id)
     if not match:
         logger.warn('invalid well_id format: %d, pattern: %s' 

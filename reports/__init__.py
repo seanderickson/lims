@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import django.core.exceptions
+import django.core.serializers.json
 import django.utils.timezone
 
 from collections import OrderedDict
@@ -17,6 +18,8 @@ HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
 HTTP_PARAM_USE_TITLES = 'use_titles'
 HTTP_PARAM_RAW_LISTS = 'raw_lists'
 HTTP_PARAM_DATA_INTERCHANGE = 'data_interchange'
+
+API_RESULT_ERROR = 'errors'
 
 # Header custom comment field
 HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
@@ -52,4 +55,28 @@ def _now():
     logger.debug('timezone: %r, %r', d.tzinfo, d )
     return d
 
+def strftime_log_manual(d):
+    ''' format a datetime d as an ApiLog time:
+        - the same as isoformat with millisecond precision
+        - logs support millisecond precision due to postgresql limitations
+    '''
+    date_time_part = d.strftime('%Y-%m-%dT%H:%M:%S')
+    milliseconds = d.microsecond
+    if milliseconds > 0:
+        milliseconds = milliseconds/1000
+    utc_offset = d.strftime('%z')
+    utc_offset = '%s:%s' % (utc_offset[:-2],utc_offset[-2:])
+    return '%s.%d%s' % (date_time_part, milliseconds, utc_offset)
+
+djangoJsonEncoder = django.core.serializers.json.DjangoJSONEncoder()
+
+def strftime_log(d):
+    ''' format a datetime d as an ApiLog time:
+        - the same as isoformat with millisecond precision
+        - logs support millisecond precision due to postgresql limitations
+        - use the DjangoJSONEncoder, to give the same result as the serializers
+    '''
+    return djangoJsonEncoder.default(d)
+    
+    
 

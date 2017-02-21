@@ -784,7 +784,6 @@ class LibraryCopyPlateResource(DbApiResource):
     def get_librarycopyplate_cte(cls, 
         filter_hash=None, library_id=None, copy_id=None, plate_ids=None):
         
-        logger.info('get_librarycopyplate_cte: filters: %r', filter_hash)
         bridge = get_tables()
         _l = bridge['library']
         _c = bridge['copy']
@@ -1003,7 +1002,6 @@ class LibraryCopyPlateResource(DbApiResource):
 
         if schema is None:
             raise Exception('schema not initialized')
-            # schema = super(LibraryCopyPlateResource, self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id', None)
         # NOTE: loaded plates not being shown anymore
@@ -1011,7 +1009,6 @@ class LibraryCopyPlateResource(DbApiResource):
         # # because we are not creating "assay_plates" for screen results anymore
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
         
         library_id = None
         library_short_name = param_hash.pop('library_short_name',
@@ -5362,8 +5359,6 @@ class CherryPickRequestResource(DbApiResource):
                             raise ValidationError(
                                 key='wells_to_leave_empty',
                                 msg='column out of range: %d, %r' % (col, selection))
-#                         for row in range(0,nrows):
-#                             well_selections.add(lims_utils.well_name(row,col-1))
                         new_selections.append('Col:%d' % col)
                         continue
                     rowmatch = row_pattern.match(selection)
@@ -5374,21 +5369,17 @@ class CherryPickRequestResource(DbApiResource):
                                 key='wells_to_leave_empty',
                                 msg='row out of range: %r, %r' 
                                     % (rowmatch.group(1), selection))
-#                         for col in range(0,ncols):
-#                             well_selections.add(lims_utils.well_name(row,col))
                         new_selections.append('Row:%s' % rowmatch.group(1).upper())
                         continue
                     wellmatch = WELL_NAME_PATTERN.match(selection)
                     if wellmatch:
-#                         well_selections.add(
-#                             lims_utils.well_name(wellmatch.group(1), wellmatch.group(2)))
                         new_selections.append(selection.upper())
                         continue
                     
                     raise ValidationError(
                         key='wells_to_leave_empty',
                         msg='unrecognized pattern: %r' % selection)
-                logger.info('new wells_to_leave_empty selections: %r', new_selections)
+                logger.debug('new wells_to_leave_empty selections: %r', new_selections)
                 
                 decorated = []
                 for wellname in new_selections:
@@ -5543,7 +5534,7 @@ class CherryPickRequestResource(DbApiResource):
                     try:
                         plate = Plate.objects.get(plate_number=_pattern)
                         plate_number = int(_pattern)    
-                        logger.info('found %r for %r', plate, _pattern)
+                        logger.debug('found %r for %r', plate, _pattern)
                     except ObjectDoesNotExist:
                         errors.append(
                             'plate: %r is does not exist' % _pattern) 
@@ -5552,7 +5543,7 @@ class CherryPickRequestResource(DbApiResource):
                         well = Well.objects.get(
                             plate_number=plate_number, well_name=_pattern.upper())
                         wells.append(well)
-                        logger.info('found %r for %r', well, _pattern)
+                        logger.debug('found %r for %r', well, _pattern)
                     except ObjectDoesNotExist:
                         errors.append(
                             'well: "%d:%s" is does not exist' 
@@ -5561,6 +5552,7 @@ class CherryPickRequestResource(DbApiResource):
                     errors.append(
                         'pattern: %r is not a recognized as a well id, or '
                         'a plate number followed by a well name' % _pattern)
+            logger.info('wells: %d', len(wells))
         if errors:
             raise ValidationError(
                 key='screener_cherry_picks',
@@ -7000,7 +6992,6 @@ class LabCherryPickResource(DbApiResource):
         deserialized = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
-        logger.info('patch lcps: %r', deserialized)
         
         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
@@ -7102,13 +7093,12 @@ class LabCherryPickResource(DbApiResource):
             raise ValidationError(
                 key = API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED,
                 msg = '\n'.join(errors))
-        logger.info('selection_updates: %r', selection_updates)
+        logger.debug('selection_updates: %r', selection_updates)
         
         changed = []
         deselected = []
         selected = []
         for selection_copy_name, selection_update in selection_updates.items():
-#             selection_copy_name = COPYWELL_KEY.format(**selection_update)
             source_well_id = selection_update['source_well_id']
             current_lcp = current_lcps[source_well_id]
             current_copy_name = None
@@ -8308,8 +8298,6 @@ class LibraryCopyResource(DbApiResource):
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
-        logger.info('patch_obj %s', deserialized)
-
         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
@@ -8435,10 +8423,6 @@ class LibraryCopyResource(DbApiResource):
                         initial_plate_molar_concentration = None
                         initial_plate_mg_ml_concentration = None
                         
-                logger.info('initial mg_ml %r, molar: %r', 
-                    initial_plate_mg_ml_concentration, 
-                    initial_plate_molar_concentration)            
-                
                 logger.debug('create plates start: %d, end: %d',
                     library.start_plate, library.end_plate)
                 plates_created = 0
@@ -13545,7 +13529,7 @@ class SilencingReagentResource(DbApiResource):
         @param fields - field definitions, from the resource schema
         
         '''
-        logger.info(
+        logger.debug(
             'build silencing reagent columns for: %r', 
             [field['key'] for field in fields])
         DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
@@ -14199,7 +14183,7 @@ class ReagentResource(DbApiResource):
         
         if custom_columns is not None:
             sub_columns.update(custom_columns)
-        logger.info('final columns: %r', sub_columns.keys())
+        logger.debug('final columns: %r', sub_columns.keys())
         return DbApiResource.build_sqlalchemy_columns(self, 
             fields, base_query_tables=base_query_tables, 
             custom_columns=sub_columns)

@@ -107,3 +107,7 @@ cherrypickscreening,activity.type,vocabularies/activity.class/cherrypickscreenin
 libraryscreening,activity.type,vocabularies/activity.class/libraryscreening/,1,"listed as 'retired' because this is only used in read, not create functions","Library Screening","Library Screening",TRUE
 externallibraryscreening,activity.type,vocabularies/activity.class/external_library_screening/,2,"listed as 'retired' because this is only used in read, not create functions","External Library Screening","External Library Screening",TRUE
 cplt,activity.type,vocabularies/activity.class/cplt/,4,"listed as 'retired' because this is only used in read, not create functions","Cherry Pick Liquid Transfer","Cherry Pick Liquid Transfer",TRUE
+unfulfilled,labcherrypick.status,vocabularies/labcherrypick.status/unfulfilled/,1,,"An ""available"" copy of the ""Cherry Pick Source Plate"" with sufficient volume could not be found",Unfulfilled,
+selected,labcherrypick.status,vocabularies/labcherrypick.status/selected/,2,,"This Copy has been selected and has sufficient volume",Selected,
+plated,labcherrypick.status,vocabularies/labcherrypick.status/plated/,3,,"This well has been plated",Plated,
+not_selected,labcherrypick.status,vocabularies/labcherrypick.status/not_selected/,4,,"The source copy has not been selected for this source well","Not Selected",

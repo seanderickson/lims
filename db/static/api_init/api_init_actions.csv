@@ -5,6 +5,7 @@ patch,vocabulary,vocabulary_data_generated.csv
 patch,vocabulary,vocabulary_attachedfiletype_data.csv
 patch,vocabulary,vocabulary_checklists_data.csv
 patch,vocabulary,vocabulary_lab_affiliations_data.csv
+patch,field,metahash_fields_labcherrypick.csv
 patch,field,metahash_fields_screensaveruser.csv
 patch,field,metahash_fields_screeningroomuser.csv
 patch,field,metahash_fields_screen.csv
@@ -31,3 +32,4 @@ patch,field,metahash_fields_cherrypickscreening.csv
 patch,field,metahash_fields_cplt.csv
 patch,field,metahash_fields_publication.csv
 patch,field,metahash_fields_platelocation.csv
+patch,field,metahash_fields_screenercherrypick.csv

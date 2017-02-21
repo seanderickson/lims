@@ -9,4 +9,4 @@ library_well_type,fields.well,,,/reports/api/v1/field/fields.well/library_well_t
 library,fields.well,,library_id,/reports/api/v1/field/fields.well/library/,99,,TRUE,Library,Library,FALSE,,,,,string,,,,,,,,,,,
 facility_id,fields.well,,,/reports/api/v1/field/fields.well/facility_id/,7,,TRUE,"ID assigned by the local authority","Facility ID",TRUE,,,[d],,string,,,,,,,,,,,
 mg_ml_concentration,fields.well,,,/reports/api/v1/field/fields.well/mg_ml_concentration/,33,,TRUE,"Concentration in mg/ml","Concentration (mg/ml)",TRUE,,,[d],[u],decimal,,"{ 'hideIfEmpty': true }",,,,,,,,,
-molar_concentration,fields.well,,,/reports/api/v1/field/fields.well/molar_concentration/,33,,TRUE,"Molar Concentration","Molar Concentration",TRUE,,,[d],[u],decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'hideIfEmpty': true }",,,,,,,,,
+molar_concentration,fields.well,,,/reports/api/v1/field/fields.well/molar_concentration/,33,,TRUE,"Molar Concentration","Molar Concentration",TRUE,,,[d],[u],decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'hideIfEmpty': true, 'defaultUnit': 1e-3 }",,,,,,,,,

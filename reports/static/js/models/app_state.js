@@ -12,6 +12,9 @@ define([
   var SEARCH_DELIMITER = ';';
   var DEBUG = false;
   
+  var API_RESULT_META = 'meta';
+  var API_MSG_RESULT = 'Result';
+    
   var SchemaClass = Iccbl.SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()
   {
@@ -1096,6 +1099,40 @@ define([
     },
     
     /**
+     * Parse connection result (sent as a JSON object)
+     * 
+     * @param options - usual options for showModalMessage, including:
+     * - title
+     * - ok function
+     * - body - text to display if the data is not recognized
+     */
+    showConnectionResult: function(data, options){
+      if (_.isObject(data) && !_.isString(data)){
+        data = _.result(data,API_MSG_RESULT,data);
+        data = _.result(data,API_RESULT_META,data);
+        var msg_rows = this.dict_to_rows(data);
+        var bodyMsg = msg_rows;
+        if (_.isArray(msg_rows) && msg_rows.length > 1){
+          bodyMsg = _.map(msg_rows, function(msg_row){
+            return msg_row.join(': ');
+          }).join('<br>');
+        }
+        this.showModalMessage(
+          _.extend({}, options, {
+            body: bodyMsg
+          }));
+      }else{
+        console.log('Warn: data should have been parsed as json]', data);
+        this.showModalMessage(
+          _.extend({}, options, {
+            okText: 'ok',
+            body: 'Action Complete'
+          }));
+      }
+    },
+    
+    
+    /**
      * Show a JSON object in a modal dialog:
      * - transform the object into a table using a depth-first traversal:
      * - each row contains the nodes traversed to each leaf node.
@@ -1122,7 +1159,6 @@ define([
         body: bodyMsg,
         title: title  
       });
-      
     },
    
     error: function(msg){
@@ -1216,7 +1252,7 @@ define([
       }
 
       // Clear out error messages after navigating away from page
-      self.unset('messages');
+//      self.unset('messages');
     },
 
     
@@ -1474,6 +1510,61 @@ define([
     
     }, //addVocabularyItem  
     
+    downloadUrl: function($el, url) {
+      // When tracking the download, we're going to have
+      // the server echo back a cookie that will be set
+      // when the download Response has been received.
+      var downloadID = ( new Date() ).getTime();
+      // Add the "downloadID" parameter for the server
+      // Server will set a cookie on the response to signal download complete
+      url += "?downloadID=" + downloadID;
+      // tmpFrame is a target for the download
+      var iframe = $([
+        '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
+        ' style="visibility:hidden;position:absolute;display:none"></iframe>',
+        ].join(''));
+      $el.append(iframe);
+      $('#loading').fadeIn({duration:100});
+
+      var intervalCheckTime = 1000; // 1s
+      var maxIntervals = 3600;      // 3600s
+      var limitForDownload = 0;
+      // The local cookie cache is defined in the browser
+      // as one large string; we need to search for the
+      // name-value pattern with the above ID.
+      var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
+
+      // Now, we need to start watching the local Cookies to
+      // see when the download ID has been updated by the
+      // response headers.
+      var cookieTimer = setInterval( checkCookies, intervalCheckTime );
+
+      var i = 0;
+      function checkCookies() {
+        if ( document.cookie.search( cookiePattern ) >= 0 ) {
+          clearInterval( cookieTimer );
+          $('#loading').fadeOut({duration:100});
+          $('#tmpFrame').remove();
+          return(
+            console.log( "Download complete!!" )
+          );
+        }else if(i >= maxIntervals){
+          clearInterval( cookieTimer );
+          window.alert('download abort after tries: ' + i);
+          return(
+            console.log( "Download abort!!" )
+          );
+        }
+        console.log(
+          "File still downloading...",
+          new Date().getTime()
+        );
+        i++;
+      }
+      // simple GET request
+      iframe.attr('src', url);
+      
+    },
 
     download: function(url, resource, post_data){
       var self = this;
@@ -1708,25 +1799,41 @@ define([
      * show a modal pop up with only an "ok" button, no "cancel" button.
      */
     showModalMessage: function(options){
-      var modalDialog = this.showModal(options);
-      modalDialog.$el.find('#modal-cancel').hide();
+      options.ok_only = true;
+      return this.showModal(options);
     },
     
     /**
-     * options.ok = ok function
-     * options.cancel = cancel function
-     * options.body
-     * options.title
+     * Display a modal dialog
      */
     showModal: function(options){
       
       var self = this;
-      var callbackOk = (options && options.ok)? options.ok : function(){};
-      var callbackCancel = (options && options.cancel)? options.cancel: function(){};
-      var okText = (options && options.okText)? options.okText : 'Continue';
-      var cancelText = (options && options.cancelText)? 
-        options.cancelText : 'Cancel and return to page';
+      var defaultOptions = {
+        ok: function(){},
+        cancel: function(){},
+        okText: 'Continue',
+        cancelText: 'Cancel and return to page',
+        body: 'Body text',
+        title: 'Title Text',
+        buttons_on_top: false,
+        buttons_on_bottom: true
+        // Optional:
+        // view: HTML or Jquery object to append to the modal body
+        // width: override the modal-dialog width
+        // css: (dict) set the .modal-dialog css
+        // css_modal_content: (dict) set the .modal-content css
+        // css_modal_body: (dict) set the .modal-body css
+        // ok_only: boolean show only the "ok" button, hide the "cancel" button
+        // 
+      };
+      
+      var options = _.extend({}, defaultOptions, options);
       console.log('options', options);
+      
+      if (!_.isUndefined(options.view)){
+        delete options.body;
+      }
       var template = _.template(modalOkCancelTemplate)({ 
             body: options.body,
             title: options.title } );
@@ -1737,13 +1844,13 @@ define([
                   console.log('cancel button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide'); 
-                  callbackCancel();
+                  options.cancel();
               },
               'click #modal-ok':function(event) {
                   console.log('ok button click event, '); 
                   event.preventDefault();
                   self.clearPagePending();
-                  if(callbackOk(event)===false){
+                  if(options.ok(event)===false){
                     return;
                   }
                   $('#modal').modal('hide');
@@ -1754,8 +1861,13 @@ define([
       if(!_.isUndefined(options.view)){
         modalDialog.$el.find('.modal-body').append(options.view);
       }
-      modalDialog.$el.find('#modal-cancel').html(cancelText);
-      modalDialog.$el.find('#modal-ok').html(okText);
+      
+      if (options.ok_only == true){
+        modalDialog.$el.find('#modal-cancel').hide();
+      } else {
+        modalDialog.$el.find('#modal-cancel').html(options.cancelText);
+      }
+      modalDialog.$el.find('#modal-ok').html(options.okText);
       $modal = $('#modal');
       $modal.empty();
       $modal.html(modalDialog.$el);
@@ -1772,6 +1884,20 @@ define([
       }
       if (options.css_modal_content){
         $('.modal-content').css(options.css_modal_content);
+      }
+      if (options.css_modal_body){
+        $('.modal-body').css(options.css_modal_body);
+      }
+      
+      if (options.buttons_on_top == true){
+        $('#top_modal_buttons').show();
+      } else {
+        $('#top_modal_buttons').hide();
+      }
+      if (options.buttons_on_bottom == true){
+        $('#modal_footer').show();
+      } else {
+        $('#modal_footer').hide();
       }
       $modal.on('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();
@@ -1834,6 +1960,8 @@ define([
   appState.MSG_SEARCH_SIZE_EXCEEDED = 
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';
+  appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
+  appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   Iccbl.appModel = appState;
   
   return appState;

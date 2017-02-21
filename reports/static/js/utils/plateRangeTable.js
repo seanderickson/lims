@@ -35,7 +35,8 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       }
     },
     
-    _createPlateRangeTable: function(plate_collection, $target_el, nested_library_plate_pattern, editable){
+    _createPlateRangeTable: function(
+        plate_collection, $target_el, nested_library_plate_pattern, editable){
       var self = this;
       $target_el.empty();
       

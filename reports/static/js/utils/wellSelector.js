@@ -18,6 +18,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     
     /** Clicking this cell toggles the entire grid **/
     cellClicked: function(e) {
+      if (this.collection.editable === false) return;
       this.collection.each(function(model){
         model.set(_.object(_.map(
           _.keys(model.omit('row')),
@@ -77,6 +78,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     },
     
     cellClicked: function(e) {
+      if (this.collection.editable === false) return;
       var checked = this.checkbox().prop("checked");
       checked = !checked;
       this.checkbox().prop("checked", checked);
@@ -226,6 +228,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     },
   
     cellClicked: function(e) {
+      if (this.model.collection.editable === false) return;
       var checked = this.checkbox().prop("checked");
       checked = !checked;
       this.checkbox().prop("checked", checked);
@@ -289,6 +292,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     },
     
     cellClicked: function(e) {
+      if (this.model.collection.editable === false) return;
       var self = this;
       // Toggle
       var columnNumber = parseInt(self.column.get("name"));
@@ -331,6 +335,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       console.log('initialize wellselector');
       
       var options = options || {};
+      self.options = options;
       
       var plate_size = options.plateSize || 384;
       var nCols = 24;
@@ -352,7 +357,8 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       });
       
       var rowCollection = this.rowCollection = new RowCollection();
-      
+      // Hack, store the editable flag here
+      rowCollection.editable = self.options.editable;
       for (var i=0; i<nRows; i++){
         var row = { row: i };
         for (var j=1; j<=nCols; j++){
@@ -402,7 +408,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
             if (col > nCols){
               throw 'Selection is out of the column range: ' + wellSelection;
             }
-            console.log('set row,', row, 'col', col);
             rowModel = rowCollection.find(function(model){
               if (Iccbl.rowToLetter(model.get('row'))==row){
                 return true;
@@ -417,8 +422,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
           
           throw new Exception('Unknown well selection pattern: "' + wellSelection + '"');
         });
-        
-        
       }
       
       console.log('initialized...', this.rowCollection);
@@ -432,7 +435,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
         'order' : -1,
         'sortable': false,
         'searchable': false,
-        'editable' : true,
+        'editable' : false,
         'visible': true,
       };
       var columns = [
@@ -503,8 +506,15 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       });
       
       $('#resource_content').html(_grid.el);
-      $('#resource_content').prepend(selectAllButton);
-      $('#resource_content').prepend(clearSelectionsButton);
+      if (self.options.editable){
+        $('#resource_content').prepend(selectAllButton);
+        $('#resource_content').prepend(clearSelectionsButton);
+      }
+      if (self.options.title){
+        $('#content_title').html(self.options.title);
+      } else {
+        $('#content_title_row').hide();
+      }
     },
     
     getSelectedWells: function(){

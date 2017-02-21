@@ -68,6 +68,11 @@
       "list_view": "ListView",
       "api_resource": "cherrypickrequest"
     },
+    "cherrypickassayplate": {
+      "detailView": "DetailView",
+      "list_view": "ListView",
+      "api_resource": "cherrypickrequest"
+    },
     "externallibraryscreening": {
       "api_resource": "libraryscreening"
     },
@@ -124,6 +129,12 @@
         "description": "View Studies",
         "options": { 
         }
+    },
+    "screenresult": {
+      "options": {
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24
+      }
     },
     "library": {
         "header_message": "All libraries (Small Molecule and RNAi)",

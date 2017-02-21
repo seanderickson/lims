@@ -60,6 +60,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.title = null;
       this.consumedStack = [];
       this.objects_to_destroy = [];
+      _.bindAll(this, 'cleanup');
     },
         
     // Create a new model for editing
@@ -110,6 +111,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
+      self.objects_to_destroy.push(view);
     },
     
     // Show a mock detail view to test UI components
@@ -119,6 +121,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view = new DetailTestView({uriStack: uriStack});
       self.setView('#content', view).render();
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.objects_to_destroy.push(view);
     },
     
     // Show a mock well selector view to test UI components
@@ -130,6 +133,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
       self.setView('#content', view).render();
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.objects_to_destroy.push(view);
     },
     
     // Show the standard view of a resource
@@ -169,6 +173,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
+      self.objects_to_destroy.push(view);
     
     }, // end showDetail
     
@@ -215,11 +220,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }else{ // normal list view
 
         var Collection = Iccbl.MyCollection.extend({
+          url: url
         });
-        
-        collection = self.collection = new Collection({
-          'url': url
-        });
+        collection = self.collection = new Collection();
+//        
+//        collection = self.collection = new Collection({
+//          'url': url
+//        });
         
         var extraControls = [];
         if (appModel.hasPermission(resource.key, 'write')){
@@ -304,6 +311,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       url = resource.apiUri + '/search/' + searchID;
       var Collection = Iccbl.MyCollection.extend({
+        url: url,
         fetch: function(options){
           var options = options || {};
           // Encode for the post_data arg; post data elements are sent 
@@ -315,9 +323,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           return Iccbl.MyCollection.prototype.fetch.call(this, options);
         }
       });
-      var collection = new Collection({
-        url: url,
-      });
+      var collection = new Collection();
+//      var collection = new Collection({
+//        url: url,
+//      });
       var view = new viewClass({ 
 //          model: appModel, 
           uriStack: uriStack,
@@ -332,7 +341,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     // Backbone layoutmanager callback
     cleanup: function(){
-      console.log('cleanup');
+      console.log('cleanup:', this.objects_to_destroy.length);
       var oldView = this.getView('#content');
       if(!_.isUndefined(oldView)){
         oldView.off();
@@ -343,6 +352,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         obj.remove();
         obj.off();
       });
+      this.objects_to_destroy = [];
     },
 
     // Main view control method
@@ -356,9 +366,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uiResourceId;
       var resource;
       
-      self.removeView('#content');
       self.cleanup();
-      self.off();
       
       if (!_.isEmpty(uriStack)){
         if(uriStack[0] == 'detail_test'){

@@ -13,6 +13,7 @@ from django.db import transaction
 from tastypie.utils.dict import dict_strip_unicode_keys
 from aldjemy.core import get_engine
 
+from reports import strftime_log
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,12 @@ class MetaManager(models.Manager):
         this hash;
             e.g. "fields.field", or "fields.resource, or fields.vocabulary"
         '''
+        logger.debug('scope: %r', scope)
         metahash = {}
         if not clear:
-            metahash = cache.get('metahash:'+scope)
+            metahash = cache.get('metahash:%s'%scope)
         else:
-            cache.delete('metahash:'+scope)
+            cache.delete('metahash:%s'%scope)
             
         if not metahash:
             metahash = self._get_and_parse(
@@ -186,10 +188,10 @@ class ApiLog(models.Model):
     
     def __repr__(self):
         return (
-            '<ApiLog(id=%d, api_action=%r, ref_resource_name=%r, '
-            'key=%r, date_time=%r)>'
+            '<ApiLog(id=%r, api_action=%r, ref_resource_name=%r, '
+            'key=%r, uri=%r, date_time=%s)>'
             % (self.id, self.api_action, self.ref_resource_name, self.key,
-               self.date_time))
+               self.uri, strftime_log(self.date_time)))
 
     @staticmethod   
     def json_dumps(obj):

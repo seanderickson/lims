@@ -111,6 +111,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
 
     change_to_tab: function(key) {
       if (_.has(this.tabbed_resources, key)) {
+        this.removeView("#tab_container");
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
         if (key !== 'detail') {

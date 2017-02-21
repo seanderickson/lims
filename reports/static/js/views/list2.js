@@ -31,6 +31,7 @@ define([
       
       var self = this;
       var _options = self._options = args;
+      // FIXME: remove resource from code, using schemaResult only
       var resource = args.resource;
       if (!_options.schemaResult){
         _options.schemaResult = resource;
@@ -144,13 +145,20 @@ define([
       var collection;
       if( !_options.collection){  
         var Collection = Iccbl.MyCollection.extend({
-          state: _state  
-        });
-        
-        collection = self.collection = new Collection({
+          state: _state,  
+          modelId: function(attrs) {
+            return Iccbl.getIdFromIdAttribute( attrs, resource);
+          },
           'url': self._options.url,
           listModel: listModel
+  
         });
+        
+        collection = self.collection = new Collection();
+//          {
+////          'url': self._options.url,
+////          listModel: listModel
+//        });
         this.objects_to_destroy.push(collection);
       }else{
         collection = self.collection = _options.collection;
@@ -505,12 +513,17 @@ define([
             }
           });
           _.each(toRemove, function(key){
-            column =  self.grid.columns.find(function(column){
-              if(column.get('name') == key){
-                self.grid.removeColumn(column);
-                return true;
-              }
-            });
+            if(_.contains(
+              self._options.schemaResult.fields[key]['visibility'],'l')){
+              return;
+            } else {
+              column =  self.grid.columns.find(function(column){
+                if(column.get('name') == key){
+                  self.grid.removeColumn(column);
+                  return true;
+                }
+              });
+            }
           });          
           
           if(reset){
@@ -676,8 +689,13 @@ define([
       }
 
       if(_.has(self._options,'extraControls')){
+        self.$('#extra_controls').append(
+          '<div id="extra_controls_div" class="panel"></div>');
         _.each(self._options.extraControls, function(control){
-          self.$('#extra_controls').append(control);
+          // Adjust the checkbox types, so that the first also has a margin
+          // otherwise, wrapped checkboxes are offset
+          control.has('input[type="checkbox"]').css('margin-left','10px');
+          self.$('#extra_controls_div').append(control);
         });
       }
 
@@ -685,7 +703,7 @@ define([
       
       var searchHash = self.listModel.get('search');
       if(!_.isEmpty(searchHash)){
-        self.collection.setSearch(searchHash);
+        self.collection.setSearch(searchHash, {reset: false});
         fetched = true;
       }
 
@@ -714,6 +732,10 @@ define([
 //      }
 //      
       if ( !fetched ) {
+        //{ reset: false } (default) - uses set to (intelligently) merge the fetched 
+        //models ("add" events are fired),
+        //{reset: true}, in which case the collection will be (efficiently) reset 
+        //(no "add" events will be fired)
         self.collection.fetch({ reset: false }
         ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }
         ).done(function(){ });      

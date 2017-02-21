@@ -86,12 +86,15 @@ define([
       }
 
       var Collection = Iccbl.MyCollection.extend({
-      	state: _state
+      	state: _state,
+      	url: this._options.url,
+      	listModel: listModel
       });
-      var collection = self.collection = new Collection({
-        'url': this._options.url,
-        listModel: listModel
-      });
+      var collection = self.collection = new Collection();
+//      var collection = self.collection = new Collection({
+//        'url': this._options.url,
+//        listModel: listModel
+//      });
       this.objects_to_destroy.push(collection);
 
       this.listenTo(this.listModel, 'change:search', function(){

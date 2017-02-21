@@ -36,25 +36,27 @@ def bundle_context_processor(request):
     bundle_filename = 'bundle_name.json'
     filename = os.path.join(
         settings.PROJECT_ROOT, '..','reports','static',bundle_filename)
-    
-    with open(filename) as f:
-    
-        assets = json.loads(f.read())
+    try:
+        with open(filename) as f:
         
-        logger.info('bundle assets: %r', assets )
-        if 'main' not in assets:
-            raise Exception(
-                'bundle filename: %r, does not contain a "main" entry: %r', 
-                bundle_filename, assets)
-        if 'js' not in assets['main']:
-            raise Exception(
-                'bundle filename: %r, does not contain a "[main][js]" entry: %r', 
-                bundle_filename, assets)
-        
-        match = BUNDLE_NAME_PATTERN.match(assets['main']['js'])
-        
-        if not match:
-            raise Exception('bundle name does not match the pattern: %r', assets)
-        
-        return { 'WEBPACK_BUNDLE_NAME': match.group(1) }    
-
+            assets = json.loads(f.read())
+            
+            logger.info('bundle assets: %r', assets )
+            if 'main' not in assets:
+                raise Exception(
+                    'bundle filename: %r, does not contain a "main" entry: %r', 
+                    bundle_filename, assets)
+            if 'js' not in assets['main']:
+                raise Exception(
+                    'bundle filename: %r, does not contain a "[main][js]" entry: %r', 
+                    bundle_filename, assets)
+            
+            match = BUNDLE_NAME_PATTERN.match(assets['main']['js'])
+            
+            if not match:
+                raise Exception('bundle name does not match the pattern: %r', assets)
+            
+            return { 'WEBPACK_BUNDLE_NAME': match.group(1) }    
+    except:
+        logger.exception('filename not found: %s' % bundle_filename )
+        return {}

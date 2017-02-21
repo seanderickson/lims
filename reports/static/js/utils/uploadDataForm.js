@@ -161,29 +161,10 @@ function($, _, Iccbl, appModel, EditView) {
               headers: headers
             }).done(function(data, textStatus, jqXHR){ 
               console.log('success', data);
+              appModel.showConnectionResult(data, {
+                title: 'Upload success, File: "' + file.name + '"'
+              });
               
-              if (_.isObject(data) && !_.isString(data)){
-                data = _.result(_.result(data,'meta',data),'Result',data);
-                var msg_rows = appModel.dict_to_rows(data);
-                var bodyMsg = msg_rows;
-                if (_.isArray(msg_rows) && msg_rows.length > 1){
-                  bodyMsg = _.map(msg_rows, function(msg_row){
-                    return msg_row.join(': ');
-                  }).join('<br>');
-                }
-                var title = 'Upload success, File: "' + file.name + '"';
-                appModel.showModalMessage({
-                  body: bodyMsg,
-                  title: title  
-                });
-              }else{
-                console.log('data should have been parsed as json', data);
-                appModel.showModalMessage({
-                  title: 'data file uploaded',
-                  okText: 'ok',
-                  body: '"' + file.name + '", ' + data
-                });
-              }
               promise.resolveWith(this,arguments); 
             }).fail(function(jqXHR, textStatus, errorThrown){
               promise.rejectWith(this,arguments);

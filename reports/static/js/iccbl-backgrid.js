@@ -337,10 +337,14 @@ var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute =
   
   if (_.has(schema, 'id_attribute')) {
     var id_attribute = schema['id_attribute'];
-    console.log('create id from ' + id_attribute);
+    //console.log('create id from ' + id_attribute);
     var id = _.reduce(id_attribute, function(memo, item){
       if(!_.isEmpty(memo)) memo += '/';
-      return memo += model.get(item);
+      if (model instanceof Backbone.Model){
+        return memo += model.get(item);
+      }else{
+        return memo += _.result(model,item);
+      }
     }, '');
     return id;
   } else {
@@ -547,7 +551,10 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
     
     var self = this;
     this.model.on('change:'+this.column.get("name") , function(){
-      self.$el.addClass('edited');
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
     });
   }
 });
@@ -557,18 +564,42 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
     BooleanCell.__super__.initialize.apply(this, arguments);
     var self = this;
     this.model.on('change:'+this.column.get("name") , function(){
-      self.$el.addClass('edited');
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
     });
   }  
   
 })
 
+var StringFormatter = Iccbl.StringFormatter = function () {};
+StringFormatter.prototype = new Backgrid.StringFormatter();
+_.extend(StringFormatter.prototype, {
+  /**
+   * Extend Backgrid.StringFormatter to add spaces between values in arrays.
+   */
+  fromRaw: function (rawValue, model) {
+    if (_.isUndefined(rawValue) || _.isNull(rawValue)) return '';
+    if (_.isArray(rawValue)) {
+      return rawValue.join(', ');
+    } else {
+      return rawValue + '';
+    }
+  }
+});
+
+
 var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
+  formatter: Iccbl.StringFormatter,
   initialize: function(){
     StringCell.__super__.initialize.apply(this, arguments);
     var self = this;
     this.model.on('change:'+this.column.get("name") , function(){
-      self.$el.addClass('edited');
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
     });
   }  
 });
@@ -656,7 +687,7 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
       var i = 0;
       _.each(rawValue, function(val){
         var interpolatedVal = Iccbl.formatString(self.hrefTemplate, self.model, val);
-        if(i>0) self.$el.append(',');
+        if(i>0) self.$el.append(', ');
         self.$el.append($('<a>', {
           tabIndex : -1,
           href : interpolatedVal,
@@ -746,11 +777,12 @@ var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
     var column = this.column;
     var currVal = model.get(column.get("name"));
     this.model.on('change:'+this.column.get("name") , function(){
-      if (parseFloat(currVal) !== parseFloat(model.get(column.get("name")))) {
-        self.$el.addClass('edited');
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        if (parseFloat(currVal) !== parseFloat(model.get(column.get("name")))) {
+          self.$el.addClass('edited');
+        }
       }
     });
-    
   }
 });
 
@@ -852,7 +884,7 @@ _.extend(SIUnitsFormatter.prototype, {
   },
 
   /**
-   * Convert the number to a siunit value; number = .0025 multiplier = 1000
+   * Convert the number to a siunit value
    * 
    * @return Math.round(number*multiplier,decimals) + symbol
    */
@@ -887,10 +919,16 @@ _.extend(SIUnitsFormatter.prototype, {
       }
     }
 
-    if(multiplier >= 1){
+//    if(multiplier >= 1){
+//      number = number * multiplier;
+//    }else{
+//      console.log("Error, DecimalCell multiplier < 1: " + multiplier);
+//    }
+     
+    if(multiplier > 0){
       number = number * multiplier;
     }else{
-      console.log("Error, DecimalCell multiplier < 1: " + multiplier);
+      console.log("Error, DecimalCell multiplier ! > 0: " + multiplier);
     }
      
     pairUnit = _.find(this.siunits, function(pair){
@@ -1223,8 +1261,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   initialize : function(options) {
     var self = this;
     this.options = options;
-    this.url = options.url;
-    this.listModel = options.listModel;
+//    this.url = options.url;
+//    this.listModel = options.listModel;
 
     Backbone.PageableCollection.prototype.initialize.apply(this, options);
   },
@@ -1302,8 +1340,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       
   /**
    * Method for external callers to set the search, with fetch
+   * @param options - for Backbone.Collection.fetch:
+   * { reset: false } (default) - uses set to (intelligently) merge the fetched 
+   * models ("add" events are fired),
+   * {reset: true}, in which case the collection will be (efficiently) reset 
+   * (no "add" events will be fired)
    */
-  setSearch: function(searchHash) {
+  setSearch: function(searchHash, options) {
     var self = this;
     var searchHash = _.clone(searchHash);
     self.listModel.set('search', searchHash);
@@ -1344,7 +1387,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       }
     });
 
-    self.fetch({reset: true}).fail(
+    //self.fetch({reset: true}).fail(
+    self.fetch(options).fail(
       function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
     );
   },
@@ -1812,10 +1856,10 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
   errorClass: 'has-error',
   criteriaTemplate: 
     [
-      '<span  data-editor></span>'
+      '<span  data-editor ></span>'
     ].join(''),
   fieldTemplate: [
-      '<div data-editor title="<%= help %>" class="form-control" >',
+      '<div data-editor title="<%= help %>" class="" >',
     ].join(''),
 
   getPossibleSearches: function(){
@@ -2773,6 +2817,11 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       }
     });
   },
+  
+  clear: function(){
+    SelectorFormFilter.__super__.clear.apply(this, arguments);
+    this.$el.find('[data-fields]').find('input').prop('disabled', false);
+  },
 
   /**
    * SelectorFormFilter Form submit handler
@@ -2815,10 +2864,12 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     var searchHash = _.clone(hash);
     var searchTerm = null;
     var name = this.columnName;
+    var searchVal = null;
 
     _.each(self.getPossibleSearches(), function(term){
       if(_.has(searchHash,term)){
         searchTerm = term;
+        searchVal = searchHash[term];
       }
     });
     
@@ -2828,7 +2879,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         name = '-' + name;
       }
       if(searchTerm ==  name + '__is_null'){
-        if(searchVal == 'true'){
+        if(searchVal == 'true' || searchVal == true){
           self.setValue('lower_criteria','blank');
         }else{
           self.setValue('lower_criteria', 'not blank');
@@ -2893,6 +2944,9 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
         console.log('vocabulary error', this.column.get('name'),e);
       }
     }
+    console.log(
+      'SelectorHeaderCell: column:', this.column.get('name'), 
+      'choiceHash:', choiceHash);
     this._serverSideFilter = new SelectorFormFilter({
         choiceHash: choiceHash,
         columnName: self.column.get('name'),
@@ -3066,7 +3120,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = options['model'] = new FormFields();
-    this.model.set('lower_criteria','='); // default
+    this.model.set('lower_criteria','>'); // default
     
     options.fields = fields.concat(
         ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']); 
@@ -3340,12 +3394,14 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     var options = this.options = options || {};
     var multiplier = this.multiplier = options.multiplier || 1;
     var symbol = this.symbol = options.symbol;
+    var defaultUnit = this.defaultUnit = options.defaultUnit;
     var units = this.units = [];
     var formSchema = options.schema = options.schema || {};
     
     if(! options.symbol){
       throw 'Error: SIUnitFormFilter requires a "symbol" option' 
     }
+    this.defaultSymbol = null;
     _.each(this.siunits,function(pair){
       if(options.maxunit){
         if(options.maxunit < pair[1]) return;
@@ -3354,6 +3410,9 @@ var SIUnitFormFilter = NumberFormFilter.extend({
         if(options.minunit > pair[1]) return;
       }
       units.push({ val: pair[1], label: pair[0] + self.symbol });
+      if (pair[1]==defaultUnit){
+        self.defaultSymbol = pair[0] + self.symbol;
+      }
     });
     formSchema['lower_siunit'] = {
       title: '', 
@@ -3376,6 +3435,20 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     options['fields'] = ['lower_siunit','upper_siunit']
     
     SIUnitFormFilter.__super__.initialize.call(this, options);
+    
+  },
+  
+  render: function(){
+    SIUnitFormFilter.__super__.render.call(this, arguments);
+    
+    // Fixme: these values must be set after render, because inheritance is not
+    // proper for this class.
+    if (_.isNumber(this.defaultUnit)){
+      this.setValue('lower_siunit',this.defaultUnit);
+      this.setValue('upper_siunit',this.defaultUnit);
+    }
+    return this;
+    
   },
   
   /**
@@ -3435,7 +3508,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     function strip(number) {
       return (parseFloat(number.toPrecision(12)));
       };
-    val = strip(val * multiplier);
+    val = strip(val / multiplier);
     if(sci_mult > 0){ // if sci unit is undefined, assume to be 1
       val = strip(val * sci_mult);
     }
@@ -3596,8 +3669,8 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
     });
 
     // TODO: customize the default units values
-    this._serverSideFilter.setValue('lower_siunit',1);
-    this._serverSideFilter.setValue('upper_siunit',1);
+//    this._serverSideFilter.setValue('lower_siunit',1);
+//    this._serverSideFilter.setValue('upper_siunit',1);
     return this;
   }
 });
@@ -3847,8 +3920,6 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
   
 });
 
-
-
 /**
  * Return an array for backgrid column descriptors.
  * 
@@ -3897,14 +3968,19 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if (display_type=='link' && data_type=='list'){
         backgridCellType = Iccbl.UriListCell;
       }
-      
-      if(!_.isEmpty(cell_options)){
-        backgridCellType = backgridCellType.extend(cell_options);
-      }
     }else{
       if (Iccbl.appModel.DEBUG)
         console.log('no special cell type for', display_type, 'data_type',data_type);
     }
+  }
+  if(!_.isEmpty(cell_options)){
+    backgridCellType = backgridCellType.extend(cell_options);
+  }
+  
+  if (data_type == 'list'){
+    backgridCellType = backgridCellType.extend({
+      formatter: Iccbl.StringFormatter
+    });
   }
   
   column = _.extend(column, {
@@ -3954,7 +4030,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   
   if (optionalHeaderCell) {
     column['headerCell'] = optionalHeaderCell;
-  }else{
+  }else if (_.has(prop, 'headerCell')){
+    column['headerCell'] = prop.headerCell;
+  } 
+  else{
     // More specific header cell, if available
     if(data_type == 'string'){
       column['headerCell'] = TextHeaderCell;
@@ -4033,12 +4112,14 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
         i++;
       }
     } else {
+      var hashSearch = RegExp('^(' + key + ')(_{2}\w+)?$');
+      var orderSearch = RegExp('^-?' + key + '$');
       if( 
         _.findKey(searchHash, function(val,hashkey){
-            return hashkey.indexOf(key) > -1
+          return hashSearch.test(hashkey);
         })
         ||  _.find(orderStack, function(orderkey){
-          return orderkey.indexOf(key) > -1
+          return orderSearch.test(orderkey);
         }))
       {
         colModel[i] = column;

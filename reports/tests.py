@@ -53,6 +53,7 @@ import cStringIO
 import json
 import logging
 import os
+import re
 import sys
 import unittest
 from unittest.util import safe_repr
@@ -70,7 +71,7 @@ from django.utils.encoding import force_text
 from tastypie import fields
 
 from reports import dump_obj, HEADER_APILOG_COMMENT
-from reports.api import compare_dicts
+from reports.api import compare_dicts, API_RESULT_DATA
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE, MetaHash
 from reports.serialize import parse_val
@@ -137,7 +138,7 @@ def decode_from_utf8(val):
     '''
     try:
         if isinstance(val, str):
-            # if string value, then decode back to unicode, assuming utf-8 encoding
+            # if string, then decode back to unicode, assuming utf-8 encoding
             val = val.decode('utf-8')
         return val
     except Exception, e:
@@ -196,7 +197,8 @@ def equivocal(val1, val2):
             return False, ('val1', val1, 'val2', val2 )
     else: # better be a list
         if not isinstance(val1, list) and isinstance(val2, list):
-            return False, ('Must be a list if not a string', 'val1', val1, 'val2', val2)
+            return False, (
+                'Must be a list if not a string', 'val1', val1, 'val2', val2)
         if not val2:
             return False, ('val2 is None', 'val1', val1 )
         for v in val1:
@@ -231,7 +233,7 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
             return False, ('key not found',key)  
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:
-            # don't report for this section, just move along to the next items to test
+            # don't report for this section, move to the next items to test
             return False, () 
 
     fkey = 'resource_uri'
@@ -248,9 +250,11 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
                 if val2.endswith('/'): val2 = val2[0:len(val2)-1]
                 if val1 != val2:
                     if val1 not in val2:
-                        return False, ('resource uri not equal', val1, val2, obj2)
+                        return False, (
+                            'resource uri not equal', val1, val2, obj2)
                     logger.warn(
-                        'imprecise uri matching, equivocating %r to %r:', val1, val2)
+                        'imprecise uri matching, equivocating %r to %r:', 
+                        val1, val2)
     
     keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
     for key in keys_to_search:
@@ -319,6 +323,7 @@ class NoDbTestRunner(DiscoverRunner):
     pass
 
 
+# NOTE:
 # Create a TestRunner that will swallow exceptions on teardown of the test
 # database.
 # - motivation: use this runner for Travis tests so that the teardown error is
@@ -344,6 +349,13 @@ class IccblTestRunner(DiscoverRunner):
                 'if set (with --keepdb), the _bootstrap_init_files method '
                 'will be called (without --keepdb, _bootstrap_init_files'
                 ' is always called)'))
+        parser.add_argument(
+            '--reinit_pattern [pattern]',
+            action='store',
+            help=(
+                'if set (with --reinit_metahash), will only process input'
+                'file actions with "resource" or "file" that matches the '
+                'pattern given'))
         
     def teardown_databases(self, old_config, **kwargs):
         try:
@@ -402,17 +414,19 @@ class BaselineTest(TestCase):
             ['false','False'],
             ['FALSE','false'],
             ['False',False],
+            # test that bytestrings encoded as UTF-8 are recognized
+            # [u'\u03bc','\xce\xbc'] 
             ]
             ## TODO: test date strings 
         
         for [a,b] in test_true:
-            logger.info('csv serialization equivocal truthy test %r to %r', a, b)
+            logger.info(
+                'csv serialization equivocal truthy test %r to %r', a, b)
             result, msgs = equivocal(a,b)
             self.assertTrue(result, msgs)
 
         test_false = [
             ['1',''],
-            # Test that string is not equal to the wrong integer after conversion
             ['1',2],    
             ['','1'],
             ['sal','val'],
@@ -424,7 +438,8 @@ class BaselineTest(TestCase):
             ['False',True],
             ]
         for [a,b] in test_false:
-            logger.debug('csv serialization equivocal falsy test: %r to %r', a, b)
+            logger.debug(
+                'csv serialization equivocal falsy test: %r to %r', a, b)
             result, msgs = equivocal(a,b)
             self.assertFalse(result, msgs)
     
@@ -983,7 +998,7 @@ class IResourceTestCase(SimpleTestCase):
     Serves as a base class for tests, and, through _bootstrap_init_files, 
     as the setup for this module.
 
-    TODO/FIXME: initialize the SqlAlchemyResource inside the transactions so that 
+    FIXME: initialize the SqlAlchemyResource inside the transactions so that 
     the normal TransactionTestCase can be used.
     """
     def __init__(self,*args,**kwargs):
@@ -1008,16 +1023,17 @@ class IResourceTestCase(SimpleTestCase):
     def setUp(self):
         super(IResourceTestCase, self).setUp()
 
-    def _bootstrap_init_files(self):
+    def _bootstrap_init_files(self, reinit_pattern=None):
         
-        logger.info('_bootstrap_init_files...')
+        logger.info('_bootstrap_init_files...: %r', reinit_pattern)
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         serializer=CSVSerializer() 
         testApiClient = TestApiClient(serializer=serializer) 
-        input_actions_file = os.path.join(self.directory, 'api_init_actions.csv')
-        logger.info('open input_actions file %r', input_actions_file)
+        input_actions_file = os.path.join(
+            self.directory, 'api_init_actions.csv')
         
-        self._run_api_init_actions(input_actions_file)
+        self._run_api_init_actions(
+            input_actions_file, reinit_pattern=reinit_pattern)
 
     def create_basic(self, username, password):
         """
@@ -1065,7 +1081,8 @@ class IResourceTestCase(SimpleTestCase):
                 authentication=self.get_credentials(), data=_data_for_get)
             new_obj1 = self.deserialize(resp1)
             self.assertTrue(
-                'objects' not in new_obj1 or len(new_obj1['objects'])==0, 
+                API_RESULT_DATA not in new_obj1 
+                    or len(new_obj1[API_RESULT_DATA])==0, 
                 'Error: failed create returns objects: %r' % new_obj1)
             return (new_obj,resp)
         else:
@@ -1075,7 +1092,8 @@ class IResourceTestCase(SimpleTestCase):
             new_obj = self.deserialize(resp)
             logger.debug('post response: %r', new_obj)
             
-        new_obj = self.get_single_resource(resource_test_uri, data_for_get=_data_for_get)
+        new_obj = self.get_single_resource(
+            resource_test_uri, data_for_get=_data_for_get)
         result,msg = assert_obj1_to_obj2(input_data,new_obj, excludes=excludes)
         self.assertTrue(result, msg)
         logger.debug('item created: %r', new_obj)
@@ -1096,7 +1114,9 @@ class IResourceTestCase(SimpleTestCase):
             resp.status_code in [200,201], 
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        return new_obj['objects']
+        if API_RESULT_DATA in new_obj:
+            new_obj = new_obj[API_RESULT_DATA]
+        return new_obj
     
     def get_single_resource(self, resource_uri, data_for_get=None):
         _data_for_get = { 
@@ -1113,11 +1133,11 @@ class IResourceTestCase(SimpleTestCase):
             resp.status_code in [200,201], 
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        if 'objects' in new_obj:
-            self.assertEqual(len(new_obj['objects']),1,
+        if API_RESULT_DATA in new_obj:
+            self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
                 'more than one object returned for: %r, returns: %r'
                 % (resource_uri,new_obj))
-            new_obj = new_obj['objects'][0]
+            new_obj = new_obj[API_RESULT_DATA][0]
         logger.debug('obj: %r', new_obj)
         return new_obj
     
@@ -1130,6 +1150,7 @@ class IResourceTestCase(SimpleTestCase):
         return self.get_from_server(resource_uri)
         
     def get_from_server(self, resource_uri, data_for_get=None):
+        ''' DEPRECATED, does the same thing as get_list_resource '''
         _data_for_get = { 
             'limit': 0,
             'includes': '*'
@@ -1143,20 +1164,22 @@ class IResourceTestCase(SimpleTestCase):
             (resp.status_code, self.get_content(resp)))
         return self.deserialize(resp)
     
-    def _patch_test(self,resource_name, filename, keys_not_to_check=['resource_uri'], 
-                    id_keys_to_check=[], data_for_get={}):
+    def _patch_test(
+        self,resource_name, filename, keys_not_to_check=['resource_uri'], 
+        id_keys_to_check=[], data_for_get={}):
         '''
         @param data_for_get - dict of extra header information to send with the 
         GET request
         '''
         data_for_get.setdefault('limit', 999 )
         data_for_get.setdefault('includes', '*' )
-        data_for_get.setdefault( HEADER_APILOG_COMMENT, 'patch_test: %s' % filename )
+        data_for_get.setdefault( 
+            HEADER_APILOG_COMMENT, 'patch_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
         
         logger.debug('===resource_uri: %r', resource_uri)
         with open(filename) as bootstrap_file:
-            # NOTE / TODO: we have to deserialize the input, because the TP test method 
+            # Note: we have to deserialize the input, because the TP test method 
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
@@ -1167,45 +1190,38 @@ class IResourceTestCase(SimpleTestCase):
             self.assertTrue(
                 resp.status_code <= 204, 
                 (resp.status_code, self.get_content(resp)))
-            
+            logger.debug('get: %r,%r', resource_uri, data_for_get)
             resp = self.api_client.get(
-                resource_uri, format='json', authentication=self.get_credentials(), 
+                resource_uri, format='json', 
+                authentication=self.get_credentials(), 
                 data=data_for_get)
             self.assertTrue(
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
             
             new_obj = self.deserialize(resp)
-            for inputobj in input_data['objects']:
+            for inputobj in input_data[API_RESULT_DATA]:
                 # use id_keys_to_check to perform a search only on those keys
                 result, outputobj = find_obj_in_list(
-                    inputobj,new_obj['objects'], id_keys_to_check=id_keys_to_check, 
+                    inputobj,new_obj[API_RESULT_DATA], 
+                    id_keys_to_check=id_keys_to_check, 
                     excludes=keys_not_to_check )
                 self.assertTrue(
                     result, 
                     ('not found', outputobj,'=== objects returned ===', 
-                        new_obj['objects'])) 
+                        new_obj[API_RESULT_DATA])) 
                 # once found, perform equality based on all keys (in obj1)
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
                     excludes=keys_not_to_check)
                 self.assertTrue(result,
                     ('not equal', msg, inputobj, outputobj))
-                # self.assertTrue(
-                #     resource_name in outputobj['resource_uri'], 
-                #     ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
-                #          'should contain', resource_name))
-                # for id_key in id_keys_to_check:
-                #     self.assertTrue(
-                #         inputobj[id_key] in outputobj['resource_uri'], 
-                #         ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
-                #              'should contain id key', id_key, 'val', inputobj[id_key]))
-            #TODO: GET the apilogs expected and test them
             
             # return both collections for further testing
-            return (input_data['objects'], new_obj['objects']) 
+            return (input_data[API_RESULT_DATA], new_obj[API_RESULT_DATA]) 
 
-    def _put_test(self, resource_name, filename, keys_not_to_check=['resource_uri'], 
-                  id_keys_to_check=[], data_for_get={}):
+    def _put_test(
+        self, resource_name, filename, keys_not_to_check=['resource_uri'], 
+        id_keys_to_check=[], data_for_get={}):
         '''
         id_keys_to_check if the resource data has been loaded, 
             then these are id keys to check to see if they are being used in 
@@ -1213,11 +1229,12 @@ class IResourceTestCase(SimpleTestCase):
         '''
         data_for_get.setdefault('limit', 0 )
         data_for_get.setdefault('includes', '*' )
-        data_for_get.setdefault( HEADER_APILOG_COMMENT, 'put_test: %s' % filename )
+        data_for_get.setdefault( 
+            HEADER_APILOG_COMMENT, 'put_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
 
         with open(filename) as bootstrap_file:
-            # NOTE / TODO: we have to deserialize the input, because the TP test method 
+            # NOTE: have to deserialize the input, because the TP test method 
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
@@ -1236,19 +1253,21 @@ class IResourceTestCase(SimpleTestCase):
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
             # do a length check, since put will delete existing resources
-            self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 
+            self.assertEqual(
+                len(new_obj[API_RESULT_DATA]), len(input_data[API_RESULT_DATA]), 
                 str(('input length != output length: ',
-                    len(new_obj['objects']), len(input_data['objects']),
+                    len(new_obj[API_RESULT_DATA]), 
+                    len(input_data[API_RESULT_DATA]),
                     input_data,'\n\n', new_obj)))
             
-            for inputobj in input_data['objects']:
+            for inputobj in input_data[API_RESULT_DATA]:
                 result, outputobj = find_obj_in_list(
-                    inputobj,new_obj['objects'],
+                    inputobj,new_obj[API_RESULT_DATA],
                     id_keys_to_check=id_keys_to_check,
                     excludes=keys_not_to_check)
                 self.assertTrue(
                     result, 
-                    ('not found', outputobj, new_obj['objects'] ) )
+                    ('not found', outputobj, new_obj[API_RESULT_DATA] ) )
                 # once found, perform equality based on all keys (in obj1)
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
                     excludes=keys_not_to_check)
@@ -1256,46 +1275,77 @@ class IResourceTestCase(SimpleTestCase):
                     result,
                     ('not equal', msg, inputobj, outputobj))
             #TODO: GET the apilogs expected and test them
-            return (input_data['objects'], new_obj['objects']) 
+            return (input_data[API_RESULT_DATA], new_obj[API_RESULT_DATA]) 
 
-    def _run_api_init_actions(self, input_actions_file):
+    def _run_api_init_actions(self, input_actions_file, reinit_pattern=None):
+        logger.info( '_run_api_init_actions: %r, reinit_pattern: %r', 
+            input_actions_file, reinit_pattern)
         
         if not os.path.exists(input_actions_file):
             raise AssertionError('no such file %s' % input_actions_file)
         with open(input_actions_file) as input_file:
             api_init_actions = csvutils.from_csv(input_file)
             if not api_init_actions:
-                raise AssertionError('no actions read from file: %s' % input_actions_file)
+                raise AssertionError(
+                    'no actions read from file: %s' % input_actions_file)
             for action in api_init_actions:
-                logger.warn('process action: %r', action)
                 command = action['command'].lower() 
                 resource = action['resource'].lower()
-
-                if command == 'delete':
-                    # no need to delete with the empty test database
-                    pass
-                else:
-                    data_file = os.path.join(self.directory,action['file'])
-                    logger.info('Data File: %r', data_file)
-                    if command == 'put':
-                        self._put_test(resource, data_file, keys_not_to_check=['resource_uri'])
-                    elif command == 'patch':
-                        self._patch_test(resource, data_file, keys_not_to_check=['resource_uri'])
+                filename = action.get('file',None)
+                
+                def processAction():
+                    logger.warn('process action: %r', action)
+                    if command == 'delete':
+                        # no need to delete with the empty test database
+                        pass
                     else:
-                        raise AssertionError('Unknown API command %s' % command)
+                        if filename is None:
+                            raise AssertionError(
+                                '"put" and "patch" require a filename argument: %r'
+                                    % action)
+                        data_file = os.path.join(self.directory,filename)
+                        logger.info('Data File: %r', data_file)
+                        if command == 'put':
+                            self._put_test(
+                                resource, data_file, 
+                                keys_not_to_check=['resource_uri'])
+                        elif command == 'patch':
+                            self._patch_test(
+                                resource, data_file, 
+                                keys_not_to_check=['resource_uri'])
+                        else:
+                            raise AssertionError(
+                                'Unknown API command %r' % action)
+                        logger.info('Completed, data File: %r', data_file)
+           
+                if reinit_pattern is not None:
+                    pattern = re.compile(
+                        r'%s'%reinit_pattern,flags=re.IGNORECASE)
+                    if pattern.search(resource):
+                        logger.info(
+                            'reinit_pattern resource match: %r', resource)
+                        processAction()
+                    if pattern.search(filename):
+                        logger.info(
+                            'reinit_pattern filename match: %r', filename)
+                        processAction()
+                else:
+                    processAction()
                     
+        logger.info('Completed, input actions file: %r', input_actions_file)
+        
     def get_content(self, resp):
         
         return self.serializer.get_content(resp);
     
     def deserialize(self, resp):
 
-        return self.serializer.deserialize(self.get_content(resp), resp['Content-Type'])
+        return self.serializer.deserialize(
+            self.get_content(resp), resp['Content-Type'])
 
     def serialize(self, data, format):
         content_type = self.serializer.get_content_type(None, format)
         return self.serializer.serialize(data, content_type)
-
 
 runTestApiInit = [False]
 def setUpModule():
@@ -1307,39 +1357,47 @@ def setUpModule():
     global runTestApiInit
     keepdb = False
     reinit_metahash = False
+    reinit_pattern = None
     if len(sys.argv) > 1:
-        for arg in sys.argv:
-            print 'arg: ', arg
+        for i,arg in enumerate(sys.argv):
+            logger.info('arg: %d: %r',i, arg)
             if 'keepdb' in arg:
                 keepdb = True
             if 'reinit_metahash' in arg:
                 reinit_metahash = True
+            if 'reinit_pattern' in arg:
+                # grab the next arg
+                reinit_pattern = sys.argv[i]
             if 'TestApiInit' in arg:
                 runTestApiInit[0] = True
         if keepdb and runTestApiInit[0]:
             raise Exception(
                 'The TestApiInit test cannot be run with an existing test database')
     
-    logger.info('init vars: keepdb: %r, reinit_metahash: %r, TestApiInit: %r', 
-        keepdb,reinit_metahash,runTestApiInit[0])
+    logger.info(
+        'init vars: keepdb: %r, reinit_metahash: %r,reinit_pattern: %r, '
+        'TestApiInit: %r ', 
+        keepdb,reinit_metahash,reinit_pattern,runTestApiInit[0])
 
     # Set up a superuser
     print 'create a superuser...'
     try:
         logger.info('create/find superuser %s...', IResourceTestCase.username)
-        IResourceTestCase.user = User.objects.get(username=IResourceTestCase.username)
+        IResourceTestCase.user = User.objects.get(
+            username=IResourceTestCase.username)
         logger.warn('superuser found: %r', IResourceTestCase.user)
         logger.warn('users: %r', [str(u) for u in User.objects.all()])
     except ObjectDoesNotExist:
         logger.warn('creating superuser: %s', IResourceTestCase.username)
         IResourceTestCase.user = User.objects.create_superuser(
-            IResourceTestCase.username, '1testsuperuser@example.com', IResourceTestCase.password)
+            IResourceTestCase.username, '1testsuperuser@example.com', 
+            IResourceTestCase.password)
     print 'superuser created.'
-
+    logger.info('reinit_pattern: %r', reinit_pattern)
     if (reinit_metahash or not keepdb) and not runTestApiInit[0]:
         testContext = IResourceTestCase(methodName='_bootstrap_init_files')
         testContext.setUp()
-        testContext._bootstrap_init_files()
+        testContext._bootstrap_init_files(reinit_pattern=reinit_pattern)
         logger.info('database initialization finished')
     else:
         print 'skip database metahash initialization when using keepdb'
@@ -1378,12 +1436,14 @@ class TestApiClient(object):
 
         return self.client.get(uri, **kwargs)
 
-    def post(self, uri, format='json', data=None, authentication=None, **kwargs):
+    def post(
+        self, uri, format='json', data=None, authentication=None, **kwargs):
         """
         Performs a simulated ``POST`` request to the provided URI.
 
-        Optionally accepts a ``data`` kwarg. **Unlike** ``GET``, in ``POST`` the
-        ``data`` gets serialized & sent as the body instead of becoming part of the URI.
+        Optionally accepts a ``data`` kwarg. 
+        **Unlike** ``GET``, in ``POST`` the ``data`` gets serialized & sent 
+        as the body instead of becoming part of the URI.
         """
         content_type = self.serializer.get_content_type(None, format)
         kwargs['content_type'] = content_type
@@ -1400,8 +1460,9 @@ class TestApiClient(object):
         """
         Performs a simulated ``PUT`` request to the provided URI.
 
-        Optionally accepts a ``data`` kwarg. **Unlike** ``GET``, in ``PUT`` the
-        ``data`` gets serialized & sent as the body instead of becoming part of the URI.
+        Optionally accepts a ``data`` kwarg. 
+        **Unlike** ``GET``, in ``PUT`` the ``data`` gets serialized & sent as
+        the body instead of becoming part of the URI.
         """
         content_type = self.serializer.get_content_type(None, format)
         kwargs['content_type'] = content_type
@@ -1414,12 +1475,14 @@ class TestApiClient(object):
 
         return self.client.put(uri, **kwargs)
 
-    def patch(self, uri, format='json', data=None, authentication=None, **kwargs):
+    def patch(
+        self, uri, format='json', data=None, authentication=None, **kwargs):
         """
         Performs a simulated ``PATCH`` request to the provided URI.
 
-        Optionally accepts a ``data`` kwarg. **Unlike** ``GET``, in ``PATCH`` the
-        ``data`` gets serialized & sent as the body instead of becoming part of the URI.
+        Optionally accepts a ``data`` kwarg. 
+        **Unlike** ``GET``, in ``PATCH`` the ``data`` gets serialized & sent 
+        as the body instead of becoming part of the URI.
         """
         content_type = self.serializer.get_content_type(None, format)
         kwargs['content_type'] = content_type
@@ -1449,7 +1512,8 @@ class TestApiClient(object):
         r.update(kwargs)
         return self.client.request(**r)
 
-    def delete(self, uri, format='json', data=None, authentication=None, **kwargs):
+    def delete(
+        self, uri, format='json', data=None, authentication=None, **kwargs):
         """
         Performs a simulated ``DELETE`` request to the provided URI.
 
@@ -1489,10 +1553,11 @@ class TestApiInit(IResourceTestCase):
         logger.info('run test0_bootstrap_metahash....')
         
         resource_uri = BASE_URI + '/field'
-        # in order for the metahash resource to work, the metahash itself must 
+        # NOTE:
+        # In order for the metahash resource to work, the metahash itself must 
         # be "bootstrapped":
-        # the metahash must be filled with the fields that describe itself
-        # these are the "bootstrap" fields
+        # The metahash must be filled with the fields that describe itself
+        # these are the "bootstrap" fields.
         bootstrap_items =  [   
             {
                 'key': 'scope',
@@ -1573,7 +1638,8 @@ class TestApiInit(IResourceTestCase):
         # Note: the initial bootstrap fields _must_ be patched as a list:
         # The server requires these fields to bootstrap          
         resp = self.api_client.patch(
-            resource_uri, format='json', data={ 'objects': bootstrap_items }, 
+            resource_uri, format='json', 
+            data={ API_RESULT_DATA: bootstrap_items }, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200], 
@@ -1592,7 +1658,7 @@ class TestApiInit(IResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
 
-        new_objects = new_obj['objects']
+        new_objects = new_obj[API_RESULT_DATA]
         self.assertEqual(
             len(new_objects), len(bootstrap_items), 
             (len(new_objects), 'expected', len(bootstrap_items), new_objects))
@@ -1664,7 +1730,8 @@ class TestApiInit(IResourceTestCase):
         ]    
         logger.info('patch %r....',resource_uri)
         resp = self.api_client.patch(
-            resource_uri, format='json', data={ 'objects': bootstrap_items }, 
+            resource_uri, format='json', 
+            data={ API_RESULT_DATA: bootstrap_items }, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200], 
@@ -1684,7 +1751,7 @@ class TestApiInit(IResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
 
-        new_objects = new_obj['objects']
+        new_objects = new_obj[API_RESULT_DATA]
         self.assertEqual(
             len(new_objects), len(bootstrap_items), (len(new_objects)))
 
@@ -1730,7 +1797,8 @@ class TestApiInit(IResourceTestCase):
         ]
         logger.info('patch %r....',resource_uri)
         resp = self.api_client.patch(
-            resource_uri, format='json', data={ 'objects': bootstrap_items }, 
+            resource_uri, format='json', 
+            data={ API_RESULT_DATA: bootstrap_items }, 
             authentication=self.get_credentials())
             
         self.assertTrue(resp.status_code in [200], 
@@ -1759,7 +1827,8 @@ class TestApiInit(IResourceTestCase):
         ]    
         logger.info('patch %r....',resource_uri)
         resp = self.api_client.patch(
-            resource_uri, format='json', data={ 'objects': bootstrap_items }, 
+            resource_uri, format='json', 
+            data={ API_RESULT_DATA: bootstrap_items }, 
             authentication=self.get_credentials())
             
         self.assertTrue(resp.status_code in [200], 
@@ -1778,7 +1847,7 @@ class TestApiInit(IResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
 
-        new_objects = new_obj['objects']
+        new_objects = new_obj[API_RESULT_DATA]
         self.assertEqual(
             len(new_objects), len(bootstrap_items), (len(new_objects)))
 
@@ -1815,7 +1884,7 @@ class TestApiInit(IResourceTestCase):
         
         filename = os.path.join(self.directory,'api_init_actions.csv')
         with open(filename) as input_file:
-            # NOTE / TODO: we have to deserialize the input, because the TP test method 
+            # NOTE: we have to deserialize the input, because the TP test method 
             # will expect a python data object, which it will serialize!
             api_init_actions = serializer.from_csv(input_file.read(), root=None)
             
@@ -1828,7 +1897,7 @@ class TestApiInit(IResourceTestCase):
                 'vocabulary_data.csv']
             for action in api_init_actions:
                 
-                logger.debug('\n++++=========== processing action', json.dumps(action))
+                logger.debug('\n+++===== processing action', json.dumps(action))
                 command = action['command'].lower() 
                 resource = action['resource'].lower()
                 resource_uri = BASE_URI + '/' + resource
@@ -1850,9 +1919,9 @@ class TestApiInit(IResourceTestCase):
                         search_excludes = ['resource_uri'] 
                     logger.debug('+++++++++++processing file %r', filename)
                     with open(filename) as data_file:
-                        # NOTE / TODO: we have to deserialize the input, 
-                        # because the TP test method 
-                        # will expect a python data object, which it will serialize!
+                        # NOTE: Must deserialize the input, because the TP test
+                        # method will expect a python data object, 
+                        # which it will serialize!
                         input_data = serializer.from_csv(data_file.read())
                         
                         if command == 'put':
@@ -1872,11 +1941,12 @@ class TestApiInit(IResourceTestCase):
                                 (resp.status_code,self.get_content(resp)))
                             new_obj = self.deserialize(resp)
                             result, msgs = find_all_obj_in_list(
-                                input_data['objects'], new_obj['objects'], 
+                                input_data[API_RESULT_DATA], 
+                                new_obj[API_RESULT_DATA], 
                                 excludes=search_excludes)
                             self.assertTrue(
                                 result, (command, 'input file', filename, 
-                                             msgs, new_obj['objects']) )
+                                             msgs, new_obj[API_RESULT_DATA]) )
                         
                         elif command == 'patch':
                             resp = testApiClient.patch(
@@ -1896,7 +1966,8 @@ class TestApiInit(IResourceTestCase):
                             with open(filename) as f2:
                                 input_data2 = serializer.from_csv(f2.read())
                                 result, msgs = find_all_obj_in_list(
-                                    input_data2['objects'], new_obj['objects'], 
+                                    input_data2[API_RESULT_DATA], 
+                                    new_obj[API_RESULT_DATA], 
                                     excludes=search_excludes)
                                 self.assertTrue(
                                     result, 
@@ -1912,36 +1983,6 @@ class TestApiInit(IResourceTestCase):
                             self.fail('unknown command: %r, %r',command,
                                       json.dumps(action))
         
-
-# class ResourceTest(IResourceTestCase):
-# 
-#     def setUp(self):
-# 
-#         super(ResourceTest, self).setUp()
-# 
-#     def tearDown(self):
-# 
-#         IResourceTestCase.tearDown(self)
-#         logger.info('delete metahash resources')
-#         MetaHash.objects.all().delete()
-#         ApiLog.objects.all().delete()
-#     
-#         
-#     def test2_create_resource(self):
-#         new_resource = {
-#             
-#             
-#             }
-#         
-#         pass
-#     
-#     def test3_supertype(self):
-#         pass
-#     
-#     def test4_dependency_fields(self):
-#         pass
-
-
 class VocabularyResource(IResourceTestCase):
     
     def test1_create_read(self):
@@ -1957,7 +1998,7 @@ class VocabularyResource(IResourceTestCase):
         try:       
             uri = BASE_URI + '/vocabulary'
             resp = self.api_client.patch(uri, 
-                format='json', data={ 'objects': test_vocabs }, 
+                format='json', data={ API_RESULT_DATA: test_vocabs }, 
                 authentication=self.get_credentials())
             self.assertTrue(
                 resp.status_code <= 204, 
@@ -1977,12 +2018,13 @@ class VocabularyResource(IResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         self.assertEqual(
-            len(new_obj['objects']), len(test_vocabs), (new_obj))
+            len(new_obj[API_RESULT_DATA]), len(test_vocabs), (new_obj))
         
         for i,item in enumerate(test_vocabs):
-            result, obj = find_obj_in_list(item, new_obj['objects'])
+            result, obj = find_obj_in_list(item, new_obj[API_RESULT_DATA])
             self.assertTrue(
-                result, ('vocab item not found', item, new_obj['objects']))
+                result, 
+                ('vocab item not found', item, new_obj[API_RESULT_DATA]))
 
 
 class UserUsergroupSharedTest(object):
@@ -1992,13 +2034,13 @@ class UserUsergroupSharedTest(object):
         filename = os.path.join(self.directory,'test_data/users1.csv')
         from datetime import datetime
         data_for_get = { HEADER_APILOG_COMMENT: 
-            'patch_test: file: %s, %s' % (filename, datetime.now().isoformat() ),
+            'patch_test: file: %s, %s' % (filename, datetime.now().isoformat()),
             'includes': '*' }
         input_data,output_data = self._put_test(
             'user', filename, id_keys_to_check=['username'],
             data_for_get=data_for_get)
         
-        # test the logs
+        # Test the logs
         # FIXME: create separate tests for the apilogs (cannot ensure state, 
         # as there are multiple callers here )
         if test_log:
@@ -2013,7 +2055,7 @@ class UserUsergroupSharedTest(object):
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            objects = new_obj['objects']
+            objects = new_obj[API_RESULT_DATA]
             # look for 6 "CREATE" logs
             self.assertEqual( 
                 len(objects), 6, 
@@ -2037,7 +2079,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         logger.info('test0_create_user...')
         
         # the simplest of tests, create some simple users
-        self.bootstrap_items = { 'objects': [   
+        self.bootstrap_items = { API_RESULT_DATA: [   
             {
                 'username': 'st1',
                 'ecommons_id': 'st1',
@@ -2078,12 +2120,13 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         self.assertEqual(
-            len(new_obj['objects']), 3, (new_obj))
+            len(new_obj[API_RESULT_DATA]), 3, (new_obj))
         
-        for i,item in enumerate(self.bootstrap_items['objects']):
-            result, obj = find_obj_in_list(item, new_obj['objects'])
+        for i,item in enumerate(self.bootstrap_items[API_RESULT_DATA]):
+            result, obj = find_obj_in_list(item, new_obj[API_RESULT_DATA])
             self.assertTrue(
-                result, ('bootstrap item not found', item, new_obj['objects']))
+                result, 
+                ('bootstrap item not found', item, new_obj[API_RESULT_DATA]))
 
     def test2_patch_user_permissions(self,test_log=False):
         '''
@@ -2178,11 +2221,12 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         
         logger.info('try unauthorized action: adding a usergroup...')
         
-        json_data = { 'objects': [{ 'name': 'test_group_x' }] }
+        json_data = { API_RESULT_DATA: [{ 'name': 'test_group_x' }] }
         
         resp = self.api_client.patch(
             resource_uri, format='json', data=json_data, 
             authentication=self.create_basic(username, password) )
+        logger.info('resp: %r, %r', resp.status_code, self.get_content(resp))
         self.assertTrue(
             resp.status_code in [403], 
             (resp.status_code, self.get_content(resp)))
@@ -2203,7 +2247,8 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
             resp.status_code <= 204, 
             (resp.status_code, self.get_content(resp)))  
         
-        logger.info('action now authorized: adding a usergroup: %r', resource_uri)
+        logger.info(
+            'action now authorized: adding a usergroup: %r', resource_uri)
         
         resp = self.api_client.patch(
             resource_uri, format='json', data=json_data, 
@@ -2211,11 +2256,6 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         self.assertTrue(
             resp.status_code <= 204, 
             (resp.status_code, self.get_content(resp)))
-
-        #         # is it set?
-        #         resp = self.api_client.get(
-        #                 uri, format='json', authentication=self.get_credentials())
-        #         logger.warn(str(('response: ' , self.deserialize(resp) )))
 
         logger.debug('==== test4_user_write_permissions done =====')
         
@@ -2231,9 +2271,9 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         self.test1_create_user_with_permissions(test_log=False)
         
         filename = os.path.join(self.directory,'test_data/usergroups1.csv')
-        # note: excluding sub_groups here because the one sub_group is set when 
+        # Note: Excluding sub_groups here because the one sub_group is set when 
         # "testGroupX" sets super_groups=['testGroup3']; and thereby testGroup3 
-        # gets sub_groups=['testGroupX']; even though that's not in the input file.
+        # gets sub_groups=['testGroupX']; although that's not in the input file.
         self._put_test('usergroup', filename, id_keys_to_check=['name'],
             keys_not_to_check=['sub_groups'])
 
@@ -2242,7 +2282,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         self.test2_create_usergroup_with_permissions()
         
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
-        # don't check permissions, because the patch file is setting groups with permissions too
+        # don't check permissions, 
+        # because the patch file is setting groups with permissions too
         self._patch_test('user', filename, id_keys_to_check=['username'],
             keys_not_to_check=['permissions']) 
       
@@ -2281,7 +2322,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         user_patch = {
             'usergroups': ['testGroup1'] };
 
-        logger.debug('reset this users groups and remove testGroup1: %r', user_patch)
+        logger.debug(
+            'reset this users groups and remove testGroup1: %r', user_patch)
         uri = BASE_URI + '/user' + '/' + username
         resp = self.api_client.patch(
             uri, format='json', data=user_patch, 
@@ -2317,7 +2359,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         '''
         Test of an inherited group permission  -
         first test that the user in the group doesn't have the permission,
-        then add the user's usergroup to a group with the permission and try again
+        then add the user's usergroup to a group with the permission retry.
         - done in prev test: create a new user (as superuser)
         - done in prev test: assign some permissions (as superuser)
         - add/remove users to groups (as superuser)
@@ -2345,7 +2387,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         # now create a new group, with previous user's group as a member,
         # then add permissions to this new group to read (user)
         # note: double nest the groups also as a test
-        usergroup_patch = { 'objects': [
+        usergroup_patch = { API_RESULT_DATA: [
             {
             'name': 'testGroup5',
             'super_groups': ['testGroup3'] },
@@ -2370,15 +2412,15 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
                 uri, format='json', authentication=self.get_credentials())
         new_obj = self.deserialize(resp)
         result, outputobj = find_all_obj_in_list(
-            usergroup_patch['objects'],new_obj['objects'],
+            usergroup_patch[API_RESULT_DATA],new_obj[API_RESULT_DATA],
             id_keys_to_check=['name']) #, excludes=keys_not_to_check )
         self.assertTrue(
             result, 
             ('not found', outputobj,'=== objects returned ===', 
-                new_obj['objects'])) 
+                new_obj[API_RESULT_DATA])) 
         
         # is it set-2, does group inherit the permissions?
-        for obj in new_obj['objects']:
+        for obj in new_obj[API_RESULT_DATA]:
             if obj['name'] == 'testGroup6':
                 testGroup6 = obj
             if obj['name'] == 'testGroup3':
@@ -2390,7 +2432,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             self.assertTrue(
                 permission in testGroup6['all_permissions'], 
                 ('could not find permission', permission, 
-                     'in testGroup6 permissions', testGroup6['all_permissions']))
+                     'in testGroup6 permissions', 
+                     testGroup6['all_permissions']))
         
         # 2 read test - user has permissions through inherited permissions,
         resource_uri = BASE_URI + '/user'
@@ -2414,7 +2457,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         self.test2_create_usergroup_with_permissions()
                         
         # now create a new group, with a previous group as a sub_group
-        usergroup_patch = { 'objects': [
+        usergroup_patch = { API_RESULT_DATA: [
             {
             'resource_uri': 'usergroup/testGroup5',
             'name': 'testGroup5',

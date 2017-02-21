@@ -3541,7 +3541,7 @@ class ScreenResource(DBResourceTestCase):
                 "Smith JA, White EA, Sowa ME, Powell ML, Ottinger M, Howley PM",
             'journal': (
                 'Proceedings of the National Academy of Sciences of the '
-                'United States of America"),
+                'United States of America'),
             'pages': "3752-7",
             'screen_facility_id': screen['facility_id'],
             'title': (
@@ -3752,7 +3752,7 @@ class ScreenResource(DBResourceTestCase):
         screen_update_data = {
             'facility_id': screen_item['facility_id']
             }
-        screen_update_data['pin_transfer_comments'] = \ 
+        screen_update_data['pin_transfer_comments'] = \
             'New test pin transfer comment'
         resp = self.api_client.patch(
             resource_uri, 

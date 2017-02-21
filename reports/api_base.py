@@ -5,28 +5,30 @@ import logging
 import re
 
 from django.conf import settings
+from django.conf.urls import url, patterns
 from django.core.cache import cache
+from django.core.exceptions import ObjectDoesNotExist
 import django.core.exceptions
-from django.http.response import HttpResponseBase, HttpResponse,\
+from django.core.signals import got_request_exception
+from django.http.response import HttpResponseBase, HttpResponse, \
     HttpResponseNotFound, Http404
+from django.utils import six
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.views.decorators.csrf import csrf_exempt
-from tastypie.exceptions import ImmediateHttpResponse, BadRequest, NotFound
-from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent,\
-    HttpApplicationError
-from tastypie.resources import Resource, convert_post_to_put, sanitize
-
-from reports import ValidationError, InformationError
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
-    CSV_MIMETYPE, JSON_MIMETYPE
-from django.core.exceptions import ObjectDoesNotExist
-from django.core.signals import got_request_exception
-from django.utils import six
-from reports.serializers import BaseSerializer
 from tastypie.authentication import Authentication
 from tastypie.cache import NoCache
-from django.conf.urls import url, patterns
+from tastypie.exceptions import ImmediateHttpResponse, BadRequest, NotFound
+from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent, \
+    HttpApplicationError
+from tastypie.resources import Resource, convert_post_to_put, sanitize
 from tastypie.utils.urls import trailing_slash
+
+from db.support.data_converter import default_converter
+from reports import ValidationError, InformationError, API_RESULT_ERROR
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
+    CSV_MIMETYPE, JSON_MIMETYPE
+from reports.serializers import BaseSerializer
+
 
 logger = logging.getLogger(__name__)
 
@@ -227,9 +229,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         """
         From original Tastypie structure:
         - lookup the API method
-        - authenticate
-        Other modifications:
-        - use of the "downloadID" cookie
+        # TODO: does very little at this point; refactor into wrap_view
         """
         
         request_method = request.method.lower()
@@ -251,14 +251,14 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         if not isinstance(response, HttpResponseBase):
             return HttpNoContent()
         
-        # Custom ICCB parameter: set cookie to tell the browser javascript
-        # UI that the download request is finished
-        downloadID = request.GET.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.debug('no downloadID: %s' % request.GET )
+#         # Custom ICCB parameter: set cookie to tell the browser javascript
+#         # UI that the download request is finished
+#         downloadID = request.GET.get('downloadID', None)
+#         if downloadID:
+#             logger.info('set cookie "downloadID" %r', downloadID )
+#             response.set_cookie('downloadID', downloadID)
+#         else:
+#             logger.debug('no downloadID: %s' % request.GET )
 
         return response
 
@@ -270,6 +270,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         @csrf_exempt
         def wrapper(request, *args, **kwargs):
             DEBUG_WRAPPER = True
+            response = None
             try:
                 callback = getattr(self, view)
                 if DEBUG_WRAPPER:
@@ -305,76 +306,64 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     # See http://www.enhanceie.com/ie/bugs.asp for details.
                     patch_cache_control(response, no_cache=True)
 
-                return response
             except BadRequest as e:
                 # The message is the first/only arg
                 logger.exception('Bad request exception: %r', e)
                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-                return self.build_error_response(request, data, **kwargs)
+                response = self.build_error_response(request, data, **kwargs)
             except InformationError as e:
                 logger.exception('Information error: %r', e)
                 response = self.build_error_response(
                     request, { 'Messages': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
             
             except ValidationError as e:
                 logger.exception('Validation error: %r', e)
                 response = self.build_error_response(
-                    request, { 'errors': e.errors }, **kwargs)
+                    request, { API_RESULT_ERROR: e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
             except django.core.exceptions.ValidationError as e:
                 logger.exception('Django validation error: %s', e)
                 response = self.build_error_response(
-                    request, { 'errors': e.message_dict }, **kwargs)
+                    request, { API_RESULT_ERROR: e.message_dict }, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-                
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):
                     # A specific response was specified
-                    return e.response
+                    response = e.response
+                else:
+                    logger.exception('Unhandled exception: %r', e)
+    
+                    # A real, non-expected exception.
+                    # Handle the case where the full traceback is more helpful
+                    # than the serialized error.
+                    if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+                        logger.warn('raise tastypie full exception for %r', e)
+                        raise
+    
+                    # Rather than re-raising, we're going to things similar to
+                    # what Django does. The difference is returning a serialized
+                    # error message.
+                    logger.exception('handle 500 error %r...', str(e))
+                    response = self._handle_500(request, e)
 
-                logger.exception('Unhandled exception: %r', e)
-
-                # A real, non-expected exception.
-                # Handle the case where the full traceback is more helpful
-                # than the serialized error.
-                if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-                    logger.warn('raise tastypie full exception for %r', e)
-                    raise
-
-                # Rather than re-raising, we're going to things similar to
-                # what Django does. The difference is returning a serialized
-                # error message.
-                logger.exception('handle 500 error %r...', str(e))
-                return self._handle_500(request, e)
+            # Custom ICCB parameter: set cookie to tell the browser javascript
+            # UI that the download request is finished
+            downloadID = request.GET.get('downloadID', None)
+            if downloadID:
+                logger.info('set cookie "downloadID" %r', downloadID )
+                response.set_cookie('downloadID', downloadID)
+            else:
+                logger.debug('no downloadID: %s' % request.GET )
+            
+            return response
 
         return wrapper
 
@@ -442,7 +431,36 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         content_type = self._meta.serializer.get_accept_content_type(request, format)
         return self._meta.serializer.serialize(data, content_type)
 
-    def _get_filename(self, schema, kwargs, filename=''):
+    def _get_filename(self, readable_filter_hash, filename=None, **extra):
+        MAX_VAL_LENGTH = 20
+        file_elements = [self._meta.resource_name]
+        if filename is not None:
+            file_elements.append(filename)
+        if extra is not None:
+            for key,val in extra.items():
+                file_elements.append(str(key))
+                if val is not None:
+                    val = default_converter(str(val))
+                    val = val[:MAX_VAL_LENGTH]
+                    file_elements.append(val)
+        for key,val in readable_filter_hash.items():
+            file_elements.append(str(key))
+            val = default_converter(str(val))
+            val = val[:MAX_VAL_LENGTH]
+            file_elements.append(val)
+                
+        if len(file_elements) > 1:
+            # Add an extra separator for the resource name
+            file_elements.insert(1,'_')
+            
+        filename = '_'.join(file_elements)
+        logger.info('filename: %r', filename)
+        MAX_FILENAME_LENGTH = 128
+        filename = filename[:128]
+        return filename
+    
+    def _get_filename_old(self, schema, kwargs,filename=''):
+        logger.info('filename: %r, kwargs: %r', filename, kwargs )
         filekeys = [filename]
         if 'id_attribute' in schema:
             filekeys.extend([ str(kwargs[key]) for 
@@ -481,6 +499,20 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         response = response_class(
             content=serialized, 
             content_type=content_type)
+        # FIXME: filename is not being set well here:
+        # - used for downloads; reports.api resources use
+        # this method to serialize; all others use streaming serializers.
+        format = self._meta.serializer.get_format_for_content_type(content_type)
+        if format != 'json':
+            filename = kwargs.get('filename', None)
+            if filename is None:
+                filename = self._meta.resource_name
+            if format == 'csv': 
+                filename += '.csv'
+            elif format == 'xls': 
+                filename += '.xls'
+            response['Content-Disposition'] = \
+                'attachment; filename=%s' % filename
         if 'status_code' in kwargs:
             response.status_code = kwargs['status_code']
         return response 

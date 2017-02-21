@@ -7,7 +7,8 @@ from __future__ import unicode_literals
 
 import cStringIO
 from collections import OrderedDict
-import csv
+# import csv
+import unicodecsv
 import json
 import logging
 import os.path
@@ -28,12 +29,13 @@ from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, \
     MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     CSV_DELIMITER
-from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder
+from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder, encode_utf8
 import reports.serialize
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
+from tastypie.exceptions import ImmediateHttpResponse
 
 
 logger = logging.getLogger(__name__)
@@ -121,7 +123,7 @@ def interpolate_value_template(value_template, row):
             logger.info('val from value template: %r, %r, %r',
                 val,row.has_key(val), row[val])
         if row.has_key(val):
-            return str(row[val])
+            return encode_utf8(row[val])
         else:
             logger.error(
                 'field %r needed for value template %r is not available: %r', 
@@ -158,11 +160,17 @@ def image_generator(rows, image_keys, request):
                     except Http404, e:
                         logger.info('no image found at: %r', val)
 #                         logger.info('no image at: %r, %r', val,e)
+                        row[key] = None
+                    # TODO: remove tastypie exceptions
+                    except ImmediateHttpResponse, e:
+                        logger.info('no image found at: %r, %r', val, str(e._response))
+#                         logger.info('no image at: %r, %r', val,e)
+                        row[key] = None
                     except Exception, e:
                         logger.exception(
                             'image could not be retrieved: %r, e: %r',
                             val, e)
-                    row[key] = None
+                        row[key] = None
         yield row
 
 
@@ -217,9 +225,9 @@ def csv_generator(data, title_function=None, list_brackets=None):
     
     pseudo_buffer = Echo()
     quotechar = b'"' # note that csv under python 2.7 doesn't allow multibyte quote char
-    csvwriter = csv.writer(
+    csvwriter = unicodecsv.writer(
         pseudo_buffer, delimiter=CSV_DELIMITER, quotechar=quotechar, 
-        quoting=csv.QUOTE_ALL, lineterminator="\n")
+        quoting=unicodecsv.QUOTE_ALL, lineterminator="\n")
     try:
         for rownum, row in enumerate(data):
             if rownum == 0:
@@ -229,7 +237,7 @@ def csv_generator(data, title_function=None, list_brackets=None):
                 yield csvwriter.writerow(titles)
 
             yield csvwriter.writerow([
-                csvutils.csv_list_convert(val, list_brackets=list_brackets) 
+                csvutils.convert_list_vals(val, list_brackets=list_brackets) 
                     for val in row.values()])
         logger.debug('wrote %d rows to csv', rownum)
     except Exception, e:
@@ -263,7 +271,7 @@ def sdf_generator(data, title_function=None):
                     continue
                 title = key
                 if title_function:
-                    title = title_function(key)
+                    title = encode_utf8(title_function(key))
                 yield '> <%s>\n' % title
 
                 if val:
@@ -273,12 +281,13 @@ def sdf_generator(data, title_function=None):
                     if not hasattr(val, "strip") and isinstance(val, (list,tuple)): 
                         for x in val:
                             # DB should be UTF-8, so this should not be necessary,
-                            # however, it appears we have legacy non-utf data in 
+                            # however, it appears we have legacy non-UTF-8 data 
+                            # (which creates a non proper unicode string) 
                             # some tables (i.e. small_molecule_compound_name 193090
-                            yield unicode.encode(x,'utf-8')
+                            yield encode_utf8(x)
                             yield '\n'
                     else:
-                        yield str(val)
+                        yield encode_utf8(val)
                         yield '\n'
                 yield '\n'
             yield '$$$$\n'

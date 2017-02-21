@@ -159,3 +159,13 @@ def resolve_image(request, uri):
     kwargs['request'] = request
     response = view(*args, **kwargs)
     return Image.open(io.BytesIO(response.content))
+
+def encode_utf8(val):
+    '''For writing, make sure all strings are byte strings encoded as UTF-8
+    '''
+    if not val:
+        return val
+    elif isinstance(val, basestring):
+        return val.encode('utf-8')
+    else:
+        return str(val)

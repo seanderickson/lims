@@ -4,16 +4,12 @@ from collections import OrderedDict
 from functools import wraps
 import hashlib
 import logging
-import os.path
 import re
-import sys
 
 from aldjemy.core import get_engine, get_tables
 from django.conf import settings
 from django.core.cache import cache
-import django.core.signals 
 import django.db.models.constants
-import django.db.models.sql.constants
 from django.http.request import HttpRequest
 from django.http.response import StreamingHttpResponse, HttpResponse, Http404
 from sqlalchemy import select, asc, text
@@ -29,7 +25,6 @@ from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.functions import func
 import sqlalchemy.sql.sqltypes
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
-from tastypie.utils.mime import build_content_type
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
@@ -38,13 +33,11 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 from reports.api_base import IccblBaseResource, un_cache
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE,\
     JSON_MIMETYPE, CSV_MIMETYPE, parse_val
-from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
 from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
     cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
 import json
-import pytz
 import urllib
 import six
 
@@ -107,7 +100,6 @@ class SqlAlchemyResource(IccblBaseResource):
         - downstream methods expecting a list value must deal with non-list single values
         '''
         _dict = {}
-        
         for key in request.GET.keys():
             val = request.GET.getlist(key)
             # Jquery Ajax will post array list params with a "[]" suffix - 20151015
@@ -166,6 +158,8 @@ class SqlAlchemyResource(IccblBaseResource):
         if DEBUG_VISIBILITY:
             logger.info('get_visible_fields: field_hash initial: %r, manual: %r, exact: %r', 
                 schema_fields.keys(),manual_field_includes, exact_fields )
+            logger.info('field visibility settings: %r', 
+                [ str((key,field['visibility'])) for key,field in schema_fields.items()])
         try:
             if exact_fields:
                 temp = { key:field for key,field in schema_fields.items()
@@ -217,6 +211,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info('field_hash final: %s', field_hash.keys())
         
             if not field_hash:
+                logger.info('no fields found: %r, %r', field_hash.keys(), manual_field_includes)
                 response = HttpResponse('no fields specified')
                 response.status_code = 400
                 raise ImmediateHttpResponse(
@@ -292,6 +287,8 @@ class SqlAlchemyResource(IccblBaseResource):
                     col = col.label(key)
                     columns[key] = col
                     
+                # TODO: remove this; favor custom linking to subtables
+                # used in reagent subclasses
                 elif field.get('linked_field_value_field', None):
                     link_table = field['table']
                     link_table_def = get_tables()[link_table]
@@ -453,7 +450,7 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.info('build_sqlalchemy_filters: param_hash %s', param_hash)
 
         # ordinary filters
-        filter_hash = \
+        (filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filter_hash(schema, param_hash)
         combined_filter_hash = filter_hash
         filter_expression = and_(*filter_hash.values())
@@ -475,8 +472,9 @@ class SqlAlchemyResource(IccblBaseResource):
             filter_fields = set(filter_hash.keys())
             for search_hash in search_data:
                 logger.info('search_hash: %s' % search_hash)
-                search_filter_hash = SqlAlchemyResource.\
-                    build_sqlalchemy_filter_hash(schema,search_hash)
+                (search_filter_hash,readable_search_filter_hash) = \
+                    SqlAlchemyResource.\
+                        build_sqlalchemy_filter_hash(schema,search_hash)
                 search_expressions.append(and_(*search_filter_hash.values()))
                 
                 # Append search expressions for each field to a combined hash
@@ -492,18 +490,20 @@ class SqlAlchemyResource(IccblBaseResource):
                 search_expressions = or_(*search_expressions)
             else:
                 search_expressions = search_expressions[0]
-            if len(filter_hash) > 0 is not None:
+            if len(filter_hash) > 0:
                 filter_expression = and_(
                     search_expressions,
                     filter_expression)
             else: 
                 filter_expression = search_expressions
-                
+            readable_filter_hash['search'] = '_'.join(search_hash.keys())    
         if DEBUG_FILTERS: 
             logger.info('filter_expression: %s, filter_fields: %s',
                 filter_expression, combined_filter_hash.keys())
+            logger.info(
+                'readable_filter_hash: %r', readable_filter_hash)
         
-        return (filter_expression,combined_filter_hash)
+        return (filter_expression,combined_filter_hash, readable_filter_hash)
     
     @staticmethod
     def parse_filter(filter_expr, value):
@@ -566,7 +566,8 @@ class SqlAlchemyResource(IccblBaseResource):
             expression = col == value
             if data_type == 'list':
                 expression = text(
-                    "'%s'=any(string_to_array(%s,'%s'))" % (value, field_name, LIST_DELIMITER_SQL_ARRAY))
+                    "'%s'=any(string_to_array(%s,'%s'))" 
+                        % (value, field_name, LIST_DELIMITER_SQL_ARRAY))
         elif filter_type == 'about':
             decimals = 0
             if '.' in value:
@@ -655,6 +656,7 @@ class SqlAlchemyResource(IccblBaseResource):
             return (None,None)
         
         filter_hash = {}
+        readable_filter_hash = {}
         try:
             for filter_expr, value in param_hash.items():
                 
@@ -670,10 +672,22 @@ class SqlAlchemyResource(IccblBaseResource):
                     field_name, field['data_type'], filter_type, inverted, value)
                 if expression is not None:
                     filter_hash[field_name] = expression
-
+                    
+                    readable_expression = []
+                    if field_name in filter_expr:
+                        if inverted is True:
+                            readable_expression.append('not')
+                        if filter_type not in ('eq','exact'):
+                            readable_expression.append(filter_type)
+                    readable_value = value
+                    if isinstance(readable_value,(list,tuple)):
+                        readable_value = '_'.join([str(x) for x in readable_value]) 
+                    readable_expression.append(str(readable_value))
+                    readable_filter_hash[field_name] = '_'.join(readable_expression)
             if DEBUG_FILTERS:
                 logger.info('filtered_fields: %s', filter_hash.keys())
-            return filter_hash
+                logger.info('readable_filter_hash: %r', readable_filter_hash)
+            return (filter_hash, readable_filter_hash)
         except Exception, e:
             logger.exception('on build_sqlalchemy_filter_hash')
             raise e   
@@ -688,6 +702,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 'get internal list response %s, %s ', 
                 self._meta.resource_name, kwargs)
             kwargs.setdefault('limit', 0)
+#             self.use_cache = False
             response = self.get_list(
                 request,
                 format='json',
@@ -696,6 +711,7 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.debug('response: %r', response)
             _data = self._meta.serializer.deserialize(
                 LimsSerializer.get_content(response), response['Content-Type'])
+#             self.use_cache = True
             _data = _data[self._meta.collection_name]
             logger.debug(' data: %s'% _data)
             return _data
@@ -710,7 +726,8 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         Return the detail response as a dict
         '''
-        logger.info('_get_detail_response: %r, %r', self._meta.resource_name, kwargs)
+        logger.debug('_get_detail_response: %r, %r', 
+            self._meta.resource_name, {k:v for k,v in kwargs.items() if k !='schema'})
         try:
             response = self.get_detail(
                 request,
@@ -722,7 +739,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 _data = self._meta.serializer.deserialize(
                     LimsSerializer.get_content(response), response['Content-Type'])
             else:
-                logger.info(
+                logger.debug(
                     'no data found for %r, %r', self._meta.resource_name, kwargs)
             return _data
         except Http404:
@@ -730,7 +747,7 @@ class SqlAlchemyResource(IccblBaseResource):
         
     #@un_cache
     def _get_detail_response_internal(self, **kwargs):
-        logger.info('kwargs: %r', kwargs)
+        logger.debug('kwargs: %r', kwargs)
         request = HttpRequest()
         class User:
             is_superuser = True
@@ -1016,7 +1033,9 @@ class SqlAlchemyResource(IccblBaseResource):
         except Exception, e:
             logger.exception('on stream response')
             raise e
-        
+    
+    
+    
     def stream_response_from_cursor(
             self,request,result,output_filename, field_hash={}, param_hash={}, 
             is_for_detail=False, downloadID=None, title_function=None, 

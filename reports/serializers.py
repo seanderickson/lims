@@ -1,9 +1,12 @@
 # Non-streaming implementations of Tastypie Serializer
+# see reports.serialize.streaming_serializers for the Streaming alternatives.
 from __future__ import unicode_literals
 
 import cStringIO
+import StringIO
 from collections import OrderedDict
-import csv
+# import csv
+import unicodecsv
 import json
 import logging
 
@@ -33,13 +36,17 @@ logger = logging.getLogger(__name__)
     
 class BaseSerializer(object):
     
-    content_types = {'json': JSON_MIMETYPE,
-                     'html': 'text/html',
-                     'csv': CSV_MIMETYPE,
-                     'xls': XLS_MIMETYPE,
-                     'xlsx': XLSX_MIMETYPE,
-                     'sdf': SDF_MIMETYPE }
-
+    # The list of supported mime-types should be sorted
+    # in order of increasing desirability, in case of a situation 
+    # where there is a tie 
+    content_types = OrderedDict( (
+        ('sdf', SDF_MIMETYPE),
+        ('xls', XLS_MIMETYPE),
+        ('xlsx', XLSX_MIMETYPE),
+        ('csv', CSV_MIMETYPE),
+        ('html', 'text/html'),
+        ('json', JSON_MIMETYPE),
+     ))
     def __init__(self, content_types=None):
 
         self.content_types = content_types or {}    
@@ -89,6 +96,18 @@ class BaseSerializer(object):
         return desired_format
     
     def get_accept_content_type(self, request, format=None):
+        '''
+        Fixme: needs rework:
+        1. "content_types" must be sorted properly for 
+        mimeparse.best_match to work
+        2. mimeparse.best_match will give a value from the supported types,
+        even if a match does not exist! 
+        3. This is currently working only because the UI client is setting 
+        an HTTP_ACCEPT that is recognized (or using the "format" param)
+        '''
+        
+        
+        DEBUG_ACCEPT_CONTENT_TYPE = False or logger.isEnabledFor(logging.DEBUG)
         
         logger.debug('get_accept_content_type: %r, %r', request, format)
 
@@ -98,10 +117,15 @@ class BaseSerializer(object):
             if request.GET and request.GET.get('format',None):
                 format = request.GET.get('format')
         if format is not None:
+            if DEBUG_ACCEPT_CONTENT_TYPE:
+                logger.info('get content type from format param: %r', format)
             content_type = self.get_content_type_for_format(format)
         
         if content_type is None and request is not None:
             if request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+                if DEBUG_ACCEPT_CONTENT_TYPE:
+                    logger.info('get content type from HTTP_ACCEPT: %r', 
+                        request.META.get('HTTP_ACCEPT', '*/*'))
                 try:
                     content_type = mimeparse.best_match(
                         self.content_types.values(), 
@@ -137,6 +161,8 @@ class BaseSerializer(object):
                     request, format)
         if not content_type:
             logger.info('not content type found')
+        if DEBUG_ACCEPT_CONTENT_TYPE:
+            logger.info('content type: %r', content_type)
         return content_type
         
     def get_content_type(self, request, format=None):    
@@ -302,7 +328,7 @@ class XLSSerializer(BaseSerializer):
     
     def to_xlsx(self, data, options=None):
 
-        logger.info('Non-streamed xlsx data using generic serialization')
+        logger.info('Non-streamed xlsx data using generic serialization, options: %r', options)
         def sheet_rows(list_of_objects):
             ''' write a header row using the object keys '''
             for i,item in enumerate(list_of_objects):
@@ -360,11 +386,16 @@ class CSVSerializer(BaseSerializer):
         super(CSVSerializer,self).__init__(content_types=content_types)
         
     def to_csv(self, data, root='objects', options=None):
+        '''
+        Note: csv.py doesn't do Unicode; encode values as UTF-8 byte strings
+        '''
 
         data = to_simple(data)
 
+        # Can use cStringIO here because csv writer will write only bytes
         raw_data = cStringIO.StringIO()
-        writer = csv.writer(raw_data) 
+        # raw_data = StringIO.StringIO()
+        writer = unicodecsv.writer(raw_data) 
 
         if 'error' in data:
             for row in dict_to_rows(data['error']):
@@ -392,9 +423,11 @@ class CSVSerializer(BaseSerializer):
             for item in data:
                 if i == 0:
                     keys = item.keys()
+#                     writer.writerow([smart_text(key).encode('utf-8') for key in keys])
                     writer.writerow([smart_text(key) for key in keys])
                 i += 1
-                writer.writerow([csvutils.csv_convert(val) for val in item.values()])
+                writer.writerow([csvutils.convert_list_vals(val) 
+                    for val in item.values()])
 
         return raw_data.getvalue()
 
@@ -406,9 +439,11 @@ class CSVSerializer(BaseSerializer):
         '''
         if isinstance(content, six.binary_type):
             content = force_text(content)
-         
+
         objects = csvutils.from_csv(
-            cStringIO.StringIO(content),
+            StringIO.StringIO(content),
+            # Can not use cStringIO here, because Unicode data will be read
+            # cStringIO.StringIO(content),
             list_delimiter=LIST_DELIMITER_CSV,
             list_keys=kwargs.get('list_keys', None))
         if root:
@@ -477,7 +512,7 @@ class CursorSerializer(BaseSerializer):
 
         elif isinstance(obj,dict) :
             
-            writer = csv.writer(raw_data)
+            writer = unicodecsv.writer(raw_data)
             wrote_to_csv = False
             for key, value in obj.items():
                 if isinstance(value, cursor):

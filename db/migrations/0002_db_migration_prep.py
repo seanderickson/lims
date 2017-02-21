@@ -434,12 +434,6 @@ class Migration(migrations.Migration):
             name='login_id',
             field=models.TextField(unique=True, null=True)),
         
-        # TODO: not implemented yet
-#         migrations.AddField(
-#             model_name='cherrypickassayplate',
-#             name='status', 
-#             field=models.TextField(null=True)),
-
         # IN PROGRESS - well volume/concentration related fields
         
         migrations.AddField(
@@ -454,11 +448,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='plate',
             name='screening_count', 
-            field=models.IntegerField(null=True)),
+            field=models.IntegerField(default=0, null=True)),
         migrations.AddField(
             model_name='plate',
             name='cplt_screening_count', 
-            field=models.IntegerField(null=True)),
+            field=models.IntegerField(default=0, null=True)),
         migrations.AddField(
             model_name='plate',
             name='mg_ml_concentration',
@@ -491,7 +485,7 @@ class Migration(migrations.Migration):
                 # ('plate_number', models.IntegerField()),
                 ('volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
                 ('initial_volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
-#                 ('adjustments', models.IntegerField()),
+                ('cherry_pick_screening_count', models.IntegerField(null=True)),
                 ('copy', models.ForeignKey(to='db.Copy')),
                 ('mg_ml_concentration',
                     models.DecimalField(null=True, max_digits=5, decimal_places=3)),
@@ -715,5 +709,146 @@ class Migration(migrations.Migration):
             name='is_derived',
             field=models.BooleanField(default=False),
         ),
+        
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='assay_protocol_comments',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='cherry_pick_assay_protocols_followed',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='cherry_pick_followup_results_status',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='comments',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='is_randomized_assay_plate_layout',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='keep_source_plate_cherry_picks_together',
+            field=models.BooleanField(default=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='number_unfulfilled_lab_cherry_picks',
+            field=models.IntegerField(null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickrequest',
+            name='wells_to_leave_empty',
+            field=models.TextField(null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickrequest',
+            name='date_volume_reserved',
+            field=models.DateField(null=True),
+        ),
+        
+#         migrations.AddField(
+#             model_name='cherrypickassayplate',
+#             name='plating_activity_date',
+#             field=models.DateField(null=True),
+#         ),
+#         
+#         migrations.AddField(
+#             model_name='screenercherrypick',
+#             name='selected',
+#             field=models.NullBooleanField(),
+#         ),
+#         migrations.AddField(
+#             model_name='screenercherrypick',
+#             name='searched_well',
+#             field=models.ForeignKey(
+#                 related_name='searched_screener_cherry_pick', 
+#                 to='db.Well', null=True),
+#         ),
+#         
+#         migrations.AddField(
+#             model_name='labcherrypick',
+#             name='copy',
+#             field=models.ForeignKey(related_name='copy_lab_cherry_picks', 
+#                 to='db.Copy', null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='labcherrypick',
+#             name='reserved',
+#             field=models.NullBooleanField(),
+#         ),
 
+#         ##### Preliminary - Cherry Pick rework #####
+#         migrations.CreateModel(
+#             name='CherryPickRequest2',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('transfer_volume_per_well_approved', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
+#                 ('transfer_volume_per_well_requested', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
+#                 ('date_requested', models.DateField()),
+#                 ('date_volume_approved', models.DateField(null=True)),
+#                 ('comments', models.TextField(null=True)),
+#                 ('assay_protocol_comments', models.TextField(null=True)),
+#                 ('cherry_pick_assay_protocols_followed', models.TextField(null=True)),
+#                 ('cherry_pick_followup_results_status', models.TextField(null=True)),
+#                 ('is_randomized_assay_plate_layout', models.BooleanField(default=False)),
+#                 ('keep_source_plate_cherry_picks_together', models.BooleanField(default=True)),
+#                 ('max_skipped_wells_per_plate', models.IntegerField(null=True)),
+#             ],
+#             options={
+#                 'db_table': 'cherry_pick_request2',
+#             },
+#         ),
+#         migrations.CreateModel(
+#             name='CherryPickWell',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('status', models.TextField(null=True)),
+#                 ('attempts', models.IntegerField(null=True)),
+#                 ('destination_well', models.TextField(null=True)),
+#             ],
+#             options={
+#                 'db_table': 'cherry_pick_well',
+#             },
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickwell',
+#             name='copy',
+#             field=models.ForeignKey(to='db.Copy', null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickwell',
+#             name='cherry_pick_request',
+#             field=models.ForeignKey(related_name='wells', to='db.CherryPickRequest2'),
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickwell',
+#             name='source_well',
+#             field=models.ForeignKey(to='db.Well'),
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickrequest2',
+#             name='requested_by',
+#             field=models.ForeignKey(related_name='requested_cherry_pick2', to='db.ScreensaverUser'),
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickrequest2',
+#             name='screen',
+#             field=models.ForeignKey(to='db.Screen'),
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickrequest2',
+#             name='volume_approved_by',
+#             field=models.ForeignKey(related_name='approved_cherry_pick2', to='db.ScreensaverUser', null=True),
+#         ),
+        
     ]

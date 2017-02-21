@@ -140,15 +140,17 @@ def migrate_screen_status(apps,schema_editor):
         prev_item = None
         for status in ( ScreenStatusItem.objects.filter(screen=screen)
                 .order_by('status_date')):
-
+            prev_status = default_converter(prev_item.status)
+            new_status = default_converter(status.status)
             diffs = {}
             if prev_item:
-                diffs['status'] = [prev_item.status, status.status]
+                diffs['status'] = [prev_status, new_status]
             else:
-                diffs['status'] = [None, status.status]
+                diffs['status'] = [None, new_status]
 
             log = make_log(
-                apps,status.status_date, 'screen', screen.facility_id, diffs, username='sde')
+                apps,status.status_date, 'screen', screen.facility_id, 
+                diffs, username='sde')
             logger.debug('created log: %d: %r', count, log)
             
             prev_item = status

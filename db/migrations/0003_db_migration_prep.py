@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-import csv
+import unicodecsv as csv
 import logging
 import os
 import re
@@ -112,6 +112,14 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'Library').objects.all()],
                 ['screen_type', 'library.screen_type',
                     apps.get_model('db', 'Library').objects.all(),False],
+
+                # NOTE: plate.type vocabulary is being handled in the manual migration
+                # ['plate_type', 'plate.type', 
+                #     apps.get_model('db', 'Plate'),objects.all(), False]
+                # ['assay_plate_type', 'plate.type', 
+                #     apps.get_model('db', 'CherryPickRequest'),objects.all(), False]
+                # ['assay_plate_type', 'plate.type', 
+                #     apps.get_model('db', 'CherryPickAssayPlate'),objects.all(), False]
 
             ]            
         for arg_list in input_args:

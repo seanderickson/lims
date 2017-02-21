@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import django.utils.timezone
+from django.db.models.deletion import SET_NULL
 # import db.models
 # import django.db.models.deletion
 
@@ -232,7 +233,7 @@ class Migration(migrations.Migration):
                 ('plate_ordinal', models.IntegerField()),
                 ('attempt_ordinal', models.IntegerField()),
                 ('assay_plate_type', models.TextField()),
-                ('legacy_plate_name', models.TextField()),
+                ('legacy_plate_name', models.TextField(null=True)),
                 ('cherry_pick_assay_plate_type', models.CharField(max_length=31)),
 #                 ('status', models.TextField(null=True)),
             ],
@@ -472,11 +473,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='LabCherryPick',
             fields=[
-                ('lab_cherry_pick_id', models.AutoField(serialize=False, primary_key=True)),
+                ('lab_cherry_pick_id', models.AutoField(serialize=False, 
+                    primary_key=True)),
                 ('version', models.IntegerField()),
                 ('assay_plate_row', models.IntegerField(null=True)),
                 ('assay_plate_column', models.IntegerField(null=True)),
-                ('cherry_pick_assay_plate', models.ForeignKey(to='db.CherryPickAssayPlate', null=True)),
+                ('cherry_pick_assay_plate', 
+                    models.ForeignKey(
+                        to='db.CherryPickAssayPlate', null=True, 
+                        on_delete=SET_NULL)),
             ],
             options={
                 'db_table': 'lab_cherry_pick',
@@ -758,7 +763,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ScreenerCherryPick',
             fields=[
-                ('screener_cherry_pick_id', models.AutoField(serialize=False, primary_key=True)),
+                ('screener_cherry_pick_id', 
+                    models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
             ],
             options={
@@ -1164,6 +1170,7 @@ class Migration(migrations.Migration):
             name='derived_from_columns',
             field=models.ManyToManyField(related_name='derived_columns', to='db.DataColumn'),
         ),
+        # TODO: removed
         migrations.AddField(
             model_name='well',
             name='latest_released_reagent',
@@ -1258,7 +1265,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screenercherrypick',
             name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
+            field=models.ForeignKey(to='db.CherryPickRequest',
+                related_name='screener_cherry_picks'),
         ),
         migrations.AddField(
             model_name='screenercherrypick',
@@ -1298,7 +1306,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='reagent',
             name='well',
-            field=models.ForeignKey(to='db.Well', null=True),
+            field=models.ForeignKey(to='db.Well', null=True, related_name='reagents'),
         ),
         migrations.AddField(
             model_name='plate',
@@ -1323,7 +1331,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='labcherrypick',
             name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
+            field=models.ForeignKey(to='db.CherryPickRequest',
+                related_name='lab_cherry_picks'),
         ),
         migrations.AddField(
             model_name='labcherrypick',
@@ -1379,7 +1388,7 @@ class Migration(migrations.Migration):
             model_name='cherrypickrequest',
             name='created_by',
             field=models.ForeignKey(to='db.ScreensaverUser', 
-                null=True, related_name='created_cherry_pick'),
+                null=True, related_name='created_cherry_picks'),
         ),
         migrations.AddField(
             model_name='cherrypickrequest',
@@ -1389,7 +1398,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='cherrypickassayplate',
             name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
+            field=models.ForeignKey(
+                to='db.CherryPickRequest',
+                related_name='cherry_pick_assay_plates'),
         ),
         migrations.AddField(
             model_name='checklistitemevent',

@@ -19,7 +19,7 @@ import re
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0016_plate_volume'),
+        ('db', '0018_cherry_pick_request'),
     ]
 
     operations = [

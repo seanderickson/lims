@@ -44,6 +44,13 @@ update screen set status_date = si.status_date
 /** insert into reports_apilog ( user_id, username, ref_resource_name, key, uri, date_time, api_action, diff_keys, diffs) **/
 /** select 1, 'sde4', 'screen', s.facility_id, '/db/api/v1/screen/'||s.facility_id, '["status","status_date"]', ' **/
 
+/**
+  *** Add id field to cherry_pick_request_empty_well  ***
+  Purpose: add an id to capture the natural ordering of the cherry_pick_request_empty_well table; 
+  because the table has no ID, Django ORM doesn't know what to do with it -
+  and the South migration cannot do it either.
+**/
+
 
 /**
   *** Add id field to gene_symbol ***

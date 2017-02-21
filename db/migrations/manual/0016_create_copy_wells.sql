@@ -19,6 +19,9 @@ select current_time;
   - set # of adjustments = count(wva's)
   Note: all wva's should be used, not just some of successful, failed, canceled, 
   because wva is created only when liquid xfer is done.
+  -- 9 canceled, 1 failed
+  -- Note no need to decrement the cherry_pick_screening_count for the (9) canceled
+  ---- because the WVA's are removed for these by SS1 process.
 **/
 create temp table temp_well_volume_adjustment_summary as (
   select 
@@ -27,7 +30,7 @@ create temp table temp_well_volume_adjustment_summary as (
   p.plate_id,
   p.well_volume,
   p.well_volume + sum(wva.volume) as well_remaining_volume,
-  count(wva) as adjustments
+  count(wva) as cherry_pick_screening_count
   from well w
   join plate p using(plate_number)
   join copy c using(copy_id)
@@ -38,14 +41,15 @@ create temp table temp_well_volume_adjustment_summary as (
   order by w.well_id);
 
 insert into copy_well
-    ( id, copy_id, plate_id, well_id, initial_volume,volume)  
+    ( id, copy_id, plate_id, well_id, initial_volume,volume, cherry_pick_screening_count)  
 select 
   nextval('copy_well_id_seq'), 
   copy_id, 
   plate_id,
   well_id, 
   well_volume,
-  well_remaining_volume
+  well_remaining_volume,
+  cherry_pick_screening_count
 from temp_well_volume_adjustment_summary;
 
 /*

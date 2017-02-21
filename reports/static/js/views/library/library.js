@@ -416,9 +416,7 @@ define([
         var Collection = Iccbl.MyCollection.extend({
           url: url
         });
-        collection = new Collection({
-          url: url,
-        });
+        collection = new Collection();
         
         if (appModel.hasPermission(copyResource.key, 'write')){
           var showAddButton = $([
@@ -727,31 +725,11 @@ define([
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data) {
+            appModel.showConnectionResult(data, {
+              title: 'Copy Created'
+            });
+
             collection.fetch();
-            
-            // TODO: refactor - display response
-            if (_.isObject(data) && !_.isString(data)) {
-              data = _.result(_.result(data,'meta',data),'Result',data);
-              var msg_rows = appModel.dict_to_rows(data);
-              var bodyMsg = msg_rows;
-              if (_.isArray(msg_rows) && msg_rows.length > 1) {
-                bodyMsg = _.map(msg_rows, function(msg_row) {
-                  return msg_row.join(': ');
-                }).join('<br>');
-              }
-              var title = 'Copy created';
-              appModel.showModalMessage({
-                body: bodyMsg,
-                title: title  
-              });
-            } else {
-              console.log('ajax should have been parsed data as json', data);
-              appModel.showModalMessage({
-                title: 'Copy created',
-                okText: 'ok',
-                body: 'Copy name: ' + values['name']
-              });
-            }
           }); // ajax
         } // ok
       }); // dialog

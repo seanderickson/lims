@@ -48,10 +48,11 @@ define([
             search: {}}
         });
       var listModel = new ListModel();
-      var collection = self.collection = new Iccbl.MyCollection({
+      var Collection = Iccbl.MyCollection.extend({
         url: url,
         listModel: listModel
       });
+      var collection = self.collection = new Collection();
       var groupsView = new SimpleListView({
         uriStack: _.clone(delegateStack),
         collection: collection,

@@ -958,9 +958,7 @@ define([
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
-      collection = new Collection({
-        url: url,
-      });
+      collection = new Collection();
       collection.model = UserChecklistModel;
 
       showSaveButton.click(function(e){

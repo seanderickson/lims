@@ -84,9 +84,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
-      collection = new Collection({
-        url: url,
-      });
+      collection = new Collection();
 
       resource = appModel.cloneResource(resource);
       if(self.copy) {

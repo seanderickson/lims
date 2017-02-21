@@ -996,7 +996,7 @@ define([
             console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
             self.$("#tab_container-title").html(
               Iccbl.formatString(
-                '<H4 id="title">CPR: <a href="#screen/{screen_facility_id}/' + 
+                '<H4 id="title">Cherry Pick Request: <a href="#screen/{screen_facility_id}/' + 
                 'cherrypickrequest/{cherry_pick_request_id}" >{cherry_pick_request_id}</a>' +
                 '</H4>',
                 model));
@@ -1012,10 +1012,7 @@ define([
         var Collection = Iccbl.MyCollection.extend({
           url: url
         });
-        collection = new Collection({
-          url: url,
-        });
-        
+        collection = new Collection();
         if (appModel.hasPermission(cpResource.key, 'write')){
           var showAddButton = $([
              '<a class="btn btn-default btn-sm pull-down" ',

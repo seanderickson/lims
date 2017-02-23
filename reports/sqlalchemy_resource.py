@@ -40,6 +40,7 @@ from reports.serializers import LimsSerializer
 import json
 import urllib
 import six
+from django.test.client import RequestFactory
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ class SqlAlchemyResource(IccblBaseResource):
         self.bridge = get_tables()
         
         self.use_cache = True
+        self.request_factory = RequestFactory()
         
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
     
@@ -748,7 +750,10 @@ class SqlAlchemyResource(IccblBaseResource):
     #@un_cache
     def _get_detail_response_internal(self, **kwargs):
         logger.debug('kwargs: %r', kwargs)
-        request = HttpRequest()
+#         request = HttpRequest()
+        request = self.request_factory.generic('GET', '.', 
+            data={ 'CONTENT_TYPE': JSON_MIMETYPE },
+            content_type=JSON_MIMETYPE)
         class User:
             is_superuser = True
 #             @staticmethod
@@ -761,7 +766,12 @@ class SqlAlchemyResource(IccblBaseResource):
     # @un_cache
     def _get_list_response_internal(self, **kwargs):
         logger.info('kwargs: %r', kwargs)
-        request = HttpRequest()
+        
+        request = self.request_factory.generic('GET', '.', 
+            data={ 'CONTENT_TYPE': JSON_MIMETYPE },
+            content_type=JSON_MIMETYPE)
+        content_type = self.get_serializer().get_accept_content_type(request)
+#         request = HttpRequest(content_type=JSON_MIMETYPE)
         class User:
             is_superuser = True
 #             @staticmethod

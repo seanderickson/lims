@@ -2178,7 +2178,7 @@ class ScreenResultResource(DbApiResource):
             other_screens=other_screens)
 
 #         filename = self._get_filename(schema, kwargs)
-        content_type = self.get_accept_content_type(
+        content_type = self.get_serializer().get_accept_content_type(
             request, format=kwargs.get('format', None))
         
         if content_type == SDF_MIMETYPE:
@@ -11795,7 +11795,7 @@ class ScreenResource(DbApiResource):
         # Serialize
         # FIXME: refactor to generalize serialization:
         # see build_response method (needs rework)
-        content_type = self.get_accept_content_type(
+        content_type = self.get_serializer().get_accept_content_type(
             request,format=kwargs.get('format', None))
         if content_type in [XLS_MIMETYPE,CSV_MIMETYPE]:
             _data = {'objects': [_data]}
@@ -14535,7 +14535,7 @@ class ReagentResource(DbApiResource):
         schema = self.build_schema(library_classification=library_classification)
 
         manual_field_includes = set(param_hash.get('includes', []))
-        content_type = self.get_accept_content_type(
+        content_type = self.get_serializer().get_accept_content_type(
             request, format=kwargs.get('format', None))
         if content_type == SDF_MIMETYPE:
             manual_field_includes.add('molfile')
@@ -14775,7 +14775,7 @@ class WellResource(DbApiResource):
             _screen_data['fields'][column_name] = _dict
         
         final_data = sorted(screens.values(), key=lambda x: x['facility_id'])
-        content_type = self.get_accept_content_type(
+        content_type = self.get_serializer().get_accept_content_type(
             request,format=kwargs.get('format', None))
         return HttpResponse(
             content=self.get_serializer().serialize(
@@ -14833,7 +14833,7 @@ class WellResource(DbApiResource):
             data = { 'duplex_wells': well_info,
                      'confirmed_positive_values': data_per_screen.values() }
                 
-        content_type = self.get_accept_content_type(
+        content_type = self.get_serializer().get_accept_content_type(
             request,format=kwargs.get('format', None))
         return HttpResponse(
             content=self.get_serializer().serialize(

@@ -151,8 +151,13 @@ def pack_bins(capacity, package_array):
 #                 while unfilled_bins:
 #                     unfilled_bin = unfilled_bins.pop(0)
 #                             
-                        
-    return packed_bins
+    # Sort within the bins by name, per convention
+    packed_and_internally_sorted_bins = []
+    for bin in packed_bins:
+        packed_and_internally_sorted_bins.append(
+            sorted(bin,key=lambda package: package['name']))
+        
+    return packed_and_internally_sorted_bins
 
 def find_two_bins_for_package(capacity, package, packed_bins):
     two_bins = []

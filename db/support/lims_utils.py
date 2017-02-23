@@ -3,8 +3,10 @@ import math
 import logging
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
+import re
 logger = logging.getLogger(__name__)
 
+ALLOWED_PLATE_SIZES = [96,384]
 
 def get_rows(platesize):
     return int(math.sqrt(2*platesize/3))
@@ -24,14 +26,56 @@ def well_id(plate, well_name):
     #return '%05d:%s' % (plate, well_name)
     return '%s:%s' % (str(plate).zfill(5), well_name)
 
-def well_name_from_index(index, platesize):
+def well_name_from_index_rows_first(index, platesize):
     '''
+    DEPRECATED: 
+    Well Name from the index, using Row first sorting to count:
+    - e.g. A01, A02, A03... A24,B01,B02...
     @param  index: zero based index, counting from r0c0, r0c1, ... rNcN-1, rNcN
     ''' 
     rows = get_rows(platesize)
     cols = get_cols(platesize)
     name = well_name(int(index/cols),(index%cols))
     return name
+
+def well_name_from_index(index, platesize):
+    '''
+    Well Name from the index, using Column first sorting to count:
+    - e.g. A01, B01, C01... P01, A02, B02, ...
+    - Note: this is the counting method used for Scrensaver 1.
+    @param  index: zero based index, counting from c0r1, c1r2, ... cNrN-1, cNrN
+    ''' 
+    rows = get_rows(platesize)
+    cols = get_cols(platesize)
+    name = well_name((index%rows),int(index/rows))
+    return name
+
+def index_from_well_name(well_name, platesize):
+    
+    row_index = well_name_row_index(well_name)
+    col_index = well_name_col_index(well_name)
+    rows = get_rows(platesize)
+    cols = get_cols(platesize)
+
+    if row_index >= rows:
+        raise ValidationError(
+            key='well_name', 
+            msg='%r, row index: %d, is > rows: %d, for platesize: %d' 
+                % (well_name, row_index, rows, platesize))
+    if col_index >= cols:
+        raise ValidationError(
+            key='well_name', 
+            msg='%r, col index: %d, is > cols: %d, for platesize: %d' 
+                % (well_name, col_index, cols, platesize))
+    
+    index = col_index * rows + row_index
+    
+    if index > platesize:
+        raise ValidationError(
+            key='well_name', 
+            msg='%r, index: %d, is > platesize: %d' 
+                % (well_name, index, platesize))
+    return index
 
 def row_to_letter(index):
     ''' Convert 0 based row index to letter '''
@@ -78,3 +122,142 @@ def well_id_plate_number(well_id):
             key='well_id', 
             msg='%r Does not match pattern: %s' % (well_id,WELL_ID_PATTERN.pattern))
     return int(match.group(1))
+
+def plate_size_from_plate_type(plate_type):
+    '''
+    Get the plate size from the current plate_type vocabulary:
+    eppendorf_384
+    costar_96
+    abgene_384
+    genetix_384
+    marsh_384
+    nunc_96
+    eppendorf_96
+    Note: plate_type must end with the plate size integer for this to work:
+    FIXME: plate size determined by magic value embedded in plate_types
+    '''
+    parts = plate_type.split('_')
+    if len(parts) != 2:
+        raise ValidationError(
+            key='plate_type', 
+            msg='not a recognized type: %r' % assay_plate_type)
+    plate_size = int(parts[1])
+    if plate_size not in ALLOWED_PLATE_SIZES:
+        raise ValidationError(
+            key='plate_type',
+            msg='plate_size: %d for plate_type: %r, not in allowed: %r'
+                % (plate_size,plate_type,ALLOWED_PLATE_SIZES))
+    return plate_size
+
+def parse_wells_to_leave_empty(wells_to_leave_empty, plate_size):
+    
+    logger.info('raw wells_to_leave_empty: %r, plate_size: %r', 
+        wells_to_leave_empty, plate_size)
+
+    ncols = get_cols(plate_size)
+    nrows = get_rows(plate_size)
+    row_pattern = re.compile('row:\s*([a-zA-Z]{1,2})', flags=re.IGNORECASE)
+    col_pattern = re.compile(r'col:\s*(\d{1,2})', flags=re.IGNORECASE)
+    selections = re.split(r'\s*,\s*', wells_to_leave_empty)
+    new_selections = []
+    for selection in selections:
+        colmatch = col_pattern.match(selection)
+        if colmatch: 
+            col = int(colmatch.group(1))
+            if col > ncols:
+                raise ValidationError(
+                    key='wells_to_leave_empty',
+                    msg='column out of range: %d, %r' % (col, selection))
+            new_selections.append('Col:%d' % col)
+            continue
+        rowmatch = row_pattern.match(selection)
+        if rowmatch:
+            row = letter_to_row_index(rowmatch.group(1))         
+            if row >= nrows:
+                raise ValidationError(
+                    key='wells_to_leave_empty',
+                    msg='row out of range: %r, %r' 
+                        % (rowmatch.group(1), selection))
+            new_selections.append('Row:%s' % rowmatch.group(1).upper())
+            continue
+        wellmatch = WELL_NAME_PATTERN.match(selection)
+        if wellmatch:
+            new_selections.append(selection.upper())
+            continue
+        
+        raise ValidationError(
+            key='wells_to_leave_empty',
+            msg='unrecognized pattern: %r' % selection)
+    logger.debug('new wells_to_leave_empty selections: %r', new_selections)
+
+    decorated = []
+    for wellname in new_selections:
+        if 'Col:' in wellname:
+            decorated.append((1,int(wellname.split(':')[1]),wellname))
+        elif 'Row:' in wellname:
+            decorated.append((2,wellname.split(':')[1],wellname))
+        else:
+            match = WELL_NAME_PATTERN.match(wellname)
+            decorated.append((match.group(1),match.group(1), wellname))
+    new_wells_to_leave_empty = [x[2] for x in sorted(decorated)]
+    logger.info('wells_to_leave_empty: %r', new_wells_to_leave_empty)
+    
+    return new_wells_to_leave_empty
+
+def assay_plate_available_wells(wells_to_leave_empty, plate_size):
+    
+    if plate_size not in ALLOWED_PLATE_SIZES:
+        raise ValidationError(
+            key='plate_size',
+            msg=('plate_size: %d for assay_plate_available_wells, '
+                'not in allowed: %r'
+                % (plate_size,ALLOWED_PLATE_SIZES)))
+    available_wells = []
+    
+    # Parse and sanitize the wells_to_leave_empty (should be already done)
+    wells_to_leave_empty_list = []
+    if wells_to_leave_empty:
+        wells_to_leave_empty_list = parse_wells_to_leave_empty(
+            wells_to_leave_empty, plate_size)
+#         wells_to_leave_empty_list = re.split(
+#             r'\s*,\s*', wells_to_leave_empty)
+        # NOTE: sanitize not necessary, wells_to_leave_empty is validated
+        # on create in the api
+        
+#         wells_to_leave_empty = [specifier.lower() 
+#             for specifier in wells_to_leave_empty_list]
+# 
+#         row_specifier_pattern = re.compile('row:\s*([a-zA-Z]{1,2})', flags=re.IGNORECASE)
+#         col_specifier_pattern = re.compile(r'col:\s*(\d{1,2})', flags=re.IGNORECASE)
+#         for specifier in wells_to_leave_empty:
+#             if row_specifier_pattern.match(specifier):
+#                 continue
+#             elif col_specifier_pattern.match(specifier):
+#                 continue
+#             elif WELL_NAME_PATTERN.match(specifier):
+#                 continue
+#             raise ValidationError(
+#                 key='wells_to_leave_empty',
+#                 msg=('specifier: %r, does not match one of the patterns: %r'
+#                     % (specifier, 
+#                        [p.pattern for p in [
+#                            row_specifier_pattern,col_specifier_pattern,
+#                            WELL_NAME_PATTERN]])))
+    row_specifier = 'Row:%s'
+    col_specifier = 'Col:%d'
+    for i in range(0,plate_size):
+        well_name = well_name_from_index(i, plate_size)
+        wellmatch = WELL_NAME_PATTERN.match(well_name)
+        row = wellmatch.group(1)
+        col = int(wellmatch.group(2))
+        if row_specifier % row in wells_to_leave_empty_list:
+            continue
+        if col_specifier % col in wells_to_leave_empty_list:
+            continue
+        if well_name in wells_to_leave_empty_list:
+            continue
+        available_wells.append(well_name)
+    return available_wells
+    
+    
+    

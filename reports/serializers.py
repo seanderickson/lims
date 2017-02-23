@@ -143,7 +143,7 @@ class BaseSerializer(object):
                         if 'application/json' in  request.META['HTTP_ACCEPT']:
                             content_type = 'application/json'
                     
-                    logger.info('"HTTP_ACCEPT" - content_type: %r', content_type)
+                    logger.debug('"HTTP_ACCEPT" - content_type: %r', content_type)
     
                     if not content_type:
                         raise BadRequest(
@@ -237,7 +237,7 @@ class BaseSerializer(object):
         if not content:
             return {}
     
-        logger.debug('deserializing for %r', desired_format)
+        logger.info('deserializing for %r', desired_format)
 
         deserialized = getattr(self, "from_%s" % desired_format)(content,**kwargs)
         return deserialized
@@ -463,7 +463,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         super(ScreenResultSerializer,self).__init__(content_types=content_types);
 
     def to_xlsx(self, data, options=None):
-        logger.debug(
+        logger.info(
             'serialize Non-streamed Screenresult using generic serialization')
         response = get_xls_response(data, 'generic_file')
         return self.get_content(response)

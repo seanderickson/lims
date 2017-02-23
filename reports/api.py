@@ -514,11 +514,10 @@ class ApiResource(SqlAlchemyResource):
             if search_ID in request.session:
                 search_data = request.session[search_ID]
             else:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, 
-                        { 'search_data for id missing: ' + search_ID: 
-                            self._meta.resource_name + 
-                                '.search requires a "search_data" param'}))
+                raise BadRequest(
+                    'search_data for id missing: %r, %r.'
+                    '.search requires a "search_data" param'
+                    % (search_ID, self._meta.resource_name))
         
         if DEBUG_SEARCH:
             logger.info('search_data: %r', search_data)

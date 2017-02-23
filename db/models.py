@@ -4,13 +4,13 @@ import datetime
 import logging
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db import models
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
 from reports.utils.gray_codes import create_substance_id
+from reports import ValidationError
 from db.support import lims_utils
 from db import WELL_NAME_PATTERN
 import re
@@ -476,13 +476,7 @@ class CherryPickRequest(models.Model):
     def assay_plate_size(self):
         if not self.assay_plate_type: 
             return 0
-        parts = self.assay_plate_type.split('_')
-        if len(parts) != 2:
-            raise ValidationError(
-                key='assay_plate_type', 
-                msg='not a recognized type: %r' % assay_plate_type)
-        plate_size = int(parts[1])
-        return plate_size
+        return lims_utils.plate_size_from_plate_type(self.assay_plate_type)
         
     @property
     def assay_plate_available_wells(self):
@@ -491,27 +485,29 @@ class CherryPickRequest(models.Model):
             raise ValidationError(
                 key='assay_plate_type',
                 msg='Is not valid')
+        return lims_utils.assay_plate_available_wells(
+            self.wells_to_leave_empty, assay_plate_size)
         
-        available_wells = []
-        wells_to_leave_empty_list = []
-        if self.wells_to_leave_empty:
-            wells_to_leave_empty_list = re.split(
-                r'\s*,\s*', self.wells_to_leave_empty)
-        row_specifier = 'Row:%s'
-        col_specifier = 'Col:%d'
-        for i in range(0,assay_plate_size):
-            well_name = lims_utils.well_name_from_index(i, assay_plate_size)
-            wellmatch = WELL_NAME_PATTERN.match(well_name)
-            row = wellmatch.group(1)
-            col = int(wellmatch.group(2))
-            if row_specifier % row in wells_to_leave_empty_list:
-                continue
-            if col_specifier % col in wells_to_leave_empty_list:
-                continue
-            if well_name in wells_to_leave_empty_list:
-                continue
-            available_wells.append(well_name)
-        return available_wells
+#         available_wells = []
+#         wells_to_leave_empty_list = []
+#         if self.wells_to_leave_empty:
+#             wells_to_leave_empty_list = re.split(
+#                 r'\s*,\s*', self.wells_to_leave_empty)
+#         row_specifier = 'Row:%s'
+#         col_specifier = 'Col:%d'
+#         for i in range(0,assay_plate_size):
+#             well_name = lims_utils.well_name_from_index(i, assay_plate_size)
+#             wellmatch = WELL_NAME_PATTERN.match(well_name)
+#             row = wellmatch.group(1)
+#             col = int(wellmatch.group(2))
+#             if row_specifier % row in wells_to_leave_empty_list:
+#                 continue
+#             if col_specifier % col in wells_to_leave_empty_list:
+#                 continue
+#             if well_name in wells_to_leave_empty_list:
+#                 continue
+#             available_wells.append(well_name)
+#         return available_wells
     
     def __repr__(self):
         return (

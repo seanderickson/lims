@@ -169,43 +169,43 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         if not auth_result is True:
             raise ImmediateHttpResponse(response=http.HttpUnauthorized())
 
-    def error_response(self, request, errors, response_class=None):
-        """
-        Extracts the common "which-format/serialize/return-error-response"
-        cycle.
-
-        Should be used as much as possible to return errors.
-        """
-        if response_class is None:
-            response_class = http.HttpBadRequest
-
-        desired_format = None
-
-        if request:
-            if request.GET.get('callback', None) is None:
-                try:
-                    desired_format = self.determine_format(request)
-                except BadRequest:
-                    pass  # Fall through to default handler below
-            else:
-                # JSONP can cause extra breakage.
-                desired_format = 'application/json'
-
-        if not desired_format:
-            desired_format = self._meta.default_format
-
-        try:
-            serialized = self.serialize(request, errors, desired_format)
-        except BadRequest as e:
-            error = "Additional errors occurred, but serialization of those errors failed."
-
-            if settings.DEBUG:
-                error += " %s" % e
-
-            return response_class(content=error, content_type='text/plain')
-
-        return response_class(
-            content=serialized, content_type=build_content_type(desired_format))
+#     def error_response(self, request, errors, response_class=None):
+#         """
+#         Extracts the common "which-format/serialize/return-error-response"
+#         cycle.
+# 
+#         Should be used as much as possible to return errors.
+#         """
+#         if response_class is None:
+#             response_class = http.HttpBadRequest
+# 
+#         desired_format = None
+# 
+#         if request:
+#             if request.GET.get('callback', None) is None:
+#                 try:
+#                     desired_format = self.determine_format(request)
+#                 except BadRequest:
+#                     pass  # Fall through to default handler below
+#             else:
+#                 # JSONP can cause extra breakage.
+#                 desired_format = 'application/json'
+# 
+#         if not desired_format:
+#             desired_format = self._meta.default_format
+# 
+#         try:
+#             serialized = self.serialize(request, errors, desired_format)
+#         except BadRequest as e:
+#             error = "Additional errors occurred, but serialization of those errors failed."
+# 
+#             if settings.DEBUG:
+#                 error += " %s" % e
+# 
+#             return response_class(content=error, content_type='text/plain')
+# 
+#         return response_class(
+#             content=serialized, content_type=build_content_type(desired_format))
     
     def dispatch_list(self, request, **kwargs):
         """
@@ -318,7 +318,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
-            
             except ValidationError as e:
                 logger.exception('Validation error: %r', e)
                 response = self.build_error_response(
@@ -429,6 +428,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             
     def serialize(self, request, data, format=None):
         content_type = self._meta.serializer.get_accept_content_type(request, format)
+        logger.info('serialize to: %r', content_type)
         return self._meta.serializer.serialize(data, content_type)
 
     def _get_filename(self, readable_filter_hash, filename=None, **extra):
@@ -488,20 +488,25 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
  
     def get_accept_content_type(self, request, format=None):
          
-        return self._meta.serializer.get_accept_content_type(request,format=format)
+        return self._meta.serializer.get_accept_content_type(
+            request,format=format)
         
-    def build_response(self, request, data, response_class=HttpResponse, **kwargs):
+    def build_response(
+        self, request, data, response_class=HttpResponse, **kwargs):
         
-        content_type = self._meta.serializer.get_content_type(
+        content_type = self._meta.serializer.get_accept_content_type(
             request, format=kwargs.get('format', None))
-        # FIXME: "data" must be a dict {'objects': [data] } for xls, csv serialization
-        serialized = self.serialize(request, data, format=kwargs.get('format', None))
+        logger.debug('build_response: %r', content_type)
+        
+        serialized = self.serialize(request, data)
         response = response_class(
             content=serialized, 
             content_type=content_type)
+        
         # FIXME: filename is not being set well here:
         # - used for downloads; reports.api resources use
         # this method to serialize; all others use streaming serializers.
+
         format = self._meta.serializer.get_format_for_content_type(content_type)
         if format != 'json':
             filename = kwargs.get('filename', None)
@@ -517,13 +522,15 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             response.status_code = kwargs['status_code']
         return response 
     
-    def build_error_response(self, request, data, response_class=HttpBadRequest, **kwargs):
-        format = 'json'
-        if kwargs and 'format' in kwargs:
-            format = kwargs['format']
+    def build_error_response(
+            self, request, data, response_class=HttpBadRequest, **kwargs):
+
+#         format = 'json'
+#         if kwargs and 'format' in kwargs:
+#             format = kwargs['format']
         try:
             return self.build_response(
-                request, data, response_class=response_class, format=format)
+                request, data, response_class=response_class, **kwargs)
         except Exception, e:
             logger.exception('On trying to serialize the error response: %r, %r',
                 data, e)

@@ -2834,7 +2834,6 @@ class ScreenResultResource(DbApiResource):
     def create_result_value(
             self, colname, value, dc, well, initializer_dict, 
             assay_well_initializer):
-        logger.info('str: dc: %r', dc)
         positive_types = [
             'confirmed_positive_indicator',
             'partition_positive_indicator',
@@ -3047,7 +3046,8 @@ class ScreenResultResource(DbApiResource):
             
             if errors:
                 logger.warn('errors: %r', errors)
-                raise ValidationError( errors={ 'result_values': errors })
+#                 raise ValidationError( errors={ 'result_values': errors })
+                raise ValidationError(errors=errors)
             
             if not rvs_to_create:
                 raise ValidationError( errors={ 'result_values': 'no result values were parsed' })
@@ -3055,7 +3055,8 @@ class ScreenResultResource(DbApiResource):
             logger.info('result_values: rows: %d, result_values to create: %d',
                 rows_created, rvs_to_create)
 
-            logger.info('use copy_from to create %d assay_wells...', rows_created)
+            logger.info(
+                'use copy_from to create %d assay_wells...', rows_created)
             assay_well_file.seek(0)
             
             with connection.cursor() as conn:
@@ -3064,10 +3065,12 @@ class ScreenResultResource(DbApiResource):
                     columns=assay_well_fieldnames, null=PSYCOPG_NULL)
                 logger.info('assay_wells created.')
                 
-                logger.info('use copy_from to create %d result_values...', rvs_to_create)
+                logger.info(
+                    'use copy_from to create %d result_values...', rvs_to_create)
                 f.seek(0)
                 conn.copy_from(
-                    f, 'result_value', sep=str(','), columns=fieldnames, null=PSYCOPG_NULL)
+                    f, 'result_value', sep=str(','), columns=fieldnames, 
+                    null=PSYCOPG_NULL)
                 logger.info('result_values created.')
             screenresult_log.diffs.update({
                 'result_values_created': [None,rvs_to_create],
@@ -3077,8 +3080,10 @@ class ScreenResultResource(DbApiResource):
             dc.save()
             
         if plates_max_replicate_loaded:
-            plates_max_replicate_loaded = sorted(plates_max_replicate_loaded.values())
-            logger.info('plates_max_replicate_loaded: %r', plates_max_replicate_loaded)
+            plates_max_replicate_loaded = sorted(
+                plates_max_replicate_loaded.values())
+            logger.info(
+                'plates_max_replicate_loaded: %r', plates_max_replicate_loaded)
             screen_result.screen.min_data_loaded_replicate_count = \
                 plates_max_replicate_loaded[0]
             screen_result.screen.max_data_loaded_replicate_count = \
@@ -3095,9 +3100,10 @@ class ScreenResultResource(DbApiResource):
     # REMOVED - find or create assay plates for screenresult load wells
     # This is removed because the only reason for creating these "assay_plates"
     # is to find the min/max replicates loaded for assay plates with data loaded.
-    # This stat will be calculated during load time instead - see: 
+    # NOTE 1: This stat could be calculated during load time instead - see: 
     # "plates_max_replicate_loaded" tracking hash in screen_result load process
-    #    
+    # NOTE 2: Per discussion, this stat will be dropped in SS2 - 201612, per
+    # discussion with JenS   
     # def find_or_create_assay_plates_data_loaded(self,screen_result):
     # 
     #     # FIXME: create stats needed without creating assay_plates
@@ -3996,10 +4002,23 @@ class CopyWellResource(DbApiResource):
             try:
                 copywell = CopyWell.objects.get(
                     well=lcp.source_well, copy=lcp.copy)
-                
+                if copywell.initial_volume is None:
+                    # Copywell may have no volumes set, if the copywell was
+                    # created to track well-specific concentrations
+                    # (the API reports the plate.remaining_well_volume for these)
+                    copywell.initial_volume = plate.remaining_well_volume
+                    if copywell.volume is not None:
+                        logger.warn(
+                            'copywell has initial_volume, but not volume: %r/%r, %r', 
+                            copy.name, lcp.source_well, copywell.initial_volume)
+                    copywell.volume = plate.remaining_well_volume
             except ObjectDoesNotExist:
                 # create copy-wells that dne
                 try:
+                    logger.info('copywell dne: %r/%r, creating', 
+                        copy.name, lcp.source_well)
+                    logger.info('plate: %r, remaining_well_volume: %r', 
+                        plate, plate.remaining_well_volume)
                     copywell = CopyWell.objects.create(
                         well=lcp.source_well, 
                         copy=lcp.copy, 
@@ -4017,6 +4036,8 @@ class CopyWellResource(DbApiResource):
             log = self.make_child_log(parent_log)
             log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
             log.uri = '/'.join([log.ref_resource_name,log.key])
+            logger.debug('copywell: %r, volume: %r, cpr.transfer volume: %r', 
+                copywell, copywell.volume, cpr.transfer_volume_per_well_approved)
             new_volume = copywell.volume - cpr.transfer_volume_per_well_approved
             current_cp_screening_count = copywell.cherry_pick_screening_count or 0
             new_cp_screening_count =  current_cp_screening_count + 1
@@ -4776,7 +4797,7 @@ class CherryPickRequestResource(DbApiResource):
             **{
                 'cherry_pick_request_id': cpr_id,
                 'destination_well__is_null': False,
-                'includes': '*',
+                'includes': ['*', '-structure_image','-molfile'],
                 'order_by': ['destination_well']
             })
         plate_map = defaultdict(list)
@@ -5245,6 +5266,10 @@ class CherryPickRequestResource(DbApiResource):
         
         logger.info('patch CPR: %r', deserialized)
         
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.debug('param_hash: %r', param_hash)
+        
         patch = bool(id_kwargs)
         initializer_dict = self.parse(deserialized, create=not patch)
         errors = self.validate(initializer_dict, patch=patch)
@@ -5337,63 +5362,10 @@ class CherryPickRequestResource(DbApiResource):
             final_warn_msg = []
             wells_to_leave_empty = deserialized.get('wells_to_leave_empty', None)
             if wells_to_leave_empty is not None:
-                well_selections = set()
-                
-                plate_size = cpr.assay_plate_size
-                ncols = 24
-                nrows = 16
-                if plate_size == 96:
-                    ncols = 12
-                    nrows = 8
-                logger.info('raw wells_to_leave_empty: %r, plate_size: %r', 
-                    wells_to_leave_empty, plate_size)
-                row_pattern = re.compile('row:\s*([a-zA-Z]{1,2})', flags=re.IGNORECASE)
-                col_pattern = re.compile(r'col:\s*(\d{1,2})', flags=re.IGNORECASE)
-                selections = re.split(r'\s*,\s*', wells_to_leave_empty)
-                new_selections = []
-                for selection in selections:
-                    colmatch = col_pattern.match(selection)
-                    if colmatch: 
-                        col = int(colmatch.group(1))
-                        if col > ncols:
-                            raise ValidationError(
-                                key='wells_to_leave_empty',
-                                msg='column out of range: %d, %r' % (col, selection))
-                        new_selections.append('Col:%d' % col)
-                        continue
-                    rowmatch = row_pattern.match(selection)
-                    if rowmatch:
-                        row = lims_utils.letter_to_row_index(rowmatch.group(1))         
-                        if row >= nrows:
-                            raise ValidationError(
-                                key='wells_to_leave_empty',
-                                msg='row out of range: %r, %r' 
-                                    % (rowmatch.group(1), selection))
-                        new_selections.append('Row:%s' % rowmatch.group(1).upper())
-                        continue
-                    wellmatch = WELL_NAME_PATTERN.match(selection)
-                    if wellmatch:
-                        new_selections.append(selection.upper())
-                        continue
-                    
-                    raise ValidationError(
-                        key='wells_to_leave_empty',
-                        msg='unrecognized pattern: %r' % selection)
-                logger.debug('new wells_to_leave_empty selections: %r', new_selections)
-                
-                decorated = []
-                for wellname in new_selections:
-                    if 'Col:' in wellname:
-                        decorated.append((1,int(wellname.split(':')[1]),wellname))
-                    elif 'Row:' in wellname:
-                        decorated.append((2,wellname.split(':')[1],wellname))
-                    else:
-                        match = WELL_NAME_PATTERN.match(wellname)
-                        decorated.append((match.group(1),match.group(1), wellname))
-                wells_to_leave_empty = [x[2] for x in sorted(decorated)]
-                logger.info('wells_to_leave_empty: %r', wells_to_leave_empty)
-                
-                cpr.wells_to_leave_empty = ', '.join(wells_to_leave_empty)
+                parsed_wells_to_leave_empty = \
+                    lims_utils.parse_wells_to_leave_empty(
+                        wells_to_leave_empty, cpr.assay_plate_size)
+                cpr.wells_to_leave_empty = ', '.join(parsed_wells_to_leave_empty)
                 cpr.save()
                 
             if 'screener_cherry_picks' in deserialized:
@@ -5421,7 +5393,7 @@ class CherryPickRequestResource(DbApiResource):
                     
                 # TODO: Test override
                 override_param = parse_val(
-                    kwargs.get(API_PARAM_OVERRIDE, False),
+                    param_hash.get(API_PARAM_OVERRIDE, False),
                         API_PARAM_OVERRIDE, 'boolean')
                 
                 raw_screener_cps = deserialized['screener_cherry_picks']
@@ -5463,18 +5435,6 @@ class CherryPickRequestResource(DbApiResource):
                         final_warn_msg.append(
                             'Override used for libraries: %r' % not_allowed_libraries)
                     _meta[API_MSG_SCPS_CREATED] = cpr.screener_cherry_picks.all().count()    
-#                         if well.library.is_pool:
-#                             reagent = SilencingReagent.objects.get(well=well)
-#                             for duplex_well in reagent.duplex_wells.all():
-#                                 lab_cherry_pick = LabCherryPick.objects.create(
-#                                     cherry_pick_request=cpr,
-#                                     source_well=duplex_well)
-#                         else:
-#                             lab_cherry_pick = LabCherryPick.objects.create(
-#                                 cherry_pick_request=cpr,
-#                                 source_well=well,
-#                                 screener_cherry_pick=screener_cherry_pick)
-            
 
             if final_warn_msg:
                 _meta[API_MSG_WARNING] = final_warn_msg
@@ -5619,7 +5579,6 @@ class CherryPickRequestResource(DbApiResource):
         logger.info(
             'dispatch_reserve_map_lab_cherry_picks for: %r...', 
             cherry_pick_request_id)
-        # schema = super(CherryPickRequestResource, self).build_schema()
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cherry_pick_request_id)
         if not cpr.lab_cherry_picks.filter(copy__isnull=False).exists():
@@ -5666,41 +5625,42 @@ class CherryPickRequestResource(DbApiResource):
                 API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
             })
         
-        plate_size = cpr.assay_plate_size
-        # Get the plate size
-        # Get the available wells
+        # Find the fulfillable lab cherry picks
         available_assay_plate_wells = cpr.assay_plate_available_wells
         logger.debug('available_assay_plate_wells: %r',available_assay_plate_wells)
         logger.info('available_assay_plate_wells len: %d', 
             len(available_assay_plate_wells))
-        # Create cherry_pick_assay_plates
+
         fulfillable_lcps = (
             cpr.lab_cherry_picks.filter(copy__isnull=False)
-                .order_by('copy__name','source_well__plate_number') )
+                .order_by('source_well__plate_number','copy__name') )
 
         logger.info('re-Check and reserve copy volumes...')
         lab_cherry_pick_copywells = \
-            { lcp['source_well_id']: lcp for lcp in
+            { lcp['source_copywell_id']: lcp for lcp in
                 self.get_labcherrypick_resource()._get_list_response_internal(
                     **{
                         'cherry_pick_request_id': cpr.cherry_pick_request_id,
                         'source_copy_name__is_null': False,
-                        'includes': '*'
+                        'includes': ['*', '-structure_image','-molfile'],
                     })}
         # Check for insufficient well volumes
         unfulfillable_wells = []
         override_well_volume = parse_val(
             param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
             API_PARAM_VOLUME_OVERRIDE, 'boolean')
-        for lcp in fulfillable_lcps:
-            
-            lcp_cw = lab_cherry_pick_copywells[lcp.source_well_id]
-            copywell_name = self.LCP_COPYWELL_KEY.format(**lcp_cw)
-            lcp_scwv = Decimal(lcp_cw['source_copy_well_volume'])
+        
+#         for lcp in fulfillable_lcps:
+        for copywell_id,lcp_data in lab_cherry_pick_copywells.items():
+#             copywell_name = self.LCP_COPYWELL_KEY.format(**lcp_cw)
+#             lcp_cw = lab_cherry_pick_copywells[lcp.source_well_id]
+            lcp_scwv = Decimal(lcp_data['source_copy_well_volume'])
             logger.debug('consider lcp_cw: %r, %r to %r', 
-                copywell_name, lcp_scwv, cpr.transfer_volume_per_well_approved)
+                copywell_id, lcp_scwv, cpr.transfer_volume_per_well_approved)
             if ( lcp_scwv < cpr.transfer_volume_per_well_approved ):
-                unfulfillable_wells.append(copywell_name)
+                unfulfillable_wells.append(
+                    (copywell_id, lcp_data['source_copy_well_volume'],
+                        cpr.transfer_volume_per_well_approved) )
         if unfulfillable_wells and override_well_volume is not True:
             raise ValidationError({
                 'transfer_volume_per_well_approved':
@@ -5716,15 +5676,15 @@ class CherryPickRequestResource(DbApiResource):
                 'Override: unfulfillable wells: %r' % unfulfillable_wells)
         else:
             logger.info('all wells are fulfillable')
-        logger.info('Reserve copy volumes...')
+
+        # Reserve copy well volumes
+        logger.info('Reserve copy well volumes...')
         copywell_reservation_meta = \
             self.get_copywell_resource().reserve_cherry_pick_volumes(
                 cpr, fulfillable_lcps, parent_log)
         
+        # Create assay plate mapping
         logger.info('Create the assay_plates...')  
-        
-        # FIXME: cpr.keep_source_plate_cherry_picks_together:
-        # - no need to "pack" bins, just iterate through lcps, by copy-plate
         
         # cpr.is_randomized_assay_plate_layout
         # - if true, randomize the plate layout wells
@@ -5748,44 +5708,63 @@ class CherryPickRequestResource(DbApiResource):
             )
             next_plate_ordinal[0] = next_plate_ordinal[0]+1
             return assay_plate
-
-        lcp_by_copy_plate = {}
-        for lcp in fulfillable_lcps.all():
-            copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
-            copy_plate_list = lcp_by_copy_plate.get(copy_plate, [])
-            copy_plate_list.append(lcp)
-            lcp_by_copy_plate[copy_plate] = copy_plate_list
         
+        # Assignment ordering: plate, copy, source_well
+#         lcps_by_plate_copy_well = [
+#             (lcp['library_plate'],lcp['source_copy_name'],
+#                 lcp['source_well_id'], lcp) 
+#                 for lcp in fulfillable_lcps.all()]
+#         lcps_by_plate_copy_well = sorted(
+#             lcps_by_plate_copy_well_dest_well)
+        #######
+        
+#         lcp_by_copy_plate = {}
+#         for lcp in fulfillable_lcps.all():
+#             copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
+#             copy_plate_list = lcp_by_copy_plate.get(copy_plate, [])
+#             copy_plate_list.append(lcp)
+#             lcp_by_copy_plate[copy_plate] = copy_plate_list
+        lcp_by_plate_copy = defaultdict(list)
+        for lcp in fulfillable_lcps.all():
+            plate_copy = '%s:%s' % (lcp.source_well.plate_number,lcp.copy.name)
+            lcp_by_plate_copy[plate_copy].append(lcp)
+        # Sort internally
+        for plate_copy in lcp_by_plate_copy.keys():
+            lcps = lcp_by_plate_copy[plate_copy]
+            lcps = sorted(lcps, key=lambda lcp: lcp.source_well_id)
+            lcp_by_plate_copy[plate_copy] = lcps
+            
         if cpr.keep_source_plate_cherry_picks_together is True:
 
             logger.info("use the bin packer to fit the lcp's to bins...")
             capacity = len(available_assay_plate_wells)
-            packages = [ { 'name': copy_plate, 'size': len(lcps) } 
-                for copy_plate,lcps in lcp_by_copy_plate.items() ]
-            
+            packages = [ { 'name': plate_copy, 'size': len(lcps) } 
+                for plate_copy,lcps in lcp_by_plate_copy.items() ]
             packed_bins = bin_packer.pack_bins(capacity, packages)
+            packed_bins = sorted(packed_bins,key=lambda bin: bin[0]['name'])
             logger.info('packed bins: %r', packed_bins)
             
             logger.info(
-                "assign the packed_bins to assay_plates, keeping split bins adjacent...")
+                "assign the packed_bins to assay_plates, keep split bins adjacent...")
             ordered_bins = []
             for packed_bin in packed_bins:
                 if packed_bin not in ordered_bins:
                     ordered_bins.append(packed_bin)
-                    partially_packed_copy_plate = [
-                        copy_plate for package in packed_bin
-                            if len(lcp_by_copy_plate[package['name']]) > package['size'] ]
-                    if len(partially_packed_copy_plate) > 1:
+                    partially_packed_plate_copy = [
+                        package['name'] for package in packed_bin
+                            if (len(lcp_by_plate_copy[package['name']]) 
+                                > package['size']) ]
+                    if len(partially_packed_plate_copy) > 1:
                         raise ProgrammingError(
-                            'Packed bins should not contain more than one '
-                            'partially packed copy_plates: %r' 
-                            % partially_packed_copy_plate)
+                            'Packed bins can not contain more than one '
+                            'partially packed plate_copies: %r' 
+                            % partially_packed_plate_copy)
                     # NOTE: assume that source plate will never need > 2 assay plates
-                    if partially_packed_copy_plate:
-                        copy_plate = partially_packed_copy_plate[0]
+                    if partially_packed_plate_copy:
+                        plate_copy = partially_packed_plate_copy[0]
                         for second_bin in packed_bins:
                             if second_bin != packed_bin:
-                                if copy_plate in [ p['name'] for p in second_bin]:
+                                if plate_copy in [ p['name'] for p in second_bin]:
                                     ordered_bins.append(second_bin)
             
             logger.info('create assay plates, in order...')
@@ -5799,45 +5778,70 @@ class CherryPickRequestResource(DbApiResource):
                     
                     logger.info('package: %r', package)
                     
-                    copy_plate = package['name']
+                    plate_copy = package['name']
                     size = package['size']
-                    copy_plate_lcps = lcp_by_copy_plate[copy_plate]
-                    lcps = copy_plate_lcps[:size]
-                    lcp_by_copy_plate[copy_plate] = lcps
+                    plate_copy_lcps = lcp_by_plate_copy[plate_copy]
+                    lcps_to_plate = plate_copy_lcps[:size]
+                    if size < len(plate_copy_lcps):
+                        lcp_by_plate_copy[plate_copy] = plate_copy_lcps[size:]
                     
                     logger.info('lcps: %r, assay_plate_well_index: %r', 
-                        len(lcps),assay_plate_well_index)
+                        len(lcps_to_plate),assay_plate_well_index)
                 
-                    for lcp in lcps:
+                    for lcp in lcps_to_plate:
                         lcp.cherry_pick_assay_plate = assay_plate
                         well_name = available_assay_plate_wells[assay_plate_well_index]
                         lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
                         lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
                         assay_plate_well_index += 1
                         lcp.save()
-        else: # keep_source_plate_cherry_picks_together == False
+        else: 
+            # keep_source_plate_cherry_picks_together == False
+            # no bin packing
             capacity = len(available_assay_plate_wells)
             assay_plates_created = []
             assay_plate = None
-            for lcp in fulfillable_lcps.all():
-                
-                copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
-                
-                if assay_plate is None:
-                    assay_plate = create_next_assay_plate()
-                    assay_plates_created.append(assay_plate)
-                    assay_plate_well_index = 0
-
-                lcp.cherry_pick_assay_plate = assay_plate
-                well_name = available_assay_plate_wells[assay_plate_well_index]
-                lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
-                lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
-                lcp.save()
-
-                assay_plate_well_index += 1
-                if assay_plate_well_index >= capacity:
-                    assay_plate_well_index = 0
-                    assay_plate = None
+            
+            plate_copies = sorted(lcp_by_plate_copy.keys())
+            for plate_copy in plate_copies:
+                lcps_to_plate = lcp_by_plate_copy[plate_copy]
+                for lcp in lcps_to_plate:
+                    if assay_plate is None:
+                        assay_plate = create_next_assay_plate()
+                        assay_plates_created.append(assay_plate)
+                        assay_plate_well_index = 0
+    
+                    lcp.cherry_pick_assay_plate = assay_plate
+                    well_name = available_assay_plate_wells[assay_plate_well_index]
+                    lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
+                    lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
+                    lcp.save()
+    
+                    assay_plate_well_index += 1
+                    if assay_plate_well_index >= capacity:
+                        assay_plate_well_index = 0
+                        assay_plate = None
+                    
+            
+#             for lcp in fulfillable_lcps.all():
+#                 
+#                 copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
+#                 
+#                 if assay_plate is None:
+#                     assay_plate = create_next_assay_plate()
+#                     assay_plates_created.append(assay_plate)
+#                     assay_plate_well_index = 0
+# 
+#                 lcp.cherry_pick_assay_plate = assay_plate
+#                 well_name = available_assay_plate_wells[assay_plate_well_index]
+#                 lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
+#                 lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
+#                 lcp.save()
+# 
+#                 assay_plate_well_index += 1
+#                 if assay_plate_well_index >= capacity:
+#                     assay_plate_well_index = 0
+#                     assay_plate = None
 
         # verify that all lcps have been assigned
 #         for copy_plate, lcps in lcp_by_copy_plate.items():
@@ -5855,8 +5859,8 @@ class CherryPickRequestResource(DbApiResource):
                 for ap in assay_plates_created ]
         
         _meta = {
-            API_MSG_LCP_PLATES_ASSIGNED: [(copy_name, len(lcps)) 
-                for copy_name,lcps in lcp_by_copy_plate.items() ],
+            API_MSG_LCP_PLATES_ASSIGNED: [(plate_copy_name, len(lcps)) 
+                for plate_copy_name,lcps in lcp_by_plate_copy.items() ],
             API_MSG_LCP_ASSAY_PLATES_CREATED: cpap_assignments
         }
         _meta.update(copywell_reservation_meta[API_RESULT_META])
@@ -5873,6 +5877,285 @@ class CherryPickRequestResource(DbApiResource):
         return self.build_response(
             request, { API_RESULT_META: _meta }, 
             response_class=HttpResponse, **kwargs)
+
+#     @write_authorization
+#     @transaction.atomic
+#     @un_cache
+#     def bak_dispatch_reserve_map_lab_cherry_picks(self, request, **kwargs):
+#         
+#         request_method = request.method.lower()
+#         if request_method != 'post':
+#             raise BadRequest('Only POST is allowed')
+#         convert_post_to_put(request)
+# 
+#         param_hash = self._convert_request_to_dict(request)
+#         param_hash.update(kwargs)
+#         cherry_pick_request_id = param_hash['cherry_pick_request_id']
+#         logger.info(
+#             'dispatch_reserve_map_lab_cherry_picks for: %r...', 
+#             cherry_pick_request_id)
+#         cpr = CherryPickRequest.objects.get(
+#             cherry_pick_request_id=cherry_pick_request_id)
+#         if not cpr.lab_cherry_picks.filter(copy__isnull=False).exists():
+#             raise ValidationError(
+#                 key='total_number_lcps', 
+#                 msg='No (fulfilled) Lab Cherry Picks have been created')
+#         
+#         self.validate_cpr_for_plating(cpr) 
+#         
+#         parent_log = self.make_log(request)
+#         parent_log.key = str(cpr.cherry_pick_request_id)
+#         parent_log.uri = '/'.join([
+#             'screen',cpr.screen.facility_id, 
+#             parent_log.ref_resource_name,parent_log.key])        
+#         parent_log.save()
+#         
+#         previous_date_reserved = cpr.date_volume_reserved
+#         cpr.date_volume_reserved = _now().date() 
+#         cpr.save()
+#         parent_log.diffs = {
+#             'date_volume_reserved': [previous_date_reserved, cpr.date_volume_reserved ]}
+#         
+#         status_messages = []
+#         copywell_deallocation_meta = None
+#         previous_number_of_plates = None           
+#         
+#         logger.info('check for previous plating assignments...')
+#         allocated_lcps_query = cpr.lab_cherry_picks.filter(
+#             cherry_pick_assay_plate__isnull=False)
+#         if allocated_lcps_query.exists():
+#             plated_assay_plates_query = \
+#                 cpr.cherry_pick_assay_plates.filter(
+#                     plating_date__isnull=False)                
+#             if plated_assay_plates_query.exists():
+#                 raise ValidationError({
+#                     API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+#                     API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
+#                     API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
+#             })
+#             raise ValidationError({
+#                 API_MSG_NOT_ALLOWED: 
+#                     ('Lab cherry pick plates already assigned; '
+#                     'reservation must be canceled before reassignment is allowed'),
+#                 API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
+#             })
+#         
+#         # Find the fulfillable lab cherry picks
+#         available_assay_plate_wells = cpr.assay_plate_available_wells
+#         logger.debug('available_assay_plate_wells: %r',available_assay_plate_wells)
+#         logger.info('available_assay_plate_wells len: %d', 
+#             len(available_assay_plate_wells))
+# 
+#         fulfillable_lcps = (
+#             cpr.lab_cherry_picks.filter(copy__isnull=False)
+#                 .order_by('source_well__plate_number','copy__name') )
+# 
+#         logger.info('re-Check and reserve copy volumes...')
+#         lab_cherry_pick_copywells = \
+#             { lcp['source_well_id']: lcp for lcp in
+#                 self.get_labcherrypick_resource()._get_list_response_internal(
+#                     **{
+#                         'cherry_pick_request_id': cpr.cherry_pick_request_id,
+#                         'source_copy_name__is_null': False,
+#                         'includes': ['*', '-structure_image','-molfile'],
+#                     })}
+#         # Check for insufficient well volumes
+#         unfulfillable_wells = []
+#         override_well_volume = parse_val(
+#             param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
+#             API_PARAM_VOLUME_OVERRIDE, 'boolean')
+#         
+#         for lcp in fulfillable_lcps:
+#             lcp_cw = lab_cherry_pick_copywells[lcp.source_well_id]
+#             copywell_name = self.LCP_COPYWELL_KEY.format(**lcp_cw)
+#             lcp_scwv = Decimal(lcp_cw['source_copy_well_volume'])
+#             logger.debug('consider lcp_cw: %r, %r to %r', 
+#                 copywell_name, lcp_scwv, cpr.transfer_volume_per_well_approved)
+#             if ( lcp_scwv < cpr.transfer_volume_per_well_approved ):
+#                 unfulfillable_wells.append(
+#                     (copywell_name, lcp_cw['source_copy_well_volume'],
+#                         cpr.transfer_volume_per_well_approved) )
+#         if unfulfillable_wells and override_well_volume is not True:
+#             raise ValidationError({
+#                 'transfer_volume_per_well_approved':
+#                     '%s: %r, "%s" required' 
+#                         % (API_MSG_LCPS_INSUFFICIENT_VOLUME, 
+#                            unfulfillable_wells, API_PARAM_VOLUME_OVERRIDE),
+#                 API_MSG_LCPS_INSUFFICIENT_VOLUME: unfulfillable_wells,
+#                 API_PARAM_VOLUME_OVERRIDE: 'required',
+#                 
+#             })
+#         elif unfulfillable_wells:
+#             logger.info(
+#                 'Override: unfulfillable wells: %r' % unfulfillable_wells)
+#         else:
+#             logger.info('all wells are fulfillable')
+# 
+#         # Reserve copy well volumes
+#         logger.info('Reserve copy well volumes...')
+#         copywell_reservation_meta = \
+#             self.get_copywell_resource().reserve_cherry_pick_volumes(
+#                 cpr, fulfillable_lcps, parent_log)
+#         
+#         # Create assay plate mapping
+#         logger.info('Create the assay_plates...')  
+#         
+#         # cpr.is_randomized_assay_plate_layout
+#         # - if true, randomize the plate layout wells
+#         if cpr.is_randomized_assay_plate_layout:
+#             logger.info('randomize the available assay plate wells: %r',
+#                 available_assay_plate_wells)
+#             random.shuffle(available_assay_plate_wells)
+#             logger.info('randomized available assay plate wells: %r',
+#                 available_assay_plate_wells)
+#                   
+#         next_plate_ordinal = [1]
+#         def create_next_assay_plate():
+#             assay_plate = CherryPickAssayPlate.objects.create(
+#                 cherry_pick_request=cpr,
+#                 plate_ordinal=next_plate_ordinal[0],
+#                 # TODO: deprecate attempt_ordinal
+#                 attempt_ordinal=0,
+#                 assay_plate_type=cpr.assay_plate_type,
+#                 # TODO: deprecate cpapt
+#                 cherry_pick_assay_plate_type='CherryPickAssayPlate',
+#             )
+#             next_plate_ordinal[0] = next_plate_ordinal[0]+1
+#             return assay_plate
+#         
+#         # Assignment ordering: plate, copy, source_well
+#         lcps_by_plate_copy_well = [
+#             (lcp['library_plate'],lcp['source_copy_name'],
+#                 lcp['source_well_id'], lcp) 
+#                 for lcp in fulfillable_lcps.all()]
+#         lcps_by_plate_copy_well = sorted(
+#             lcps_by_plate_copy_well_dest_well)
+#         
+#         lcp_by_copy_plate = {}
+#         for lcp in fulfillable_lcps.all():
+#             copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
+#             copy_plate_list = lcp_by_copy_plate.get(copy_plate, [])
+#             copy_plate_list.append(lcp)
+#             lcp_by_copy_plate[copy_plate] = copy_plate_list
+#         
+#         if cpr.keep_source_plate_cherry_picks_together is True:
+# 
+#             logger.info("use the bin packer to fit the lcp's to bins...")
+#             capacity = len(available_assay_plate_wells)
+#             packages = [ { 'name': copy_plate, 'size': len(lcps) } 
+#                 for copy_plate,lcps in lcp_by_copy_plate.items() ]
+#             
+#             packed_bins = bin_packer.pack_bins(capacity, packages)
+#             logger.info('packed bins: %r', packed_bins)
+#             
+#             logger.info(
+#                 "assign the packed_bins to assay_plates, keeping split bins adjacent...")
+#             ordered_bins = []
+#             for packed_bin in packed_bins:
+#                 if packed_bin not in ordered_bins:
+#                     ordered_bins.append(packed_bin)
+#                     partially_packed_copy_plate = [
+#                         copy_plate for package in packed_bin
+#                             if len(lcp_by_copy_plate[package['name']]) > package['size'] ]
+#                     if len(partially_packed_copy_plate) > 1:
+#                         raise ProgrammingError(
+#                             'Packed bins should not contain more than one '
+#                             'partially packed copy_plates: %r' 
+#                             % partially_packed_copy_plate)
+#                     # NOTE: assume that source plate will never need > 2 assay plates
+#                     if partially_packed_copy_plate:
+#                         copy_plate = partially_packed_copy_plate[0]
+#                         for second_bin in packed_bins:
+#                             if second_bin != packed_bin:
+#                                 if copy_plate in [ p['name'] for p in second_bin]:
+#                                     ordered_bins.append(second_bin)
+#             
+#             logger.info('create assay plates, in order...')
+#             assay_plates_created = []
+#             for packed_bin in ordered_bins:
+#                 logger.info('using packed bin: %r', packed_bin)
+#                 assay_plate = create_next_assay_plate()
+#                 assay_plates_created.append(assay_plate)
+#                 assay_plate_well_index = 0
+#                 for package in packed_bin:
+#                     
+#                     logger.info('package: %r', package)
+#                     
+#                     copy_plate = package['name']
+#                     size = package['size']
+#                     copy_plate_lcps = lcp_by_copy_plate[copy_plate]
+#                     lcps = copy_plate_lcps[:size]
+#                     lcp_by_copy_plate[copy_plate] = lcps
+#                     
+#                     logger.info('lcps: %r, assay_plate_well_index: %r', 
+#                         len(lcps),assay_plate_well_index)
+#                 
+#                     for lcp in lcps:
+#                         lcp.cherry_pick_assay_plate = assay_plate
+#                         well_name = available_assay_plate_wells[assay_plate_well_index]
+#                         lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
+#                         lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
+#                         assay_plate_well_index += 1
+#                         lcp.save()
+#         else: # keep_source_plate_cherry_picks_together == False
+#             capacity = len(available_assay_plate_wells)
+#             assay_plates_created = []
+#             assay_plate = None
+#             for lcp in fulfillable_lcps.all():
+#                 
+#                 copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
+#                 
+#                 if assay_plate is None:
+#                     assay_plate = create_next_assay_plate()
+#                     assay_plates_created.append(assay_plate)
+#                     assay_plate_well_index = 0
+# 
+#                 lcp.cherry_pick_assay_plate = assay_plate
+#                 well_name = available_assay_plate_wells[assay_plate_well_index]
+#                 lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
+#                 lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
+#                 lcp.save()
+# 
+#                 assay_plate_well_index += 1
+#                 if assay_plate_well_index >= capacity:
+#                     assay_plate_well_index = 0
+#                     assay_plate = None
+# 
+#         # verify that all lcps have been assigned
+# #         for copy_plate, lcps in lcp_by_copy_plate.items():
+#         for lcp in fulfillable_lcps.all():
+#             copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
+#             if lcp.cherry_pick_assay_plate is None:
+#                 raise ProgrammingError(
+#                     'lcp has not been assigned: %s, %r' 
+#                     % lcp, copy_plate)
+#         
+#         # return some stats
+#         cpap_assignments = [ 
+#             'Plate ordinal: %d, Picks: %d' 
+#                 % (ap.plate_ordinal, ap.labcherrypick_set.all().count()) 
+#                 for ap in assay_plates_created ]
+#         
+#         _meta = {
+#             API_MSG_LCP_PLATES_ASSIGNED: [(copy_name, len(lcps)) 
+#                 for copy_name,lcps in lcp_by_copy_plate.items() ],
+#             API_MSG_LCP_ASSAY_PLATES_CREATED: cpap_assignments
+#         }
+#         _meta.update(copywell_reservation_meta[API_RESULT_META])
+#         if unfulfillable_wells:
+#             _meta[API_MSG_LCPS_VOLUME_OVERRIDDEN] = unfulfillable_wells
+# 
+#         # log
+#         parent_log.diffs.update({
+#             'number_plates': [previous_number_of_plates, len(assay_plates_created)]
+#             })
+#         parent_log.json_field = _meta
+#         parent_log.save()
+#         
+#         return self.build_response(
+#             request, { API_RESULT_META: _meta }, 
+#             response_class=HttpResponse, **kwargs)
+
     
     @write_authorization
     @transaction.atomic
@@ -6227,7 +6510,7 @@ class CherryPickRequestResource(DbApiResource):
                     'cherry_pick_request_id': cpr.cherry_pick_request_id,
                     API_PARAM_SHOW_COPY_WELLS: True,
                     'source_copy_well_volume__gte': cpr.transfer_volume_per_well_approved, 
-                    'includes': '*'
+                    'includes': ['*', '-structure_image','-molfile'],
                 })
         logger.info('found %d eligible copy-wells for %d lab cherry picks', 
             len(eligible_lab_cherry_pick_copywells), 

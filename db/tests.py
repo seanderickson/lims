@@ -329,7 +329,7 @@ def setUpModule():
     
     if len(sys.argv) > 1:
         for i,arg in enumerate(sys.argv):
-            print 'arg: ', i,arg
+            logger.info('arg: %d: %r',i, arg)
             if 'keepdb' in arg:
                 keepdb = True
             if 'reinit_metahash' in arg:
@@ -1541,7 +1541,6 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('resp: %r', new_obj)
         self.assertTrue(
             len(new_obj[API_RESULT_DATA])==1, 'too many locations were created')
         new_obj = new_obj[API_RESULT_DATA][0]
@@ -2188,7 +2187,7 @@ class ScreenResultResource(DBResourceTestCase):
             self.create_small_molecule_test_well(
                 plate,i,library_well_type='experimental') 
             for i in range(0,20)]
-        # setup one control well
+        # setup one control well: i:20 - E02
         input_data.append(
             self.create_small_molecule_test_well(
                 plate,20,library_well_type='empty') 
@@ -2223,7 +2222,7 @@ class ScreenResultResource(DBResourceTestCase):
         input_data = []
         for plate in range(1,4):
             for i in range(0,384):
-                if i in [20,21,22]:
+                if i in [320,336,352]: # A20, 21, 22
                     # setup control wells
                     input_data.append(self.create_small_molecule_test_well(
                         plate,i,library_well_type='empty'))
@@ -2256,15 +2255,16 @@ class ScreenResultResource(DBResourceTestCase):
             resource_uri = '/'.join([
                 BASE_URI_DB,'screenresult',screen['facility_id']])
             logger.info('PUT screen result to the server...')
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
-                resource_uri, content_type='application/xls', 
+            # NOTE: content_type arg is req'd with django.test.Client.post
+            resp = self.django_client.post(
+                resource_uri, content_type=XLSX_MIMETYPE,
                 data=input_file.read(), **data_for_get)
             if resp.status_code not in [200, 204]:
-                content = self.deserialize(resp)
-                logger.info('content: %r', content)
-                logger.info('resp: %r', 
-                    [str(x) for x in content])
+                content = self.get_content(resp)
+                if content:
+                    logger.info('resp: %r', 
+                        [[str(y) for y in x] 
+                            for x in self.serializer.from_xlsx(content)])
             self.assertTrue(
                 resp.status_code in [200, 204], 
                 (resp.status_code))
@@ -2355,7 +2355,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': None , # should be interpreted as 'NP'
             },
             { 
-                'well_id': '00001:A02', 
+                'well_id': '00001:B01', 
                 'E': 'test value 2',
                 'F': 0.99 ,
                 'G': 1.0331 ,
@@ -2363,7 +2363,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'W' ,
             },
             { 
-                'well_id': '00001:A03', 
+                'well_id': '00001:C01', 
                 'E': 'test value 2',
                 'F': 1.99 ,
                 'G': 1.032 ,
@@ -2371,7 +2371,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' ,
             },
             { 
-                'well_id': '00001:A04', 
+                'well_id': '00001:D01', 
                 'E': 'test value 2',
                 'F': 1.99 ,
                 'G': 1.032 ,
@@ -2379,7 +2379,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'S' ,
             },
             { 
-                'well_id': '00001:A05', 
+                'well_id': '00001:E01', 
                 'E': 'test value 2',
                 'F': 1.1 ,
                 'G': 1.1 ,
@@ -2387,7 +2387,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' ,
             },
             { 
-                'well_id': '00001:A06', 
+                'well_id': '00001:F01', 
                 'E': 'test value 2',
                 'F': 1.1 ,
                 'G': 1.1 ,
@@ -2395,7 +2395,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' ,
             },
             { 
-                'well_id': '00001:A21',
+                'well_id': '00001:E02', # should be E02
                 'assay_well_control_type': 'assay_control', 
                 'E': 'test value 2',
                 'F': 1.1 ,
@@ -2404,7 +2404,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' , # non experimental well should be ignored
             },
             { 
-                'well_id': '00001:A07',
+                'well_id': '00001:G01',
                 'exclude': ['E','F','G','H','I'], 
                 'E': 'test value 2',
                 'F': 1.1 ,
@@ -2419,7 +2419,6 @@ class ScreenResultResource(DBResourceTestCase):
             ('objects', result_values),
         ))
         return input_data
-    
     
     def test2_load_valid_input(self):
         
@@ -2452,11 +2451,9 @@ class ScreenResultResource(DBResourceTestCase):
         resource_name = 'screenresult'
         resource_uri = '/'.join([
             BASE_URI_DB,resource_name,screen_facility_id])
+        
         resp = self.django_client.put(
             resource_uri, data=input_data_put, **data_for_get )
-        # resp = self.sr_api_client.put(
-        #     resource_uri, format='xlsx', data=input_data_put, 
-        #     authentication=self.get_credentials(), **data_for_get )
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
@@ -2468,9 +2465,6 @@ class ScreenResultResource(DBResourceTestCase):
 
         logger.info('refetch screen result from server...')
         resp = self.django_client.get(resource_uri, **data_for_get)
-        # resp = self.sr_api_client.get(
-        #     resource_uri, authentication=self.get_credentials(), 
-        #     format='xlsx', **data_for_get)
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
@@ -2614,9 +2608,6 @@ class ScreenResultResource(DBResourceTestCase):
             BASE_URI_DB,resource_name,screen_facility_id])
         resp = self.django_client.put(
             resource_uri, data=input_data_put, **data_for_get )
-        # resp = self.sr_api_client.put(
-        #     resource_uri, format='xlsx', data=input_data_put, 
-        #     authentication=self.get_credentials(), **data_for_get )
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
@@ -2628,9 +2619,6 @@ class ScreenResultResource(DBResourceTestCase):
 
         logger.info('refetch screen result from server...')
         resp = self.django_client.get(resource_uri, **data_for_get)
-        # resp = self.sr_api_client.get(
-        #     resource_uri, authentication=self.get_credentials(), 
-        #     format='xlsx', **data_for_get)
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
@@ -2716,7 +2704,7 @@ class ScreenResultResource(DBResourceTestCase):
         input_data = []
         plate = 1
         for i in range(0,384):
-            if i in [0,3,6]:
+            if i in [0,16,112]: # A01, A04, A07
                 # setup control wells
                 input_data.append(self.create_small_molecule_test_well(
                     plate,i,library_well_type='empty'))
@@ -2760,12 +2748,13 @@ class ScreenResultResource(DBResourceTestCase):
             resource_uri = '/'.join([
                 BASE_URI_DB,resource_name,screen_facility_id])
             logger.info('PUT screen result to the server... %r', data_for_get)
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
-                resource_uri, content_type='application/xls', 
+            # NOTE: content_type arg is req'd with django.test.Client.post
+            resp = self.django_client.post(
+                resource_uri, content_type=XLSX_MIMETYPE,
                 data=input_file.read(), **data_for_get)
             self.assertTrue(
                 resp.status_code == 400, resp.status_code)
+            logger.info('content-type: %r', resp['Content-Type'])
             content = self.deserialize(resp)
             logger.info('content; %r', content)
             
@@ -2890,8 +2879,8 @@ class ScreenResultResource(DBResourceTestCase):
         resource_uri = '/'.join([
             BASE_URI_DB,resource_name,screen_facility_id])
         logger.info('PUT screen result to the server...')
-        django_test_client = self.api_client.client
-        resp = django_test_client.post(
+        # NOTE: content_type arg is req'd with django.test.Client.post
+        resp = self.django_client.post(
             resource_uri, content_type='application/json', 
             data=json.dumps(input_data), **data_for_get)
         self.assertTrue(
@@ -3570,8 +3559,8 @@ class ScreenResource(DBResourceTestCase):
 
             logger.info('POST publication with attached_file to the server...')
             publication_data['attached_file'] = input_file
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
+            # NOTE: content_type arg is req'd with django.test.Client.post
+            resp = self.django_client.post(
                 resource_uri, content_type=content_type, 
                 data=publication_data, **kwargs)
             self.assertTrue(
@@ -4062,6 +4051,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'transfer_volume_per_well_approved': '0.000000002',
             'volume_approved_by_username': self.test_admin_user['username'],
             'assay_plate_type': 'eppendorf_384',
+            # wells to use: B03,C03,B04,C04,B05,C05
             'wells_to_leave_empty': (
                 'Col:1, Col:2, Col:6, Col:7, Col:8, Col:9, Col:10, Col:11, '
                 'Col:12, Col:13, Col:14, Col:15, Col:16, Col:17, Col:18, '
@@ -4410,9 +4400,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         _meta = _data[API_RESULT_META]
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
-        plate_copy1a = '%s:1000' % self.library1_copy1a['copy_name']
-        plate_copy_l2_c1 = '%s:2001' % self.library2_copy1['copy_name']
-        plate_copy_l4_c1 = '%s:4000' % self.library4_copy1['copy_name']
+        plate_copy1a = '1000:%s' % self.library1_copy1a['copy_name']
+        plate_copy_l2_c1 = '2001:%s' % self.library2_copy1['copy_name']
+        plate_copy_l4_c1 = '4000:%s' % self.library4_copy1['copy_name']
         
         for msg in copy_plate_assigned_msg:
             if plate_copy1a in msg:
@@ -4455,6 +4445,10 @@ class CherryPickRequestResource(DBResourceTestCase):
                 'copy_plate: %r, %r, %r', 
                 copy_plate, actual_assignment, expected_assignment)
             self.assertEqual(expected_assignment,actual_assignment)
+
+        self._validate_plate_mapping(
+            plated_lab_cherry_picks, cpr_data['wells_to_leave_empty'],
+            is_random=False)
         
         lcps_by_plate = defaultdict(list)
         for lcp in plated_lab_cherry_picks:
@@ -4498,9 +4492,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         _meta = _data[API_RESULT_META]
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
-        plate_copy1a = '%s:1000' % self.library1_copy1a['copy_name']
-        plate_copy_l2_c1 = '%s:2001' % self.library2_copy1['copy_name']
-        plate_copy_l4_c1 = '%s:4000' % self.library4_copy1['copy_name']
+        plate_copy1a = '1000:%s' % self.library1_copy1a['copy_name']
+        plate_copy_l2_c1 = '2001:%s' % self.library2_copy1['copy_name']
+        plate_copy_l4_c1 = '4000:%s' % self.library4_copy1['copy_name']
         
         for msg in copy_plate_assigned_msg:
             if plate_copy1a in msg:
@@ -4521,18 +4515,21 @@ class CherryPickRequestResource(DBResourceTestCase):
             len(_meta[API_MSG_LCP_ASSAY_PLATES_CREATED]),expected_assay_plates)
         
         plated_lab_cherry_picks = self._get_lcps(cpr_id)
+        self._validate_plate_mapping(
+            plated_lab_cherry_picks, cpr_data['wells_to_leave_empty'],
+            is_random=False)
         
         # 4.A check the assay plate/well assignments
         # - use the lcp.copywell fields to check copywell adjustments
         copy_to_assay_plate = {}
         for lcp in plated_lab_cherry_picks:
             logger.debug('lcp: %r', lcp)
-            self.assertTrue(
-                lcp.get('cherry_pick_plate_number',"")!="",
-                'cherry_pick_plate_number: %r' % lcp)
-            self.assertTrue(
-                lcp.get('destination_well',"")!="",
-                'destination_well: %r' % lcp)
+#             self.assertTrue(
+#                 lcp.get('cherry_pick_plate_number',"")!="",
+#                 'cherry_pick_plate_number: %r' % lcp)
+#             self.assertTrue(
+#                 lcp.get('destination_well',"")!="",
+#                 'destination_well: %r' % lcp)
             
             # Ensure that each source copy gets a different assay_plate
             source_copy_id = lcp['source_copy_id']
@@ -5137,6 +5134,63 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         return (cpr_data, new_lcps)
     
+    def _validate_plate_mapping(
+        self, lcps, wells_to_leave_empty, is_random=False):
+        
+        plate_size = 384
+        available_wells = lims_utils.assay_plate_available_wells(
+            wells_to_leave_empty, plate_size)
+
+        # Check the well assignments (non-random):
+        # cherry_pick_plate_number and destination well_name should increment
+        # in this ordering:
+        lcps_by_plate_copy_well_dest_well = [
+            (lcp['library_plate'],lcp['source_copy_name'],
+                lcp['source_well_id'],lcp['cherry_pick_plate_number'],
+                lcp['destination_well']) 
+                for lcp in lcps]
+        lcps_by_plate_copy_well_dest_well = sorted(
+            lcps_by_plate_copy_well_dest_well)
+        
+        previous_index = 0
+        previous_plate_number = 0
+        platesize = 384
+        random_assigments = []
+        for lcp_plating in lcps_by_plate_copy_well_dest_well:
+            logger.info('lcp plating: %r', lcp_plating)
+            assay_plate_number = lcp_plating[3]
+            destination_well = lcp_plating[4]
+            
+            self.assertTrue(destination_well in available_wells,
+                'destination_well: %r not in available_wells: %r'
+                % (destination_well, available_wells))
+            
+            self.assertTrue(assay_plate_number >= previous_plate_number,
+                'assay_plate_number: %d !>= previous: %d'
+                % (assay_plate_number, previous_plate_number))
+            if assay_plate_number > previous_plate_number:
+                previous_plate_number = assay_plate_number
+                previous_index = 0
+                if is_random is True:
+                    self.assertTrue(random_assigments!=sorted(random_assigments),
+                        'random assigments are not random: %r' % random_assigments)
+                random_assigments = []
+                
+            current_index = lims_utils.index_from_well_name(
+                destination_well, platesize)
+            # (knowing the first available well) test start point as well
+            if previous_index == 0 and is_random is False:
+                self.assertEqual(destination_well,available_wells[0])
+            if is_random is False and previous_index > 0:
+                self.assertTrue(
+                    current_index > previous_index,
+                    'previous_index: %d ! > current_index: %d, %r'
+                    % (previous_index, current_index, lcp_plating))
+            if is_random is True:
+                random_assigments.append(current_index)
+            previous_index = current_index
+        
+    
     def test_4a_update_reservation_and_mapping(self):
         
         (cpr_data, current_lcps) = self._test_3a_change_lab_cherry_picks()
@@ -5165,8 +5219,11 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue('transfer_volume_per_well_approved' in errors)
         copywell_1000_a01 = LCP_COPYWELL_KEY.format(**current_lcps['01000:A01'])
         self.assertTrue(API_MSG_LCPS_INSUFFICIENT_VOLUME in errors )
+        volume_errors = errors[API_MSG_LCPS_INSUFFICIENT_VOLUME]
+        logger.info('volume_errors: %r', volume_errors)
+        self.assertTrue(len(volume_errors)==1)
         self.assertTrue(
-            copywell_1000_a01 in errors[API_MSG_LCPS_INSUFFICIENT_VOLUME])
+            copywell_1000_a01 in volume_errors[0] )
         self.assertTrue(API_PARAM_VOLUME_OVERRIDE in errors)
         
         # 1.B Repeat volume with override for well A01
@@ -5179,20 +5236,25 @@ class CherryPickRequestResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
+
+        # 1.B.1 meta data checks
+        logger.info('override resp: %r', _data)
         self.assertTrue(API_RESULT_META in _data)
         _meta = _data[API_RESULT_META]
-        
         self.assertTrue(API_MSG_LCPS_VOLUME_OVERRIDDEN in _meta)
+        volume_overrides = _meta[API_MSG_LCPS_VOLUME_OVERRIDDEN]
+        logger.info('volume_overrides: %r', volume_overrides)
+        self.assertTrue(len(volume_overrides)==1)
         self.assertTrue(
-            copywell_1000_a01 in _meta[API_MSG_LCPS_VOLUME_OVERRIDDEN])
+            copywell_1000_a01 in volume_overrides[0])
 
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
         expected_copyplate_assignments = {
-            '%s:1000'%self.library1_copy1['copy_name']: 5,
-            '%s:1000'%self.library1_copy4['copy_name']: 1,
-            '%s:2001'%self.library2_copy1['copy_name']: 3,
-            '%s:4000'%self.library4_copy1['copy_name']: 6
+            '1000:%s'%self.library1_copy1['copy_name']: 5,
+            '1000:%s'%self.library1_copy4['copy_name']: 1,
+            '2001:%s'%self.library2_copy1['copy_name']: 3,
+            '4000:%s'%self.library4_copy1['copy_name']: 6
             }
         logger.info(
             'check expected_copyplate_assignments: %r', 
@@ -5232,6 +5294,43 @@ class CherryPickRequestResource(DBResourceTestCase):
                     expected_vol, 
                     'lcp vol consumed should be %r, %r'
                     % ( expected_vol, lcp) )
+        
+        # 1.D validate plate mapping ordering
+        self._validate_plate_mapping(
+            lcp_well_data.values(), cpr_data['wells_to_leave_empty'],
+            is_random=False)
+#         # 1.D check the well assignments (non-random, keep source plates together)
+#         # indexes of destination wells should increment in this ordering:
+#         lcps_by_plate_copy_well_dest_well = [
+#             (lcp['library_plate'],lcp['source_copy_name'],
+#                 lcp['source_well_id'],lcp['cherry_pick_plate_number'],
+#                 lcp['destination_well']) 
+#                 for lcp in lcp_well_data.values()]
+#         lcps_by_plate_copy_well_dest_well = sorted(lcps_by_plate_copy_well_dest_well)
+#         
+#         previous_index = 0
+#         previous_plate_number = 0
+#         platesize = 384
+#         for lcp_plating in lcps_by_plate_copy_well_dest_well:
+#             logger.info('lcp plating: %r', lcp_plating)
+#             assay_plate_number = lcp_plating[3]
+#             destination_well = lcp_plating[4]
+#             
+#             self.assertTrue(assay_plate_number >= previous_plate_number,
+#                 'assay_plate_number: %d !>= previous: %d'
+#                 % (assay_plate_number, previous_plate_number))
+#             if assay_plate_number > previous_plate_number:
+#                 previous_plate_number = assay_plate_number
+#                 
+#             current_index = lims_utils.index_from_well_name(
+#                 destination_well, platesize)
+#             if previous_index > 0:
+#                 self.assertTrue(
+#                     current_index > previous_index,
+#                     'previous_index: %d ! > current_index: %d, %r'
+#                     % (previous_index, current_index, lcp_plating))
+#             previous_index = current_index
+        
                 
         # 2.A Try to change the LCP assignment after plating:
         # - wipe out LCP's: requires cancel plating
@@ -5375,7 +5474,6 @@ class CherryPickRequestResource(DBResourceTestCase):
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         logger.info('deallocate child logs: %r', apilogs)
-#         expected_deallocate_logs = 11 # 8 copywell, 3 plate
         expected_deallocate_logs = 19 # 6+3+6 copywell, 4 plate
         self.assertEqual(expected_deallocate_logs, len(apilogs))
         for apilog in apilogs:
@@ -5431,10 +5529,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
         expected_copyplate_assignments = {
-            '%s:1000'%self.library1_copy1['copy_name']: 4,
-            '%s:1000'%self.library1_copy4['copy_name']: 2,
-            '%s:2001'%self.library2_copy1['copy_name']: 3,
-            '%s:4000'%self.library4_copy1['copy_name']: 6
+            '1000:%s'%self.library1_copy1['copy_name']: 4,
+            '1000:%s'%self.library1_copy4['copy_name']: 2,
+            '2001:%s'%self.library2_copy1['copy_name']: 3,
+            '4000:%s'%self.library4_copy1['copy_name']: 6
             }
         logger.info(
             'check expected_copyplate_assignments: %r', 
@@ -5476,6 +5574,11 @@ class CherryPickRequestResource(DBResourceTestCase):
                     'lcp vol consumed should be %r, %r'
                     % ( expected_vol, lcp) )
         
+        # 3.A2 validate plate mapping ordering
+        self._validate_plate_mapping(
+            lcp_well_data.values(), cpr_data['wells_to_leave_empty'],
+            is_random=False)
+
         # 3.B cancel plating resrvation
         cancel_reservation_resource_uri = '/'.join([
             BASE_URI_DB, 'cherrypickrequest', str(cpr_id), 
@@ -5742,9 +5845,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         capacity = 6
         bins = [2,3,6,7,10]
         package_array = [{'name':x, 'size': x} for x in bins]
+        # Note: bins are sorted internally by name
         expected_packed_bins = [
             [{'name': 6, 'size': 6}], 
-            [{'name': 3, 'size': 3}, {'name': 2, 'size': 2}, 
+            [{'name': 2, 'size': 2},{'name': 3, 'size': 3}, 
                 {'name': 7, 'size': 1}], 
             [{'name': 10, 'size': 6}], 
             [{'name': 7, 'size': 6}], 
@@ -5762,7 +5866,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         capacity = 8
         expected_packed_bins = [
             [{'name': 7, 'size': 7}], 
-            [{'name': 6, 'size': 6}, {'name': 2, 'size': 2}], 
+            [{'name': 2, 'size': 2},{'name': 6, 'size': 6},], 
             [{'name': 3, 'size': 3}, {'name': 10, 'size': 2}], 
             [{'name': 10, 'size': 8}]]
         
@@ -5776,8 +5880,8 @@ class CherryPickRequestResource(DBResourceTestCase):
         capacity = 10
         expected_packed_bins = [
             [{'name': 10, 'size': 10}], 
-            [{'name': 7, 'size': 7}, {'name': 3, 'size': 3}, ], 
-            [{'name': 6, 'size': 6},{'name': 2, 'size': 2}]]
+            [{'name': 3, 'size': 3},{'name': 7, 'size': 7},], 
+            [{'name': 2, 'size': 2},{'name': 6, 'size': 6},]]
         packed_bins = bin_packer.pack_bins(capacity, package_array)
         logger.info('packed bins: %r', packed_bins)
         for expected_bin in expected_packed_bins:
@@ -5790,7 +5894,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         package_array = [{'name':x, 'size': x} for x in bins]
         expected_packed_bins = [
             [{'name': 6, 'size': 6}], 
-            [{'name': 4, 'size': 4}, {'name': 2, 'size': 2}], 
+            [{'name': 2, 'size': 2},{'name': 4, 'size': 4}], 
             [{'name': 2, 'size': 2}],
         ]
         
@@ -6156,8 +6260,9 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
         
         logger.info('Post attached file item: %r', attachedfile_item_post)
-        django_test_client = self.api_client.client
-        resp = django_test_client.post(
+        # NOTE: content_type arg is req'd with django.test.Client.post
+        # NOTE: content_type defaults to MULTIPART_CONTENT
+        resp = self.django_client.post(
             resource_uri, content_type=content_type, 
             data=attachedfile_item_post, **kwargs)
         self.assertTrue(
@@ -6224,8 +6329,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             attachedfile_item_post['attached_file'] = input_file
 
             logger.info('Post attached file %r', filename)
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
+            # NOTE: content_type arg is req'd with django.test.Client.post
+            # NOTE: content_type defaults to MULTIPART_CONTENT
+            resp = self.django_client.post(
                 resource_uri, content_type=content_type, 
                 data=attachedfile_item_post, **kwargs)
             self.assertTrue(
@@ -6319,8 +6425,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('PUT user agreement to the server...')
             useragreement_item_post['attached_file'] = input_file
             
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
+#             django_test_client = self.api_client.client
+            resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
             if resp.status_code not in [201]:
@@ -6435,8 +6541,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('PUT user agreement to the server...')
             useragreement_item_post['attached_file'] = input_file
             
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(
+#             django_test_client = self.api_client.client
+            resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
             if resp.status_code not in [201]:

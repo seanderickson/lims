@@ -13,6 +13,7 @@ define([
   var DEBUG = false;
   
   var API_RESULT_META = 'meta';
+  var API_RESULT_DATA = 'objects';
   var API_MSG_RESULT = 'Result';
     
   var SchemaClass = Iccbl.SchemaClass = function() {};
@@ -854,7 +855,7 @@ define([
         defaults : { },
         parse: function(resp, options){
           // workaround for if the server returns the object in an "objects" array
-          if(_.has(resp,'objects') && _.isArray(resp.objects)
+          if(_.has(resp,API_RESULT_DATA) && _.isArray(resp.objects)
               && resp.objects.length == 1 ){
             resp = resp.objects[0];
           }
@@ -1952,6 +1953,10 @@ define([
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
+  appState.API_RESULT_META = API_RESULT_META;
+  appState.API_RESULT_DATA = API_RESULT_DATA;
+  appState.API_MSG_RESULT = API_MSG_RESULT;
+
   appState.DEBUG = DEBUG;
   appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
   appState.SEARCH_DELIMITER = SEARCH_DELIMITER;
@@ -1961,6 +1966,7 @@ define([
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';
   appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
+  appState.API_PARAM_OVERRIDE = 'override';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   Iccbl.appModel = appState;
   

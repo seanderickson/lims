@@ -139,17 +139,34 @@ define([
         }
       });
       var saveSuccessCallBack = function(response){
+        // Override so that the CPR can be displayed in the screen resource:
         // TODO: modify generic_edit to handle custom-nested URLs for edit success URL
-        var meta = _.result(response, 'meta', null);
+        var meta = _.result(response, appModel.API_RESULT_META, null);
         
-        // TODO: use appModel.showConnectionResult()
         if (!_.isEmpty(meta)) {
           appModel.showJsonMessages(meta);
         }
-        // FIXME: not working--- model.key not set
-        appModel.router.navigate([
-          self.screen.resource.key,self.screen.key,'cherrypickrequest',self.model.key].join('/'), 
-          {trigger:true});
+        if (_.isUndefined(self.model) || _.isUndefined(self.model.key)){
+          var model = _.result(response, appModel.API_RESULT_DATA, null);
+          if (!_.isEmpty(model)){
+            model = new Backbone.Model(model);
+            model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+            appModel.router.navigate([
+              self.screen.resource.key,self.screen.key,'cherrypickrequest',
+              model.key].join('/'), 
+              {trigger:true});
+          } else { 
+            appModel.router.navigate([
+              self.screen.resource.key,self.screen.key,'cherrypickrequest'
+              ].join('/'), 
+              {trigger:true});
+          }
+        }else{
+          appModel.router.navigate([
+            self.screen.resource.key,self.screen.key,'cherrypickrequest',
+            self.model.key].join('/'), 
+            {trigger:true});
+        }
       };
       detailView = DetailView.extend({
         afterRender: function() {
@@ -1431,7 +1448,7 @@ define([
                   overridden = true;
                   appModel.showModal({
                     title: 'Insufficient volume for copy wells in lab cherry picks',
-                    body: errorWells,
+                    body: errorWells.join(', '),
                     okText: 'Override',
                     ok: function() {
                       var overrideInsufficient = true;
@@ -1441,6 +1458,8 @@ define([
                       // nop
                     }
                   });
+                } else {
+                  appModel.jqXHRfail.apply(this,arguments); 
                 }
               } else {
                 appModel.jqXHRfail.apply(this,arguments); 
@@ -1522,6 +1541,7 @@ define([
             '<button type="submit" class="btn btn-default btn-xs" ',
             'style="width: 3em;">ok</input>',
           ].join(''));
+          
           form.$el.find('[ type="submit" ]').click(function(e){
             e.preventDefault();
             var errors = form.commit({ validate: true }); 
@@ -1532,32 +1552,74 @@ define([
               form.$el.find('#well_search').removeClass(self.errorClass);
             }
             
-            var modelForSubmit = new Backbone.Model(
-              self.model.pick(['cherry_pick_request_id'])
-            );
-            modelForSubmit.set('id', self.model.get('id'));
-            modelForSubmit.resource = self.model.resource;
-            modelForSubmit.urlRoot = self.model.resource.apiUri;
-            modelForSubmit.set('screener_cherry_picks', form.getValue('well_search'));
+//            var modelForSubmit = new Backbone.Model(
+//              self.model.pick(['cherry_pick_request_id'])
+//            );
+//            modelForSubmit.set('id', self.model.get('id'));
+//            modelForSubmit.resource = self.model.resource;
+//            modelForSubmit.urlRoot = self.model.resource.apiUri;
+//            modelForSubmit.set('screener_cherry_picks', form.getValue('well_search'));
             
-            modelForSubmit.save(null, {
-              patch: true
-            }).done(function(data, textStatus, jqXHR){ 
-              console.log('success', data);
-              appModel.showConnectionResult(data, {
-                title: 'Create Screener Cherry Picks'
-              });
-              self.model.fetch({ reset: true }).done(function(){
-                self.uriStack = ['screenercherrypicks'];
-                // remove the child view before calling render, to prevent
-                // it from being rendered twice, and calling afterRender twice
-                self.removeView('#tab_container');
-                self.render();
-              });
-            }).fail(function(jqXHR, textStatus, errorThrown) { 
-              appModel.jqXHRfail.apply(this,arguments); 
-            });
+            var url = [self.model.resource.apiUri,self.model.key].join('/');
             
+            function submit(override){
+              if (! _.isUndefined(override)){
+                url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
+              }
+              data = { 'screener_cherry_picks': form.getValue('well_search') };
+              var headers = {}; // can be used to send a comment
+              $.ajax({
+                url: url,     
+                cache: false,
+                contentType: 'application/json', 
+                processData: false,
+                dataType: 'json', // what is expected back from the server
+                data: JSON.stringify(data),
+                type: 'PATCH',
+                headers: headers
+              }).done(function(data, textStatus, jqXHR){
+                console.log('success', data);
+                appModel.showConnectionResult(data, {
+                  title: 'Create Screener Cherry Picks'
+                });
+                self.model.fetch({ reset: true }).done(function(){
+                  self.uriStack = ['screenercherrypicks'];
+                  // remove the child view before calling render, to prevent
+                  // it from being rendered twice, and calling afterRender twice
+                  self.removeView('#tab_container');
+                  self.render();
+                });
+              }).fail(function(jqXHR, textStatus, errorThrown) { 
+                console.log('errors', arguments);
+                
+                var jsonError = _.result(jqXHR, 'responseJSON');
+                if (!_.isUndefined(jsonError)){
+                  var error = _.result(jsonError, 'errors');
+                  var overrideFlag = _.result(error,appModel.API_PARAM_OVERRIDE);
+                  var errorMsg = _.result(error, 'screener_cherry_picks'); 
+                  if (!_.isUndefined(overrideFlag)){
+                    appModel.showModal({
+                      title: 'Override Required',
+                      body: errorMsg,
+                      okText: 'Override',
+                      ok: function() {
+                        var override = true;
+                        submit(override);
+                      },
+                      cancel: function() {
+                        // nop
+                      }
+                    });
+                  } else {
+                    appModel.jqXHRfail.apply(this,arguments); 
+                  }
+                } else {
+                  appModel.jqXHRfail.apply(this,arguments); 
+                }
+              });
+            };
+            
+            submit();
           });
         }
       });

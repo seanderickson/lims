@@ -708,8 +708,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 format='json',
                 includes=includes,
                 **kwargs)
-            logger.debug('response: %r', response)
-            _data = self._meta.serializer.deserialize(
+            logger.info('_get_list_response response: %r', response)
+            _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), response['Content-Type'])
 #             self.use_cache = True
             _data = _data[self._meta.collection_name]
@@ -718,9 +718,9 @@ class SqlAlchemyResource(IccblBaseResource):
         except Http404:
             return []
         except Exception as e:
-            # FIXME: temporary travis debug
-            logger.exception('on get list')
-            return []
+            logger.exception('on get list: %r', e)
+            raise
+#             return []
         
     def _get_detail_response(self,request,**kwargs):
         '''
@@ -895,7 +895,8 @@ class SqlAlchemyResource(IccblBaseResource):
     def stream_response_from_statement(self, request, stmt, count_stmt, 
             output_filename, field_hash={}, param_hash={}, 
             rowproxy_generator=None, is_for_detail=False,
-            downloadID=None, title_function=None, use_caching=None, meta=None ):
+            downloadID=None, title_function=None, use_caching=None, meta=None,
+            format=None ):
         '''
         Execute the SQL stmt provided and stream the results to the response:
         
@@ -955,8 +956,11 @@ class SqlAlchemyResource(IccblBaseResource):
                         dialect=postgresql.dialect(), 
                         compile_kwargs={"literal_binds": True})))
             
-            content_type = self.get_accept_content_type(request, format=param_hash.get('format', None))
-            logger.debug('---- content_type: %r, hash: %r', content_type, temp_param_hash)
+            if format is not None:
+                content_type = self.get_serializer().get_content_type_for_format(format)
+            else:
+                content_type = self.get_serializer().get_accept_content_type(request)
+
             result = None
             if content_type == JSON_MIMETYPE:
                 logger.info(
@@ -1029,17 +1033,15 @@ class SqlAlchemyResource(IccblBaseResource):
                 is_for_detail=is_for_detail, 
                 downloadID=downloadID, 
                 title_function=title_function, 
-                meta=meta)
+                meta=meta, format=format)
         except Exception, e:
             logger.exception('on stream response')
             raise e
     
-    
-    
     def stream_response_from_cursor(
             self,request,result,output_filename, field_hash={}, param_hash={}, 
             is_for_detail=False, downloadID=None, title_function=None, 
-            meta=None):
+            meta=None, format=None):
           
         try:
 
@@ -1048,8 +1050,12 @@ class SqlAlchemyResource(IccblBaseResource):
                 or request.GET.get(HTTP_PARAM_RAW_LISTS, False)):
                 list_brackets = None
     
-            content_type = self.get_accept_content_type(
-                request, format=param_hash.get('format', None))
+            if format is not None:
+                content_type = \
+                    self.get_serializer().get_content_type_for_format(format)
+            else:
+                content_type = \
+                    self.get_serializer().get_accept_content_type(request)
             logger.debug('content_type: %s',content_type)
             
             image_keys = [key for key,field in field_hash.items()

@@ -1344,7 +1344,7 @@ class IResourceTestCase(SimpleTestCase):
             self.get_content(resp), resp['Content-Type'])
 
     def serialize(self, data, format):
-        content_type = self.serializer.get_content_type(None, format)
+        content_type = self.serializer.get_content_type_for_format(format)
         return self.serializer.serialize(data, content_type)
 
 runTestApiInit = [False]
@@ -1424,7 +1424,7 @@ class TestApiClient(object):
         """
         Performs a simulated ``GET`` request to the provided URI.
         """
-        content_type = self.serializer.get_content_type(None, format=format)
+        content_type = self.serializer.get_content_type_for_format(format)
         kwargs['HTTP_ACCEPT'] = content_type
 
         # GET & DELETE are the only times we don't serialize the data.
@@ -1445,7 +1445,7 @@ class TestApiClient(object):
         **Unlike** ``GET``, in ``POST`` the ``data`` gets serialized & sent 
         as the body instead of becoming part of the URI.
         """
-        content_type = self.serializer.get_content_type(None, format)
+        content_type = self.serializer.get_content_type_for_format(format)
         kwargs['content_type'] = content_type
 
         if data is not None:
@@ -1464,7 +1464,7 @@ class TestApiClient(object):
         **Unlike** ``GET``, in ``PUT`` the ``data`` gets serialized & sent as
         the body instead of becoming part of the URI.
         """
-        content_type = self.serializer.get_content_type(None, format)
+        content_type = self.serializer.get_content_type_for_format(format)
         kwargs['content_type'] = content_type
 
         if data is not None:
@@ -1484,7 +1484,7 @@ class TestApiClient(object):
         **Unlike** ``GET``, in ``PATCH`` the ``data`` gets serialized & sent 
         as the body instead of becoming part of the URI.
         """
-        content_type = self.serializer.get_content_type(None, format)
+        content_type = self.serializer.get_content_type_for_format(format)
         kwargs['content_type'] = content_type
 
         if data is not None:
@@ -1518,7 +1518,7 @@ class TestApiClient(object):
         Performs a simulated ``DELETE`` request to the provided URI.
 
         """
-        content_type = self.serializer.get_content_type(None,format)
+        content_type = self.serializer.get_content_type_for_format(format)
         kwargs['content_type'] = content_type
 
         # GET & DELETE are the only times we don't serialize the data.

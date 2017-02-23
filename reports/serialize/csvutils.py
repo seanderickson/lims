@@ -90,7 +90,6 @@ def from_csv_iterate(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None
     keys = []
     list_keys = list(list_keys) 
     logger.debug('list_keys: %r', list_keys)
-    logger.info('iterable: %r', iterable)
     for row in iterable:
         if i == 0:
             keys = [x for x in row]

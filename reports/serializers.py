@@ -107,9 +107,10 @@ class BaseSerializer(object):
         '''
         
         
-        DEBUG_ACCEPT_CONTENT_TYPE = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_ACCEPT_CONTENT_TYPE = True or logger.isEnabledFor(logging.DEBUG)
         
-        logger.debug('get_accept_content_type: %r, %r', request, format)
+        if DEBUG_ACCEPT_CONTENT_TYPE:
+            logger.info('get_accept_content_type: %r, %r', request, format)
 
         content_type = None
         
@@ -117,11 +118,12 @@ class BaseSerializer(object):
             if request.GET and request.GET.get('format',None):
                 format = request.GET.get('format')
         if format is not None:
-            if DEBUG_ACCEPT_CONTENT_TYPE:
-                logger.info('get content type from format param: %r', format)
             content_type = self.get_content_type_for_format(format)
+            if DEBUG_ACCEPT_CONTENT_TYPE:
+                logger.info('got content type: %r from format param: %r', 
+                    content_type, format)
         
-        if content_type is None and request is not None:
+        if content_type is None:
             if request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
                 if DEBUG_ACCEPT_CONTENT_TYPE:
                     logger.info('get content type from HTTP_ACCEPT: %r', 
@@ -156,64 +158,68 @@ class BaseSerializer(object):
                 content_type = request.META.get('CONTENT_TYPE', '*/*')
                 logger.info('fallback to "CONTENT_TYPE": %r', content_type)
             else:
+                logger.error('get_accept_content_type: request.META: %r',
+                    request.META)
                 raise BadRequest(
-                    'no CONTENT_TYPE or HTTP_ACCEPT header found: %r, %r', 
-                    request, format)
-        if not content_type:
-            logger.info('not content type found')
+                    'no CONTENT_TYPE or HTTP_ACCEPT header found: %r, %r' 
+                    % (request.META, format))
         if DEBUG_ACCEPT_CONTENT_TYPE:
             logger.info('content type: %r', content_type)
         return content_type
         
-    def get_content_type(self, request, format=None):    
+#     def get_content_type(self, request, format=None):    
+    def get_content_type(self, request):    
 
         logger.debug('get_content_type: %r, %r', request, format)
 
         content_type = None
         
-        if format is None:
-            if request.GET and request.GET.get('format',None):
-                format = request.GET.get('format')
-        if format is not None:
-            content_type = self.get_content_type_for_format(format)
-        
-        if content_type is None and request is not None:
-            if request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
-                content_type = request.META.get('CONTENT_TYPE', '*/*')
-                logger.debug('"CONTENT_TYPE": %r', content_type)
-            elif request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
-                logger.info(
-                    'no "CONTENT_TYPE" found, fallback "HTTP_ACCEPT" header %r',
-                    request.META.get('HTTP_ACCEPT', '*/*'))
-                content_type = mimeparse.best_match(
-                    self.content_types.values(), 
-                    request.META['HTTP_ACCEPT'])
-                if content_type == 'text/javascript':
-                    # NOTE - 
-                    # if the HTTP_ACCEPT header contains multiple entries 
-                    # with equal weighting, mimeparse.best_match returns
-                    # the last match. This results in the request header:
-                    # "application/json, text/javascript, */*; q=0.01"
-                    # (sent from jquery ajax call) returning 'text/javascript'
-                    # because the tastypie wrapper interprets this as 
-                    # a JSONP request, override here and set to 
-                    # 'application/json' 
-                    if 'application/json' in  request.META['HTTP_ACCEPT']:
-                        content_type = 'application/json'
-                
-                logger.debug('"HTTP_ACCEPT" - content_type: %r', content_type)
+#         if format is None:
+#             if request.GET and request.GET.get('format',None):
+#                 format = request.GET.get('format')
+#         if format is not None:
+#             content_type = self.get_content_type_for_format(format)
+#         
+#         if content_type is None and request is not None:
+        if request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+            content_type = request.META.get('CONTENT_TYPE', '*/*')
+            logger.debug('"CONTENT_TYPE": %r', content_type)
+        elif request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+            logger.info(
+                'no "CONTENT_TYPE" found, fallback "HTTP_ACCEPT" header %r',
+                request.META.get('HTTP_ACCEPT', '*/*'))
+            content_type = mimeparse.best_match(
+                self.content_types.values(), 
+                request.META['HTTP_ACCEPT'])
+            if content_type == 'text/javascript':
+                # NOTE - 
+                # if the HTTP_ACCEPT header contains multiple entries 
+                # with equal weighting, mimeparse.best_match returns
+                # the last match. This results in the request header:
+                # "application/json, text/javascript, */*; q=0.01"
+                # (sent from jquery ajax call) returning 'text/javascript'
+                # because the tastypie wrapper interprets this as 
+                # a JSONP request, override here and set to 
+                # 'application/json' 
+                if 'application/json' in  request.META['HTTP_ACCEPT']:
+                    content_type = 'application/json'
+            
+            logger.debug('"HTTP_ACCEPT" - content_type: %r', content_type)
         if not content_type:
-            msg = 'no best match format for CONTENT_TYPE: '
-            if request:
-                msg += request.META.get('CONTENT_TYPE','-no content type specified')
-            else:
-                msg += ', request not specified'
-            if format:
-                msg += ', format: %r' % format
-            else:
-                msg += ', format not specified. '
-            msg += 'ser: %r' % self
-            raise BadRequest(msg)
+            raise BadRequest(
+                'No content type found for request: %r, %r'
+                % (request, request.META))
+#             msg = 'no best match format for CONTENT_TYPE: '
+#             if request:
+#                 msg += request.META.get('CONTENT_TYPE','-no content type specified')
+#             else:
+#                 msg += ', request not specified'
+#             if format:
+#                 msg += ', format: %r' % format
+#             else:
+#                 msg += ', format not specified. '
+#             msg += 'ser: %r' % self
+#             raise BadRequest(msg)
         return content_type
 
     def serialize(self, data, content_type):
@@ -265,10 +271,11 @@ class BaseSerializer(object):
         """
         if isinstance(content, six.binary_type):
             content = force_text(content)
-         
         content = content.decode('utf-8').replace(r'(\w+):', r'"\1" :')
         if content:
-            return json.loads(content)
+            result = json.loads(content)
+            logger.debug('json decoded, loaded: %d', len(result))
+            return result
         else:
             return None
 

@@ -53,6 +53,7 @@ from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 from decimal import Decimal
 import decimal
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -555,7 +556,8 @@ class ApiResource(SqlAlchemyResource):
 
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
-
+        logger.info('deserialized: %d', len(deserialized))
+        
         if len(deserialized) == 0:
             meta = { 
                 API_MSG_RESULT: {
@@ -578,11 +580,12 @@ class ApiResource(SqlAlchemyResource):
                 kwargs['data'] = deserialized
             return self.patch_detail(request, **kwargs)
         
-        # Limit the potential candidates for logging to found id_kwargs
+        logger.info('Limit the potential candidates for logging to found id_kwargs...')
         schema = kwargs['schema']
         
         kwargs_for_log = kwargs.copy()
-        del kwargs_for_log['schema']
+        if 'schema' in kwargs_for_log:
+            del kwargs_for_log['schema']
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
@@ -593,8 +596,9 @@ class ApiResource(SqlAlchemyResource):
                     id_vals.add(idval)
                     kwargs_for_log[id_param] = id_vals
         try:
-            logger.info('get original state, for logging... %r', kwargs_for_log)
+            logger.debug('get original state, for logging... %r', kwargs_for_log)
             original_data = self._get_list_response(request,**kwargs_for_log)
+            logger.info('original state retrieved: %d', len(original_data))
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
@@ -608,14 +612,14 @@ class ApiResource(SqlAlchemyResource):
                     parent_log.uri = self._meta.resource_name
                     parent_log.save()
                     kwargs['parent_log'] = parent_log
-                
+                logger.info('perform patch_list: %d', len(deserialized))
                 for _dict in deserialized:
                     self.patch_obj(request, _dict, **kwargs)
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
             
-        logger.debug('Get new state, for logging: %r...',
+        logger.info('Get new state, for logging: %r...',
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
         new_data = self._get_list_response(request,**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
@@ -637,11 +641,11 @@ class ApiResource(SqlAlchemyResource):
         }
         if not self._meta.always_return_data:
             return self.build_response(
-                request, { 'meta': meta }, response_class=HttpResponse, 
-                format=format)
+                request, { 'meta': meta }, response_class=HttpResponse)
         else:
             logger.debug(
-                'return data with post response: %r, kwargs: %r', meta, kwargs_for_log)
+                'return data with post response: %r, kwargs: %r', 
+                meta, kwargs_for_log)
             response = self.get_list(request, meta=meta, **kwargs_for_log)             
             response.status_code = 200
             return response
@@ -862,7 +866,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('POST list: %r', meta)
         if not self._meta.always_return_data:
             return self.build_response(
-                request, { 'meta': meta }, response_class=HttpResponse, format=format)
+                request, { 'meta': meta }, response_class=HttpResponse)
         else:
             logger.info('return data with post response')
             response = self.get_list(request, meta=meta, **kwargs)             
@@ -976,7 +980,7 @@ class ApiResource(SqlAlchemyResource):
             deserialized = self.deserialize(
                 request, format=kwargs.get('format', None))
 
-        logger.debug('patch detail %s, %s', deserialized,kwargs)
+        logger.info('patch detail %s, %s', deserialized,kwargs)
         
         _data = self.build_patch_detail(request, deserialized, **kwargs)
 
@@ -2335,6 +2339,7 @@ class FieldResource(ApiResource):
             
             if kwargs.get('meta', None):
                 temp = kwargs['meta']
+                logger.info('meta found in kwargs: %r', temp)
                 temp.update(meta)
                 meta = temp
                 logger.info('meta: %r', meta)
@@ -2344,7 +2349,9 @@ class FieldResource(ApiResource):
                 self._meta.collection_name: fields 
             }
         kwargs['filename'] = '_'.join(filenames)
-        logger.debug('build response...')
+        logger.info('FieldResource build response: %r, %r, %r', 
+            self._meta.resource_name, request, 
+            {k:v for k,v in kwargs.items() if k!='schema'})
 
         return self.build_response(request, response_hash, **kwargs)
 
@@ -2826,6 +2833,22 @@ class VocabularyResource(ApiResource):
     '''
     def __init__(self, **kwargs):
         super(VocabularyResource,self).__init__(**kwargs)
+        # for debugging
+        self.patch_elapsedtime1 = 0
+        self.patch_elapsedtime2 = 0
+        self.patch_elapsedtime3 = 0
+        self.patch_elapsedtime4 = 0
+        self.requried_fields = set(['scope','key','ordinal','title',])
+
+    def get_debug_times(self):
+        
+        logger.info('vocabulary times: %r, %r, %r, %r', 
+            self.patch_elapsedtime1, self.patch_elapsedtime2, 
+            self.patch_elapsedtime3, self.patch_elapsedtime4)
+        self.patch_elapsedtime1 = 0
+        self.patch_elapsedtime2 = 0
+        self.patch_elapsedtime3 = 0
+        self.patch_elapsedtime4 = 0
 
     class Meta:
         bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
@@ -2925,6 +2948,7 @@ class VocabularyResource(ApiResource):
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        logger.info('VocabularyResource, build list response...')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -3001,6 +3025,7 @@ class VocabularyResource(ApiResource):
                 if field.get('json_field_type',None) }
             
             order_params = param_hash.get('order_by',[])
+            logger.info('VocabularyResource, build field hash...')
             field_hash = self.get_visible_fields(
                 fields_for_sql, filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities',[]), 
@@ -3065,12 +3090,14 @@ class VocabularyResource(ApiResource):
                 'json_field' : literal_column('json_field')
                 }
             base_query_tables = ['reports_vocabulary'] 
+            logger.info('VocabularyResource, build_sqlalchemy_columns...')
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
             j = _vocab
             stmt = select(columns.values()).select_from(j)
 
+            logger.info('VocabularyResource, wrap_statement...')
             # general setup
             (stmt,count_stmt) = self.wrap_statement(
                 stmt,order_clauses,filter_expression )
@@ -3166,10 +3193,29 @@ class VocabularyResource(ApiResource):
         MetaHash.objects.get(**id_kwargs).delete()
     
     @write_authorization
+    @un_cache
+    @transaction.atomic
+    def patch_list(self, request, **kwargs):
+        # TODO: implment custom patch_list for performance
+        logger.info('VocabularyResource.patch_list ...')
+        self.get_debug_times()
+        result = super(VocabularyResource, self).patch_list(request, **kwargs)
+        logger.info('VocabularyResource.patch_list done.')
+        self.get_debug_times()
+        return result
+    
+    def validate(self, _dict, patch=False, schema=None):
+        if not set(_dict.keys()) & self.requried_fields:
+            raise ValidationError(key='required_fields', msg='%r' %self.requried_fields)
+        return {}
+    
+    @write_authorization
     @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
         logger.debug('patching: %r', deserialized)
+        start_time = time.time()
+
         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
@@ -3180,25 +3226,33 @@ class VocabularyResource(ApiResource):
                     fields[key].get('data_type','string')) 
         
         id_kwargs = self.get_id(deserialized,**kwargs)
+        self.patch_elapsedtime1 += (time.time() - start_time)
+        start_time = time.time()
         
         try:
             vocab = None
             try:
+                logger.debug('get: %r', id_kwargs)
                 vocab = Vocabulary.objects.get(**id_kwargs)
+                self.patch_elapsedtime2 += (time.time() - start_time)
+                start_time = time.time()
                 errors = self.validate(deserialized, patch=True)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
-                logger.debug('Vocab %s does not exist, creating', id_kwargs)
+                logger.info('Vocab %s does not exist, creating', id_kwargs)
                 vocab = Vocabulary(**id_kwargs)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
                     raise ValidationError(errors)
 
+            self.patch_elapsedtime3 += (time.time() - start_time)
+            start_time = time.time()
+
             for key,val in initializer_dict.items():
                 if hasattr(vocab,key):
                     setattr(vocab,key,val)
-            
+
             if vocab.json_field:
                 json_obj = json.loads(vocab.json_field)
             else:
@@ -3209,11 +3263,11 @@ class VocabularyResource(ApiResource):
                 if fieldinformation.get('json_field_type', None):
                     json_obj[key] = parse_json_field(
                         val, key, fieldinformation['json_field_type'])
-                    
-            vocab.json_field = json.dumps(json_obj)
             
             logger.debug('save: %r, as %r', deserialized, vocab)
             vocab.save()
+            vocab.json_field = json.dumps(json_obj)
+            self.patch_elapsedtime4 += (time.time() - start_time)
                     
             return { API_RESULT_OBJ: vocab }
             

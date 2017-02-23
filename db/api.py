@@ -525,10 +525,12 @@ class PlateLocationResource(DbApiResource):
         }
         if not self._meta.always_return_data:
             return self.build_response(
-                request, {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+                request, {API_RESULT_META: meta }, response_class=HttpResponse, 
+                **kwargs)
         else:
             return self.build_response(
-                request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+                request,  {API_RESULT_META: meta }, response_class=HttpResponse, 
+                **kwargs)
             
     @write_authorization
     @un_cache
@@ -1384,7 +1386,8 @@ class LibraryCopyPlateResource(DbApiResource):
                 }
             }
             return self.build_response(
-                request, {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+                request, {API_RESULT_META: meta }, response_class=HttpResponse, 
+                **kwargs)
             
         location_data = data.get('plate_location', None)
         if location_data is not None:
@@ -11797,7 +11800,7 @@ class ScreenResource(DbApiResource):
         if content_type in [XLS_MIMETYPE,CSV_MIMETYPE]:
             _data = {'objects': [_data]}
         response = HttpResponse(
-            content=self._meta.serializer.serialize(
+            content=self.get_serializer().serialize(
                 _data, content_type),
             content_type=content_type)
         if content_type == XLS_MIMETYPE:
@@ -14615,7 +14618,8 @@ class ReagentResource(DbApiResource):
         library_short_name = kwargs.pop('library_short_name')
         try:
             library = Library.objects.get(short_name=library_short_name)
-            return self.build_response(request, self.build_schema(library.classification), **kwargs)
+            return self.build_response(
+                request, self.build_schema(library.classification), **kwargs)
             
         except Library.DoesNotExist, e:
             raise Http404(
@@ -14774,7 +14778,7 @@ class WellResource(DbApiResource):
         content_type = self.get_accept_content_type(
             request,format=kwargs.get('format', None))
         return HttpResponse(
-            content=self._meta.serializer.serialize(
+            content=self.get_serializer().serialize(
                 final_data, content_type),
             content_type=content_type)
         
@@ -14832,7 +14836,7 @@ class WellResource(DbApiResource):
         content_type = self.get_accept_content_type(
             request,format=kwargs.get('format', None))
         return HttpResponse(
-            content=self._meta.serializer.serialize(
+            content=self.get_serializer().serialize(
                 data, content_type),
             content_type=content_type)
         

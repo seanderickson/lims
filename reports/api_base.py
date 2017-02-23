@@ -169,44 +169,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         if not auth_result is True:
             raise ImmediateHttpResponse(response=http.HttpUnauthorized())
 
-#     def error_response(self, request, errors, response_class=None):
-#         """
-#         Extracts the common "which-format/serialize/return-error-response"
-#         cycle.
-# 
-#         Should be used as much as possible to return errors.
-#         """
-#         if response_class is None:
-#             response_class = http.HttpBadRequest
-# 
-#         desired_format = None
-# 
-#         if request:
-#             if request.GET.get('callback', None) is None:
-#                 try:
-#                     desired_format = self.determine_format(request)
-#                 except BadRequest:
-#                     pass  # Fall through to default handler below
-#             else:
-#                 # JSONP can cause extra breakage.
-#                 desired_format = 'application/json'
-# 
-#         if not desired_format:
-#             desired_format = self._meta.default_format
-# 
-#         try:
-#             serialized = self.serialize(request, errors, desired_format)
-#         except BadRequest as e:
-#             error = "Additional errors occurred, but serialization of those errors failed."
-# 
-#             if settings.DEBUG:
-#                 error += " %s" % e
-# 
-#             return response_class(content=error, content_type='text/plain')
-# 
-#         return response_class(
-#             content=serialized, content_type=build_content_type(desired_format))
-    
     def dispatch_list(self, request, **kwargs):
         """
         A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
@@ -239,27 +201,18 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         if method is None:
             raise ImmediateHttpResponse(response=HttpNotImplemented())
 
-#         self.is_authenticated(request)
         convert_post_to_put(request)
-        logger.info('calling method: %s.%s_%s', 
-            self._meta.resource_name, request_method, request_type)
+        logger.info('calling method: %s.%s_%s, %r', 
+            self._meta.resource_name, request_method, request_type, kwargs)
         response = method(request, **kwargs)
-
+        
+        # FIXME: remove this, require all types to return a response
         # # If what comes back isn't a ``HttpResponse``, assume that the
         # # request was accepted and that some action occurred. This also
         # # prevents Django from freaking out.
         if not isinstance(response, HttpResponseBase):
             return HttpNoContent()
         
-#         # Custom ICCB parameter: set cookie to tell the browser javascript
-#         # UI that the download request is finished
-#         downloadID = request.GET.get('downloadID', None)
-#         if downloadID:
-#             logger.info('set cookie "downloadID" %r', downloadID )
-#             response.set_cookie('downloadID', downloadID)
-#         else:
-#             logger.debug('no downloadID: %s' % request.GET )
-
         return response
 
     def wrap_view(self, view):
@@ -276,12 +229,13 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if DEBUG_WRAPPER:
                     msg = ()
                     if kwargs:
-                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
-                            if len(str(kwargs[key]))<100]
-                    logger.info('callback: %r, %r', view, msg)
-                    logger.info('request: %r', request)
+                        msg = [ (key,str(kwargs[key])[:100]) 
+                            for key in kwargs.keys() ]
+                    logger.info(
+                        'wrap_view: %r, method: %r, request: %r, kwargs: %r', 
+                        view, request.method, request, msg)
                 else:
-                    logger.info('callback: %r, %r', callback, view)
+                    logger.info('wrap_view: %r, %r', view, request)
                 
                 self.is_authenticated(request)
         
@@ -376,7 +330,11 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
     def deserialize(self, request, format=None):
         
-        content_type = self._meta.serializer.get_content_type(request, format)
+        if format is not None:
+            content_type = self.get_serializer() \
+                               .get_content_type_for_format(format)
+        else:
+            content_type = self.get_serializer().get_content_type(request)
         logger.info('content_type: %r', content_type)
         if content_type.startswith('multipart'):
             logger.info('request.Files.keys: %r', request.FILES.keys())
@@ -389,7 +347,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
              
             if 'sdf' in request.FILES:  
                 file = request.FILES['sdf']
-                return self._meta.serializer.deserialize(
+                return self.get_serializer().deserialize(
                     file.read(), SDF_MIMETYPE)
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
@@ -397,7 +355,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 schema = self.build_schema()
                 list_keys = [x for x,y in schema['fields'].items() 
                     if y.get('data_type') == 'list']
-                return self._meta.serializer.deserialize(
+                return self.get_serializer().deserialize(
                     file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys})
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
@@ -406,7 +364,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 list_keys = [x for x,y in schema['fields'].items() 
                     if y.get('data_type') == 'list']
                 
-                return self._meta.serializer.deserialize(
+                return self.get_serializer().deserialize(
                     file.read(), CSV_MIMETYPE, **{ 'list_keys': list_keys})
             else:
                 raise BadRequest(
@@ -420,16 +378,15 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             schema = self.build_schema()
             list_keys = [x for x,y in schema['fields'].items() 
                 if y.get('data_type') == 'list']
-            return self._meta.serializer.deserialize(
+            return self.get_serializer().deserialize(
                 request.body,content_type,
                 **{ 'list_keys': list_keys})
         else:
-            return self._meta.serializer.deserialize(request.body,content_type)
+            return self.get_serializer().deserialize(request.body,content_type)
             
-    def serialize(self, request, data, format=None):
-        content_type = self._meta.serializer.get_accept_content_type(request, format)
+    def serialize(self, data, content_type):
         logger.info('serialize to: %r', content_type)
-        return self._meta.serializer.serialize(data, content_type)
+        return self.get_serializer().serialize(data, content_type)
 
     def _get_filename(self, readable_filter_hash, filename=None, **extra):
         MAX_VAL_LENGTH = 20
@@ -482,23 +439,21 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         logger.debug('get_filename: %r, %r' % (filename, kwargs))
         return filename
     
-    def get_content_type(self, request, format=None):
-         
-        return self._meta.serializer.get_content_type(request,format=format)
- 
-    def get_accept_content_type(self, request, format=None):
-         
-        return self._meta.serializer.get_accept_content_type(
-            request,format=format)
+    def get_serializer(self):
+        return self._meta.serializer
         
     def build_response(
-        self, request, data, response_class=HttpResponse, **kwargs):
+        self, request, data, response_class=HttpResponse, format=None, 
+        **kwargs):
         
-        content_type = self._meta.serializer.get_accept_content_type(
-            request, format=kwargs.get('format', None))
-        logger.debug('build_response: %r', content_type)
-        
-        serialized = self.serialize(request, data)
+        if format is not None:
+            content_type = self.get_serializer().get_content_type_for_format(format)
+        else:
+            content_type = self.get_serializer().get_accept_content_type(request)
+            
+        logger.info('build_response: %r, serializing...', content_type)
+        serialized = self.serialize(data, content_type)
+        logger.info('serialized: %d', len(data))
         response = response_class(
             content=serialized, 
             content_type=content_type)
@@ -507,7 +462,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         # - used for downloads; reports.api resources use
         # this method to serialize; all others use streaming serializers.
 
-        format = self._meta.serializer.get_format_for_content_type(content_type)
+        format = self.get_serializer().get_format_for_content_type(content_type)
         if format != 'json':
             filename = kwargs.get('filename', None)
             if filename is None:
@@ -525,9 +480,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     def build_error_response(
             self, request, data, response_class=HttpBadRequest, **kwargs):
 
-#         format = 'json'
-#         if kwargs and 'format' in kwargs:
-#             format = kwargs['format']
         try:
             return self.build_response(
                 request, data, response_class=response_class, **kwargs)

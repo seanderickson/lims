@@ -130,6 +130,11 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 trailing_slash()), self.wrap_view('dispatch_detail'), 
                 name="api_dispatch_detail"),
         ]
+
+    def dispatch_clear_cache(self, request, **kwargs):
+        self.clear_cache()
+        return self.build_response(request, 'ok', **kwargs)
+
     def prepend_urls(self):
         """
         A hook for adding your own URLs or matching before the default URLs.
@@ -145,7 +150,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         when registered with an ``Api`` class or for including directly in
         a URLconf should you choose to.
         """
-        urls = self.prepend_urls()
+        urls = [            
+            url(r"^(?P<resource_name>%s)/clear_cache%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_clear_cache'), name="api_clear_cache"),
+        ]
+        urls += self.prepend_urls()
         urls += self.base_urls()
         urlpatterns = patterns('',
             *urls
@@ -203,7 +213,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
         convert_post_to_put(request)
         logger.info('calling method: %s.%s_%s, %r', 
-            self._meta.resource_name, request_method, request_type, kwargs)
+            self._meta.resource_name, request_method, request_type, 
+            {k:v for k,v in kwargs.items() if k !='schema' and k != 'data'})
         response = method(request, **kwargs)
         
         # FIXME: remove this, require all types to return a response

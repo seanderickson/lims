@@ -101,9 +101,13 @@ class SqlAlchemyResource(IccblBaseResource):
         - if a value is single valued, then unwrap from the list
         - downstream methods expecting a list value must deal with non-list single values
         '''
+        DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+        
         _dict = {}
         for key in request.GET.keys():
             val = request.GET.getlist(key)
+            if DEBUG:
+                logger.info('get key: %r, val: %r', key, val)
             # Jquery Ajax will post array list params with a "[]" suffix - 20151015
             if '[]' in key and key[-2:] == '[]':
                 key = key[:-2]
@@ -114,6 +118,8 @@ class SqlAlchemyResource(IccblBaseResource):
             
         for key in request.POST.keys():
             val = request.POST.getlist(key)
+            if DEBUG:
+                logger.info('post key: %r, val: %r', key, val)
             # Jquery Ajax will post array list params with a "[]" suffix - 20151015
             key = key.replace('[]','')
             if len(val) == 1:
@@ -139,7 +145,8 @@ class SqlAlchemyResource(IccblBaseResource):
         for key in http_boolean_params:
             _dict[key] = parse_val(
                 _dict.get(key, False),key, 'boolean')
-        
+        if DEBUG:
+            logger.info('params: %r', _dict)
         return _dict    
     
     def get_visible_fields(self, 
@@ -714,8 +721,10 @@ class SqlAlchemyResource(IccblBaseResource):
             _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), response['Content-Type'])
 #             self.use_cache = True
-            _data = _data[self._meta.collection_name]
-            logger.debug(' data: %s'% _data)
+            if self._meta.collection_name in _data:
+                _data = _data[self._meta.collection_name]
+#             _data = _data[self._meta.collection_name]
+            logger.debug(' data: %r', _data)
             return _data
         except Http404:
             return []
@@ -728,13 +737,14 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         Return the detail response as a dict
         '''
-        logger.debug('_get_detail_response: %r, %r', 
+        logger.info('_get_detail_response: %r, %r', 
             self._meta.resource_name, {k:v for k,v in kwargs.items() if k !='schema'})
+        includes = kwargs.pop('includes', '*')
         try:
             response = self.get_detail(
                 request,
                 format='json',
-                includes='*',
+                includes=includes,
                 **kwargs)
             _data = []
             if response.status_code == 200:

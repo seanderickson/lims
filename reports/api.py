@@ -979,9 +979,6 @@ class ApiResource(SqlAlchemyResource):
         else:
             deserialized = self.deserialize(
                 request, format=kwargs.get('format', None))
-
-        logger.info('patch detail %s, %s', deserialized,kwargs)
-        
         _data = self.build_patch_detail(request, deserialized, **kwargs)
 
         return self.build_response(
@@ -2573,13 +2570,13 @@ class ResourceResource(ApiResource):
         Override resource method - bootstrap the "Resource" resource schema
         '''
 
-        # get the resource fields
-        request = HttpRequest()
-        class User:
-            is_superuser = True
-        request.user = User
-        resource_fields = self.get_field_resource()._get_list_response(
-            request=request, scope='fields.resource')
+#         # get the resource fields
+#         request = HttpRequest()
+#         class User:
+#             is_superuser = True
+#         request.user = User
+        resource_fields = self.get_field_resource()._get_list_response_internal(
+            scope='fields.resource')
         # build a hash out of the fields
         field_hash = {}
         for field in resource_fields:
@@ -3132,15 +3129,15 @@ class VocabularyResource(ApiResource):
             kwargs = {
                 'limit': '0'
             }
-            request=HttpRequest()
-            request.session = Session()
-            class User:
-                is_superuser = True
-#                 @staticmethod
-#                 def is_superuser():
-#                     return true
-            request.user = User
-            _data = self._get_list_response(request=request,**kwargs)
+#             request=HttpRequest()
+#             request.session = Session()
+#             class User:
+#                 is_superuser = True
+# #                 @staticmethod
+# #                 def is_superuser():
+# #                     return true
+#             request.user = User
+            _data = self._get_list_response_internal(**kwargs)
             for v in _data:
                 _scope = v['scope']
                 if _scope not in vocabularies:
@@ -3224,7 +3221,7 @@ class VocabularyResource(ApiResource):
                 initializer_dict[key] = parse_val(
                     deserialized.get(key,None), key,
                     fields[key].get('data_type','string')) 
-        
+        logger.debug('initializer: %r', initializer_dict)
         id_kwargs = self.get_id(deserialized,**kwargs)
         self.patch_elapsedtime1 += (time.time() - start_time)
         start_time = time.time()
@@ -3250,7 +3247,9 @@ class VocabularyResource(ApiResource):
             start_time = time.time()
 
             for key,val in initializer_dict.items():
+                logger.debug('key: %r, val: %r', key, val)
                 if hasattr(vocab,key):
+                    logger.debug('setting...')
                     setattr(vocab,key,val)
 
             if vocab.json_field:
@@ -3264,9 +3263,9 @@ class VocabularyResource(ApiResource):
                     json_obj[key] = parse_json_field(
                         val, key, fieldinformation['json_field_type'])
             
+            vocab.json_field = json.dumps(json_obj)
             logger.debug('save: %r, as %r', deserialized, vocab)
             vocab.save()
-            vocab.json_field = json.dumps(json_obj)
             self.patch_elapsedtime4 += (time.time() - start_time)
                     
             return { API_RESULT_OBJ: vocab }

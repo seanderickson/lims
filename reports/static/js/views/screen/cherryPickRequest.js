@@ -955,7 +955,7 @@ define([
         
         var extraControls = [];
         var showCopyWellsControl = $([
-            '<div <label class="checkbox-inline" ',
+            '<label class="checkbox-inline" ',
             'title="Show all available wells from Cherry Pick Source Plate copies" >',
             '  <input id="show_copy_wells" type="checkbox">All Available Copies',
             '</label>'
@@ -1338,6 +1338,7 @@ define([
             }
             // See note above about removing the 'selected' backgrid th class
             view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
             view.collection.trigger('show_copy_wells');
           };
           if(appModel.isPagePending()){
@@ -1389,6 +1390,7 @@ define([
             }
             // See note above about removing the 'selected' backgrid th class
             view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
             view.collection.trigger('show_available_and_retired_copy_wells');
             
           };
@@ -1983,6 +1985,7 @@ define([
           }
           // see note above about removing the 'selected' backgrid th class
           view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
           view.collection.trigger('show_other_reagents');
           
         };

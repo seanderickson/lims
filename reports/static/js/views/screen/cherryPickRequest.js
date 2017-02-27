@@ -68,6 +68,12 @@ define([
         invoke : 'setPlateMapping',
         permission: 'cherrypickrequest'
       },
+      sourceplates: {
+        description : 'Source Plates',
+        title : 'Source Plates',
+        invoke : 'setSourcePlates',
+        permission: 'cherrypickrequest'
+      },
       cherrypickplates: {
         description : 'Cherry Pick Plates',
         title : 'Cherry Pick Plates',
@@ -90,6 +96,7 @@ define([
       }
       if(self.model.get('total_number_lcps') == 0){
         delete this.tabbed_resources['labcherrypicks'];
+        delete this.tabbed_resources['sourceplates'];
       }      
       
       return {
@@ -290,6 +297,56 @@ define([
         return;
       }
     }, // end showWellsToLeaveEmptyDialog
+    
+    setSourcePlates: function(delegateStack) {
+      var self = this;
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'source_plate'].join('/');
+      var resource = appModel.getResource('librarycopyplate')
+      var fields = resource.fields;
+      var includes = [];
+      _.each([
+        'status_date',
+        'mg_ml_concentration',
+        'molar_concentration',
+        'min_mg_ml_concentration',
+        'min_molar_concentration',
+        'max_mg_ml_concentration',
+        'max_molar_concentration',
+        'first_date_screened',
+        'last_date_screened'],
+        function(hidden_field){
+          fields[hidden_field]['visibility'] = [];
+          includes.unshift('-' + hidden_field);
+        }
+      );
+      _.each([
+        'copy_usage_type'],
+        function(shown_field){
+          fields[shown_field]['visibility'] = ['l','d'];
+          includes.unshift(shown_field);
+        }
+      );
+      resource.options.includes = includes;
+      
+      var extraControls = [];
+      var view = new ListView({ 
+        uriStack: _.clone(delegateStack),
+        resource: resource,
+        includes: includes,
+        url: url,
+        extraControls: extraControls
+      });
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event) {
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Source Plates for CPR: ' + self.model.key + '</H4>');
+      });
+    },
     
     setPlateMapping: function(delegateStack) {
       var self = this;

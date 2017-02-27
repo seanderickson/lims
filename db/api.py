@@ -1034,6 +1034,10 @@ class LibraryCopyPlateResource(DbApiResource):
             plate_number = str(int(plate_number)).zfill(5)
             param_hash['plate_number__eq'] = plate_number
         
+        cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
+        if cherry_pick_request_id is not None:
+            param_hash['cpr'] = cherry_pick_request_id
+            
         log_key = '/'.join(x if x else '%' 
             for x in [library_short_name,copy_name,plate_number])
         if log_key == '%/%/%':
@@ -1227,6 +1231,22 @@ class LibraryCopyPlateResource(DbApiResource):
                 | set(field_hash.keys()) ):
                 j = j.outerjoin(_plate_screening_statistics,
                     _p.c.plate_id==_plate_screening_statistics.c.plate_id)
+            
+            if cherry_pick_request_id is not None:
+                _lcp = self.bridge['lab_cherry_pick']
+                _well = self.bridge['well']
+                cpr_plates = (
+                    select([distinct(_p.c.plate_id).label('plate_id')])
+                    .select_from(
+                        _lcp.join(_well,_lcp.c.source_well_id==_well.c.well_id)
+                            .join(_p,and_(
+                                _p.c.plate_number==_well.c.plate_number,
+                                _p.c.copy_id==_lcp.c.copy_id)))
+                    .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id)
+                    #.where(_lcp.c.selected==True)
+                ).cte('cpr_plates')
+                j = j.join(cpr_plates,_p.c.plate_id==cpr_plates.c.plate_id)
+                
             stmt = select(columns.values()).select_from(j)
             
             if plate_ids is not None:
@@ -1235,6 +1255,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 stmt = stmt.where(_l.c.library_id==library_id)
             if copy_id is not None:
                 stmt = stmt.where(_p.c.copy_id==copy_id)
+
             # general setup
              
             (stmt, count_stmt) = self.wrap_statement(
@@ -4603,6 +4624,12 @@ class CherryPickRequestResource(DbApiResource):
         self.screenercherrypick_resource = None
         self.cpp_resource = None
         self.screensaver_user_resource = None
+        self.librarycopyplate_resource = None
+        
+    def get_librarycopyplate_resource(self):
+        if self.librarycopyplate_resource is None:
+            self.librarycopyplate_resource = LibraryCopyPlateResource()
+        return self.librarycopyplate_resource
     
     def get_screen_resource(self):
         if self.screen_resource is None:
@@ -4681,6 +4708,12 @@ class CherryPickRequestResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_lcp_schema'),
                 name="api_get_lcp_schema"),
+            url((r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)" 
+                 r"/source_plate%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_source_plate_view'),
+                name="api_dispatch_source_plate_view"),
 
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
@@ -4758,6 +4791,15 @@ class CherryPickRequestResource(DbApiResource):
 #             'screen',cpr.screen.facility_id,log.ref_resource_name,log.key])
 #         logger.info('make cpr log: %r', log)
 #         return log;
+
+    def dispatch_source_plate_view(self, request, **kwargs):
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        manual_field_includes = set(param_hash.get('includes', []))
+        if ('-copy_usage_type' not in manual_field_includes):
+            manual_field_includes.add('copy_usage_type')
+        kwargs['includes']=manual_field_includes
+        return self.get_librarycopyplate_resource().dispatch('list', request, **kwargs)    
 
     @read_authorization
     def get_plate_mapping_file(self, request, **kwargs):
@@ -7985,7 +8027,8 @@ class LabCherryPickResource(DbApiResource):
                 if ( show_copy_wells is True 
                      or show_available_and_retired_copy_wells is True):
                     stmt = stmt.order_by(
-                        desc('selected'),desc('source_copy_name'),)
+                        desc('selected'),asc('source_copy_usage_type'),
+                        asc('source_copy_name'),)
            
             compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),

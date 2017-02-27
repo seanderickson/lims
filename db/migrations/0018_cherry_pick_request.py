@@ -597,6 +597,9 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             'update screener_cherry_pick '
             'set searched_well_id=screened_well_id; '),
+        migrations.RunSQL(
+            'update screener_cherry_pick '
+            'set selected=true; '),
         # set null=Fals after update
         migrations.AlterField(
             model_name='screenercherrypick',

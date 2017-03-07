@@ -22,6 +22,7 @@ class ScreensaverUserFactory(factory.django.DjangoModelFactory):
     first_name = factory.Sequence(lambda n: 'first_'+ str(n) )
     last_name = factory.Sequence(lambda n: 'last_'+ str(n) )
     email = factory.Sequence(lambda n: 'testemail_%d@testemail.com' % n )
+    is_active = True
     
 class LibraryFactory(factory.django.DjangoModelFactory):
     class Meta:

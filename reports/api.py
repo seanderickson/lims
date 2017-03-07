@@ -954,7 +954,8 @@ class ApiResource(SqlAlchemyResource):
         # get new state, for logging
         new_data = self._get_detail_response(request,**kwargs_for_log)
         if not new_data:
-            raise BadRequest('no data found for the new obj created by post: %r', obj)
+            raise BadRequest(
+                'no data found for the new obj created by post: %r', obj)
         self.log_patch(request, original_data,new_data,log=log, **kwargs)
         log.save()
         
@@ -1531,7 +1532,7 @@ class ApiResource(SqlAlchemyResource):
                     logger.info('no diffs found: %r, %r' 
                         % (prev_dict,new_dict))
                 else:
-                    logger.debug('no diffs found: %r', log.uri) 
+                    logger.info('no diffs found: %r', log.uri) 
                 log = None
         else: # creating
             log.api_action = API_ACTION_CREATE
@@ -2346,7 +2347,7 @@ class FieldResource(ApiResource):
                 self._meta.collection_name: fields 
             }
         kwargs['filename'] = '_'.join(filenames)
-        logger.info('FieldResource build response: %r, %r, %r', 
+        logger.debug('FieldResource build response: %r, %r, %r', 
             self._meta.resource_name, request, 
             {k:v for k,v in kwargs.items() if k!='schema'})
 
@@ -3599,7 +3600,8 @@ class UserResource(ApiResource):
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
 
-        logger.debug('patch_obj: %r, %r', deserialized,kwargs)
+        logger.info('patch_obj: %r, %r', 
+            deserialized,{ k:v for k,v in kwargs.items() if k!= 'schema' } )
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         username = id_kwargs.get('username', None)
@@ -3633,6 +3635,7 @@ class UserResource(ApiResource):
                 if errors:
                     raise ValidationError(errors)
                 user = DjangoUser.objects.create_user(username=username)
+                user.is_active = True
                 logger.info('created Auth.User: %s', user)
 
             initializer_dict = {}
@@ -3641,6 +3644,7 @@ class UserResource(ApiResource):
                     initializer_dict[key] = parse_val(
                         deserialized.get(key,None), key, 
                         auth_user_fields[key]['data_type']) 
+            logger.info('auth user initializer: %r', initializer_dict)
             if initializer_dict:
                 for key,val in initializer_dict.items():
                     if hasattr(user,key):

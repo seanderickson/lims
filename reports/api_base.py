@@ -214,7 +214,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         convert_post_to_put(request)
         logger.info('calling method: %s.%s_%s, %r', 
             self._meta.resource_name, request_method, request_type, 
-            {k:v for k,v in kwargs.items() if k !='schema' and k != 'data'})
+            {k:v for k,v in kwargs.items() 
+                if k !='schema' and k != 'plating_schema' and k != 'data'})
         response = method(request, **kwargs)
         
         # FIXME: remove this, require all types to return a response

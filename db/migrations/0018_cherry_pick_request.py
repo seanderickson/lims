@@ -600,6 +600,19 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             'update screener_cherry_pick '
             'set selected=true; '),
+            
+        migrations.RunSQL(
+            'update cherry_pick_request '
+            'set date_volume_reserved = cplts.date_volume_reserved '
+            'from ( '
+            ' select cherry_pick_request_id, max(date_of_activity) as date_volume_reserved '
+            ' from cherry_pick_assay_plate '
+            ' join cherry_pick_liquid_transfer '
+            ' on(activity_id=cherry_pick_liquid_transfer_id) '
+            ' join activity using(activity_id) '
+            ' group by cherry_pick_request_id) cplts '
+            ' where cplts.cherry_pick_request_id '
+            '   = cherry_pick_request.cherry_pick_request_id;'),
         # set null=Fals after update
         migrations.AlterField(
             model_name='screenercherrypick',

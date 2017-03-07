@@ -490,7 +490,7 @@ class PlateLocationResource(DbApiResource):
         original_data = None
         if kwargs_for_log:
             try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
@@ -507,7 +507,7 @@ class PlateLocationResource(DbApiResource):
             raise e
 
         # get new state, for logging
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         update_log = self.log_patch(request, original_data,new_data,**kwargs)
         if update_log:
             update_log.save()
@@ -5406,7 +5406,7 @@ class CherryPickRequestResource(DbApiResource):
         original_data = None
         if kwargs_for_log:
             try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
                 kwargs['original_data'] = original_data
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
@@ -5423,7 +5423,7 @@ class CherryPickRequestResource(DbApiResource):
             raise e
 
         # get new state, for logging
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('original: %r, new: %r', original_data, new_data)
         log = self.log_patch(
             request, original_data,new_data,log=log,
@@ -9363,7 +9363,7 @@ class PublicationResource(DbApiResource):
             if val:
                 kwargs_for_log['%s' % id_field] = val
         logger.info('get new data: %r', kwargs_for_log)
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         log = self.log_patch(request, None, new_data, **kwargs_for_log)
         if log:
             log.save()
@@ -9424,7 +9424,7 @@ class PublicationResource(DbApiResource):
             raise Exception('required id keys %s' % id_attribute)
         else:
             try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
             except Exception as e:
                 logger.exception('original state not obtained')
                 raise
@@ -9663,7 +9663,7 @@ class AttachedFileResource(DbApiResource):
             'attached_file_id': af.attached_file_id, 
             'parent_log': parent_log 
         }
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         log = self.log_patch(request, None,new_data,**kwargs_for_log)
         if log:
             log.save()
@@ -11092,7 +11092,7 @@ class LibraryScreeningResource(ActivityResource):
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
-        original_data = self._get_detail_response(request,**kwargs_for_log)
+        original_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.info('original data: %r', original_data)
         
         # How to log parent entity data? rather than do this, users will have
@@ -11124,7 +11124,7 @@ class LibraryScreeningResource(ActivityResource):
         
         # TODO: create a log for the parent screen
 
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.info('new data: %r', new_data)
         self.log_patch(request, original_data,new_data,log=log, **kwargs)
         # FIXME: Set the log URI using the containing screen URI
@@ -11161,7 +11161,7 @@ class LibraryScreeningResource(ActivityResource):
         if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
             # A full id exists, query for the existing state
             try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
@@ -11191,7 +11191,7 @@ class LibraryScreeningResource(ActivityResource):
         log.save()
 
         # get new state, for logging
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.info('new data: %r', new_data)
         if not new_data:
             raise BadRequest('no data found for the new obj created by post: %r', obj)
@@ -12084,7 +12084,7 @@ class ScreenResource(DbApiResource):
         
         if not _data:
             logger.info('cache key not set: %s', cache_key)
-            _data = self._get_detail_response(request, **kwargs)
+            _data = self._get_detail_response_internal(**kwargs)
             if not _data:
                 return Http404
             else:

@@ -912,7 +912,7 @@ class ApiResource(SqlAlchemyResource):
         if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
             # A full id exists, query for the existing state
             try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
@@ -952,7 +952,7 @@ class ApiResource(SqlAlchemyResource):
         log.save()
 
         # get new state, for logging
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         if not new_data:
             raise BadRequest(
                 'no data found for the new obj created by post: %r', obj)
@@ -995,7 +995,7 @@ class ApiResource(SqlAlchemyResource):
         original_data = None
         if kwargs_for_log:
             try:
-                original_data = self._get_detail_response(request,**kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
                 logger.debug('original data: %r', original_data)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
@@ -1028,7 +1028,7 @@ class ApiResource(SqlAlchemyResource):
         log.save()
         logger.info('log saved: %r', log)
 
-        new_data = self._get_detail_response(request,**kwargs_for_log)
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
         self.log_patch(request, original_data,new_data,log=log, **kwargs)
         log.save()
         
@@ -1141,7 +1141,7 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('delete detail: %s' %(kwargs_for_log))
         if not kwargs_for_log:
             raise Exception('required id keys %s' % id_attribute)
-        original_data = self._get_detail_response(request,**kwargs_for_log)
+        original_data = self._get_detail_response_internal(**kwargs_for_log)
         log = self.make_log(request)
         log.key = '/'.join([str(original_data[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name,log.key])
@@ -2091,7 +2091,7 @@ class ApiLogResource(ApiResource):
         return ApiLogResource().dispatch('list', request, **kwargs)    
 
     def dispatch_apilog_childview2(self, request, **kwargs):
-        parent_log = self._get_detail_response(request,**kwargs)
+        parent_log = self._get_detail_response_internal(**kwargs)
 
         ref_resource_name = kwargs.pop('ref_resource_name')
         key = kwargs.pop('key')

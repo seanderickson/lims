@@ -6,10 +6,13 @@
       "view": "list",
       "submenus": {
         "smallmoleculelibrary":{
-            "view": "list"
+          "view": "list"
         },
         "rnalibrary":{
-            "view": "list"
+          "view": "list"
+        },
+        "all_libraries":{
+          "view": "list"
         }
       }
     },
@@ -39,6 +42,18 @@
     },
     "study": {
       "view": "list"
+    },
+    "cherrypickrequest": {
+      "view": "list",
+      "expanded": false,
+      "submenus": {
+        "small_molecule_cprs": {
+          "view": "list"
+        },
+        "rnai_cprs": {
+          "view": "list"
+        }
+      }
     },
     "reports": {
       "expanded": false,

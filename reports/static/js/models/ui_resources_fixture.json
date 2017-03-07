@@ -68,6 +68,26 @@
       "list_view": "ListView",
       "api_resource": "cherrypickrequest"
     },
+    "small_molecule_cprs": {
+      "detailView": "CherryPickRequestView",
+      "list_view": "ListView",
+      "header_message": "Small Molecule Screen CPRs",
+      "title": "Small Molecule CPRs",
+      "api_resource": "cherrypickrequest",
+      "options": { 
+        "search": { "screen_type__in": "small_molecule" }
+      }
+    },
+    "rnai_cprs": {
+      "detailView": "CherryPickRequestView",
+      "list_view": "ListView",
+      "header_message": "RNAi CPRs",
+      "title": "RNAi CPRs",
+      "api_resource": "cherrypickrequest",
+      "options": { 
+        "search": { "screen_type__in": "rnai" }
+      }
+    },
     "cherrypickassayplate": {
       "detailView": "DetailView",
       "list_view": "ListView",
@@ -144,43 +164,63 @@
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
-        "description": "View library information",
+        "description": "View active Libries (Screening Status is 'allowed' or 'requires permission')",
         "options": {
-          "rpp": 500
+          "rpp": 500,
+          "search": {
+            "screening_status__in": ["allowed", "requires_permission"]
+          }
         }
     },
     "smallmoleculelibrary": {
         "header_message": "Small Molecule Libraries",
-        "title": "Small Molecule",
+        "title": "Small Molecule Libraries",
         "route": "list/smallmoleculelibrary",
         "list_view": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
-        "description": "View Small Molecule Library information",
+        "description": "View active Small Molecule Libraries (Screening Status is 'allowed' or 'requires permission')",
         "options": { 
           "rpp": 500, 
           "includes": ["-screen_type","-is_pool"],
           "order": [], 
           "search": { 
-            "screen_type__in": "small_molecule"
+            "screen_type__in": "small_molecule",
+            "screening_status__in": ["allowed", "requires_permission"]
            } 
         }
     },
     "rnalibrary": {
         "header_message": "RNAi Libraries",
-        "title": "RNAi",
+        "title": "RNAi Libraries",
         "route": "list/rnalibrary",
         "list_view": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
-        "description": "View RNAi library information",
+        "description": "View active RNAi Libraries (Screening Status is 'allowed' or 'requires permission')",
         "options": { 
           "rpp": 500, 
-          "search": { "screen_type__in": "rnai"}, 
+          "search": { 
+            "screen_type__in": "rnai",
+            "screening_status__in": ["allowed", "requires_permission"]
+          }, 
           "includes": ["-screen_type"],
           "order": []  
+        }
+    },
+    "all_libraries": {
+        "header_message": "All libraries (active and retired)",
+        "description": "View all libraries (any Screening Status)",
+        "title": "All Active and Retired Libraries",
+        "route": "list/library",
+        "list_view": "ListView",
+        "detailView": "LibraryView",
+        "api_resource": "library",
+        "url_root": "/db/api/v1",
+        "options": {
+          "rpp": 500
         }
     },
     "well": {

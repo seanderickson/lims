@@ -610,26 +610,29 @@ define([
           
           var title = 'Confirm deletion of publication: ' +
             Iccbl.getTitleFromTitleAttribute(model, resource);
-          appModel.showOkCommentForm( title, function(values){
-            appModel.clearPagePending();
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-            
-            model.collection = collection;
-            var patchUrl = [resource.apiUri, 
-                       Iccbl.getIdFromIdAttribute(model, resource),
-                       ].join('/');
-            model.url = patchUrl;
-            
-            // Backbone will only send DELETE if the model has an id
-            model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
-            model.destroy({
-              wait: true,
-              headers: headers,
-              success: function(model,response){
-                console.log('model removed successfully', model, response);
-              }
-            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+          appModel.showOkCommentForm({ 
+            title: title, 
+            ok: function(values){
+              appModel.clearPagePending();
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+              
+              model.collection = collection;
+              var patchUrl = [resource.apiUri, 
+                         Iccbl.getIdFromIdAttribute(model, resource),
+                         ].join('/');
+              model.url = patchUrl;
+              
+              // Backbone will only send DELETE if the model has an id
+              model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
+              model.destroy({
+                wait: true,
+                headers: headers,
+                success: function(model,response){
+                  console.log('model removed successfully', model, response);
+                }
+              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+            }
           });
         });            
         
@@ -708,28 +711,30 @@ define([
         self.listenTo(collection, "MyCollection:delete", function (model) {
           
           var title = 'Confirm deletion of attached file: ' + 
-
           Iccbl.getTitleFromTitleAttribute(model, resource);
-          appModel.showOkCommentForm( title, function(values){
-            appModel.clearPagePending();
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-            
-            model.collection = collection;
-            var patchUrl = [resource.apiUri, 
-                       Iccbl.getIdFromIdAttribute(model, resource),
-                       ].join('/');
-            model.url = patchUrl;
-            
-            // Backbone will only send DELETE if the model has an id
-            model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
-            model.destroy({
-              wait: true,
-              headers: headers,
-              success: function(model,response){
-                console.log('model removed successfully', model, response);
-              }
-            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+          appModel.showOkCommentForm({
+            title: title, 
+            ok: function(values){
+              appModel.clearPagePending();
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+              
+              model.collection = collection;
+              var patchUrl = [resource.apiUri, 
+                         Iccbl.getIdFromIdAttribute(model, resource),
+                         ].join('/');
+              model.url = patchUrl;
+              
+              // Backbone will only send DELETE if the model has an id
+              model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
+              model.destroy({
+                wait: true,
+                headers: headers,
+                success: function(model,response){
+                  console.log('model removed successfully', model, response);
+                }
+              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
+            }
           });
         });            
         

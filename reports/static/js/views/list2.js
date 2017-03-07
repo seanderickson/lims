@@ -695,6 +695,7 @@ define([
           // Adjust the checkbox types, so that the first also has a margin
           // otherwise, wrapped checkboxes are offset
           control.has('input[type="checkbox"]').css('margin-left','10px');
+          console.log('append extra control: ', control);
           self.$('#extra_controls_div').append(control);
         });
       }

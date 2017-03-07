@@ -971,24 +971,28 @@ define([
           return;
         }
         
-        appModel.showSaveWithComments(function(formValues){
-          console.log('form values', formValues);
-          var comments = formValues['comments'];
-          var headers = {};
-          headers[appModel.HEADER_APILOG_COMMENT] = comments;
-          
-          Backbone.sync("patch",changedCollection,
-            {
-              headers: headers,
-              error: function(){
-                appModel.jqXHRfail.apply(this,arguments);
-                console.log('error, refetch', arguments);
-                changedCollection.reset();
-                collection.fetch({ reset: true });
-              },
-            }
-          );
+        appModel.showOkCommentForm({
+          ok: function(formValues){
+            console.log('form values', formValues);
+            var comments = formValues['comments'];
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+            
+            Backbone.sync(
+              "patch",
+              changedCollection,
+              {
+                headers: headers,
+                error: function(){
+                  appModel.jqXHRfail.apply(this,arguments);
+                  console.log('error, refetch', arguments);
+                  changedCollection.reset();
+                  collection.fetch({ reset: true });
+                },
+              });
+          }
         });
+
       });
         
       view = new ListView({ 

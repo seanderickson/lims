@@ -211,6 +211,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
   
     /**
        Process keyboard navigation.
+       ** FIXME: copied code from parent class - remove.
     */
     onKeydown: function (e) {
       var command = new Backgrid.Command(e);

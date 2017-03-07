@@ -40,7 +40,8 @@ define([
           });
       }
       
-      _.bindAll(this, 'createScpView','showScpSearchForm','showWellsToLeaveEmptyDialog');
+      _.bindAll(this, 'createScpView','createLcpView',
+                'showScpSearchForm','showWellsToLeaveEmptyDialog');
       
     },
 
@@ -62,12 +63,12 @@ define([
         invoke : 'setLabCherryPicks',
         permission: 'cherrypickrequest'
       },
-      platemapping: {
-        description : 'Plate Mapping',
-        title : 'Plate Mapping',
-        invoke : 'setPlateMapping',
-        permission: 'cherrypickrequest'
-      },
+//      platemapping: {
+//        description : 'Plate Mapping',
+//        title : 'Plate Mapping',
+//        invoke : 'setPlateMapping',
+//        permission: 'cherrypickrequest'
+//      },
       sourceplates: {
         description : 'Source Plates',
         title : 'Source Plates',
@@ -92,7 +93,6 @@ define([
       this.tabbed_resources = _.extend({},this.cherry_pick_tabbed_resources);
       if (! this.model.get('number_plates')>0){
         delete this.tabbed_resources['cherrypickplates'];
-        delete this.tabbed_resources['platemapping']
       }
       if(self.model.get('total_number_lcps') == 0){
         delete this.tabbed_resources['labcherrypicks'];
@@ -177,7 +177,6 @@ define([
       };
       detailView = DetailView.extend({
         afterRender: function() {
-          console.log('afterrender...');
           DetailView.prototype.afterRender.apply(this,arguments);
           var detail_self = this;
           var empty_wells_link = $(
@@ -203,8 +202,11 @@ define([
           var fields = self.model.resource.fields;
           fields['requested_by_username'].choices = 
             appModel._get_screen_members(self.screen);
-          fields['volume_approved_by_username'].choices = 
-            appModel.getAdminUserOptions();
+          // TODO: resource/cherrypickrequest/write
+          appModel.getAdminUserOptions(function(options){
+            fields['volume_approved_by_username'].choices = options;
+          },'cherrypickrequest');
+            
           var number_plates = self.model.get('number_plates');
           if ( _.isNumber(number_plates) && number_plates != 0){
             _.each([
@@ -219,6 +221,7 @@ define([
               }
             );
           }
+          
           DetailLayout.prototype.showEdit.apply(innerself,arguments);
         });  
       };
@@ -237,7 +240,6 @@ define([
       if (_.isUndefined(currentValue)){
         currentValue = self.model.get('wells_to_leave_empty');
       }
-      console.log('current_value', currentValue);
       var assay_plate_type = $('[name="assay_plate_type"]').val();
       if (_.isEmpty(assay_plate_type)){
         assay_plate_type = self.model.get('assay_plate_type');
@@ -348,82 +350,11 @@ define([
       });
     },
     
-    setPlateMapping: function(delegateStack) {
-      var self = this;
-      var url = [self.model.resource.apiUri, 
-                 self.model.key,
-                 'lab_cherry_pick_plating'].join('/');
-
-      function createPlateMappingView(schemaResult) {
-        
-        var Collection = Iccbl.MyCollection.extend({
-          url: url,
-        });
-        collection = new Collection();
-  
-        var extraControls = [];
-        var downloadPlateMappingButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-             'title="Download plate mapping file (available if plates are assigned)"',
-//            'style="display: none; " ',
-            'role="button" id="plate_mapping_file" href="#">',
-            'Download Plate Mapping files</a>'
-          ].join(''));
-        extraControls.push(downloadPlateMappingButton);
-        var showPlateMappingButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-             'title="Show the plate mapping in a grid (available if plates are assigned)"',
-//            'style="display: none; " ',
-            'role="button" id="plate_mapping_grid" href="#">',
-            'Show Plate Mapping</a>'
-          ].join(''));
-        extraControls.push(showPlateMappingButton);
-  
-        var view = new ListView({ 
-          uriStack: _.clone(delegateStack),
-          schemaResult: schemaResult,
-          resource: schemaResult,
-          collection: collection,
-          url: url,
-          extraControls: extraControls
-        });
-        Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        self.setView("#tab_container", view ).render();
-        self.listenTo(view, 'afterRender', function(event) {
-          view.$el.find('#list-title').show().append(
-            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
-        });
-        
-//        if (self.model.get('number_plates') != 0){
-//          downloadPlateMappingButton.show();
-//          showPlateMappingButton.show();
-//        }
-        downloadPlateMappingButton.click(function(e){
-          e.preventDefault();
-          console.log('download plate mapping file');
-          var url = [self.model.resource.apiUri,self.model.key,
-                     'plate_mapping_file'].join('/');
-          appModel.downloadUrl(self.$el,url);
-        });
-        
-        showPlateMappingButton.click(function(e){
-          e.preventDefault();
-          self.showPlateMappingGrid(url);
-        });
-        
-      };
-      var schemaUrl = url + '/schema';
-      appModel.getResourceFromUrl(schemaUrl, createPlateMappingView);
-      
-    }, // end setPlateMapping
-    
     showPlateMappingGrid: function(url){
       var self = this;
       var title = Iccbl.formatString(
-        'Screen: {screen_facility_id} ' +
-        ',CPR: {cherry_pick_request_id}, Cherry Pick Assay Plate:',
+        'Screen: {screen_facility_id}, ' +
+        'CPR: {cherry_pick_request_id}, Cherry Pick Assay Plate:',
         self.model);
       var assay_plate_type = self.model.get('assay_plate_type');
       var plateSize = 384;
@@ -661,7 +592,6 @@ define([
         }
         var downloadPlateMappingButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
-//            'style="display: none; " ',
             'role="button" id="plate_mapping_file" href="#">',
             'Download Plate Mapping files</a>'
           ].join(''));
@@ -683,9 +613,6 @@ define([
             '<H4 id="title">Assay Plates for CPR: ' + self.model.key + '</H4>');
         });
         
-//        if (self.model.get('number_plates') != 0){
-//          downloadPlateMappingButton.show();
-//        }
         downloadPlateMappingButton.click(function(e){
           
           e.preventDefault();
@@ -882,367 +809,563 @@ define([
             ', change the plating date?',
           ok: function(event){
             $('#modal').modal('hide');
-            dialogFunction();
+            appModel.getAdminUserOptions(dialogFunction, 'cherrypickrequest');    
           }
         })
       }else{
-        dialogFunction();
+        appModel.getAdminUserOptions(dialogFunction, 'cherrypickrequest');    
       }
       
-      function dialogFunction(){
-        appModel.initializeAdminMode(function(){
-              
-          // Build the form model
-          var FormFields = Backbone.Model.extend({
-            schema: {
-              plating_date: {
-                title: 'Date',
-                key: 'plating_date',
-                type: EditView.DatePicker,
-                validators: ['required'], 
-                template: appModel._field_template
-              },
-              plated_by_username: {
-                title: 'Plated By',
-                key: 'plated_by_username',
-                type: EditView.ChosenSelect,
-                editorClass: 'chosen-select',
-                options: appModel._get_screen_members(self.screen),
-                validators: ['required'], 
-                template: appModel._field_template
-              },
-              comments: {
-                title: 'Comments',
-                key: 'comments',
-                type: 'TextArea',
-                editorClass: 'input-full',
-                validators: ['required'], 
-                template: appModel._field_template
-              }
-            }
-          });
-          var formFields = new FormFields();
-          var form = new Backbone.Form({
-            model: formFields,
-            template: appModel._form_template
-          });
-          var _form = form.render();
-          _form.$el.find('.chosen-select').chosen({
-            disable_search_threshold: 3,
-            width: '100%',
-            allow_single_deselect: true,
-            search_contains: true
-            });
-    
-          appModel.showModal({
-            okText: 'ok',
-            ok: function(e){
-              e.preventDefault();
-              var errors = form.commit({ validate: true }); // runs schema and model validation
-              if(!_.isEmpty(errors) ){
-                console.log('form errors, abort submit: ',errors);
-                _.each(_.keys(errors), function(key){
-                  $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-                });
-                if (_.has(errors,'_others')){
-                  $errorDiv = $('<div class="panel text-danger" />');
-                  _.each(errors['_others'], function(otherError){
-                    _.each(_.values(otherError), function(errMsg){
-                      $errorDiv.append('Error: ' + errMsg );
-                    });
-                  });
-                  _form.$el.append($errorDiv);
-                }
-                return false;
-              }            
-              var values = _form.getValue();
-              console.log('form submitted', values, selectedEntries);
-              
-              var plate_updates = [];
-                    
-              var SubmitCollection = Backbone.Collection.extend({
-                url: selectionCollection.url
-              });
-              var submitCollection = new SubmitCollection(selectedEntries);
-              submitCollection.each(function(model){
-                 model.set('plating_date', values['plating_date']);
-                 model.set('plated_by_username', values['plated_by_username']);
-              });
-  
-              var headers = {};
-              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-              
-              submitCollection.sync(
-                'patch', submitCollection, { headers: headers })
-                .done(function(data, textStatus, jqXHR){
-                  appModel.showConnectionResult(data, {
-                    title: 'Plating'
-                  });
-                  self.model.fetch({ reset: true }).done(function(){
-                    self.uriStack = ['cherrypickplates'];
-                    // Remove the child view before calling render, to prevent
-                    // it from being rendered twice, and calling afterRender twice
-                    self.removeView('#tab_container');
-                    self.render();
-                  });
-                }).fail(function(jqXHR, textStatus, errorThrown){
-                  console.log('fail', arguments);
-                  appModel.jqXHRfail.apply(this,arguments); 
-                });
-              
+      function dialogFunction(cherryPickUserOptions){
+        // Build the form model
+        var FormFields = Backbone.Model.extend({
+          schema: {
+            plating_date: {
+              title: 'Date',
+              key: 'plating_date',
+              type: EditView.DatePicker,
+              validators: ['required'], 
+              template: appModel._field_template
             },
-            view: _form.el,
-            title: 'Set Plated Date for selected plates'
+            plated_by_username: {
+              title: 'Plated By',
+              key: 'plated_by_username',
+              type: EditView.ChosenSelect,
+              editorClass: 'chosen-select',
+              options: cherryPickUserOptions,
+//                options: appModel._get_screen_members(self.screen),
+              validators: ['required'], 
+              template: appModel._field_template
+            },
+            comments: {
+              title: 'Comments',
+              key: 'comments',
+              type: 'TextArea',
+              editorClass: 'input-full',
+              validators: ['required'], 
+              template: appModel._field_template
+            }
+          }
+        });
+        var formFields = new FormFields();
+        var form = new Backbone.Form({
+          model: formFields,
+          template: appModel._form_template
+        });
+        var _form = form.render();
+        _form.$el.find('.chosen-select').chosen({
+          disable_search_threshold: 3,
+          width: '100%',
+          allow_single_deselect: true,
+          search_contains: true
           });
+  
+        appModel.showModal({
+          okText: 'ok',
+          ok: function(e){
+            e.preventDefault();
+            var errors = form.commit({ validate: true }); // runs schema and model validation
+            if(!_.isEmpty(errors) ){
+              console.log('form errors, abort submit: ',errors);
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
+              if (_.has(errors,'_others')){
+                $errorDiv = $('<div class="panel text-danger" />');
+                _.each(errors['_others'], function(otherError){
+                  _.each(_.values(otherError), function(errMsg){
+                    $errorDiv.append('Error: ' + errMsg );
+                  });
+                });
+                _form.$el.append($errorDiv);
+              }
+              return false;
+            }            
+            var values = _form.getValue();
+            console.log('form submitted', values, selectedEntries);
+            
+            var plate_updates = [];
+                  
+            var SubmitCollection = Backbone.Collection.extend({
+              url: selectionCollection.url
+            });
+            var submitCollection = new SubmitCollection(selectedEntries);
+            submitCollection.each(function(model){
+               model.set('plating_date', values['plating_date']);
+               model.set('plated_by_username', values['plated_by_username']);
+            });
+
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+            
+            submitCollection.sync(
+              'patch', submitCollection, { headers: headers })
+              .done(function(data, textStatus, jqXHR){
+                appModel.showConnectionResult(data, {
+                  title: 'Plating'
+                });
+                self.model.fetch({ reset: true }).done(function(){
+                  self.uriStack = ['cherrypickplates'];
+                  // Remove the child view before calling render, to prevent
+                  // it from being rendered twice, and calling afterRender twice
+                  self.removeView('#tab_container');
+                  self.render();
+                });
+              }).fail(function(jqXHR, textStatus, errorThrown){
+                console.log('fail', arguments);
+                appModel.jqXHRfail.apply(this,arguments); 
+              });
+            
+          },
+          view: _form.el,
+          title: 'Set Plated Date for selected plates'
         });      
-        
       };
     }, // end showPlatedDateDialog
+
     
-    setLabCherryPicks: function(delegateStack) {
+    /**
+     * LCP Plate Mapping (and QC) view
+     */
+    setPlateMapping: function(delegateStack) {
       var self = this;
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'lab_cherry_pick_plating'].join('/');
+      var extraControls = [];
+      var downloadPlateMappingButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+           'title="Download plate mapping file (available if plates are assigned)"',
+          'role="button" id="plate_mapping_file" href="#">',
+          'Download Plate Mapping files</a>'
+        ].join(''));
+      extraControls.push(downloadPlateMappingButton);
+      var showPlateMappingButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+           'title="Show the plate mapping in a grid (available if plates are assigned)"',
+          'role="button" id="plate_mapping_grid" href="#">',
+          'Show Plate Mapping</a>'
+        ].join(''));
+      extraControls.push(showPlateMappingButton);
 
-      function createLcpView(schemaResult){
-        var url = [self.model.resource.apiUri,self.model.key,
-          'lab_cherry_pick'].join('/');
-
-        if(self.model.get('has_pool_screener_cherry_picks') === true){
-          schemaResult.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
-        }
+      function createPlateMappingView(resource) {
         
-        var extraControls = [];
-        var showCopyWellsControl = $([
-            '<label class="checkbox-inline" ',
-            'title="Show all available wells from Cherry Pick Source Plate copies" >',
-            '  <input id="show_copy_wells" type="checkbox">All Available Copies',
-            '</label>'
-          ].join(''));
-        extraControls.push(showCopyWellsControl);
-        var showAllCopyWellsControl = $([
-            '<label class="checkbox-inline" ',
-            'title="Show all available and retired wells from Cherry Pick Source and Library Screening copies">',
-            '  <input id="show_available_and_retired_copy_wells" type="checkbox">All Available and Retired',
-            '</label>'
-          ].join(''));
-        extraControls.push(showAllCopyWellsControl);
-        var showUnfulfilledWellsControl = $([
-            '<label class="checkbox-inline" ',
-            ' title="Show rows for unfulfilled picks only" >',
-            '  <input id="showUnfulfilled" type="checkbox">Show Unfulfilled only',
-            '</label>'
-          ].join(''));
-        extraControls.push(showUnfulfilledWellsControl);
-        var setSelectedLcpButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'style="display: none; " ',
-            'role="button" id="save_button_lcp_selected" href="#">',
-            'Save Selections</a>'
-          ].join(''));
-        extraControls.push(setSelectedLcpButton);
-        var reserveAndMapSelectedButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'style="display: none; " ',
-            'role="button" id="reserve_map_selected_button" href="#">',
-            'Reserve Selections and Map to Plates</a>'
-          ].join(''));
-        extraControls.push(reserveAndMapSelectedButton);
-        var deleteLcpsButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-            'style="display: none; " ',
-            'role="button" id="deleteLcpsButton" href="#">',
-            'Delete Lab Cherry Picks</a>'
-          ].join(''));
-        extraControls.push(deleteLcpsButton);
-        var cancelReservation = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-            'style="display: none; " ',
-            'role="button" id="cancel_reservation" href="#">',
-            'Cancel Reservation and Delete Plating assignments</a>'
-          ].join(''));
-        extraControls.push(cancelReservation);
-
-        if (self.model.get('number_plates') == 0){
-          deleteLcpsButton.show();
-          reserveAndMapSelectedButton.show();
-        } else {
-          cancelReservation.show();
-        }
-
-        var Collection = Backbone.Collection.extend({
-          // explicitly define the id so that collection compare & equals work
-          modelId: function(attrs) {
-            return Iccbl.getIdFromIdAttribute( attrs, schemaResult);
-          }
-        })
-        var lcpSelectionUpdateCollection = new Collection();
-  
-        var previousSourceWell = null;
-        var SelectedLcpRow = Backgrid.Row.extend({
-          initialize: function () {
-            var self = this;
-            SelectedLcpRow.__super__.initialize.apply(this, arguments);
-            
-            this.listenTo(
-                this.model.collection, 
-                'show_available_and_retired_copy_wells', 
-                function(){
-                  self._setStyle();
-                }
-            );
-            this.listenTo(
-                this.model.collection, 
-                'show_copy_wells', 
-                function(){
-                  self._setStyle();
-                }
-            );
-          },
-          
-          _setStyle: function(){
-            var searchHash = this.model.collection.listModel.get('search');
-            if (_.result(searchHash,'show_copy_wells')=='true'
-              || _.result(searchHash,'show_available_and_retired_copy_wells')=='true' ){
-              if (this.model.has('selected_copy_name')) {
-                if (this.model.get('selected_copy_name')==this.model.get('source_copy_name')) {
-                  this.$el.addClass('selected');
-                }
-              }
-              if (this.model.get('source_well_id')!==previousSourceWell){
-                previousSourceWell = this.model.get('source_well_id');
-                this.$el.closest('tr').addClass('selector_row_group');
-              }
-            } else {
-              this.$el.closest('tr').removeClass('selector_row_group');
-            }
-          },
-          
-          render: function() {
-            SelectedLcpRow.__super__.render.apply(this, arguments);
-            this._setStyle();
-            return this;
-          }
-        });
-  
-        var ListViewSelect = ListView.extend({
-          afterRender: function(){
-            ListViewSelect.__super__.afterRender.apply(this, arguments);
-            // Backgrid specific: all column headers are given a class for their
-            // column name: in this case the "selected" class has other meaning, 
-            // so remove it
-            this.$('th').removeClass('selected');
-            return this;
-          }
-        });
-  
-        var view = new ListViewSelect({ 
-          uriStack: _.clone(delegateStack),
-          schemaResult: schemaResult,
-          resource: schemaResult,
-          url: url,
-          row: SelectedLcpRow,
-          extraControls: extraControls
-        });
-        Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        self.setView("#tab_container", view ).render();
+//        var Collection = Iccbl.MyCollection.extend({
+//          url: url,
+//        });
+//        collection = new Collection();
+//  
+//  
+//        var view = new ListView({ 
+//          uriStack: _.clone(delegateStack),
+//          schemaResult: schemaResult,
+//          resource: schemaResult,
+//          collection: collection,
+//          url: url,
+//          extraControls: extraControls
+//        });
+//        Backbone.Layout.setupView(view);
+//        self.reportUriStack([]);
+//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//        self.setView("#tab_container", view ).render();
+        view = self.createLcpView(delegateStack, resource,url,extraControls)
+        
         self.listenTo(view, 'afterRender', function(event) {
           view.$el.find('#list-title').show().append(
-            '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
+            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
         });
+        downloadPlateMappingButton.click(function(e){
+          e.preventDefault();
+          console.log('download plate mapping file');
+          var url = [self.model.resource.apiUri,self.model.key,
+                     'plate_mapping_file'].join('/');
+          appModel.downloadUrl(self.$el,url);
+        });
+        
+        showPlateMappingButton.click(function(e){
+          e.preventDefault();
+          self.showPlateMappingGrid(url);
+        });
+      };
+      var schemaUrl = url + '/schema';
+      appModel.getResourceFromUrl(schemaUrl, createPlateMappingView);
       
-        var initialSearchHash = view.listModel.get('search');
-        if (_.has(initialSearchHash, 'show_copy_wells')
-            && initialSearchHash.show_copy_wells.toLowerCase()=='true') {
-          showCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
+    }, // end setPlateMapping
+    
+    
+    /**
+     * Lab Cherry Picks view
+     */
+    setLabCherryPicks: function(delegateStack) {
+
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,
+        'lab_cherry_pick'].join('/');
+      var schemaUrl = [
+        self.model.resource.apiUri,self.model.key,'lab_cherry_pick',
+        'schema'].join('/');
+      
+      var plate_mapping_controls = [];
+      
+      if (self.model.get('number_plates') != 0){
+        url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'lab_cherry_pick_plating'].join('/');
+        var downloadPlateMappingButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+             'title="Download plate mapping file (available if plates are assigned)"',
+            'role="button" id="plate_mapping_file" href="#">',
+            'Download Plate Mapping files</a>'
+          ].join(''));
+        plate_mapping_controls.push(downloadPlateMappingButton);
+        var showPlateMappingButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+             'title="Show the plate mapping in a grid (available if plates are assigned)"',
+            'role="button" id="plate_mapping_grid" href="#">',
+            'Show Plate Mapping</a>'
+          ].join(''));
+        plate_mapping_controls.push(showPlateMappingButton);
+        downloadPlateMappingButton.click(function(e){
+          e.preventDefault();
+          console.log('download plate mapping file');
+          var url = [self.model.resource.apiUri,self.model.key,
+                     'plate_mapping_file'].join('/');
+          appModel.downloadUrl(self.$el,url);
+        });
+        
+        showPlateMappingButton.click(function(e){
+          e.preventDefault();
+          self.showPlateMappingGrid(url);
+        });
+        schemaUrl = url + '/schema';
+      }      
+
+      function createView(resource){
+        view = self.createLcpView(delegateStack,resource, url);
+        self.listenTo(view, 'afterRender', function(event) {
+          
+          if (!_.isEmpty(plate_mapping_controls)){
+            view.$el.find('#list-container').prepend(plate_mapping_controls);
+          }
+//          
+//          view.$el.find('#list-title').show().append(
+//            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
+        });
+      };
+      appModel.getResourceFromUrl(schemaUrl, createView);
+    }, // end setLabCherryPicks
+    
+
+    createLcpView: function (delegateStack, resource, url, extraControls){
+      var self = this;
+      if (_.isUndefined(extraControls)){
+        extraControls = [];
+      }
+
+      var checkboxDiv = $([
+          '<div id="show_input_group" class="input-group"></div>'
+        ].join(''));
+      var showCopyWellsControl = $([
+          '<label class="checkbox-inline" ', 
+          ' style="margin-left: 10px;" ',
+          'title="Show all available wells from Cherry Pick Source Plate copies" >',
+          '  <input id="show_copy_wells" type="checkbox">Available',
+          '</label>'
+        ].join(''));
+      var showAllCopyWellsControl = $([
+          '<label class="checkbox-inline" ',
+          'title="Show all available and retired wells from Cherry Pick Source and Library Screening copies">',
+          '  <input id="show_available_and_retired_copy_wells" ',
+          '     type="checkbox">Available and Retired',
+          '</label>'
+        ].join(''));
+      var showUnfulfilledWellsControl = $([
+          '<label class="checkbox-inline" ',
+          ' title="Show rows for unfulfilled picks only" >',
+          '  <input id="showUnfulfilled" type="checkbox">Unfulfilled only',
+          '</label>'
+        ].join(''));
+      checkboxDiv.append(showCopyWellsControl);
+      checkboxDiv.append(showAllCopyWellsControl);
+      checkboxDiv.append(showUnfulfilledWellsControl);
+      checkboxDiv.prepend('<label for="show_input_group">show</label>');
+      extraControls.push(checkboxDiv);
+      
+      var setSelectedLcpButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="save_button_lcp_selected" href="#">',
+          'Save Selections</a>'
+        ].join(''));
+      extraControls.push(setSelectedLcpButton);
+      var updateSelectedLcpButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="update_selected_button" href="#">',
+          'Update Selections</a>'
+        ].join(''));
+      extraControls.push(updateSelectedLcpButton);
+      var cancelSelectedButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="cancel_selected_button" href="#">',
+          'Cancel Selections</a>'
+        ].join(''));
+      extraControls.push(cancelSelectedButton);
+      var reserveAndMapSelectedButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="reserve_map_selected_button" href="#">',
+          'Reserve Selections and Map to Plates</a>'
+        ].join(''));
+      extraControls.push(reserveAndMapSelectedButton);
+      var deleteLcpsButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="deleteLcpsButton" href="#">',
+          'Delete Lab Cherry Picks</a>'
+        ].join(''));
+      extraControls.push(deleteLcpsButton);
+      var cancelReservation = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="cancel_reservation" href="#">',
+          'Cancel Reservation and Delete Plating assignments</a>'
+        ].join(''));
+      extraControls.push(cancelReservation);
+
+      if (self.model.get('number_plates') == 0){
+        deleteLcpsButton.show();
+        reserveAndMapSelectedButton.show();
+      } else {
+        cancelReservation.show();
+      }
+
+      if(self.model.get('has_pool_screener_cherry_picks') === true){
+        resource.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
+      }
+      
+      // Track user LCP selections
+      var Collection = Backbone.Collection.extend({
+        // explicitly define the id so that collection compare & equals work
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, resource);
         }
-        if (_.has(initialSearchHash, 'show_available_and_retired_copy_wells')
-            && initialSearchHash.show_available_and_retired_copy_wells.toLowerCase()=='true') {
-          showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
-          showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+      })
+      var lcpSelectionUpdateCollection = new Collection();
+      
+      // Custom Selection Row with styling
+      // Reference to previous row to use for row styling
+      var previousSourceWell = null;
+      var SelectedLcpRow = Backgrid.Row.extend({
+
+        initialize: function () {
+          var self = this;
+          SelectedLcpRow.__super__.initialize.apply(this, arguments);
+          this.listenTo(
+              this.model.collection, 
+              'show_available_and_retired_copy_wells', 
+              function(){
+                self._setStyle();
+              }
+          );
+          this.listenTo(
+              this.model.collection, 
+              'show_copy_wells', 
+              function(){
+                self._setStyle();
+              }
+          );
+        },
+        
+        _setStyle: function(){
+          var searchHash = this.model.collection.listModel.get('search');
+          if (_.result(searchHash,'show_copy_wells')=='true'
+            || _.result(searchHash,'show_available_and_retired_copy_wells')=='true' ){
+            if (this.model.has('selected_copy_name')) {
+              if (this.model.get('selected_copy_name')==this.model.get('source_copy_name')) {
+                this.$el.addClass('selected');
+              }
+            }
+            if (this.model.get('source_well_id')!==previousSourceWell){
+              previousSourceWell = this.model.get('source_well_id');
+              this.$el.closest('tr').addClass('selector_row_group');
+            }
+          } else {
+            this.$el.closest('tr').removeClass('selector_row_group');
+          }
+        },
+        
+        render: function() {
+          SelectedLcpRow.__super__.render.apply(this, arguments);
+          this._setStyle();
+          return this;
         }
-        if (_.has(initialSearchHash, 'show_unfulfilled')
-            && initialSearchHash.show_unfulfilled.toLowerCase()=='true') {
-          showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',true);
+      });
+      // Set LCP List View
+      var ListViewSelect = ListView.extend({
+        afterRender: function(){
+          ListViewSelect.__super__.afterRender.apply(this, arguments);
+          // Backgrid specific: all column headers are given a class for their
+          // column name: in this case the "selected" class has other meaning, 
+          // so remove it
+          this.$('th').removeClass('selected');
+          return this;
+        }
+      });
+
+      var view = new ListViewSelect({ 
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        row: SelectedLcpRow,
+        extraControls: extraControls
+      });
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event) {
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
+      });
+    
+      var initialSearchHash = view.listModel.get('search');
+      if (_.has(initialSearchHash, 'show_copy_wells')
+          && initialSearchHash.show_copy_wells.toLowerCase()=='true') {
+        showCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
+      }
+      if (_.has(initialSearchHash, 'show_available_and_retired_copy_wells')
+          && initialSearchHash.show_available_and_retired_copy_wells.toLowerCase()=='true') {
+        showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
+        showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+      }
+      if (_.has(initialSearchHash, 'show_unfulfilled')
+          && initialSearchHash.show_unfulfilled.toLowerCase()=='true') {
+        showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',true);
+      }
+
+      // Manage LCP selection updates
+      view.collection.on('add', function(model){
+        // cache the 'selected' property for update management
+        model.set(
+          { selected_on_server: model.get('selected') },
+          { silent: true }
+        );
+      });
+      view.collection.on('change', function(model){
+        console.log('collection changed', arguments);
+        if (!model.has('selected_on_server')){
+          // Block changes caused by changing the field schema other actions 
+          // that happen before the selected_on_server flag is set
+          return;
+        }
+        if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
+            || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
+          return;
         }
 
-        // Manage selection updates
-        view.collection.on('add', function(model){
-          // cache the 'selected' property for update management
+        var current_copy_name = model.get('source_copy_name');
+        var source_well_id = model.get('source_well_id');
+        var source_copy_id = model.get('source_copy_id');
+        var selected_copy_name = model.get('selected_copy_name');
+
+        if (model.get('selected') != model.get('selected_on_server')) {
+          if (self.model.get('number_plates') != 0){
+            if (_.isEmpty(selected_copy_name)){
+              appModel.showModalMessage({
+                title: 'Note:',
+                body: 'New selections can not be made unless plating '+
+                  'assignments are deallocated'
+              });
+              model.set('selected',false);
+            } else {
+              lcpSelectionUpdateCollection.add(model);
+            }
+          } else {
+            lcpSelectionUpdateCollection.add(model);
+          }
+        } else {
+          lcpSelectionUpdateCollection.remove(model);
+        }
+        if (model.get('selected')) {
+          // unselect others in the group
+          _.each(view.collection.where({'source_well_id':source_well_id}),
+            function(collection_model){
+              if (collection_model.get('source_copy_name')!==current_copy_name){
+                collection_model.set({'selected': false});
+              }
+          });
+        }
+      });
+      
+      lcpSelectionUpdateCollection.on('update reset', function(){
+        if (!lcpSelectionUpdateCollection.isEmpty()){
+          appModel.setPagePending(null, 'Selection updates are unsaved, continue anyway?');
+          cancelSelectedButton.show();
+          if (self.model.get('number_plates') == 0){
+            setSelectedLcpButton.show();
+          }else{
+            updateSelectedLcpButton.show();
+          }
+          reserveAndMapSelectedButton.hide();
+          deleteLcpsButton.hide();
+          cancelReservation.hide();
+        } else {
+          setSelectedLcpButton.hide();
+          updateSelectedLcpButton.hide();
+          cancelSelectedButton.hide();
+          if (self.model.get('number_plates') == 0){
+            deleteLcpsButton.show();
+            reserveAndMapSelectedButton.show();
+          } else {
+            cancelReservation.show();
+          }
+          appModel.clearPagePending();
+        }
+      });
+      
+      // Make sure that on reset actions (page changes), selections are persisted
+      view.collection.on('reset', function(){
+        // Note: on "reset" the "add" methods aren't being called
+        view.collection.each(function(model){
           model.set(
             { selected_on_server: model.get('selected') },
             { silent: true }
           );
         });
-        view.collection.on('change', function(model){
-          console.log('collection changed', arguments);
-          if (!model.has('selected_on_server')){
-            // Block changes caused by changing the field schema other actions 
-            // that happen before the selected_on_server flag is set
-            return;
-          }
-          if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
-              || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
-            return;
-          }
-  
-          var current_copy_name = model.get('source_copy_name');
-          var source_well_id = model.get('source_well_id');
-          var source_copy_id = model.get('source_copy_id');
-          var selected_copy_name = model.get('selected_copy_name');
-
-          if (model.get('selected') != model.get('selected_on_server')) {
-            lcpSelectionUpdateCollection.add(model);
-          } else {
-            lcpSelectionUpdateCollection.remove(model);
+        lcpSelectionUpdateCollection.each(function(model){
+          var retrievedModel = view.collection.get(model);
+          if (!_.isUndefined(retrievedModel)){
+              retrievedModel.set('selected', model.get('selected'));
           }
           if (model.get('selected')) {
             // unselect others in the group
-            _.each(view.collection.where({'source_well_id':source_well_id}),
-              function(model){
-                if (model.get('source_copy_name')!==current_copy_name){
-                  model.set({'selected': false});
+            _.each(view.collection.where({'source_well_id':model.get('source_well_id')}),
+              function(collection_model){
+                if (collection_model.get('source_copy_name')!==model.get('source_copy_name')){
+                  collection_model.set({'selected': false});
                 }
             });
           }
-          if (!lcpSelectionUpdateCollection.isEmpty()){
-            if (self.model.get('number_plates') == 0){
-              appModel.setPagePending(null, 'Selection updates are unsaved, continue anyway?');
-              setSelectedLcpButton.show();
-            } else {
-              console.log('selections cannot be saved until plating is deleted');
-            }
-          } else {
-            setSelectedLcpButton.hide();
-          }
-        });
-        
-        // Make sure that on reset actions (page changes), selections are persisted
-        view.collection.on('reset', function(){
-          // Note: on "reset" the "add" methods aren't being called
-          view.collection.each(function(model){
-            model.set(
-              { selected_on_server: model.get('selected') },
-              { silent: true }
-            );
-          });
-          lcpSelectionUpdateCollection.each(function(model){
-            var retrievedModel = view.collection.get(model);
-            if (!_.isUndefined(retrievedModel)){
-                retrievedModel.set('selected', model.get('selected'));
-            }
-         });
-        });
-        
-        setSelectedLcpButton.click(function(e){
-          e.preventDefault();
-          console.log('selection updates', lcpSelectionUpdateCollection);
-          if (lcpSelectionUpdateCollection.isEmpty()) {
-            appModel.error('No changes to save');
-            return;
-          }
+       });
+      });
+      
+      setSelectedLcpButton.click(function(e){
+        e.preventDefault();
+        console.log('selection updates', lcpSelectionUpdateCollection);
+        if (lcpSelectionUpdateCollection.isEmpty()) {
+          appModel.error('No changes to save');
+          return;
+        }
+        function processClick(formValues){
+          console.log('form values', formValues);
+          var headers = {};
+          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
           lcpSelectionUpdateCollection.url = view.collection.url;
-          lcpSelectionUpdateCollection.sync('patch', lcpSelectionUpdateCollection)
+          lcpSelectionUpdateCollection.sync(
+            'patch', lcpSelectionUpdateCollection, { headers: headers })
             .done(function(data, textStatus, jqXHR){
               appModel.showConnectionResult(data, {
                 title: 'Lab Cherry Pick copy selection updates'
@@ -1250,297 +1373,417 @@ define([
               setSelectedLcpButton.hide();
               lcpSelectionUpdateCollection.reset(null); // clear
               view.collection.fetch({ reset: true });
-  
+    
             }).fail(function(jqXHR, textStatus, errorThrown){
               console.log('fail', arguments);
               appModel.jqXHRfail.apply(this,arguments); 
             });
-        });
-
-        deleteLcpsButton.click(function(e){
-          e.preventDefault();
-          function processClick(){
-            var delete_lab_cherry_picks_url = [
-              self.model.resource.apiUri,self.model.key, 
-              'delete_lab_cherry_picks'].join('/');
-            var headers = {}; // can be used to send a comment
-            $.ajax({
-              url: delete_lab_cherry_picks_url,     
-              cache: false,
-              contentType: 'application/json', 
-              dataType: 'json', // what is expected back from the server
-              type: 'POST',
-              headers: headers
-            }).done(function(data, textStatus, jqXHR){
-              appModel.showConnectionResult(data, {
-                title: 'Delete Lab Cherry Picks'
-              });
-              self.model.fetch({ reset: true }).done(function(){
-                self.uriStack = ['screenercherrypicks'];
-                // Remove the child view before calling render, to prevent
-                // it from being rendered twice, and calling afterRender twice
-                self.removeView('#tab_container');
-                self.render();
-              });
-            }).fail(function(jqXHR, textStatus, errorThrown){
-              appModel.jqXHRfail.apply(this,arguments); 
-            });
-          };
-          if(appModel.isPagePending()){
-            appModel.requestPageChange({
-              ok: processClick
-            });
-          }else{
-            processClick();
-          }
-        });
+        };
         
-        cancelReservation.click(function(e){
-          e.preventDefault();
-          function processClick(){
-            var cancel_reservation_url = [
-              self.model.resource.apiUri,self.model.key, 
-              'cancel_reservation'].join('/');
-            var headers = {}; // can be used to send a comment
-            $.ajax({
-              url: cancel_reservation_url,     
-              cache: false,
-              contentType: 'application/json', 
-              dataType: 'json', // what is expected back from the server
-              type: 'POST',
-              headers: headers
-            }).done(function(data, textStatus, jqXHR){
-              appModel.showConnectionResult(data, {
-                title: 'Cancel Reservation and Remove Plating'
-              });
-              self.model.fetch({ reset: true }).done(function(){
-                self.uriStack = ['labcherrypicks'];
-                // Remove the child view before calling render, to prevent
-                // it from being rendered twice, and calling afterRender twice
-                self.removeView('#tab_container');
-                self.render();
-              });
-            }).fail(function(jqXHR, textStatus, errorThrown){
-              appModel.jqXHRfail.apply(this,arguments); 
-            });
-          };
-          if(appModel.isPagePending()){
-            appModel.requestPageChange({
-              ok: processClick
-            });
-          }else{
-            processClick();
+        appModel.showOkCommentForm({
+          ok: processClick,
+          title: 'Save Lab Cherry Pick selections?'
+        });
+      });
+      
+      cancelSelectedButton.click(function(e){
+        e.preventDefault();
+        console.log('cancel selection updates', lcpSelectionUpdateCollection);
+        lcpSelectionUpdateCollection.each(function(model){
+          var retrievedModel = view.collection.get(model);
+          if (!_.isUndefined(retrievedModel)){
+              retrievedModel.set('selected', !model.get('selected'));
           }
         });
-        
-        showUnfulfilledWellsControl.click(function(e){
-          function processClick(){
-            if (e.target.checked) {
-              var searchHash = _.clone(view.listModel.get('search'));
-              searchHash['show_unfulfilled'] = 'true';
-              view.listModel.set('search',searchHash);
-            } else {
-              var searchHash = _.clone(view.listModel.get('search'));
-              delete searchHash['show_unfulfilled'];
-              view.listModel.set('search',searchHash);
-            }
-          };
-          if(appModel.isPagePending()){
-            appModel.requestPageChange({
-              ok: processClick
-            });
-          }else{
-            processClick();
-          }
-        });
-        
-        showCopyWellsControl.click(function(e) {
-          function processClick(){
-            if (e.target.checked) {
-              var includes = _.clone(view.listModel.get('includes'));
-              includes = _.union(
-                ['selected', 'source_copy_well_volume','volume_approved',
-                 'source_copy_usage_type','source_plate_status'],includes);
-              view.listModel.set({ includes: includes}, {reset: false});
-              var searchHash = _.clone(view.listModel.get('search'));
-              searchHash['show_copy_wells'] = 'true';
+        lcpSelectionUpdateCollection.reset(null);
+      });
+      
+      updateSelectedLcpButton.click(function(e){
+        e.preventDefault();
+        console.log('selection updates', lcpSelectionUpdateCollection);
+        if (lcpSelectionUpdateCollection.isEmpty()) {
+          appModel.error('No changes to save');
+          return;
+        }
 
-              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              delete searchHash['show_available_and_retired_copy_wells'];
-              view.listModel.set('search',searchHash);
-              
-              if (self.model.get('number_plates') != 0){
-                appModel.showModalMessage({
-                  title: 'Note:',
-                  body: 'Selections can not be changed unless plating '+
-                    'assignments are deallocated'
-                });
-              }
-            } else {
-              // make sure unset
-              var searchHash = _.clone(view.listModel.get('search'));
-              if (!_.has(searchHash,'show_copy_wells')) {
-                return;
-              }
-              var includes = _.clone(view.listModel.get('includes'));
-              includes = _.without(
-                includes,
-                'selected','source_copy_well_volume','volume_approved',
-                'source_copy_usage_type','source_plate_status');
-              view.listModel.set({ includes: includes}, {reset: false});
-              if (_.has(searchHash,'show_copy_wells')) {
-                delete searchHash['show_copy_wells'];
-                view.listModel.set('search',searchHash);
-              }
-            }
-            // See note above about removing the 'selected' backgrid th class
-            view.$('th').removeClass('selected');
-            view.$('tr').removeClass('selected');
-            view.collection.trigger('show_copy_wells');
-          };
-          if(appModel.isPagePending()){
-            appModel.requestPageChange({
-              ok: processClick
-            });
-          }else{
-            processClick();
-          }
-        });
-
-        showAllCopyWellsControl.click(function(e) {
-          function processClick(){
-            if (e.target.checked) {
-              var includes = _.clone(view.listModel.get('includes'));
-              includes = _.union(
-                ['selected', 'source_copy_well_volume','volume_approved',
-                 'source_copy_usage_type','source_plate_status'],includes);
-              view.listModel.set({ includes: includes}, {reset: false});
-              var searchHash = _.clone(view.listModel.get('search'));
-              searchHash['show_available_and_retired_copy_wells'] = 'true';
-              
-              showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              delete searchHash['show_copy_wells'];
-              view.listModel.set('search',searchHash);
-              if (self.model.get('number_plates') != 0){
-                appModel.showModalMessage({
-                  title: 'Note:',
-                  body: 'Selections can not be changed unless plating '+
-                    'assignments are deallocated'
-                });
-              }
-            } else {
-              var searchHash = _.clone(view.listModel.get('search'));
-              if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
-                return;
-              }
-              // Make sure unset
-              var includes = _.clone(view.listModel.get('includes'));
-              includes = _.without(
-                includes,
-                'selected','source_copy_well_volume','volume_approved',
-                'source_copy_usage_type','source_plate_status');
-              view.listModel.set({ includes: includes}, {reset: false});
-              if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
-                delete searchHash['show_available_and_retired_copy_wells'];
-                view.listModel.set('search',searchHash);
-              }
-            }
-            // See note above about removing the 'selected' backgrid th class
-            view.$('th').removeClass('selected');
-            view.$('tr').removeClass('selected');
-            view.collection.trigger('show_available_and_retired_copy_wells');
+        function processClick(formValues){
+          console.log('form values', formValues);
+          var headers = {};
+          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+          lcpSelectionUpdateCollection.url = function(){
+            var url = view.collection.url;
+            // NOTE: the comment dialog implies override is confirmed
+            url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
             
+            if (formValues['set_deselected_to_zero'] === true){
+              url += '&' + appModel.API_PARAM_SET_DESELECTED_TO_ZERO +'=true'
+            }
+            return url;
           };
-          if(appModel.isPagePending()){
-            appModel.requestPageChange({
-              ok: processClick
-            });
-          }else{
-            processClick();
-          }
-        });
-
-        reserveAndMapSelectedButton.click(function(e){
           
-          e.preventDefault();
-          console.log('submit selections for plating');
-          var plate_lab_cherrypicks_url = [
-            self.model.resource.apiUri,self.model.key, 
-            'reserve_map_lab_cherry_picks'].join('/');
-          var headers = {}; // can be used to send a comment
-
-          function processClick(overrideInsufficient){
-            
-            var data = new FormData();
-            // send API_PARAM_VOLUME_OVERRIDE = 'volume_override'
-            data.append(appModel.API_PARAM_VOLUME_OVERRIDE, overrideInsufficient);
-
-            $.ajax({
-              url: plate_lab_cherrypicks_url,     
-              cache: false,
-              contentType: false,
-              processData: false,
-              dataType: 'json', // what is expected back from the server
-              data: data,
-              type: 'POST',
-              headers: headers
-            }).done(function(data, textStatus, jqXHR){
+          lcpSelectionUpdateCollection.sync(
+            'patch', lcpSelectionUpdateCollection, { headers: headers})
+            .done(function(data, textStatus, jqXHR){
               appModel.showConnectionResult(data, {
-                title: 'Lab Cherry Pick Plating result'
+                title: 'Lab Cherry Pick copy selection updates'
               });
-              self.model.fetch({ reset: true }).done(function(){
-                self.uriStack = ['cherrypickplates'];
-                // Remove the child view before calling render, to prevent
-                // it from being rendered twice, and calling afterRender twice
-                self.removeView('#tab_container');
-                self.render();
-              });
+              setSelectedLcpButton.hide();
+              lcpSelectionUpdateCollection.reset(null); // clear
+              view.collection.fetch({ reset: true });
+    
             }).fail(function(jqXHR, textStatus, errorThrown){
-              console.log('errors', arguments);
-              
-              var jsonError = _.result(jqXHR, 'responseJSON');
-              if (!_.isUndefined(jsonError)){
-                var error = _.result(jsonError, 'errors');
-                var errorFlag = _.result(error,appModel.API_PARAM_VOLUME_OVERRIDE);
-                var errorWells = _.result(error, appModel.API_MSG_LCPS_INSUFFICIENT_VOLUME); 
-                if (!_.isUndefined(errorFlag )){
-                  overridden = true;
-                  appModel.showModal({
-                    title: 'Insufficient volume for copy wells in lab cherry picks',
-                    body: errorWells.join(', '),
-                    okText: 'Override',
-                    ok: function() {
-                      var overrideInsufficient = true;
-                      processClick(overrideInsufficient);
-                    },
-                    cancel: function() {
-                      // nop
-                    }
-                  });
-                } else {
-                  appModel.jqXHRfail.apply(this,arguments); 
-                }
+              console.log('fail', arguments);
+              appModel.jqXHRfail.apply(this,arguments); 
+            });
+        };
+
+        var options = {
+          okText: 'Ok',
+          cancelText: 'Cancel and return to page',
+          title: 'Update Selections?'
+        };
+        var form_template = appModel._form_template;
+        var FormFields = Backbone.Model.extend({
+          schema: {
+            comments: {
+              title: 'Comments',
+              type: 'TextArea',
+              editorClass: 'input-full',
+              validators: ['required'], 
+              template: appModel._field_template
+            },
+            set_deselected_to_zero: {
+              title: 'Set Deselected Copy-Well volumes to zero',
+              help: 'If selected, deselected Copy Well volumes will be set ' +
+                'to zero as part of this operation',
+              type: 'Checkbox',
+              template: appModel._alt_checkbox_template
+            }
+          }
+        });
+        var formFields = new FormFields();
+        var form = new Backbone.Form({
+          model: formFields,
+          template: appModel._form_template
+        });
+        var _form_el = form.render().el;
+        options.view = _form_el;
+        options.ok = function(e){
+//          e.preventDefault();
+          appModel.clearPagePending();
+          var errors = form.commit();
+          if(!_.isEmpty(errors)){
+            console.log('form errors, abort submit: ' + JSON.stringify(errors));
+            return false;
+          }else{
+            processClick(form.getValue());            
+          }
+        };        
+        appModel.showModal(options);
+      });      
+
+      deleteLcpsButton.click(function(e){
+        e.preventDefault();
+        function processClick(){
+          var delete_lab_cherry_picks_url = [
+            self.model.resource.apiUri,self.model.key, 
+            'delete_lab_cherry_picks'].join('/');
+          var headers = {}; // can be used to send a comment
+          $.ajax({
+            url: delete_lab_cherry_picks_url,     
+            cache: false,
+            contentType: 'application/json', 
+            dataType: 'json', // what is expected back from the server
+            type: 'POST',
+            headers: headers
+          }).done(function(data, textStatus, jqXHR){
+            appModel.showConnectionResult(data, {
+              title: 'Delete Lab Cherry Picks'
+            });
+            self.model.fetch({ reset: true }).done(function(){
+              self.uriStack = ['screenercherrypicks'];
+              // Remove the child view before calling render, to prevent
+              // it from being rendered twice, and calling afterRender twice
+              self.removeView('#tab_container');
+              self.render();
+            });
+          }).fail(function(jqXHR, textStatus, errorThrown){
+            appModel.jqXHRfail.apply(this,arguments); 
+          });
+        };
+        var msg = 'Delete Lab Cherry Pick selections (return to Screener Cherry Pick View)';
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: function(){
+              appModel.showOkCommentForm({
+                ok: processClick(),
+                title: msg
+              });
+            }
+          });
+        }else{
+          appModel.showOkCommentForm({
+            ok: processClick(),
+            title: msg
+          })
+          
+        }
+      });
+      
+      reserveAndMapSelectedButton.click(function(e){
+        
+        e.preventDefault();
+        console.log('submit selections for plating');
+        var plate_lab_cherrypicks_url = [
+          self.model.resource.apiUri,self.model.key, 
+          'reserve_map_lab_cherry_picks'].join('/');
+
+        function processClick(overrideInsufficient, comments){
+          
+          var data = new FormData();
+          // send API_PARAM_VOLUME_OVERRIDE = 'volume_override'
+          data.append(appModel.API_PARAM_VOLUME_OVERRIDE, overrideInsufficient);
+          var headers = {}; // can be used to send a comment
+          headers[appModel.HEADER_APILOG_COMMENT] = comments;
+          $.ajax({
+            url: plate_lab_cherrypicks_url,     
+            cache: false,
+            contentType: false,
+            processData: false,
+            dataType: 'json', // what is expected back from the server
+            data: data,
+            type: 'POST',
+            headers: headers
+          }).done(function(data, textStatus, jqXHR){
+            appModel.showConnectionResult(data, {
+              title: 'Lab Cherry Pick Plating result'
+            });
+            self.model.fetch({ reset: true }).done(function(){
+              self.uriStack = ['labcherrypicks'];
+              // Remove the child view before calling render, to prevent
+              // it from being rendered twice, and calling afterRender twice
+              self.removeView('#tab_container');
+              self.render();
+            });
+          }).fail(function(jqXHR, textStatus, errorThrown){
+            console.log('errors', arguments);
+            
+            var jsonError = _.result(jqXHR, 'responseJSON');
+            if (!_.isUndefined(jsonError)){
+              var error = _.result(jsonError, 'errors');
+              var errorFlag = _.result(error,appModel.API_PARAM_VOLUME_OVERRIDE);
+              var errorWells = _.result(error, appModel.API_MSG_LCPS_INSUFFICIENT_VOLUME); 
+              if (!_.isUndefined(errorFlag )){
+                appModel.showOkCommentForm({
+                  title: 'Some Copy Wells have insufficient volume, Confirm override?',
+                  body: 'Copy Wells: ' + errorWells.join(', '),
+                  okText: 'Override',
+                  ok: function(formValues) {
+                    var overrideInsufficient = true;
+                    processClick(overrideInsufficient, formValues['comments']);
+                  }
+                });
               } else {
                 appModel.jqXHRfail.apply(this,arguments); 
               }
-            });
-          };
-          if(appModel.isPagePending()){
-            appModel.requestPageChange({
-              ok: processClick
-            });
-          }else{
-            processClick();
-          }
-        });
+            } else {
+              appModel.jqXHRfail.apply(this,arguments); 
+            }
+          });
+        };
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
+
+      cancelReservation.click(function(e){
+        e.preventDefault();
         
-      }; // createLcpView
+        function processClick(formValues){
+          var cancel_reservation_url = [
+            self.model.resource.apiUri,self.model.key, 
+            'cancel_reservation'].join('/');
+          var headers = {}; 
+          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+          $.ajax({
+            url: cancel_reservation_url,     
+            cache: false,
+            contentType: 'application/json', 
+            dataType: 'json', // what is expected back from the server
+            type: 'POST',
+            headers: headers
+          }).done(function(data, textStatus, jqXHR){
+            appModel.showConnectionResult(data, {
+              title: 'Cancel Reservation and Remove Plating'
+            });
+            self.model.fetch({ reset: true }).done(function(){
+              self.uriStack = ['labcherrypicks'];
+              // Remove the child view before calling render, to prevent
+              // it from being rendered twice, and calling afterRender twice
+              self.removeView('#tab_container');
+              self.render();
+            });
+          }).fail(function(jqXHR, textStatus, errorThrown){
+            appModel.jqXHRfail.apply(this,arguments); 
+          });
+        };
+        var cancelMsg = 'Cancel reserved, allocated copy well volumes and ' +
+          'remove plating assignments?';
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: function(){
+              appModel.showOkCommentForm({
+                ok: processClick,
+                title: cancelMsg,
+                cancelText: 'No',
+                okText: 'Yes'
+              });
+            }
+          });
+        }else{
+          appModel.showOkCommentForm({
+            ok: processClick,
+            title: cancelMsg,
+            cancelText: 'No',
+            okText: 'Yes'
+          });
+        }
+      });
       
-      var schemaUrl = [
-        self.model.resource.apiUri,self.model.key,'lab_cherry_pick',
-        'schema'].join('/');
-      appModel.getResourceFromUrl(schemaUrl, createLcpView);
-    }, // end setLabCherryPicks
+      showUnfulfilledWellsControl.click(function(e){
+        function processClick(){
+          if (e.target.checked) {
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash['show_unfulfilled'] = 'true';
+            view.listModel.set('search',searchHash);
+          } else {
+            var searchHash = _.clone(view.listModel.get('search'));
+            delete searchHash['show_unfulfilled'];
+            view.listModel.set('search',searchHash);
+          }
+        };
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
+      
+      showCopyWellsControl.click(function(e) {
+        function processClick(){
+          if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(
+              ['selected', 'source_copy_well_volume','volume_approved',
+               'source_copy_usage_type','source_plate_status'],includes);
+            view.listModel.set({ includes: includes}, {reset: false});
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash['show_copy_wells'] = 'true';
+
+            showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash['show_available_and_retired_copy_wells'];
+            view.listModel.set('search',searchHash);
+            
+//            if (self.model.get('number_plates') != 0){
+//              appModel.showModalMessage({
+//                title: 'Note:',
+//                body: 'Selections can not be changed unless plating '+
+//                  'assignments are deallocated'
+//              });
+//            }
+          } else {
+            // make sure unset
+            var searchHash = _.clone(view.listModel.get('search'));
+            if (!_.has(searchHash,'show_copy_wells')) {
+              return;
+            }
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.without(
+              includes,
+              'selected','source_copy_well_volume','volume_approved',
+              'source_copy_usage_type','source_plate_status');
+            view.listModel.set({ includes: includes}, {reset: false});
+            if (_.has(searchHash,'show_copy_wells')) {
+              delete searchHash['show_copy_wells'];
+              view.listModel.set('search',searchHash);
+            }
+          }
+          // See note above about removing the 'selected' backgrid th class
+          view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
+          view.collection.trigger('show_copy_wells');
+        };
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
+
+      showAllCopyWellsControl.click(function(e) {
+        function processClick(){
+          if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(
+              ['selected', 'source_copy_well_volume','volume_approved',
+               'source_copy_usage_type','source_plate_status'],includes);
+            view.listModel.set({ includes: includes}, {reset: false});
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash['show_available_and_retired_copy_wells'] = 'true';
+            
+            showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash['show_copy_wells'];
+            view.listModel.set('search',searchHash);
+//            if (self.model.get('number_plates') != 0){
+//              appModel.showModalMessage({
+//                title: 'Note:',
+//                body: 'Selections can not be changed unless plating '+
+//                  'assignments are deallocated'
+//              });
+//            }
+          } else {
+            var searchHash = _.clone(view.listModel.get('search'));
+            if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
+              return;
+            }
+            // Make sure unset
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.without(
+              includes,
+              'selected','source_copy_well_volume','volume_approved',
+              'source_copy_usage_type','source_plate_status');
+            view.listModel.set({ includes: includes}, {reset: false});
+            if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
+              delete searchHash['show_available_and_retired_copy_wells'];
+              view.listModel.set('search',searchHash);
+            }
+          }
+          // See note above about removing the 'selected' backgrid th class
+          view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
+          view.collection.trigger('show_available_and_retired_copy_wells');
+          
+        };
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
+
+      return view;
+    }, // createLcpView
+    
     
     /**
      * Screener Cherry Picks view
@@ -1579,6 +1822,7 @@ define([
         type: TextArea2,
         template: appModel._field_template
       };
+      
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs) {
@@ -1601,6 +1845,40 @@ define([
             'style="width: 3em;">ok</input>',
           ].join(''));
           
+          var helpLink = $('<a >&nbsp;?</a>');
+          form.$el.find('[key="form-group-well_search"]').find('label').append(helpLink);
+          helpLink.click(function(e){
+            e.preventDefault();
+            var bodyMessage = [
+              'By Well ID, e.g.:',
+              '02091:B15',
+              '2091:B15',
+              '',
+              'Enter multiple wells, separated by newlines, or by commas:',
+              '02091:B15',
+              '02091:B16',
+              '02091:L19',
+              'or',
+              '02091:B15, 02091:B16, 02091:L19',
+              '',
+              'By Plate Number, followed by Well Name(s), e.g.:',
+              '2091 B15',
+              '2091 B16',
+              '2091 L19',
+              'or',
+              '2091 B15 B16 L19',
+              'or',
+              '2091 B15,B16,L19',
+              'or',
+              '2091:B15 B16 L19',
+              'or',
+              '2091:B15,B16,L19'
+            ];
+            appModel.showModalMessage({
+              title: 'Search for wells using patterns',
+              body: bodyMessage.join('<br/>')
+            });
+          });
           form.$el.find('[ type="submit" ]').click(function(e){
             e.preventDefault();
             var errors = form.commit({ validate: true }); 
@@ -1611,13 +1889,11 @@ define([
               form.$el.find('#well_search').removeClass(self.errorClass);
             }
             
-//            var modelForSubmit = new Backbone.Model(
-//              self.model.pick(['cherry_pick_request_id'])
-//            );
-//            modelForSubmit.set('id', self.model.get('id'));
-//            modelForSubmit.resource = self.model.resource;
-//            modelForSubmit.urlRoot = self.model.resource.apiUri;
-//            modelForSubmit.set('screener_cherry_picks', form.getValue('well_search'));
+            var search_value = form.getValue('well_search');
+            console.log('search_value', search_value);
+            search_value = search_value.split(/\n+/);
+            console.log('search_value', search_value);
+            
             
             var url = [self.model.resource.apiUri,self.model.key].join('/');
             
@@ -1625,7 +1901,7 @@ define([
               if (! _.isUndefined(override)){
                 url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
               }
-              data = { 'screener_cherry_picks': form.getValue('well_search') };
+              data = { 'screener_cherry_picks': search_value };
               var headers = {}; // can be used to send a comment
               $.ajax({
                 url: url,     
@@ -1694,13 +1970,19 @@ define([
                  'screener_cherry_pick'].join('/');
       
       var extraControls = [];
+      var checkboxDiv = $([
+          '<div id="show_input_group" class="input-group"></div>'
+        ].join(''));
       var showOtherReagentsControl = $([
           '<label class="checkbox-inline" ',
+          ' style="margin-left: 10px;" ',
           ' title="Show other reagents with the same vendor ID" >',
-          '  <input type="checkbox">showOtherReagents',
+          '  <input type="checkbox">Other Reagents',
           '</label>'
         ].join(''));
-      extraControls.push(showOtherReagentsControl);
+      checkboxDiv.append(showOtherReagentsControl);
+      checkboxDiv.prepend('<label for="show_input_group">show</label>');
+      extraControls.push(checkboxDiv);
 
       var deleteScpsButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
@@ -1732,6 +2014,13 @@ define([
           'Save Selections</a>'
         ].join(''));
       extraControls.push(setSelectedButton);
+      var cancelSelectedButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'style="display: none; " ',
+          'role="button" id="cancel_selected_button" href="#">',
+          'Cancel Selections</a>'
+        ].join(''));
+      extraControls.push(cancelSelectedButton);
       
       if(self.model.get('total_number_lcps') == 0){
         deleteScpsButton.show();
@@ -1742,15 +2031,13 @@ define([
           setLcpsButton.show();
         }
       } else {
-//        if (self.model.get('number_plates') == 0){
-//          deleteLcpsButton.show();
-//        }
       }
       if(self.model.get('has_alternate_screener_cherry_pick_selections') === true){
         schemaResult['fields']['searched_well_id']['visibility'] = ['l','d'];
         schemaResult['fields']['selected']['visibility'] = ['l','d'];
-      }      
+      }
 
+      // Track user SCP selections
       var Collection = Backbone.Collection.extend({
         // explicitly define the id so that collection compare & equals work
         modelId: function(attrs) {
@@ -1759,6 +2046,7 @@ define([
       })
       var selectionUpdateCollection = new Collection();
 
+      // Custom Selection Row with styling
       var SelectedScpRow = Backgrid.Row.extend({
         initialize: function () {
           var self = this;
@@ -1799,7 +2087,7 @@ define([
           return this;
         }
       });
-
+      // Set SCP List View
       var ListViewSelect = ListView.extend({
         afterRender: function(){
           ListViewSelect.__super__.afterRender.apply(this, arguments);
@@ -1828,6 +2116,43 @@ define([
           '<H4 id="title">Screener Cherry Picks for : ' + self.model.key + '</H4>');
       });
       
+      selectionUpdateCollection.on('update reset', function(){
+        if (!selectionUpdateCollection.isEmpty()){
+          appModel.setPagePending(null, 'Selection updates are unsaved, continue anyway?');
+          cancelSelectedButton.show();
+          setSelectedButton.show();
+          deleteScpsButton.hide();
+          setLcpsButton.hide();
+          setDuplexLcpsButton.hide();
+        } else {
+          cancelSelectedButton.hide();
+          setSelectedButton.hide();
+
+          if(self.model.get('total_number_lcps') == 0){
+            deleteScpsButton.show();
+            if(self.model.get('has_pool_screener_cherry_picks') === true){
+              setDuplexLcpsButton.show();
+            } else {
+              setLcpsButton.show();
+            }
+          }
+          view.$el.find('td').removeClass('edited');
+          appModel.clearPagePending();
+        }
+      });
+
+      cancelSelectedButton.click(function(e){
+        e.preventDefault();
+        console.log('cancel selection updates', selectionUpdateCollection);
+        selectionUpdateCollection.each(function(model){
+          var retrievedModel = view.collection.get(model);
+          if (!_.isUndefined(retrievedModel)){
+              retrievedModel.set('selected', !model.get('selected'));
+          }
+        });
+        selectionUpdateCollection.reset(null);
+      });
+
       deleteScpsButton.click(function(e) {
         e.preventDefault();
         var modelForSubmit = new Backbone.Model(
@@ -1854,7 +2179,6 @@ define([
           appModel.jqXHRfail.apply(this,arguments); 
         });
       });
-      
 
       // submit as Lab Cherry Picks
       setLcpsButton.click(function(e){
@@ -1873,11 +2197,9 @@ define([
             headers: headers
           }).done(function(data, textStatus, jqXHR){
             console.log('submitted', arguments);
-
             appModel.showConnectionResult(data, {
               title: 'Set Lab Cherry Picks'
             });
-
             self.model.fetch({ reset: true }).done(function(){
               self.uriStack = ['labcherrypicks'];
               // remove the child view before calling render, to prevent
@@ -1921,10 +2243,10 @@ define([
         });
       });
 
-      // manage selections if lcps not set
+      // manage SCP selections if lcps not set
       if(self.model.get('total_number_lcps') == 0){
       
-        // Manage selection updates
+        // Manage SCP selection updates
         view.collection.on('add', function(model){
           // cache the 'selected' property for update management
           model.set(
@@ -1933,7 +2255,6 @@ define([
           );
         });
         view.collection.on('change', function(model){
-          console.log('collection changed', arguments);
           if (!model.has('selected_on_server')){
             // block changes caused by changing fields or other actions that 
             // happen before the selected_on_server flag is set
@@ -1966,7 +2287,6 @@ define([
         
         // Make sure that on reset actions (page changes), that selections are persisted
         view.collection.on('reset', function(){
-          console.log('reset event...');
           // Note: on "reset" the "add" methods aren't being called
           view.collection.each(function(model){
             model.set(
@@ -1991,21 +2311,30 @@ define([
           appModel.error('No changes to save');
           return;
         }
-        selectionUpdateCollection.url = view.collection.url;
-        selectionUpdateCollection.sync('patch', selectionUpdateCollection)
-          .done(function(data, textStatus, jqXHR){
-            console.log('success', data);
-            appModel.showConnectionResult(data, {
-              title: 'Screener Cherry Pick selection updates'
+        function processClick(formValues){
+          console.log('form values', formValues);
+          var headers = {};
+          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+          selectionUpdateCollection.url = view.collection.url;
+          selectionUpdateCollection.sync(
+            'patch', selectionUpdateCollection, { headers: headers })
+            .done(function(data, textStatus, jqXHR){
+              appModel.showConnectionResult(data, {
+                title: 'Screener Cherry Pick selection updates'
+              });
+              setSelectedButton.hide();
+              selectionUpdateCollection.reset(null); // clear
+              view.collection.fetch({ reset: true });
+  
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              appModel.jqXHRfail.apply(this,arguments); 
             });
-            setSelectedButton.hide();
-            selectionUpdateCollection.reset(null); // clear
-            view.collection.fetch({ reset: true });
-
-          }).fail(function(jqXHR, textStatus, errorThrown){
-            console.log('fail', arguments);
-            appModel.jqXHRfail.apply(this,arguments); 
-          });
+        };
+        appModel.showOkCommentForm({
+          ok: processClick,
+          title: 'Save Screener Cherry Pick selections?'
+        });
+        
       });
       
       // Display or hide other reagents

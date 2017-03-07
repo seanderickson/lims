@@ -206,6 +206,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
 //        var userOptions = appModel.getAdminUserOptions();
 //        fields['performed_by_username']['choices'] = (
 //            [{ val: '', label: ''}].concat(userOptions));
+        
+        // TODO: replace with appModel.get_screen_members
         var fields = self.model.resource.fields;
         var users = appModel.get('users');
         var userOptions = [

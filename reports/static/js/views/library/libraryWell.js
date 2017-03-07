@@ -295,7 +295,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           appModel.error('No confirmed positive values in the response');
           return;
         }
-        var ColoredConfirmmationCell = Backgrid.Cell.extend({
+        var ColoredConfirmationCell = Backgrid.Cell.extend({
           className: 'text-wrap-cell',
           render: function(){
             this.$el.empty();
@@ -339,7 +339,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               'description' : 'Screen',
               'order': 1,
               'sortable': true,
-              'cell': ColoredConfirmmationCell
+              'cell': ColoredConfirmationCell
             })
         ];
         
@@ -354,7 +354,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               'description' : 'Duplex Well Data',
               'order': 1,
               'sortable': true,
-              'cell': ColoredConfirmmationCell
+              'cell': ColoredConfirmationCell
             })
           );
         });

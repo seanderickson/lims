@@ -228,8 +228,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getPlateLocationTree: function(callBack, options){
@@ -264,8 +265,9 @@ define([
         }, options);
       }else{
         if (callBack) callBack(locationHash);
+        else return locationHash;
       }
-      return locationHash;
+//      return locationHash;
     },
 
     getScreenOptions: function(callBack){
@@ -285,8 +287,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getScreeningLibraryOptions: function(screen_type, callBack){
@@ -314,8 +317,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getPlatedLibraryOptions: function(callBack){
@@ -339,17 +343,26 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     /**
      * Generate a list of "options" suitable for use in a user multiselect.
      * [ { val: username, label: name:username }, ... ]
      */
-    getAdminUserOptions: function(callBack){
+    getAdminUserOptions: function(callBack, resource){
       var self = this;
       var prop = 'adminUserOptions';
+      // Note: check for the "empty" object passed when the caller is JQuery.queue function call
+      if (!_.isString(resource)){
+        resource = null;
+      }
+      
+      if (!_.isEmpty(resource)){
+        prop += '-' + resource;
+      }
       var options = this.get(prop);
       if(!options){
         this.getAdminUsers(function(users){
@@ -358,14 +371,15 @@ define([
             var username = user.get('username');
             var name = user.get('name');
             options.push({ val: username, label: name + ':' + username });
-          });
+          }, resource);
           self.set(prop,options);
           if (callBack) callBack(options);
-        });
+        }, resource);
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
     
     getUserOptions: function(callBack){
@@ -385,8 +399,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
     
     getPrincipalInvestigatorOptions: function(callBack){
@@ -406,8 +421,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getUserGroupOptions: function(callBack){
@@ -426,8 +442,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getPermissionsOptions: function(){
@@ -529,16 +546,36 @@ define([
         callback );
     },
     
-    getAdminUsers: function(callback) {
+    /**
+     * @param resource (optional) to filter for users having write permission 
+     * on the resource
+     */
+    getAdminUsers: function(callback, resource) {
+      var self = this;
+      function filterCallback(users){
+        if (!_.isEmpty(resource)){
+          var filteredUsers = new Backbone.Collection(
+            users.filter(function(user){
+              return self._permissionMatch(
+                resource, 'write', user.get('all_permissions'));
+            })
+          );
+          callback(filteredUsers);
+        } else {
+          callback(users);
+        }
+      };
+      
       return this.getCachedResourceCollection(
         'adminUsers', 
         this.dbApiUri + '/screensaveruser', 
         { 
           is_staff__eq: true,
-          exact_fields: ['username','name','email'], 
-          order_by: ['name']
+          exact_fields: ['username','name','email', 'all_permissions'], 
+          order_by: ['name'], 
+          
         }, 
-        callback );
+        filterCallback );
     },
 
     getUserGroups: function(callback) {
@@ -930,6 +967,29 @@ define([
       var self = this;
       if(self.getCurrentUser().is_superuser) return true;
       
+//      var r_perm = 'resource/'+ resource;
+//      if( permission=='edit'){
+//        permission = 'write';
+//      }
+//      if(!_.isUndefined(permission) && permission == 'write' ){
+//        // only check for 'write' permission; write implies read
+//        r_perm += '/'+ permission;
+//      }// otherwise, will return true if user has either permission
+//      var match = _.find(
+//          self.getCurrentUser().all_permissions, 
+//          function(p){
+//            if(p.indexOf(r_perm) > -1 ) {
+//              return true;
+//            }
+//          });
+//      console.log('permission', r_perm, !_.isUndefined(match));
+//      return !_.isUndefined(match);
+      return self._permissionMatch(
+        resource, permission, self.getCurrentUser().all_permissions);
+    
+    },
+    
+    _permissionMatch: function(resource, permission, permissions_to_search) {
       var r_perm = 'resource/'+ resource;
       if( permission=='edit'){
         permission = 'write';
@@ -939,7 +999,7 @@ define([
         r_perm += '/'+ permission;
       }// otherwise, will return true if user has either permission
       var match = _.find(
-          self.getCurrentUser().all_permissions, 
+          permissions_to_search, 
           function(p){
             if(p.indexOf(r_perm) > -1 ) {
               return true;
@@ -948,7 +1008,6 @@ define([
       console.log('permission', r_perm, !_.isUndefined(match));
       return !_.isUndefined(match);
     },
-    
     
     /**
      * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
@@ -1120,7 +1179,9 @@ define([
         }
         this.showModalMessage(
           _.extend({}, options, {
-            body: bodyMsg
+            body: bodyMsg,
+            buttons_on_top: true,
+            buttons_on_bottom: false
           }));
       }else{
         console.log('Warn: data should have been parsed as json]', data);
@@ -1256,136 +1317,58 @@ define([
 //      self.unset('messages');
     },
 
-    
-    
-    /**
-     * Display form with a comment field and "ok" or "cancel".
-     * if "ok" is selected, comment form values are returned to the callback.
-     * FIXME: how is this different than showSaveWithComments?
-     */
-    showOkCommentForm: function(title, okCallback){
 
+    showOkCommentForm: function(options){
       var self = this;
-      
-      var form_template = [
-         '<form  class="form-horizontal container"  autocomplete="off" >',
-         "<div data-fields='comments'/>",
-         "</form>"];
-      var altFieldTemplate =  _.template('\
-        <div class="form-group" > \
-            <label class="control-label" for="<%= editorId %>"><%= title %></label>\
-            <div class="" >\
-              <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
-              <div data-error class="text-danger" ></div>\
-              <div><%= help %></div>\
-            </div> \
-          </div>\
-        ');
-      // Build the form model
-      var FormFields = Backbone.Model.extend({
-        schema: {
-          comments: {
-            title: 'Comments',
-            key: 'comments',
-            type: 'TextArea',
-            editorClass: 'input-full',
-            validators: ['required'], 
-            template: altFieldTemplate
-          }
+      var defaultOptions = {
+        ok: function(){},
+        okText: 'Ok',
+        cancelText: 'Cancel and return to page',
+        title: 'Save changes?',
+        requireComment: false
+      };
+      var options = _.extend({}, defaultOptions, options);
+      var schema = {
+        comments: {
+          title: 'Comments',
+          key: 'comments',
+          type: 'TextArea',
+          editorClass: 'input-full',
+          template: self._field_template //altFieldTemplate
         }
+      };
+      
+      if (options.requireComment == true) {
+        schema['comments']['validators'] =['required'];
+      }
+      var FormFields = Backbone.Model.extend({
+        schema: schema
       });
       var formFields = new FormFields();
       var form = new Backbone.Form({
         model: formFields,
-        template: _.template(form_template.join(''))
+        template: self._form_template //_.template(form_template.join(''))
       });
       var _form_el = form.render().el;
-
-      self.showModal({
-        okText: 'ok',
-        ok: function(e){
-          e.preventDefault();
-          
-          self.clearPagePending();
-          
-          var errors = form.commit();
-          if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
-            return false;
-          }else{
-            okCallback(form.getValue());            
-          }
-        },
-        view: _form_el,
-        title: title
-      });
       
-    },    
-    
-    /**
-     * Display a "Save Changes?" form with a comment field.
-     * if "ok" is selected, comment form values are returned to the callback.
-     * FIXME: how is this different than showOkCommentForm?
-     */
-    showSaveWithComments: function(okCallback){
-
-      var self = this;
-      
-      var form_template = [
-         '<form  class="form-horizontal container"  autocomplete="off" >',
-         "<div data-fields='comments'/>",
-         "</form>"];
-      var altFieldTemplate =  _.template('\
-        <div class="form-group" > \
-            <label class="control-label" for="<%= editorId %>"><%= title %></label>\
-            <div class="" >\
-              <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
-              <div data-error class="text-danger" ></div>\
-              <div><%= help %></div>\
-            </div> \
-          </div>\
-        ');
-      // Build the form model
-      var FormFields = Backbone.Model.extend({
-        schema: {
-          comments: {
-            title: 'Comments',
-            key: 'comments',
-            type: 'TextArea',
-            editorClass: 'input-full',
-            validators: ['required'], 
-            template: altFieldTemplate
-          }
+      if (!_.isEmpty(options.body)){
+        _form_el.prepend(options.body);
+      }
+      options.view = _form_el;
+      var okCallback = options.ok;
+      options.ok = function(e){
+        e.preventDefault();
+        self.clearPagePending();
+        var errors = form.commit();
+        if(!_.isEmpty(errors)){
+          console.log('form errors, abort submit: ' + JSON.stringify(errors));
+          return false;
+        }else{
+          okCallback(form.getValue());            
         }
-      });
-      var formFields = new FormFields();
-      var form = new Backbone.Form({
-        model: formFields,
-        template: _.template(form_template.join(''))
-      });
-      var _form_el = form.render().el;
-
-      self.showModal({
-        okText: 'ok',
-        ok: function(e){
-          e.preventDefault();
-          
-          self.clearPagePending();
-          
-          var errors = form.commit();
-          if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
-            return false;
-          }else{
-            okCallback(form.getValue());            
-          }
-        },
-        view: _form_el,
-        title: 'Save changes?'  
-      });
-      
+      };
+      self.showModal(options);
     },
-    
     
     /** Add a vocabulary term to the editForm & to the server:
      * @param vocabulary_scope_ref
@@ -1928,15 +1911,14 @@ define([
      "</div>"].join(''));      
   appState._field_template = _.template([
     '<div class="form-group" key="form-group-<%=key%>" >',
-    '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+    '    <label class="control-label " for="<%= editorId %>" title="<%= help %>" ><%= title %></label>',
     '    <div class="" >',
     '      <div data-editor key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
     '      <div data-error class="text-danger" ></div>',
-    '      <div><%= help %></div>',
+//    '      <div><%= help %></div>',
     '    </div>',
     '  </div>',
   ].join(''));
-  
   appState._alt_checkbox_template =  _.template('\
     <div class="form-group" style="margin-bottom: 0px;" > \
       <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
@@ -1945,29 +1927,32 @@ define([
     </div>\
   ');
   
-  
   appState.schemaClass = new SchemaClass(); // make accessible to outside world
-  
   appState.resources = {};   // TO be retrieved from the server 
   
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
-  appState.API_RESULT_META = API_RESULT_META;
-  appState.API_RESULT_DATA = API_RESULT_DATA;
-  appState.API_MSG_RESULT = API_MSG_RESULT;
-
   appState.DEBUG = DEBUG;
   appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
   appState.SEARCH_DELIMITER = SEARCH_DELIMITER;
   appState.HEADER_APILOG_COMMENT = 'X-APILOG-COMMENT';
   appState.MAX_SEARCH_ARRAY_SIZE = 100;
+
+  // Constants shared with the API
+  // FIXME: Get shared constants from shared API_CONSTANTS file
+  appState.API_RESULT_META = API_RESULT_META;
+  appState.API_RESULT_DATA = API_RESULT_DATA;
+  appState.API_MSG_RESULT = API_MSG_RESULT;
+
+  appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
+  appState.API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero';
+  appState.API_PARAM_OVERRIDE = 'override';
   appState.MSG_SEARCH_SIZE_EXCEEDED = 
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';
-  appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
-  appState.API_PARAM_OVERRIDE = 'override';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
+
   Iccbl.appModel = appState;
   
   return appState;

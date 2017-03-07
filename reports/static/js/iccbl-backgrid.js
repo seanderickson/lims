@@ -560,6 +560,7 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
 });
 
 var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
+  
   initialize: function(){
     BooleanCell.__super__.initialize.apply(this, arguments);
     var self = this;
@@ -569,9 +570,21 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
         self.$el.addClass('edited');
       }
     });
-  }  
+  },
   
-})
+  // Set up to toggle the checkbox whenever the TD is clicked
+  events: {
+    'click': 'cellClicked'
+  },
+  
+  cellClicked: function(){
+    console.log('clicked...');
+    var model = this.model, column = this.column;
+    var checked = model.get(column.get("name"));
+    model.set(column.get("name"), !checked);
+  }
+});
+  
 
 var StringFormatter = Iccbl.StringFormatter = function () {};
 StringFormatter.prototype = new Backgrid.StringFormatter();
@@ -2886,7 +2899,10 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         }
       }else{
         var searchVal = searchHash[searchTerm];
-        _.each(searchVal.split(','), function(choice){
+        if (!_.isArray(searchVal)){
+          searchVal = searchVal.split(',');
+        }
+        _.each(searchVal, function(choice){
           self.setValue(choice, true);
         });
       }
@@ -3937,7 +3953,6 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
  */
 var createBackgridColumn = Iccbl.createBackgridColumn = 
   function(key, prop, _orderStack, optionalHeaderCell ){
-  
   var orderStack = _orderStack || [];
   var column = {};
   var visible = _.has(prop, 'visibility') && 
@@ -3958,6 +3973,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   }
   
   if (_.has(prop, 'backgridCellType')){
+    console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
     backgridCellType = prop.backgridCellType;
   } else {
     if(_.has(typeMap,display_type)){

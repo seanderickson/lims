@@ -150,6 +150,31 @@ def put(url, request_or_session, file, headers=None ):
                             % (r.status_code, r.headers, r.content))
         return r
     
+def post(url, request_or_session, file, headers=None ):
+
+    with open(file) as f:
+        
+        if headers == None:
+            headers = {}
+        headers['Referer']=url
+        headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
+        if DEBUG:
+            sys.stderr.write('csrftoken: %s\n' % request_or_session.cookies['csrftoken'])
+            sys.stderr.write('headers: %s\n' % str((headers)))
+        
+        r = Request('POST', url,
+                    headers=headers,
+                    data=f.read())
+        
+        prepped = request_or_session.prepare_request(r)
+    
+        r = request_or_session.send(prepped)        
+            
+        if r.status_code not in [200,202]:
+            raise Exception("Error: status: %s\n%s\n%s" 
+                            % (r.status_code, r.headers, r.content))
+        return r
+    
 def patch(url,request_or_session,file, headers=None ):
     
     with open(file) as f:
@@ -183,7 +208,7 @@ parser.add_argument('-u', '--username', help='username', required=True)
 parser.add_argument('-p', '--password', help='password', required=False)
 parser.add_argument('-f', '--file', help='file', required=False)
 parser.add_argument('-a', '--action', help='HTTP action', required=True,
-                    choices=['GET','PUT','PATCH','DELETE'])
+                    choices=['GET','POST','PUT','PATCH','DELETE'])
 parser.add_argument('--header', action='append')
 parser.add_argument('-v', '--verbose', dest='verbose', action='count',
                 help="Increase verbosity (specify multiple times for more)")    
@@ -236,6 +261,9 @@ if __name__ == "__main__":
         print r.content
     elif action == 'PUT':
         r = put(url,s,args.file,headers)        
+        print r.content
+    elif action == 'POST':
+        r = post(url,s,args.file,headers)        
         print r.content
     else:
         raise Exception("unknown action %s" % action)

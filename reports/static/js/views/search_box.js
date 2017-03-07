@@ -376,7 +376,7 @@ define([
                   if (! match) return null;
                   var plate_number = match[1];
                   if (plate_number.length < 5){
-                    var pad = "00000"
+                    var pad = "00000";
                     (pad+plate_number).substring(plate_number.length);
                   }
                   var well_row = match[2].toUpperCase();

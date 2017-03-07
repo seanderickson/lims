@@ -705,13 +705,11 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         Return a deserialized list of dicts
         '''
+        logger.info('_get_list_response: %r, %r', 
+            self._meta.resource_name, {k:v for k,v in kwargs.items() if k !='schema'})
         includes = kwargs.pop('includes', '*')
         try:
-            logger.debug(
-                'get internal list response %s, %s ', 
-                self._meta.resource_name, kwargs)
             kwargs.setdefault('limit', 0)
-#             self.use_cache = False
             response = self.get_list(
                 request,
                 format='json',
@@ -719,7 +717,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 **kwargs)
             logger.info('_get_list_response response: %r', response)
             _data = self.get_serializer().deserialize(
-                LimsSerializer.get_content(response), response['Content-Type'])
+                LimsSerializer.get_content(response), JSON_MIMETYPE)
 #             self.use_cache = True
             if self._meta.collection_name in _data:
                 _data = _data[self._meta.collection_name]
@@ -749,7 +747,7 @@ class SqlAlchemyResource(IccblBaseResource):
             _data = []
             if response.status_code == 200:
                 _data = self._meta.serializer.deserialize(
-                    LimsSerializer.get_content(response), response['Content-Type'])
+                    LimsSerializer.get_content(response), JSON_MIMETYPE)
             else:
                 logger.debug(
                     'no data found for %r, %r', self._meta.resource_name, kwargs)
@@ -759,10 +757,8 @@ class SqlAlchemyResource(IccblBaseResource):
         
     #@un_cache
     def _get_detail_response_internal(self, **kwargs):
-        logger.debug('kwargs: %r', kwargs)
-#         request = HttpRequest()
         request = self.request_factory.generic('GET', '.', 
-            data={ 'CONTENT_TYPE': JSON_MIMETYPE },
+            data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
         class User:
             is_superuser = True
@@ -775,12 +771,12 @@ class SqlAlchemyResource(IccblBaseResource):
 
     # @un_cache
     def _get_list_response_internal(self, **kwargs):
-        logger.info('kwargs: %r', kwargs)
         
         request = self.request_factory.generic('GET', '.', 
-            data={ 'CONTENT_TYPE': JSON_MIMETYPE },
+            data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
         content_type = self.get_serializer().get_accept_content_type(request)
+        logger.info('_get_list_response_internal: %r', content_type)
 #         request = HttpRequest(content_type=JSON_MIMETYPE)
         class User:
             is_superuser = True
@@ -929,7 +925,7 @@ class SqlAlchemyResource(IccblBaseResource):
         
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
-        logger.info('stream_response_from_statement: %r', self._meta.resource_name )
+        logger.info('stream_response_from_statement: %r %r', self._meta.resource_name, format )
         temp_param_hash = param_hash.copy()
         if 'schema' in temp_param_hash:
             del temp_param_hash['schema']
@@ -975,7 +971,8 @@ class SqlAlchemyResource(IccblBaseResource):
                     str(count_stmt.compile(
                         dialect=postgresql.dialect(), 
                         compile_kwargs={"literal_binds": True})))
-            
+           
+            logger.info('format: %r', format) 
             if format is not None:
                 content_type = self.get_serializer().get_content_type_for_format(format)
             else:

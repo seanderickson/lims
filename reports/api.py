@@ -597,7 +597,7 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log[id_param] = id_vals
         try:
             logger.debug('get original state, for logging... %r', kwargs_for_log)
-            original_data = self._get_list_response(request,**kwargs_for_log)
+            original_data = self._get_list_response_internal(**kwargs_for_log)
             logger.info('original state retrieved: %d', len(original_data))
         except Exception as e:
             logger.exception('original state not obtained')
@@ -621,7 +621,7 @@ class ApiResource(SqlAlchemyResource):
             
         logger.info('Get new state, for logging: %r...',
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
-        new_data = self._get_list_response(request,**kwargs_for_log)
+        new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
         logs = self.log_patches(request, original_data,new_data,**kwargs)
         logger.info('patch logs created.')
@@ -697,7 +697,7 @@ class ApiResource(SqlAlchemyResource):
         try:
             logger.info('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response(request,**kwargs_for_log)
+            original_data = self._get_list_response_internal(**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
@@ -735,7 +735,7 @@ class ApiResource(SqlAlchemyResource):
         try:
             logger.info('get new state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            new_data = self._get_list_response(request,**kwargs_for_log)
+            new_data = self._get_list_response_internal(**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
             new_data = []
@@ -818,7 +818,7 @@ class ApiResource(SqlAlchemyResource):
         try:
             logger.debug('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response(request,**kwargs_for_log)
+            original_data = self._get_list_response_internal(**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
@@ -846,7 +846,7 @@ class ApiResource(SqlAlchemyResource):
                     idval = getattr(new_obj, idkey)
                     ids.add(idval)
             kwargs_for_log[id_param] = ids
-        new_data = self._get_list_response(request,**kwargs_for_log)
+        new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.debug('patch list done, new data: %d', len(new_data))
 
         logs = self.log_patches(request, original_data,new_data,**kwargs)
@@ -1083,7 +1083,7 @@ class ApiResource(SqlAlchemyResource):
         try:
             logger.info('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response(request,**kwargs_for_log)
+            original_data = self._get_list_response_internal(**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
@@ -1101,7 +1101,7 @@ class ApiResource(SqlAlchemyResource):
                 kwargs_for_log['%s' % id_field] = val
 
         # get new state, for logging
-        new_data = self._get_list_response(request,**kwargs_for_log)
+        new_data = self._get_list_response_internal(**kwargs_for_log)
         self.log_patches(request, original_data,new_data,**kwargs)
         
         # TODO: add "Result" data to meta section, see patch_list
@@ -2337,10 +2337,10 @@ class FieldResource(ApiResource):
             
             if kwargs.get('meta', None):
                 temp = kwargs['meta']
-                logger.info('meta found in kwargs: %r', temp)
+                logger.debug('meta found in kwargs: %r', temp)
                 temp.update(meta)
                 meta = temp
-                logger.info('meta: %r', meta)
+                logger.debug('meta: %r', meta)
             logger.debug('meta: %r', meta)
             response_hash = { 
                 'meta': meta, 

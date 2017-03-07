@@ -1105,6 +1105,7 @@ class LibraryCopyPlateResource(DbApiResource):
             _apilog = self.bridge['reports_apilog']
             _diff = self.bridge['reports_logdiff']
             _p = self.bridge['plate']
+            _well = self.bridge['well']
             _pl = self.bridge['plate_location']
             _c = self.bridge['copy']
             _l = self.bridge['library']
@@ -1360,7 +1361,7 @@ class LibraryCopyPlateResource(DbApiResource):
             # Find all of the plates
             kwargs['search_data'] = deserialized.pop('search_data', {})
             kwargs['includes'] = ['plate_id']
-            original_data = self._get_list_response(request, **kwargs)
+            original_data = self._get_list_response_internal(**kwargs)
             
             plate_ids = [x['plate_id'] for x in original_data]
             query = Plate.objects.all().filter(plate_id__in=plate_ids)
@@ -1379,7 +1380,7 @@ class LibraryCopyPlateResource(DbApiResource):
                     
             logger.info('batch update complete, logging...')
             
-            new_data = self._get_list_response(request, **kwargs)
+            new_data = self._get_list_response_internal(**kwargs)
             
             parent_log = self.make_log(request)
             parent_log.key = self._meta.resource_name
@@ -1422,7 +1423,7 @@ class LibraryCopyPlateResource(DbApiResource):
     
             # Find all of the plates
             kwargs['search_data'] = deserialized.pop('search_data', {})
-            original_data = self._get_list_response(request, **kwargs)
+            original_data = self._get_list_response_internal(**kwargs)
             
             if not original_data:
                 raise HttpNotFound
@@ -6927,7 +6928,7 @@ class ScreenerCherryPickResource(DbApiResource):
         original_cpr_data = self.get_cpr_resource()._get_detail_response_internal(**{
             'cherry_pick_request_id': cpr.cherry_pick_request_id })
         
-        original_data = self._get_list_response(request, **{
+        original_data = self._get_list_response_internal(**{
             'cherry_pick_request_id': kwargs['cherry_pick_request_id'],
             API_PARAM_SHOW_OTHER_REAGENTS: True })
         if not original_data: 
@@ -9426,7 +9427,8 @@ class PublicationResource(DbApiResource):
                 original_data = self._get_detail_response(request,**kwargs_for_log)
             except Exception as e:
                 logger.exception('original state not obtained')
-                original_data = {}
+                raise
+#                 original_data = {}
 
         publication.delete()
 
@@ -11508,8 +11510,8 @@ class LibraryScreeningResource(ActivityResource):
         plate_search.extend([{'copy_id': k, 'plate_number__range': v} 
             for k,v in existing_ranges.items()])
         logger.info('plate_search: %r', plate_search)    
-        _original_plate_data = self.get_plate_resource()._get_list_response(
-            request, search_data=plate_search)
+        _original_plate_data = self.get_plate_resource()._get_list_response_internal(
+            search_data=plate_search)
 
         # Find extant plates, find and remove deleted assay plates        
         extant_plates = set()
@@ -11636,8 +11638,8 @@ class LibraryScreeningResource(ActivityResource):
                     ', plate: %r' % plate)
 
         # Fetch the new Plate state: log plate volume changes, screening count
-        _new_plate_data = self.get_plate_resource()._get_list_response(
-            request, search_data=plate_search)
+        _new_plate_data = self.get_plate_resource()._get_list_response_internal(
+            search_data=plate_search)
         plate_logs = self.get_plate_resource().log_patches(
             request, _original_plate_data, _new_plate_data,
             parent_log=ls_log, api_action=API_ACTION_PATCH)
@@ -15332,7 +15334,7 @@ class WellResource(DbApiResource):
         # NOTE: do not consider "undefined" wells for diff logs (create actions 
         # will not be logged.
         kwargs_for_log['library_well_type__ne'] = 'undefined'
-        original_data = self._get_list_response(request, **kwargs_for_log)
+        original_data = self._get_list_response_internal(**kwargs_for_log)
 
         prev_version = library.version_number
         if library.version_number:
@@ -15440,7 +15442,7 @@ class WellResource(DbApiResource):
         library_log.save()
                  
         logger.info('get new wells state, for logging...')
-        new_data = self._get_list_response(request, **kwargs_for_log)
+        new_data = self._get_list_response_internal(**kwargs_for_log)
          
         original_data_patches_only = []
         new_data_patches_only = []

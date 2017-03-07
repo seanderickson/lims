@@ -11,4 +11,4 @@ is_superuser,fields.user,/reports/api/v1/field/fields.user/is_superuser/,auth_us
 all_permissions,fields.user,/reports/api/v1/field/fields.user/all_permissions/,,,156,,list,link,,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,[d],,,,,,[readEverythingAdmin],
 gender,fields.user,/reports/api/v1/field/fields.user/gender/,,,115,,string,,,select,TRUE,"The gender of the user",Gender,TRUE,,user.gender,[l;d],[c;u],,,,,,
 phone,fields.user,/reports/api/v1/field/fields.user/phone/,,,116,,string,,,,TRUE,"The phone number for this user",Phone,TRUE,,,[l;d],[c;u],,,,,[readEverythingAdmin],
-is_active,fields.user,/reports/api/v1/field/fields.user/is_active/,auth_user,,117,,boolean,,,,TRUE,"True if the user is currently active","Is Active",TRUE,,,[l;d],[c;u],,,,TRUE,,TRUE
+is_active,fields.user,/reports/api/v1/field/fields.user/is_active/,auth_user,,117,,boolean,,,,TRUE,"True if the user is currently active","Is Active",TRUE,,,[l;d],[c;u],,,,TRUE,,

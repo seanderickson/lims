@@ -351,7 +351,10 @@ function bootstrap {
   BOOTSTRAP_PORT=${BOOTSTRAP_PORT:-55999}
   
   echo "run a local dev server on port $BOOTSTRAP_PORT..."
-  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading --noreload $BOOTSTRAP_PORT  &
+  
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
   server_pid=$!
   if [[ "$?" -ne 0 ]]; then
     runserver_status =$?
@@ -446,6 +449,149 @@ function frontend_setup {
 
 }
 
+
+function setup_test_data {
+  # Create data for end-user testing
+  
+  echo "setup_test_data: $(ts) ..." >> "$LOGFILE"
+
+  echo "setup test data using a local dev server on port $BOOTSTRAP_PORT..."
+  
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status"
+    exit $runserver_status
+  fi
+#  echo "wait for server process: ($!) to start..."
+#  wait $server_pid
+  sleep 3
+  
+  test_screen=10
+  # lead_screener=jen_smith
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  
+  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+    
+  # NOTE: the cherry pick request ID must be determined for this:
+  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
+  echo "created cherry pick request: $cpr_id"
+  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${screener_cherry_pick_file} \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
+    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+
+  test_screen=11
+  # lead_screener=djw11
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  
+  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+    
+  # NOTE: the cherry pick request ID must be determined for this:
+  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
+  echo "created cherry pick request: $cpr_id"
+  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${screener_cherry_pick_file} \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
+    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+
+  test_screen=12
+  # lead_screener=sr50
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  
+  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+    
+  # NOTE: the cherry pick request ID must be determined for this:
+  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
+  echo "created cherry pick request: $cpr_id"
+  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${screener_cherry_pick_file} \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
+    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+
+  test_screen=13
+  # lead_screener=rs360
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  
+  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+    
+  # NOTE: the cherry pick request ID must be determined for this:
+  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
+  echo "created cherry pick request: $cpr_id"
+  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${screener_cherry_pick_file} \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
+    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+
+  test_screen=14
+  # lead_screener=rw105
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  
+  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+    
+  # NOTE: the cherry pick request ID must be determined for this:
+  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
+  echo "created cherry pick request: $cpr_id"
+  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${screener_cherry_pick_file} \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
+    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+
+
+  ####
+  echo "setup_test_data finished, stop server ..."
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  # kill $server_pid
+
+  echo "setup_test_data done: $(ts)" >> "$LOGFILE"
+
+}
+
 function main {
   # Steps:
   
@@ -500,6 +646,8 @@ function main {
     PYTHONPATH=. reports/utils/django_requests.py -u sde  \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
   fi
+  
+  setup_test_data
 
 }
 
@@ -539,8 +687,6 @@ function code_bootstrap {
   bootstrap
   
   # the later migrations require the bootstrapped data
-  migratedb
-  
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
     if [[ $WARNINGS -ne '' ]]; then
       msg = "${WARNINGS} \n `tail -400 migration.log`"
@@ -563,17 +709,16 @@ main "$@"
   
 #  restoredb_data
     
-#  maybe_activate_virtualenv
+# maybe_activate_virtualenv
   
-  
-#  django_syncdb
+# django_syncdb
 
-#  premigratedb  
+# premigratedb  
 
-#  bootstrap
+# bootstrap
   
   # the later migrations require the bootstrapped data
-#  migratedb
+# migratedb
 
 
 
@@ -583,34 +728,3 @@ main "$@"
 
 echo "migration finished: $(ts)"
 
-
-function frontend_setup_grunt {
-  echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
-
-  cd reports/static >>"$LOGFILE" 2>&1
-  
-  npm --version 2>&1 || error "npm not found: $?"
-  
-  rm -rf ./node_modules # untested 20150923
-  npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
-  npm install bower
-  ./node_modules/.bin/bower cache clean
-  rm -rf ./bower_components # untested
-  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
-  
-  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || warn "grunt test failed, see logfile: $?"
-  
-  cd ../..
-  
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" \
-        --ignore="*bower_components*" --ignore="*api_init*" || error "collectstatic failed: $?"
-  fi
-
-  if [ -e ../wsgi/app.wsgi ]; then
-    touch ../wsgi/app.wsgi
-  fi
-    
-  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
-  
-}

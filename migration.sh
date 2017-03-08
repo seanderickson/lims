@@ -477,20 +477,11 @@ function setup_test_data {
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
-  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
-    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
-    
-  # NOTE: the cherry pick request ID must be determined for this:
-  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
-  echo "created cherry pick request: $cpr_id"
-  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
-  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
-    -f db/static/test_data/screens/${screener_cherry_pick_file} \
-    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
-    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
 
   test_screen=11
   # lead_screener=djw11
@@ -499,21 +490,12 @@ function setup_test_data {
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
-  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
-    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
     
-  # NOTE: the cherry pick request ID must be determined for this:
-  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
-  echo "created cherry pick request: $cpr_id"
-  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
-  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
-    -f db/static/test_data/screens/${screener_cherry_pick_file} \
-    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
-    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
-
   test_screen=12
   # lead_screener=sr50
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
@@ -521,21 +503,12 @@ function setup_test_data {
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
-  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
-    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
     
-  # NOTE: the cherry pick request ID must be determined for this:
-  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
-  echo "created cherry pick request: $cpr_id"
-  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
-  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
-    -f db/static/test_data/screens/${screener_cherry_pick_file} \
-    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
-    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
-
   test_screen=13
   # lead_screener=rs360
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
@@ -543,21 +516,12 @@ function setup_test_data {
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
-  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
-    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
     
-  # NOTE: the cherry pick request ID must be determined for this:
-  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
-  echo "created cherry pick request: $cpr_id"
-  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
-  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
-    -f db/static/test_data/screens/${screener_cherry_pick_file} \
-    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
-    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
-
   test_screen=14
   # lead_screener=rw105
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
@@ -565,20 +529,12 @@ function setup_test_data {
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
-  cherry_pick_patch_file="test_screen_10_test_cherrypick.json"
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
-    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
     
-  # NOTE: the cherry pick request ID must be determined for this:
-  cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
-  echo "created cherry pick request: $cpr_id"
-  screener_cherry_pick_file="test_screen_10_screener_cherry_picks_for_patch.csv"
-  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
-    -f db/static/test_data/screens/${screener_cherry_pick_file} \
-    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/cherrypickrequest/$cpr_id \
-    --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
 
 
   ####

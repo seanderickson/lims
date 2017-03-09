@@ -889,7 +889,8 @@ class ApiResource(SqlAlchemyResource):
             deserialized = self.deserialize(
                 request, format=kwargs.get('format', None))
 
-        logger.debug('post detail %s, %s', deserialized,kwargs)
+        logger.debug('post detail %s, %s', 
+            { k:v for k,v in kwargs.items() if k != 'schema'},deserialized)
         
         _data = self.build_post_detail(request, deserialized, **kwargs)
         
@@ -905,7 +906,8 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
-        logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
+        logger.info('post detail: %r, %r, %r', 
+            self._meta.resource_name, kwargs_for_log, id_attribute)
 
         original_data = None
         log = self.make_log(request)
@@ -928,7 +930,8 @@ class ApiResource(SqlAlchemyResource):
             log.save()
             logger.debug('log saved: %r', log)
         
-        logger.debug('post: %r, %r', deserialized, log)
+        logger.debug('patch_obj: %r, %r', deserialized, log)
+        logger.debug('patch_obj: %r', kwargs)
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         if API_RESULT_OBJ in patch_result:
             obj = patch_result[API_RESULT_OBJ]
@@ -936,7 +939,7 @@ class ApiResource(SqlAlchemyResource):
             # TODO: 20170109, legacy, convert patch_obj to return:
             # { API_RESULT_OBJ, API_RESULT_META }
             obj = patch_result
-        logger.info('build post detail: %r', obj)
+        logger.debug('build post detail: %r', obj)
         for id_field in id_attribute:
             if id_field not in kwargs_for_log:
                 val = getattr(obj, id_field,None)
@@ -963,7 +966,7 @@ class ApiResource(SqlAlchemyResource):
         new_data = { API_RESULT_DATA: new_data, }
         if API_RESULT_META in patch_result:
             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
-        
+        logger.debug('new_data: %r', new_data)
         return new_data
     
     @write_authorization
@@ -1013,7 +1016,7 @@ class ApiResource(SqlAlchemyResource):
             # TODO: 20170109, legacy, convert patch_obj to return:
             # { API_RESULT_OBJ, API_RESULT_META }
             obj = patch_result
-        logger.info('build patch detail: %r', obj)
+        logger.debug('build patch detail: %r', obj)
         
         for id_field in id_attribute:
             if id_field not in kwargs_for_log:
@@ -1517,7 +1520,6 @@ class ApiResource(SqlAlchemyResource):
         if log is None:
             log = self.make_log(request)
 
-        logger.debug('new dict: %r, id_attribute: %r', new_dict, id_attribute)
         if not log.key:
             log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
         if not log.uri:

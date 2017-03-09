@@ -35,11 +35,11 @@ def pack_bins_largest_first(capacity, package_array, packed_bins=None):
                 if space >= package['size']:
                     bin.append(package)
                     placed.append(i)
-                    logger.info('place package: %r, in bin: %r', package, bin)
+                    logger.debug('place package: %r, in bin: %r', package, bin)
             
             placed = sorted(placed,reverse=True)
             for i in placed:
-                logger.info('remove placed package: %r', package_array[i])
+                logger.debug('remove placed package: %r', package_array[i])
                 package_array.pop(i)
             if not package_array:
                 break

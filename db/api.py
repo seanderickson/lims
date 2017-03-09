@@ -3655,6 +3655,7 @@ class CopyWellResource(DbApiResource):
         library_short_name = param_hash.pop('library_short_name', None)
         if library_short_name:
             param_hash['library_short_name__eq'] = library_short_name
+        library_screen_type = param_hash.pop('library_screen_type',None);
 
         try:
             
@@ -3668,11 +3669,12 @@ class CopyWellResource(DbApiResource):
             filename = self._get_filename(readable_filter_hash)
 
             # TODO: remove this restriction if the query can be optimized
-            if filter_expression is None:
-                raise InformationError(
-                    key='Input filters ',
-                    msg='Please enter a filter expression to begin')
-                                  
+            # if filter_expression is None:
+            #     raise InformationError(
+            #         key='Input filters ',
+            #         msg='Please enter a filter expression to begin')
+            # else:
+            logger.debug('filters: %r', readable_filter_hash)                      
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_hash.keys(), manual_field_includes,
@@ -3779,7 +3781,9 @@ class CopyWellResource(DbApiResource):
                 _cw.c.copy_id == _c.c.copy_id), isouter=True )
             
             stmt = select(columns.values()).select_from(j)
-
+            
+            if library_screen_type is not None:
+                stmt = stmt.where(_l.c.screen_type==library_screen_type)
             # general setup
              
             (stmt, count_stmt) = self.wrap_statement(
@@ -5477,7 +5481,12 @@ class CherryPickRequestResource(DbApiResource):
         
         if not patch:
             _key = 'screen_facility_id'
-            _val = deserialized[_key]
+            _val = deserialized.get(_key, None)
+            if _val is None:
+                _val = kwargs.get(_key,None)
+            if _val is None:
+                raise ValidationError(
+                    key='screen_facility_id',msg='required')
             try:
                 screen = Screen.objects.get(facility_id=_val)
                 initializer_dict['screen'] = screen
@@ -5605,8 +5614,7 @@ class CherryPickRequestResource(DbApiResource):
                     not_allowed_libraries = set()
                     for well in cherry_pick_wells:
                         if well.library.screening_status != 'allowed':
-                            not_allowed_libraries.add(
-                                (well.library.short_name, well.library.screening_status))
+                            not_allowed_libraries.add(well.library)
                         if len(not_allowed_libraries)>0 and override_param is not True:
                             continue
                         screener_cherry_pick = ScreenerCherryPick.objects.create(
@@ -5614,23 +5622,29 @@ class CherryPickRequestResource(DbApiResource):
                             screened_well=well,
                             searched_well=well,
                             selected=True)
+                    if not_allowed_libraries:
+                        not_allowed_libraries = sorted([
+                            '%s - status: %s' % (l.short_name,l.screening_status)
+                                for l in not_allowed_libraries])
                     if len(not_allowed_libraries)>0 and override_param is not True:
                         raise ValidationError({
                             API_PARAM_OVERRIDE: 'required',
                             'screener_cherry_picks': (
                                 'Override required to screen libraries that are '
-                                'not allowed: %r' % not_allowed_libraries)
+                                'not allowed'),
+                            'Libraries': not_allowed_libraries
                             }
                         )
                     if len(not_allowed_libraries)>0:
                         final_warn_msg.append(
-                            'Override used for libraries: %r' % ', '.join(not_allowed_libraries))
+                            ('Override used for libraries', not_allowed_libraries))
                     _meta[API_MSG_SCPS_CREATED] = cpr.screener_cherry_picks.all().count()    
 
             if final_warn_msg:
                 _meta[API_MSG_WARNING] = final_warn_msg
                             
             response = { API_RESULT_OBJ: cpr, API_RESULT_META: _meta }
+            logger.info('response: %r', response)
             return response
         except Exception, e:
             logger.exception('on patch_obj')
@@ -5654,7 +5668,7 @@ class CherryPickRequestResource(DbApiResource):
             cherry_pick_well_patterns = (cherry_pick_well_patterns,)
 
         PLATE_PATTERN = re.compile(r'^(\d{1,5})$')
-        wells = []
+        wells = set()
         errors = []
         warnings = []
         
@@ -5667,12 +5681,16 @@ class CherryPickRequestResource(DbApiResource):
             _line = _line.strip()
             if not _line:
                 continue
-            logger.info('find_wells: well pattern line: %r', _line)
+            logger.debug('find_wells: well pattern line: %r', _line)
             
             patterns = re.split(r'[\s,]+', _line)
-            logger.info('split line: %r', patterns)
+            logger.debug('split line: %r', patterns)
             plate_number = None
             for _pattern in patterns:
+                if not _pattern:
+                    continue
+                # get rid of quotes
+                _pattern = re.sub(r'["\']+','',_pattern)
                 match = WELL_ID_PATTERN.match(_pattern)
                 if match is not None:
                     plate_number = int(match.group(1))
@@ -5680,7 +5698,7 @@ class CherryPickRequestResource(DbApiResource):
                     try:
                         well = Well.objects.get(
                             plate_number=plate_number, well_name=well_name)
-                        wells.append(well)
+                        wells.add(well)
                         logger.debug('found %r for %r', well, _pattern)
                         continue
                     except ObjectDoesNotExist:
@@ -5701,7 +5719,7 @@ class CherryPickRequestResource(DbApiResource):
                     try:
                         well = Well.objects.get(
                             plate_number=plate_number, well_name=_pattern.upper())
-                        wells.append(well)
+                        wells.add(well)
                         logger.debug('found %r for %r', well, _pattern)
                     except ObjectDoesNotExist:
                         errors.append(
@@ -5944,8 +5962,12 @@ class CherryPickRequestResource(DbApiResource):
             packages = [ { 'name': plate_copy, 'size': len(lcps) } 
                 for plate_copy,lcps in lcp_by_plate_copy.items() ]
             packed_bins = bin_packer.pack_bins(capacity, packages)
-            packed_bins = sorted(packed_bins,key=lambda bin: bin[0]['name'])
-            logger.info('packed bins: %r', packed_bins)
+            packed_bins = sorted(
+                packed_bins,
+                key=lambda bin: (bin_packer.sum_bin(bin),bin[0]['name']),
+                reverse=True)
+            logger.info('packed bins: %r', 
+                [ (bin_packer.sum_bin(bin),bin[0]['name']) for bin in packed_bins])
             
             logger.info(
                 "assign the packed_bins to assay_plates, keep split bins adjacent...")
@@ -6379,7 +6401,7 @@ class CherryPickRequestResource(DbApiResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         cpr_id = param_hash['cherry_pick_request_id']
-        logger.info('dispatch_cancel_reservation: %r', cpr_id) 
+        logger.info('dispatch_delete_lab_cherry_picks: %r', cpr_id) 
         schema = super(CherryPickRequestResource, self).build_schema()
          
         cpr = CherryPickRequest.objects.get(
@@ -6406,7 +6428,10 @@ class CherryPickRequestResource(DbApiResource):
                 })
 
             original_cpr = self._get_detail_response_internal(**{
-                'cherry_pick_request_id': cpr_id })
+                'cherry_pick_request_id': cpr_id,
+                'includes': '-screener_cherry_picks'
+             })
+            logger.debug('original_cpr: %r', original_cpr)
             parent_log = self.make_log(request)
             parent_log.key = str(cpr_id)
             parent_log.uri = '/'.join([
@@ -6416,10 +6441,14 @@ class CherryPickRequestResource(DbApiResource):
             
             meta = {}
             meta[API_MSG_LCPS_REMOVED] = cpr.lab_cherry_picks.all().count()
-            cpr.lab_cherry_picks.all().delete()
-    
+            logger.info('delete lcps...')
+            LabCherryPick.objects.filter(cherry_pick_request=cpr).delete()
+            logger.info('lcp delete done')
             new_cpr = self._get_detail_response_internal(**{
-                'cherry_pick_request_id': cpr_id })
+                'cherry_pick_request_id': cpr_id,
+                'includes': '-screener_cherry_picks'
+            })
+            logger.debug('new_cpr: %r', new_cpr)
             parent_log = self.log_patch(
                 request, original_cpr, new_cpr, parent_log, 
                 excludes=['screener_cherry_picks'])
@@ -6428,9 +6457,12 @@ class CherryPickRequestResource(DbApiResource):
             return self.build_response(
                 request,  {API_RESULT_META: meta }, 
                 response_class=HttpResponse, **kwargs)
-    
+        else:
+            logger.info('no LCPs found to delete')
         # Empty response if no action taken
-        return HttpRequest
+        return self.build_response(
+            request,  {API_RESULT_META: 'no LCPs found to delete' }, 
+            response_class=HttpResponse, **kwargs)
 
     @write_authorization
     @transaction.atomic
@@ -6475,9 +6507,14 @@ class CherryPickRequestResource(DbApiResource):
                 return self.build_response(
                     request,  {API_RESULT_META: meta }, 
                     response_class=HttpResponse, **kwargs)
-    
+            else: 
+                logger.warn('no allocated LCPs found to delete for CPR: %r', cpr_id)
+        else: 
+            logger.warn('no LCPs found to delete for CPR: %r', cpr_id)
         # Empty response if no action taken
-        return HttpRequest
+        return self.build_response(
+            request,  {API_RESULT_META: 'no LCPs found to cancel' }, 
+            response_class=HttpResponse, **kwargs)
     
     def _cancel_reservation(self, cpr, parent_log):
         logger.info(
@@ -6558,7 +6595,10 @@ class CherryPickRequestResource(DbApiResource):
                 msg='No Screener Cherry Picks have been submitted')
         
         original_cpr = self._get_detail_response_internal(**{
-            'cherry_pick_request_id': cpr_id })
+            'cherry_pick_request_id': cpr_id,
+            'includes': '-screener_cherry_picks'
+         })
+        logger.debug('original_cpr: %r', original_cpr)
         
         meta = {}    
         
@@ -6613,7 +6653,11 @@ class CherryPickRequestResource(DbApiResource):
             meta.update(meta_action)
         
         new_cpr = self._get_detail_response_internal(**{
-            'cherry_pick_request_id': cpr_id })
+            'cherry_pick_request_id': cpr_id,
+            'includes': '-screener_cherry_picks'
+         })
+        logger.debug('new_cpr: %r', new_cpr)
+
         self.log_patch(request, original_cpr, new_cpr, parent_log, 
             excludes=['screener_cherry_picks'])
         parent_log.json_field = meta
@@ -6720,19 +6764,22 @@ class CherryPickRequestResource(DbApiResource):
                     API_PARAM_SHOW_COPY_WELLS: True,
                     'source_copy_well_volume__gte': cpr.transfer_volume_per_well_approved, 
                     'includes': [
-                        'source_plate_type','destination_plate_type',
+                        'source_plate_type','destination_plate_type','source_well_id'
                         'source_copywell_id','-structure_image','-molfile'],
 #                     'includes': ['*', '-structure_image','-molfile'],
                 })
         logger.info('found %d eligible copy-wells for %d lab cherry picks', 
             len(eligible_lab_cherry_pick_copywells), 
             cpr.lab_cherry_picks.all().count())
+        copy_wells_well_set = set([lcp['source_well_id'] for lcp in eligible_lab_cherry_pick_copywells])
+        logger.info('lcp candidates found for source wells: %d', len(copy_wells_well_set))
         logger.debug('found eligible: %r', eligible_lab_cherry_pick_copywells)
         
         logger.info('Pick the best copy...')
         copy_sets_by_library = {}
         copy_instance_cache = {}
         pick_candidates_by_library = {}
+
         for pick_copy in eligible_lab_cherry_pick_copywells:
             
             source_well_id = pick_copy['source_well_id']
@@ -6751,37 +6798,38 @@ class CherryPickRequestResource(DbApiResource):
             well_picks.add(copy_full_name)
             library_picks[source_well_id] = well_picks
             pick_candidates_by_library[library_short_name] = library_picks
-        
-        logger.info('pick candidates by library: %r', pick_candidates_by_library)    
+
         lcp_assigned_count = 0
         for library_short_name in pick_candidates_by_library.keys():
             
             copy_set = copy_sets_by_library.get(library_short_name,set())
             well_picks_for_library = pick_candidates_by_library[library_short_name]
-            minimal_copy_sets = self._get_minimal_copy_set(copy_set,well_picks_for_library)
-        
-            if minimal_copy_sets:
-                chosen_minimal_copy_set = sorted(minimal_copy_sets)[0]
-                logger.info('library: %r, chosen minimal copy set: %r', 
-                    library_short_name, chosen_minimal_copy_set)
-#                 pick_copy_sets = well_picks_for_library[library_short_name]
-                
+            
+            minimal_copy_set = lims_utils.find_minimal_satisfying_set(
+                copy_set, well_picks_for_library.values())
+            logger.info('library: %r, chosen minimal copy set: %r', 
+                library_short_name, minimal_copy_set)
+            if minimal_copy_set:
                 for lcp in cpr.lab_cherry_picks.all():
                     if lcp.source_well_id in well_picks_for_library:
                         pick_copy_set = well_picks_for_library.get(lcp.source_well_id, None)
                         if pick_copy_set is None:
                             logger.info('no pick copy set for well: %r', lcp.source_well_id)
                             continue
-                        
-                        eligible_copies = pick_copy_set & chosen_minimal_copy_set
-                        
+                        eligible_copies = set(pick_copy_set) & set(minimal_copy_set)
                         if eligible_copies:
                             copy_full_name = sorted(eligible_copies)[0]
                             lcp.copy = copy_instance_cache[copy_full_name]
                             lcp.save()
                             lcp_assigned_count += 1
+                        else:
+                            logger.info('no eligible copies for %r, in %r',
+                                lcp.source_well_id, pick_copy_set)
+                    else:
+                        logger.info('no pick copy set for well %r', lcp.source_well_id)
             else:
                 logger.info('no minimal copy sets found for library: %r', library_short_name)                
+            
         meta = {}
         if lcp_assigned_count == 0:
             meta[API_MSG_WARNING] = 'No eligible copies found'
@@ -6792,36 +6840,8 @@ class CherryPickRequestResource(DbApiResource):
                 API_MSG_LCPS_ASSIGNED: lcp_assigned_count,
                 API_MSG_LCPS_UNFULFILLED: (total_count-lcp_assigned_count)
             }
-#             meta[API_MSG_RESULT] = meta
         return meta
 
-    def _get_minimal_copy_set(self,copy_set, pick_copy_sets ):
-        minimal_copy_sets = []
-        logger.info('complete copy set: %d = %r', len(copy_set), copy_set)
-        logger.info('Determine minimal copy set(s)...')
-        def powerset(iterable):
-            "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
-            s = list(iterable)
-            return set(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))
-        minimal_matching_copyset_len = None
-        for copy_subset in powerset(
-                sorted(copy_set, 
-                       key=lambda copy_set: '%d:%s' % (len(copy_set),copy_set))):
-            if minimal_matching_copyset_len is not None:
-                if len(pick_copy_set) > minimal_matching_copyset_len:
-                    break
-            logger.debug('considering set: %r', copy_subset)
-            for pick_copy_set in pick_copy_sets.values():
-                logger.debug('considering pick copy set: %r', pick_copy_set)
-                if set(copy_subset) & pick_copy_set:
-                    logger.debug('eligible minimum copy set: %r', pick_copy_set)
-                    minimal_matching_copyset_len = len(pick_copy_set)
-                    minimal_copy_sets.append(pick_copy_set) 
-        
-        logger.info('found %d minimal copy sets', len(minimal_copy_sets))
-        
-        return minimal_copy_sets
-        
 
 class ScreenerCherryPickResource(DbApiResource):        
 
@@ -7003,7 +7023,9 @@ class ScreenerCherryPickResource(DbApiResource):
                             break
         
         if not selection_updates:
-            return HttpResponse
+            return self.build_response(
+                request,  {API_RESULT_META: 'no new Selections found' }, 
+                response_class=HttpResponse, **kwargs)
         
         logger.info('selection updates: %r', selection_updates.keys())
                     
@@ -8485,7 +8507,7 @@ class CherryPickPlateResource(DbApiResource):
         deserialized = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
-        logger.info('patch lcps: %r', deserialized)
+        logger.debug('patch cpaps: %r', deserialized)
         
         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
@@ -11995,11 +12017,19 @@ class ScreenResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_libraryview'),
                 name="api_dispatch_screen_libraryview"),
+
+            # FIXME: screen/{facility_id}/cherrypickrequest is the canonical form
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/cherrypicks%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_cherrypickview'),
                 name="api_dispatch_screen_cherrypickview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w]+))/cherrypickrequest%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_cherrypickview'),
+                name="api_dispatch_screen_cherrypickrequest"),
+                
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/copyplates%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -12199,7 +12229,7 @@ class ScreenResource(DbApiResource):
         return DataColumnResource().dispatch('list', request, **kwargs)    
         
     def dispatch_screen_cherrypickview(self, request, **kwargs):
-        kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
+        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
         return self.get_cpr_resource().dispatch('list', request, **kwargs)    
         
     def dispatch_screen_libraryview(self, request, **kwargs):

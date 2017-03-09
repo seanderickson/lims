@@ -5901,12 +5901,11 @@ class CherryPickRequestResource(DBResourceTestCase):
                 % (source_well_id, new_lab_cherry_picks.keys()))
             if source_well_id != test_wellid_to_change:
                 prev_lcp = current_lcps[source_well_id]
-                logger.info('check new_lcp: %r against prev: %r',
-                    lcp, prev_lcp)
+                logger.info('new_lcp: %r ',lcp)
+                logger.info('prev lcp: %r', prev_lcp)
                 for key,val in prev_lcp.items():
                     self.assertEqual(val,lcp[key], 
                         'key: %r, prev: %r, new: %r' % (key, lcp[key],val))
-            
             
         # 2.D1 Check that copywells (from the copywell resource) have the correct information
         cw_resource_uri = '/'.join([
@@ -6186,6 +6185,26 @@ class CherryPickRequestResource(DBResourceTestCase):
         logger.info('cancel_reservation response: %r', _data)
         self.assertTrue(API_RESULT_ERROR in _data)
         self.assertTrue(API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
+    
+    def test_b_minimal_set_finder(self):
+        
+        complete_set = [1,2,3,4,5,6,7]
+        
+        instance_sets = [
+            [2,6],
+            [1,2,7],
+            [3,4,7],
+            [6,7],
+            [1,2,3]
+        ]
+        
+        chosen_minimal = lims_utils.find_minimal_satisfying_set(
+            complete_set, instance_sets)
+        
+        logger.info('chosen: %r', chosen_minimal)
+        expected = [2,7]
+        # Other:
+        self.assertEqual(set(expected),set(chosen_minimal))
         
     def test_a_bin_packer(self):
         '''

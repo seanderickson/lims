@@ -4,6 +4,7 @@ import logging
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
 import re
+from itertools import chain, combinations
 logger = logging.getLogger(__name__)
 
 ALLOWED_PLATE_SIZES = [96,384]
@@ -219,30 +220,6 @@ def assay_plate_available_wells(wells_to_leave_empty, plate_size):
     if wells_to_leave_empty:
         wells_to_leave_empty_list = parse_wells_to_leave_empty(
             wells_to_leave_empty, plate_size)
-#         wells_to_leave_empty_list = re.split(
-#             r'\s*,\s*', wells_to_leave_empty)
-        # NOTE: sanitize not necessary, wells_to_leave_empty is validated
-        # on create in the api
-        
-#         wells_to_leave_empty = [specifier.lower() 
-#             for specifier in wells_to_leave_empty_list]
-# 
-#         row_specifier_pattern = re.compile('row:\s*([a-zA-Z]{1,2})', flags=re.IGNORECASE)
-#         col_specifier_pattern = re.compile(r'col:\s*(\d{1,2})', flags=re.IGNORECASE)
-#         for specifier in wells_to_leave_empty:
-#             if row_specifier_pattern.match(specifier):
-#                 continue
-#             elif col_specifier_pattern.match(specifier):
-#                 continue
-#             elif WELL_NAME_PATTERN.match(specifier):
-#                 continue
-#             raise ValidationError(
-#                 key='wells_to_leave_empty',
-#                 msg=('specifier: %r, does not match one of the patterns: %r'
-#                     % (specifier, 
-#                        [p.pattern for p in [
-#                            row_specifier_pattern,col_specifier_pattern,
-#                            WELL_NAME_PATTERN]])))
     row_specifier = 'Row:%s'
     col_specifier = 'Col:%d'
     for i in range(0,plate_size):
@@ -259,5 +236,32 @@ def assay_plate_available_wells(wells_to_leave_empty, plate_size):
         available_wells.append(well_name)
     return available_wells
     
+def find_minimal_satisfying_set(complete_set,instance_sets):
+    '''
+    Given the complete set, find the minimal subset that intersects to form a 
+    non-null set (at least one overlap) with all non-empty instance_sets
+    '''    
+    def powerset(iterable):
+        "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
+        s = list(iterable)
+        return set(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))
     
-    
+    # satisfying_sets = []
+    min_satisfying_set = None
+    # Look at all the powersets; until the first viable is found
+    # Sort by len,name to find the first
+    for subset in sorted(powerset(sorted(complete_set)), key=lambda x: (len(x),str(x))):
+        logger.info('consider: %r', subset)
+        found = True
+        for instance_set in instance_sets:
+            if instance_set:
+                if not set(subset)&set(instance_set):
+                    found = False
+                    break
+        if found is True:
+            logger.info('found satisfying set: %r', subset)
+            min_satisfying_set = subset
+            break
+    return min_satisfying_set
+
+

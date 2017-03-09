@@ -715,13 +715,10 @@ class SqlAlchemyResource(IccblBaseResource):
                 format='json',
                 includes=includes,
                 **kwargs)
-            logger.info('_get_list_response response: %r', response)
             _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), JSON_MIMETYPE)
-#             self.use_cache = True
             if self._meta.collection_name in _data:
                 _data = _data[self._meta.collection_name]
-#             _data = _data[self._meta.collection_name]
             logger.debug(' data: %r', _data)
             return _data
         except Http404:
@@ -729,7 +726,6 @@ class SqlAlchemyResource(IccblBaseResource):
         except Exception as e:
             logger.exception('on get list: %r', e)
             raise
-#             return []
         
     def _get_detail_response(self,request,**kwargs):
         '''
@@ -753,7 +749,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     'no data found for %r, %r', self._meta.resource_name, kwargs)
             return _data
         except Http404:
-            return []
+            return {}
         
     #@un_cache
     def _get_detail_response_internal(self, **kwargs):
@@ -762,9 +758,9 @@ class SqlAlchemyResource(IccblBaseResource):
             content_type=JSON_MIMETYPE)
         class User:
             is_superuser = True
-#             @staticmethod
-#             def is_superuser():
-#                 return true
+            # @staticmethod
+            # def is_superuser():
+            #     return true
         request.user = User
         result = self._get_detail_response(request, **kwargs)
         return result

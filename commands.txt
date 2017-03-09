@@ -106,26 +106,52 @@ curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: app
 #####
 # Re-initialize the meta data for the site
 
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ -f ./reports/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -f ./db/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
-
-# set up default testing users (note, will delete existing users)
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions.csv -U sde
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions_patch.csv -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ \
+  -f ./reports/static/api_init/api_init_actions.csv \
+  -u http://localhost:8000/reports/api/v1 -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
+  -f ./db/static/api_init/api_init_actions.csv \
+  -u http://localhost:8000/reports/api/v1 -U sde
 
 #####
-# PATCH-only user updates (usergroups/permissions) on the server:
+# Set default testing users (note, will delete existing users)
+# (To be run before User migration)
+PYTHONPATH=. python reports/utils/db_init.py \
+  --input_dir=lims/static/production_data/ \
+  -u http://localhost:8000/reports/api/v1 \
+  -f lims/static/production_data/api_init_actions.csv -U sde
 
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ \
+#####
+# PATCH-only default testing users - modify but not delete
+# (To be run after user migration)
+
+# Local 
+PYTHONPATH=. python reports/utils/db_init.py \
+  --input_dir=lims/static/production_data/ \
+  -u http://localhost:8000/reports/api/v1 \
+  -f lims/static/production_data/api_init_actions_patch.csv -U sde
+
+# Local - Just the usergroup assignments
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f lims/static/production_data/screensaver_users-prod-patch.csv \
+  -a PATCH \
+  http://localhost:8000/reports/api/v1/user \
+  --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
+
+# Server
+PYTHONPATH=. python reports/utils/db_init.py \
+  --input_dir=lims/static/production_data/ \
   -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 \
   -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
+# Server - Just the usergroup assignments
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f lims/static/production_data/screensaver_users-prod-patch.csv \
-  -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/user \
+  -a PATCH \
+  https://dev.screensaver2.med.harvard.edu/reports/api/v1/user \
   --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
 
-# PATCH usergroups only
+# PATCH-only (Local using curl)
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
   -X PATCH http://localhost:8000/reports/api/v1/usergroup \
   --data-binary @lims/static/production_data/screensaver_usergroups-prod.csv

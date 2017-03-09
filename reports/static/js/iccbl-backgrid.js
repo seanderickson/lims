@@ -1462,7 +1462,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       self.state.currentPage = 1;
       self.listModel.set({
         'search' : searchHash
-      });
+      }, options);
 // Removed 20161213, see search listener in list2.js
 //      if(options && options.reset){
 //        console.log('collection.clearSearch: reset');
@@ -2358,7 +2358,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     var searchHash = self._serverSideFilter._submit();
     if(!_.isEmpty(searchHash)){
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
+      self.collection.clearSearch(possibleSearches, {silent: true});
       
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
@@ -2459,7 +2459,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     var searchHash = self._serverSideFilter._submit();
     if(!_.isEmpty(searchHash)){
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
+      self.collection.clearSearch(possibleSearches, {silent: true});
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash,{reset: true});
@@ -2671,7 +2671,7 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
     var searchHash = self._serverSideFilter._submit();
     if(!_.isEmpty(searchHash)){
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
+      self.collection.clearSearch(possibleSearches, {silent: true});
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash,{reset: true});
@@ -2980,7 +2980,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     var self  = this;
     var searchHash = self._serverSideFilter._submit();
     var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
+    self.collection.clearSearch(possibleSearches, {silent: true});
     if(!_.isEmpty(searchHash)){
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
@@ -3613,7 +3613,7 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
     var searchHash = self._serverSideFilter._submit();
     if(!_.isEmpty(searchHash)){
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
+      self.collection.clearSearch(possibleSearches, {silent: true});
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash,{reset: true});

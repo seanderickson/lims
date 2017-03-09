@@ -3997,10 +3997,12 @@ class CopyWellResource(DbApiResource):
             copywell.volume = new_volume
             copywell.save()
             copywells_deallocated.append(copywell)
-        logger.info('copywells_deallocated: %r', copywells_deallocated)    
+        logger.debug('copywells_deallocated: %r', copywells_deallocated)    
+        logger.info('copywells_deallocated: %d', len(copywells_deallocated))    
 
         if update_screening_count is True:
-            logger.info('plates_adjusted: %r', plates_adjusted)
+            logger.debug('plates_adjusted: %r', plates_adjusted)
+            logger.info('plates_adjusted: %d', len(plates_adjusted))
             for plate in plates_adjusted:
                 plate_log = self.get_plate_resource().make_child_log(parent_log)
                 plate_log.key = '/'.join([
@@ -5922,10 +5924,10 @@ class CherryPickRequestResource(DbApiResource):
         # cpr.is_randomized_assay_plate_layout
         # - if true, randomize the plate layout wells
         if cpr.is_randomized_assay_plate_layout:
-            logger.info('randomize the available assay plate wells: %r',
+            logger.debug('randomize the available assay plate wells: %r',
                 available_assay_plate_wells)
             random.shuffle(available_assay_plate_wells)
-            logger.info('randomized available assay plate wells: %r',
+            logger.debug('randomized available assay plate wells: %r',
                 available_assay_plate_wells)
                   
         next_plate_ordinal = [1]
@@ -6810,6 +6812,7 @@ class CherryPickRequestResource(DbApiResource):
             logger.info('library: %r, chosen minimal copy set: %r', 
                 library_short_name, minimal_copy_set)
             if minimal_copy_set:
+                # FIXME: only iterate the lcp's for the library
                 for lcp in cpr.lab_cherry_picks.all():
                     if lcp.source_well_id in well_picks_for_library:
                         pick_copy_set = well_picks_for_library.get(lcp.source_well_id, None)
@@ -6826,7 +6829,7 @@ class CherryPickRequestResource(DbApiResource):
                             logger.info('no eligible copies for %r, in %r',
                                 lcp.source_well_id, pick_copy_set)
                     else:
-                        logger.info('no pick copy set for well %r', lcp.source_well_id)
+                        logger.debug('no pick copy set for well %r', lcp.source_well_id)
             else:
                 logger.info('no minimal copy sets found for library: %r', library_short_name)                
             

@@ -950,24 +950,6 @@ define([
 
       function createPlateMappingView(resource) {
         
-//        var Collection = Iccbl.MyCollection.extend({
-//          url: url,
-//        });
-//        collection = new Collection();
-//  
-//  
-//        var view = new ListView({ 
-//          uriStack: _.clone(delegateStack),
-//          schemaResult: schemaResult,
-//          resource: schemaResult,
-//          collection: collection,
-//          url: url,
-//          extraControls: extraControls
-//        });
-//        Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
-//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//        self.setView("#tab_container", view ).render();
         view = self.createLcpView(delegateStack, resource,url,extraControls)
         
         self.listenTo(view, 'afterRender', function(event) {
@@ -1047,9 +1029,6 @@ define([
           if (!_.isEmpty(plate_mapping_controls)){
             view.$el.find('#list-container').prepend(plate_mapping_controls);
           }
-//          
-//          view.$el.find('#list-title').show().append(
-//            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
         });
       };
       appModel.getResourceFromUrl(schemaUrl, createView);
@@ -1516,14 +1495,14 @@ define([
           appModel.requestPageChange({
             ok: function(){
               appModel.showOkCommentForm({
-                ok: processClick(),
+                ok: processClick,
                 title: msg
               });
             }
           });
         }else{
           appModel.showOkCommentForm({
-            ok: processClick(),
+            ok: processClick,
             title: msg
           })
           
@@ -1932,11 +1911,16 @@ define([
                   var error = _.result(jsonError, 'errors');
                   var overrideFlag = _.result(error,appModel.API_PARAM_OVERRIDE);
                   var errorMsg = _.result(error, 'screener_cherry_picks'); 
+                  var librariesToOverride = _.result(error, 'Libraries');
+                  if (!_.isUndefined(librariesToOverride)){
+                    errorMsg += '<br/>Libraries:<br/>';
+                    errorMsg += librariesToOverride.join('<br/>');
+                  }
                   if (!_.isUndefined(overrideFlag)){
                     appModel.showModal({
                       title: 'Override Required',
                       body: errorMsg,
-                      okText: 'Override',
+                      okText: 'Confirm Override',
                       ok: function() {
                         var override = true;
                         submit(override);
@@ -2027,6 +2011,7 @@ define([
         if(self.model.get('has_pool_screener_cherry_picks') === true){
           //schemaResult.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
           setDuplexLcpsButton.show();
+          setLcpsButton.show();
         } else {
           setLcpsButton.show();
         }
@@ -2180,53 +2165,7 @@ define([
         });
       });
 
-      // submit as Lab Cherry Picks
-      setLcpsButton.click(function(e){
-        e.preventDefault();
-
-        function processClick(){
-          var set_lab_cherry_picks_url = [
-            self.model.resource.apiUri,self.model.key, 'set_lab_cherry_picks'].join('/');
-          var headers = {}; // can be used to send a comment
-          $.ajax({
-            url: set_lab_cherry_picks_url,     
-            cache: false,
-            contentType: 'application/json', 
-            dataType: 'json', // what is expected back from the server
-            type: 'POST',
-            headers: headers
-          }).done(function(data, textStatus, jqXHR){
-            console.log('submitted', arguments);
-            appModel.showConnectionResult(data, {
-              title: 'Set Lab Cherry Picks'
-            });
-            self.model.fetch({ reset: true }).done(function(){
-              self.uriStack = ['labcherrypicks'];
-              // remove the child view before calling render, to prevent
-              // it from being rendered twice, and calling afterRender twice
-              self.removeView('#tab_container');
-              self.render();
-            });
-          }).fail(function(jqXHR, textStatus, errorThrown){
-            appModel.jqXHRfail.apply(this,arguments); 
-          });
-        };
-        
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-
-      // submit as Lab Cherry Picks
-      setDuplexLcpsButton.click(function(e){
-        e.preventDefault();
-        var set_lab_cherry_picks_url = [
-          self.model.resource.apiUri,self.model.key, 
-          'set_duplex_lab_cherrypicks'].join('/');
+      function processLabCherryPicks(set_lab_cherry_picks_url){
         var headers = {}; // can be used to send a comment
         $.ajax({
           url: set_lab_cherry_picks_url,     
@@ -2237,10 +2176,51 @@ define([
           headers: headers
         }).done(function(data, textStatus, jqXHR){
           console.log('submitted', arguments);
-          self.change_to_tab('labcherrypicks');
+          appModel.showConnectionResult(data, {
+            title: 'Set Lab Cherry Picks'
+          });
+          self.model.fetch({ reset: true }).done(function(){
+            self.uriStack = ['labcherrypicks'];
+            // remove the child view before calling render, to prevent
+            // it from being rendered twice, and calling afterRender twice
+            self.removeView('#tab_container');
+            self.render();
+          });
         }).fail(function(jqXHR, textStatus, errorThrown){
           appModel.jqXHRfail.apply(this,arguments); 
         });
+      };
+      // submit as Lab Cherry Picks
+      setLcpsButton.click(function(e){
+        e.preventDefault();
+        var set_lab_cherry_picks_url = [
+          self.model.resource.apiUri,self.model.key, 'set_lab_cherry_picks'].join('/');
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: function(){
+              processLabCherryPicks(set_lab_cherry_picks_url);
+            }
+          });
+        }else{
+          processLabCherryPicks(set_lab_cherry_picks_url);
+        }
+      });
+
+      // submit as Lab Cherry Picks
+      setDuplexLcpsButton.click(function(e){
+        e.preventDefault();
+        var set_lab_cherry_picks_url = [
+          self.model.resource.apiUri,self.model.key, 
+          'set_duplex_lab_cherry_picks'].join('/');
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: function(){
+              processLabCherryPicks(set_lab_cherry_picks_url);
+            }
+          });
+        }else{
+          processLabCherryPicks(set_lab_cherry_picks_url);
+        }
       });
 
       // manage SCP selections if lcps not set

@@ -116,7 +116,7 @@ define([
             if(pair[0] == id ) return pair[1];
             else{
               if(_.has(pair[1], 'submenus')){
-                var temp = this.find_submenu(pair[1]['submenus'],id);
+                var temp = this.find_submenu(pair[1],id);
                 if( _.isObject(temp)) return temp;
               }
             }

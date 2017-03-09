@@ -264,7 +264,44 @@
     "copywell": {
       "options": { 
         "rpp_selections" : [24,96,384,1000],
-        "rpp": 24 }
+        "rpp": 24,
+        "search": { 
+          "copy_usage_type__in": "cherry_pick_source_plates",
+          "library_well_type__in": "experimental"
+        }
+      }
+    },
+    "copywell_sm_cpr": {
+      "list_view": "ListView",
+      "header_message": "Small Molecule, Cherry Pick Source Copy Well",
+      "title": "Copy Well (small molecule, cherry pick source plates)",
+      "api_resource": "copywell",
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24,
+        "search": { 
+          "library_screen_type": "small_molecule",
+          "copy_usage_type__in": "cherry_pick_source_plates",
+          "plate_status__in": "available",
+          "library_well_type__in": "experimental"
+        }
+      }
+    },
+    "copywell_rnai_cpr": {
+      "list_view": "ListView",
+      "header_message": "RNAi, Cherry Pick Source Copy Well",
+      "title": "Copy Well (RNAi, cherry pick source plates)",
+      "api_resource": "copywell",
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24,
+        "search": { 
+          "library_screen_type": "rnai",
+          "copy_usage_type__in": "cherry_pick_source_plates",
+          "plate_status__in": "available",
+          "library_well_type__in": "experimental"
+        }
+      }
     },
     "platelocation": {
       "title": "Copy Plate Location",

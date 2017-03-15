@@ -516,17 +516,12 @@ define([
             }
           });
           _.each(toRemove, function(key){
-            if(_.contains(
-              self._options.schemaResult.fields[key]['visibility'],'l')){
-              return;
-            } else {
-              column =  self.grid.columns.find(function(column){
-                if(column.get('name') == key){
-                  self.grid.removeColumn(column);
-                  return true;
-                }
-              });
-            }
+            column =  self.grid.columns.find(function(column){
+              if(column.get('name') == key){
+                self.grid.removeColumn(column);
+                return true;
+              }
+            });
           });          
           
           if(reset){
@@ -791,7 +786,7 @@ define([
     /** Build the select columns dialog **/
     select_columns: function(event){
 
-      console.log('x select_columns...');
+      console.log('select_columns...');
       
       var self = this;
       var form_template = [

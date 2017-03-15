@@ -250,14 +250,17 @@ define([
           if(or_clauses != '') or_clauses += "<br>OR ";
           or_clauses += temp
         });
-        if(search_title_val !== '') search_title_val += '<br>AND ';
-        search_title_val += '[ ' + or_clauses + ' ]';
+        if (!_.isEmpty(or_clauses)){
+          if(search_title_val !== '') search_title_val += '<br>AND ';
+          search_title_val += '[ ' + or_clauses + ' ]';
+        }
       }            
 
-      self.trigger('update_title', '');
+      // NOTE: reagent/well search is implemented server-side; does not support
+      // a search_title suitable interpretation - 201703
       if(search_title_val !== ''){
         self.trigger('update_title', 'Search: ' + search_title_val);
-      }
+      } 
       
       return url;
     },

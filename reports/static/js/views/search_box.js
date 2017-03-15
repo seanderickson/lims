@@ -328,6 +328,102 @@ define([
       });
       
       ///// Well
+//      var form3 = this.form3;
+//      var $form3 = this.form3.render().$el;
+//      $('#search-box-3').html($form3);
+//      $form3.append([
+//          '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+//          ].join(''));
+//
+//      $form3.find('[ type="submit" ]').click(function(e){
+//        e.preventDefault();
+//        var errors = form3.commit({ validate: true }); 
+//        if(!_.isEmpty(errors)){
+//          console.log('form3 errors, abort submit: ' + JSON.stringify(errors));
+//          $form3.find('#well').addClass(self.errorClass);
+//          return;
+//        }else{
+//          $form3.find('#well').removeClass(self.errorClass);
+//        }
+//        var well_search_entry = self.form3.getValue()['well'];
+//        if (well_search_entry) {
+//          var search_array = self.parse_search_val(well_search_entry);
+//          if (search_array.length > appModel.MAX_SEARCH_ARRAY_SIZE ){
+//            appModel.showModalMessage({
+//              title: 'Please try your search again',
+//              body: Iccbl.formatString(
+//                appModel.MSG_SEARCH_SIZE_EXCEEDED, {
+//                  size_limit: appModel.MAX_SEARCH_ARRAY_SIZE,
+//                  actual_size: search_array.length
+//                })
+//            });
+//            return;
+//          }
+//          matching_hash = {
+//            matching_order: ['plate_number','well_id','well_name'],
+//            plate_number: {
+//              title: 'Plate number',
+//              pattern: /^\d{1,5}$/,
+//              help: 'a 1-5 digit number'
+//            },
+//            well_id: {
+//              title: 'Well ID',
+//              pattern: /(\d{1,5})\:([a-zA-Z]{1,2})(\d{1,2})/,
+//              help: '[plate_number]:[well_name]',
+//              parser: function(val_list){
+//                return _.map(val_list, function(term){
+//                  var match = matching_hash.well_id.pattern.exec(term);
+//                  if (! match) return null;
+//                  var plate_number = match[1];
+//                  if (plate_number.length < 5){
+//                    var pad = "00000";
+//                    (pad+plate_number).substring(plate_number.length);
+//                  }
+//                  var well_row = match[2].toUpperCase();
+//                  var well_col = match[3];
+//                  // check the col, 2 digits
+//                  if(well_col.length == 1) well_col = '0' + well_col;
+//                  return plate_number + ':' + well_row + well_col;
+//                });
+//              }
+//            },
+//            well_name: {
+//              title: 'Well name',
+//              pattern: /([a-zA-Z]{1,2})(\d{1,2})/,
+//              help: '[row][col] in the form A01,A12,B01 etc.',
+//              parser: function(val_list){
+//                return _.map(val_list, function(term){
+//                  var rowcol = matching_hash.well_name.pattern.exec(term);
+//                  if (! rowcol) return null;
+//                  // check the col, 2 digits
+//                  if(rowcol[2].length == 1) term = rowcol[1] + '0'+rowcol[2];
+//                  return term.toUpperCase();
+//                });
+//              }
+//            }
+//          };
+//          var searches_parsed = self.parse_searches(search_array, matching_hash);
+//          var data_el = $form3.find('#data-error');
+//          if (searches_parsed.errors) {
+//            var data_el = $form3.find('#data-error');
+//            data_el.html('<div class="help-block"><h5>Search term not recognized:</h5>"' + 
+//              searches_parsed.errors.join('" ,"') + '"</br>' +
+//                "<h5>Allowed patterns:</h5>" + 
+//                _.map(matching_hash, function(val,key){
+//                  if (val.title){
+//                    return '<dt>' + val.title + '</dt><dd>' + val.help + '</dd>'; 
+//                  }
+//                }).join('') + "</dl></div>");
+//            data_el.show();
+//            return;
+//          }else{
+//            data_el.hide();
+//          }
+//          self.submit_searches('reagent', searches_parsed.or_list);
+//        }
+//      });
+
+      ///// Well/Reagent search 2 - perform search on server
       var form3 = this.form3;
       var $form3 = this.form3.render().$el;
       $('#search-box-3').html($form3);
@@ -340,89 +436,32 @@ define([
         var errors = form3.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
           console.log('form3 errors, abort submit: ' + JSON.stringify(errors));
-          $form3.find('#well').addClass(self.errorClass);
+          $form3.find('#wellsearch').addClass(self.errorClass);
           return;
         }else{
-          $form3.find('#well').removeClass(self.errorClass);
+          $form3.find('#wellsearch').removeClass(self.errorClass);
         }
-        var well_search_entry = self.form3.getValue()['well'];
-        if (well_search_entry) {
-          var search_array = self.parse_search_val(well_search_entry);
-          if (search_array.length > appModel.MAX_SEARCH_ARRAY_SIZE ){
-            appModel.showModalMessage({
-              title: 'Please try your search again',
-              body: Iccbl.formatString(
-                appModel.MSG_SEARCH_SIZE_EXCEEDED, {
-                  size_limit: appModel.MAX_SEARCH_ARRAY_SIZE,
-                  actual_size: search_array.length
-                })
-            });
-            return;
-          }
-          matching_hash = {
-            matching_order: ['plate_number','well_id','well_name'],
-            plate_number: {
-              title: 'Plate number',
-              pattern: /^\d{1,5}$/,
-              help: 'a 1-5 digit number'
-            },
-            well_id: {
-              title: 'Well ID',
-              pattern: /(\d{1,5})\:([a-zA-Z]{1,2})(\d{1,2})/,
-              help: '[plate_number]:[well_name]',
-              parser: function(val_list){
-                return _.map(val_list, function(term){
-                  var match = matching_hash.well_id.pattern.exec(term);
-                  if (! match) return null;
-                  var plate_number = match[1];
-                  if (plate_number.length < 5){
-                    var pad = "00000";
-                    (pad+plate_number).substring(plate_number.length);
-                  }
-                  var well_row = match[2].toUpperCase();
-                  var well_col = match[3];
-                  // check the col, 2 digits
-                  if(well_col.length == 1) well_col = '0' + well_col;
-                  return plate_number + ':' + well_row + well_col;
-                });
-              }
-            },
-            well_name: {
-              title: 'Well name',
-              pattern: /([a-zA-Z]{1,2})(\d{1,2})/,
-              help: '[row][col] in the form A01,A12,B01 etc.',
-              parser: function(val_list){
-                return _.map(val_list, function(term){
-                  var rowcol = matching_hash.well_name.pattern.exec(term);
-                  if (! rowcol) return null;
-                  // check the col, 2 digits
-                  if(rowcol[2].length == 1) term = rowcol[1] + '0'+rowcol[2];
-                  return term.toUpperCase();
-                });
-              }
-            }
-          };
-          var searches_parsed = self.parse_searches(search_array, matching_hash);
-          var data_el = $form3.find('#data-error');
-          if (searches_parsed.errors) {
-            var data_el = $form3.find('#data-error');
-            data_el.html('<div class="help-block"><h5>Search term not recognized:</h5>"' + 
-              searches_parsed.errors.join('" ,"') + '"</br>' +
-                "<h5>Allowed patterns:</h5>" + 
-                _.map(matching_hash, function(val,key){
-                  if (val.title){
-                    return '<dt>' + val.title + '</dt><dd>' + val.help + '</dd>'; 
-                  }
-                }).join('') + "</dl></div>");
-            data_el.show();
-            return;
-          }else{
-            data_el.hide();
-          }
-          self.submit_searches('reagent', searches_parsed.or_list);
-        }
-      });
-
+        var text_to_search = self.form3.getValue()['well'];
+        // must change the route, and create a post
+        
+        var resource = appModel.getResource('reagent');
+        // TODO: key the search data using the searchID: 
+        // this allows for bfowser "back" in the session
+        // will also need to listen to URIStack changes and grab the data
+        // from the search ID
+        var searchID = ( new Date() ).getTime();
+        appModel.setSearch(searchID,text_to_search);
+        this.searchID = searchID;
+        appModel.set('routing_options', {replace: false});  
+        var _route = resource.key + '/search/'+ searchID;
+        appModel.router.navigate(_route, {trigger:true});
+        // var newStack = [resource.key,'search',searchID];
+        // NOTE: easier to control the router history using navigate: 
+        // when using uristack, there is the problem of who set appModel.routing_options last:
+        // a race condition is set up between list2.js and search_box.js
+        //        appModel.set({'uriStack': newStack});     
+      });      
+      
       ///// CPR
       var form4 = this.form4;
       var $form4 = this.form4.render().$el;
@@ -436,10 +475,10 @@ define([
         var errors = form4.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
           console.log('form4 errors, abort submit: ' + JSON.stringify(errors));
-          $form3.find('#cpr').addClass(self.errorClass);
+          $form4.find('#cpr').addClass(self.errorClass);
           return;
         }else{
-          $form3.find('#cpr').removeClass(self.errorClass);
+          $form4.find('#cpr').removeClass(self.errorClass);
         }
         var cpr_id = self.form4.getValue()['cpr'];
         var resource = appModel.getResource('cherrypickrequest');
@@ -517,7 +556,12 @@ define([
       return result;
     },
 
-    submit_searches(search_target, or_list){
+    /**
+     * Process search data as an array of AND clauses that will be OR'd together
+     * FIXME: if the search_data are large, implement server side searching,
+     * as in the reagent search. 201703/sde
+     */
+    submit_searches: function(search_target, or_list){
       console.log('submit search: ', search_target, or_list);
       if(or_list && or_list.length > 1){
         // then this a composite/or search
@@ -526,7 +570,6 @@ define([
         // must change the route, and create a post
         
         var resource = appModel.getResource(search_target);
-        var newStack = [resource.key,'search',searchID];
         // TODO: key the search data using the searchID: 
         // this allows for bfowser "back" in the session
         // will also need to listen to URIStack changes and grab the data
@@ -537,6 +580,7 @@ define([
         appModel.set('routing_options', {replace: false});  
         var _route = search_target + '/search/'+ searchID;
         appModel.router.navigate(_route, {trigger:true});
+        // var newStack = [resource.key,'search',searchID];
         // NOTE: easier to control the router history using navigate: 
         // when using uristack, there is the problem of who set appModel.routing_options last:
         // a race condition is set up between list2.js and search_box.js
@@ -656,7 +700,7 @@ define([
             this.form2.setValue('copyplate', search_string);
             this.searchID = searchID;
           }else if (uiResourceId == 'reagent') {
-            this.form3.setValue('well', search_string);
+            this.form3.setValue('well', search_data);
             this.searchID = searchID;
           }
         }

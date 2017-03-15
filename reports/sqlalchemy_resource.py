@@ -989,10 +989,9 @@ class SqlAlchemyResource(IccblBaseResource):
                         count = cache_hit['count']
                     else:
                         # cache routine should always return a cache object
-                        logger.error('error, cache not set: execute stmt')
+                        logger.warn('error, cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
                         result = conn.execute(stmt)
-                        logger.info('result: %r', [x for x in result])    
                     logger.info('====count: %d====', count)
                     
                 else:

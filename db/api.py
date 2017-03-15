@@ -92,7 +92,7 @@ from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 from decimal import Decimal
 import six
-from db import WELL_ID_PATTERN, WELL_NAME_PATTERN
+from db import WELL_ID_PATTERN, WELL_NAME_PATTERN, PLATE_PATTERN
 from tastypie.resources import convert_post_to_put
 from itertools import chain, combinations
 from docutils.parsers.rst.directives.html import Meta
@@ -4627,8 +4627,7 @@ class CopyWellResource(DbApiResource):
 #         return wells
 
 class CherryPickRequestResource(DbApiResource):        
-    LCP_COPYWELL_KEY = '{library_short_name}/{source_copy_name}/{source_well_id}'
-
+    
     class Meta:
     
         queryset = CherryPickRequest.objects.all().order_by('well_id')
@@ -4810,16 +4809,6 @@ class CherryPickRequestResource(DbApiResource):
                     name="get_get_lab_cherry_pick_plating_schema"),
         ]
     
-#     def make_log(self, request, **kwargs):
-#         log = DbApiResource.make_log(self, request, **kwargs)
-#         log.ref_resource_name = self._meta.resource_name
-#         log.key = kwargs.get('cherry_pick_request_id', None)
-#         cpr = CherryPickRequest.objects.get(pk=log.key)
-#         log.uri = '/'.join([
-#             'screen',cpr.screen.facility_id,log.ref_resource_name,log.key])
-#         logger.info('make cpr log: %r', log)
-#         return log;
-
     def dispatch_source_plate_view(self, request, **kwargs):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -5087,6 +5076,14 @@ class CherryPickRequestResource(DbApiResource):
 
     @read_authorization
     def dispatch_lab_cherry_pick_plating(self, request, **kwargs):
+        ''' 
+        Show the lab cherry pick view after plating
+        (Method used by the UI)
+        - modify schema and colums to show plate-mapping fields 
+        { "cherry_pick_assay_plate", "destination_well", etc. }
+        - modify field ordering
+        - filter: status=='plated' (TODO: implement "show_all")
+        '''
 
         schema = self.get_labcherrypick_resource()\
             .build_lab_cherry_pick_plating_schema(**kwargs)
@@ -5664,74 +5661,13 @@ class CherryPickRequestResource(DbApiResource):
 
     
     @classmethod
-    def find_wells(self, cherry_pick_well_patterns ):
+    def find_wells(cls, cherry_pick_well_patterns ):
         logger.info('find wells for patterns: %r', cherry_pick_well_patterns)
         if not isinstance(cherry_pick_well_patterns, (list,tuple)):
             cherry_pick_well_patterns = (cherry_pick_well_patterns,)
 
-        PLATE_PATTERN = re.compile(r'^(\d{1,5})$')
         wells = set()
-        errors = []
-        warnings = []
-        
-        # Process the patterns by line
-        parsed_lines = cherry_pick_well_patterns
-        if isinstance(parsed_lines, basestring):
-            parsed_lines = parsed_lines.split(r'\n+')
-            logger.info('parsed_lines: %r', parsed_lines)
-        for _line in parsed_lines:
-            _line = _line.strip()
-            if not _line:
-                continue
-            logger.debug('find_wells: well pattern line: %r', _line)
-            
-            patterns = re.split(r'[\s,]+', _line)
-            logger.debug('split line: %r', patterns)
-            plate_number = None
-            for _pattern in patterns:
-                if not _pattern:
-                    continue
-                # get rid of quotes
-                _pattern = re.sub(r'["\']+','',_pattern)
-                match = WELL_ID_PATTERN.match(_pattern)
-                if match is not None:
-                    plate_number = int(match.group(1))
-                    well_name = match.group(2).upper()
-                    try:
-                        well = Well.objects.get(
-                            plate_number=plate_number, well_name=well_name)
-                        wells.add(well)
-                        logger.debug('found %r for %r', well, _pattern)
-                        continue
-                    except ObjectDoesNotExist:
-                        plate_number = None
-                        errors.append(
-                            'well: %r is does not exist' % _pattern) 
-                elif PLATE_PATTERN.match(_pattern):
-                    logger.info('verify plates exist: %r', _pattern)
-                    plate_query = Plate.objects.all().filter(plate_number=_pattern)
-                    if plate_query.exists():
-                        plate_number = int(_pattern)    
-                        logger.info('found %r for %r', plate_number, _pattern)
-                        continue
-                    else:
-                        errors.append(
-                            'plate: %r is does not exist' % _pattern) 
-                if plate_number is not None and WELL_NAME_PATTERN.match(_pattern):
-                    try:
-                        well = Well.objects.get(
-                            plate_number=plate_number, well_name=_pattern.upper())
-                        wells.add(well)
-                        logger.debug('found %r for %r', well, _pattern)
-                    except ObjectDoesNotExist:
-                        errors.append(
-                            'well: "%d:%s" is does not exist' 
-                            % (plate_number,_pattern))
-                else:
-                    errors.append(
-                        'pattern: %r is not a recognized as a well id, or '
-                        'a plate number followed by a well name' % _pattern)
-            logger.debug('wells: %d', len(wells))
+        (wells,errors) = WellResource.find_wells(cherry_pick_well_patterns)
         if errors:
             raise ValidationError(
                 key='screener_cherry_picks',
@@ -5747,7 +5683,7 @@ class CherryPickRequestResource(DbApiResource):
                 msg=', '.join([well.well_id for well in non_experimental_wells]))
             
         logger.info('found wells: %r', wells)
-        return (wells, warnings)
+        return wells
 
     def validate_cpr_for_plating(self, cpr):
         logger.info('validating: %r', cpr)      
@@ -7070,9 +7006,8 @@ class ScreenerCherryPickResource(DbApiResource):
                 request, _data, response_class=HttpResponse, **kwargs)
         
         if scps_to_create:
-            (cherry_pick_wells, warn_msg) = \
+            cherry_pick_wells = \
                 CherryPickRequestResource.find_wells(scps_to_create)
-            messages.extend(warn_msg)
                 
             for well in cherry_pick_wells:
                 full_selection = original_selections[well.well_id]
@@ -7439,6 +7374,8 @@ class ScreenerCherryPickResource(DbApiResource):
 
 class LabCherryPickResource(DbApiResource):        
 
+    LCP_COPYWELL_KEY = '{library_short_name}/{source_copy_name}/{source_well_id}'
+
     class Meta:
 
         authentication = MultiAuthentication(BasicAuthentication(),
@@ -7508,7 +7445,8 @@ class LabCherryPickResource(DbApiResource):
     @transaction.atomic
     def patch_list(self, request, **kwargs):
 
-        COPYWELL_KEY = CherryPickRequestResource.LCP_COPYWELL_KEY
+        cw_formatter = LabCherryPickResource.LCP_COPYWELL_KEY
+        
         convert_post_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -7638,7 +7576,7 @@ class LabCherryPickResource(DbApiResource):
             selection_update['plate'] = plate # cache the plate for later use
             selection_update['source_copy_name'] = copy.name
             selection_update['library_short_name'] = copy.library.short_name
-            selection_copy_name = COPYWELL_KEY.format(**selection_update)
+            selection_copy_name = cw_formatter.format(**selection_update)
             selection_updates[selection_copy_name] = selection_update
             
             if selection_update['selected'] is True:
@@ -7663,7 +7601,7 @@ class LabCherryPickResource(DbApiResource):
             current_lcp = current_lcps[source_well_id]
             current_copy_name = None
             if current_lcp.copy is not None:
-                current_copy_name = COPYWELL_KEY.format(
+                current_copy_name = cw_formatter.format(
                     library_short_name=current_lcp.copy.library.short_name,
                     source_copy_name=current_lcp.copy.name,
                     source_well_id=source_well_id)
@@ -7708,7 +7646,7 @@ class LabCherryPickResource(DbApiResource):
             current_lcp = current_lcps[source_well_id]
             current_copy_name = None
             if current_lcp.copy is not None:
-                current_copy_name = COPYWELL_KEY.format(
+                current_copy_name = cw_formatter.format(
                     library_short_name=current_lcp.copy.library.short_name,
                     source_copy_name=current_lcp.copy.name,
                     source_well_id=source_well_id)
@@ -7790,14 +7728,14 @@ class LabCherryPickResource(DbApiResource):
                         '-structure_image','-molfile'],
                 })
         for lcp_cw in new_lab_cherry_pick_copywells:
-            name = COPYWELL_KEY.format(**lcp_cw)
+            name = cw_formatter.format(**lcp_cw)
             if ( Decimal(lcp_cw['source_copy_well_volume'])
                 < cpr.transfer_volume_per_well_approved ):
                 logger.info(
                     'vol requires override: lcp_cw: %r, approved: %r, available: %r', 
                     name, cpr.transfer_volume_per_well_approved, 
                     Decimal(lcp_cw['source_copy_well_volume']))
-                unfulfillable_wells.append(COPYWELL_KEY.format(**lcp_cw))
+                unfulfillable_wells.append(cw_formatter.format(**lcp_cw))
         warning_messages = {}
         if unfulfillable_wells:
             warning_messages[API_MSG_LCPS_INSUFFICIENT_VOLUME] = unfulfillable_wells
@@ -14698,7 +14636,7 @@ class ReagentResource(DbApiResource):
     def get_query(self, 
         param_hash, library_classification=None, library=None,
         cherry_pick_request_id_screener=None,
-        cherry_pick_request_id_lab=None,
+        cherry_pick_request_id_lab=None, wells=None
         ):
         logger.info('get query for library_classification %r', library_classification )
         schema = self.build_schema(library_classification=library_classification)
@@ -14805,12 +14743,14 @@ class ReagentResource(DbApiResource):
             if cherry_pick_request_id_lab is not None:
                 j = j.join(_lcp,
                     _lcp.c.source_well_id==_well.c.well_id)
-                
+    
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
             
             stmt = select(columns.values()).select_from(j)
+            if wells is not None:
+                stmt = stmt.where(_well.c.well_id.in_([w.well_id for w in wells]))
             if library:
                 stmt = stmt.where(_well.c.library_id == library.library_id) 
             if cherry_pick_request_id_screener is not None:
@@ -14894,10 +14834,26 @@ class ReagentResource(DbApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-       
+        
+        library_classification = None
+        search_data = param_hash.pop('search_data', None)
+        wells = None
+        if search_data is not None:
+            (wells,errors) = WellResource.find_wells(search_data)
+            if errors:
+                raise ValidationError(
+                    key='well_search',
+                    msg='%r' % errors )    
+            classifications = set([w.library.classification for w in wells])
+            logger.info('classifications: %r', classifications)
+            if wells and len(classifications) == 1:
+                for well in wells:
+                    library_classification = well.library.classification
+                    logger.info('c: %r', library_classification)
+                    break
+            logger.info('found wells: %d', len(wells))
         # TODO: eliminate dependency on library (for schema determination)
         library = None
-        library_classification = None
         library_short_name = param_hash.pop('library_short_name', None)
         if not library_short_name:
             logger.info('no library_short_name provided')
@@ -14954,7 +14910,8 @@ class ReagentResource(DbApiResource):
                 library_classification=library_classification,
                 library=library,
                 cherry_pick_request_id_screener=cherry_pick_request_id_screener,
-                cherry_pick_request_id_lab=cherry_pick_request_id_lab)
+                cherry_pick_request_id_lab=cherry_pick_request_id_lab,
+                wells = wells)
         
         rowproxy_generator = None
         if use_vocab is True:
@@ -15019,8 +14976,12 @@ class ReagentResource(DbApiResource):
         return self.library_resource
                 
     def get_schema(self, request, **kwargs):
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.info('param hash: %r', param_hash)
+        
         if not 'library_short_name' in kwargs:
-            return self.build_response(request, self.build_schema(), **kwargs)
+            return self.build_response(request, self.build_schema(**param_hash), **kwargs)
         
         library_short_name = kwargs.pop('library_short_name')
         try:
@@ -15033,7 +14994,7 @@ class ReagentResource(DbApiResource):
                 'Can not build schema - library def needed'
                 'no library found for short_name: %r' % library_short_name)
                 
-    def build_schema(self, library_classification=None, user=None):
+    def build_schema(self, library_classification=None, user=None, **kwargs):
         logger.info('build reagent schema for library_classification: %r',
             library_classification)
         schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
@@ -15049,11 +15010,27 @@ class ReagentResource(DbApiResource):
             for k, v in schema.items():
                 if k != 'fields' and k in sub_data:
                     schema[k] = sub_data[k]
+        elif 'search' in kwargs:
+            # Build the full schema for search
+            # FIXME could determine the schema as in ReagentResource.build_list_response
+            sub_data = \
+                self.get_reagent_resource(library_classification='small_molecule')\
+                .build_schema(user=user)
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            
+            sub_data = \
+                self.get_reagent_resource(library_classification='rnai')\
+                .build_schema(user=user)
+            newfields.update(sub_data['fields'])
+            # all sub-fields are set not visible
+            for k,field in newfields.items():
+                field['visibility'] = []
+            schema['fields'] = newfields
             
         well_schema = WellResource().build_schema(user=user)
         schema['fields'].update(well_schema['fields'])
 
-        logger.debug('schema: %r', schema)
         return schema
 
     def delete_reagents_for_library(self, library):
@@ -15248,8 +15225,12 @@ class WellResource(DbApiResource):
             content_type=content_type)
         
     def get_schema(self, request, **kwargs):
-        if not 'library_short_name' in kwargs:
-            return self.build_response(request, self.build_schema(),**kwargs)
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.info('param hash: %r', param_hash)
+        
+        if not 'library_short_name' in param_hash:
+            return self.build_response(request, self.build_schema(**kwargs),**param_hash)
         
         library_short_name = kwargs.pop('library_short_name')
         try:
@@ -15262,10 +15243,10 @@ class WellResource(DbApiResource):
                 'Can not build schema - library def needed'
                 'no library found for short_name: %r' % library_short_name)
                 
-    def build_schema(self, library_classification=None, user=None):
+    def build_schema(self, library_classification=None, user=None, **kwargs):
 
         data = super(WellResource, self).build_schema(user=user)
-        
+        logger.info('kwargs: %r', kwargs)
         if library_classification:
             sub_data = self.get_reagent_resource().build_schema(
                 library_classification=library_classification, user=user)
@@ -15275,6 +15256,25 @@ class WellResource(DbApiResource):
             data['fields'] = newfields
             
             data['content_types'] = sub_data['content_types']
+        elif 'search' in kwargs:
+            # Build the full schema for search
+            # FIXME could determine the schema as in ReagentResource.build_list_response
+#             raise Exception('xxx')
+            sub_data = self.get_reagent_resource().build_schema(
+                library_classification='small_molecule', user=user)
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            sub_data = self.get_reagent_resource().build_schema(
+                library_classification='rnai', user=user)
+            newfields.update(sub_data['fields'])
+            # all sub-fields are set not visible
+            for field in newfields:
+                field['visibility'] = []
+            newfields.update(data['fields'])
+            data['fields'] = newfields
+            # data['content_types'] = sub_data['content_types']
+        else:
+            pass
         return data
     
     @read_authorization
@@ -15596,62 +15596,80 @@ class WellResource(DbApiResource):
         
         raise NotImplementedError('patch obj must be implemented')
         
-        # logger.debug('patch: %r', deserialized)
-        # library = kwargs.get('library', None)
-        # if not library:
-        #     library_short_name = kwargs.get('library_short_name', None)
-        #     if not library_short_name:
-        #         raise ValidationError(key='library_short_name', msg='required')
-        #     try:
-        #         library = Library.objects.get(short_name=library_short_name)
-        #         kwargs['library'] = library
-        #     except ObjectDoesNotExist:
-        #         raise Http404('library not found: %r' % library_short_name)
-        # 
-        # initializer_dict = self.parse(deserialized)
-        # 
-        # id_kwargs = self.get_id(deserialized, **kwargs)
-        # 
-        # well = kwargs.get('well', None)
-        # if not well:
-        #     # find the well, to allow for patching
-        #     try:
-        #         well = Well.obj.get(**id_kwargs)
-        #         kwargs['well'] = well
-        #     except ObjectDoesNotExist:
-        #         raise Http404('well not found: %r' % id_kwargs)
-        # 
-        # errors = self.validate(initializer_dict, patch=True)
-        # if errors:
-        #     raise ValidationError(errors)
-        # 
-        # for key, val in initializer_dict.items():
-        #     if hasattr(well, key):
-        #         setattr(well, key, val)
-        # 
-        # well.save()
-        # 
-        # duplex_wells = []
-        # if deserialized.get('duplex_wells', None):
-        #     if not library.is_pool:
-        #         raise ValidationError(
-        #             key='duplex_wells',
-        #             msg='library is not a pool libary: %r' % library.short_name)
-        #     well_ids = deserialized['duplex_wells']  # .split(';')
-        #     for well_id in well_ids:
-        #         try:
-        #             duplex_wells.append(Well.objects.get(well_id=well_id))
-        #         except:
-        #             raise ValidationError(
-        #                 key='duplex_well not found',
-        #                 msg='well: %r, pool well: %r' % (well.well_id, well_id))
-        #     kwargs['duplex_wells'] = duplex_wells
-        # # lookup/create the reagent
-        # # TODO: delegate this to the ReagentResource
-        # self.get_reagent_resource().patch_obj(request, deserialized, **kwargs)
-        # 
-        # return well
+    @classmethod
+    def find_wells(cls, well_patterns ):
+        ''' return set() of Well objects matching the well_patterns list
+        '''
+        
+        logger.info('find wells for patterns: %r', well_patterns)
+        if not isinstance(well_patterns, (list,tuple)):
+            well_patterns = (well_patterns,)
 
+#         PLATE_PATTERN = re.compile(r'^(\d{1,5})$')
+        wells = set()
+        errors = []
+        
+        # Process the patterns by line
+        parsed_lines = well_patterns
+        if isinstance(parsed_lines, basestring):
+            parsed_lines = parsed_lines.split(r'\n+')
+            logger.info('parsed_lines: %r', parsed_lines)
+        for _line in parsed_lines:
+            _line = _line.strip()
+            if not _line:
+                continue
+            logger.debug('find_wells: well pattern line: %r', _line)
+            
+            patterns = re.split(r'[\s,]+', _line)
+            logger.debug('split line: %r', patterns)
+            plate_number = None
+            for _pattern in patterns:
+                if not _pattern:
+                    continue
+                # get rid of quotes
+                _pattern = re.sub(r'["\']+','',_pattern)
+                match = WELL_ID_PATTERN.match(_pattern)
+                if match is not None:
+                    plate_number = int(match.group(1))
+                    well_name = match.group(2).upper()
+                    try:
+                        well = Well.objects.get(
+                            plate_number=plate_number, well_name=well_name)
+                        wells.add(well)
+                        logger.debug('found %r for %r', well, _pattern)
+                        continue
+                    except ObjectDoesNotExist:
+                        plate_number = None
+                        errors.append(
+                            'well: %r is does not exist' % _pattern) 
+                elif PLATE_PATTERN.match(_pattern):
+                    logger.info('verify plates exist: %r', _pattern)
+                    plate_query = Plate.objects.all().filter(plate_number=_pattern)
+                    if plate_query.exists():
+                        plate_number = int(_pattern)    
+                        logger.info('found %r for %r', plate_number, _pattern)
+                        continue
+                    else:
+                        errors.append(
+                            'plate: %r is does not exist' % _pattern) 
+                if plate_number is not None and WELL_NAME_PATTERN.match(_pattern):
+                    try:
+                        well = Well.objects.get(
+                            plate_number=plate_number, well_name=_pattern.upper())
+                        wells.add(well)
+                        logger.debug('found %r for %r', well, _pattern)
+                    except ObjectDoesNotExist:
+                        errors.append(
+                            'well: "%d:%s" is does not exist' 
+                            % (plate_number,_pattern))
+                else:
+                    errors.append(
+                        'pattern: %r is not a recognized as a well id, or '
+                        'a plate number followed by a well name' % _pattern)
+            logger.debug('wells: %d', len(wells))
+        
+        return (wells, errors)
+        
                 
 class LibraryResource(DbApiResource):
     

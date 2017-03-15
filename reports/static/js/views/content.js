@@ -178,7 +178,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     }, // end showDetail
     
     // Show a listing of a resource, get the parameters from the uriStack
-    showList: function(resource, uriStack, schemaResult) {
+    showList: function(resource, uriStack) {
       
       console.log('showList: uriStack', uriStack);
 
@@ -215,7 +215,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       if(uriStack.length > 1 && uriStack[0] == 'search' 
           && !_.isNaN(parseInt(uriStack[1]))){
 
-        view = self.createListSearchView(resource, schemaResult, viewClass, uriStack);
+        view = self.createListSearchView(resource, viewClass, uriStack);
       
       }else{ // normal list view
 
@@ -266,31 +266,37 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         view = new viewClass({ 
 //            model: appModel, 
             uriStack: uriStack,
-            schemaResult: schemaResult, 
+            schemaResult: resource, 
             resource: resource,
             collection: collection,
             extraControls: extraControls
           });
       }
-    
-      self.listenTo(view, 'update_title', function(val){
-        if(val) {
-          this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
-        }else{
-          this.$('#content_title').html(resource.title);
-        }
-      });
-    
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      Backbone.Layout.setupView(view);
-      self.setView('#content', view ).render();
-      self.objects_to_destroy.push(view);
+      
+      // FIXME: createListSearchView does not return a view; should return a deferred
+      if (!_.isUndefined(view)){
+        self.listenTo(view, 'update_title', function(val){
+          if(val) {
+            this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+          }else{
+            this.$('#content_title').html(resource.title);
+          }
+        });
+      
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
+        self.setView('#content', view ).render();
+        self.objects_to_destroy.push(view);
+      }
 
     }, // end showList
     
-    // Create a list view using the stateful searchID given on the uriStack
-    createListSearchView: function(resource, schemaResult, viewClass, uriStack){
-      
+    /**
+     * Create a list view using the stateful searchID given on the uriStack. 
+     */
+    createListSearchView: function(resource, viewClass, uriStack){
+      var self = this;
+      console.log('createListSearchView')
       var url;
       var searchID;
       var search_data;
@@ -324,19 +330,107 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       });
       var collection = new Collection();
-//      var collection = new Collection({
-//        url: url,
-//      });
-      var view = new viewClass({ 
-//          model: appModel, 
-          uriStack: uriStack,
-          schemaResult: schemaResult, 
-          resource: resource, 
-          collection: collection, 
-          search_data: search_data
+      
+      function showView(newResource){
+        console.log('got new resource:', newResource, resource);
+        
+        var extraControls = [];
+        
+        // Special button to modifiy the reagent search
+        // TODO: implement this for other searches, if search_data is complex/large
+        if (resource.key == 'reagent'){
+          var $modifySearch = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="modify_search_button" ',
+            'href="#">',
+            'Modify Search</a>'
+          ].join(''));
+          extraControls.push($modifySearch);
+          $modifySearch.click(function(e){
+            e.preventDefault();
+            self.showReagentSearch(resource, search_data);
+          });
+        }
+        
+        var view = new viewClass({ 
+            uriStack: uriStack,
+            schemaResult: newResource, 
+            resource: newResource, 
+            collection: collection, 
+            search_data: search_data,
+            extraControls: extraControls
+          });
+        this.$('#content_title').html(resource.title + ' search');
+        
+        
+        self.listenTo(view, 'update_title', function(val){
+          if(val) {
+            this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+          }else{
+            this.$('#content_title').html(resource.title);
+          }
         });
-      this.$('#content_title').html(resource.title + ' search');
-      return view;
+      
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
+        self.setView('#content', view ).render();
+        self.objects_to_destroy.push(view);
+        
+      }
+      var schemaUrl = resource.apiUri + '/schema?search='+ searchID;
+      appModel.getResourceFromUrl(schemaUrl, showView);
+
+      // FIXME: should return a deferred call
+      //      return null;
+    },
+    
+    /** 
+     * Show/modify the reagent search list view 
+     **/
+    showReagentSearch: function(resource, search_data) {
+      var schema = {
+        search_data: {
+          title: 'Well Search',
+          key: 'search_data',
+          type: Backbone.Form.editors.TextArea.extend({
+              initialize: function() {
+                Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
+                this.$el.attr('rows',12);
+              }
+          }),
+          editorClass: 'input-full',
+          validators: ['required'],
+          template: appModel._field_template //altFieldTemplate
+        }
+      };
+      var FormFields = Backbone.Model.extend({
+        schema: schema
+      });
+      var formFields = new FormFields({
+        search_data: search_data
+      });
+      var form = new Backbone.Form({
+        model: formFields,
+        template: self._form_template //_.template(form_template.join(''))
+      });
+      var _form_el = form.render().el;
+      appModel.showModal({
+        title: 'Search for Wells',
+        view: _form_el,
+        ok: function() {
+          var errors = form.commit();
+          if(!_.isEmpty(errors)){
+            console.log('form errors, abort submit: ' + JSON.stringify(errors));
+            return false;
+          }
+          var searchID = ( new Date() ).getTime();
+          appModel.setSearch(searchID,form.getValue()['search_data']);
+          this.searchID = searchID;
+          appModel.set('routing_options', {replace: false});  
+          var _route = resource.key + '/search/'+ searchID;
+          appModel.router.navigate(_route, {trigger:true});
+        } 
+      });
     },
     
     // Backbone layoutmanager callback
@@ -440,7 +534,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       } else {
         // LIST VIEW
-        self.showList(resource, uriStack,resource);
+        self.showList(resource, uriStack);
       }
     }
   });

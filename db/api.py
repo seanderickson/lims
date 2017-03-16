@@ -11188,8 +11188,6 @@ class LibraryScreeningResource(ActivityResource):
             raise BadRequest(
                 'library screening log should be created by the callee of patch_obj')
 
-        # TODO: wrapper for parsing
-        # FIXME: move parsing until after validation
         # FIXME: parse and validate only editable fields
 
         id_kwargs = self.get_id(deserialized, **kwargs)
@@ -11505,10 +11503,9 @@ class LibraryScreeningResource(ActivityResource):
                     ap.delete()       
         logger.info('deleted plates: %r', deleted_plates)
 
-        library_warnings = []
         # Create assay plates
-        
         # TODO: review SS1 policy on screening plates
+        library_warnings = []
         created_plates = set()
         for plate_range in plate_ranges:
             for replicate in range(library_screening.number_of_replicates):
@@ -11555,7 +11552,8 @@ class LibraryScreeningResource(ActivityResource):
                         logger.debug('extant plate: %r', plate)
         
         # Update the plate screening related fields:
-        # TODO/Review policy: update the copy_wells if exist
+        # Note: CopyWells will not be updated; only updated for cherry pick source plates
+        # - see CherryPickRequestResource reserve methods
         for plate in extant_plates:
             remaining_well_volume = plate.remaining_well_volume or Decimal(0)
             remaining_well_volume += current_volume_tranferred_per_well
@@ -12057,7 +12055,8 @@ class ScreenResource(DbApiResource):
             logger.info('cache key not set: %s', cache_key)
             _data = self._get_detail_response_internal(**kwargs)
             if not _data:
-                return Http404
+                logger.info('no screen found for %r', facility_id)
+                raise Http404
             else:
                 # response = self.dispatch('detail', request, format='json', **kwargs )
                 # if response.status_code == 200:
@@ -12734,7 +12733,7 @@ class ScreenResource(DbApiResource):
         ''' 
         ScreenResource
         '''
-        logger.info('2 - build_list_response')
+        logger.info('ScreenResource - build_list_response')
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -12747,7 +12746,6 @@ class ScreenResource(DbApiResource):
         schema = kwargs['schema']
          
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
  
         try:
              

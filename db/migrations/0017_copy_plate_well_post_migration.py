@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     # remove old concentration fields from copy and plate
     
     dependencies = [
-        ('db', '0016_plate_volume'),
+        ('db', '0016_plates'),
     ]
 
     

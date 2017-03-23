@@ -659,7 +659,8 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
     self.$el.append($('<a>', {
       tabIndex : -1,
       href : interpolatedVal,
-      target : self.target
+      target : self.target,
+      title: self.title
     }).text(formattedValue));
     return this;
   },
@@ -1547,6 +1548,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
   
   filtericon_text : '<span class="pull-left glyphicon glyphicon-search" id="filter-icon" ></span>',
+  expandicon_text : '<span class="pull-left glyphicon glyphicon-chevron-up" id="filter-icon" ></span>',
+  collapseicon_text : '<span class="pull-left glyphicon glyphicon-chevron-down" id="filter-icon" ></span>',
  
   initialize : function(options) {
     this.options = options;
@@ -1814,6 +1817,7 @@ var BackgridFormFilter = Backbone.Form.extend({
   render: function () {
     var self = this;
     BackgridFormFilter.__super__.render.apply(this, arguments);
+
     this.$el.append([
       '<div id="form-last-row" class="iccbl-headerfield-form-last-row" >',
       '<div class="col-xs-6">',
@@ -1914,7 +1918,7 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
 var TextFormFilter = CriteriumFormFilter.extend({
   
   criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne', 
-    'in': 'in','blank':'is_null','not blank':'not_blank'},
+    'in': 'in','blank':'is_blank','not blank':'not_blank'},
     
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
@@ -2004,6 +2008,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
     
     var found = false;
     _.each(_.keys(self.criterium), function(criteriaKey){
+      
       var criteria = self.criterium[criteriaKey];
       var searchTerm = self.columnName + '__' + criteria;
       var nsearchTerm = '-' + self.columnName + '__' + criteria;
@@ -2021,11 +2026,15 @@ var TextFormFilter = CriteriumFormFilter.extend({
         searchTerm = self.columnName + '__' + criteria;
         delete searchHash[self.columnName]
         searchHash[searchTerm] = searchVal;
+      }else if (criteria == 'is_blank'){
+        searchTerm = self.columnName + '__is_null';
+        nsearchTerm = '-' + self.columnName + '__is_null';
+        searchVal = _.result(searchHash,searchTerm, _.result(searchHash,nsearchTerm, null));
       }
       if(searchVal !== null){
         found = true;
         self.setValue('lower_criteria', criteriaKey);
-        if(criteria == 'is_null'){
+        if(criteria == 'is_blank'){
           self.$el.find('[data-fields="form_textarea"]').hide();
           if(searchVal == 'false'){
             self.setValue('lower_criteria', 'not blank');
@@ -2063,9 +2072,9 @@ var TextFormFilter = CriteriumFormFilter.extend({
     var searchKey = self.columnName + '__' + criteria;
     var searchVal = values['form_textarea'];
     if(criteria == 'not_blank'){
-      searchKey = self.columnName + '__' + 'is_null';
+      searchKey = self.columnName + '__' + 'is_blank';
       searchVal = 'false'
-    }else if(criteria == 'is_null'){
+    }else if(criteria == 'is_blank'){
       searchVal = 'true';
     }
     var invert = values['invert_field'];
@@ -2408,6 +2417,9 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     TextHeaderCell.__super__.render.apply(this);
+    if (_.result(this,'searchable') !== true){
+      return this;
+    }
   
     this.$el.append(this.filterIcon);
     this._serverSideFilter.render();
@@ -2507,6 +2519,9 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     DateHeaderCell.__super__.render.apply(this);
+    if (_.result(this,'searchable') !== true){
+      return this;
+    }
   
     this.$el.append(this.filterIcon);
     this._serverSideFilter.render();
@@ -2719,6 +2734,10 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     BooleanHeaderCell.__super__.render.apply(this);
+    if (_.result(this,'searchable') !== true){
+      return this;
+    }
+    
     this.$el.append(this.filterIcon);
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
@@ -3029,6 +3048,9 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     SelectorHeaderCell.__super__.render.apply(this);
+    if (_.result(this,'searchable') !== true){
+      return this;
+    }
   
     this.$el.append(this.filterIcon);
     this._serverSideFilter.render();
@@ -3340,6 +3362,9 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     NumberHeaderCell.__super__.render.apply(this);
+    if (_.result(this,'searchable') !== true){
+      return this;
+    }
   
     this.$el.append(this.filterIcon);
     this._serverSideFilter.render();
@@ -3659,6 +3684,9 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     SelectorHeaderCell.__super__.render.apply(this);
     var self = this;
+    if (_.result(this,'searchable') !== true){
+      return this;
+    }
   
     this.$el.append(this.filterIcon);
 
@@ -3998,7 +4026,6 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       formatter: Iccbl.StringFormatter
     });
   }
-  
   column = _.extend(column, {
     'name' : key,
     'label' : prop['title'],
@@ -4016,7 +4043,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     column['editable'] = true;
   }
   if(!_.isEmpty(prop.vocabulary)){
-    // TODO: this is probably backwards, since it appears SelectCell
+    // Note: this is probably backwards, since it appears SelectCell
     // wants [title,val], not [val,title]
     cell_options.optionValues = prop.vocabulary; 
     column['cell'] = Iccbl.SelectCell.extend(cell_options);
@@ -4096,6 +4123,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
         ', dt: ', data_type,'edit_type', edit_type);
     }
     
+  }
+  if (prop['filtering'] === true){
+    column['headerCell'] = column['headerCell'].extend({ searchable: true });
   }
     
   return column;

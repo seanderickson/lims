@@ -325,6 +325,19 @@ function migratedb {
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
     
+    migration='0017'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    
+    migration='0018'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    
+    
     migration='0098' 
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
@@ -515,6 +528,12 @@ function setup_test_data {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
     
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    
   test_screen=13
   # lead_screener=rs360
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
@@ -523,6 +542,12 @@ function setup_test_data {
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
@@ -541,6 +566,12 @@ function setup_test_data {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
     
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    
   test_screen=15
   # lead_screener=sde4
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
@@ -549,6 +580,12 @@ function setup_test_data {
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \

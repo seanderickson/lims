@@ -404,3 +404,34 @@ td.text-wrap-cell {
  width: 150px;
 }
 
+#filter-icon {
+  display: block; 
+}
+.expanded #filter-icon {
+  display: none; 
+}
+.filtered #filter-icon {
+  display: none; 
+}
+#expand-filter-icon {
+  display: none; 
+}
+.expanded #expand-filter-icon {
+  display: none; 
+}
+.filtered #expand-filter-icon {
+  display: block; 
+}
+.expanded.filtered #expand-filter-icon {
+  display: none; 
+}
+#collapse-filter-icon {
+  display: none; 
+}
+.expanded #collapse-filter-icon {
+  display: block; 
+}
+#expand-filter-icon-text {
+  white-space: normal;
+  font-family: sans-serif;
+}

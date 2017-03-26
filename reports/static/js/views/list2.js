@@ -749,6 +749,7 @@ define([
     
     clear_searches: function(){
       this.collection.trigger("Iccbl:clearSearches");
+      this.listModel.unset('search');
       // FIXME: any call to getFirstPage results in a fetch, disabled for now
       //this.collection.getFirstPage({reset: true, fetch: true});
       //this.collection.getFirstPage();

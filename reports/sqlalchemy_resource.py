@@ -705,7 +705,7 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         Return a deserialized list of dicts
         '''
-        logger.info('_get_list_response: %r, %r', 
+        logger.debug('_get_list_response: %r, %r', 
             self._meta.resource_name, {k:v for k,v in kwargs.items() if k !='schema'})
         includes = kwargs.pop('includes', '*')
         try:
@@ -843,11 +843,14 @@ class SqlAlchemyResource(IccblBaseResource):
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt %d', len(prefetched_result))
                 
-                logger.info('no cache hit, execute count')
-                if limit == 1:
-                    count = 1
+                if len(prefetched_result) < limit:
+                    count = len(prefetched_result)
                 else:
-                    count = conn.execute(count_stmt).scalar()
+                    logger.info('no cache hit, execute count')
+                    if limit == 1:
+                        count = 1
+                    else:
+                        count = conn.execute(count_stmt).scalar()
                 logger.info('count: %s', count)
                 
 #                 if count == 1 or count < limit:
@@ -989,7 +992,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         count = cache_hit['count']
                     else:
                         # cache routine should always return a cache object
-                        logger.warn('error, cache not set: execute stmt')
+                        logger.info('cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
                         result = conn.execute(stmt)
                     logger.info('====count: %d====', count)

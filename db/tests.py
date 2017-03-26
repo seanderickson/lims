@@ -74,7 +74,7 @@ except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(db.__path__))
 BASE_URI_DB = '/db/api/v1'
 
-LCP_COPYWELL_KEY = db.api.CherryPickRequestResource.LCP_COPYWELL_KEY
+LCP_COPYWELL_KEY = db.api.LabCherryPickResource.LCP_COPYWELL_KEY
 
 
 class DBResourceTestCase(IResourceTestCase):
@@ -512,9 +512,11 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         patch_response = patch_response[API_RESULT_DATA]
-        self.assertTrue('comments' in patch_response, 
+        self.assertTrue('comment_array' in patch_response, 
             'patch_response: %r' % patch_response)
-        self.assertTrue(test_comment in patch_response['comments'], 
+        comment_array = patch_response['comment_array']
+        self.assertTrue(len(comment_array),1)
+        self.assertTrue(test_comment in patch_response['comment_array'][0], 
             'test_comment: %r not found in library response obj: %r' % (
                 test_comment, patch_response))
 
@@ -530,11 +532,14 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         patch_response = patch_response[API_RESULT_DATA]
-        self.assertTrue('comments' in patch_response)
-        self.assertTrue(test_comment in patch_response['comments'], 
+        self.assertTrue('comment_array' in patch_response, 
+            'patch_response: %r' % patch_response)
+        comment_array = patch_response['comment_array']
+        self.assertTrue(len(comment_array),2)
+        self.assertTrue(test_comment in comment_array[1], 
             'test_comment: %r not found in library response obj: %r' % (
                 test_comment, patch_response))
-        self.assertTrue(test_comment2 in patch_response['comments'], 
+        self.assertTrue(test_comment2 in comment_array[0], 
             'test_comment2: %r not found in library response obj: %r' % (
                 test_comment2, patch_response))
         
@@ -3238,7 +3243,7 @@ class ScreenResource(DBResourceTestCase):
         apilogs = self.get_list_resource(
             BASE_REPORTS_URI + '/apilog', 
             data_for_get=data_for_get )
-        logger.info('logs: %r', apilogs)
+        logger.debug('logs: %r', apilogs)
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
@@ -3291,7 +3296,7 @@ class ScreenResource(DBResourceTestCase):
                 end_plate=added_plate_range_end )
         library_screening_input2['library_plates_screened'].append(
             added_plate_range)
-        logger.info('input: %r', library_screening_input2)
+        logger.debug('input: %r', library_screening_input2)
         resp = self.api_client.patch(
             resource_uri, 
             format='json', data=library_screening_input2, 
@@ -4182,7 +4187,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         self._setup_data()
         return self._create_cherry_pick_request(
             self.screen,
-            data={ 'keep_source_plate_cherry_picks_together': True})
+            data={ 'keep_source_plate_cherry_picks_together': False})
     
     def _test2a_set_rnai_screener_cherry_picks(self):
         logger.info('test2a_set_rnai_screener_cherry_picks')
@@ -4587,9 +4592,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         _meta = _data[API_RESULT_META]
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
-        plate_copy1a = '01000:%s' % self.library1_copy1a['copy_name']
-        plate_copy_l2_c1 = '02001:%s' % self.library2_copy1['copy_name']
-        plate_copy_l4_c1 = '04000:%s' % self.library4_copy1['copy_name']
+        plate_copy1a = '1000:%s' % self.library1_copy1a['copy_name']
+        plate_copy_l2_c1 = '2001:%s' % self.library2_copy1['copy_name']
+        plate_copy_l4_c1 = '4000:%s' % self.library4_copy1['copy_name']
         
         for msg in copy_plate_assigned_msg:
             if plate_copy1a in msg:
@@ -4679,9 +4684,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         _meta = _data[API_RESULT_META]
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
-        plate_copy1a = '01000:%s' % self.library1_copy1a['copy_name']
-        plate_copy_l2_c1 = '02001:%s' % self.library2_copy1['copy_name']
-        plate_copy_l4_c1 = '04000:%s' % self.library4_copy1['copy_name']
+        plate_copy1a = '1000:%s' % self.library1_copy1a['copy_name']
+        plate_copy_l2_c1 = '2001:%s' % self.library2_copy1['copy_name']
+        plate_copy_l4_c1 = '4000:%s' % self.library4_copy1['copy_name']
         
         for msg in copy_plate_assigned_msg:
             if plate_copy1a in msg:
@@ -4708,27 +4713,22 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         # 4.A check the assay plate/well assignments
         # - use the lcp.copywell fields to check copywell adjustments
-        copy_to_assay_plate = {}
+        assay_plates = set()
         for lcp in plated_lab_cherry_picks:
             logger.debug('lcp: %r', lcp)
-#             self.assertTrue(
-#                 lcp.get('cherry_pick_plate_number',"")!="",
-#                 'cherry_pick_plate_number: %r' % lcp)
-#             self.assertTrue(
-#                 lcp.get('destination_well',"")!="",
-#                 'destination_well: %r' % lcp)
-            
+            assay_plates.add(lcp['cherry_pick_plate_number'])
             # Ensure that each source copy gets a different assay_plate
-            source_copy_id = lcp['source_copy_id']
-            cpp_number = lcp['cherry_pick_plate_number']
-            if source_copy_id not in copy_to_assay_plate:
-                copy_to_assay_plate[source_copy_id] = cpp_number
-            else:
-                self.assertEqual(
-                    cpp_number,
-                    copy_to_assay_plate[source_copy_id],
-                    'lcp: %r, copy wells split between plates: %r and %r'
-                    % (lcp, cpp_number, copy_to_assay_plate[source_copy_id]))
+            # only if keep_source_plate_cherry_picks_together
+            # source_copy_id = lcp['source_copy_id']
+            # cpp_number = lcp['cherry_pick_plate_number']
+            # if source_copy_id not in copy_to_assay_plate:
+            #     copy_to_assay_plate[source_copy_id] = cpp_number
+            # else:
+            #     self.assertEqual(
+            #         cpp_number,
+            #         copy_to_assay_plate[source_copy_id],
+            #         'lcp: %r, copy wells split between plates: %r and %r'
+            #         % (lcp, cpp_number, copy_to_assay_plate[source_copy_id]))
 
             # Check that the copy-wells have had their volumes adjusted
             transfer_volume_per_well_approved = \
@@ -4765,7 +4765,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         platecopy_resource_uri = '/'.join([BASE_URI_DB, 'librarycopyplate'])
         plates_to_get = set([
-            '%s/%s' % (lcp['source_copy_name'],str(lcp['library_plate']).zfill(5))
+            '%s/%s' % (lcp['source_copy_name'],str(lcp['library_plate']))
             for lcp in plated_lab_cherry_picks])
         data_for_get = { 'copyplate_id__in': [x for x in plates_to_get] }
         logger.info('get the plates: %r', plates_to_get)
@@ -4776,8 +4776,8 @@ class CherryPickRequestResource(DBResourceTestCase):
                 'plate: {copyplate_id}, cpsc: {cplt_screening_count}'.format(**plate))
         
         # Expect 3 assay plates to hold the 6+3+6=15 lcp's with 6 spaces per plate
-        self.assertTrue(len(copy_to_assay_plate) == expected_assay_plates, 
-            'wrong number of assay_plates created: %r' % copy_to_assay_plate)
+        self.assertTrue(len(assay_plates) == expected_assay_plates, 
+            'wrong number of assay_plates created: %r' % assay_plates)
         
         cpaps = self._get_cpaps(cpr_id)
         logger.info('cpaps created: %r', cpaps)
@@ -5303,12 +5303,13 @@ class CherryPickRequestResource(DBResourceTestCase):
 
         # Check the well assignments (non-random):
         # cherry_pick_plate_number and destination well_name should increment
-        # in this ordering:
+        # in this ordering (if not keep_source_plate_cherry_picks_together):
         lcps_by_plate_copy_well_dest_well = [
             (lcp['library_plate'],lcp['source_copy_name'],
                 lcp['source_well_id'],lcp['cherry_pick_plate_number'],
                 lcp['destination_well']) 
                 for lcp in lcps]
+            
         lcps_by_plate_copy_well_dest_well = sorted(
             lcps_by_plate_copy_well_dest_well)
         
@@ -5411,10 +5412,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
         expected_copyplate_assignments = {
-            '01000:%s'%self.library1_copy1['copy_name']: 5,
-            '01000:%s'%self.library1_copy4['copy_name']: 1,
-            '02001:%s'%self.library2_copy1['copy_name']: 3,
-            '04000:%s'%self.library4_copy1['copy_name']: 6
+            '1000:%s'%self.library1_copy1['copy_name']: 5,
+            '1000:%s'%self.library1_copy4['copy_name']: 1,
+            '2001:%s'%self.library2_copy1['copy_name']: 3,
+            '4000:%s'%self.library4_copy1['copy_name']: 6
             }
         logger.info(
             'check expected_copyplate_assignments: %r', 
@@ -5575,7 +5576,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         platecopy_resource_uri = '/'.join([BASE_URI_DB, 'librarycopyplate'])
         plates_to_get = set([
-            '%s/%s' % (lcp['source_copy_name'],str(lcp['library_plate']).zfill(5))
+            '%s/%s' % (lcp['source_copy_name'],str(lcp['library_plate']))
             for lcp in new_lab_cherry_picks.values()])
         data_for_get = { 'copyplate_id__in': [x for x in plates_to_get] }
         logger.info('get the plates: %r', plates_to_get)
@@ -5666,10 +5667,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
         copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
         expected_copyplate_assignments = {
-            '01000:%s'%self.library1_copy1['copy_name']: 4,
-            '01000:%s'%self.library1_copy4['copy_name']: 2,
-            '02001:%s'%self.library2_copy1['copy_name']: 3,
-            '04000:%s'%self.library4_copy1['copy_name']: 6
+            '1000:%s'%self.library1_copy1['copy_name']: 4,
+            '1000:%s'%self.library1_copy4['copy_name']: 2,
+            '2001:%s'%self.library2_copy1['copy_name']: 3,
+            '4000:%s'%self.library4_copy1['copy_name']: 6
             }
         logger.info(
             'check expected_copyplate_assignments: %r', 
@@ -5775,7 +5776,7 @@ class CherryPickRequestResource(DBResourceTestCase):
                     % ( expected_vol, lcp) )
                 
         # TODO: verify plate mapping:
-        # - cpr.keep_source_plate_picks_together
+        # - cpr.keep_source_plate_cherry_picks_together
         # - cpr.random
         # - cpr.wells_to_leave_empty
         
@@ -5942,7 +5943,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             
         platecopy_resource_uri = '/'.join([BASE_URI_DB, 'librarycopyplate'])
         plates_to_get = set([
-            '%s/%s' % (lcp['source_copy_name'],str(lcp['library_plate']).zfill(5))
+            '%s/%s' % (lcp['source_copy_name'],str(lcp['library_plate']))
             for lcp in new_lab_cherry_picks.values()])
         data_for_get = { 'copyplate_id__in': [x for x in plates_to_get] }
         logger.info('get the plates: %r', plates_to_get)

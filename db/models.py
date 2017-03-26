@@ -34,6 +34,9 @@ class Activity(models.Model):
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
 
+    # New
+    apilog_uri = models.TextField(null=True)
+
     class Meta:
         db_table = 'activity'
 
@@ -611,7 +614,7 @@ class CherryPickAssayPlate(models.Model):
         models.ForeignKey('CherryPickLiquidTransfer', null=True)
     legacy_plate_name = models.TextField(null=True)
     
-    # TODO: creted to distinguish between:
+    # TODO: created to distinguish between:
     # "LegacyCherryPickAssayPlate" and "CherryPickAssayPlate"
     cherry_pick_assay_plate_type = models.CharField(max_length=31)
 
@@ -619,6 +622,13 @@ class CherryPickAssayPlate(models.Model):
         unique_together = ((
             'cherry_pick_request', 'plate_ordinal','attempt_ordinal'))    
         db_table = 'cherry_pick_assay_plate'
+
+    def __repr__(self):
+        return (
+            '<CherryPickAssayPlate(cpr_id=%r, '
+            'plate_ordinal=%r)>' 
+            % (self.cherry_pick_request_id, 
+               self.plate_ordinal)) 
 
 # Purpose: to cast CherryPickRequest for SiRNA screens
 # Deprecate

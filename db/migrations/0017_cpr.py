@@ -2,302 +2,101 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from collections import OrderedDict
-from decimal import Decimal
-import json
 import logging
-import re
 
 from django.db import migrations, models
 
-from db.migrations import create_log_time, _create_generic_log, \
-    _child_log_from
-from db.support.data_converter import default_converter
-from reports.models import ApiLog
+from db import WELL_NAME_PATTERN
+from db.support import lims_utils
 
 
 logger = logging.getLogger(__name__)
 
-base_uri = '/db/api/v1'
-copywell_resource_name = 'copywell'
-copywell_uri = '/db/api/v1/' + copywell_resource_name
-librarycopyplate_resource_name = 'librarycopyplate'
+def migrate_cherry_pick_request_empty_wells(apps,schema_editor):
+    
+    logger.info('migrate cherry_pick_request_empty_wells')
 
-
-def _create_plate_activity_log(activity_dict):
-    log = ApiLog()
-    log.ref_resource_name = librarycopyplate_resource_name
-    log.key = '/'.join([
-        activity_dict['library_short_name'],activity_dict['copy_name'],
-        str(int(activity_dict['plate_number'])).zfill(5)])
-    log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
-    log.comment = activity_dict['comments']
-    log.date_time = create_log_time(activity_dict['date_of_activity'])
-    log.username = activity_dict['username']
-    log.user_id = activity_dict['screensaver_user_id']
-    return log
-
-def migrate_plate_generic_logs(apps, schema_editor):
-    logger.info('create plate generic activity logs')
-
-    Activity = apps.get_model('db', 'Activity')
-
-    cols = OrderedDict({
-        'activity_id': 'a.activity_id',
-        'username': 'username',
-        'screensaver_user_id': 'screensaver_user_id',
-        'date_of_activity': 'date_of_activity',
-        'comments': 'a.comments',
-        'plate_number': 'plate_number',
-        'copy_name': 'copy.name',
-        'library_short_name': 'library.short_name',
-        })
-    colkeys = cols.keys()
-    _cols = ', '.join([ '%s as %s' % (value,key) for key, value in cols.items() ])
-    sql = (
-        'select ' + _cols + 
-        '''
-    from activity a 
-    join screensaver_user on(performed_by_id=screensaver_user_id)
-    join plate_update_activity on (activity_id=update_activity_id) 
-    join plate using(plate_id)
-    join copy using(copy_id)
-    join library using(library_id)
-    where
-    not exists (select null from plate where plated_activity_id = activity_id) 
-    and not exists (select null from plate where retired_activity_id = activity_id) 
-    and a.comments not ilike '%Facility ID changed%' 
-    and a.comments not ilike '%location changed from%' 
-    and a.comments not ilike '%well volume changed%' 
-    and a.comments not ilike '%plate type changed%' 
-    and a.comments not ilike '%concentration changed from%' 
-    and a.comments not ilike '%concentration (molar) changed from%' 
-    and a.comments not ilike '%concentration (mg/ml) changed from%' 
-    and a.comments not ilike '%activity created by database migration%'
-    and a.comments not ilike '%Freezer 1 inventory updates for Richard Siu and Rachel Warden%'
-    '''
-    )
+    CherryPickRequest = apps.get_model('db', 'CherryPickRequest')
     
     connection = schema_editor.connection
-    cursor = connection.cursor()
-    cursor.execute(sql)
-    _list = cursor.fetchall()
-    if len(_list) == 0:
-        raise Exception('No plate generic activities found with sql: %r' % sql)
-    for i,_data in enumerate(_list):
-        _activity = dict(zip(colkeys, _data))
-        log = _create_plate_activity_log(_activity)
-        log.json_field = { 
-            'migration': 'LibraryCopyPlate (comment log)',
-            'data': { 'plate_update_activity.activity_id': 
-                _activity['activity_id'] }
-        }
-        log.save()
-        if i % 1000 == 0:
-            logger.info('plate generic log: %r, %r', log, log.comment)
-            logger.info('processed %d plate generic activity logs', i)
     
-    
-def create_plate_plated_and_retired_logs(apps, schema_editor):  
-
-    logger.info('create plate activity logs')
-
-    Activity = apps.get_model('db', 'Activity')
-
-    cols = OrderedDict({
-        'activity_id': 'a.activity_id',
-        'username': 'username',
-        'screensaver_user_id': 'screensaver_user_id',
-        'date_of_activity': 'date_of_activity',
-        'comments': 'a.comments',
-        'plate_number': 'plate_number',
-        'copy_name': 'copy.name',
-        'library_short_name': 'library.short_name',
-        })
-    colkeys = cols.keys()
-    _cols = ', '.join([ '%s as %s' % (value,key) for key, value in cols.items() ])
     sql = (
-        'select ' + _cols + 
-    ''' from activity a join screensaver_user on(performed_by_id=screensaver_user_id) 
-    join plate on (activity_id=plate.plated_activity_id)
-    join copy using(copy_id)
-    join library using(library_id); '''
-    )
+        'select well_name from cherry_pick_request_empty_well where '
+        'cherry_pick_request_id=%s' )
     
-    connection = schema_editor.connection
-    cursor = connection.cursor()
+    count = 0
+    for cpr in CherryPickRequest.objects.all(): #.filter(cherry_pick_request_id=43882): 
         
-    cursor.execute(sql)
-    _list = cursor.fetchall()
-    if len(_list) == 0:
-        raise Exception('No plate plated_activities found with sql: %r' % sql)
-    for i,_data in enumerate(_list):
-        _activity = dict(zip(colkeys, _data))
-        log = _create_plate_activity_log(_activity)
-        if "'available'" in log.comment.lower():
-            log.diffs['status'] = ['not_specied','available']
-        elif "'not available'" in log.comment.lower():
-            log.diffs['status'] = ['not_specied','not_available']
-        else:
-            raise Exception('unknown plate.plated_activity comment: %r', _activity)
-        log.diffs['date_plated'] = [None, _activity['date_of_activity']]
-        log.json_field = { 
-            'migration': 'LibraryCopyPlate plating',
-            'data': { 
-                'plate_update_activity.activity_id': _activity['activity_id'] }
-        }
-        log.save()
+        plate_size = cpr.assay_plate_size
+        nrows = lims_utils.get_rows(plate_size)
+        ncols = lims_utils.get_cols(plate_size)
+        logger.debug('cpr: %d, plate_size: %d nrows: %d, ncols: %d', 
+            cpr.cherry_pick_request_id, plate_size, nrows, ncols)
         
-        if i % 1000 == 0:
-            logger.info('plate plated log: %r, %r', log, log.comment)
-            logger.info('processed %d plate plated activity logs', i)
-    logger.info('processed %d plate plated activity logs', i)
-
-    sql = (
-        'select ' + _cols + 
-    ''' from activity a join screensaver_user on(performed_by_id=screensaver_user_id) 
-    join plate on (activity_id=plate.retired_activity_id)
-    join copy using(copy_id)
-    join library using(library_id); '''
-    )
-
-    cursor.execute(sql)
-    _list = cursor.fetchall()
-    if len(_list) == 0:
-        raise Exception('No plate retired_activities found with sql: %r' % sql)
-    
-    status_change_pattern = re.compile(r".*from '([^\']+)'.*to '([^\']+)'.*")
-    status_terms_recognized = set()
-    for i,_data in enumerate(_list):
-        _activity = dict(zip(colkeys, _data))
-        log = _create_plate_activity_log(_activity)
-        match = status_change_pattern.match(log.comment)
-        if not match:
-            raise Exception('unknown plate.retired_activity comment: %r', _activity)
-        log.diffs['status'] = [
-            default_converter(match.group(1)),
-            default_converter(match.group(2))]
-        log.diffs['date_retired'] = [None, _activity['date_of_activity']]
-        log.json_field = { 
-            'migration': 'LibraryCopyPlate retired',
-            'data': { 
-                'plate_update_activity.activity_id': _activity['activity_id'] }
-        }
-        log.save()
-        status_terms_recognized.add(default_converter(match.group(1)))
-        status_terms_recognized.add(default_converter(match.group(2)))
+        cursor = connection.cursor()
+        cursor.execute(sql, [cpr.cherry_pick_request_id])
+        _list = cursor.fetchall()
         
-        if i % 1000 == 0:
-            logger.info('plate retired log: %r, %r', log, log.comment)
-            logger.info('processed %d plate retired activity logs', i)
-    logger.info('processed %d plate retired activity logs', i)
-    logger.info('status terms recognized: %r', status_terms_recognized)
-
-def create_library_screening_logs(apps, schema_editor):
-     
-    logger.info('create library screening logs')
-     
-    LibraryScreening = apps.get_model('db', 'LibraryScreening')
-    ScreeensaverUser = apps.get_model('db', 'ScreensaverUser')
-    screen_to_screening_count = {}
-    copyplate_to_screening_count = {}
-    copyplate_to_volume = {}
-    i = 0 
-    total_plate_logs = 0
-     
-    for screening in LibraryScreening.objects.all().order_by(
-            'screeninglink__labactivitylink__activitylink__date_of_activity'):
-        lab_activity = screening.screeninglink.labactivitylink
-        screen = lab_activity.screen
-        activity = lab_activity.activitylink
-        screensaver_user_performed_by = activity.performed_by
-        screensaver_user_created_by = activity.created_by
-        # NOTE: if activity.date_performed < 2010-01-15, the "created_by" field
-        # is empty
-        default_admin_user = ScreeensaverUser.objects.get(username='sr50')
-        if screensaver_user_created_by is None:
-            screensaver_user_created_by = default_admin_user
+        well_names = set(x[0] for x in _list)
+        wells_to_leave_empty = set()
+        rowhash = {}
+        colhash = {}
+        wells = set()
+        for wellname in well_names:
+            match = WELL_NAME_PATTERN.match(wellname)
+            if not match:
+                logger.error('well name pattern is not recognized: %r', wellname)
+                raise Exception('cpr %d', cpr.cherry_pick_request_id)
+                continue
+            wells.add(wellname)
+            wellrow = match.group(1)
+            wellcol = int(match.group(2))
+            _row_wells = rowhash.get(wellrow,set())
+            _row_wells.add(wellname)
+            rowhash[wellrow] = _row_wells
+            _col_wells = colhash.get(wellcol,set())
+            _col_wells.add(wellname)
+            colhash[wellcol] = _col_wells
+        for _col, colwells in colhash.items():
+            # Note: using >= nrows because of an error in extant data for 96 well plate types
+            if len(colwells) >= nrows:
+                wells_to_leave_empty.add('Col:%d' % _col)
+        for _row, rowwells in rowhash.items():
+            if len(rowwells) >= ncols:
+                wells_to_leave_empty.add('Row:%s' % _row) 
+                
+        for wellname in wells:
+            match = WELL_NAME_PATTERN.match(wellname)
+            wellrow = match.group(1)
+            wellcol = int(match.group(2))
+            
+            if 'Col:%d' % wellcol in wells_to_leave_empty:
+                logger.debug('col wellname found: %r', wellname)
+                continue
+            if 'Row:%s' % wellrow in wells_to_leave_empty:
+                logger.debug('row wellname found: %r', wellname)
+                continue
+            wells_to_leave_empty.add(wellname)
+        logger.debug('wells_to_leave_empty: %r', wells_to_leave_empty)
+        decorated = []
+        for wellname in wells_to_leave_empty:
+            if 'Col:' in wellname:
+                decorated.append((1,int(wellname.split(':')[1]),wellname))
+            elif 'Row:' in wellname:
+                decorated.append((2,wellname.split(':')[1],wellname))
+            else:
+                match = WELL_NAME_PATTERN.match(wellname)
+                decorated.append((match.group(1),match.group(1), wellname))
+        wells_to_leave_empty = [x[2] for x in sorted(decorated)]
         
-        # NOTE: not creating a screen "parent" log;
-        # libraryScreening activities will stand on their own
-        # Create a LibraryScreening log
-        library_screening_log = _create_generic_log(activity)
-        library_screening_log.ref_resource_name = 'libraryscreening'
-        library_screening_log.key = str(activity.activity_id)
-        library_screening_log.uri = '/'.join([
-            'screen', screen.facility_id, 
-            library_screening_log.ref_resource_name,library_screening_log.key])
-        library_screening_log.diffs = {
-            'screened_experimental_well_count': 
-                [None,screening.screened_experimental_well_count],
-            'libraries_screened_count': [None, screening.libraries_screened_count],
-            'library_plates_screened_count': [None, screening.library_plates_screened_count],
-            'is_for_external_library_plates': [None, screening.is_for_external_library_plates]
-            }
-        library_screening_log.json_field = {
-            'migration': 'LibraryScreening',
-            'data': { 'library_screening.activity_id': activity.activity_id 
-            }
-        }
-        library_screening_log.save()
-         
-        j = 0
-        cp_logs = []
+        cpr.wells_to_leave_empty = ','.join(wells_to_leave_empty)
+        cpr.save()
         
-        for assay_plate in screening.assayplate_set.all().filter(replicate_ordinal=0):
-            plate = assay_plate.plate
-            # copyplate log for library screening
-            cp_log = _child_log_from(library_screening_log)
-            cp_log.comment = None
-            cp_log.ref_resource_name = librarycopyplate_resource_name 
-            cp_log.key = '/'.join([
-                plate.copy.library.short_name, plate.copy.name, 
-                str(plate.plate_number).zfill(5)])
-            cp_log.uri = '/'.join([base_uri,cp_log.ref_resource_name,cp_log.key])
-            screen_count = copyplate_to_screening_count.get(cp_log.key, 0)
-            old_volume = copyplate_to_volume.get(cp_log.key, plate.well_volume )
-            if not old_volume:
-                # not sure what these library plates with no initial well volume are -
-                # but cannot compute if not known
-                old_volume = 0
-            adjustment = lab_activity.volume_transferred_per_well_from_library_plates
-            if not adjustment:
-                 # not sure what these "library screenings" with no volume are:
-                 # -- some are external library plates, presumably
-                 # -- some have no AP's and are "z prime" logs?
-                 # -- some are legacy records from before ss 2.0
-                adjustment = 0
-            new_volume = old_volume-adjustment
-            cp_log.diffs = {
-                'screening_count': [screen_count, screen_count+1],
-                'remaining_volume': [str(old_volume),str(new_volume)]
-                 }
-            cp_log.json_field = {
-                'migration': 'LibraryScreening',
-                'data': { 'library_screening.activity_id': activity.activity_id 
-                }
-            }
-            screen_count +=1
-            copyplate_to_screening_count[cp_log.key] = screen_count
-            copyplate_to_volume[cp_log.key] = new_volume
-            cp_log.json_field = json.dumps({
-                'migration: volume_transferred_per_well_from_library_plates': str(adjustment)
-                })
-            cp_logs.append(cp_log)
-            j += 1
- 
-        # TODO use bulk create
-        for cp_log in cp_logs:
-            cp_log.save()
- 
-        i += 1
-        total_plate_logs += j
-        if total_plate_logs % 1000  == 0:
-            logger.info('library screening log: %r, %r, %d', 
-                library_screening_log, library_screening_log.comment, len(cp_logs))
-            logger.info('created screen logs: %d, plate logs: %d',i, total_plate_logs)
-    logger.info('created screen logs: %d, plate logs: %d',i, total_plate_logs)
-
+        logger.debug('cpr: %d, wells_to_leave_empty: %s', 
+            cpr.cherry_pick_request_id, cpr.wells_to_leave_empty)
+        count += 1
+        
+    logger.info('migrated %d cpr.wells_to_leave_empty', count)
 
 class Migration(migrations.Migration):
 
@@ -306,8 +105,149 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(create_library_screening_logs),
-        migrations.RunPython(create_plate_plated_and_retired_logs),
-        migrations.RunPython(migrate_plate_generic_logs),
+        migrations.AddField(
+            model_name='screenercherrypick',
+            name='selected',
+            field=models.NullBooleanField(),
+        ),
+        migrations.AddField(
+            model_name='screenercherrypick',
+            name='searched_well',
+            field=models.ForeignKey(
+                related_name='searched_screener_cherry_pick', 
+                to='db.Well', null=True),
+        ),
+        migrations.AddField(
+            model_name='labcherrypick',
+            name='copy',
+            field=models.ForeignKey(related_name='copy_lab_cherry_picks', 
+                to='db.Copy', null=True),
+        ),
+        
+        migrations.RunPython(migrate_cherry_pick_request_empty_wells),
+        
+        # Set LabCherryPick.copy using well volume adjustments
+        migrations.RunSQL(
+            'update lab_cherry_pick '
+            'set copy_id=c.copy_id '
+            'from copy c join well_volume_adjustment wva using(copy_id) '
+            'where lab_cherry_pick.lab_cherry_pick_id=wva.lab_cherry_pick_id;'),
+        migrations.RunSQL(
+            'update screener_cherry_pick '
+            'set searched_well_id=screened_well_id; '),
+        migrations.RunSQL(
+            'update screener_cherry_pick '
+            'set selected=true; '),
+            
+        migrations.RunSQL(
+            'update cherry_pick_request '
+            'set date_volume_reserved = cplts.date_volume_reserved '
+            'from ( '
+            ' select cherry_pick_request_id, max(date_of_activity) as date_volume_reserved '
+            ' from cherry_pick_assay_plate '
+            ' join cherry_pick_liquid_transfer '
+            ' on(activity_id=cherry_pick_liquid_transfer_id) '
+            ' join activity using(activity_id) '
+            ' group by cherry_pick_request_id) cplts '
+            ' where cplts.cherry_pick_request_id '
+            '   = cherry_pick_request.cherry_pick_request_id;'),
+        # set null=Fals after update
+        migrations.AlterField(
+            model_name='screenercherrypick',
+            name='searched_well',
+            field=models.ForeignKey(
+                related_name='searched_screener_cherry_pick', 
+                to='db.Well', null=False),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='plating_date',
+            field=models.DateField(null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='plated_by',
+            field=models.ForeignKey(
+                related_name='plated_cherry_pick_plates', 
+                to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='screened_by',
+            field=models.ForeignKey(
+                related_name='screened_cherry_pick_plates', 
+                to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='screening_date',
+            field=models.DateField(null=True),
+        ),
+        # deprecate created_by - replaced by logs
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='created_by',
+            field=models.ForeignKey(
+                related_name='created_cherry_pick', 
+                to='db.ScreensaverUser', null=True),
+        ),
+        
+        migrations.RunSQL(
+            'update cherry_pick_assay_plate '
+            'set plating_date=a.date_of_activity '
+            'from activity a '
+            'where a.activity_id=cherry_pick_assay_plate.cherry_pick_liquid_transfer_id;'),
+        # NOTE: CherryPickPlating: use "activity.created_by" for the log user,
+        # and for the cpap.performed_by field; "performed_by" should an admin,
+        # but the legacy activities show the screener user as the "activity.performed_by"
+        migrations.RunSQL('''
+            update cherry_pick_assay_plate
+            set plated_by_id=coalesce(a.created_by_id,a.performed_by_id) 
+            from activity a 
+            where a.activity_id=cherry_pick_assay_plate.cherry_pick_liquid_transfer_id;
+        '''),
+            
+        # Adjust the plate_ordinal to be one's based
+        migrations.RunSQL(
+            'update cherry_pick_assay_plate '
+            'set plate_ordinal = cherry_pick_assay_plate.plate_ordinal+1 '
+            'from  '
+            '( '
+            '    select distinct(cherry_pick_request_id) '
+            '    from cherry_pick_assay_plate '
+            '    where plate_ordinal = 0 '
+            '    order by cherry_pick_request_id ' 
+            ') cprs join ( '
+            '    select '
+            '    cherry_pick_assay_plate_id, cherry_pick_request_id, plate_ordinal  '
+            '    from cherry_pick_assay_plate  '
+            '    order by cherry_pick_request_id, plate_ordinal desc '
+            ') ids using(cherry_pick_request_id) '
+            'where cherry_pick_assay_plate.cherry_pick_assay_plate_id '
+            '= ids.cherry_pick_assay_plate_id;'),
+        # NOTE: the legacy system allows for multiple screening activities;
+        # use the last one to set the screening_date
+        migrations.RunSQL('''
+            update cherry_pick_assay_plate 
+            set screening_date=(select max(date_of_activity) 
+              from activity a 
+              join cherry_pick_assay_plate_screening_link cpapsl 
+                on(cherry_pick_screening_id=a.activity_id) 
+              where cpapsl.cherry_pick_assay_plate_id
+                =cherry_pick_assay_plate.cherry_pick_assay_plate_id);
+        '''),
+        # NOTE: for the Cherry Pick Screening, the "performed_by" field is a 
+        # screen member
+        migrations.RunSQL('''
+            update cherry_pick_assay_plate 
+            set screened_by_id=(
+              select a.performed_by_id 
+              from activity a 
+              join cherry_pick_assay_plate_screening_link cpapsl
+                on(cherry_pick_screening_id=a.activity_id) 
+              where cpapsl.cherry_pick_assay_plate_id
+                =cherry_pick_assay_plate.cherry_pick_assay_plate_id
+              order by date_of_activity desc limit 1);
+        '''),
     ]
     

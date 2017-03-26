@@ -30,13 +30,18 @@ def _create_generic_log(activity):
 
     log.comment = activity.comments
     log.date_time = create_log_time(activity.date_of_activity)
-    log.username = activity.performed_by.username
+    activity_user = activity.created_by
+    # NOTE: if activity.date_performed < 2010-01-15, the "created_by" field
+    # is empty
+    if activity_user is None:
+        activity_user = activity.performed_by
+    log.username = activity_user.username
     if not log.username:
         log.username = '%s: %s' % (
-            activity.performed_by.screensaver_user_id,
-            activity.performed_by.email)
+            activity_user.screensaver_user_id,
+            activity_user.email)
     
-    log.user_id = activity.performed_by.screensaver_user_id
+    log.user_id = activity_user.screensaver_user_id
     
     return log
 

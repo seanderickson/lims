@@ -19,7 +19,7 @@ import re
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0018_cherry_pick_request'),
+        ('db', '0018_library_screening_and_cpr_logs'),
     ]
 
     operations = [

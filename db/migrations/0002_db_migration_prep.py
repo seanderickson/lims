@@ -755,6 +755,12 @@ class Migration(migrations.Migration):
             name='date_volume_reserved',
             field=models.DateField(null=True),
         ),
+        migrations.AddField(
+            model_name='activity',
+            name='apilog_uri',
+            field=models.TextField(null=True),
+        ),
+        
         
 #         migrations.AddField(
 #             model_name='cherrypickassayplate',

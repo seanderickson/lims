@@ -342,7 +342,7 @@ class PlateLocationResource(DbApiResource):
                                 .join(_c,_p.c.copy_id==_c.c.copy_id))
                             .where(_c.c.copy_id==library_copy.copy_id)))
                 except:
-                    raise Http404
+                    raise Http404('Copy not found: %r' % (param))
             # general setup
              
             (stmt, count_stmt) = self.wrap_statement(

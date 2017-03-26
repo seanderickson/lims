@@ -466,7 +466,7 @@ define([
       });
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();      
     },
@@ -561,7 +561,7 @@ define([
           });
           Backbone.Layout.setupView(view);
           self.consumedStack = [key]; 
-          self.reportUriStack([]);
+//          self.reportUriStack([]);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
         })();
@@ -658,7 +658,7 @@ define([
       });
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       
@@ -1005,7 +1005,7 @@ define([
       });
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
     }

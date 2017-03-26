@@ -163,7 +163,7 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         initialSearchHash = view.listModel.get('search');

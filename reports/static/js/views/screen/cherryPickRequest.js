@@ -341,7 +341,7 @@ define([
         extraControls: extraControls
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
@@ -605,7 +605,7 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         self.listenTo(view, 'afterRender', function(event) {
@@ -833,7 +833,6 @@ define([
               type: EditView.ChosenSelect,
               editorClass: 'chosen-select',
               options: cherryPickUserOptions,
-//                options: appModel._get_screen_members(self.screen),
               validators: ['required'], 
               template: appModel._field_template
             },
@@ -1120,6 +1119,55 @@ define([
         cancelReservation.show();
       }
 
+      resource.fields['library_plate']['backgridCellType'] = 
+        Iccbl.LinkCell.extend({
+          render: function(){
+            if (this.model.has('library_plate_comment_array')){
+              this.title = _.map(
+                this.model.get('library_plate_comment_array'),
+                function(comment){
+                  // FIXME: make this error tolerant
+                  comment_array = comment.split('$');
+                  return '(' + comment_array[0] + ') ' +
+                    Iccbl.getDateString(comment_array[1]) + 
+                    ': ' + comment_array[2];
+                }).join('\n');
+            }
+            return Iccbl.LinkCell.prototype.render.apply(this, arguments);
+          }
+        },resource.fields['library_plate'].display_options);
+
+      resource.fields['source_copy_name']['backgridCellType'] = 
+        Iccbl.LinkCell.extend({
+          render: function(){
+            if (this.model.has('source_copy_comments')){
+              this.title = this.model.get('source_copy_comments');
+            }
+            return Iccbl.LinkCell.prototype.render.apply(this, arguments);
+          }
+        },resource.fields['source_copy_name'].display_options);
+
+      var library_link_cell = Iccbl.LinkCell.extend({
+          render: function(){
+            if (this.model.has('library_comment_array')){
+              this.title = _.map(
+                this.model.get('library_comment_array'),
+                function(comment){
+                  // FIXME: make this error tolerant
+                  comment_array = comment.split('$');
+                  return '(' + comment_array[0] + ') ' +
+                    Iccbl.getDateString(comment_array[1]) + 
+                    ': ' + comment_array[2];
+                }).join('\n');
+            }
+            return Iccbl.LinkCell.prototype.render.apply(this, arguments);
+          }
+        });
+      resource.fields['library_name']['backgridCellType'] =
+        library_link_cell.extend(resource.fields['library_name'].display_options);
+      resource.fields['library_short_name']['backgridCellType'] =
+        library_link_cell.extend(resource.fields['library_short_name'].display_options);
+
       if(self.model.get('has_pool_screener_cherry_picks') === true){
         resource.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
       }
@@ -1202,7 +1250,7 @@ define([
         extraControls: extraControls
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
@@ -1463,11 +1511,12 @@ define([
 
       deleteLcpsButton.click(function(e){
         e.preventDefault();
-        function processClick(){
+        function processClick(formValues){
           var delete_lab_cherry_picks_url = [
             self.model.resource.apiUri,self.model.key, 
             'delete_lab_cherry_picks'].join('/');
           var headers = {}; // can be used to send a comment
+          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
           $.ajax({
             url: delete_lab_cherry_picks_url,     
             cache: false,
@@ -1944,7 +1993,7 @@ define([
       });
       var view = new View();
       self.setView('#tab_container', view).render();
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
     }, // end showScpSearchForm
     
     createScpView: function(schemaResult, delegateStack){

@@ -324,7 +324,7 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         this.setView("#tab_container", view ).render();
       }
@@ -342,7 +342,7 @@ define([
         extraControls: []
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
@@ -367,7 +367,7 @@ define([
         extraControls: []
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {

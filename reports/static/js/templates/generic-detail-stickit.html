@@ -19,6 +19,9 @@ if (buttons) {
   </div>
 </div>
 
+<div class='row'>
+  <div class='col-sm-7'>
+
 <table class='table table-condensed data-list'>
 <% 
   (groupedKeys).each(function(key) { 
@@ -67,6 +70,16 @@ if (buttons) {
   }); 
 %>
 </table>
+</div>
+  <div class='col-sm-5' >
+    <div class='row ' id='detail_extra_information'>
+      <div id='comment_table'>
+        <div class="col-xs-12" id="comment_table_title"></div>
+        <div class="col-xs-12" id="comment_table_grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <form id='generic-form' class="form-horizontal" >
     <div class="controls">

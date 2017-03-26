@@ -2,9 +2,10 @@ define([
   'jquery',
   'underscore',
   'backbone',
+  'backgrid',
   'iccbl_backgrid',
   'templates/modal_ok_cancel.html'    
-], function($, _, Backbone, Iccbl, modalOkCancelTemplate ){
+], function($, _, Backbone, Backgrid, Iccbl, modalOkCancelTemplate ){
   
   var API_VERSION = 'api/v1';
   var REPORTS_API_URI = '/reports/' + API_VERSION;
@@ -1317,7 +1318,159 @@ define([
 //      self.unset('messages');
     },
 
+    /**
+     * Show "comment" type ApiLogs in a separate table; ApiLogs with comments only
+     **/
+    createCommentTable: function(model,search_data, $target_el) {
+      var self = this;
 
+      var search_data = _.extend({
+        comment__is_blank: false
+      }, search_data);
+      
+      var apilogResource = Iccbl.appModel.getResource('apilog');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: apilogResource.apiUri 
+      });
+      $target_el.empty();
+      
+      function build_table(collection) {
+        if (collection.isEmpty()) {
+          return;
+        }
+
+        var search_ui_url = 'search/' + _.map(
+          _.zip(_.keys(search_data),_.values(search_data)), 
+          function(kv){
+            return kv.join('=');
+          }).join(';');        
+        var search_link = $('<a>',{
+            text: 'Comments',
+            target: '_blank',
+            title: '',
+            href: '#apilog/order/-date_time/' + search_ui_url
+        });
+        var addCommentButton = $([
+          '<a class="btn btn-default btn-xs pull-down pull-right" ',
+          'role="button" id="addCommentButton" href="#">',
+          'Add</a>'
+        ].join(''));
+        
+        addCommentButton.click(function(e){
+          e.preventDefault();
+          function processComment(formValues) {
+            var url = [model.resource.apiUri,model.key].join('/');
+            var headers = {};
+            headers[Iccbl.appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+            $.ajax({
+              url: url,     
+              cache: false,
+              contentType: 'application/json', 
+              dataType: 'json', // what is expected back from the server
+              type: 'PATCH',
+              headers: headers
+            }).done(function(data, textStatus, jqXHR){
+              Iccbl.appModel.createCommentTable(model,search_data, $target_el);
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+            });
+            
+          };
+          Iccbl.appModel.showOkCommentForm({
+            ok: processComment,
+            okText: 'Save Comment',
+            title: 'Add a comment to ' + model.resource.title + ': '
+              + Iccbl.getTitleFromTitleAttribute(model,model.resource) + '?' 
+          });
+        });
+        
+        $target_el.append($([
+          '<div class="col-xs-12" id="comment_table_title"></div>',
+          '<div class="col-xs-12" id="comment_table_grid"/>'].join('')));
+        
+        $target_el.find('#comment_table_title').html(search_link);
+        
+        if (Iccbl.appModel.hasPermission(model.resource.key, 'write')){
+          $target_el.find('#comment_table_title').append(addCommentButton);
+        }
+        
+        collection.each(function(model) {
+          model.set('date', Iccbl.getDateString(model.get('date_time')));
+        });
+        var TextWrapCell = Backgrid.Cell.extend({
+          className: 'text-wrap-cell'
+        });
+        var colTemplate = {
+          'cell' : 'string',
+          'order' : -1,
+          'sortable': false,
+          'searchable': false,
+          'editable' : false,
+          'visible': true,
+          'headerCell': Backgrid.HeaderCell
+        };
+        var columns = [
+          _.extend({},colTemplate,{
+            'name' : 'username',
+            'label' : 'User',
+            'description' : 'User performing the action',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.LinkCell.extend({
+              hrefTemplate: '#screensaveruser/{username}',
+              target: '_blank'
+            })
+          }),
+          _.extend({},colTemplate,{
+            'name' : 'date',
+            'label' : 'Date',
+            'description' : 'Date',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.LinkCell.extend({
+              hrefTemplate: '#apilog/{log_uri}',
+              target: '_blank'
+            })
+          }),
+          _.extend({},colTemplate,{
+            'name' : 'comment',
+            'label' : 'Comment',
+            'description' : 'Comment',
+            'order': 1,
+            'sortable': true,
+            'cell': TextWrapCell
+            })
+        ];
+        var colModel = new Backgrid.Columns(columns);
+        colModel.comparator = 'order';
+        colModel.sort();
+        var grid = new Backgrid.Grid({
+          columns: colModel,
+          collection: collection,
+          className: 'backgrid table-striped table-condensed table-hover '
+        });
+        
+        $target_el.find('#comment_table_grid').html(grid.render().$el);
+        
+      }
+      
+      if (model.has('comment_data')) {
+        build_table(new CollectionClass(model.get('comment_data')));
+      } else {
+        var comment_collection = new CollectionClass();
+        
+        comment_collection.fetch({
+          data: _.extend({ 
+              limit: 0,
+              order_by: ['-date_time'],
+              includes: ['log_uri']
+            }, search_data),
+          success: build_table
+        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }
+
+    },
+    
     showOkCommentForm: function(options){
       var self = this;
       var defaultOptions = {
@@ -1330,7 +1483,7 @@ define([
       var options = _.extend({}, defaultOptions, options);
       var schema = {
         comments: {
-          title: 'Comments',
+          title: 'Comment',
           key: 'comments',
           type: 'TextArea',
           editorClass: 'input-full',

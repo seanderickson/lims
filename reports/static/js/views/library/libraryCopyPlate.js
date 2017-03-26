@@ -2,17 +2,19 @@ define([
   'jquery',
   'underscore',
   'backbone',
+  'backgrid',
   'layoutmanager',
   'iccbl_backgrid',
   'models/app_state',
   'views/list2',
   'views/generic_detail_layout',
+  'views/generic_detail_stickit', 
   'views/generic_edit',
   'utils/uploadDataForm',
   'templates/genericResource.html'
 ], 
-function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, UploadDataForm, layout) {
+function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
+         DetailView, EditView, UploadDataForm, layout) {
   
   var LibraryCopyPlateView = Backbone.Layout.extend({
     
@@ -74,10 +76,24 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showDetail: function(model) {
       var self = this;
       var uriStack = _.clone(this.uriStack);
+      
+      var detailView = DetailView.extend({
+        afterRender: function() {
+          DetailView.prototype.afterRender.apply(this,arguments);
+          var search_data = {
+            key: model.key,
+            ref_resource_name: model.resource.key,
+            comment__is_blank: false
+          };
+          appModel.createCommentTable(model,search_data, $('#comment_table'));
+        }
+      });
+      
       var view = new DetailLayout({ 
         model: model, 
         uriStack: uriStack,
-        title: 'Plate ' + model.get('plate_number')
+        title: 'Plate ' + model.get('plate_number'),
+        DetailView: detailView
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#resource_content', view).render();

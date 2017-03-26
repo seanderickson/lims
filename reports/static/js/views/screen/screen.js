@@ -1070,7 +1070,7 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.$("#tab_container-title").empty();
         self.setView("#tab_container", view ).render();
@@ -1187,7 +1187,7 @@ define([
           extraControls: []
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         this.$('li').removeClass('active');
@@ -1196,7 +1196,7 @@ define([
       } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
       }
     },
     
@@ -1257,12 +1257,12 @@ define([
             
             self.listenTo(view , 'uriStack:change', this.reportUriStack);
             self.setView("#tab_container", view ).render();
-            self.reportUriStack([]);
+//            self.reportUriStack([]);
           },{ data_for_get: { visibilities: ['billing']}});
       } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
       }
     },
 
@@ -1281,7 +1281,7 @@ define([
         extraControls: []
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {

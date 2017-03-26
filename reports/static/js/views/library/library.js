@@ -131,7 +131,12 @@ define([
       var detailView = DetailView.extend({
         afterRender: function(){
           DetailView.prototype.afterRender.apply(this,arguments);
-          self.createCommentHistoryTable($('#comments'), this);
+          var search_data = {
+            key: self.model.key,
+            ref_resource_name: self.model.resource.key,
+            comment__is_blank: false
+          };
+          appModel.createCommentTable(self.model,search_data, $('#comment_table'));
         },
       });
 
@@ -147,172 +152,6 @@ define([
       this.setView("#tab_container", view ).render();
     },
     
-    /**
-     * Update the libryary with a comment table: populate
-     * using the apilog history of the library
-     **/
-    createCommentHistoryTable: function($target_el, view){
-      console.log('create the comment history table', $target_el);
-      var self = this;
-      var apilogResource = appModel.getResource('apilog');
-      var CollectionClass = Iccbl.CollectionOnClient.extend({
-        url: apilogResource.apiUri 
-      });
-      var cell = $([
-        '<div id="comment_table_div" class="row">',
-        '</div>'
-        ].join(''));
-      
-      var $addCommentButton= $(
-        '<div class="col-xs-12"><button class="btn btn-default btn-sm" role="button" \
-        id="addCommentButton" >Add comment</button></div>');
-
-      if (appModel.hasPermission('library', 'write')){
-        cell.append($addCommentButton);
-      }
-      
-      function build_table(collection){
-        if (collection.isEmpty()){
-          return;
-        }
-        $target_el.html(cell);
-        
-        collection.each(function(model){
-        });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
-        var colTemplate = {
-          'cell' : 'string',
-          'order' : -1,
-          'sortable': false,
-          'searchable': false,
-          'editable' : false,
-          'visible': true,
-          'headerCell': Backgrid.HeaderCell
-        };
-        var columns = [
-            _.extend({},colTemplate,{
-              'name' : 'comment',
-              'label' : 'Comment',
-              'description' : 'Comment',
-              'order': 1,
-              'sortable': true,
-              'cell': TextWrapCell
-            }),
-            _.extend({},colTemplate,{
-              'name' : 'date_time',
-              'label' : 'Date',
-              'description' : 'Date',
-              'order': 1,
-              'sortable': true,
-              'cell': 'Date'
-            }),
-            _.extend({},colTemplate,{
-              'name' : 'username',
-              'label' : 'Username',
-              'description' : 'Username',
-              'order': 1,
-              'sortable': true,
-              'cell': Iccbl.LinkCell.extend({
-                'hrefTemplate': '#user/{username}'
-              })
-            })
-        ];
-        var colModel = new Backgrid.Columns(columns);
-        colModel.comparator = 'order';
-        colModel.sort();
-
-        cell.append($('<div class="col-xs-12" id="comment_items"/>'));
-        
-        var comment_grid= new Backgrid.Grid({
-          columns: colModel,
-          collection: collection,
-          className: 'backgrid table-striped table-condensed table-hover '
-        });
-        cell.find('#comment_items').html(comment_grid.render().$el);
-      }
-      
-      var comment_collection = new CollectionClass();
-      comment_collection.fetch({
-        data: { 
-          limit: 0,
-          key: self.model.get('short_name'),
-          ref_resource_name: self.model.resource.key,
-          comment__is_null: false,
-          diff_keys__is_null: true,
-          order_by: ['-date_time']
-        },
-        success: build_table
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
-      
-      $addCommentButton.click(function(){
-
-        var FormFields = Backbone.Model.extend({
-          schema: {
-            comment: {
-              title: 'Comment',
-              key: 'comment',
-              type: 'TextArea',
-              editorClass: 'input-full',
-              validators: ['required'], 
-              template: appModel._field_template
-            }
-          }
-        });
-        var formFields = new FormFields();
-        var form = new Backbone.Form({
-          model: formFields,
-          template: appModel._form_template
-        });
-        var _form_el = form.render().el;
-
-        appModel.showModal({
-          okText: 'ok',
-          ok: function(e){
-            e.preventDefault();
-            
-            var errors = form.commit();
-            if(!_.isEmpty(errors)){
-              console.log('form errors, abort submit: ' + JSON.stringify(errors));
-              return false;
-            }
-            var values = form.getValue();
-            
-            // TODO: submit a PATCH with only a header comment
-            var comment = values['comment'];
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = comment;
-            $.ajax({
-              url: [self.model.resource.apiUri, self.model.key].join('/'),    
-              // PATCH with no data; 
-              // data: JSON.stringify({ comment: comment }),  
-              cache: false,
-              contentType: 'application/json',
-              dataType: 'json', // what is expected back from the server
-              processData: false, // do not process data being sent
-              type: 'PATCH',
-              headers: headers, 
-              success: function(data){
-                console.log('success', data);
-                self.model.fetch({ reset: true });
-                view.render();
-              },
-              done: function(model, resp){
-                // TODO: done replaces success as of jq 1.8
-                console.log('done');
-              }
-            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
-          
-            return true;
-            
-          },
-          view: _form_el,
-          title: 'Add comment'  
-        });
-        
-      });
-    },
     
     setWells: function(delegateStack) {
       var self = this;
@@ -353,7 +192,7 @@ define([
             url: url
           });
           Backbone.Layout.setupView(view);
-          self.reportUriStack([]);
+//          self.reportUriStack([]);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
         }
@@ -379,7 +218,7 @@ define([
         url: url
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -484,7 +323,7 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.$("#tab_container-title").empty();
         self.setView("#tab_container", view ).render();

@@ -193,6 +193,13 @@ class ApiLog(models.Model):
             % (self.id, self.api_action, self.ref_resource_name, self.key,
                self.uri, strftime_log(self.date_time)))
 
+    @property
+    def log_uri(self):
+        ''' Return the URI of the ApiLog
+        '''
+        
+        return '/'.join([self.ref_resource_name,self.key, strftime_log(self.date_time)])
+    
     @staticmethod   
     def json_dumps(obj):
         return json.dumps(

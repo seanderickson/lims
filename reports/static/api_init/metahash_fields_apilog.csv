@@ -13,4 +13,5 @@ comment,fields.apilog,/reports/api/v1/field/fields.apilog/comment/,,,5,,TRUE,"Us
 child_logs,fields.apilog,/reports/api/v1/field/fields.apilog/child_logs/,,,12,"If child logs were created, list the URI for them",TRUE,"URIs for child logs, if any","Child Logs",TRUE,,,[d],,string,link,"{ 'hrefTemplate': '#apilog/children/{ref_resource_name}/{key}/{date_time}' }",,,,
 id,fields.apilog,/reports/api/v1/field/fields.apilog/id/,,,0,,TRUE,"Internal ID","Internal ID",TRUE,,,,,string,,,,,,
 parent_log_uri,fields.apilog,/reports/api/v1/field/fields.apilog/parent_log_uri/,,,11,,TRUE,"Parent log if this operation was performed as a batch operation","Parent Log",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#apilog/{parent_log_uri}' }",,,,
-parent_log_id,fields.apilog,/reports/api/v1/field/fields.apilog/id/,,,12,,TRUE,"ID field of the parent log","Parent Log ID",TRUE,,,,,string,,,,,,
+parent_log_id,fields.apilog,/reports/api/v1/field/fields.apilog/parent_log_id/,,,12,,TRUE,"ID field of the parent log","Parent Log ID",TRUE,,,,,string,,,,,,
+log_uri,fields.apilog,/reports/api/v1/field/fields.apilog/id/,,,13,,TRUE,"URI for this log","ApiLog URI",TRUE,,,[d],,string,link,"{ 'hrefTemplate': '#apilog/{log_uri}' }",,,,

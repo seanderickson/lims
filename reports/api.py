@@ -1501,6 +1501,13 @@ class ApiResource(SqlAlchemyResource):
 
     def log_patch(self, request, prev_dict, new_dict, log=None, 
             id_attribute=None, excludes=None, **kwargs):
+        
+        default_excludes = ['library_plate_comment_array','comment_array']
+        if excludes:
+            excludes = [x for x in set(default_excludes) | set(excludes)]
+        else:
+            excludes = default_excludes
+            
         DEBUG_PATCH_LOG = False
         if DEBUG_PATCH_LOG:
             logger.info('log patch: %r', id_attribute)
@@ -1958,7 +1965,12 @@ class ApiLogResource(ApiResource):
                 'parent_log_id': _parent_log.c.id,
                 'child_logs': literal_column(
                     "(select count(*) from reports_apilog ra where ra.parent_log_id=reports_apilog.id)"
-                    ).label('child_logs')
+                    ).label('child_logs'),
+                # NOTE: log_uri does not depend on timezone
+                'log_uri': literal_column(
+                    "reports_apilog.ref_resource_name "
+                    "|| '/' || reports_apilog.key || '/' "
+                    "|| to_char(reports_apilog.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS') ")
             }
             
             if 'date_time' in filter_hash:
@@ -2061,10 +2073,10 @@ class ApiLogResource(ApiResource):
             if 'diffs' in field_hash:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 

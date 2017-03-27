@@ -198,8 +198,8 @@ def create_plate_generic_logs(apps, schema_editor):
     join copy using(copy_id)
     join library using(library_id)
     where
-    aa.administrative_actvity_type = 'Comments' 
-    not exists (select null from plate where plated_activity_id = activity_id) 
+    aa.administrative_activity_type = 'Comment' 
+    and not exists (select null from plate where plated_activity_id = activity_id) 
     and not exists (select null from plate where retired_activity_id = activity_id) 
     and a.comments not ilike '%plate type changed%' 
     and a.comments not ilike '%Freezer 1 inventory updates for Richard Siu and Rachel Warden%'

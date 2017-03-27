@@ -150,20 +150,19 @@ where r.library_contents_version_id=%s order by well_id;
                 if not log.user_id:
                     log.user_id = 1
                 log.date_time = activity.date_created
-#                 log.date_time = make_aware(
-#                     activity.date_created,timezone.get_default_timezone())
                 log.ref_resource_name = self.libraryResource._meta.resource_name
                 # TODO: what action? could also be a REST specifier, i.e. 'PATCH'
                 log.api_action = 'PUT'
                 # store the old type in the catch-all field
-                log.json_field = json.dumps( {
-                    'administrative_activity_type': 
-                    version.library_contents_loading_activity.administrative_activity_type
-                    })
+                log.json_field = {
+                    'migration': 'Library (contents)',
+                    'data': { 
+                        'library_contents_version.activity_id': activity.activity_id,
+                    }
+                }
                 log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
                 log.key = '/'.join([str(x) for x in (
                     self.libraryResource.get_id(model_to_dict(library)).values()) ])
-#                 log.diff_keys = json.dumps(['version_number'])
                 log.diffs = {
                     'version_number': [
                         prev_version.version_number if prev_version else 0, 
@@ -244,12 +243,6 @@ where r.library_contents_version_id=%s order by well_id;
             else:
                 prev_well_map = well_map
             
-            comment = parent_log.comment
-            if not comment or len(comment)==0:
-                comment = ''
-            else:
-                comment += ': '
-            parent_log.comment = comment + json.dumps(list(cumulative_diff_keys))
             parent_log.save()
         logger.info('===created %d logs for %r, %r', 
             i, library.short_name, parent_log.comment)
@@ -282,7 +275,6 @@ where r.library_contents_version_id=%s order by well_id;
         log.api_action = 'MIGRATION'
         log.key = prev_dict['well_id']
         log.uri = '/db/api/v1/well/'+log.key 
-#         log.diff_dict_to_api_log(difflog)
         log.diffs = difflog
         log.json_field = json.dumps({
             'version': version.version_number })

@@ -27,7 +27,8 @@ def migrate_cherry_pick_request_empty_wells(apps,schema_editor):
     count = 0
     for cpr in CherryPickRequest.objects.all(): #.filter(cherry_pick_request_id=43882): 
         
-        plate_size = cpr.assay_plate_size
+#         plate_size = cpr.assay_plate_size
+        plate_size = lims_utils.plate_size_from_plate_type(cpr.assay_plate_type)
         nrows = lims_utils.get_rows(plate_size)
         ncols = lims_utils.get_cols(plate_size)
         logger.debug('cpr: %d, plate_size: %d nrows: %d, ncols: %d', 

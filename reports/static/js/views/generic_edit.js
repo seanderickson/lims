@@ -1192,7 +1192,7 @@ define([
         return;
       }
       
-      if (self.fullSaveOnEdit) {
+      if (self.fullSaveOnEdit || self.model.isNew()) {
         changedAttributes = null; // force a full save
       } else {
         changedAttributes = self._getChangedAttributes(this.model);

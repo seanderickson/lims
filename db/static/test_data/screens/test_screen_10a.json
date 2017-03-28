@@ -1,0 +1,13 @@
+{
+  "collaborator_usernames": [
+    "djw11","sr50","kls4","rw105","rs360","jas60"
+  ], 
+  "data_sharing_level": 0, 
+  "facility_id": "10", 
+  "lab_head_username": "caroline_shamu", 
+  "lead_screener_username": "jas60", 
+  "project_phase": "primary_screen", 
+  "screen_type": "rnai", 
+  "summary": "Tests RNAi screen functionality", 
+  "title": "RNAi test"
+}

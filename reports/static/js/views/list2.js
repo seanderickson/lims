@@ -506,20 +506,43 @@ define([
           console.log('toRemove:', toRemove, 'toAdd', toAdd);
           
           _.each(toAdd, function(key){
+            var fields = self._options.schemaResult.fields;
+            var field = fields[key];
+            console.log('add column', key, field['ordinal']);
             var column = self.grid.columns.findWhere({ name: key });
             if (!column){
-              var field = self._options.schemaResult.fields[key];
+              // find out where it goes
+              var ordinal = field['ordinal'];
+              var index = 0;
+              self.grid.columns.find(function(column){
+                var colKey = column.get('name');
+                var colField = fields[colKey];
+                var colOrdinal = colField['ordinal'];
+                console.log('consider', colKey, colOrdinal)
+                if(colOrdinal>ordinal){
+                  console.log('add col', key, ordinal, 'before col', colKey,colOrdinal)
+                  return true;
+                }
+                index += 1;
+              });
+              
               self.grid.insertColumn(
                 Iccbl.createBackgridColumn(
                     key,field,
-                    self.collection.state.orderStack));
+                    self.collection.state.orderStack),
+                    { at: index});
+            } else {
+              console.log('column already included', key)
             }
           });
           _.each(toRemove, function(key){
             column =  self.grid.columns.find(function(column){
               if(column.get('name') == key){
-                self.grid.removeColumn(column);
-                return true;
+                var field = self._options.schemaResult.fields[key];
+                if (!_.contains(field['visibility'], 'l')){
+                  self.grid.removeColumn(column);
+                  return true;
+                }
               }
             });
           });          

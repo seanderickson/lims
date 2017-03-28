@@ -596,7 +596,14 @@ define([
             'Download Plate Mapping files</a>'
           ].join(''));
         extraControls.push(downloadPlateMappingButton);
-  
+        var showPlateMappingButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+             'title="Show the plate mapping in a grid (available if plates are assigned)"',
+            'role="button" id="plate_mapping_grid" href="#">',
+            'Show Plate Mapping</a>'
+          ].join(''));
+        extraControls.push(showPlateMappingButton);
+
         var view = new ListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: resource,
@@ -614,13 +621,17 @@ define([
         });
         
         downloadPlateMappingButton.click(function(e){
-          
           e.preventDefault();
           console.log('download plate mapping file');
           var url = [self.model.resource.apiUri,self.model.key,
                      'plate_mapping_file'].join('/');
           appModel.downloadUrl(self.$el,url);
-          
+        });
+        showPlateMappingButton.click(function(e){
+          e.preventDefault();
+          var url = [self.model.resource.apiUri,self.model.key,
+            'lab_cherry_pick'].join('/');
+          self.showPlateMappingGrid(url);
         });
         return view;
       };
@@ -923,55 +934,55 @@ define([
     }, // end showPlatedDateDialog
 
     
-    /**
-     * LCP Plate Mapping (and QC) view
-     */
-    setPlateMapping: function(delegateStack) {
-      var self = this;
-      var url = [self.model.resource.apiUri, 
-                 self.model.key,
-                 'lab_cherry_pick_plating'].join('/');
-      var extraControls = [];
-      var downloadPlateMappingButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-           'title="Download plate mapping file (available if plates are assigned)"',
-          'role="button" id="plate_mapping_file" href="#">',
-          'Download Plate Mapping files</a>'
-        ].join(''));
-      extraControls.push(downloadPlateMappingButton);
-      var showPlateMappingButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-           'title="Show the plate mapping in a grid (available if plates are assigned)"',
-          'role="button" id="plate_mapping_grid" href="#">',
-          'Show Plate Mapping</a>'
-        ].join(''));
-      extraControls.push(showPlateMappingButton);
-
-      function createPlateMappingView(resource) {
-        
-        view = self.createLcpView(delegateStack, resource,url,extraControls)
-        
-        self.listenTo(view, 'afterRender', function(event) {
-          view.$el.find('#list-title').show().append(
-            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
-        });
-        downloadPlateMappingButton.click(function(e){
-          e.preventDefault();
-          console.log('download plate mapping file');
-          var url = [self.model.resource.apiUri,self.model.key,
-                     'plate_mapping_file'].join('/');
-          appModel.downloadUrl(self.$el,url);
-        });
-        
-        showPlateMappingButton.click(function(e){
-          e.preventDefault();
-          self.showPlateMappingGrid(url);
-        });
-      };
-      var schemaUrl = url + '/schema';
-      appModel.getResourceFromUrl(schemaUrl, createPlateMappingView);
-      
-    }, // end setPlateMapping
+//    /**
+//     * LCP Plate Mapping (and QC) view
+//     */
+//    setPlateMapping: function(delegateStack) {
+//      var self = this;
+//      var url = [self.model.resource.apiUri, 
+//                 self.model.key,
+//                 'lab_cherry_pick_plating'].join('/');
+//      var extraControls = [];
+//      var downloadPlateMappingButton = $([
+//        '<a class="btn btn-default btn-sm pull-down" ',
+//           'title="Download plate mapping file (available if plates are assigned)"',
+//          'role="button" id="plate_mapping_file" href="#">',
+//          'Download Plate Mapping files</a>'
+//        ].join(''));
+//      extraControls.push(downloadPlateMappingButton);
+//      var showPlateMappingButton = $([
+//        '<a class="btn btn-default btn-sm pull-down" ',
+//           'title="Show the plate mapping in a grid (available if plates are assigned)"',
+//          'role="button" id="plate_mapping_grid" href="#">',
+//          'Show Plate Mapping</a>'
+//        ].join(''));
+//      extraControls.push(showPlateMappingButton);
+//
+//      function createPlateMappingView(resource) {
+//        
+//        view = self.createLcpView(delegateStack, resource,url,extraControls)
+//        
+//        self.listenTo(view, 'afterRender', function(event) {
+//          view.$el.find('#list-title').show().append(
+//            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
+//        });
+//        downloadPlateMappingButton.click(function(e){
+//          e.preventDefault();
+//          console.log('download plate mapping file');
+//          var url = [self.model.resource.apiUri,self.model.key,
+//                     'plate_mapping_file'].join('/');
+//          appModel.downloadUrl(self.$el,url);
+//        });
+//        
+//        showPlateMappingButton.click(function(e){
+//          e.preventDefault();
+//          self.showPlateMappingGrid(url);
+//        });
+//      };
+//      var schemaUrl = url + '/schema';
+//      appModel.getResourceFromUrl(schemaUrl, createPlateMappingView);
+//      
+//    }, // end setPlateMapping
     
     
     /**
@@ -992,6 +1003,7 @@ define([
         url = [self.model.resource.apiUri, 
                    self.model.key,
                    'lab_cherry_pick_plating'].join('/');
+        // NOTE: 201703 - display showPlateMapping
         var downloadPlateMappingButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
              'title="Download plate mapping file (available if plates are assigned)"',
@@ -1063,9 +1075,16 @@ define([
           '  <input id="showUnfulfilled" type="checkbox">Unfulfilled only',
           '</label>'
         ].join(''));
+      var showInsufficientWellsControl = $([
+          '<label class="checkbox-inline" ',
+          ' title="Show rows for picks with insufficient volume only" >',
+          '  <input id="showInsufficient" type="checkbox">Insufficient Volume',
+          '</label>'
+        ].join(''));
       checkboxDiv.append(showCopyWellsControl);
       checkboxDiv.append(showAllCopyWellsControl);
       checkboxDiv.append(showUnfulfilledWellsControl);
+      checkboxDiv.append(showInsufficientWellsControl);
       checkboxDiv.prepend('<label for="show_input_group">show</label>');
       extraControls.push(checkboxDiv);
       
@@ -1119,54 +1138,101 @@ define([
         cancelReservation.show();
       }
 
+      ///// Library and Plate comments /////
+      
+      function parseComments(comment_array){
+        return _.map(
+          comment_array,
+          function(comment){
+            // FIXME: make this error tolerant
+            comment_array = comment.split('$');
+            return '(' + comment_array[0] + ') ' +
+              Iccbl.getDateString(comment_array[1]) + 
+              ': ' + comment_array[2];
+          }).join('\n');
+      };
+      function createCommentIcon(comments, title){
+        var comment_icon = $(
+          '<span class="glyphicon glyphicon-comment" ' +
+          'style="color: lightgray; " ></span>');
+        
+        var rows = 10;
+        var buttons_on_top = false;
+        if (comments.length > 300){
+          rows = 30;
+          buttons_on_top = true;
+        }
+        comment_icon.click(function(e){
+          e.preventDefault();
+          var body = $('<textarea class="input-full" rows=' + rows + ' ></textarea>');
+          body.val(comments);
+          appModel.showModalMessage({
+            title: title,
+            view: body,
+            buttons_on_top: buttons_on_top
+          });
+        });
+        return comment_icon;
+      };
       resource.fields['library_plate']['backgridCellType'] = 
         Iccbl.LinkCell.extend({
           render: function(){
-            if (this.model.has('library_plate_comment_array')){
-              this.title = _.map(
-                this.model.get('library_plate_comment_array'),
-                function(comment){
-                  // FIXME: make this error tolerant
-                  comment_array = comment.split('$');
-                  return '(' + comment_array[0] + ') ' +
-                    Iccbl.getDateString(comment_array[1]) + 
-                    ': ' + comment_array[2];
-                }).join('\n');
+            var self = this;
+            Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            var comments = this.model.get('library_plate_comment_array');
+            if (!_.isEmpty(comments)){
+              comments = parseComments(comments);
+              this.$el.attr('title',comments);
+              this.$el.append(createCommentIcon(
+                comments,
+                'Comments for Plate: ' 
+                  + self.model.get('library_short_name') + '/' 
+                  + self.model.get('source_copy_name')  + '/'
+                  + self.model.get('library_plate')));
             }
-            return Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            return this;
           }
         },resource.fields['library_plate'].display_options);
 
       resource.fields['source_copy_name']['backgridCellType'] = 
         Iccbl.LinkCell.extend({
           render: function(){
-            if (this.model.has('source_copy_comments')){
-              this.title = this.model.get('source_copy_comments');
+            var self = this;
+            Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            var comments = this.model.get('source_copy_comments');
+            if (!_.isEmpty(comments)){
+              this.$el.attr('title', comments);
+              this.$el.append(createCommentIcon(
+                comments,
+                'Comments for Copy: ' 
+                  + self.model.get('library_short_name') + '/'
+                  + self.model.get('source_copy_name')
+                ));
             }
-            return Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            return this;
           }
         },resource.fields['source_copy_name'].display_options);
 
       var library_link_cell = Iccbl.LinkCell.extend({
           render: function(){
-            if (this.model.has('library_comment_array')){
-              this.title = _.map(
-                this.model.get('library_comment_array'),
-                function(comment){
-                  // FIXME: make this error tolerant
-                  comment_array = comment.split('$');
-                  return '(' + comment_array[0] + ') ' +
-                    Iccbl.getDateString(comment_array[1]) + 
-                    ': ' + comment_array[2];
-                }).join('\n');
+            var self = this;
+            Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            var comments = this.model.get('library_comment_array');
+            if (!_.isEmpty(comments)){
+              comments = parseComments(comments);
+              this.$el.attr('title',comments);
+              this.$el.append(createCommentIcon(
+                comments,
+                'Comments for library: ' + self.model.get('library_short_name')));
             }
-            return Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            return this;
           }
         });
       resource.fields['library_name']['backgridCellType'] =
         library_link_cell.extend(resource.fields['library_name'].display_options);
       resource.fields['library_short_name']['backgridCellType'] =
         library_link_cell.extend(resource.fields['library_short_name'].display_options);
+      ///// end Library and Plate comments /////
 
       if(self.model.get('has_pool_screener_cherry_picks') === true){
         resource.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
@@ -1271,6 +1337,10 @@ define([
       if (_.has(initialSearchHash, 'show_unfulfilled')
           && initialSearchHash.show_unfulfilled.toLowerCase()=='true') {
         showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',true);
+      }
+      if (_.has(initialSearchHash, 'show_insufficient')
+          && initialSearchHash.show_insufficient.toLowerCase()=='true') {
+        showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',true);
       }
 
       // Manage LCP selection updates
@@ -1399,6 +1469,16 @@ define([
               });
               setSelectedLcpButton.hide();
               lcpSelectionUpdateCollection.reset(null); // clear
+              // On success, clear all the buttons
+              var searchHash = _.clone(view.listModel.get('search'));
+              delete searchHash['show_copy_wells'];
+              delete searchHash['show_available_and_retired_copy_wells'];
+              delete searchHash['show_unfulfilled'];
+              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              view.listModel.set('search',searchHash, {silent: true });
+              
               view.collection.fetch({ reset: true });
     
             }).fail(function(jqXHR, textStatus, errorThrown){
@@ -1423,6 +1503,8 @@ define([
           }
         });
         lcpSelectionUpdateCollection.reset(null);
+        view.$el.find('td').removeClass('edited');
+        appModel.clearPagePending();
       });
       
       updateSelectedLcpButton.click(function(e){
@@ -1456,6 +1538,17 @@ define([
               });
               setSelectedLcpButton.hide();
               lcpSelectionUpdateCollection.reset(null); // clear
+
+              // On success, clear all the buttons
+              var searchHash = _.clone(view.listModel.get('search'));
+              delete searchHash['show_copy_wells'];
+              delete searchHash['show_available_and_retired_copy_wells'];
+              delete searchHash['show_unfulfilled'];
+              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              view.listModel.set('search',searchHash, {silent: true });
+              
               view.collection.fetch({ reset: true });
     
             }).fail(function(jqXHR, textStatus, errorThrown){
@@ -1702,14 +1795,35 @@ define([
           processClick();
         }
       });
-      
-      showCopyWellsControl.click(function(e) {
+      showInsufficientWellsControl.click(function(e){
+        function processClick(){
+          if (e.target.checked) {
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash['show_insufficient'] = 'true';
+            view.listModel.set('search',searchHash);
+          } else {
+            var searchHash = _.clone(view.listModel.get('search'));
+            delete searchHash['show_insufficient'];
+            view.listModel.set('search',searchHash);
+          }
+        };
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
+      var extra_columns_for_selection = [
+        'selected', 'source_copy_well_volume','volume_approved',
+        'source_copy_usage_type','source_plate_status',
+        'source_plate_date_retired', 'source_plate_screening_count'];
+     showCopyWellsControl.click(function(e) {
         function processClick(){
           if (e.target.checked) {
             var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(
-              ['selected', 'source_copy_well_volume','volume_approved',
-               'source_copy_usage_type','source_plate_status'],includes);
+            includes = _.union(extra_columns_for_selection,includes);
             view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_copy_wells'] = 'true';
@@ -1732,10 +1846,7 @@ define([
               return;
             }
             var includes = _.clone(view.listModel.get('includes'));
-            includes = _.without(
-              includes,
-              'selected','source_copy_well_volume','volume_approved',
-              'source_copy_usage_type','source_plate_status');
+            includes = _.difference(includes, extra_columns_for_selection);
             view.listModel.set({ includes: includes}, {reset: false});
             if (_.has(searchHash,'show_copy_wells')) {
               delete searchHash['show_copy_wells'];
@@ -1760,9 +1871,7 @@ define([
         function processClick(){
           if (e.target.checked) {
             var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(
-              ['selected', 'source_copy_well_volume','volume_approved',
-               'source_copy_usage_type','source_plate_status'],includes);
+            includes = _.union(extra_columns_for_selection,includes);
             view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_available_and_retired_copy_wells'] = 'true';
@@ -1784,10 +1893,7 @@ define([
             }
             // Make sure unset
             var includes = _.clone(view.listModel.get('includes'));
-            includes = _.without(
-              includes,
-              'selected','source_copy_well_volume','volume_approved',
-              'source_copy_usage_type','source_plate_status');
+            includes = _.difference(includes,extra_columns_for_selection);
             view.listModel.set({ includes: includes}, {reset: false});
             if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
               delete searchHash['show_available_and_retired_copy_wells'];
@@ -2185,6 +2291,8 @@ define([
           }
         });
         selectionUpdateCollection.reset(null);
+        view.$el.find('td').removeClass('edited');
+        appModel.clearPagePending();
       });
 
       deleteScpsButton.click(function(e) {

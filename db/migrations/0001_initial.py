@@ -1778,6 +1778,10 @@ class Migration(migrations.Migration):
             name='cherrypickassayplate',
             unique_together=set([('cherry_pick_request', 'plate_ordinal', 'attempt_ordinal')]),
         ),
+        migrations.AlterUniqueTogether(
+            name='plate',
+            unique_together=set([('plate_number', 'copy')])
+        ),
         migrations.AddField(
             model_name='assayplate',
             name='library_screening',

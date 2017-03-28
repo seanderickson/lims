@@ -251,7 +251,7 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
     # Look at all the powersets; until the first viable is found
     # Sort by len,name to find the first
     for subset in sorted(powerset(sorted(complete_set)), key=lambda x: (len(x),str(x))):
-        logger.info('consider: %r', subset)
+        logger.debug('consider: %r', subset)
         found = True
         for instance_set in instance_sets:
             if instance_set:
@@ -259,7 +259,7 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
                     found = False
                     break
         if found is True:
-            logger.info('found satisfying set: %r', subset)
+            logger.debug('found satisfying set: %r', subset)
             min_satisfying_set = subset
             break
     return min_satisfying_set

@@ -38,7 +38,9 @@ class ValidationError(Exception):
         self.errors = errors or {}
          
         if key:
-            self.errors[key] = [msg]
+            if not isinstance(msg, (list,tuple)):
+                msg = [msg]
+            self.errors[key] = msg
      
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors

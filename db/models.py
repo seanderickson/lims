@@ -567,6 +567,8 @@ class LabCherryPick(models.Model):
     copy = models.ForeignKey('Copy', null=True, 
         related_name='copy_lab_cherry_picks')
     
+    is_manually_selected = models.NullBooleanField()
+    
     # Deprecated, to remove
 #     reserved = models.NullBooleanField()
     
@@ -1507,15 +1509,6 @@ class Plate(models.Model):
     well_volume = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
     
-    # New
-    remaining_well_volume = models.DecimalField(
-        null=True, max_digits=10, decimal_places=9)
-    screening_count = models.IntegerField(null=True, default=0)
-    # 202161028 - Track the screening_count due to cherry_pick_liquid_transfers
-    # separately - *verify with screening lab*
-    cplt_screening_count = models.IntegerField(null=True, default=0)
-    experimental_well_count = models.IntegerField(null=True)
-    
     copy = models.ForeignKey(Copy)
     facility_id = models.TextField()
     date_created = models.DateTimeField(default=timezone.now)
@@ -1526,6 +1519,15 @@ class Plate(models.Model):
     quadrant = models.IntegerField(null=True)
 
     # New - to be populated by migration
+    remaining_well_volume = models.DecimalField(
+        null=True, max_digits=10, decimal_places=9)
+    screening_count = models.IntegerField(null=True, default=0)
+    # 202161028 - Track the screening_count due to cherry_pick_liquid_transfers
+    # separately - *verify with screening lab*
+    cplt_screening_count = models.IntegerField(null=True, default=0)
+    experimental_well_count = models.IntegerField(null=True)
+    
+    # New - to be populated by migration
     molar_concentration = \
         models.DecimalField(null=True, max_digits=13, decimal_places=12)
     mg_ml_concentration = \
@@ -1534,12 +1536,14 @@ class Plate(models.Model):
     # New - to be populated by migration
     date_plated = models.DateField(null=True)
     date_retired = models.DateField(null=True)
-
+    
+    # Legacy
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     
     class Meta:
         db_table = 'plate'
+        unique_together = (('plate_number', 'copy'))
         
     def __repr__(self):
         return ('<Plate(copy=%r, plate_number=%d, well_volume=%r)>' 

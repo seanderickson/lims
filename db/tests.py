@@ -5646,6 +5646,64 @@ class CherryPickRequestResource(DBResourceTestCase):
         logger.info('data: %r', _data)
         # TODO: verify the response metadata
         # Verify warning about insufficient well vol A01
+        
+        # Verify selection
+        new_lab_cherry_picks = self._get_lcps(cpr_id)
+        new_lab_cherry_picks = {
+            lcp['source_well_id']:lcp for lcp in new_lab_cherry_picks}
+        test_well_id = lcp_well_1_a3['source_well_id']
+        self.assertTrue(test_well_id in new_lab_cherry_picks)
+        self.assertEqual(
+            lcp_well_1_a3['source_copy_name'], 
+            new_lab_cherry_picks[test_well_id]['source_copy_name'])
+        
+        # 2.E Try to de-select an LCP
+        logger.info('2.E Try to de-select an LCP')
+        test_data = lcp_well_1_a3.copy()
+        test_data['selected'] = False
+        lcp_resource_uri = '/'.join([
+            BASE_URI_DB, 'cherrypickrequest', 
+            str(cpr_data['cherry_pick_request_id']),
+            'lab_cherry_pick'])
+        resp = self.api_client.patch(
+            lcp_resource_uri, 
+            format='json', 
+            data=[test_data], 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        logger.debug('data: %r', _data)
+        new_lab_cherry_picks = self._get_lcps(cpr_id)
+        new_lab_cherry_picks = {
+            lcp['source_well_id']:lcp for lcp in new_lab_cherry_picks}
+        test_well_id = lcp_well_1_a3['source_well_id']
+        self.assertTrue(test_well_id in new_lab_cherry_picks)
+        logger.info('new lcp: %r', new_lab_cherry_picks[test_well_id])
+        self.assertTrue(
+            new_lab_cherry_picks[test_well_id]['source_copy_name']==None)
+        
+        # 3.E1 reselect
+        resp = self.api_client.patch(
+            lcp_resource_uri, 
+            format='json', 
+            data=[lcp_well_1_a3], 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        logger.info('data: %r', _data)
+        # Verify selection
+        new_lab_cherry_picks = self._get_lcps(cpr_id)
+        new_lab_cherry_picks = {
+            lcp['source_well_id']:lcp for lcp in new_lab_cherry_picks}
+        test_well_id = lcp_well_1_a3['source_well_id']
+        self.assertTrue(test_well_id in new_lab_cherry_picks)
+        self.assertEqual(
+            lcp_well_1_a3['source_copy_name'], 
+            new_lab_cherry_picks[test_well_id]['source_copy_name'])
 
         
         # Part 3:

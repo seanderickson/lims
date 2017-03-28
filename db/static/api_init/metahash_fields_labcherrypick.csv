@@ -36,3 +36,4 @@ bin,fields.labcherrypick,/reports/api/v1/field/fields.labcherrypick/bin/,33,plat
 location,fields.labcherrypick,/reports/api/v1/field/fields.labcherrypick/location/,34,custom,,,,FALSE,Location,Location,TRUE,,,,,string,link,"{ 'hrefTemplate': '#platelocation/{room}/{freezer}/{shelf}/{bin}' }",,,,{room}-{freezer}-{shelf}-{bin}
 library_plate_comment_array,fields.labcherrypick,/reports/api/v1/field/fields.labcherrypick/library_plate_comment_array/,35,custom,,,,FALSE,"Plate comments","Plate Comments",FALSE,,,,,list,,,,,,
 library_comment_array,fields.labcherrypick,/reports/api/v1/field/fields.labcherrypick/library_comment_array/,36,custom,,,,FALSE,"Library Comments","Library Comments",FALSE,,,,,list,,,,,,
+is_manually_selected,fields.labcherrypick,/reports/api/v1/field/fields.labcherrypick/is_manually_selected/,37,,,,,TRUE,"True if this pick was manually selected","Is Manually Selected",TRUE,,,,,boolean,,,,,,

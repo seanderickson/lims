@@ -154,6 +154,7 @@ API_PARAM_SHOW_COPY_WELLS = 'show_copy_wells'
 API_PARAM_SHOW_RETIRED_COPY_WELlS = 'show_available_and_retired_copy_wells'
 API_PARAM_SHOW_UNFULFILLED = 'show_unfulfilled'
 API_PARAM_SHOW_INSUFFICIENT = 'show_insufficient'
+API_PARAM_SHOW_MANUAL = 'show_manual'
 API_PARAM_VOLUME_OVERRIDE = 'volume_override'
 API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero'
 logger = logging.getLogger(__name__)
@@ -4422,7 +4423,7 @@ class CherryPickRequestResource(DbApiResource):
                 'destination_well__is_null': False,
                 'includes': [
                     'source_plate_type','destination_plate_type',
-                    'location','-structure_image','-molfile'],
+                    'location','-structure_image','-molfile','-library_plate_comment_array'],
                 'order_by': ['destination_well']
             })
         plate_name_to_types = defaultdict(set)
@@ -4676,6 +4677,8 @@ class CherryPickRequestResource(DbApiResource):
             kwargs['status__eq'] = 'plated'
             kwargs['order_by'] = param_hash.get(
                 'order_by', ['cherry_pick_plate_number','destination_well'])
+            kwargs['includes'] = param_hash.get(
+                'includes', ['-library_plate_comment_array'])
         return self.get_labcherrypick_resource().dispatch('list',request, **kwargs)    
 
     @read_authorization
@@ -5178,7 +5181,13 @@ class CherryPickRequestResource(DbApiResource):
                     logger.info(
                         'found screener_cherry_picks: %d', len(cherry_pick_wells))
                     not_allowed_libraries = set()
+                    wrong_screen_type = set()
                     for well in cherry_pick_wells:
+                        screen_type = cpr.screen.screen_type
+                        if well.library.screen_type != screen_type:
+                            wrong_screen_type.add(well.well_id)
+                        if wrong_screen_type:
+                            continue
                         if well.library.screening_status != 'allowed':
                             not_allowed_libraries.add(well.library)
                         if len(not_allowed_libraries)>0 and override_param is not True:
@@ -5188,6 +5197,11 @@ class CherryPickRequestResource(DbApiResource):
                             screened_well=well,
                             searched_well=well,
                             selected=True)
+                    if wrong_screen_type:
+                        wrong_screen_type = sorted(wrong_screen_type)
+                        raise ValidationError(
+                            key='screen_type must be %s' % cpr.screen.screen_type,
+                            msg=wrong_screen_type)
                     if not_allowed_libraries:
                         not_allowed_libraries = sorted([
                             '%s - status: %s' % (l.short_name,l.screening_status)
@@ -5368,7 +5382,7 @@ class CherryPickRequestResource(DbApiResource):
                             'source_plate_type','destination_plate_type',
                             'source_copywell_id','source_copy_well_volume',
                             'volume_approved',
-                            '-structure_image','-molfile'],
+                            '-structure_image','-molfile','-library_plate_comment_array'],
                     })}
         logger.info('fetch output readable format...')
         lab_cherry_pick_copywells_output = \
@@ -5381,7 +5395,7 @@ class CherryPickRequestResource(DbApiResource):
                             'source_plate_type','destination_plate_type',
                             'source_copywell_id','source_copy_well_volume',
                             'volume_approved',
-                            '-structure_image','-molfile'],
+                            '-structure_image','-molfile','-library_plate_comment_array'],
                         HTTP_PARAM_USE_VOCAB: True,
                     })}
         logger.info('Check for insufficient well volumes...')
@@ -6296,7 +6310,8 @@ class CherryPickRequestResource(DbApiResource):
                     'source_copy_well_volume__gte': cpr.transfer_volume_per_well_approved, 
                     'includes': [
                         'source_plate_type','destination_plate_type','source_well_id'
-                        'source_copywell_id','-structure_image','-molfile'],
+                        'source_copywell_id','-structure_image','-molfile',
+                        '-library_plate_comment_array'],
 #                     'includes': ['*', '-structure_image','-molfile'],
                 })
         logger.info('found %d eligible copy-wells for %d lab cherry picks', 
@@ -7185,7 +7200,7 @@ class LabCherryPickResource(DbApiResource):
             raise ValidationError(
                 key = API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED,
                 msg = '\n'.join(errors))
-        logger.debug('selection_updates: %r', selection_updates)
+        logger.info('selection_updates: %r', selection_updates)
         
         lcps_to_deselect = set()
         # First, find all of the deselections
@@ -7254,6 +7269,7 @@ class LabCherryPickResource(DbApiResource):
                         changed.append([
                             current_copy_name, selection_copy_name])
                     current_lcp.copy = selection_update['copy']
+                    current_lcp.is_manually_selected = True
                     current_lcp.save()
                     lcps_to_allocate.add(current_lcp)
                 else:
@@ -7263,6 +7279,7 @@ class LabCherryPickResource(DbApiResource):
                 if selection_copy_name == current_copy_name:
                     deselected.append(current_copy_name)
                     current_lcp.copy = None
+                    current_lcp.is_manually_selected = False
                     current_lcp.save()
                 else:
                     logger.info('lcp is already unselected: %r, %r', 
@@ -7302,7 +7319,7 @@ class LabCherryPickResource(DbApiResource):
             cpr.save()
 #             parent_log.diffs = {
 #                 'date_volume_reserved': [previous_date_reserved, cpr.date_volume_reserved ]}
-
+        
         changed = sorted(changed)
         deselected = sorted(deselected)
         selected = sorted(selected)
@@ -7318,7 +7335,7 @@ class LabCherryPickResource(DbApiResource):
                         'source_plate_type','destination_plate_type',
                         'source_copywell_id','source_copy_well_volume',
                         'volume_approved',
-                        '-structure_image','-molfile'],
+                        '-structure_image','-molfile', '-library_plate_comment_array'],
                 })
         for lcp_cw in new_lab_cherry_pick_copywells:
             name = cw_formatter.format(**lcp_cw)
@@ -7342,7 +7359,9 @@ class LabCherryPickResource(DbApiResource):
         }
         if result_meta_allocate:
             _meta.update(result_meta_allocate)
-
+        
+        logger.info('result_meta: %r', _meta)
+        
         self.get_cpr_resource().clear_cache()
         new_cpr = self.get_cpr_resource()._get_detail_response_internal(**{
             'cherry_pick_request_id': cpr_id })
@@ -7547,6 +7566,12 @@ class LabCherryPickResource(DbApiResource):
             API_PARAM_SHOW_INSUFFICIENT, 'boolean')
         if show_insufficient is True:
             extra_params[API_PARAM_SHOW_INSUFFICIENT] = None
+        show_manual = parse_val(
+            param_hash.get(API_PARAM_SHOW_MANUAL, False),
+            API_PARAM_SHOW_MANUAL, 'boolean')
+        if show_insufficient is True:
+            extra_params[API_PARAM_SHOW_MANUAL] = None
+        
         try:
             
             # Note: build schema for each request to use the subtype
@@ -7564,7 +7589,8 @@ class LabCherryPickResource(DbApiResource):
             manual_field_includes.add('cherry_pick_request_id')
             
             # FIXME: only add the comment array if selecting alternate copies
-            manual_field_includes.add('library_plate_comment_array')
+            if '-library_plate_comment_array' not in manual_field_includes:
+                manual_field_includes.add('library_plate_comment_array')
             manual_field_includes.add('library_comment_array')
             
             if show_insufficient is True:
@@ -7630,7 +7656,6 @@ class LabCherryPickResource(DbApiResource):
                 .where(_apilog.c.ref_resource_name=='librarycopyplate')
                 .where(_apilog.c.comment!=None)
                 .order_by(desc(_apilog.c.date_time)))
-            _plate_comment_apilogs = _plate_comment_apilogs.cte('plate_comment_apilogs')
 
             _library_comment_apilogs = (
                 select([
@@ -7739,27 +7764,23 @@ class LabCherryPickResource(DbApiResource):
                     _cw.c.well_id == _well.c.well_id,
                     _cw.c.copy_id == _copy.c.copy_id), isouter=True )
 
-                ### Performance hack: limit the apilogs for the query
-                # TODO: add a plate_key field to the plate table to aid in this query
-                with get_engine().connect() as conn:
-                    temp = (
-                        select([distinct(_concat(
-                            _library.c.short_name,'/',_copy.c.name,'/', 
-                            cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
-                            )])
-                        .select_from(j)
-                        .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
-                    plate_keys = set([x[0] for x in 
-                        conn.execute(temp)])
-                    _plate_comment_apilogs = (
-                        select([
-                            _plate_comment_apilogs.c.username,
-                            _plate_comment_apilogs.c.date_time,
-                            _plate_comment_apilogs.c.key,
-                            _plate_comment_apilogs.c.comment])
-                        .select_from(_plate_comment_apilogs)
-                        .where(_plate_comment_apilogs.c.key.in_(plate_keys)))
-                    _plate_comment_apilogs = _plate_comment_apilogs.cte('plate_comment_apilogs1')
+                if 'library_plate_comment_array' in field_hash:
+                    ### Performance hack: limit the apilogs for the query
+                    # TODO: add a plate_key field to the plate table to aid in this query
+                    with get_engine().connect() as conn:
+                        temp = (
+                            select([distinct(_concat(
+                                _library.c.short_name,'/',_copy.c.name,'/', 
+                                cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
+                                )])
+                            .select_from(j)
+                            .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
+                        plate_keys = set([x[0] for x in 
+                            conn.execute(temp)])
+                        _plate_comment_apilogs = _plate_comment_apilogs.\
+                            where(_apilog.c.key.in_(plate_keys))
+                        _plate_comment_apilogs = \
+                            _plate_comment_apilogs.cte('plate_comment_apilogs')
                     
 
                 custom_columns.update({
@@ -7813,23 +7834,23 @@ class LabCherryPickResource(DbApiResource):
                     _cw.c.well_id == _well.c.well_id,
                     _cw.c.copy_id == _copy.c.copy_id), isouter=True )
 
-                ### Performance hack: limit the apilogs for the query
-                # TODO: add a plate_key field to the plate table to aid in this query
-                with get_engine().connect() as conn:
-                    temp = (
-                        select([distinct(_copyplates_available.c.key)])
-                        .select_from(_copyplates_available))
-                    plate_keys = set([x[0] for x in 
-                        conn.execute(temp)])
-                    _plate_comment_apilogs = (
-                        select([
-                            _plate_comment_apilogs.c.username,
-                            _plate_comment_apilogs.c.date_time,
-                            _plate_comment_apilogs.c.key,
-                            _plate_comment_apilogs.c.comment])
-                        .select_from(_plate_comment_apilogs)
-                        .where(_plate_comment_apilogs.c.key.in_(plate_keys)))
-                    _plate_comment_apilogs = _plate_comment_apilogs.cte('plate_comment_apilogs1')
+                if 'library_plate_comment_array' in field_hash:
+                    ### Performance hack: limit the apilogs for the query
+                    # TODO: add a plate_key field to the plate table to aid in this query
+                    with get_engine().connect() as conn:
+                        temp = (
+                            select([distinct(_concat(
+                                _library.c.short_name,'/',_copy.c.name,'/', 
+                                cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
+                                )])
+                            .select_from(j)
+                            .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
+                        plate_keys = set([x[0] for x in 
+                            conn.execute(temp)])
+                        _plate_comment_apilogs = _plate_comment_apilogs.\
+                            where(_apilog.c.key.in_(plate_keys))
+                        _plate_comment_apilogs = \
+                            _plate_comment_apilogs.cte('plate_comment_apilogs')
                     
                 custom_columns.update({
                     'selected_copy_name': case([
@@ -7863,7 +7884,22 @@ class LabCherryPickResource(DbApiResource):
                     _library.c.short_name,'/',_copy.c.name,'/', 
                     cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)))
                 )
-            
+#             custom_columns['library_plate_comment_array'] = (
+#                 select([func.array_to_string(
+#                     func.array_agg(
+#                         _concat(                            
+#                             cast(_plate_comment_apilogs.c.username,
+#                                 sqlalchemy.sql.sqltypes.Text),
+#                             LIST_DELIMITER_SUB_ARRAY,
+#                             cast(_plate_comment_apilogs.c.date_time,
+#                                 sqlalchemy.sql.sqltypes.Text),
+#                             LIST_DELIMITER_SUB_ARRAY,
+#                             _plate_comment_apilogs.c.comment)
+#                     ), 
+#                     LIST_DELIMITER_SQL_ARRAY) ])
+#                 .select_from(_plate_comment_apilogs)
+#                 .where(_plate_comment_apilogs.c.key==_p.c.key)
+#                 )
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
@@ -7872,6 +7908,9 @@ class LabCherryPickResource(DbApiResource):
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(_cpr.c.cherry_pick_request_id==cherry_pick_request_id)
 
+            if show_manual is True:
+                stmt = stmt.where(_lcp.c.is_manually_selected==True)
+            
             if show_unfulfilled is True:
                 if ( show_copy_wells is not True 
                      and show_available_and_retired_copy_wells is not True ):
@@ -7897,12 +7936,11 @@ class LabCherryPickResource(DbApiResource):
 
             if show_insufficient is True:
                 stmt = stmt.where(text('source_copy_well_volume<=volume_approved'))
-
            
-            compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if use_titles is True:
@@ -16004,9 +16042,9 @@ class ResourceResource(reports.api.ResourceResource):
                 for x in Screen.objects.all().distinct('screen_type')]
             resource_data['extraSelectorOptions'] = { 
                 'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
-        elif key == 'labcherrypick':
-            resource_data['extraSelectorOptions'] = {
-                'label': 'Status',
-                'searchColumn': 'status',
-                'options': ['unfulfilled','selected','plated','not_selected']}
+#         elif key == 'labcherrypick':
+#             resource_data['extraSelectorOptions'] = {
+#                 'label': 'Status',
+#                 'searchColumn': 'status',
+#                 'options': ['unfulfilled','selected','plated','not_selected']}
             

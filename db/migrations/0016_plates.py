@@ -27,6 +27,16 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name='copy',name='max_mg_ml_concentration'),
         migrations.RemoveField(model_name='copy',name='primary_well_molar_concentration'),
         migrations.RemoveField(model_name='copy',name='primary_well_mg_ml_concentration'),
+        migrations.AddField(
+            model_name='labcherrypick',
+            name='is_manually_selected',
+            field=models.NullBooleanField(),
+        ),
+#         migrations.AddField(
+#             model_name='plate',
+#             name='key',
+#             field=models.TextField(null=True),
+#         ),
         
     ]
     

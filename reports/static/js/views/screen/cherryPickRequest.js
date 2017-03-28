@@ -266,6 +266,7 @@ define([
         }
 
         var modalDialog = appModel.showModal({
+          ok_only: !editable,
           css: { 
               display: 'table',
               width: 'auto'
@@ -1064,7 +1065,8 @@ define([
         ].join(''));
       var showAllCopyWellsControl = $([
           '<label class="checkbox-inline" ',
-          'title="Show all available and retired wells from Cherry Pick Source and Library Screening copies">',
+          'title="Show all available and retired wells ',
+          'from Cherry Pick Source and Library Screening copies">',
           '  <input id="show_available_and_retired_copy_wells" ',
           '     type="checkbox">Available and Retired',
           '</label>'
@@ -1072,7 +1074,7 @@ define([
       var showUnfulfilledWellsControl = $([
           '<label class="checkbox-inline" ',
           ' title="Show rows for unfulfilled picks only" >',
-          '  <input id="showUnfulfilled" type="checkbox">Unfulfilled only',
+          '  <input id="showUnfulfilled" type="checkbox">Unfulfilled',
           '</label>'
         ].join(''));
       var showInsufficientWellsControl = $([
@@ -1081,10 +1083,17 @@ define([
           '  <input id="showInsufficient" type="checkbox">Insufficient Volume',
           '</label>'
         ].join(''));
+      var showManuallySelectedWellsControl = $([
+          '<label class="checkbox-inline" ',
+          ' title="Show rows for manually selected picks only" >',
+          '  <input id="showManuallySelected" type="checkbox">Manually Selected',
+          '</label>'
+        ].join(''));
       checkboxDiv.append(showCopyWellsControl);
       checkboxDiv.append(showAllCopyWellsControl);
       checkboxDiv.append(showUnfulfilledWellsControl);
       checkboxDiv.append(showInsufficientWellsControl);
+      checkboxDiv.append(showManuallySelectedWellsControl);
       checkboxDiv.prepend('<label for="show_input_group">show</label>');
       extraControls.push(checkboxDiv);
       
@@ -1247,7 +1256,7 @@ define([
       })
       var lcpSelectionUpdateCollection = new Collection();
       
-      // Custom Selection Row with styling
+      // Custom LCP Selection Row with styling
       // Reference to previous row to use for row styling
       var previousSourceWell = null;
       var SelectedLcpRow = Backgrid.Row.extend({
@@ -1303,6 +1312,7 @@ define([
           // column name: in this case the "selected" class has other meaning, 
           // so remove it
           this.$('th').removeClass('selected');
+          this.grid.$el.addClass('selector_table');
           return this;
         }
       });
@@ -1316,12 +1326,15 @@ define([
         extraControls: extraControls
       });
       Backbone.Layout.setupView(view);
-//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
+        view.$el.find('#extra_controls').removeClass('col-sm-5');
+        view.$el.find('#extra_controls').addClass('col-sm-8');
+        view.$el.find('#list_controls').removeClass('col-sm-7');
+        view.$el.find('#list_controls').addClass('col-sm-4');
       });
     
       var initialSearchHash = view.listModel.get('search');
@@ -1342,6 +1355,10 @@ define([
           && initialSearchHash.show_insufficient.toLowerCase()=='true') {
         showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',true);
       }
+      if (_.has(initialSearchHash, 'show_manual')
+          && initialSearchHash.show_manual.toLowerCase()=='true') {
+        showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+      }
 
       // Manage LCP selection updates
       view.collection.on('add', function(model){
@@ -1354,14 +1371,14 @@ define([
       view.collection.on('change', function(model){
         console.log('collection changed', arguments);
         if (!model.has('selected_on_server')){
-          // Block changes caused by changing the field schema other actions 
+          // Block changes caused by changing the field schema with other actions 
           // that happen before the selected_on_server flag is set
           return;
         }
-        if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
-            || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
-          return;
-        }
+//        if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
+//            || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
+//          return;
+//        }
 
         var current_copy_name = model.get('source_copy_name');
         var source_well_id = model.get('source_well_id');
@@ -1470,16 +1487,22 @@ define([
               setSelectedLcpButton.hide();
               lcpSelectionUpdateCollection.reset(null); // clear
               // On success, clear all the buttons
+              var originalSearchHash = _.clone(view.listModel.get('search'));
               var searchHash = _.clone(view.listModel.get('search'));
               delete searchHash['show_copy_wells'];
               delete searchHash['show_available_and_retired_copy_wells'];
               delete searchHash['show_unfulfilled'];
-              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              delete searchHash['show_insufficient'];
+              searchHash['show_manual'] = 'true';
+              showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              view.listModel.set('search',searchHash, {silent: true });
-              
-              view.collection.fetch({ reset: true });
+              showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+              view.listModel.set('search',searchHash);
+              if (_.isEqual(originalSearchHash,searchHash)){
+                view.collection.fetch({ reset: true });
+              }
     
             }).fail(function(jqXHR, textStatus, errorThrown){
               console.log('fail', arguments);
@@ -1544,12 +1567,17 @@ define([
               delete searchHash['show_copy_wells'];
               delete searchHash['show_available_and_retired_copy_wells'];
               delete searchHash['show_unfulfilled'];
-              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              delete searchHash['show_insufficient'];
+              searchHash['show_manual'] = 'true';
+              showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              view.listModel.set('search',searchHash, {silent: true });
-              
-              view.collection.fetch({ reset: true });
+              showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+              view.listModel.set('search',searchHash);
+              if (_.isEqual(originalSearchHash,searchHash)){
+                view.collection.fetch({ reset: true });
+              }
     
             }).fail(function(jqXHR, textStatus, errorThrown){
               console.log('fail', arguments);
@@ -1589,7 +1617,6 @@ define([
         var _form_el = form.render().el;
         options.view = _form_el;
         options.ok = function(e){
-//          e.preventDefault();
           appModel.clearPagePending();
           var errors = form.commit();
           if(!_.isEmpty(errors)){
@@ -1647,7 +1674,6 @@ define([
             ok: processClick,
             title: msg
           })
-          
         }
       });
       
@@ -1697,7 +1723,7 @@ define([
               if (!_.isUndefined(errorFlag )){
                 appModel.showOkCommentForm({
                   title: 'Some Copy Wells have insufficient volume, Confirm override?',
-                  body: 'Copy Wells: ' + errorWells.join(', '),
+                  body: 'Copy Wells: \n' + errorWells.join(', '),
                   okText: 'Override',
                   ok: function(formValues) {
                     var overrideInsufficient = true;
@@ -1775,17 +1801,29 @@ define([
         }
       });
       
+      var extra_columns_for_selection = [
+        'selected', 'source_copy_well_volume','volume_approved',
+        'source_copy_usage_type','source_plate_status',
+        'source_plate_date_retired', 'source_plate_screening_count'];
       showUnfulfilledWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(extra_columns_for_selection,includes);
+            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_unfulfilled'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.difference(includes, extra_columns_for_selection);
+            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_unfulfilled'];
             view.listModel.set('search',searchHash);
           }
+          view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
         };
         if(appModel.isPagePending()){
           appModel.requestPageChange({
@@ -1798,14 +1836,22 @@ define([
       showInsufficientWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(extra_columns_for_selection,includes);
+            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_insufficient'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.difference(includes, extra_columns_for_selection);
+            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_insufficient'];
             view.listModel.set('search',searchHash);
           }
+          view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
         };
         if(appModel.isPagePending()){
           appModel.requestPageChange({
@@ -1815,10 +1861,35 @@ define([
           processClick();
         }
       });
-      var extra_columns_for_selection = [
-        'selected', 'source_copy_well_volume','volume_approved',
-        'source_copy_usage_type','source_plate_status',
-        'source_plate_date_retired', 'source_plate_screening_count'];
+      showManuallySelectedWellsControl.click(function(e){
+        function processClick(){
+          if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(extra_columns_for_selection,includes);
+            view.listModel.set({ includes: includes}, {reset: false});
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash['show_manual'] = 'true';
+            view.listModel.set('search',searchHash);
+          } else {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.difference(includes, extra_columns_for_selection);
+            view.listModel.set({ includes: includes}, {reset: false});
+            var searchHash = _.clone(view.listModel.get('search'));
+            delete searchHash['show_manual'];
+            view.listModel.set('search',searchHash);
+          }
+          view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
+          
+        };
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
      showCopyWellsControl.click(function(e) {
         function processClick(){
           if (e.target.checked) {
@@ -2131,11 +2202,15 @@ define([
         ].join(''));
       extraControls.push(deleteScpsButton);
 
+      var setLcpsButtonTitle = 'Set Lab Cherry Picks';
+      if(self.model.get('has_pool_screener_cherry_picks') === true){
+        setLcpsButtonTitle = 'Set Pool Lab Cherry Picks';
+      }
       var setLcpsButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'style="display: none; " ',
           'role="button" id="setLcpsButton" href="#">',
-          'Set Lab Cherry Picks</a>'
+          setLcpsButtonTitle + '</a>'
         ].join(''));
       extraControls.push(setLcpsButton);
       var setDuplexLcpsButton = $([
@@ -2186,7 +2261,7 @@ define([
       })
       var selectionUpdateCollection = new Collection();
 
-      // Custom Selection Row with styling
+      // Custom SCP Selection Row with styling
       var SelectedScpRow = Backgrid.Row.extend({
         initialize: function () {
           var self = this;
@@ -2235,6 +2310,8 @@ define([
           // column name: in this case the "selected" class has other meaning, 
           // so remove it
           this.$('th').removeClass('selected');
+          this.grid.$el.addClass('selector_table');
+          
           return this;
         }
       });

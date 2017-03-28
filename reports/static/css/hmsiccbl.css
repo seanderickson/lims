@@ -183,10 +183,6 @@ div.backgrid-paginator {
   background-color: rgba(0, 255, 37, 0.33);
 }
 
-.backgrid tbody tr.selected {
-  background-color: rgba(0, 255, 37, 0.33);
-}
-
 /** wellselector **/
 
 .wellselector thead th,
@@ -227,9 +223,14 @@ th.wellselector.selected {
 }
 
 /** Styles for the SCP, LCP table selector **/
-tr.selector_row_group {
+table.selector_table tr.selector_row_group {
   border-top: 2px solid black;
+  background-color: lightcyan;
 }
+table.selector_table tr.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
 
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 

@@ -1132,6 +1132,7 @@ define([
     dict_to_rows: function(dict){
       var self = this;
       var rows = [];
+      console.log('dict_to_rows', dict);
       if (_.isObject(dict) && !_.isArray(dict)){
         _.each(_.keys(dict), function(key){
           _.each(self.dict_to_rows(dict[key]),function(row){
@@ -1151,6 +1152,7 @@ define([
       }else{
         console.log('obj: ', dict);
         if (_.isArray(dict)){
+//          return dict.join(', ');
           return dict;
         }else{
           return [dict];
@@ -1219,6 +1221,7 @@ define([
       }
       
       Iccbl.appModel.showModalMessage({
+        buttons_on_top: true,
         body: bodyMsg,
         title: title  
       });

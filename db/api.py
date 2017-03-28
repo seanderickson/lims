@@ -153,6 +153,7 @@ API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents'
 API_PARAM_SHOW_COPY_WELLS = 'show_copy_wells'
 API_PARAM_SHOW_RETIRED_COPY_WELlS = 'show_available_and_retired_copy_wells'
 API_PARAM_SHOW_UNFULFILLED = 'show_unfulfilled'
+API_PARAM_SHOW_INSUFFICIENT = 'show_insufficient'
 API_PARAM_VOLUME_OVERRIDE = 'volume_override'
 API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero'
 logger = logging.getLogger(__name__)
@@ -4670,7 +4671,6 @@ class CherryPickRequestResource(DbApiResource):
         show_unfulfilled = parse_val(
             param_hash.get(API_PARAM_SHOW_UNFULFILLED, False),
             API_PARAM_SHOW_UNFULFILLED, 'boolean')
-        
         if not any([show_copy_wells, show_available_and_retired_copy_wells, 
             show_unfulfilled]):
             kwargs['status__eq'] = 'plated'
@@ -5369,7 +5369,6 @@ class CherryPickRequestResource(DbApiResource):
                             'source_copywell_id','source_copy_well_volume',
                             'volume_approved',
                             '-structure_image','-molfile'],
-#                         'includes': ['*', '-structure_image','-molfile'],
                     })}
         logger.info('fetch output readable format...')
         lab_cherry_pick_copywells_output = \
@@ -5383,7 +5382,6 @@ class CherryPickRequestResource(DbApiResource):
                             'source_copywell_id','source_copy_well_volume',
                             'volume_approved',
                             '-structure_image','-molfile'],
-#                         'includes': ['*', '-structure_image','-molfile'],
                         HTTP_PARAM_USE_VOCAB: True,
                     })}
         logger.info('Check for insufficient well volumes...')
@@ -5425,14 +5423,13 @@ class CherryPickRequestResource(DbApiResource):
                 cpr, fulfillable_lcps, parent_log)
         
         logger.info('Create the assay_plates...')  
-        # cpr.is_randomized_assay_plate_layout
-        # - if true, randomize the plate layout wells
-        if cpr.is_randomized_assay_plate_layout:
-            logger.debug('randomize the available assay plate wells: %r',
-                available_assay_plate_wells)
-            random.shuffle(available_assay_plate_wells)
-            logger.debug('randomized available assay plate wells: %r',
-                available_assay_plate_wells)
+#         # - if true, randomize the plate layout wells
+#         if cpr.is_randomized_assay_plate_layout:
+#             logger.debug('randomize the available assay plate wells: %r',
+#                 available_assay_plate_wells)
+#             random.shuffle(available_assay_plate_wells)
+#             logger.debug('randomized available assay plate wells: %r',
+#                 available_assay_plate_wells)
                   
         next_plate_ordinal = [1]
         def create_next_assay_plate():
@@ -5502,13 +5499,20 @@ class CherryPickRequestResource(DbApiResource):
             
             logger.info('create assay plates, in order...')
             assay_plates_created = []
+
             for packed_bin in ordered_bins:
+            
                 logger.info('using packed bin: %r', packed_bin)
+                assay_plate_wells_to_use = \
+                    available_assay_plate_wells[:bin_packer.sum_bin(packed_bin)]                                
+                if cpr.is_randomized_assay_plate_layout:                    
+                    random.shuffle(assay_plate_wells_to_use)
                 assay_plate = create_next_assay_plate()
                 assay_plates_created.append(assay_plate)
                 assay_plate_well_index = 0
-                for package in packed_bin:
                     
+                for package in packed_bin:
+
                     logger.info('package: %r', package)
                     
                     plate_copy = package['name']
@@ -5520,10 +5524,11 @@ class CherryPickRequestResource(DbApiResource):
                     
                     logger.info('lcps: %r, assay_plate.plate_ordinal: %r', 
                         len(lcps_to_plate),assay_plate.plate_ordinal)
-                
+                    
+                    
                     for lcp in lcps_to_plate:
                         lcp.cherry_pick_assay_plate = assay_plate
-                        well_name = available_assay_plate_wells[assay_plate_well_index]
+                        well_name = assay_plate_wells_to_use[assay_plate_well_index]
                         lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
                         lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
                         assay_plate_well_index += 1
@@ -5534,30 +5539,48 @@ class CherryPickRequestResource(DbApiResource):
             # keep_source_plate_cherry_picks_together == False
             # no bin packing
             capacity = len(available_assay_plate_wells)
+
+            def randomize_lcps(lcps):
+                current_well_assignments = [
+                    (lcp.assay_plate_row,lcp.assay_plate_column) 
+                    for lcp in lcps]
+                random.shuffle(current_well_assignments)
+                for i,lcp in enumerate(lcps):
+                    shuffled_rc = current_well_assignments[i]
+                    lcp.assay_plate_row = shuffled_rc[0]
+                    lcp.assay_plate_column = shuffled_rc[1]
+                    lcp.save()
+            
             assay_plates_created = []
             assay_plate = None
+            current_plate_lcps = []
             
             plate_copies = sorted(lcp_by_plate_copy.keys())
             for plate_copy in plate_copies:
+
                 logger.info('plating: %r', plate_copy)
                 lcps_to_plate = lcp_by_plate_copy[plate_copy]
                 for lcp in lcps_to_plate:
+
                     if assay_plate is None:
                         assay_plate = create_next_assay_plate()
                         assay_plates_created.append(assay_plate)
                         assay_plate_well_index = 0
-    
+
                     lcp.cherry_pick_assay_plate = assay_plate
                     well_name = available_assay_plate_wells[assay_plate_well_index]
                     lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
                     lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
                     lcp.save()
-    
+                    current_plate_lcps.append(lcp)
+                    
                     assay_plate_well_index += 1
                     if assay_plate_well_index >= capacity:
                         assay_plate_well_index = 0
                         assay_plate = None
                     
+            if cpr.is_randomized_assay_plate_layout:                    
+                randomize_lcps(current_plate_lcps)
             
 #             for lcp in fulfillable_lcps.all():
 #                 
@@ -7421,7 +7444,6 @@ class LabCherryPickResource(DbApiResource):
             'library_plate',
             'source_well_name',
             'source_copy_well_volume',
-#            'volume_approved_ul',
             'volume_approved',            
             'source_plate_status',
             'source_copy_usage_type',
@@ -7432,9 +7454,13 @@ class LabCherryPickResource(DbApiResource):
         for key,field in fields.items():
             if key in visible_fields:
                 field['visibility'] = ['l']
-                field['ordinal'] = visible_fields.index(key)
+                # NOTE: don't alter ordinal if possible, 
+                # this makes it problematic included fields later
+                # field['ordinal'] = visible_fields.index(key)
             else:
                 field['visibility'] = []
+        fields['cherry_pick_plate_number']['ordinal'] = -10
+        fields['destination_well']['ordinal'] = -9
         fields['source_copy_well_volume']['title'] = \
             'Source CopyWell Volume (after transfer)'
         fields['source_copy_well_volume']['description'] = \
@@ -7502,6 +7528,7 @@ class LabCherryPickResource(DbApiResource):
             API_PARAM_SHOW_COPY_WELLS, 'boolean')
         logger.info('%r: %r', API_PARAM_SHOW_COPY_WELLS,show_copy_wells)
         if show_copy_wells is True:
+            # NOTE: add a marker to the file_name extra_params
             extra_params[API_PARAM_SHOW_COPY_WELLS] = None
         show_available_and_retired_copy_wells = parse_val(
             param_hash.get(API_PARAM_SHOW_RETIRED_COPY_WELlS, False),
@@ -7515,6 +7542,11 @@ class LabCherryPickResource(DbApiResource):
             API_PARAM_SHOW_UNFULFILLED, 'boolean')
         if show_unfulfilled is True:
             extra_params[API_PARAM_SHOW_UNFULFILLED] = None
+        show_insufficient = parse_val(
+            param_hash.get(API_PARAM_SHOW_INSUFFICIENT, False),
+            API_PARAM_SHOW_INSUFFICIENT, 'boolean')
+        if show_insufficient is True:
+            extra_params[API_PARAM_SHOW_INSUFFICIENT] = None
         try:
             
             # Note: build schema for each request to use the subtype
@@ -7534,6 +7566,10 @@ class LabCherryPickResource(DbApiResource):
             # FIXME: only add the comment array if selecting alternate copies
             manual_field_includes.add('library_plate_comment_array')
             manual_field_includes.add('library_comment_array')
+            
+            if show_insufficient is True:
+                manual_field_includes.add('volume_approved')
+                manual_field_includes.add('source_copy_well_volume')
 
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
@@ -7661,24 +7697,6 @@ class LabCherryPickResource(DbApiResource):
                         func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
                             func.coalesce(_cw.c.volume, _p.c.remaining_well_volume) )],
                     else_=None),
-                'library_plate_comment_array': (
-                    select([func.array_to_string(
-                        func.array_agg(
-                            _concat(                            
-                                cast(_plate_comment_apilogs.c.username,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                cast(_plate_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                _plate_comment_apilogs.c.comment)
-                        ), 
-                        LIST_DELIMITER_SQL_ARRAY) ])
-                    .select_from(_plate_comment_apilogs)
-                    .where(_plate_comment_apilogs.c.key== _concat(
-                        _library.c.short_name,'/',_copy.c.name,'/', 
-                        cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)))
-                    ),
                 'library_comment_array': (
                     select([func.array_to_string(
                         func.array_agg(
@@ -7721,6 +7739,29 @@ class LabCherryPickResource(DbApiResource):
                     _cw.c.well_id == _well.c.well_id,
                     _cw.c.copy_id == _copy.c.copy_id), isouter=True )
 
+                ### Performance hack: limit the apilogs for the query
+                # TODO: add a plate_key field to the plate table to aid in this query
+                with get_engine().connect() as conn:
+                    temp = (
+                        select([distinct(_concat(
+                            _library.c.short_name,'/',_copy.c.name,'/', 
+                            cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
+                            )])
+                        .select_from(j)
+                        .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
+                    plate_keys = set([x[0] for x in 
+                        conn.execute(temp)])
+                    _plate_comment_apilogs = (
+                        select([
+                            _plate_comment_apilogs.c.username,
+                            _plate_comment_apilogs.c.date_time,
+                            _plate_comment_apilogs.c.key,
+                            _plate_comment_apilogs.c.comment])
+                        .select_from(_plate_comment_apilogs)
+                        .where(_plate_comment_apilogs.c.key.in_(plate_keys)))
+                    _plate_comment_apilogs = _plate_comment_apilogs.cte('plate_comment_apilogs1')
+                    
+
                 custom_columns.update({
                     'selected_copy_name': case([
                         (_lcp.c.copy_id==_copy.c.copy_id, _copy.c.name )],
@@ -7732,11 +7773,15 @@ class LabCherryPickResource(DbApiResource):
                     select([
                         _lcp.c.lab_cherry_pick_id,
                         _copy.c.copy_id,
-                        _p.c.plate_id ])
+                        _p.c.plate_id,
+                        _concat(
+                            _library.c.short_name,'/',_copy.c.name,'/', 
+                            cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)).label('key')])
                     .select_from(
                         _lcp.join(_well,_well.c.well_id==_lcp.c.source_well_id)
                             .join(_p, _well.c.plate_number==_p.c.plate_number)
-                            .join(_copy, _p.c.copy_id==_copy.c.copy_id))
+                            .join(_copy, _p.c.copy_id==_copy.c.copy_id)
+                            .join(_library, _copy.c.library_id==_library.c.library_id))
                     .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
                 if show_available_and_retired_copy_wells is not True:    
                     _copyplates_available = \
@@ -7752,6 +7797,7 @@ class LabCherryPickResource(DbApiResource):
                 _copyplates_available = _copyplates_available.where(
                     _p.c.status.in_(['available','retired']))
                 _copyplates_available = _copyplates_available.cte('copy_plates_available')
+                
                 j = j.join(_copyplates_available,
                     _lcp.c.lab_cherry_pick_id
                     ==_copyplates_available.c.lab_cherry_pick_id)
@@ -7766,7 +7812,25 @@ class LabCherryPickResource(DbApiResource):
                 j = j.join(_cw, and_(
                     _cw.c.well_id == _well.c.well_id,
                     _cw.c.copy_id == _copy.c.copy_id), isouter=True )
-                
+
+                ### Performance hack: limit the apilogs for the query
+                # TODO: add a plate_key field to the plate table to aid in this query
+                with get_engine().connect() as conn:
+                    temp = (
+                        select([distinct(_copyplates_available.c.key)])
+                        .select_from(_copyplates_available))
+                    plate_keys = set([x[0] for x in 
+                        conn.execute(temp)])
+                    _plate_comment_apilogs = (
+                        select([
+                            _plate_comment_apilogs.c.username,
+                            _plate_comment_apilogs.c.date_time,
+                            _plate_comment_apilogs.c.key,
+                            _plate_comment_apilogs.c.comment])
+                        .select_from(_plate_comment_apilogs)
+                        .where(_plate_comment_apilogs.c.key.in_(plate_keys)))
+                    _plate_comment_apilogs = _plate_comment_apilogs.cte('plate_comment_apilogs1')
+                    
                 custom_columns.update({
                     'selected_copy_name': case([
                         (_lcp.c.copy_id==_copy.c.copy_id, _copy.c.name )],
@@ -7781,6 +7845,26 @@ class LabCherryPickResource(DbApiResource):
                         else_=text("'%s'"%VOCAB_LCP_STATUS_NOT_SELECTED)),
                 })
 
+            custom_columns['library_plate_comment_array'] = (
+                select([func.array_to_string(
+                    func.array_agg(
+                        _concat(                            
+                            cast(_plate_comment_apilogs.c.username,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            cast(_plate_comment_apilogs.c.date_time,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            _plate_comment_apilogs.c.comment)
+                    ), 
+                    LIST_DELIMITER_SQL_ARRAY) ])
+                .select_from(_plate_comment_apilogs)
+                .where(_plate_comment_apilogs.c.key== _concat(
+                    _library.c.short_name,'/',_copy.c.name,'/', 
+                    cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)))
+                )
+            
+            
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
@@ -7788,13 +7872,12 @@ class LabCherryPickResource(DbApiResource):
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(_cpr.c.cherry_pick_request_id==cherry_pick_request_id)
 
-            if show_unfulfilled:
+            if show_unfulfilled is True:
                 if ( show_copy_wells is not True 
                      and show_available_and_retired_copy_wells is not True ):
                     stmt = stmt.where(_copy.c.name==None)
                 else:
                     stmt = stmt.where(_original_copy.c.name==None)
-            
             # Ordering for well_id must be alphanumeric
             # For string field ordering, double sort as numeric and text
             order_clauses.append(text(
@@ -7811,6 +7894,10 @@ class LabCherryPickResource(DbApiResource):
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
+
+            if show_insufficient is True:
+                stmt = stmt.where(text('source_copy_well_volume<=volume_approved'))
+
            
             compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),

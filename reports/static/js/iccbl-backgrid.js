@@ -184,7 +184,6 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
   if (_.has(schema, 'id_attribute')) {
   
     var id_attribute = schema['id_attribute'];
-    console.log('create id from ' + id_attribute);
     var idList = [];
     
     _.each(id_attribute, function(item){
@@ -1792,7 +1791,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
 
   ___klass: 'MultiSortHeaderCell',
-  
+
   initialize : function(options) {
     this.options = options;
     MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
@@ -2021,11 +2020,6 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
   collapseicon_text : '<span ' +
     ' class="pull-left glyphicon glyphicon-chevron-up"'+
     ' id="collapse-filter-icon" ></span>',
-  
-  events: {
-    'filter_clear': 'clearSearch'
-  },
-  
   
   initialize : function(options) {
     var self = this;

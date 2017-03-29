@@ -476,29 +476,61 @@ define([
             reset = options.reset;
           }
           
-          console.log('includes changed from ',
-            self.listModel.previous('includes'), 'to', 
-            self.listModel.get('includes'));
-          
+          var fields = self._options.schemaResult.fields;
           var toAdd = [];
           var toRemove = [];
           var previous = self.listModel.previous('includes');
           var current = self.listModel.get('includes');
-          _.each(previous, function(p){
-            if(! _.contains(current, p)){
-              if(p.charAt(0)=='-'){
-                toAdd.push(p.slice(1));
+          console.log('previous includes:', previous, 'current', current);
+          
+          _.each(_.difference(previous,current), function(premoved){
+            var negate = false;
+            if(premoved.charAt(0)=='-'){
+              premoved = premoved.slice(1);
+              negate = true;
+            }
+            if (!_.has(fields, premoved)){
+              console.log('unknown column', premoved);
+              return;
+            }
+            var defaultVisible = _.contains(fields[premoved]['visibility'], 'l');
+            if (defaultVisible==true){
+              if (negate==true){
+                toAdd.push(premoved);
               }else{
-                toRemove.push(p);
+                //pass
+              }
+            } else {
+              if (negate != true){
+                toRemove.push(premoved);
+              } else {
+                //pass
               }
             }
           });
-          _.each(current, function(c){
-            if(! _.contains(previous, c)){
-              if(c.charAt(0)=='-'){
-                toRemove.push(c.slice(1));
+          _.each(_.difference(current,previous), function(cadded){
+            var negate = false;
+            if(cadded.charAt(0)=='-'){
+              cadded = cadded.slice(1);
+              negate = true;
+            }
+            if (!_.has(fields, cadded)){
+              console.log('unknown column', cadded);
+              return;
+            }
+
+            var defaultVisible = _.contains(fields[cadded]['visibility'], 'l');
+            if (defaultVisible==true){
+              if (negate==true){
+                toRemove.push(cadded);
               }else{
-                toAdd.push(c);
+                //pass
+              }
+            } else {
+              if (negate != true){
+                toAdd.push(cadded);
+              } else {
+                //pass
               }
             }
           });
@@ -506,7 +538,6 @@ define([
           console.log('toRemove:', toRemove, 'toAdd', toAdd);
           
           _.each(toAdd, function(key){
-            var fields = self._options.schemaResult.fields;
             var field = fields[key];
             console.log('add column', key, field['ordinal']);
             var column = self.grid.columns.findWhere({ name: key });
@@ -518,7 +549,6 @@ define([
                 var colKey = column.get('name');
                 var colField = fields[colKey];
                 var colOrdinal = colField['ordinal'];
-                console.log('consider', colKey, colOrdinal)
                 if(colOrdinal>ordinal){
                   console.log('add col', key, ordinal, 'before col', colKey,colOrdinal)
                   return true;
@@ -536,15 +566,12 @@ define([
             }
           });
           _.each(toRemove, function(key){
-            column =  self.grid.columns.find(function(column){
-              if(column.get('name') == key){
-                var field = self._options.schemaResult.fields[key];
-                if (!_.contains(field['visibility'], 'l')){
-                  self.grid.removeColumn(column);
-                  return true;
-                }
-              }
-            });
+            var column = self.grid.columns.findWhere({ name: key });
+            if (!column){
+              console.log('column already not present', key)
+            } else {
+              self.grid.removeColumn(column);
+            }
           });          
           
           if(reset){

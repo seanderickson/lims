@@ -724,8 +724,11 @@ function main {
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
     tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
   fi  
+  
+  setup_test_data
+
   # put this here to see if LSF will start reporting results
-  exit 0
+  # exit 0
     
   # Integration test: run some grunt-mocha chai-jquery to test the UI?  
   
@@ -737,8 +740,6 @@ function main {
     PYTHONPATH=. reports/utils/django_requests.py -u sde  \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
   fi
-  
-  setup_test_data
 
 }
 

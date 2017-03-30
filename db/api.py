@@ -7531,12 +7531,14 @@ class LabCherryPickResource(DbApiResource):
                     .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
                 if show_available_and_retired_copy_wells is not True:    
                     _copyplates_available = \
-                        _copyplates_available.where(
-                            _copy.c.usage_type=='cherry_pick_source_plates')
+                        _copyplates_available.where(and_(
+                            _copy.c.usage_type=='cherry_pick_source_plates',
+                            _p.c.status=='available'))
                 else:
                     _copyplates_available = \
                         _copyplates_available.where(or_(
-                            _copy.c.usage_type=='cherry_pick_source_plates',
+                            and_(_copy.c.usage_type=='cherry_pick_source_plates',
+                                _p.c.status=='available'),
                             and_(_copy.c.usage_type=='library_screening_plates',
                                 _p.c.status=='retired')))
                     

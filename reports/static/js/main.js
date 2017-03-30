@@ -13,7 +13,7 @@ require('multiselect/css/multi-select.css');
 require('bootstrap-datepicker/dist/css/bootstrap-datepicker3.css');
 require('jquery-chosen/chosen.css');
 require('bootstrap-chosen/bootstrap-chosen.css');
-require('css/hmsiccbl.css')
+require('css/hmsiccbl.css');
 
 require([ // now load application code
     'jquery',

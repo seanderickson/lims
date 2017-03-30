@@ -2685,7 +2685,7 @@ define([
         showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',true);
       }
       if (_.has(initialSearchHash, appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)
-          && initialSearchHash.show_alternates.toLowerCase()=='true') {
+          && initialSearchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS].toLowerCase()=='true') {
         showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
         showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
       }

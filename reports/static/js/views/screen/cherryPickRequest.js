@@ -38,6 +38,10 @@ define([
           function(screen){
             self.screen = screen;
           });
+      } else {
+        if (this.screen.get('facility_id') != this.model.get('screen_facility_id')){
+          throw "Wrong screen: " + this.screen.get('facility_id') + " for this Cherry Pick Request";
+        }
       }
       
       _.bindAll(this, 'createScpView','createLcpView',

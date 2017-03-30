@@ -229,7 +229,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 //        });
         
         var extraControls = [];
-        if (appModel.hasPermission(resource.key, 'write')){
+        
+        if (false){
+          // FIXME: not all types can have an "add"
+          //if (appModel.hasPermission(resource.key, 'write')){
+          
           if (_.contains(resource.visibility, 'c')){
             var showAddButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',

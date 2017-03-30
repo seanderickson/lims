@@ -151,9 +151,7 @@ where r.library_contents_version_id=%s order by well_id;
                     log.user_id = 1
                 log.date_time = activity.date_created
                 log.ref_resource_name = self.libraryResource._meta.resource_name
-                # TODO: what action? could also be a REST specifier, i.e. 'PATCH'
-                log.api_action = 'PUT'
-                # store the old type in the catch-all field
+                log.api_action = 'PATCH'
                 log.json_field = {
                     'migration': 'Library (contents)',
                     'data': { 

@@ -2555,16 +2555,17 @@ define([
       showOtherReagentsControl.click(function(e) {
         function processClick(){
           if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(
+                ['selected', 'searched_well_id','mg_ml_concentration',
+                 'molar_concentration'],includes);
             if(self.model.get('total_number_lcps') != 0){
               appModel.showModalMessage({
                 title: 'Note:',
                 body: 'Selections can not be changed after Lab Cherry Picks have been created'
               });
+              includes = _.without(includes, 'selected');
             }
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(
-                ['selected', 'searched_well_id','mg_ml_concentration',
-                 'molar_concentration'],includes);
             view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_other_reagents'] = 'true';

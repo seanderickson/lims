@@ -150,6 +150,7 @@ VOCAB_LCP_STATUS_PLATED = 'plated'
 
 # API_PARAM_PLATE_MAPPING_OVERRIDE = 'plate_mapping_override'
 API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents'
+API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections'
 API_PARAM_SHOW_COPY_WELLS = 'show_copy_wells'
 API_PARAM_SHOW_RETIRED_COPY_WELlS = 'show_available_and_retired_copy_wells'
 API_PARAM_SHOW_UNFULFILLED = 'show_unfulfilled'
@@ -4915,10 +4916,10 @@ class CherryPickRequestResource(DbApiResource):
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
             
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+#             compiled_stmt = str(stmt.compile(
+#                 dialect=postgresql.dialect(),
+#                 compile_kwargs={"literal_binds": True}))
+#             logger.info('compiled_stmt %s', compiled_stmt)
             
             if not order_clauses:
                 stmt = stmt.order_by(
@@ -6278,7 +6279,8 @@ class ScreenerCherryPickResource(DbApiResource):
                     and searched_well_id not in selection_updates):
                     selection_updates[searched_well_id] = {
                         'selected': False,
-                        'searched_well_id': searched_well_id }
+                        'searched_well_id': searched_well_id,
+                        'screened_well_id': screened_well_id }
         # make sure others in group are deselected. 
         # Fixme: tidy up this logic
         for scp_data in original_data:
@@ -6296,7 +6298,9 @@ class ScreenerCherryPickResource(DbApiResource):
                 request,  {API_RESULT_META: 'no new Selections found' }, 
                 response_class=HttpResponse, **kwargs)
         
-        logger.info('selection updates: %r', selection_updates.keys())
+        logger.info('selection updates: %r', 
+            [(scp['screened_well_id'],scp['selected'],scp['searched_well_id']) 
+                for scp in selection_updates.values()])
                     
         original_scps = { 
             scp.screened_well_id: scp 
@@ -6325,10 +6329,11 @@ class ScreenerCherryPickResource(DbApiResource):
                         scps_to_unselect.append(screened_well_id)
                     else:
                         messages.append(
-                            'not currently selected: %r', screened_well_id)
+                            'not currently selected: %r' % screened_well_id)
                 else:
                     messages.append(
-                        'not unselecting, well not found in original_scps: %r', screened_well_id)
+                        'not unselecting, well not found in original_scps: %r'
+                        % screened_well_id)
         
         if not scps_to_create and not scps_to_reselect and not scps_to_unselect:
             _data = { API_RESULT_META: messages }
@@ -6492,6 +6497,12 @@ class ScreenerCherryPickResource(DbApiResource):
             API_PARAM_SHOW_OTHER_REAGENTS, 'boolean')
         if show_other_reagents is True:
             extra_params[API_PARAM_SHOW_OTHER_REAGENTS] = None
+
+        show_alternates = parse_val(
+            param_hash.get(API_PARAM_SHOW_ALTERNATE_SELECTIONS, None),
+            API_PARAM_SHOW_ALTERNATE_SELECTIONS, 'boolean')
+        if show_alternates is True:
+            extra_params[API_PARAM_SHOW_ALTERNATE_SELECTIONS] = None
         try:
             
             # Note: build schema for each request to use the subtype
@@ -6541,7 +6552,8 @@ class ScreenerCherryPickResource(DbApiResource):
             _reagent = self.bridge['reagent']
             _library = self.bridge['library']
             
-            if show_other_reagents is True:
+            if show_other_reagents is True or show_alternates is True:
+
                 _original_scps = (
                     select([
                         _scp.c.screener_cherry_pick_id,
@@ -6557,7 +6569,9 @@ class ScreenerCherryPickResource(DbApiResource):
                             .join(_library, _well.c.library_id==_library.c.library_id))
                     .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id)
                     .where(_scp.c.searched_well_id==_scp.c.screened_well_id)
-                    ).cte('original_scps')
+                    )
+                _original_scps = _original_scps.cte('original_scps')
+
                 _alternates = (
                     select([_reagent.c.well_id,_original_scps.c.searched_well_id])
                     .select_from(
@@ -6567,6 +6581,7 @@ class ScreenerCherryPickResource(DbApiResource):
                                  _reagent.c.vendor_name==_original_scps.c.vendor_name)))
                     .where(_reagent.c.well_id!=_original_scps.c.searched_well_id)
                     ).cte('alternate_scps')
+
                 combined_scps = union(
                     select([
                         _scp.c.screener_cherry_pick_id,
@@ -6596,8 +6611,9 @@ class ScreenerCherryPickResource(DbApiResource):
                         select([_scp.c.screened_well_id])
                         .select_from(_scp)
                         .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id))))
-                    ).cte('combined')
-
+                    )
+                combined_scps = combined_scps.cte('combined')
+                
                 working_scp = combined_scps
             else:
                 working_scp = _scp
@@ -6625,11 +6641,23 @@ class ScreenerCherryPickResource(DbApiResource):
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(_cpr.c.cherry_pick_request_id==cherry_pick_request_id)
 
+            if show_alternates is True:
+                with get_engine().connect() as conn:
+                    _alternates = (
+                        select([distinct(_scp.c.searched_well_id)])
+                        .select_from(_scp)
+                        .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id)
+                        .where(_scp.c.searched_well_id!=_scp.c.screened_well_id)
+                        .where(_scp.c.selected == True)
+                        )
+                    alternate_searched_well_ids = set([x[0] for x in 
+                        conn.execute(_alternates)])
+                    stmt = stmt.where(working_scp.c.searched_well_id.in_(alternate_searched_well_ids))
             # general setup
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
-            
+
             if not order_clauses:
                 # Ordering for well_id must be alphanumeric
                 # For string field ordering, double sort as numeric and text
@@ -6637,7 +6665,7 @@ class ScreenerCherryPickResource(DbApiResource):
                     "(substring({field_name}, '^[0-9]+'))::int asc " # cast to integer
                     ",substring({field_name}, ':(.*$)') asc  "  # works as text
                     .format(field_name='searched_well_id'))
-                if show_other_reagents is True:
+                if show_other_reagents is True or show_alternates is True:
                     
                     stmt = stmt.order_by(
                         order_clause,

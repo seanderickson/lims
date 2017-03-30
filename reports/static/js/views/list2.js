@@ -452,13 +452,23 @@ define([
           appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
+      
+      this.listenTo(this.listModel, 'change:page', function(){
+        var page = self.listModel.get('page');
+        this.collection.getPage(page, {reset: true });
+      });
       this.listenTo(this.listModel, 'change:search', function(){
         // TODO: this listener should be set in the collection initializer
         var searchHash = _.clone(self.listModel.get('search'));
         // Note: this is repeated in reportState
         $('#clear_searches').toggle(!_.isEmpty(searchHash));
-        
-        self.collection.setSearch(searchHash);
+        if (self.listModel.get('page') !== 1){
+          self.collection.setSearch(searchHash, { fetch: false });
+          self.listModel.set('page', 1, {silent: true});
+          self.collection.getPage(1);
+        } else {
+          self.collection.setSearch(searchHash);
+        }
       });
       
       this.listenTo(this.listModel, 'change:order', function(){

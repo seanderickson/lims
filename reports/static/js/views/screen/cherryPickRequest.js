@@ -2195,6 +2195,14 @@ define([
           '</label>'
         ].join(''));
       checkboxDiv.append(showOtherReagentsControl);
+      var showAlternateSelectionsControl = $([
+          '<label class="checkbox-inline" ',
+          ' style="margin-left: 10px;" ',
+          ' title="Show selections of alternate reagents with the same vendor ID as the searched well IDs" >',
+          '  <input type="checkbox">Manually Selected',
+          '</label>'
+        ].join(''));
+      checkboxDiv.append(showAlternateSelectionsControl);
       checkboxDiv.prepend('<label for="show_input_group">show</label>');
       extraControls.push(checkboxDiv);
 
@@ -2253,7 +2261,12 @@ define([
       }
       if(self.model.get('has_alternate_screener_cherry_pick_selections') === true){
         schemaResult['fields']['searched_well_id']['visibility'] = ['l','d'];
-        schemaResult['fields']['selected']['visibility'] = ['l','d'];
+//        if(self.model.get('total_number_lcps') == 0){
+//          schemaResult['fields']['selected']['visibility'] = ['l','d'];
+//        }
+        showAlternateSelectionsControl.show();
+      } else {
+        showAlternateSelectionsControl.hide();
       }
 
       // Track user SCP selections
@@ -2271,7 +2284,11 @@ define([
           var self = this;
           SelectedScpRow.__super__.initialize.apply(this, arguments);
           
-          this.listenTo(this.model.collection, 'show_other_reagents', function(){
+          this.listenTo(this.model.collection, appModel.API_PARAM_SHOW_OTHER_REAGENTS, function(){
+            console.log('event:', arguments);
+            self._setStyle();
+          });
+          this.listenTo(this.model.collection, appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS, function(){
             console.log('event:', arguments);
             self._setStyle();
           });
@@ -2279,8 +2296,8 @@ define([
         
         _setStyle: function(){
           var searchHash = this.model.collection.listModel.get('search');
-          if(self.model.get('has_alternate_screener_cherry_pick_selections') === true
-              || _.result(searchHash,'show_other_reagents')=='true')
+          if( _.result(searchHash,appModel.API_PARAM_SHOW_OTHER_REAGENTS)=='true'
+              || _.result(searchHash,appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)=='true')
           {
             if (this.model.get('searched_well_id')
                 ==this.model.get('screened_well_id')) {
@@ -2289,7 +2306,8 @@ define([
           } else {
             this.$el.closest('tr').removeClass('selector_row_group');
           }
-          if (_.result(searchHash,'show_other_reagents')=='true'){
+          if (_.result(searchHash,appModel.API_PARAM_SHOW_OTHER_REAGENTS)=='true'
+            || _.result(searchHash,appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)=='true' ){
             if (this.model.has('searched_well_id')) {
               if (this.model.get('selected')) {
                 this.$el.addClass('selected');
@@ -2542,7 +2560,18 @@ define([
               });
               setSelectedButton.hide();
               selectionUpdateCollection.reset(null); // clear
-              view.collection.fetch({ reset: true });
+
+              var originalSearchHash = _.clone(view.listModel.get('search'));
+              var searchHash = _.clone(view.listModel.get('search'));
+              delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
+              searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS] = 'true';
+              showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
+              showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
+
+              view.listModel.set('search',searchHash);
+              if (_.isEqual(originalSearchHash,searchHash)){
+                view.collection.fetch({ reset: true });
+              }
   
             }).fail(function(jqXHR, textStatus, errorThrown){
               appModel.jqXHRfail.apply(this,arguments); 
@@ -2555,14 +2584,13 @@ define([
         
       });
       
-      // Display or hide other reagents
-      showOtherReagentsControl.click(function(e) {
+      var extra_colums = [
+        'selected', 'searched_well_id','mg_ml_concentration','molar_concentration'];
+      showAlternateSelectionsControl.click(function(e) {
         function processClick(){
           if (e.target.checked) {
             var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(
-                ['selected', 'searched_well_id','mg_ml_concentration',
-                 'molar_concentration'],includes);
+            includes = _.union(extra_colums,includes);
             if(self.model.get('total_number_lcps') != 0){
               appModel.showModalMessage({
                 title: 'Note:',
@@ -2572,26 +2600,75 @@ define([
             }
             view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
-            searchHash['show_other_reagents'] = 'true';
+            searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS] = 'true';
+
+            showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
+            
             view.listModel.set('search',searchHash);
           } else {
             // make sure unset
             var includes = _.clone(view.listModel.get('includes'));
-            includes = _.without(
-                includes,
-                'selected', 'searched_well_id','mg_ml_concentration',
-                'molar_concentration');
+            includes = _.difference(includes,extra_colums);
             view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
-            if (_.has(searchHash,'show_other_reagents')) {
-              delete searchHash['show_other_reagents'];
+            if (_.has(searchHash,appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)) {
+              delete searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS];
               view.listModel.set('search',searchHash);
             }
           }
           // see note above about removing the 'selected' backgrid th class
           view.$('th').removeClass('selected');
           view.$('tr').removeClass('selected');
-          view.collection.trigger('show_other_reagents');
+          view.collection.trigger(appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS);
+        }
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            ok: processClick
+          });
+        }else{
+          processClick();
+        }
+      });
+      
+      // Display or hide other reagents
+      showOtherReagentsControl.click(function(e) {
+        function processClick(){
+          if (e.target.checked) {
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.union(extra_colums,includes);
+            if(self.model.get('total_number_lcps') != 0){
+              appModel.showModalMessage({
+                title: 'Note:',
+                body: 'Selections can not be changed after Lab Cherry Picks have been created'
+              });
+              includes = _.without(includes, 'selected');
+            }
+            view.listModel.set({ includes: includes}, {reset: false});
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS] = 'true';
+
+            showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS];
+            view.listModel.set('search',searchHash);
+            
+            
+            view.listModel.set('search',searchHash);
+          } else {
+            // make sure unset
+            var includes = _.clone(view.listModel.get('includes'));
+            includes = _.difference(includes,extra_colums);
+            view.listModel.set({ includes: includes}, {reset: false});
+            var searchHash = _.clone(view.listModel.get('search'));
+            if (_.has(searchHash,appModel.API_PARAM_SHOW_OTHER_REAGENTS)) {
+              delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
+              view.listModel.set('search',searchHash);
+            }
+          }
+          // see note above about removing the 'selected' backgrid th class
+          view.$('th').removeClass('selected');
+          view.$('tr').removeClass('selected');
+          view.collection.trigger(appModel.API_PARAM_SHOW_OTHER_REAGENTS);
           
         };
         if(appModel.isPagePending()){
@@ -2603,9 +2680,14 @@ define([
         }
       });
       var initialSearchHash = view.listModel.get('search');
-      if (_.has(initialSearchHash, 'show_other_reagents')
+      if (_.has(initialSearchHash, appModel.API_PARAM_SHOW_OTHER_REAGENTS)
           && initialSearchHash.show_other_reagents.toLowerCase()=='true') {
         showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',true);
+      }
+      if (_.has(initialSearchHash, appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)
+          && initialSearchHash.show_alternates.toLowerCase()=='true') {
+        showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
+        showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
       }
     }, // end createScpView
     

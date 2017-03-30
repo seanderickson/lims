@@ -2101,6 +2101,9 @@ define([
   appState.API_RESULT_DATA = API_RESULT_DATA;
   appState.API_MSG_RESULT = API_MSG_RESULT;
 
+  appState.API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents';
+  appState.API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections';
+  
   appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
   appState.API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero';
   appState.API_PARAM_OVERRIDE = 'override';

@@ -1644,9 +1644,11 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     });
 
     //self.fetch({reset: true}).fail(
-    self.fetch(options).fail(
-      function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-    );
+    if (_.result(options, 'fetch') !== false){
+      self.fetch(options).fail(
+        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+      );
+    }
   },
 
   /**

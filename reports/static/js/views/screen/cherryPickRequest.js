@@ -1364,6 +1364,10 @@ define([
           && initialSearchHash.show_manual.toLowerCase()=='true') {
         showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
       }
+      
+      view.collection.on('all', function(){
+        console.log('view collection event', arguments);
+      });
 
       // Manage LCP selection updates
       view.collection.on('add', function(model){
@@ -1489,8 +1493,6 @@ define([
               appModel.showConnectionResult(data, {
                 title: 'Lab Cherry Pick copy selection updates'
               });
-              setSelectedLcpButton.hide();
-              lcpSelectionUpdateCollection.reset(null); // clear
               // On success, clear all the buttons
               var originalSearchHash = _.clone(view.listModel.get('search'));
               var searchHash = _.clone(view.listModel.get('search'));
@@ -1498,16 +1500,28 @@ define([
               delete searchHash['show_available_and_retired_copy_wells'];
               delete searchHash['show_unfulfilled'];
               delete searchHash['show_insufficient'];
-              searchHash['show_manual'] = 'true';
+              var includes = _.clone(view.listModel.get('includes'));
+              includes = _.without(includes, 'selected');
+              view.listModel.set({ includes: includes}, {reset: false});
               showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              
+              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+
               showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+              searchHash['show_manual'] = 'true';
               view.listModel.set('search',searchHash);
-              if (_.isEqual(originalSearchHash,searchHash)){
-                view.collection.fetch({ reset: true });
-              }
+              //              if (_.isEqual(originalSearchHash,searchHash)){
+              //                view.collection.fetch({ reset: true });
+              //              }
+              // Note: this may trigger another a superfluous fetch after the listmodel
+              // update. Necessary to finally clear the lcpSelectionCollection
+              view.collection.fetch({ reset: true }).done(function(){
+                // have to wait for the fetch operation to reset, due to the 
+                // asynchronous event handling
+                lcpSelectionUpdateCollection.reset(null); // clear
+              });
     
             }).fail(function(jqXHR, textStatus, errorThrown){
               console.log('fail', arguments);
@@ -1564,8 +1578,6 @@ define([
               appModel.showConnectionResult(data, {
                 title: 'Lab Cherry Pick copy selection updates'
               });
-              setSelectedLcpButton.hide();
-              lcpSelectionUpdateCollection.reset(null); // clear
 
               // On success, clear all the buttons
               var originalSearchHash = _.clone(view.listModel.get('search'));
@@ -1574,16 +1586,27 @@ define([
               delete searchHash['show_available_and_retired_copy_wells'];
               delete searchHash['show_unfulfilled'];
               delete searchHash['show_insufficient'];
-              searchHash['show_manual'] = 'true';
+              var includes = _.clone(view.listModel.get('includes'));
+              includes = _.without(includes, 'selected');
+              view.listModel.set({ includes: includes}, {reset: false});
+              
               showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+
+              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              searchHash['show_manual'] = 'true';
+
               showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
               view.listModel.set('search',searchHash);
-              if (_.isEqual(originalSearchHash,searchHash)){
-                view.collection.fetch({ reset: true });
-              }
+              //if (_.isEqual(originalSearchHash,searchHash)){
+              //  view.collection.fetch({ reset: true });
+              //}
+              view.collection.fetch({ reset: true }).done(function(){
+                // have to wait for the fetch operation to reset, due to the 
+                // asynchronous event handling
+                lcpSelectionUpdateCollection.reset(null); // clear
+              });
     
             }).fail(function(jqXHR, textStatus, errorThrown){
               console.log('fail', arguments);
@@ -2546,8 +2569,6 @@ define([
               appModel.showConnectionResult(data, {
                 title: 'Screener Cherry Pick selection updates'
               });
-              setSelectedButton.hide();
-              selectionUpdateCollection.reset(null); // clear
 
               var originalSearchHash = _.clone(view.listModel.get('search'));
               var searchHash = _.clone(view.listModel.get('search'));
@@ -2558,9 +2579,16 @@ define([
               showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
               
               view.listModel.set('search',searchHash);
-              if (_.isEqual(originalSearchHash,searchHash)){
-                view.collection.fetch({ reset: true });
-              }
+//              if (_.isEqual(originalSearchHash,searchHash)){
+//                view.collection.fetch({ reset: true });
+//              }
+              view.collection.fetch({ reset: true }).done(function(){
+                // have to wait for the fetch operation to reset, due to the 
+                // asynchronous event handling
+//                setSelectedButton.hide();
+//                cancelSelectedButton.hide();
+                selectionUpdateCollection.reset(null); // clear
+              });
   
             }).fail(function(jqXHR, textStatus, errorThrown){
               appModel.jqXHRfail.apply(this,arguments); 

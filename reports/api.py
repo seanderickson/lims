@@ -2073,10 +2073,10 @@ class ApiLogResource(ApiResource):
             if 'diffs' in field_hash:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
-            compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -2526,6 +2526,9 @@ class ResourceResource(ApiResource):
             raise BadRequest('Resource is not initialized: %r', resource_key)
         
         schema =  resources[resource_key]
+        logger.debug('schema fields: %r',
+            [(field['key'],field['scope']) for field in schema['fields'].values()])
+        
         if user is not None:
             if not user.is_superuser:
                 # Filter fields with "view_groups" set

@@ -2583,7 +2583,10 @@ class ScreenResultResource(DbApiResource):
                     newfields = {}
                     newfields.update(well_schema['fields'])
                     for key,field in newfields.items():
-                        field['visibility'] = []
+                        if 'l' in field['visibility']:
+                            field['visibility'].remove('l')
+                        if 'd' in field['visibility']:
+                            field['visibility'].remove('d')
                     newfields.update(data['fields'])
                     
                     if screenresult.screen.screen_type == 'small_molecule':
@@ -6037,6 +6040,14 @@ class CherryPickRequestResource(DbApiResource):
                         '-library_plate_comment_array'],
 #                     'includes': ['*', '-structure_image','-molfile'],
                 })
+            
+        # NOTE: do not consider the retired cherry_pick_source_plates for
+        # the server-generated copy assignments
+        eligible_lab_cherry_pick_copywells = [
+            lcp for lcp in eligible_lab_cherry_pick_copywells
+            if not (lcp['source_plate_type']=='cherry_pick_source_plates'
+                    and lcp['source_plate_status']=='retired' )]   
+        
         logger.info('found %d eligible copy-wells for %d lab cherry picks', 
             len(eligible_lab_cherry_pick_copywells), 
             cpr.lab_cherry_picks.all().count())
@@ -6448,7 +6459,10 @@ class ScreenerCherryPickResource(DbApiResource):
         
         # Turn off the visibility of all inherited fields
         for key,field in schema['fields'].items():
-            field['visibility'] = []
+            if 'l' in field['visibility']:
+                field['visibility'].remove('l')
+            if 'd' in field['visibility']:
+                field['visibility'].remove('d')
         
         # Overlay the original scp fields on the top
         schema['fields'].update(original_fields)
@@ -7133,7 +7147,6 @@ class LabCherryPickResource(DbApiResource):
                 # Add in reagent fields
                 sub_data = self.get_reagent_resource().build_schema(
                     library_classification=library_classification, user=user)
-                
                 newfields = {}
                 newfields.update(sub_data['fields'])
                 schema['fields'] = newfields
@@ -7144,11 +7157,15 @@ class LabCherryPickResource(DbApiResource):
             
             # Turn off the visibility of all inherited fields
             for key,field in schema['fields'].items():
-                field['visibility'] = []
+                if 'l' in field['visibility']:
+                    field['visibility'].remove('l')
+                if 'd' in field['visibility']:
+                    field['visibility'].remove('d')
             
-            # Overlay the original scp fields on the top
+            # Overlay the original lcp fields on the top
             schema['fields'].update(original_fields)
-            logger.debug('schema  fields: %r', schema['fields'].keys())
+            logger.debug('new lcp fields: %r',
+                [(field['key'],field['scope']) for field in newfields.values()])
             return schema
         except Exception, e:
             logger.exception('xxx: %r', e)
@@ -7202,7 +7219,8 @@ class LabCherryPickResource(DbApiResource):
                 # this makes it problematic included fields later
                 # field['ordinal'] = visible_fields.index(key)
             else:
-                field['visibility'] = []
+                if 'l' in field['visibility']:
+                    field['visibility'].remove('l')
         fields['cherry_pick_plate_number']['ordinal'] = -10
         fields['destination_well']['ordinal'] = -9
         fields['source_copy_well_volume']['title'] = \
@@ -7211,9 +7229,9 @@ class LabCherryPickResource(DbApiResource):
             'Source CopyWell Volume (after transfer of '\
             'cherry pick volume to the destination well)'
             
-        logger.info('plate mapping visible fields: %r', 
+        logger.debug('plate mapping visible fields: %r', 
             {k:{'key': v['key'], 'scope':v['scope'], 'title':v['title']}
-                for k,v in fields.items() if 'l' in v['visibility'] })
+                for k,v in fields.items()  })
         return schema
                             
     @read_authorization
@@ -7270,7 +7288,6 @@ class LabCherryPickResource(DbApiResource):
         show_copy_wells = parse_val(
             param_hash.get(API_PARAM_SHOW_COPY_WELLS, False),
             API_PARAM_SHOW_COPY_WELLS, 'boolean')
-        logger.info('%r: %r', API_PARAM_SHOW_COPY_WELLS,show_copy_wells)
         if show_copy_wells is True:
             # NOTE: add a marker to the file_name extra_params
             extra_params[API_PARAM_SHOW_COPY_WELLS] = None
@@ -7279,8 +7296,6 @@ class LabCherryPickResource(DbApiResource):
             API_PARAM_SHOW_RETIRED_COPY_WELlS, 'boolean')
         if show_available_and_retired_copy_wells is True:
             extra_params[API_PARAM_SHOW_RETIRED_COPY_WELlS] = None
-        logger.info('%r: %r', 
-            API_PARAM_SHOW_RETIRED_COPY_WELlS,show_available_and_retired_copy_wells)
         show_unfulfilled = parse_val(
             param_hash.get(API_PARAM_SHOW_UNFULFILLED, False),
             API_PARAM_SHOW_UNFULFILLED, 'boolean')
@@ -7294,7 +7309,7 @@ class LabCherryPickResource(DbApiResource):
         show_manual = parse_val(
             param_hash.get(API_PARAM_SHOW_MANUAL, False),
             API_PARAM_SHOW_MANUAL, 'boolean')
-        if show_insufficient is True:
+        if show_manual is True:
             extra_params[API_PARAM_SHOW_MANUAL] = None
         
         try:
@@ -7484,14 +7499,13 @@ class LabCherryPickResource(DbApiResource):
                     _well.c.plate_number == _p.c.plate_number), isouter=True)
                 j = j.join(
                     _pl, _p.c.plate_location_id == _pl.c.plate_location_id,
-                isouter=True)
+                    isouter=True)
                 j = j.join(_cw, and_(
                     _cw.c.well_id == _well.c.well_id,
                     _cw.c.copy_id == _copy.c.copy_id), isouter=True )
 
                 if 'library_plate_comment_array' in field_hash:
                     ### Performance hack: limit the apilogs for the query
-                    # TODO: add a plate_key field to the plate table to aid in this query
                     with get_engine().connect() as conn:
                         temp = (
                             select([distinct(_concat(
@@ -7506,7 +7520,6 @@ class LabCherryPickResource(DbApiResource):
                             where(_apilog.c.key.in_(plate_keys))
                         _plate_comment_apilogs = \
                             _plate_comment_apilogs.cte('plate_comment_apilogs')
-                    
 
                 custom_columns.update({
                     'selected_copy_name': case([
@@ -7529,16 +7542,21 @@ class LabCherryPickResource(DbApiResource):
                             .join(_copy, _p.c.copy_id==_copy.c.copy_id)
                             .join(_library, _copy.c.library_id==_library.c.library_id))
                     .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
-                if show_available_and_retired_copy_wells is not True:    
+                if show_available_and_retired_copy_wells is not True:
                     _copyplates_available = \
                         _copyplates_available.where(and_(
                             _copy.c.usage_type=='cherry_pick_source_plates',
                             _p.c.status=='available'))
                 else:
+                    # NOTE: show retired cherry pick plates: make sure not to
+                    # consider these when automatically mapping
+                    # _copyplates_available = \
+                    #     _copyplates_available.where(and_(
+                    #         _copy.c.usage_type=='cherry_pick_source_plates',
+                    #         _p.c.status=='available'))
                     _copyplates_available = \
                         _copyplates_available.where(or_(
-                            and_(_copy.c.usage_type=='cherry_pick_source_plates',
-                                _p.c.status=='available'),
+                            _copy.c.usage_type=='cherry_pick_source_plates',
                             and_(_copy.c.usage_type=='library_screening_plates',
                                 _p.c.status=='retired')))
                     
@@ -7563,7 +7581,6 @@ class LabCherryPickResource(DbApiResource):
 
                 if 'library_plate_comment_array' in field_hash:
                     ### Performance hack: limit the apilogs for the query
-                    # TODO: add a plate_key field to the plate table to aid in this query
                     with get_engine().connect() as conn:
                         temp = (
                             select([distinct(_concat(
@@ -7631,9 +7648,36 @@ class LabCherryPickResource(DbApiResource):
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
+
             
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(_cpr.c.cherry_pick_request_id==cherry_pick_request_id)
+
+            if show_insufficient is True:
+                with get_engine().connect() as conn:
+                    _lcps_insufficient = (
+                        select([_lcp.c.lab_cherry_pick_id])
+                        .select_from(
+                            _lcp.join(_copy, _lcp.c.copy_id==_copy.c.copy_id)
+                                .join(_well, _lcp.c.source_well_id==_well.c.well_id)
+                                .join(_p, and_(
+                                    _p.c.plate_number==_well.c.plate_number,
+                                    _p.c.copy_id==_copy.c.copy_id))
+                                .join(_cw, and_(
+                                    _cw.c.well_id==_well.c.well_id,
+                                    _cw.c.copy_id==_copy.c.copy_id))
+                                .join(_cpr, _lcp.c.cherry_pick_request_id==_cpr.c.cherry_pick_request_id))
+                        .where(_cpr.c.cherry_pick_request_id==cherry_pick_request_id)
+                        .where(_cpr.c.transfer_volume_per_well_approved 
+                            > func.coalesce(_cw.c.volume, 
+                                 _p.c.remaining_well_volume, _p.c.well_volume))
+                        )
+                    lcp_ids = set([x[0] for x in 
+                            conn.execute(_lcps_insufficient)])
+                    logger.info('insufficient lcps: %r', lcp_ids)
+                    stmt = stmt.where(_lcp.c.lab_cherry_pick_id.in_(lcp_ids))
+#                 j = j.join(_lcps_insufficient,
+#                     _lcps_insufficient.c.lab_cherry_pick_id==_lcp.c.lab_cherry_pick_id)
 
             if show_manual is True:
                 stmt = stmt.where(_lcp.c.is_manually_selected==True)
@@ -7661,8 +7705,8 @@ class LabCherryPickResource(DbApiResource):
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
 
-            if show_insufficient is True:
-                stmt = stmt.where(text('source_copy_well_volume<=volume_approved'))
+#             if show_insufficient is True:
+#                 stmt = stmt.where(text('source_copy_well_volume<=volume_approved'))
            
             # compiled_stmt = str(stmt.compile(
             #     dialect=postgresql.dialect(),
@@ -14166,6 +14210,106 @@ class ReagentResource(DbApiResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
     
+    def get_debug_times(self):
+        
+        self.get_sr_resource().get_debug_times()
+        self.get_smr_resource().get_debug_times()
+        
+    def get_sr_resource(self):
+        if not self.sr_resource:
+            self.sr_resource = SilencingReagentResource()
+        return self.sr_resource
+    
+    def get_smr_resource(self):
+        if not self.smr_resource:
+            self.smr_resource = SmallMoleculeReagentResource()
+        return self.smr_resource
+    
+    def get_npr_resource(self):
+        if not self.npr_resource:
+            self.npr_resource = NaturalProductReagentResource()
+        return self.npr_resource
+    
+    def get_well_resource(self):
+        if not self.well_resource:
+            self.well_resource = WellResource()
+        return self.well_resource
+    
+    def get_reagent_resource(self, library_classification):
+        if library_classification == 'rnai':
+            return self.get_sr_resource()
+        else:
+            if library_classification == 'natural_products':
+                return self.get_npr_resource()
+            else:
+                return self.get_smr_resource()
+    
+    def get_library_resource(self):
+        if not self.library_resource:
+            self.library_resource = LibraryResource()
+        return self.library_resource
+                
+    def get_schema(self, request, **kwargs):
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.info('param hash: %r', param_hash)
+        
+        if not 'library_short_name' in kwargs:
+            return self.build_response(request, self.build_schema(**param_hash), **kwargs)
+        
+        library_short_name = kwargs.pop('library_short_name')
+        try:
+            library = Library.objects.get(short_name=library_short_name)
+            return self.build_response(
+                request, self.build_schema(library.classification), **kwargs)
+            
+        except Library.DoesNotExist, e:
+            raise Http404(
+                'Can not build schema - library def needed'
+                'no library found for short_name: %r' % library_short_name)
+                
+    def build_schema(self, library_classification=None, user=None, **kwargs):
+        logger.info('build reagent schema for library_classification: %r',
+            library_classification)
+        schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
+        if library_classification is not None:
+            sub_data = self.get_reagent_resource(
+                library_classification).build_schema(user=user)
+            logger.debug('sub_schema: %r', sub_data['fields'].keys())
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            newfields.update(schema['fields'])
+            schema['fields'] = newfields
+            
+            for k, v in schema.items():
+                if k != 'fields' and k in sub_data:
+                    schema[k] = sub_data[k]
+        elif 'search' in kwargs:
+            # Build the full schema for search
+            # FIXME could determine the schema as in ReagentResource.build_list_response
+            sub_data = \
+                self.get_reagent_resource(library_classification='small_molecule')\
+                .build_schema(user=user)
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            
+            sub_data = \
+                self.get_reagent_resource(library_classification='rnai')\
+                .build_schema(user=user)
+            newfields.update(sub_data['fields'])
+            # all sub-fields are set not visible
+            for k,field in newfields.items():
+                if 'l' in field['visibility']:
+                    field['visibility'].remove('l')
+                if 'd' in field['visibility']:
+                    field['visibility'].remove('d')
+            schema['fields'] = newfields
+            
+        well_schema = WellResource().build_schema(user=user)
+        schema['fields'].update(well_schema['fields'])
+
+        return schema
+
     def get_list(self, request, param_hash={}, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
@@ -14474,103 +14618,6 @@ class ReagentResource(DbApiResource):
             rowproxy_generator=rowproxy_generator,
             title_function=title_function, meta=kwargs.get('meta', None))
     
-    def get_debug_times(self):
-        
-        self.get_sr_resource().get_debug_times()
-        self.get_smr_resource().get_debug_times()
-        
-    def get_sr_resource(self):
-        if not self.sr_resource:
-            self.sr_resource = SilencingReagentResource()
-        return self.sr_resource
-    
-    def get_smr_resource(self):
-        if not self.smr_resource:
-            self.smr_resource = SmallMoleculeReagentResource()
-        return self.smr_resource
-    
-    def get_npr_resource(self):
-        if not self.npr_resource:
-            self.npr_resource = NaturalProductReagentResource()
-        return self.npr_resource
-    
-    def get_well_resource(self):
-        if not self.well_resource:
-            self.well_resource = WellResource()
-        return self.well_resource
-    
-    def get_reagent_resource(self, library_classification):
-        if library_classification == 'rnai':
-            return self.get_sr_resource()
-        else:
-            if library_classification == 'natural_products':
-                return self.get_npr_resource()
-            else:
-                return self.get_smr_resource()
-    
-    def get_library_resource(self):
-        if not self.library_resource:
-            self.library_resource = LibraryResource()
-        return self.library_resource
-                
-    def get_schema(self, request, **kwargs):
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-        logger.info('param hash: %r', param_hash)
-        
-        if not 'library_short_name' in kwargs:
-            return self.build_response(request, self.build_schema(**param_hash), **kwargs)
-        
-        library_short_name = kwargs.pop('library_short_name')
-        try:
-            library = Library.objects.get(short_name=library_short_name)
-            return self.build_response(
-                request, self.build_schema(library.classification), **kwargs)
-            
-        except Library.DoesNotExist, e:
-            raise Http404(
-                'Can not build schema - library def needed'
-                'no library found for short_name: %r' % library_short_name)
-                
-    def build_schema(self, library_classification=None, user=None, **kwargs):
-        logger.info('build reagent schema for library_classification: %r',
-            library_classification)
-        schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
-        if library_classification is not None:
-            sub_data = self.get_reagent_resource(
-                library_classification).build_schema(user=user)
-            logger.debug('sub_schema: %r', sub_data['fields'].keys())
-            newfields = {}
-            newfields.update(sub_data['fields'])
-            newfields.update(schema['fields'])
-            schema['fields'] = newfields
-            
-            for k, v in schema.items():
-                if k != 'fields' and k in sub_data:
-                    schema[k] = sub_data[k]
-        elif 'search' in kwargs:
-            # Build the full schema for search
-            # FIXME could determine the schema as in ReagentResource.build_list_response
-            sub_data = \
-                self.get_reagent_resource(library_classification='small_molecule')\
-                .build_schema(user=user)
-            newfields = {}
-            newfields.update(sub_data['fields'])
-            
-            sub_data = \
-                self.get_reagent_resource(library_classification='rnai')\
-                .build_schema(user=user)
-            newfields.update(sub_data['fields'])
-            # all sub-fields are set not visible
-            for k,field in newfields.items():
-                field['visibility'] = []
-            schema['fields'] = newfields
-            
-        well_schema = WellResource().build_schema(user=user)
-        schema['fields'].update(well_schema['fields'])
-
-        return schema
-
     def delete_reagents_for_library(self, library):
         self.get_reagent_resource(library.classification).delete_reagents(library)
 
@@ -14807,7 +14854,10 @@ class WellResource(DbApiResource):
             newfields.update(sub_data['fields'])
             # all sub-fields are set not visible
             for field in newfields:
-                field['visibility'] = []
+                if 'l' in field['visibility']:
+                    field['visibility'].remove('l')
+                if 'd' in field['visibility']:
+                    field['visibility'].remove('d')
             newfields.update(data['fields'])
             data['fields'] = newfields
             # data['content_types'] = sub_data['content_types']

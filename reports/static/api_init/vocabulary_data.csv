@@ -4,6 +4,7 @@ d,field.visibility,/reports/api/v1/vocabulary/field.visibility/d/,2,,"Allow visi
 e,field.visibility,/reports/api/v1/vocabulary/field.visibility/e/,3,,"Visible in edit views","Visible in edit views"
 summary,field.visibility,/reports/api/v1/vocabulary/field.visibility/summary/,4,,"Visible in summary views (if available)","Visible in summary views"
 billing,field.visibility,/reports/api/v1/vocabulary/field.visibility/billing/,5,,"Visible in billing views","Visible in billing views"
+api,field.visibility,/reports/api/v1/vocabulary/field.visibility/api/,6,,"Visible at the API, but not in the UI","Visible on the API only"
 c,field.editability,/reports/api/v1/vocabulary/field.editability/c/,1,,"Visible on creation","Visible on creation"
 u,field.editability,/reports/api/v1/vocabulary/field.editability/u/,2,,"Visible on update","Visible on update"
 l,field.editability,/reports/api/v1/vocabulary/field.editability/l/,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"

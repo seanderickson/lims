@@ -7165,7 +7165,7 @@ class LabCherryPickResource(DbApiResource):
             # Overlay the original lcp fields on the top
             schema['fields'].update(original_fields)
             logger.debug('new lcp fields: %r',
-                [(field['key'],field['scope']) for field in newfields.values()])
+                [(field['key'],field['scope']) for field in schema['fields'].values()])
             return schema
         except Exception, e:
             logger.exception('xxx: %r', e)

@@ -1245,6 +1245,7 @@ define([
         library_link_cell.extend(resource.fields['library_name'].display_options);
       resource.fields['library_short_name']['backgridCellType'] =
         library_link_cell.extend(resource.fields['library_short_name'].display_options);
+      
       ///// end Library and Plate comments /////
 
       if(self.model.get('has_pool_screener_cherry_picks') === true){
@@ -1567,6 +1568,7 @@ define([
               lcpSelectionUpdateCollection.reset(null); // clear
 
               // On success, clear all the buttons
+              var originalSearchHash = _.clone(view.listModel.get('search'));
               var searchHash = _.clone(view.listModel.get('search'));
               delete searchHash['show_copy_wells'];
               delete searchHash['show_available_and_retired_copy_wells'];
@@ -1805,23 +1807,19 @@ define([
         }
       });
       
-      var extra_columns_for_selection = [
-        'selected', 'source_copy_well_volume','volume_approved',
-        'source_copy_usage_type','source_plate_status',
-        'source_plate_date_retired', 'source_plate_screening_count'];
       showUnfulfilledWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(extra_columns_for_selection,includes);
-            view.listModel.set({ includes: includes}, {reset: false});
+//            var includes = _.clone(view.listModel.get('includes'));
+//            includes = _.union(extra_columns_for_selection,includes);
+//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_unfulfilled'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.difference(includes, extra_columns_for_selection);
-            view.listModel.set({ includes: includes}, {reset: false});
+//            var includes = _.clone(view.listModel.get('includes'));
+//            includes = _.difference(includes, extra_columns_for_selection);
+//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_unfulfilled'];
             view.listModel.set('search',searchHash);
@@ -1840,16 +1838,16 @@ define([
       showInsufficientWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(extra_columns_for_selection,includes);
-            view.listModel.set({ includes: includes}, {reset: false});
+//            var includes = _.clone(view.listModel.get('includes'));
+//            includes = _.union(extra_columns_for_selection,includes);
+//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_insufficient'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.difference(includes, extra_columns_for_selection);
-            view.listModel.set({ includes: includes}, {reset: false});
+//            var includes = _.clone(view.listModel.get('includes'));
+//            includes = _.difference(includes, extra_columns_for_selection);
+//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_insufficient'];
             view.listModel.set('search',searchHash);
@@ -1868,16 +1866,16 @@ define([
       showManuallySelectedWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(extra_columns_for_selection,includes);
-            view.listModel.set({ includes: includes}, {reset: false});
+//            var includes = _.clone(view.listModel.get('includes'));
+//            includes = _.union(extra_columns_for_selection,includes);
+//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['show_manual'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.difference(includes, extra_columns_for_selection);
-            view.listModel.set({ includes: includes}, {reset: false});
+//            var includes = _.clone(view.listModel.get('includes'));
+//            includes = _.difference(includes, extra_columns_for_selection);
+//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_manual'];
             view.listModel.set('search',searchHash);
@@ -1894,6 +1892,11 @@ define([
           processClick();
         }
       });
+      var extra_columns_for_selection = [
+        'selected', 'source_copy_well_volume','volume_approved',
+        'source_copy_usage_type','source_plate_status',
+        'source_plate_date_retired', 'source_plate_screening_count',
+        'source_plate_cp_screening_count'];
      showCopyWellsControl.click(function(e) {
         function processClick(){
           if (e.target.checked) {
@@ -1906,14 +1909,6 @@ define([
             showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_available_and_retired_copy_wells'];
             view.listModel.set('search',searchHash);
-            
-//            if (self.model.get('number_plates') != 0){
-//              appModel.showModalMessage({
-//                title: 'Note:',
-//                body: 'Selections can not be changed unless plating '+
-//                  'assignments are deallocated'
-//              });
-//            }
           } else {
             // make sure unset
             var searchHash = _.clone(view.listModel.get('search'));
@@ -1954,13 +1949,6 @@ define([
             showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_copy_wells'];
             view.listModel.set('search',searchHash);
-//            if (self.model.get('number_plates') != 0){
-//              appModel.showModalMessage({
-//                title: 'Note:',
-//                body: 'Selections can not be changed unless plating '+
-//                  'assignments are deallocated'
-//              });
-//            }
           } else {
             var searchHash = _.clone(view.listModel.get('search'));
             if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
@@ -2199,7 +2187,7 @@ define([
           '<label class="checkbox-inline" ',
           ' style="margin-left: 10px;" ',
           ' title="Show selections of alternate reagents with the same vendor ID as the searched well IDs" >',
-          '  <input type="checkbox">Manually Selected',
+          '  <input type="checkbox">Alternate Selections',
           '</label>'
         ].join(''));
       checkboxDiv.append(showAlternateSelectionsControl);
@@ -2566,8 +2554,9 @@ define([
               delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
               searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS] = 'true';
               showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
+              showAlternateSelectionsControl.show()
               showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
-
+              
               view.listModel.set('search',searchHash);
               if (_.isEqual(originalSearchHash,searchHash)){
                 view.collection.fetch({ reset: true });

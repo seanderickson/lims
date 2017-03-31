@@ -862,8 +862,30 @@ define([
     },
     
     clear_searches: function(){
+      var self = this;
+      // notify the column headers
       this.collection.trigger("Iccbl:clearSearches");
-      this.listModel.unset('search');
+
+      var searchHash = _.clone(this.listModel.get('search'));
+      console.log('clear hash', searchHash);
+      var fields = this._options.schemaResult.fields;
+      _.each(_.keys(searchHash), function(key){
+        var originalKey = key;
+        if (key.indexOf('__')>0){
+          key = key.slice(0,key.indexOf('__'));
+        }
+        if (key.charAt(0)=='-'){
+          key = key.slice(1);
+        }
+        if (_.has(fields, key)){
+          console.log('clearing key', originalKey);
+          delete searchHash[originalKey];
+        } else {
+          console.log('Not clearing special search term:', originalKey);
+        }
+      });
+      console.log('cleared hash', searchHash);
+      this.listModel.set('search', searchHash);
       // FIXME: any call to getFirstPage results in a fetch, disabled for now
       //this.collection.getFirstPage({reset: true, fetch: true});
       //this.collection.getFirstPage();
@@ -943,6 +965,10 @@ define([
       
       var includes = self.listModel.get('includes') || [];
       var _fields = this._options.schemaResult.fields;
+      
+      _fields = _.omit(_fields, function(value, key, object) {
+        return _.contains(value.visibility, 'api');
+      });
       
       // Create the (two level) tree of fields:
       // - fields for the current resource are shown as normal

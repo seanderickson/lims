@@ -635,7 +635,7 @@ define([
         showPlateMappingButton.click(function(e){
           e.preventDefault();
           var url = [self.model.resource.apiUri,self.model.key,
-            'lab_cherry_pick'].join('/');
+            'lab_cherry_pick_plating'].join('/');
           self.showPlateMappingGrid(url);
         });
         return view;
@@ -1365,10 +1365,6 @@ define([
         showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
       }
       
-      view.collection.on('all', function(){
-        console.log('view collection event', arguments);
-      });
-
       // Manage LCP selection updates
       view.collection.on('add', function(model){
         // cache the 'selected' property for update management

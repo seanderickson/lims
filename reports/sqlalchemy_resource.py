@@ -843,7 +843,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt %d', len(prefetched_result))
                 
-                if len(prefetched_result) < limit:
+                if len(prefetched_result) < limit & offset == 0:
                     count = len(prefetched_result)
                 else:
                     logger.info('no cache hit, execute count')

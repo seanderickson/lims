@@ -1833,8 +1833,14 @@ define([
 //            includes = _.union(extra_columns_for_selection,includes);
 //            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
+
+            showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+            showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash['show_manual'];
+            delete searchHash['show_insufficient'];
             searchHash['show_unfulfilled'] = 'true';
             view.listModel.set('search',searchHash);
+            
           } else {
 //            var includes = _.clone(view.listModel.get('includes'));
 //            includes = _.difference(includes, extra_columns_for_selection);
@@ -1861,6 +1867,8 @@ define([
 //            includes = _.union(extra_columns_for_selection,includes);
 //            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
+            showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash['show_unfulfilled'];
             searchHash['show_insufficient'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
@@ -1889,6 +1897,8 @@ define([
 //            includes = _.union(extra_columns_for_selection,includes);
 //            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
+            showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+            delete searchHash['show_unfulfilled'];
             searchHash['show_manual'] = 'true';
             view.listModel.set('search',searchHash);
           } else {

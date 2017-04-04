@@ -5890,7 +5890,9 @@ class CherryPickRequestResource(DbApiResource):
                         % cpr.lab_cherry_picks.count()),
                     API_MSG_LCPS_MUST_BE_DELETED: cpr.lab_cherry_picks.count()
                 })
-            
+        
+        logger.info('create lcps (duplexes)...')
+        # TODO: use bulk create to speed this up    
         lcps_created = []
         for scp in cpr.screener_cherry_picks.filter(selected=True):
             
@@ -5915,10 +5917,13 @@ class CherryPickRequestResource(DbApiResource):
                     source_well=duplex_well,
                     screener_cherry_pick=scp)
                 lcps_created.append(lab_cherry_pick)
+            if len(lcps_created) %100 == 0:
+                logger.info('created %d duplex lcps', len(lcps_created))
+        logger.info('created %d duplex lcps', len(lcps_created))
         self.get_labcherrypick_resource().clear_cache()
         meta[API_MSG_LCPS_CREATED] = len(lcps_created)
 
-        # Find and assign copies that are fulfillable
+        logger.info('Find and assign copies that are fulfillable...')
         meta_action = self._find_copies(cpr)
         if meta_action:
             meta.update(meta_action)
@@ -5987,6 +5992,7 @@ class CherryPickRequestResource(DbApiResource):
                     API_MSG_LCPS_MUST_BE_DELETED: cpr.lab_cherry_picks.count()
                 })
             
+        logger.info('create lcps...')    
         lcps_created = []
         for scp in cpr.screener_cherry_picks.filter(selected=True):
            lab_cherry_pick = LabCherryPick.objects.create(
@@ -5997,7 +6003,7 @@ class CherryPickRequestResource(DbApiResource):
         self.get_labcherrypick_resource().clear_cache()
         meta[API_MSG_LCPS_CREATED] = len(lcps_created)
 
-        # Find and assign copies that are fulfillable
+        logger.info('Find and assign copies that are fulfillable...')
         meta_action = self._find_copies(cpr)
         if meta_action:
             meta.update(meta_action)
@@ -7267,6 +7273,9 @@ class LabCherryPickResource(DbApiResource):
             custom_columns=sub_columns)
         
     def build_list_response(self, request, schema=None, **kwargs):
+        '''
+        Optimized to show the lcp's for one cherry pick request at a time
+        '''
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -7526,7 +7535,7 @@ class LabCherryPickResource(DbApiResource):
                         (_lcp.c.copy_id==_copy.c.copy_id, _copy.c.name )],
                             else_=None),
                 })
-            else:
+            else: # show all / retired copies
                 _original_copy = _copy.alias('c1')
                 _copyplates_available = (
                     select([
@@ -7656,7 +7665,9 @@ class LabCherryPickResource(DbApiResource):
             if show_insufficient is True:
                 with get_engine().connect() as conn:
                     _lcps_insufficient = (
-                        select([_lcp.c.lab_cherry_pick_id])
+                        select([_lcp.c.lab_cherry_pick_id,
+                            func.coalesce(_cw.c.volume, 
+                                    _p.c.remaining_well_volume, _p.c.well_volume)])
                         .select_from(
                             _lcp.join(_copy, _lcp.c.copy_id==_copy.c.copy_id)
                                 .join(_well, _lcp.c.source_well_id==_well.c.well_id)
@@ -7665,19 +7676,22 @@ class LabCherryPickResource(DbApiResource):
                                     _p.c.copy_id==_copy.c.copy_id))
                                 .join(_cw, and_(
                                     _cw.c.well_id==_well.c.well_id,
-                                    _cw.c.copy_id==_copy.c.copy_id))
+                                    _cw.c.copy_id==_copy.c.copy_id),isouter=True)
                                 .join(_cpr, _lcp.c.cherry_pick_request_id==_cpr.c.cherry_pick_request_id))
                         .where(_cpr.c.cherry_pick_request_id==cherry_pick_request_id)
-                        .where(_cpr.c.transfer_volume_per_well_approved 
-                            > func.coalesce(_cw.c.volume, 
-                                 _p.c.remaining_well_volume, _p.c.well_volume))
                         )
-                    lcp_ids = set([x[0] for x in 
+                    if cpr.cherry_pick_assay_plates.exists():
+                        _lcps_insufficient = _lcps_insufficient.where(_cw.c.volume < 0)
+                    else:
+                        _lcps_insufficient = _lcps_insufficient.where(
+                            _cpr.c.transfer_volume_per_well_approved 
+                                > func.coalesce(_cw.c.volume, 
+                                    _p.c.remaining_well_volume, _p.c.well_volume))
+                    lcp_ids = set([(x[0],x[1]) for x in 
                             conn.execute(_lcps_insufficient)])
                     logger.info('insufficient lcps: %r', lcp_ids)
+                    lcp_ids = set([x[0] for x in lcp_ids])
                     stmt = stmt.where(_lcp.c.lab_cherry_pick_id.in_(lcp_ids))
-#                 j = j.join(_lcps_insufficient,
-#                     _lcps_insufficient.c.lab_cherry_pick_id==_lcp.c.lab_cherry_pick_id)
 
             if show_manual is True:
                 stmt = stmt.where(_lcp.c.is_manually_selected==True)
@@ -7704,9 +7718,6 @@ class LabCherryPickResource(DbApiResource):
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
-
-#             if show_insufficient is True:
-#                 stmt = stmt.where(text('source_copy_well_volume<=volume_approved'))
            
             # compiled_stmt = str(stmt.compile(
             #     dialect=postgresql.dialect(),

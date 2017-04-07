@@ -21,8 +21,9 @@ float,field.data_type,/reports/api/v1/vocabulary/field.data_type/float/,6,,"Floa
 decimal,field.data_type,/reports/api/v1/vocabulary/field.data_type/decimal/,7,,"Decimal - float value with precision specified",Decimal
 integer,field.data_type,/reports/api/v1/vocabulary/field.data_type/integer/,8,,Integer,Integer
 link,field.display_type,/reports/api/v1/vocabulary/field.display_type/link/,1,,"Hyperlink field - see display options",link
-image,field.display_type,/reports/api/v1/vocabulary/field.display_type/image/,9,"This value will actually be the URI that serves the image.","Image URI",Image
-siunit,field.display_type,/reports/api/v1/vocabulary/field.display_type/siunit/,2,,"A numeric value that is displayed with SI units and prefix","SI Unit"
+image,field.display_type,/reports/api/v1/vocabulary/field.display_type/image/,2,"This value will actually be the URI that serves the image.","Image URI",Image
+siunit,field.display_type,/reports/api/v1/vocabulary/field.display_type/siunit/,3,,"A numeric value that is displayed with SI units and prefix","SI Unit"
+comment_array,field.display_type,/reports/api/v1/vocabulary/field.display_type/comment_array/,4,,"An array of nested ApiLog comments","ApiLog Comment Array"
 select,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/select/,1,,"Select a single value from a controlled vocabulary",Select
 multiselect,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect/,2,,"Checkbox select multiple values from a controlled vocabulary",Multi-select
 multiselect2,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect2/,3,,"Dual column multi-select",Multi-select2

@@ -1,6 +1,8 @@
 from __future__ import unicode_literals
 
 from copy import deepcopy
+from decimal import Decimal
+import decimal
 from functools import wraps
 import json
 import logging
@@ -8,6 +10,7 @@ from operator import itemgetter
 import os
 import re
 import sys
+import time
 import urllib
 
 from aldjemy.core import get_tables, get_engine
@@ -51,9 +54,6 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE
 from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
-from decimal import Decimal
-import decimal
-import time
 
 
 logger = logging.getLogger(__name__)
@@ -1346,15 +1346,17 @@ class ApiResource(SqlAlchemyResource):
                 try:
                     if display_options is not None:
                         display_options = display_options.replace(r"'", '"')
-                        logger.debug('decoded display_options: %r', display_options)
+                        logger.info('decoded display_options: %r', display_options)
                         display_options = json.loads(display_options)
                     default_unit = display_options.get('defaultUnit',None)
                     multiplier = display_options.get('multiplier', None)
                     decimals = display_options.get('decimals', None)
                     if default_unit is not None:
-                        # get the scale
+                        # get the scale (exponent) of the default unit
+                        # negate the scale for use with Decimal.scaleb()
                         scale = -Decimal(str(default_unit)).adjusted()
                         if multiplier is not None:
+                            # get the exponent of the multiplier for use with scaleb
                             multiplier = Decimal(str(multiplier)).adjusted()
                             if multiplier != 0:
                                 scale = scale+multiplier
@@ -1873,6 +1875,29 @@ class ApiLogResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
+        
+    @classmethod
+    def get_resource_comment_subquery(cls, resource_name):
+        bridge = get_tables()
+        _apilog = bridge['reports_apilog']
+        _logdiff = bridge['reports_logdiff']
+        _user_cte = UserResource.get_user_cte().cte('users-'+resource_name)
+        _comment_apilogs = (
+            select([
+                _apilog.c.date_time, 
+                _apilog.c.key,
+                _apilog.c.username,
+                _user_cte.c.name,
+                _apilog.c.comment])
+            .select_from(_apilog.join(
+                _user_cte,_apilog.c.username==_user_cte.c.username))
+            .where(_apilog.c.ref_resource_name==resource_name)
+            .where(_apilog.c.comment!=None)
+            .where(not_(exists(
+                select([None]).select_from(_logdiff)
+                    .where(_logdiff.c.log_id==_apilog.c.id))))
+            .order_by(desc(_apilog.c.date_time)))
+        return _comment_apilogs
         
     @read_authorization
     def get_list(self,request,**kwargs):
@@ -3464,6 +3489,25 @@ class UserResource(ApiResource):
             }
 
         return custom_columns
+
+    @classmethod
+    def get_user_cte(cls):
+        
+        bridge = get_tables()
+        _up = bridge['reports_userprofile']
+        _au = bridge['auth_user']
+        
+        j = _up
+        j = j.join(_au, _au.c.id == _up.c.user_id)
+        user_table = (
+            select([
+                _au.c.username,
+                _concat(_au.c.first_name, ' ', _au.c.last_name).label('name'),
+                _concat(_au.c.last_name, ', ', _au.c.first_name).label('last_first'),
+                _au.c.email
+                ])
+            .select_from(j))
+        return user_table
 
     @read_authorization
     def get_detail(self, request, **kwargs):

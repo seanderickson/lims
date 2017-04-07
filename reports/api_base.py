@@ -454,9 +454,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     def get_serializer(self):
         return self._meta.serializer
         
-    def build_response(
-        self, request, data, response_class=HttpResponse, format=None, 
-        **kwargs):
+    def build_response(self, request, data, response_class=HttpResponse, 
+                       format=None, **kwargs):
         
         if format is not None:
             content_type = self.get_serializer().get_content_type_for_format(format)

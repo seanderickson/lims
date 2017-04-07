@@ -113,6 +113,13 @@ PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
   -f ./db/static/api_init/api_init_actions.csv \
   -u http://localhost:8000/reports/api/v1 -U sde
 
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ \
+  -f ./reports/static/api_init/api_init_actions.csv \
+  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
+  -f ./db/static/api_init/api_init_actions.csv \
+  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 -U sde
+
 #####
 # Set default testing users (note, will delete existing users)
 # (To be run before User migration)

@@ -475,7 +475,12 @@ class Migration(migrations.Migration):
             name='date_retired',
             field=models.DateField(null=True),
         ),
-        
+        # 20170407 - added for screening room staff
+        migrations.AddField(
+            model_name='plate',
+            name='is_active',
+            field=models.NullBooleanField(),
+        ),        
         
         migrations.CreateModel(
             name='CopyWell',

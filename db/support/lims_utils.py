@@ -1,10 +1,16 @@
 from __future__ import unicode_literals
-import math
+
+import decimal
+from decimal import Decimal
+from itertools import chain, combinations
 import logging
+import math
+import re
+
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
-import re
-from itertools import chain, combinations
+
+
 logger = logging.getLogger(__name__)
 
 ALLOWED_PLATE_SIZES = [96,384]
@@ -264,4 +270,37 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
             break
     return min_satisfying_set
 
-
+def convert_decimal(
+    raw_val, default_unit=1e-6, decimals=1, multiplier=None):
+    '''
+    Convert a decimal by scaling to the default unit and rounding to the 
+    given decimals (decimal digits), optionally multiplying by a multiplier.
+    
+    @param default_unit adjust raw_val to the "default_unit" 
+    (as defined in the "display_options")
+    - e.g. if default_unit = 1e-6:
+        adjust the raw_val = raw_val.scaleb(6)
+    - e.g. if default_unit = 1e6:
+        adjust the raw_val = raw_val.scaleb(-6)
+    
+    @param decimals digits of precision to apply
+    @param multiplier (Note: only the exponent of the multiplier is used, so
+    only powers of 10 may be used)
+    '''
+    assert decimals >= 0, 'decimals must be >= 0'
+    
+    # get the scale (exponent) of the default unit
+    # negate the scale for use with Decimal.scaleb()
+    scale = -Decimal(str(default_unit)).adjusted()
+    if multiplier is not None:
+        # get the scale (exponent) of the multiplier
+        multiplier = Decimal(str(multiplier)).adjusted()
+        if multiplier != 0:
+            scale = scale+multiplier
+    decimals = Decimal('1e-%d'%int(decimals))
+    val = Decimal(raw_val)
+    if scale != 0:
+        val = val.scaleb(scale)
+    val = val.quantize(decimals, decimal.ROUND_HALF_UP)
+    
+    return val

@@ -22,5 +22,5 @@ date_screenable,fields.library,/reports/api/v1/field/fields.library/date_screena
 description,fields.library,/reports/api/v1/field/fields.library/description/,,,14,,TRUE,"A description of the library",Description,TRUE,,,[d;e],[c;u],string,,,textarea,,,,,,,,
 owner,fields.library,/reports/api/v1/field/fields.library/owner/,custom,,18,,TRUE,"The user that owns the library, if applicable.",Owner,TRUE,,,[d;e],[c;u],string,,,,,,,,,,,
 version_number,fields.library,/reports/api/v1/field/fields.library/version_number/,,,999,,TRUE,"Number of the latest version of the library.","Version Number",TRUE,,,[d],,integer,link,"{ 'hrefTemplate': '#apilog/order/-date_time/search/ref_resource_name=library;key={short_name};diffs__contains=version_number' }",,,,,,,,,
-comment_array,fields.library,/reports/api/v1/field/fields.library/comment_array/,,,20,,TRUE,Comments,Comments,TRUE,,,,,list,,,,,,,,,,,
+comment_array,fields.library,/reports/api/v1/field/fields.library/comment_array/,,,20,,TRUE,Comments,Comments,FALSE,,,,,list,comment_array,,,,,,,,,,
 concentration_types,fields.library,/reports/api/v1/field/fields.library/concentration_types/,,,999,,TRUE,"Concentration types used for the wells (mg/ml or molar)","Concentration Types",TRUE,,,,,list,,,,,,,,,,,

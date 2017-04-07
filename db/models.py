@@ -1522,8 +1522,8 @@ class Plate(models.Model):
     remaining_well_volume = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
     screening_count = models.IntegerField(null=True, default=0)
-    # 202161028 - Track the screening_count due to cherry_pick_liquid_transfers
-    # separately - *verify with screening lab*
+    # New - Track the screening_count due to cherry_pick_liquid_transfers
+    # To be populated by migration
     cplt_screening_count = models.IntegerField(null=True, default=0)
     experimental_well_count = models.IntegerField(null=True)
     
@@ -1536,6 +1536,9 @@ class Plate(models.Model):
     # New - to be populated by migration
     date_plated = models.DateField(null=True)
     date_retired = models.DateField(null=True)
+ 
+    # New - to be bulk updated by screening staff
+    is_active = models.NullBooleanField()
     
     # Legacy
     date_loaded = models.DateTimeField(null=True)

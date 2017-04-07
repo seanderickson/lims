@@ -844,6 +844,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info('executed stmt %d', len(prefetched_result))
                 
                 if len(prefetched_result) < limit & offset == 0:
+                    # Optimize, skip count if first page and less than limit are found.
                     count = len(prefetched_result)
                 else:
                     logger.info('no cache hit, execute count')

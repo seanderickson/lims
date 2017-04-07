@@ -241,7 +241,7 @@ if __name__ == "__main__":
             if ':' not in x:
                 raise Exception("--header must be of the form 'header:value' ")
             header = x.split(":")
-            headers[header[0]]=header[1]
+            headers[header[0].strip()]=header[1].strip()
     
     url = args.url
     u = urlparse(url)

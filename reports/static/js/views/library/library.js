@@ -144,6 +144,12 @@ define([
         model: this.model,
         uriStack: delegateStack, 
         DetailView: detailView,
+        EditView: EditView.extend({
+          save_success: function(data, textStatus, jqXHR){
+            EditView.prototype.save_success.apply(this,arguments);
+            appModel.unset('libraries');
+          }
+        }),
         buttons: buttons 
       });
       this.tabViews[key] = view;

@@ -8,7 +8,7 @@ define([
   'models/app_state',
   'views/generic_detail_stickit', 
   'views/list2',
-  'views/screen/libraryScreening',
+  'views/screen/libraryScreening2',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView,
             ListView, LibraryScreeningView, TabbedController) {
@@ -40,10 +40,11 @@ define([
         invoke : 'setLibraries',
         permission: 'screen'
       },
-      copyplates: {
-        description : 'Copy Plates Screened',
-        title : 'Plates Screeened',
-        invoke : 'setCopyPlates',
+      plates: {
+        description : 'Plates Screened',
+        title : 'Plates Screened',
+        invoke : 'setPlates',
+        permission:'librarycopyplate'
       },
             
     },      
@@ -172,9 +173,9 @@ define([
             dc.set('weak_positives', createPositiveStat(dc.get('weak_positives_count')));
           });
           
-          var TextWrapCell = Backgrid.Cell.extend({
-            className: 'text-wrap-cell'
-          });
+//          var TextWrapCell = Backgrid.Cell.extend({
+//            className: 'text-wrap-cell'
+//          });
           var colTemplate = {
             'cell' : 'string',
             'order' : -1,
@@ -191,7 +192,7 @@ define([
                 'description' : 'Data Column',
                 'order': 1,
                 'sortable': true,
-                'cell': TextWrapCell
+                'cell': Iccbl.TextWrapCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'total_positives',
@@ -199,7 +200,7 @@ define([
                 'description' : 'Total Positives',
                 'order': 2,
                 'sortable': true,
-                'cell': TextWrapCell
+                'cell': Iccbl.TextWrapCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'strong_positives',
@@ -207,7 +208,7 @@ define([
                 'description' : 'Strong Positives',
                 'order': 3,
                 'sortable': true,
-                'cell': TextWrapCell
+                'cell': Iccbl.TextWrapCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'medium_positives',
@@ -215,7 +216,7 @@ define([
                 'description' : 'Medium Positives',
                 'order': 4,
                 'sortable': true,
-                'cell': TextWrapCell
+                'cell': Iccbl.TextWrapCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'weak_positives',
@@ -223,7 +224,7 @@ define([
                 'description' : 'Weak Positives',
                 'order': 5,
                 'sortable': true,
-                'cell': TextWrapCell
+                'cell': Iccbl.TextWrapCell
               }),
           ];
           var colModel = new Backgrid.Columns(columns);
@@ -333,7 +334,29 @@ define([
     setLibraries: function(delegateStack) {
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
-      var resource = appModel.getResource('library');
+      var resource = appModel.getResource('screened_library');
+
+      var library_link_cell = Iccbl.LinkCell.extend({
+          render: function(){
+            var self = this;
+            Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            var comments = this.model.get('comment_array');
+            if (!_.isEmpty(comments)){
+              comments = Iccbl.parseComments(comments);
+              this.$el.attr('title',comments);
+              this.$el.append(Iccbl.createCommentIcon(
+                comments,
+                'Comments for library: ' + self.model.get('library_short_name')));
+            }
+            return this;
+          }
+        });
+      resource.fields['library_name']['backgridCellType'] =
+        library_link_cell.extend(
+          resource.fields['library_name'].display_options);
+      resource.fields['short_name']['backgridCellType'] =
+        library_link_cell.extend(
+          resource.fields['short_name'].display_options);
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
@@ -353,12 +376,57 @@ define([
     },
     
     /**
-     * Library Copy Plates view is a sub-view of Summary
+     * Plates screened
      */
-    setCopyPlates: function(delegateStack) {
+    setPlates: function(delegateStack) {
       var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplates'].join('/');
+      var url = [self.model.resource.apiUri,self.model.key,'plates_screened'].join('/');
       var resource = appModel.getResource('librarycopyplate');
+      
+      var fields_to_show = ['library_short_name', 'copy_name', 'plate_number',
+                            'screening_count','assay_plate_count',
+                            'last_date_screened','first_date_screened']
+      
+      _.each(_.keys(resource.fields), function(key){
+        var field = resource.fields[key];
+        
+        if (_.contains(fields_to_show, key)){
+          field.ordinal = -fields_to_show.length + _.indexOf(fields_to_show,key);
+          field.visibility = ['l'];
+        } else {
+          field.visibility = [];
+        }
+        
+      });
+      
+      resource.fields['library_short_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'library_comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('library_short_name');
+          }
+        });
+      
+      resource.fields['copy_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'copy_comments',
+          title_function: function(model){
+            return 'Comments for Copy: ' + model.get('library_short_name')
+              + '/' + model.get('copy_name');
+          }
+        });
+      
+      resource.fields['plate_number']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'comment_array',
+          title_function: function(model){
+            return 'Comments for Plate: ' 
+              + model.get('library_short_name') + '/' 
+              + model.get('copy_name')  + '/'
+              + model.get('plate_number');
+          }
+        });
+      
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,

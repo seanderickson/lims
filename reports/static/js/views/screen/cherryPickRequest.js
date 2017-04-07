@@ -120,6 +120,39 @@ define([
       }
       
       var editView = EditView.extend({
+        
+        save_success: function(data, textStatus, jqXHR){
+          console.log('success');
+
+          // Override so that the CPR can be displayed in the screen resource:
+          var meta = _.result(data, appModel.API_RESULT_META, null);
+          
+          if (!_.isEmpty(meta)) {
+            appModel.showJsonMessages(meta);
+          }
+          if (_.isUndefined(self.model) || _.isUndefined(self.model.key)){
+            var model = _.result(data, appModel.API_RESULT_DATA, null);
+            if (!_.isEmpty(model)){
+              model = new Backbone.Model(model);
+              model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+              appModel.router.navigate([
+                self.screen.resource.key,self.screen.key,'cherrypickrequest',
+                model.key].join('/'), 
+                {trigger:true});
+            } else { 
+              appModel.router.navigate([
+                self.screen.resource.key,self.screen.key,'cherrypickrequest'
+                ].join('/'), 
+                {trigger:true});
+            }
+          }else{
+            appModel.router.navigate([
+              self.screen.resource.key,self.screen.key,'cherrypickrequest',
+              self.model.key].join('/'), 
+              {trigger:true});
+          }
+        },
+        
         afterRender: function(){
           var editForm = this;
           console.log('after render...');
@@ -149,36 +182,36 @@ define([
           EditView.prototype.afterRender.apply(this,arguments);
         }
       });
-      var saveSuccessCallBack = function(response){
-        // Override so that the CPR can be displayed in the screen resource:
-        // TODO: modify generic_edit to handle custom-nested URLs for edit success URL
-        var meta = _.result(response, appModel.API_RESULT_META, null);
-        
-        if (!_.isEmpty(meta)) {
-          appModel.showJsonMessages(meta);
-        }
-        if (_.isUndefined(self.model) || _.isUndefined(self.model.key)){
-          var model = _.result(response, appModel.API_RESULT_DATA, null);
-          if (!_.isEmpty(model)){
-            model = new Backbone.Model(model);
-            model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-            appModel.router.navigate([
-              self.screen.resource.key,self.screen.key,'cherrypickrequest',
-              model.key].join('/'), 
-              {trigger:true});
-          } else { 
-            appModel.router.navigate([
-              self.screen.resource.key,self.screen.key,'cherrypickrequest'
-              ].join('/'), 
-              {trigger:true});
-          }
-        }else{
-          appModel.router.navigate([
-            self.screen.resource.key,self.screen.key,'cherrypickrequest',
-            self.model.key].join('/'), 
-            {trigger:true});
-        }
-      };
+//      var saveSuccessCallBack = function(response){
+//        // Override so that the CPR can be displayed in the screen resource:
+//        // TODO: modify generic_edit to handle custom-nested URLs for edit success URL
+//        var meta = _.result(response, appModel.API_RESULT_META, null);
+//        
+//        if (!_.isEmpty(meta)) {
+//          appModel.showJsonMessages(meta);
+//        }
+//        if (_.isUndefined(self.model) || _.isUndefined(self.model.key)){
+//          var model = _.result(response, appModel.API_RESULT_DATA, null);
+//          if (!_.isEmpty(model)){
+//            model = new Backbone.Model(model);
+//            model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+//            appModel.router.navigate([
+//              self.screen.resource.key,self.screen.key,'cherrypickrequest',
+//              model.key].join('/'), 
+//              {trigger:true});
+//          } else { 
+//            appModel.router.navigate([
+//              self.screen.resource.key,self.screen.key,'cherrypickrequest'
+//              ].join('/'), 
+//              {trigger:true});
+//          }
+//        }else{
+//          appModel.router.navigate([
+//            self.screen.resource.key,self.screen.key,'cherrypickrequest',
+//            self.model.key].join('/'), 
+//            {trigger:true});
+//        }
+//      };
       detailView = DetailView.extend({
         afterRender: function() {
           DetailView.prototype.afterRender.apply(this,arguments);
@@ -196,7 +229,7 @@ define([
         model: this.model,
         uriStack: delegateStack, 
         buttons: buttons,
-        saveSuccessCallBack: saveSuccessCallBack,
+//        saveSuccessCallBack: saveSuccessCallBack,
         EditView: editView,
         DetailView: detailView
       }));
@@ -1153,59 +1186,16 @@ define([
 
       ///// Library and Plate comments /////
       
-      function parseComments(comment_array){
-        return _.map(
-          comment_array,
-          function(comment){
-            // FIXME: make this error tolerant
-            comment_array = comment.split('$');
-            return '(' + comment_array[0] + ') ' +
-              Iccbl.getDateString(comment_array[1]) + 
-              ': ' + comment_array[2];
-          }).join('\n');
-      };
-      function createCommentIcon(comments, title){
-        var comment_icon = $(
-          '<span class="glyphicon glyphicon-comment" ' +
-          'style="color: lightgray; " ></span>');
-        
-        var rows = 10;
-        var buttons_on_top = false;
-        if (comments.length > 300){
-          rows = 30;
-          buttons_on_top = true;
-        }
-        comment_icon.click(function(e){
-          e.preventDefault();
-          var body = $('<textarea class="input-full" rows=' + rows + ' ></textarea>');
-          body.val(comments);
-          appModel.showModalMessage({
-            title: title,
-            view: body,
-            buttons_on_top: buttons_on_top
-          });
-        });
-        return comment_icon;
-      };
       resource.fields['library_plate']['backgridCellType'] = 
-        Iccbl.LinkCell.extend({
-          render: function(){
-            var self = this;
-            Iccbl.LinkCell.prototype.render.apply(this, arguments);
-            var comments = this.model.get('library_plate_comment_array');
-            if (!_.isEmpty(comments)){
-              comments = parseComments(comments);
-              this.$el.attr('title',comments);
-              this.$el.append(createCommentIcon(
-                comments,
-                'Comments for Plate: ' 
-                  + self.model.get('library_short_name') + '/' 
-                  + self.model.get('source_copy_name')  + '/'
-                  + self.model.get('library_plate')));
-            }
-            return this;
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'library_plate_comment_array',
+          title_function: function(model){
+            return 'Comments for Plate: ' 
+              + model.get('library_short_name') + '/' 
+              + model.get('source_copy_name')  + '/'
+              + model.get('library_plate');
           }
-        },resource.fields['library_plate'].display_options);
+        });
 
       resource.fields['source_copy_name']['backgridCellType'] = 
         Iccbl.LinkCell.extend({
@@ -1215,7 +1205,7 @@ define([
             var comments = this.model.get('source_copy_comments');
             if (!_.isEmpty(comments)){
               this.$el.attr('title', comments);
-              this.$el.append(createCommentIcon(
+              this.$el.append(Iccbl.createCommentIcon(
                 comments,
                 'Comments for Copy: ' 
                   + self.model.get('library_short_name') + '/'
@@ -1226,25 +1216,21 @@ define([
           }
         },resource.fields['source_copy_name'].display_options);
 
-      var library_link_cell = Iccbl.LinkCell.extend({
-          render: function(){
-            var self = this;
-            Iccbl.LinkCell.prototype.render.apply(this, arguments);
-            var comments = this.model.get('library_comment_array');
-            if (!_.isEmpty(comments)){
-              comments = parseComments(comments);
-              this.$el.attr('title',comments);
-              this.$el.append(createCommentIcon(
-                comments,
-                'Comments for library: ' + self.model.get('library_short_name')));
-            }
-            return this;
+      resource.fields['library_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'library_comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('library_short_name');
           }
         });
-      resource.fields['library_name']['backgridCellType'] =
-        library_link_cell.extend(resource.fields['library_name'].display_options);
+      
       resource.fields['library_short_name']['backgridCellType'] =
-        library_link_cell.extend(resource.fields['library_short_name'].display_options);
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'library_comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('library_short_name');
+          }
+        });
       
       ///// end Library and Plate comments /////
 
@@ -1365,6 +1351,9 @@ define([
         showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
       }
       
+      view.grid.columns.on('update', function(){
+        view.$el.find('td').removeClass('edited');
+      });
       // Manage LCP selection updates
       view.collection.on('add', function(model){
         // cache the 'selected' property for update management
@@ -1444,7 +1433,6 @@ define([
           appModel.clearPagePending();
         }
       });
-      
       // Make sure that on reset actions (page changes), selections are persisted
       view.collection.on('reset', function(){
         // Note: on "reset" the "add" methods aren't being called
@@ -1748,7 +1736,7 @@ define([
               if (!_.isUndefined(errorFlag )){
                 appModel.showOkCommentForm({
                   title: 'Some Copy Wells have insufficient volume, Confirm override?',
-                  body: 'Copy Wells: \n' + errorWells.join(', '),
+                  body: 'Copy Wells: ' + errorWells.join(', '),
                   okText: 'Override',
                   ok: function(formValues) {
                     var overrideInsufficient = true;
@@ -1829,11 +1817,7 @@ define([
       showUnfulfilledWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
-//            var includes = _.clone(view.listModel.get('includes'));
-//            includes = _.union(extra_columns_for_selection,includes);
-//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
-
             showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
             showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_manual'];
@@ -1842,9 +1826,6 @@ define([
             view.listModel.set('search',searchHash);
             
           } else {
-//            var includes = _.clone(view.listModel.get('includes'));
-//            includes = _.difference(includes, extra_columns_for_selection);
-//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_unfulfilled'];
             view.listModel.set('search',searchHash);
@@ -1863,18 +1844,12 @@ define([
       showInsufficientWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
-//            var includes = _.clone(view.listModel.get('includes'));
-//            includes = _.union(extra_columns_for_selection,includes);
-//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_unfulfilled'];
             searchHash['show_insufficient'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
-//            var includes = _.clone(view.listModel.get('includes'));
-//            includes = _.difference(includes, extra_columns_for_selection);
-//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_insufficient'];
             view.listModel.set('search',searchHash);
@@ -1893,18 +1868,12 @@ define([
       showManuallySelectedWellsControl.click(function(e){
         function processClick(){
           if (e.target.checked) {
-//            var includes = _.clone(view.listModel.get('includes'));
-//            includes = _.union(extra_columns_for_selection,includes);
-//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_unfulfilled'];
             searchHash['show_manual'] = 'true';
             view.listModel.set('search',searchHash);
           } else {
-//            var includes = _.clone(view.listModel.get('includes'));
-//            includes = _.difference(includes, extra_columns_for_selection);
-//            view.listModel.set({ includes: includes}, {reset: false});
             var searchHash = _.clone(view.listModel.get('search'));
             delete searchHash['show_manual'];
             view.listModel.set('search',searchHash);
@@ -2448,7 +2417,6 @@ define([
           type: 'POST',
           headers: headers
         }).done(function(data, textStatus, jqXHR){
-          console.log('submitted', arguments);
           appModel.showConnectionResult(data, {
             title: 'Set Lab Cherry Picks'
           });

@@ -41,6 +41,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           appModel.error('regex misconfigured for "library_plates_screened" in metadata: ' + lcp_regex_string);
         }
       }
+      var url = _.result(self.model,'url');
      
       var detailView = DetailView.extend({
         
@@ -85,6 +86,134 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       
       var editView = EditView.extend({
         
+        overrides_granted: {},
+
+        save_success: function(data, textStatus, jqXHR){
+          var inner_self = this;
+          var meta = _.result(data, 'meta', null);
+          if (meta) {
+            appModel.showJsonMessages(meta);
+          }
+          var objects = _.result(data, 'objects', null)
+          if (objects && objects.length == 1) {
+            model = new Backbone.Model(objects[0]);
+            var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+            appModel.router.navigate([
+              self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
+              {trigger:true});
+          } else {
+            console.log('no objects in the response', data);
+            appModel.error('Could not display the server response');
+          }
+        },
+        
+        save: function(changedAttributes, options){
+          var inner_self = this;
+          var options = options || { headers: {} };
+          var comment = _.result(options.headers,appModel.HEADER_APILOG_COMMENT);
+          this.model.save(changedAttributes, options)
+            .done(function(data, textStatus, jqXHR){ 
+              inner_self.save_success.apply(this,arguments);
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) { 
+              /// "not allowed" libraries require an "override" param
+              /// see cherryPickRequest.js
+              console.log('errors', arguments);
+              
+              var jsonError = _.result(jqXHR, 'responseJSON');
+              if (!_.isUndefined(jsonError)){
+                var error = _.result(jsonError, 'errors');
+                var libraryErrorFlag = _.result(error,appModel.API_PARAM_OVERRIDE);
+                var volumeErrorFlag = _.result(error,appModel.API_PARAM_VOLUME_OVERRIDE)
+                if (!_.isUndefined(libraryErrorFlag)){
+                  var title = _.result(error, 'library_plates_screened');
+                  if (!title){
+                    console.log('Error: expecting "library_plates_screened" error message');
+                    title = 'Override required for libraries that are not "allowed"';
+                  }
+                  var bodyMsg = 'Not allowed libraries';
+                  var errors = _.result(error, 'Libraries');
+                  if (!errors){
+                    console.log('Libraries should be reported in the response');
+                  }else{
+                    bodyMsg = 'Libraries: ' + errors.join(', ');
+                  }
+                  appModel.showOkCommentForm({
+                    title: title,
+                    body: bodyMsg,
+                    okText: 'Confirm Override',
+                    ok: function(formValues) {
+                      inner_self.overrides_granted[appModel.API_PARAM_OVERRIDE] = 'true';
+                      self.model.url = function(){
+                        var new_url = url + '?' + _.map(_.pairs(inner_self.overrides_granted),
+                          function(keyval){
+                            return keyval.join('=');
+                          }).join('&')
+                        console.log('new url', new_url);
+                        return new_url;
+                      };
+                      var new_comment = formValues['comments']
+                      if (new_comment){
+                        if (comment){
+                          comment += '; ' + new_comment;
+                        } else {
+                          comment = new_comment
+                        }
+                        options.headers[appModel.HEADER_APILOG_COMMENT] = comment;
+                        console.log('new comments', comment);
+                      }
+                      inner_self.save(changedAttributes, options);
+                    }
+                  });
+                } else if (!_.isUndefined(volumeErrorFlag)){
+                  var title = _.result(error, 'library_plates_screened');
+                  if (!title){
+                    console.log('Error: expecting "library_plates_screened" error message');
+                    title = 'Override required to screen plates with insufficient volume';
+                  }
+                  var bodyMsg = 'Insufficient volume for plates (unspecified)';
+                  var errors = _.result(error, 'Plates');
+                  if (!errors){
+                    console.log('Plates should be reported in the response');
+                  }else{
+                    bodyMsg = 'Plates: ' + errors.join(', ');
+                  }
+                  appModel.showOkCommentForm({
+                    title: title,
+                    body: bodyMsg,
+                    okText: 'Confirm Override',
+                    ok: function(formValues) {
+                      inner_self.overrides_granted[appModel.API_PARAM_VOLUME_OVERRIDE] = 'true';
+                      self.model.url = function(){
+                        var new_url = url + '?' + _.map(_.pairs(inner_self.overrides_granted),
+                          function(keyval){
+                            return keyval.join('=');
+                          }).join('&')
+                        console.log('new url', new_url);
+                        return new_url;
+                      };
+                      var new_comment = formValues['comments']
+                      if (new_comment){
+                        if (comment){
+                          comment += '; ' + new_comment;
+                        } else {
+                          comment = new_comment
+                        }
+                        options.headers[appModel.HEADER_APILOG_COMMENT] = comment;
+                        console.log('new comments', comment);
+                      }
+                      inner_self.save(changedAttributes, options);
+                    }
+                  });
+                } else {
+                  inner_self.save_fail.apply(this,arguments);
+                }
+              } else {
+                inner_self.save_fail.apply(this,arguments);
+              }
+            });
+        },
+        
         afterRender: function(){
 
           EditView.prototype.afterRender.apply(this,arguments);
@@ -117,11 +246,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
             ].join(''));
           addButton.click(function(event){
             event.preventDefault();
-            libraryOptions = appModel.getScreeningLibraryOptions(self.model.get('screen_type'));
-            libraryOptions.unshift({val:'',label:''});
-            self._addPlateRangeDialog(
-              plate_collection,libraryOptions,nested_library_plate_pattern,
-              for_screening=true);
+            appModel.getScreeningLibraryOptions(
+              self.model.get('screen_type'),
+              function(libraryOptions){
+                libraryOptions.unshift({val:'',label:''});
+                self._addPlateRangeDialog(
+                  plate_collection,libraryOptions,nested_library_plate_pattern,
+                  for_screening=true);
+              });
           });
           $target_el = $target_el.parent();
           $target_el.append(addButton);
@@ -141,11 +273,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           // attach listener volume calculator
           function calculateVolFromLibraryPlates(){
             var num_replicates = self_editform.getValue('number_of_replicates');
-            var vol_to_assayplates  = self_editform.getValue('volume_transferred_per_well_to_assay_plates');
+            var vol_to_assayplates  = self_editform.getValue(
+              'volume_transferred_per_well_to_assay_plates');
             if(_.isNumber(num_replicates) && _.isNumber(vol_to_assayplates)){
               if(num_replicates > 0 && vol_to_assayplates > 0){
                 var calculated = num_replicates * vol_to_assayplates;
-                self_editform.setValue('volume_transferred_per_well_from_library_plates',calculated);
+                self_editform.setValue(
+                  'volume_transferred_per_well_from_library_plates',calculated);
               }
             } else {
               console.log('cannot calculate volume until form values are entered');
@@ -156,39 +290,44 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               'role="button" id="calc_volume_transferred_per_well_from_library_plates" href="#">',
               'calculate</button>'
             ].join(''));
-          $target_el = self_editform.$el.find('[key=form-group-volume_transferred_per_well_from_library_plates]');
+          $target_el = self_editform.$el.find(
+            '[key=form-group-volume_transferred_per_well_from_library_plates]');
           $target_el.append(calcVolButton);
           calcVolButton.click(function(event){
             event.preventDefault();
             calculateVolFromLibraryPlates();
           });
-          this.listenTo(this, "number_of_replicates:change", calculateVolFromLibraryPlates);
-          this.listenTo(this, "volume_transferred_per_well_to_assay_plates:change", calculateVolFromLibraryPlates);
+          this.listenTo(
+            this, "number_of_replicates:change", calculateVolFromLibraryPlates);
+          this.listenTo(
+            this, "volume_transferred_per_well_to_assay_plates:change", 
+            calculateVolFromLibraryPlates);
         }
       });
+      
       args.EditView = editView;
       // force all fields to be sent to server (including library_plates_screened)
       // even if unchanged
       args.fullSaveOnEdit = true; 
       args.DetailView = detailView;
-      args.saveSuccessCallBack = function(model){
-        var meta = _.result(model, 'meta', null);
-        if (meta) {
-          appModel.showJsonMessages(meta);
-        }
-        var objects = _.result(model, 'objects', null)
-        if (objects && objects.length == 1) {
-          model = new Backbone.Model(objects[0]);
-          var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-          model.key = self.model.resource.key + '/' + key;
-          appModel.router.navigate([
-            self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
-            {trigger:true});
-        } else {
-          console.log('no objects in the response', model);
-          appModel.error('Could not display the server response');
-        }
-      };
+//      args.saveSuccessCallBack = function(model){
+//        var meta = _.result(model, 'meta', null);
+//        if (meta) {
+//          appModel.showJsonMessages(meta);
+//        }
+//        var objects = _.result(model, 'objects', null)
+//        if (objects && objects.length == 1) {
+//          model = new Backbone.Model(objects[0]);
+//          var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+//          model.key = self.model.resource.key + '/' + key;
+//          appModel.router.navigate([
+//            self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
+//            {trigger:true});
+//        } else {
+//          console.log('no objects in the response', model);
+//          appModel.error('Could not display the server response');
+//        }
+//      };
       
       DetailLayout.prototype.initialize.call(this,args);
     },

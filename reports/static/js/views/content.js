@@ -84,28 +84,28 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
-      function saveSuccessCallBack(model){
-        console.log('new model created: ', model);
-        if (resource.key == 'screen'){
-          appModel.unset('screens');
-        }
-        else if (resource.key == 'library'){
-          appModel.unset('libraries');
-        }
-        else if (resource.key == 'screensaveruser'){
-          appModel.unset('users');
-        }
-        model = new Backbone.Model(model);
-        var key = Iccbl.getIdFromIdAttribute( model,resource );
-        model.key = resource.key + '/' + key;
-        appModel.router.navigate(resource.key + '/' + key, {trigger:true});
-      };
+//      function saveSuccessCallBack(model){
+//        console.log('new model created: ', model);
+//        if (resource.key == 'screen'){
+//          appModel.unset('screens');
+//        }
+//        else if (resource.key == 'library'){
+//          appModel.unset('libraries');
+//        }
+//        else if (resource.key == 'screensaveruser'){
+//          appModel.unset('users');
+//        }
+//        model = new Backbone.Model(model);
+//        var key = Iccbl.getIdFromIdAttribute( model,resource );
+//        model.key = resource.key + '/' + key;
+//        appModel.router.navigate(resource.key + '/' + key, {trigger:true});
+//      };
       
       view = new viewClass({
         model: newModel, 
         uriStack: uriStack,
         isCreate: true,
-        saveSuccessCallBack: saveSuccessCallBack
+//        saveSuccessCallBack: saveSuccessCallBack
       });
 
       Backbone.Layout.setupView(view);

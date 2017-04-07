@@ -24,7 +24,10 @@ define([
       'click button#select_columns': 'select_columns',
       'click button#download_link': 'download',
       'click button#clear_sorts': 'clear_sorts',
-      'click button#clear_searches': 'clear_searches'
+      'click button#clear_searches': function(e){
+        e.preventDefault();
+        this.clear_searches();
+      }
     },
     
     initialize : function(args) {
@@ -584,7 +587,11 @@ define([
             } else {
               self.grid.removeColumn(column);
             }
-          });          
+          });
+          
+          if (!_.isEmpty(toRemove)){
+            self.clear_searches(toRemove);
+          }
           
           if(reset){
             self.collection.fetch();
@@ -861,14 +868,22 @@ define([
       return this;
     },
     
-    clear_searches: function(){
+    clear_searches: function(fields_to_clear){
       var self = this;
       // notify the column headers
-      this.collection.trigger("Iccbl:clearSearches");
+      if (fields_to_clear){
+        this.collection.trigger(
+          "Iccbl:clearSearches", {fields_to_clear: fields_to_clear});
+      } else {
+        this.collection.trigger("Iccbl:clearSearches");
+      }
 
       var searchHash = _.clone(this.listModel.get('search'));
-      console.log('clear hash', searchHash);
+      console.log('clear hash', searchHash, fields_to_clear);
       var fields = this._options.schemaResult.fields;
+      if (fields_to_clear){
+        fields = _.pick(fields,fields_to_clear);
+      }
       _.each(_.keys(searchHash), function(key){
         var originalKey = key;
         if (key.indexOf('__')>0){
@@ -881,7 +896,7 @@ define([
           console.log('clearing key', originalKey);
           delete searchHash[originalKey];
         } else {
-          console.log('Not clearing special search term:', originalKey);
+          console.log('Not clearing search term:', originalKey);
         }
       });
       console.log('cleared hash', searchHash);
@@ -951,14 +966,14 @@ define([
           <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
             <label for="<%= editorId %>" > - </label>\
-              <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
             </div>\
           </div>\
         ');
       var optgroupFieldCheckboxTemplate1 =  _.template('\
           <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-              <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
             </div>\
           </div>\
         ');

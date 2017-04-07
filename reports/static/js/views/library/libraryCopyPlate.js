@@ -89,6 +89,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
         }
       });
       
+      // TODO: 20170407 - Plate.is_active flag management
+      // - disable if status != 'available'
+      // - set to false if status is changed to !available
+      // extend EditView and add a change listener/custom validation
+      
       var view = new DetailLayout({ 
         model: model, 
         uriStack: uriStack,

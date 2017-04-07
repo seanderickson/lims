@@ -108,6 +108,10 @@ define([
               this.model.get('collaborator_names')));
       }
       var editView = EditView.extend({
+        save_success: function(data, textStatus, jqXHR){
+          EditView.prototype.save_success.apply(this,arguments);
+          appModel.unset('users');
+        },
         afterRender: function() {
           var form = this;
           outerSelf._addVocabularyButton(
@@ -785,9 +789,9 @@ define([
         }
         collection.each(function(model) {
         });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
+//        var TextWrapCell = Backgrid.Cell.extend({
+//          className: 'text-wrap-cell'
+//        });
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -822,7 +826,7 @@ define([
             'description' : 'Requested By',
             'order': 1,
             'sortable': true,
-            'cell': TextWrapCell
+            'cell': Iccbl.TextWrapCell
           })
         ];
         var colModel = new Backgrid.Columns(columns);
@@ -883,9 +887,9 @@ define([
             collection.remove(model);
           }
         });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
+//        var TextWrapCell = Backgrid.Cell.extend({
+//          className: 'text-wrap-cell'
+//        });
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -902,7 +906,7 @@ define([
               'description' : 'Screen status',
               'order': 1,
               'sortable': true,
-              'cell': TextWrapCell
+              'cell': Iccbl.TextWrapCell
             }),
             _.extend({},colTemplate,{
               'name' : 'date_time',

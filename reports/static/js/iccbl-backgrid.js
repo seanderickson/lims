@@ -417,6 +417,52 @@ var createLabel = Iccbl.createLabel =
     return lines.join(break_char);
 };
 
+/**
+ * Parse an inline comment array of the form:
+ * [ "comment_user$comment_date$comment_text", ...]
+ */
+var parseComments = Iccbl.parseComments = function(comment_array){
+  return _.map(
+    comment_array,
+    function(comment){
+      var comment_parts = comment.split(Iccbl.appModel.LIST_DELIMITER_SUB_ARRAY);
+      if (comment_parts.length == 3){
+        return '(' + comment_parts[0] + ') ' +
+          Iccbl.getDateString(comment_parts[1]) + 
+          ': ' + comment_parts[2];
+      } else {
+        console.log('invalid comment:', comment_parts)
+      }
+    }).join('\n===== end comment =====\n');
+};
+
+/**
+ * Create a comment icon with a link to display (parsed) comments in a 
+ * modal dialog.
+ */
+var createCommentIcon = Iccbl.createCommentIcon = function(comments, title){
+  var comment_icon = $(
+    '<span class="glyphicon glyphicon-comment" ' +
+    'style="color: lightgray; " ></span>');
+  
+  var rows = 10;
+  var buttons_on_top = false;
+  if (comments.length > 300){
+    rows = 30;
+    buttons_on_top = true;
+  }
+  comment_icon.click(function(e){
+    e.preventDefault();
+    var body = $('<textarea class="input-full" rows=' + rows + ' ></textarea>');
+    body.val(comments);
+    Iccbl.appModel.showModalMessage({
+      title: title,
+      view: body,
+      buttons_on_top: buttons_on_top
+    });
+  });
+  return comment_icon;
+};
 
 var formatResponseError = Iccbl.formatResponseError = function(response){
   
@@ -601,6 +647,31 @@ _.extend(StringFormatter.prototype, {
       return rawValue + '';
     }
   }
+});
+
+/**
+ * Simple unformatted cell to wrap long strings
+ */
+var TextWrapCell = Iccbl.TextWrapCell = Backgrid.Cell.extend({
+  formatter: Iccbl.StringFormatter,
+  className: 'text-wrap-cell'
+});
+
+/**
+ * CommentArrayCell and CommentFormatter:
+ * Parse a nested comment array for table view
+ */
+var CommentFormatter = Iccbl.CommentFormatter = function () {};
+CommentFormatter.prototype = new Backgrid.CellFormatter();
+_.extend(CommentFormatter.prototype, {
+  fromRaw: function (rawValue, model) {
+    if (_.isUndefined(rawValue) || _.isNull(rawValue) || _.isEmpty(rawValue)) return '';
+    return Iccbl.parseComments(rawValue);
+  }
+});
+
+var CommentArrayCell = Iccbl.CommentArrayCell = Iccbl.TextWrapCell.extend({
+  formatter: CommentFormatter
 });
 
 var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
@@ -1411,6 +1482,39 @@ var DeleteCell = Iccbl.DeleteCell = Iccbl.BaseCell.extend({
   }
 });
 
+/**
+ * Extend a LinkCell, with a comment mouse over.
+ */
+var CommentArrayLinkCell = Iccbl.CommentArrayLinkCell = Iccbl.LinkCell.extend({
+  /*
+   * @property {string} [comment_attribute='comment_array'] The model
+   * attribute containing the apilog comment_array 
+   */
+  comment_attribute: 'comment_array',
+  
+  /*
+   * Provide a title for generated dialog
+   */
+  title_function: function(model){
+    return 'Comments'; // + ': ' + Iccbl.getIdFromIdAttribute(model, resource)
+  },
+  
+  render: function(){
+    var self = this;
+    Iccbl.LinkCell.prototype.render.apply(this, arguments);
+    var comments = this.model.get(self.comment_attribute);
+    if (!_.isEmpty(comments)){
+      comments = Iccbl.parseComments(comments);
+      this.$el.attr('title',comments);
+      this.$el.append(Iccbl.createCommentIcon(
+        comments,
+        self.title_function(self.model)));
+    }
+    return this;
+  }
+});
+
+
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
   /**
    * Override collection parse method: Parse server response data.
@@ -2076,6 +2180,14 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
   
   clearSearch: function(options){
     var self=this;
+    var name = this.column.get('name');
+    
+    if (_.result(options,'fields_to_clear')){
+      if (!_.contains(options.fields_to_clear, name)){
+        return;
+      }
+    }
+    
     self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
@@ -2234,6 +2346,9 @@ var BackgridFormFilter = Backbone.Form.extend({
   _submit: function(){
     throw '_submit must be implemented';
   },
+  isSet: function(){
+    throw 'isSet must be implemented';
+  },
  
   /**
    * - add a submit button 
@@ -2276,19 +2391,8 @@ var BackgridFormFilter = Backbone.Form.extend({
   
   templateData: function() {
     return { years: 0, months: 0, dates: 0 };
-  },
+  }
   
-  /**
-   * Convenience - determine if the form has been set with any values
-   */
-  isSet: function(){
-    var values = this.getValue();
-    var found = _.find(_.keys(values), function(key){
-      // signal isSet for any field value set
-      return values[key]>0 || !_.isEmpty(values[key]);
-    });
-    return !_.isEmpty(found);
-  },
   
 });
 
@@ -2315,21 +2419,24 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
     return possibleSearches;
   },
   
-  /**
-   * Determine if the form has been set with any values.
-   */
-  isSet: function(){
-    var values = this.getValue();
-    var found = _.find(_.keys(values), function(key){
-      if(key == 'lower_criteria' ){
-        if(values[key] == 'blank' || values[key] == 'not blank') return true;
-        return false;
-      }
-      // signal isSet for any field value set
-      return values[key]>0 || !_.isEmpty(values[key]);
-    });
-    return !_.isEmpty(found);
-  },
+//  /**
+//   * Determine if the form has been set with any values.
+//   */
+//  isSet: function(){
+//    var values = this.getValue();
+//    if (_.isEmpty(values['lower_criteria'])){
+//      return false;
+//    }
+//    var found = _.find(_.keys(values), function(key){
+//      if(key == 'lower_criteria' ){
+//        if(values[key] == 'blank' || values[key] == 'not blank') return true;
+//        return false;
+//      }
+//      // signal isSet for any field value set
+//      return values[key]>0 || !_.isEmpty(values[key]);
+//    });
+//    return !_.isEmpty(found);
+//  },
   
   clear: function(){
     var self = this;
@@ -2413,6 +2520,9 @@ var TextFormFilter = CriteriumFormFilter.extend({
   
   isSet: function(){
     var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
     var found = _.find(_.keys(values), function(key){
       if(key == 'lower_criteria' ){
         if(values[key] == 'blank' || values[key] == 'not blank') return true;
@@ -3229,6 +3339,9 @@ var NumberFormFilter = CriteriumFormFilter.extend({
 
   isSet: function(){
     var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
     var found = _.find(_.keys(values), function(key){
       return values[key] !== '';
     });
@@ -3445,6 +3558,9 @@ var SIUnitFormFilter = NumberFormFilter.extend({
   
   isSet: function(){
     var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
     var found = _.find(_.keys(values), function(key){
       if(key == 'lower_criteria' 
         || key == 'lower_siunit'
@@ -3605,7 +3721,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'float': Iccbl.NumberCell, //'Number',
     'decimal': Iccbl.DecimalCell,
     'image': Iccbl.ImageCell,
-    'boolean': Iccbl.BooleanCell
+    'boolean': Iccbl.BooleanCell,
+    'list': Iccbl.TextWrapCell,
+    'comment_array': Iccbl.CommentArrayCell
   }
   
   if (_.has(prop, 'backgridCellType')){
@@ -3629,11 +3747,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     backgridCellType = backgridCellType.extend(cell_options);
   }
   
-  if (data_type == 'list'){
-    backgridCellType = backgridCellType.extend({
-      formatter: Iccbl.StringFormatter
-    });
-  }
+//  if (data_type == 'list'){
+//    backgridCellType = backgridCellType.extend({
+//      formatter: Iccbl.StringFormatter
+//    });
+//  }
   column = _.extend(column, {
     'name' : key,
     'label' : prop['title'],

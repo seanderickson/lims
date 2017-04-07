@@ -83,6 +83,10 @@ define([
       };
       
       var editView = EditView.extend({
+        save_success: function(data, textStatus, jqXHR){
+          EditView.prototype.save_success.apply(this,arguments);
+          appModel.unset('');
+        },
         
         afterRender: function(){
           var self = this;

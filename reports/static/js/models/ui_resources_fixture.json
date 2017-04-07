@@ -173,6 +173,19 @@
           }
         }
     },
+    "screened_library": {
+        "header_message": "Screened Libraries",
+        "title": "Libraries",
+        "route": "list/library",
+        "list_view": "ListView",
+        "detailView": "LibraryView",
+        "api_resource": "library",
+        "url_root": "/db/api/v1",
+        "description": "Screened Libraries",
+        "options": {
+          "rpp": 500
+        }
+    },
     "smallmoleculelibrary": {
         "header_message": "Small Molecule Libraries",
         "title": "Small Molecule Libraries",

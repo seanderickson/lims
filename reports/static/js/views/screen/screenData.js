@@ -424,9 +424,9 @@ define([
       Iccbl.getCollectionOnClient(url, function(collection) {
         // create a colModel for the list
         var columns = [];
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        })
+//        var TextWrapCell = Backgrid.Cell.extend({
+//          className: 'text-wrap-cell'
+//        })
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -449,7 +449,7 @@ define([
           'name' : 'fieldname',
           'label' : '',
           'description' : 'Datacolumn field',
-          'cell': TextWrapCell.extend({
+          'cell': Iccbl.TextWrapCell.extend({
             className: '150_width'
           })
         });
@@ -462,7 +462,7 @@ define([
             'description' : datacolumn.get('description'),
             'order': datacolumn.get('ordinal'),
             'sortable': true,
-            'cell': TextWrapCell
+            'cell': Iccbl.TextWrapCell
           });
           columns.push(col);
           if (datacolumn.has('derived_from_columns')) {

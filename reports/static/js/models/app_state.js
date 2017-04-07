@@ -2111,6 +2111,8 @@ define([
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
+  
+  appState.LIST_DELIMITER_SUB_ARRAY = '$';
 
   Iccbl.appModel = appState;
   

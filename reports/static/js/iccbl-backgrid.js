@@ -14,6 +14,10 @@ var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
 var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
 var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
+var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/
+var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})/
+// Copy name pattern can be any string, starting with an alpha char
+var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+.*$/
 
 
 /**
@@ -134,6 +138,75 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
   }
 };
 
+/**
+ * Parse a Copy Plate search by line into an array of search lines of the form:
+ * search_line: {
+      plates: [],
+      plate_ranges: [],
+      copies: [],
+    }
+ */
+var parsePlateSearch = Iccbl.parsePlateSearch = function(rawData, errors){
+  
+  console.log('value', rawData);
+  var search_array = []
+  
+  var or_list = rawData.split('\n');
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    
+    // split quoted strings
+    var parts = _.filter(_.map(
+      clause.split(/(\'.*?\'|\".*?\"|[^\s,;]+)/), 
+      function(val){
+        // unquote
+        return val.replace(/["']+/g,'');
+      }),
+      function(val){
+        val = val.trim();
+        console.log('val', val, _.isEmpty(val));
+        return !_.isEmpty(val) && val != ',';
+      });
+    console.log('parts', parts);
+    search_array.push(parts);
+  });
+  
+  console.log('search_array', search_array);
+
+  var final_search_array = [];
+  _.each(search_array, function(search_line){
+    var copies_found = [];
+    var final_search_line = {
+      original_text: search_line,
+      plates: [],
+      plate_ranges: [],
+      copies: [],
+      is_empty: function(){
+        var result =_.every(_.values(
+          _.omit(this,'original_text')), _.isEmpty);
+        console.log('isEmpty: ', result, this);
+        return result;
+      }
+    };
+    _.each(search_line, function(part){
+      if (PLATE_PATTERN.test(part)){
+        final_search_line.plates.push(part);
+      }else if (PLATE_RANGE_PATTERN.test(part)){
+        final_search_line.plate_ranges.push(part);
+      }else if (COPY_NAME_PATTERN.test(part)){
+        final_search_line.copies.push(part);
+      } else {
+        errors.push('Copy names must begin with a letter: ' + part);
+      }
+    });
+    if (!final_search_line.is_empty()){
+      final_search_array.push(final_search_line);
+    }
+  });
+  return final_search_array;
+}
 
 /**
  * Generate an ISO date string from a JavaScript Date.

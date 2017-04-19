@@ -20,8 +20,8 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         var match = library_copy_plate_range_regex.exec(entry);
         if(match !== null){
           temp = {
-            library: match[2], // optional
-            copy: match[3],
+            library_short_name: match[2], // optional
+            copy_name: match[3],
             start_plate: match[4],
             end_plate: match[6]
           };
@@ -36,13 +36,10 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
     },
     
     _createPlateRangeTable: function(
-        plate_collection, $target_el, nested_library_plate_pattern, editable){
+        plate_collection, $target_el, editable, extra_cols){
       var self = this;
       $target_el.empty();
       
-      var TextWrapCell = Backgrid.Cell.extend({
-        className: 'text-wrap-cell'
-      });
       var colTemplate = {
         'cell' : 'string',
         'order' : -1,
@@ -54,23 +51,23 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       };
       var columns = [
         _.extend({},colTemplate,{
-          'name' : 'library',
+          'name' : 'library_short_name',
           'label' : 'Library',
           'description' : 'Library Short Name',
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library}'
+            'hrefTemplate': '#library/{library_short_name}'
           })
         }),
         _.extend({},colTemplate,{
-          'name' : 'copy',
+          'name' : 'copy_name',
           'label' : 'Copy',
           'description' : 'Copy Name',
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library}/copy/{copy}'
+            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}'
           })
         }),
         _.extend({},colTemplate,{
@@ -80,7 +77,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library}/copy/{copy}/plate/{start_plate}'
+            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{start_plate}'
           })
         }),
         _.extend({},colTemplate,{
@@ -90,16 +87,82 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library}/copy/{copy}/plate/{end_plate}'
+            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{end_plate}'
           })
         })
+        
       ];
+      
+      if(_.contains(extra_cols,'library_screening_status') ||
+          (!plate_collection.isEmpty() && plate_collection.at(0).has('library_screening_status'))){
+        var optionValues = [];
+        var vocabulary_scope_ref = 'library.screening_status';
+        try{
+          var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
+            _.each(_.keys(vocabulary),function(choice){
+              optionValues.push([vocabulary[choice].title,choice]);
+            });
+        }catch(e){
+          console.log('build column errorr: e',e);
+        }
+        columns.push(          
+          _.extend({},colTemplate,{
+            'name' : 'library_screening_status',
+            'label' : 'Screening Status',
+            'description' : 'Library Screening Status',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.SelectCell.extend({
+              optionValues: optionValues,
+              vocabulary_scope_ref: vocabulary_scope_ref
+            })
+          })
+        );
+      }
+      //if(_.contains(extra_cols,'plate_statuses') ||
+      //    (!plate_collection.isEmpty() && plate_collection.at(0).has('plate_statuses'))){
+      //  columns.push(          
+      //    _.extend({},colTemplate,{
+      //      'name' : 'plate_statuses',
+      //      'label' : 'Plate Status',
+      //      'description' : 'Plate Statuses',
+      //      'order': 1,
+      //      'sortable': true,
+      //      'cell': Iccbl.StringCell.extend({
+      //        'className': 'select-cell',
+      //        formatter: _.extend({}, Iccbl.StringFormatter.prototype, {
+      //          fromRaw(rawValue){
+      //            if(!_.isEmpty(rawValue)&&_.isArray(rawValue)){
+      //              return _.map(rawValue,function(status){
+      //                return status.charAt(0).toUpperCase() + status.slice(1);
+      //              }).join(', ');
+      //            }
+      //            return Iccbl.StringFormatter.prototype.fromRaw.call(this,rawValue);
+      //          }
+      //        })
+      //      })
+      //    })
+      //  );
+      //}
+      if(_.contains(extra_cols,'warnings') ||
+          (!plate_collection.isEmpty() && plate_collection.at(0).has('warnings'))){
+        columns.push(          
+          _.extend({},colTemplate,{
+            'name' : 'warnings',
+            'label' : 'Warnings',
+            'description' : 'Warnings',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.TextWrapCell
+          })
+        );
+      }
       
       if(editable && editable === true ){
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'delete',
-            'label' : '',
+            'label' : 'Remove',
             'description' : 'delete',
             'text': 'X',
             'order': 1,
@@ -117,7 +180,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       colModel.comparator = 'order';
       colModel.sort();
 
-      var cell = $('<div>',{ class: 'col-sm-10' });
+      var cell = $('<div>',{ class: '' });
       
       var plate_range_grid = new Backgrid.Grid({
         columns: colModel,
@@ -129,6 +192,160 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       
     }, // _createPlateRangeTable
 
+//    _addPlateRangeDialog2: function(
+//        plate_collection, libraryOptions, nested_library_plate_pattern, for_screening){
+//      
+//      // create the search form
+//      var TextArea2 = Backbone.Form.editors.TextArea.extend({
+//        render: function() {
+//          TextArea2.__super__.render.apply(this,arguments);
+//          this.$el.attr('placeholder', this.schema.placeholder);
+//          return this;
+//        },        
+//      });
+//      var formSchema = {};
+//      formSchema['plate_search'] = {
+//        title: 'Plate Search',
+//        key: 'plate_search',
+//        editorClass: 'input-full form-control',
+//        validators: ['required'],
+//        type: TextArea2,
+//        template: appModel._field_template
+//      };
+//      
+//      var FormFields = Backbone.Model.extend({
+//        schema: formSchema,
+//        validate: function(attrs) {
+//          var errs = {};
+//          if (!_.isEmpty(errs)) return errs;
+//        }
+//      });
+//      var formFields = new FormFields();
+//      var form = new Backbone.Form({
+//        model: formFields,
+//        template: appModel._form_template
+//      });
+//      
+//      
+//      
+//      var View = Backbone.Layout.extend({
+//        template: _.template(genericLayout),
+//        afterRender: function(){
+//          $('#resource_content').html(form.render().el);
+//          form.$el.append([
+//            '<button type="submit" class="btn btn-default btn-xs" ',
+//            'style="width: 3em;">ok</input>',
+//          ].join(''));
+//          
+//          var helpLink = $('<a >&nbsp;?</a>');
+//          form.$el.find('[key="form-group-well_search"]').find('label').append(helpLink);
+//          helpLink.click(function(e){
+//            e.preventDefault();
+//            var bodyMessage = [
+//              'By plate number range, e.g.:',
+//              '1000',
+//              '1000-2000 A',
+//              'B 3000-4000',
+//              '5000-6000 A,B,C     ',
+//              '9000,2000,3000 5000-4000 A,"b-c",D',
+//            ];
+//            appModel.showModalMessage({
+//              title: 'Search for plate ranges using patterns',
+//              body: bodyMessage.join('<br/>')
+//            });
+//          });
+//          form.$el.find('[ type="submit" ]').click(function(e){
+//            e.preventDefault();
+//            var errors = form.commit({ validate: true }); 
+//            if(!_.isEmpty(errors)){
+//              form.$el.find('#well_search').addClass("has-error");
+//              return;
+//            }else{
+//              form.$el.find('#well_search').removeClass("has-error");
+//            }
+//            
+//            var search_value = form.getValue('well_search');
+//            console.log('search_value', search_value);
+//            search_value = search_value.split(/\n+/);
+//            console.log('search_value', search_value);
+//            
+//            
+//            var url = [self.model.resource.apiUri,self.model.key].join('/');
+//            
+//            function submit(override){
+//              if (! _.isUndefined(override)){
+//                url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
+//              }
+//              data = { 'screener_cherry_picks': search_value };
+//              var headers = {}; // can be used to send a comment
+//              $.ajax({
+//                url: url,     
+//                cache: false,
+//                contentType: 'application/json', 
+//                processData: false,
+//                dataType: 'json', // what is expected back from the server
+//                data: JSON.stringify(data),
+//                type: 'PATCH',
+//                headers: headers
+//              }).done(function(data, textStatus, jqXHR){
+//                console.log('success', data);
+//                appModel.showConnectionResult(data, {
+//                  title: 'Create Screener Cherry Picks'
+//                });
+//                self.model.fetch({ reset: true }).done(function(){
+//                  self.uriStack = ['screenercherrypicks'];
+//                  // remove the child view before calling render, to prevent
+//                  // it from being rendered twice, and calling afterRender twice
+//                  self.removeView('#tab_container');
+//                  self.render();
+//                });
+//              }).fail(function(jqXHR, textStatus, errorThrown) { 
+//                console.log('errors', arguments);
+//                
+//                var jsonError = _.result(jqXHR, 'responseJSON');
+//                if (!_.isUndefined(jsonError)){
+//                  var error = _.result(jsonError, 'errors');
+//                  var overrideFlag = _.result(error,appModel.API_PARAM_OVERRIDE);
+//                  var errorMsg = _.result(error, 'screener_cherry_picks'); 
+//                  var librariesToOverride = _.result(error, 'Libraries');
+//                  if (!_.isUndefined(librariesToOverride)){
+//                    errorMsg += '<br/>Libraries:<br/>';
+//                    errorMsg += librariesToOverride.join('<br/>');
+//                  }
+//                  if (!_.isUndefined(overrideFlag)){
+//                    appModel.showModal({
+//                      title: 'Override Required',
+//                      body: errorMsg,
+//                      okText: 'Confirm Override',
+//                      ok: function() {
+//                        var override = true;
+//                        submit(override);
+//                      },
+//                      cancel: function() {
+//                        // nop
+//                      }
+//                    });
+//                  } else {
+//                    appModel.jqXHRfail.apply(this,arguments); 
+//                  }
+//                } else {
+//                  appModel.jqXHRfail.apply(this,arguments); 
+//                }
+//              });
+//            };
+//            
+//            submit();
+//          });
+//        }
+//      });
+//      var view = new View();
+//
+//    
+//    
+//    }, //_addPlateRangeDialog
+    
+    // TODO: 20170412 - rework this to use the plate search functionality:
+    // see libraryscreening.js
     _addPlateRangeDialog: function(
         plate_collection, libraryOptions, nested_library_plate_pattern, for_screening){
       
@@ -302,7 +519,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         
       };
       $(this).queue([appModel.getLibraries,initfun]);
-    } //_addPlateRangeDialog
+    } //_addPlateRangeDialogOld
   };
   
   return PlateRangeTablePrototype;

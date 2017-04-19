@@ -312,6 +312,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.consumedStack.push(searchID);
       search_data = appModel.getSearch(searchID);
       
+      // NOTE: 20170412 - API client search data is sent as "raw_search_data"; 
+      // - not structured and parsed
+      // -- supported for the well and the librarycopyplate (and library screening)
+      // resources.
+      // - the API will also support parsed "search_data"; which is in the 
+      // form [dict1,dict2,dict3...]; where each dictN is a hash of valid 
+      // field name search specifiers (each dict specifies an AND clause, and 
+      // each dict is OR'd). See appModel.createCommentTable for an example.
+      
       if(_.isUndefined(search_data) || _.isEmpty(search_data)){
         var msg = 'Content List search requires a "search_data:'
           +searchID +'" in current browser state';
@@ -319,16 +328,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         appModel.error(msg);
         return;
       }
+      
+      var search_data_key = 'raw_search_data';
+      var resources_supporting_raw_search = ['well','reagent','librarycopyplate'];
+        
+      if (!_.contains(resources_supporting_raw_search,resource.key)){
+        throw "search data not supported for resource: " + resource.key + 
+          ', must be one of: ' + resources_supporting_raw_search.join(',');
+      }
+      
       url = resource.apiUri + '/search/' + searchID;
       var Collection = Iccbl.MyCollection.extend({
         url: url,
         fetch: function(options){
           var options = options || {};
           // Encode for the post_data arg; post data elements are sent 
-          // as urlencoded values via a POST form for simplicity
-          options.data = _.extend(
-            { search_data: JSON.stringify(search_data) }, 
-            options.data);
+          // as urlencoded values via a POST form
+          options.data = _.extend({}, options.data);
+          // NOTE: for future implementation; use JSON.stringify if sending the
+          // structured "search_data" instead of "raw_search_data"
+          //options.data[search_data_key] = JSON.stringify(search_data);
+          options.data[search_data_key] = search_data;
           options.type = 'POST';
           return Iccbl.MyCollection.prototype.fetch.call(this, options);
         }
@@ -342,7 +362,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         // Special button to modifiy the reagent search
         // TODO: implement this for other searches, if search_data is complex/large
-        if (resource.key == 'reagent'){
+        if (resource.key == 'reagent' || resource.key == 'librarycopyplate'){
           var $modifySearch = $([
             '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="modify_search_button" ',
@@ -352,7 +372,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           extraControls.push($modifySearch);
           $modifySearch.click(function(e){
             e.preventDefault();
-            self.showReagentSearch(resource, search_data);
+            self.showSearch(resource, search_data);
           });
         }
         
@@ -391,10 +411,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     /** 
      * Show/modify the reagent search list view 
      **/
-    showReagentSearch: function(resource, search_data) {
+    showSearch: function(resource, search_data) {
       var schema = {
         search_data: {
-          title: 'Well Search',
+          title: 'Search Data',
           key: 'search_data',
           type: Backbone.Form.editors.TextArea.extend({
               initialize: function() {

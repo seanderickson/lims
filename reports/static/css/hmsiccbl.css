@@ -183,6 +183,10 @@ div.backgrid-paginator {
   background-color: rgba(0, 255, 37, 0.33);
 }
 
+.backgrid .delete-cell {
+  text-align: center;
+}
+
 /** wellselector **/
 
 .wellselector thead th,
@@ -285,7 +289,8 @@ dl dd {
 }
 
 .form-horizontal .control-label{
-  padding-top: 7px; 
+  padding-top: 0px; 
+  padding-bottom: 7px; 
 }
 .form-horizontal *{
 	min-height: 0px; 
@@ -436,3 +441,27 @@ td.text-wrap-cell {
   white-space: normal;
   font-family: sans-serif;
 }
+
+/** scrollable table (fixed headers) attempt **/
+/* .backgrid table { */
+/* border-collapse: collapse; */
+/* } */
+
+/* .backgrid th, td { */
+/* border: 1px solid; */
+/* padding: .3vw; */
+/* width: 12.6vw; */
+/* text-align: center; */
+/* font-size: 2vw; */
+/* } */
+
+/* .backgrid thead, tfoot, tbody { */
+/* display: block;  */
+/* } */
+
+/* .backgrid tbody {  */
+/* overflow-y: scroll;  */
+/* max-height: 80vh; */
+/* } */
+
+

@@ -18,12 +18,21 @@ define([
       
       initialize: function(args) {
         this.listenTo(appModel, 'change:messages', this.setMessages);
+//
+//        // Pre-fetch options for the search_box
+//        $(this).queue([
+//           appModel.getScreenOptions,
+//           appModel.getUserOptions,
+//           appModel.getLibraryOptions]);
+
+        
         _.bindAll(this,'setMessages');
       },
       
       views: {
         "#menu": new MenuView(),
         "#container": new ContentView({model: appModel, property: 'uriStack'}),
+        "#search_box": new SearchView()
       },
       
       setMessages: function() {
@@ -39,9 +48,9 @@ define([
       afterRender: function() {
         var self = this;
         function postRender() {
-          self.searchView = new SearchView(),
-          Backbone.Layout.setupView(self.searchView);
-          self.setView("#search_box", self.searchView ).render();
+//          self.searchView = new SearchView(),
+//          Backbone.Layout.setupView(self.searchView);
+//          self.setView("#search_box", self.searchView ).render();
           
           if (appModel.hasPermission('screen','write')){
             var addScreenButton = $([
@@ -83,13 +92,15 @@ define([
             $('#additional_buttons_box').append(addLibraryButton);
           }
           
-        }
-        // Pre-fetch options for the search_box
-        $(this).queue([
-           appModel.getScreenOptions,
-           appModel.getUserOptions,
-           appModel.getLibraryOptions,
-           postRender]);
+        };
+        
+        postRender();
+//        // Pre-fetch options for the search_box
+//        $(this).queue([
+//           appModel.getScreenOptions,
+//           appModel.getUserOptions,
+//           appModel.getLibraryOptions,
+//           postRender]);
         
       },
       

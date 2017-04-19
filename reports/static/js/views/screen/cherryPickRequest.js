@@ -2078,10 +2078,10 @@ define([
             e.preventDefault();
             var errors = form.commit({ validate: true }); 
             if(!_.isEmpty(errors)){
-              form.$el.find('#well_search').addClass(self.errorClass);
+              form.$el.find('#well_search').addClass("has-error");
               return;
             }else{
-              form.$el.find('#well_search').removeClass(self.errorClass);
+              form.$el.find('#well_search').removeClass("has-error");
             }
             
             var search_value = form.getValue('well_search');
@@ -2096,7 +2096,7 @@ define([
               if (! _.isUndefined(override)){
                 url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
               }
-              data = { 'screener_cherry_picks': search_value };
+              var data = { 'screener_cherry_picks': search_value };
               var headers = {}; // can be used to send a comment
               $.ajax({
                 url: url,     
@@ -2104,7 +2104,9 @@ define([
                 contentType: 'application/json', 
                 processData: false,
                 dataType: 'json', // what is expected back from the server
-                data: JSON.stringify(data),
+                // Note: json not needed for unstructured search data
+                //data: JSON.stringify(data), 
+                data: data,
                 type: 'PATCH',
                 headers: headers
               }).done(function(data, textStatus, jqXHR){

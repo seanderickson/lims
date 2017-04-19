@@ -226,6 +226,7 @@ define([
     remove: function() {
       this.nestedForm.remove();
       Backbone.View.prototype.remove.call(this);
+      // TODO: check remove all listeners
     },
   
     _observeFormEvents: function() {
@@ -939,7 +940,7 @@ define([
       
       if (!_.isUndefined(fi.regex) && !_.isEmpty(fi.regex)) {
         validator = { type: 'regexp', regexp: new RegExp(fi.regex) };
-        console.log('create RegExp: ', fi.regex, validator );
+        console.log('create RegExp: ', fi.key, fi.regex, validator );
         if (!_.isUndefined(fi.validation_message) && !_.isEmpty(fi.validation_message)) {
           validator.message = fi.validation_message;
           // TODO: rework, if req'd, to use tokenized strings (will need 
@@ -1174,15 +1175,26 @@ define([
         var errors = _.result(jqXHR.responseJSON,'errors',null);
         if (errors) {
           console.log('errors in response:', errors);
+          var non_field_errors = {};
           _.each(_.keys(errors), function(key) {
             var error = errors[key];
             if (_.has(self.fields, key)) {
+              if (_.isString(error)){
+                error = error.replace(/(\r\n|\n|\r)/gm,"<br/>\n") 
+              }else if (_.isArray(error)){
+                error = error.join('<br/>\n');
+              }
               self.fields[key].setError(error);
+              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              console.log('added error for: "', key, '", val: "', 
+                self.fields[key].getValue(), '"');
+            }else{
+              non_field_errors[key] = error;
             }
-            $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-            console.log('added error for: "', key, '", val: "', 
-              self.fields[key].getValue(), '"');
           });
+          if (!_.isEmpty(non_field_errors)){
+            appModel.showJsonMessages(non_field_errors);
+          }
           return;
         }
       }

@@ -8,7 +8,7 @@ define([
   'models/app_state',
   'views/generic_detail_stickit', 
   'views/list2',
-  'views/screen/libraryScreening2',
+  'views/screen/libraryScreening',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView,
             ListView, LibraryScreeningView, TabbedController) {
@@ -296,6 +296,15 @@ define([
           Backbone.Layout.setupView(view);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
+          
+          var title = model.resource.title;
+          if (!model.isNew()){
+            title += ': ' + Iccbl.getTitleFromTitleAttribute(model, model.resource);
+          }
+          $title = self.$el.find('#tab_container-title');
+          $title.html(title);
+          $title.show();
+          
         });        
         return;
       } else {
@@ -328,6 +337,9 @@ define([
 //        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         this.setView("#tab_container", view ).render();
+        $title = self.$el.find('#tab_container-title');
+        $title.empty();
+        $title.hide();
       }
     },
 

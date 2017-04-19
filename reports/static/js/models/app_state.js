@@ -1109,6 +1109,7 @@ define([
     jqXHRfail: function(jqXHR, textStatus, errorThrown){
       console.log('jqXHRfail', textStatus, errorThrown);
       var msg = textStatus || 'Error';
+      msg = msg.charAt(0).toUpperCase() + msg.slice(1);
       if (errorThrown){
         msg += ': ' + errorThrown; 
       }
@@ -1210,18 +1211,20 @@ define([
         title = _.keys(jsonObj)[0];
         jsonObj = jsonObj[title];
       }
-      
+      var buttons_on_top = false;
       var msg_rows = this.dict_to_rows(jsonObj);
       console.log('msg_rows: ', msg_rows);
       var bodyMsg = msg_rows;
       if (_.isArray(msg_rows) && msg_rows.length > 1){
+        if (msg_rows.length > 40){
+          buttons_on_top = true;
+        }
         bodyMsg = _.map(msg_rows, function(msg_row){
           return msg_row.join(': ');
         }).join('<br>');
       }
-      
       Iccbl.appModel.showModalMessage({
-        buttons_on_top: true,
+        buttons_on_top: buttons_on_top,
         body: bodyMsg,
         title: title  
       });

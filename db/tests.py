@@ -32,7 +32,9 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED, \
     API_MSG_LCPS_MUST_BE_DELETED, API_MSG_CPR_PLATES_PLATED, \
     API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED,\
-    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED
+    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED,\
+    API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED,\
+    LibraryCopyPlateResource
 from db.api import API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE
 from db.api import VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
@@ -60,6 +62,8 @@ from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
 import unittest
+from __builtin__ import False
+import decimal
 
 
 logger = logging.getLogger(__name__)
@@ -411,6 +415,49 @@ class LibraryResource(DBResourceTestCase):
         PlateLocation.objects.all().delete()
         ApiLog.objects.all().delete()
     
+    def test_a_plate_search_parser(self):
+        
+        
+        test_search_1 = '''
+        1000
+        1000-2000 A
+        B 3000-4000
+        5000-6000 A,B,C     
+        9000,2000,3000 5000-4000 A,"b-c",D
+        '''
+        
+        # NOTE that sublists should also be sorted in ascending order,
+        # so [A,'b-c',D] becomes [A,D,b-c] (sort capital letters first)
+        expected_parsed = [
+            { 'plate': 1000 },
+            { 'plate_range': [1000,2000], 'copy': 'A' },
+            { 'plate_range': [3000,4000], 'copy': 'B' },
+            { 'plate_range': [5000,6000], 'copy': ['A','B','C'] },
+            { 'plate': [2000,3000,9000], 'plate_range': [4000,5000], 
+                'copy': ['A','D', 'b-c'] },
+        ]
+        
+        parsed_searches = LibraryCopyPlateResource.parse_plate_copy_search(test_search_1)
+        
+        # extract single values from lists for convenience
+        for parsed_search in parsed_searches:
+            for k,v in parsed_search.items():
+                if len(v)==1:
+                    parsed_search[k] = v[0]
+        
+        not_found = []
+        for expected_search in expected_parsed:
+            found = False
+            for parsed_search in parsed_searches:
+                if parsed_search == expected_search:
+                    found = True
+                    break
+            if found is not True:
+                not_found.append(expected_search)
+        
+        self.assertTrue(len(not_found)==0,
+            'expected_searches %r not found in %r' % (not_found, parsed_searches))
+        
     def test1_create_library(self):
 
         logger.info('test1_create_library ...')
@@ -2974,6 +3021,385 @@ class ScreenResource(DBResourceTestCase):
                     % (key, value, screen_item[key]))
         logger.debug('screen created with facility id: %r', screen_item)
 
+    def test2a_create_library_screening_cherry_picked_copies(self):
+        logger.info('test2a_create_library_screening_cherry_picked_copies...')
+                
+        logger.info('A. Set up dependencies...')
+        logger.info('create users...')
+        self.screening_user = self.create_screensaveruser({ 
+            'username': 'screening1'
+        })
+        logger.info('create libraries...')
+        library1 = self.create_library({
+            'start_plate': 1000, 
+            'end_plate': 1005,
+            'screen_type': 'small_molecule' })
+
+        library2 = self.create_library({
+            'start_plate': 2000, 
+            'end_plate': 2040,
+            'screen_type': 'small_molecule' })
+
+        logger.info('set some experimental wells...')
+        plate = 1000
+        experimental_well_count = 20
+        input_well_data = [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental',
+                molar_concentration='0.001') 
+            for i in range(0,experimental_well_count)]
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        logger.info('create library copy...')
+        library_copy1_input = {
+            'library_short_name': library1['short_name'],
+            'copy_name': "A",
+            'usage_type': "library_screening_plates",
+            'initial_plate_well_volume': '0.000010',
+            'initial_plate_status': 'available'
+        }  
+        resource_uri = BASE_URI_DB + '/librarycopy'
+        resource_test_uri = '/'.join([
+            resource_uri,library_copy1_input['library_short_name'],
+            library_copy1_input['copy_name']])
+        library_copy1 = self._create_resource(
+            library_copy1_input, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume','initial_plate_status'])
+        logger.info('created: %r', library_copy1)
+ 
+        library_copy2_input = library_copy1_input.copy()
+        library_copy2_input['library_short_name'] = library2['short_name']
+        resource_test_uri = '/'.join([
+            resource_uri,library_copy2_input['library_short_name'],
+            library_copy2_input['copy_name']])
+        library_copy2 = self._create_resource(
+            library_copy2_input, resource_uri, resource_test_uri,
+            excludes=['initial_plate_well_volume','initial_plate_status'])
+        logger.info('created: %r', library_copy2)
+        
+        logger.info('create screen...')        
+        screen = self.create_screen({
+            'screen_type': 'small_molecule'
+            })
+
+        logger.info('1. Modify copy-wells (to be used for screening)')
+
+        plate_to_modify = 1000
+        plate_size = 384
+        logger.info('retrieve the copy_wells for plate: %d ...', plate_to_modify)
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library',library1['short_name'],'copy',
+            library_copy1_input['copy_name'],'copywell'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        data_for_get['plate_number__eq'] = plate_to_modify
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        copywell_data = new_obj[API_RESULT_DATA]
+        expected_wells = plate_size;
+        logger.info('returned copywell: %r', copywell_data[0])
+        logger.info('returned copywell: %r', copywell_data[-1])
+        self.assertEqual(len(copywell_data),expected_wells)
+        
+        # Only modify one well here
+        copywell_input = copywell_data[0]
+        copywell_id = copywell_input['copywell_id']
+        logger.info('copywell input: %r', copywell_input)
+        copywell_plate = '%s/%s' % (
+            copywell_input['copy_name'],str(copywell_input['plate_number']))
+        logger.info('1.A Patch the copy well: %r', copywell_input)
+        
+        original_volume = float(copywell_input['volume'])
+        volume_adjustment = 0.000004
+        copywell_input['volume'] = round(original_volume-volume_adjustment, 8)
+        
+        patch_uri = '/'.join([resource_uri,copywell_input['well_id']]) 
+        resp = self.api_client.patch(
+            patch_uri, format='json', data=copywell_input, 
+            authentication=self.get_credentials(), **data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patch_response = self.deserialize(resp)
+        
+        new_copywell = patch_response[API_RESULT_DATA]
+        self.assertEqual(
+            volume_adjustment, float(new_copywell['consumed_volume']))
+        self.assertEqual(
+            float(copywell_input['volume']), float(new_copywell['volume']))
+
+        logger.info('2. Create valid library screening input...')
+
+        lps_format = \
+            '{library_short_name}:{copy_name}:{{start_plate}}-{{end_plate}}'
+        plate_range1 = lps_format.format(**library_copy1).format(**library1)
+        plate_range2 = lps_format.format(**library_copy2).format(
+                start_plate=library2['start_plate'],
+                end_plate=int(library2['start_plate']+10))
+        library_plates_screened = [ plate_range1, plate_range2 ]
+        volume_to_transfer = "0.000006000"
+        library_screening_input = {
+            'screen_facility_id': screen['facility_id'],
+            'date_of_activity': "2008-01-18",
+            # REMOVED: 20170412 per JAS/KR
+            # 'assay_protocol':'test assay protocol',
+            # 'assay_protocol_type': '',
+            'is_for_external_library_plates': False,
+            'library_plates_screened': library_plates_screened,
+            'number_of_replicates': 2,
+            'performed_by_username': self.admin_user['username'],
+            'volume_transferred_per_well_from_library_plates': volume_to_transfer,
+            'volume_transferred_per_well_to_assay_plates': "0.000003000"
+        }
+        resource_uri = BASE_URI_DB + '/libraryscreening'
+        resource_test_uri = BASE_URI_DB + '/libraryscreening'
+        data_for_get = {
+            'screen_facility_id__eq': screen['facility_id']
+        }
+
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            data=library_screening_input, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 1.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+        logger.info('resp: %r', resp)
+        
+        self.assertTrue(API_RESULT_META in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        
+        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        expected_result_meta = {
+            API_MSG_SCREENING_PLATES_UPDATED: 17,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: 17, 
+            API_MSG_SCREENING_DELETED_PLATE_COUNT: 0,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 0,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 17,
+            API_MSG_COPYWELLS_ALLOCATED: { 
+                copywell_plate: 1 }
+        }
+        for k,v in expected_result_meta.items():
+            self.assertEqual(v,actual_result_meta[k], 
+                'k: %r, expected: %r, actual: %r' % (k, v, actual_result_meta))
+        
+        self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
+        library_screening_output = resp[API_RESULT_DATA][0]
+        
+        # 1.b Inspect the returned library screening
+        for k,v in library_screening_input.items():
+            self.assertEqual(v, library_screening_output[k])
+        
+        # 1.c check the copywell separately
+        cw_resource_uri = '/'.join([
+            BASE_URI_DB,'library',library1['short_name'],'copy',
+            library_copy1_input['copy_name'],'copywell'])
+        cw_data_for_get ={ 'limit': 0 }        
+        cw_data_for_get.setdefault('includes', ['*'])
+        cw_data_for_get['well_id__eq'] = copywell_input['well_id']
+        cw_data_for_get['copy_name__eq'] = copywell_input['copy_name']
+        resp = self.api_client.get(
+            cw_resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data=cw_data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        new_copywell_data = new_obj[API_RESULT_DATA]
+        
+        self.assertEqual(len(new_copywell_data),1,
+            'copywell_data: %r' % new_copywell_data)
+        new_copywell_data = new_copywell_data[0]
+        expected_volume = round(
+            Decimal(copywell_input['volume']) - Decimal(volume_to_transfer), 8)
+        self.assertEqual(
+            Decimal(new_copywell_data['volume']),expected_volume,
+            'copywell_data: vol expected %r, found: %r' % (
+                expected_volume, Decimal(new_copywell_data['volume'])) )
+
+        # 1.D Check logs (17 plate, 1 copywell)
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'ref_resource_name': 'libraryscreening', 
+            'key': library_screening_output['activity_id'],
+            'api_action': API_ACTION_CREATE
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        logger.debug('logs: %d', len(apilogs))
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('apilog: %r', apilog)
+        
+        expected_child_logs = 18 #  17 plate log, 1 copywell log
+        self.assertTrue(apilog['child_logs'], expected_child_logs)
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'parent_log_id': apilog['id']
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        self.assertEqual(
+            len(apilogs),expected_child_logs, 
+            'wrong number of child logs returned: %d' % len(apilogs))
+        
+        for apilog in apilogs:
+            logger.info('apilog: %r, %r, %r', 
+                apilog['uri'],apilog['ref_resource_name'],apilog['key'])
+            if apilog['ref_resource_name'] == 'librarycopyplate':
+                logger.info('lcp log: %r', apilog)
+                self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
+                self.assertTrue('screening_count' in apilog['diff_keys'])
+            elif apilog['ref_resource_name'] == 'copywell':
+                logger.info('copywell log: %r', apilog)
+                self.assertEqual(copywell_id, apilog['key'])
+                self.assertTrue('volume' in apilog['diff_keys'])
+            else:
+                self.fail('unknown log: %r', apilog)
+
+        # 2. deallocate (remove) the screening plate with the copy and check  
+        # copywell volume has been adjusted
+        plate_range1 = lps_format.format(**library_copy1).format(
+            start_plate=library1['start_plate']+1, end_plate=library1['end_plate'])
+        plate_removed_key = '/'.join([ library1['short_name'],
+            library_copy1['copy_name'], str(library1['start_plate']) ])
+        plate_range2 = lps_format.format(**library_copy2).format(
+                start_plate=library2['start_plate'],
+                end_plate=int(library2['start_plate']+10))
+        library_plates_screened = [ plate_range1, plate_range2 ]
+        new_library_screening_input = library_screening_output.copy()
+        new_library_screening_input['library_plates_screened'] = \
+            library_plates_screened
+        resource_uri = BASE_URI_DB + '/libraryscreening/' \
+            + str(new_library_screening_input['activity_id'])
+
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data=new_library_screening_input, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 2.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+        logger.info('resp: %r', resp)
+        
+        self.assertTrue(API_RESULT_META in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        
+        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        expected_result_meta = {
+            API_MSG_SCREENING_PLATES_UPDATED: 1,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: 0, 
+            API_MSG_SCREENING_DELETED_PLATE_COUNT: 1,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 16,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 16,
+            API_MSG_COPYWELLS_DEALLOCATED: { 
+                copywell_plate: 1 }
+        }
+        for k,v in expected_result_meta.items():
+            self.assertEqual(v,actual_result_meta[k], 
+                'k: %r, expected: %r, actual: %r' % (k, v, actual_result_meta))
+        
+        self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
+        library_screening_output = resp[API_RESULT_DATA][0]
+        
+        # 2.c check the copywell separately
+        resp = self.api_client.get(
+            cw_resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data=cw_data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        copywell_data = new_obj[API_RESULT_DATA]
+        
+        self.assertEqual(len(copywell_data),1,
+            'copywell_data: %r' % copywell_data)
+        deallocated_copywell_data = copywell_data[0]
+        expected_volume = (
+            Decimal(new_copywell_data['volume']) + Decimal(volume_to_transfer))
+        self.assertEqual(
+            Decimal(deallocated_copywell_data['volume']),expected_volume,
+            'copywell_data: vol expected %r, found: %r' % (
+                expected_volume, Decimal(deallocated_copywell_data['volume'])))
+        
+        # 2.D Check logs (1 plate, 1 copywell)
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'ref_resource_name': 'libraryscreening', 
+            'key': library_screening_output['activity_id'],
+            'api_action': API_ACTION_PATCH
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        logger.debug('logs: %d', len(apilogs))
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('apilog: %r', apilog)
+        
+        self.assertTrue('library_plates_screened_count' in apilog['diffs'])
+        self.assertTrue( '["17", "16"]' in apilog['diffs'])
+
+        expected_child_logs = 2 #  1 plate log, 1 copywell log
+        self.assertTrue(apilog['child_logs'], expected_child_logs)
+        data_for_get={ 
+            'limit': 0, 
+            'includes': ['*'],
+            'parent_log_id': apilog['id']
+        }
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get=data_for_get )
+        self.assertEqual(
+            len(apilogs),expected_child_logs, 
+            'wrong number of child logs returned: %d: %r' 
+            % (len(apilogs), apilogs))
+        
+        for apilog in apilogs:
+            logger.info('apilog: %r, %r, %r', 
+                apilog['uri'],apilog['ref_resource_name'],apilog['key'])
+            if apilog['ref_resource_name'] == 'librarycopyplate':
+                logger.info('lcp log: %r', apilog)
+                self.assertEqual(plate_removed_key, apilog['key'])
+            elif apilog['ref_resource_name'] == 'copywell':
+                self.assertEqual(copywell_id, apilog['key'])
+                logger.info('copywell log: %r', apilog)
+            else:
+                self.fail('unknown log: %r', apilog)
+                
+                
     def test2_create_library_screening(self):
 
         logger.info('test2_create_library_screening...')
@@ -3056,14 +3482,15 @@ class ScreenResource(DBResourceTestCase):
         library_screening_input = {
             'screen_facility_id': screen['facility_id'],
             'date_of_activity': "2008-01-18",
-            'assay_protocol':'test assay protocol',
-            'assay_protocol_type': '',
+            # REMOVED: 20170412 per JAS/KR
+            # 'assay_protocol':'test assay protocol',
+            # 'assay_protocol_type': '',
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 2,
             'performed_by_username': self.admin_user['username'],
             'volume_transferred_per_well_from_library_plates': "0.000006000",
-            'volume_transferred_per_well_to_assay_plates': "0.000002000"
+            'volume_transferred_per_well_to_assay_plates': "0.000003000"
         }
         resource_uri = BASE_URI_DB + '/libraryscreening'
         resource_test_uri = BASE_URI_DB + '/libraryscreening'
@@ -3071,8 +3498,7 @@ class ScreenResource(DBResourceTestCase):
             'screen_facility_id__eq': screen['facility_id']
         }
         
-        # First try creating (failed) library_screening with invalid inputs
-        # 1. test validations
+        logger.info('1. Creating (failed) library_screening with invalid inputs...')
         key = 'screen_facility_id' 
         msg = 'input missing a %r should fail' % key
         logger.info('test %r', msg)
@@ -3086,8 +3512,8 @@ class ScreenResource(DBResourceTestCase):
             'test: %s, not in errors: %r' %(msg,errors))
         
         key = 'library_plates_screened' 
-        # 2. create a library_plate_range with invalid library name:
-        # even though the plate range is correct, this should fail,
+        logger.info('2. create a library_plate_range with invalid library name')
+        # Even though the plate range is correct, this should fail,
         # and the transaction should cancel the creation of the libraryscreening
         value = [ lps_format.format(
             library_short_name='**',copy_name='A').format(**library1)]
@@ -3100,8 +3526,8 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(resp.status_code==400, msg)
         self.assertTrue(find_in_dict(key, errors), 
             'Error: response error not found: %r, obj: %r' %(key, errors))
-
-        # 3. Invalid plate range
+        
+        logger.info('3. test invalid plate range')
         key = 'library_plates_screened' 
         value = [ lps_format.format(**library_copy1).format(**{
             'start_plate': library1['start_plate'],
@@ -3115,7 +3541,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        # 4. Overlapping plate range
+        logger.info('4. test overlapping plate range...')
         key = 'library_plates_screened' 
         value = [ 
             lps_format.format(**library_copy1).format(**{
@@ -3135,7 +3561,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        # 5. Finally, create valid input
+        logger.info('5. Create valid library screening input...')
         logger.info('Patch batch_edit: cred: %r', self.username)
         resp = self.api_client.post(
             resource_uri,format='json', 
@@ -3168,9 +3594,6 @@ class ScreenResource(DBResourceTestCase):
         library_screening_output = resp[API_RESULT_DATA][0]
         
         # 5.b Inspect the returned library screening
-        logger.info('TODO: validate the library screening returned: %r', 
-            library_screening_output)
-        
         for k,v in library_screening_input.items():
             self.assertEqual(v, library_screening_output[k])
 
@@ -3277,30 +3700,33 @@ class ScreenResource(DBResourceTestCase):
                 'volume_transferred_per_well_from_library_plates']))
         self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
         diffs = json.loads(apilog['diffs'])
-        logger.info('diffs: %r', diffs)
+        logger.debug('diffs: %r', diffs)
         self.assertEqual(
             expected_remaining_volume, 
             Decimal(diffs['remaining_well_volume'][1]))
         
-        # 7. Test - add a plate_range
+        logger.info('7. Test - add a plate_range...')
         library_screening_input2 = { 
             'activity_id': library_screening_output['activity_id'],
             'library_plates_screened': 
                 library_screening_output['library_plates_screened'] 
             }
+        
         # add 6 more plates
         added_plate_range_start = library2['start_plate']+15
         added_plate_range_end = library2['start_plate']+20
         added_plate_range = lps_format.format(**library_copy2).format(
                 start_plate=added_plate_range_start,
                 end_plate=added_plate_range_end )
+        logger.info('add plate range: %r', added_plate_range)
         library_screening_input2['library_plates_screened'].append(
             added_plate_range)
-        logger.debug('input: %r', library_screening_input2)
+        logger.info('add plate range input: %r', library_screening_input2)
         resp = self.api_client.patch(
             resource_uri, 
             format='json', data=library_screening_input2, 
             authentication=self.get_credentials())
+        
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
@@ -3329,7 +3755,8 @@ class ScreenResource(DBResourceTestCase):
             self.assertEqual(v, library_screening_output2[k])
         
         # 7.c Inspect PATCH logs after adding a plate range
-
+        logger.info('new plate ranges: %r', 
+            library_screening_output2['library_plates_screened'])
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
@@ -3366,7 +3793,7 @@ class ScreenResource(DBResourceTestCase):
             'wrong number of child logs returned: %d: %r' 
             % (len(apilogs), apilogs))
         apilog = apilogs[0]
-        logger.info('apilog: %r', apilog)
+        logger.debug('apilog: %r', apilog)
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
         expected_remaining_volume = (
             Decimal(library_copy1_input['initial_plate_well_volume']) - 
@@ -3390,8 +3817,9 @@ class ScreenResource(DBResourceTestCase):
             expected_remaining_volume, 
             Decimal(modified_plate['remaining_well_volume']))
         
-        # 8. Test - delete the first plate_range (6 plates)
-        
+        logger.info('8. Test - delete the first plate_range (6 plates)..')
+        logger.info('delete the plate: %r', 
+            library_screening_output2['library_plates_screened'][0])
         plate_range_to_delete = \
             library_screening_output2['library_plates_screened'][0]
         library_screening_input3 = { 
@@ -3459,7 +3887,6 @@ class ScreenResource(DBResourceTestCase):
                 'initial well volume expected: %r, actual: %r' % (
                     expected_remaining_volume, plate_data))
         
-        
         # 9. test valid input with start_plate==end_plate (no end plate)
         
         logger.info('test valid single plate input...')
@@ -3481,6 +3908,12 @@ class ScreenResource(DBResourceTestCase):
 
         library_screening_input4 = library_screening_input.copy()
         library_screening_input4['date_of_activity'] = '2016-08-01'
+        # Note: 4 uL remaining after previous library screening
+        library_screening_input4['volume_transferred_per_well_from_library_plates'] = \
+            '0.000002000'
+        library_screening_input4['volume_transferred_per_well_to_assay_plates'] = \
+            '0.000002000'
+        library_screening_input4['number_of_replicates'] = 1
         library_screening_input4['library_plates_screened'] =  \
             library_plates_screened
         resp = self.api_client.post(

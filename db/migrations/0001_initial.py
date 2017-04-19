@@ -1787,4 +1787,8 @@ class Migration(migrations.Migration):
             name='library_screening',
             field=models.ForeignKey(to='db.LibraryScreening', null=True),
         ),
+        migrations.AlterUniqueTogether(
+            name='assayplate',
+            unique_together=set([('library_screening', 'plate_number', 'replicate_ordinal')]),
+        ),
     ]

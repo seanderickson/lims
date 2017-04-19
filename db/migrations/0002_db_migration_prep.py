@@ -515,6 +515,20 @@ class Migration(migrations.Migration):
             name='copywell',
             unique_together=set([('copy', 'plate', 'well')]),
         ),
+        migrations.AlterUniqueTogether(
+            name='assayplate',
+            unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
+        ),
+        migrations.AlterField(
+            model_name='assayplate',
+            name='plate_number',
+            field=models.IntegerField(db_index=True),
+        ),
+        migrations.AlterField(
+            model_name='assayplate',
+            name='replicate_ordinal',
+            field=models.IntegerField(db_index=True),
+        ),
 
         #####
         

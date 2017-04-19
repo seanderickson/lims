@@ -234,22 +234,25 @@ class EquipmentUsed(models.Model):
                self.lab_activity.activity_id ))
 
 # Note: Assay Plate may be deprecated in the future:
-# Original purpose: correlate screening data (plates) to data loading plates
+# Original purpose: 
+# 1. correlate screening data (plates) to data loading plates
 # - data loading plates have been removed
 # - assay plates are not needed to track screening data
+# 2. map library_screening->plate, with ordinal count
 class AssayPlate(models.Model):
     
     assay_plate_id = models.AutoField(primary_key=True)
-    replicate_ordinal = models.IntegerField()
+    replicate_ordinal = models.IntegerField(db_index=True)
     screen = models.ForeignKey('Screen')
     plate = models.ForeignKey('Plate', null=True)
-    plate_number = models.IntegerField()
+    plate_number = models.IntegerField(db_index=True)
     library_screening = models.ForeignKey('LibraryScreening', null=True)
     screen_result_data_loading = \
         models.ForeignKey(AdministrativeActivity, null=True)
 
     class Meta:
         db_table = 'assay_plate'
+        unique_together=(('library_screening','plate','replicate_ordinal'))
 
     def __repr__(self):
         return (
@@ -1496,8 +1499,8 @@ class Copy(models.Model):
         db_table = 'copy'
 
     def __repr__(self):
-        return ('<Copy(library.short_name=%r, name=%r, usage_type=%r)>' 
-            % (self.library.short_name, self.name, self.usage_type))
+        return ('<Copy(library.short_name=%r, name=%r, usage_type=%r, id=%r )>' 
+            % (self.library.short_name, self.name, self.usage_type, self.copy_id))
 
 
 class Plate(models.Model):

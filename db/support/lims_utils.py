@@ -10,6 +10,7 @@ import re
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
 
+QUOTED_WORD_PATTERN = re.compile(r'''(\'.*?\'|\".*?\"|[^\s,;]+)''')
 
 logger = logging.getLogger(__name__)
 

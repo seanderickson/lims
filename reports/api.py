@@ -232,7 +232,7 @@ class SuperUserAuthorization(Authorization):
         return False
     
 
-def compare_dicts(dict1, dict2, excludes=None):
+def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None):
     '''
     @param full (default False) 
     - a full compare shows added keys as well as diff keys
@@ -246,10 +246,13 @@ def compare_dicts(dict1, dict2, excludes=None):
     _excludes = set(['resource_uri'])
     if excludes:
         _excludes = _excludes.union(set(excludes))
-    
-    
+    if exclude_patterns:
+        for exclude_pattern in exclude_patterns:
+            _excludes.update([key for key in dict1.keys() if exclude_pattern in key ])
+            _excludes.update([key for key in dict2.keys() if exclude_pattern in key ])
     original_keys = set(dict1.keys())-_excludes
     updated_keys = set(dict2.keys())-_excludes
+    logger.debug('compare dicts, updated keys: %r', updated_keys)
     
     union_keys = original_keys.union(updated_keys)
     diffs = {}
@@ -499,8 +502,8 @@ class ApiResource(SqlAlchemyResource):
          
         all_params = self._convert_request_to_dict(request)
         all_params.update(kwargs)
- 
         search_data = all_params.get('search_data', None)
+        raw_search_data = all_params.get('raw_search_data', None)
          
         if search_data:
             # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
@@ -510,8 +513,13 @@ class ApiResource(SqlAlchemyResource):
             # cache the search data on the session, to support subsequent requests
             # to download or modify
             request.session[search_ID] = search_data  
-         
-        if not search_data:
+        elif raw_search_data:
+            raw_search_data = urllib.unquote(raw_search_data)
+#             raw_search_data = json.loads(raw_search_data)   
+            # cache the search data on the session, to support subsequent requests
+            # to download or modify
+            request.session[search_ID] = raw_search_data  
+        else:
             if search_ID in request.session:
                 search_data = request.session[search_ID]
             else:
@@ -521,8 +529,9 @@ class ApiResource(SqlAlchemyResource):
                     % (search_ID, self._meta.resource_name))
         
         if DEBUG_SEARCH:
-            logger.info('search_data: %r', search_data)
+            logger.info('search_data: %r, %r', search_data, raw_search_data)
         kwargs['search_data'] = search_data
+        kwargs['raw_search_data'] = raw_search_data
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
  
         response = self.build_list_response(request,**kwargs)
@@ -1346,8 +1355,8 @@ class ApiResource(SqlAlchemyResource):
                 try:
                     if display_options is not None:
                         display_options = display_options.replace(r"'", '"')
-                        logger.info('decoded display_options: %r', display_options)
                         display_options = json.loads(display_options)
+                        logger.debug('decoded display_options: %r', display_options)
                     default_unit = display_options.get('defaultUnit',None)
                     multiplier = display_options.get('multiplier', None)
                     decimals = display_options.get('decimals', None)
@@ -1502,13 +1511,16 @@ class ApiResource(SqlAlchemyResource):
         return log
 
     def log_patch(self, request, prev_dict, new_dict, log=None, 
-            id_attribute=None, excludes=None, **kwargs):
+            id_attribute=None, excludes=None, exclude_patterns=None, **kwargs):
         
-        default_excludes = ['library_plate_comment_array','comment_array']
-        if excludes:
-            excludes = [x for x in set(default_excludes) | set(excludes)]
-        else:
-            excludes = default_excludes
+        default_exclude_patterns = ['comment_array']
+        if exclude_patterns is None:
+            exclude_patterns = default_exclude_patterns
+#         if excludes:
+#             excludes = [x for x in set(default_excludes) | set(excludes)]
+#         else:
+#             excludes = default_excludes
+#         logger.info('log patch, excludes: %r', excludes)
             
         DEBUG_PATCH_LOG = False
         if DEBUG_PATCH_LOG:
@@ -1537,7 +1549,7 @@ class ApiResource(SqlAlchemyResource):
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
         if prev_dict:
-            log.diffs = compare_dicts(prev_dict,new_dict, excludes)
+            log.diffs = compare_dicts(prev_dict,new_dict, excludes,exclude_patterns)
             if not log.diffs:
                 if DEBUG_PATCH_LOG:
                     logger.info('no diffs found: %r, %r' 

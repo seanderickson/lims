@@ -442,6 +442,10 @@ td.text-wrap-cell {
   font-family: sans-serif;
 }
 
+td.dl-title.admin-field {
+ color: maroon;
+}
+
 /** scrollable table (fixed headers) attempt **/
 /* .backgrid table { */
 /* border-collapse: collapse; */

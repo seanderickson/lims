@@ -15,11 +15,12 @@ ordering,fields.field,13,CsvBooleanField
 filtering,fields.field,14,CsvBooleanField
 json_field_type,fields.field,21,
 vocabulary_scope_ref,fields.field,22,fields.CharField
+default,fields.field,25,fields.CharField
+is_restricted,fields.field,12,CsvBooleanField
+is_admin,fields.field,13,CsvBooleanField
+nested_resource,fields.field,14,fields.CharField
+required,fields.field,21,CsvBooleanField
+regex,fields.field,22,fields.CharField
 id,fields.field,99,
 resource_uri,fields.field,99,
 alias,fields.field,99,
-default,fields.field,25,fields.CharField
-is_restricted,fields.field,26,CsvBooleanField
-nested_resource,fields.field,27,fields.CharField
-required,fields.field,28,CsvBooleanField
-regex,fields.field,29,fields.CharField

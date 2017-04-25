@@ -27,7 +27,12 @@ define([
 	    var self = this;
 	    var schema = this.schema = args.schema || this.model.resource;
       var detailKeys = this.detailKeys = args.detailKeys || schema.detailKeys(); 
+      var adminKeys = this.adminKeys = self.model.resource.adminKeys();
+      if (! appModel.hasGroup('readEverythingAdmin')) {
+        detailKeys = this.detailKeys = _.difference(detailKeys, adminKeys);
+      }
       var groupedKeys = this.groupedKeys = schema.groupedKeys(this.detailKeys);
+      
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       var buttons = this.buttons = args.buttons || ['download','history','back','edit'];
@@ -61,6 +66,7 @@ define([
         }
       });
       if (appModel.DEBUG) 
+        // TODO: groupedKeys replaces detailKeys
         console.log('final detailKeys', self.detailKeys, self.groupedKeys);
       this.createBindings();
 	  },
@@ -349,8 +355,8 @@ define([
           delete nestedLists[key];
           self.model.unset(key); // to signal empty
         }
-      }      
-
+      }
+      
       return binding;
 	  },
 	  
@@ -425,9 +431,9 @@ define([
     serialize: function() {
       return {
         'buttons': _.chain(this.buttons), // TODO: buttons from the schema
-//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource),
         'groupedKeys': _.chain(this.groupedKeys),
-        'keys': _.chain(this.detailKeys)
+        'keys': _.chain(this.detailKeys), // TODO: groupedKeys replaces detailKeys
+        'adminKeys': this.adminKeys
       };      
     },    
     

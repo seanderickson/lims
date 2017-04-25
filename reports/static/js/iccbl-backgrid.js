@@ -3802,6 +3802,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   if (_.has(prop, 'backgridCellType')){
     console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
     backgridCellType = prop.backgridCellType;
+    if(!_.isEmpty(cell_options)){
+      cell_options = _.extend({}, cell_options, backgridCellType);
+      backgridCellType = backgridCellType.extend(cell_options);
+    }
   } else {
     if(_.has(typeMap,display_type)){
       if (Iccbl.appModel.DEBUG)
@@ -3815,9 +3819,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if (Iccbl.appModel.DEBUG)
         console.log('no special cell type for', display_type, 'data_type',data_type);
     }
-  }
-  if(!_.isEmpty(cell_options)){
-    backgridCellType = backgridCellType.extend(cell_options);
+    if(!_.isEmpty(cell_options)){
+      backgridCellType = backgridCellType.extend(cell_options);
+    }
+    
   }
   
 //  if (data_type == 'list'){

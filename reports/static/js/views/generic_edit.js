@@ -603,8 +603,9 @@ define([
       }
       
       // The delegateModel/View is used to display visible, but not editable fields
-      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
-      delegateModel.resource = this.model.resource;
+//      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
+//      delegateModel.resource = this.model.resource;
+      var delegateModel = this.model;
       this.delegateDetailView = new DetailView({ model: delegateModel });
       
       if (args.editTemplate) {
@@ -820,7 +821,7 @@ define([
           fieldSchema['type'] = DisabledField.extend({
             initialize: function() {
               DisabledField.__super__.initialize.apply(this,arguments);
-              this.binding = self.delegateDetailView.createBinding(key,fi)
+              this.binding = self.delegateDetailView.createBinding(key,fi);
             }
           });
           fieldSchema['editorClass'] = 'form-control-disabled';

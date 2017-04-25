@@ -87,6 +87,14 @@ define([
       },
             
     },      
+
+    getTitle: function() {
+      return Iccbl.formatString(
+        '<H4 id="title">Cherry Pick Request: <a href="#screen/{screen_facility_id}/' + 
+        'cherrypickrequest/{cherry_pick_request_id}" >{cherry_pick_request_id}</a>' +
+        '</H4>',
+        this.model);
+    },
     
     /**
      * Layoutmanager hook
@@ -182,36 +190,6 @@ define([
           EditView.prototype.afterRender.apply(this,arguments);
         }
       });
-//      var saveSuccessCallBack = function(response){
-//        // Override so that the CPR can be displayed in the screen resource:
-//        // TODO: modify generic_edit to handle custom-nested URLs for edit success URL
-//        var meta = _.result(response, appModel.API_RESULT_META, null);
-//        
-//        if (!_.isEmpty(meta)) {
-//          appModel.showJsonMessages(meta);
-//        }
-//        if (_.isUndefined(self.model) || _.isUndefined(self.model.key)){
-//          var model = _.result(response, appModel.API_RESULT_DATA, null);
-//          if (!_.isEmpty(model)){
-//            model = new Backbone.Model(model);
-//            model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-//            appModel.router.navigate([
-//              self.screen.resource.key,self.screen.key,'cherrypickrequest',
-//              model.key].join('/'), 
-//              {trigger:true});
-//          } else { 
-//            appModel.router.navigate([
-//              self.screen.resource.key,self.screen.key,'cherrypickrequest'
-//              ].join('/'), 
-//              {trigger:true});
-//          }
-//        }else{
-//          appModel.router.navigate([
-//            self.screen.resource.key,self.screen.key,'cherrypickrequest',
-//            self.model.key].join('/'), 
-//            {trigger:true});
-//        }
-//      };
       detailView = DetailView.extend({
         afterRender: function() {
           DetailView.prototype.afterRender.apply(this,arguments);
@@ -229,7 +207,6 @@ define([
         model: this.model,
         uriStack: delegateStack, 
         buttons: buttons,
-//        saveSuccessCallBack: saveSuccessCallBack,
         EditView: editView,
         DetailView: detailView
       }));
@@ -258,7 +235,6 @@ define([
               }
             );
           }
-          
           DetailLayout.prototype.showEdit.apply(innerself,arguments);
         });  
       };
@@ -971,58 +947,6 @@ define([
       };
     }, // end showPlatedDateDialog
 
-    
-//    /**
-//     * LCP Plate Mapping (and QC) view
-//     */
-//    setPlateMapping: function(delegateStack) {
-//      var self = this;
-//      var url = [self.model.resource.apiUri, 
-//                 self.model.key,
-//                 'lab_cherry_pick_plating'].join('/');
-//      var extraControls = [];
-//      var downloadPlateMappingButton = $([
-//        '<a class="btn btn-default btn-sm pull-down" ',
-//           'title="Download plate mapping file (available if plates are assigned)"',
-//          'role="button" id="plate_mapping_file" href="#">',
-//          'Download Plate Mapping files</a>'
-//        ].join(''));
-//      extraControls.push(downloadPlateMappingButton);
-//      var showPlateMappingButton = $([
-//        '<a class="btn btn-default btn-sm pull-down" ',
-//           'title="Show the plate mapping in a grid (available if plates are assigned)"',
-//          'role="button" id="plate_mapping_grid" href="#">',
-//          'Show Plate Mapping</a>'
-//        ].join(''));
-//      extraControls.push(showPlateMappingButton);
-//
-//      function createPlateMappingView(resource) {
-//        
-//        view = self.createLcpView(delegateStack, resource,url,extraControls)
-//        
-//        self.listenTo(view, 'afterRender', function(event) {
-//          view.$el.find('#list-title').show().append(
-//            '<H4 id="title">Plate Mapping for CPR: ' + self.model.key + '</H4>');
-//        });
-//        downloadPlateMappingButton.click(function(e){
-//          e.preventDefault();
-//          console.log('download plate mapping file');
-//          var url = [self.model.resource.apiUri,self.model.key,
-//                     'plate_mapping_file'].join('/');
-//          appModel.downloadUrl(self.$el,url);
-//        });
-//        
-//        showPlateMappingButton.click(function(e){
-//          e.preventDefault();
-//          self.showPlateMappingGrid(url);
-//        });
-//      };
-//      var schemaUrl = url + '/schema';
-//      appModel.getResourceFromUrl(schemaUrl, createPlateMappingView);
-//      
-//    }, // end setPlateMapping
-    
-    
     /**
      * Lab Cherry Picks view
      */

@@ -12,6 +12,7 @@ if (buttons) {
     <% 
     }); 
     %>
+    </div>
 <% 
 }  
 %>
@@ -20,7 +21,7 @@ if (buttons) {
 </div>
 
 <div class='row'>
-  <div class='col-sm-7'>
+  <div id='generic-detail-table' class='col-sm-7'>
 
 <table class='table table-condensed data-list'>
 <% 
@@ -29,18 +30,19 @@ if (buttons) {
 <% 
     if(! _.isObject(key)) 
     {
+      extra_title_class = _.contains(adminKeys,key) ? 'admin-field': '';
 %>
      <tr>
-        <td class='col-xs-2 dl-title small' id="title-<%=key %>" title='' />
-        <td class='col-xs-6 dl-data small' id="<%=key %>">&nbsp;</td>
+        <td class='col-xs-3 dl-title small  <%=extra_title_class %>' id="title-<%=key %>" title='' />
+        <td class='col-xs-7 dl-data small' id="<%=key %>">&nbsp;</td>
      </tr>
 <% 
     }else{
       var group = key;
 %>
       <tr>
-        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data small' >
+        <td class='col-xs-3 dl-title small' title='' ><%=group.title %></td>
+        <td class='col-xs-9 dl-data small' >
         <div class='row'>
           <div class='col-xs-12'>
 <% 
@@ -50,9 +52,10 @@ if (buttons) {
           <table class='table-condensed data-list'>
 <% 
         _   .each(group.fields, function(groupKey){
+              extra_title_class = _.contains(adminKeys,key) ? 'admin-field': '';
 %>
             <tr>
-              <td class='dl-title' id="title-<%=groupKey %>" title='' />
+              <td class='dl-title   <%=extra_title_class %>' id="title-<%=groupKey %>" title='' />
               <td class='dl-data' id="<%=groupKey %>">&nbsp;</td>
             </tr>
 <%

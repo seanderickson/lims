@@ -313,8 +313,10 @@ define([
                   self.listenTo(view , 'uriStack:change', self.reportUriStack);
                   self.setView("#tab_container", view ).render();
                   
-                  console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
-                  self.$("#tab_container-title").html('Copy ' + model.get('copy_name'));
+                  console.log('title: ', 
+                    Iccbl.getTitleFromTitleAttribute(model, model.resource));
+                  self.$("#tab_container-title")
+                    .html('Copy ' + model.get('copy_name'));
                 });        
                 return;
               }
@@ -387,7 +389,8 @@ define([
         formSchema['name']['validators'].push(
           { type: 'regexp', 
             regexp: new RegExp(copyNameField['regex']),
-            message: _.result(copyNameField,'validation_message','Name pattern is incorrect' )
+            message: _.result(
+              copyNameField,'validation_message','Name pattern is incorrect' )
           }
         );
       }
@@ -399,7 +402,8 @@ define([
         editorClass: 'chosen-select',
         editorAttrs: { widthClass: 'col-sm-5'},
         validators: ['required'],
-        options: appModel.getVocabularySelectOptions(copyUsageTypeField.vocabulary_scope_ref),
+        options: appModel.getVocabularySelectOptions(
+          copyUsageTypeField.vocabulary_scope_ref),
         template: fieldTemplate 
       };
       
@@ -411,7 +415,8 @@ define([
         editorClass: 'chosen-select',
         editorAttrs: { widthClass: 'col-sm-5'},
         validators: [],
-        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
+        options: appModel.getVocabularySelectOptions(
+          plateStatusField.vocabulary_scope_ref),
         template: fieldTemplate 
       };
       
@@ -507,18 +512,25 @@ define([
       var _form_el = formview.el;
       var $form = formview.$el;
 
-      $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', true);
-      $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', true);
+      $form.find('[name="initial_plate_mg_ml_concentration"]')
+        .prop('disabled', true);
+      $form.find('[name="initial_plate_molar_concentration"]')
+        .find('input, select').prop('disabled', true);
 
       form.listenTo(form, "change", function(e){
         console.log('change');
-        var set_initial_plate_concentration = form.getValue('set_initial_plate_concentration');
+        var set_initial_plate_concentration = 
+            form.getValue('set_initial_plate_concentration');
         if(set_initial_plate_concentration){
-          $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', false);
-          $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', false);
+          $form.find('[name="initial_plate_mg_ml_concentration"]')
+            .prop('disabled', false);
+          $form.find('[name="initial_plate_molar_concentration"]')
+            .find('input, select').prop('disabled', false);
         } else {
-          $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', true);
-          $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', true);
+          $form.find('[name="initial_plate_mg_ml_concentration"]')
+            .prop('disabled', true);
+          $form.find('[name="initial_plate_molar_concentration"]')
+            .find('input, select').prop('disabled', true);
         }
       });
       

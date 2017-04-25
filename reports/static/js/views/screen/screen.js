@@ -25,6 +25,7 @@ define([
             ListView, UploadDataForm, TabbedController, screenTemplate) {
 
   var ScreenView = TabbedController.extend({
+    isAdmin: false,
 
     initialize: function(args) {
       var self = this;
@@ -96,6 +97,19 @@ define([
       return this;
     },
 
+    getTitle: function() {
+      var title = [
+         '<H4 id="title">',
+         '<a href="#screen/{facility_id}" >{facility_id}</a>: '];
+      if (this.model.get('screen_type') == 'small_molecule'){
+        title.push('<small>A screen for compounds that... </small>');
+      }
+      title.push('{title}');
+      title.push('</H4>');
+      
+      return Iccbl.formatString(title.join(''), this.model);
+    },
+        
     setDetail: function(delegateStack) {
       var self,outerSelf = self = this;
       var key = 'detail';
@@ -157,10 +171,9 @@ define([
       if (view) {
         this.removeView(this.tabViews[key]);
       }
-      
       var detailView = DetailView.extend({
         afterRender: function() {
-          DetailView.prototype.afterRender.apply(this,arguments);
+          var dview = DetailView.prototype.afterRender.apply(this,arguments);
           
           if (self.model.get('project_phase')=='annotation') {
             // do nothing
@@ -171,32 +184,47 @@ define([
             self.createPublicationTable(this.$el.find('#publications'));
             self.createAttachedFileTable(this.$el.find('#attached_files'));
             
-            // TODO: create a metadata setting for "show if present"
-            if (!self.model.has('perturbagen_molar_concentration')) {
-              $('#perturbagen_molar_concentration').closest('tr').remove();
+//            // TODO: create a metadata setting for "show if present"
+//            if (!self.model.has('perturbagen_molar_concentration')) {
+//              $('#perturbagen_molar_concentration').closest('tr').remove();
+//            }
+//            if (!self.model.has('perturbagen_ug_ml_concentration')) {
+//              $('#perturbagen_ug_ml_concentration').closest('tr').remove();
+//            }
+//            if (!self.model.has('transfection_agent')) {
+//              $('#transfection_agent').closest('tr').remove();
+//            }
+//            if (!self.model.has('pin_transfer_approved_by_username')) {
+//              $('#pin_transfer_date_approved').closest('tr').remove();
+//              $('#pin_transfer_comments').closest('tr').remove();
+//            }
+//            if (self.model.get('screen_type')=='small_molecule'){
+//              $('#title').prepend('<span><small>A screen for compounds that...</small><span><br/>');
+//            }
+          }
+          
+          if (appModel.hasGroup('readEverythingAdmin')) {
+            var adminControl = $('<a id="admin-control"></a>');
+            if (self.isAdmin){
+              adminControl.append('admin&nbsp;&lt;&lt;')
+            }else{
+              adminControl.append('admin&nbsp;&gt;&gt;')
             }
-            if (!self.model.has('perturbagen_ug_ml_concentration')) {
-              $('#perturbagen_ug_ml_concentration').closest('tr').remove();
-            }
-            if (!self.model.has('transfection_agent')) {
-              $('#transfection_agent').closest('tr').remove();
-            }
-            if (!self.model.has('pin_transfer_approved_by_username')) {
-              $('#pin_transfer_date_approved').closest('tr').remove();
-              $('#pin_transfer_comments').closest('tr').remove();
-            }
-            if (self.model.get('screen_type')=='small_molecule'){
-              $('#title').prepend('<span><small>A screen for compounds that...</small><span><br/>');
-            }
-            
+            $('#generic-detail-buttonpanel').append(adminControl);
+            adminControl.click(function(e){
+              e.preventDefault();
+              self.isAdmin = !self.isAdmin;
+              self.render();
+            });
           }
           
         },
         
         serialize: function() {
-          console.log('serialize...');
-          var data = DetailView.prototype.serialize.apply(this,arguments);
           // special handling of the grouped keys for the screen template
+
+          var data = DetailView.prototype.serialize.apply(this,arguments);
+          
           var informationKeys = [];
           var groupedKeys = [];
           data['groupedKeys'].each(function(groupKey) {
@@ -206,9 +234,9 @@ define([
               groupedKeys.push(groupKey);
             }
           });
-          console.log('groupedKeys', groupedKeys, informationKeys);
           data['groupedKeys'] = _.chain(groupedKeys);
           data['informationKeys'] = _.chain(informationKeys);
+          console.log('data', data);
           return data;
         },
         
@@ -243,11 +271,17 @@ define([
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
         return ! _.contains(fields[key].visibility, 'billing');
       });
-      var visibleKeys = self.model.resource.detailKeys();
+      var detailKeys = self.model.resource.detailKeys();
+      var adminKeys = self.model.resource.adminKeys();
+      console.log('adminKeys', adminKeys);
+      if (!self.isAdmin){
+        detailKeys = _.difference(detailKeys, adminKeys);
+      }
+      
       /////
       // pick just the non-billing fields: prevent backbone save from sending
       // uninitialized billing fields on create
-      var modelKeys = visibleKeys.concat(editVisibleKeys);
+      var modelKeys = detailKeys.concat(editVisibleKeys);
       model = new Backbone.Model(this.model.pick(modelKeys));
       model.set('id', this.model.get('id'));
       model.resource = this.model.resource;
@@ -259,8 +293,20 @@ define([
         uriStack: delegateStack,
         EditView: editView,
         editableKeys: editableKeys,
+        detailKeys: detailKeys,
         editVisibleKeys: editVisibleKeys,
         DetailView: detailView
+//        showDetail: function(){
+//          var temp = DetailLayout.prototype.showDetail.apply(view,arguments);
+//          console.log('detail view after render.xxxxxx');
+//          var adminControl = $('<a>admin&gt;&gt;</a>');
+//          temp.$el.find('#top-controls').append(adminControl);
+//          adminControl.click(function(e){
+//            e.preventDefault();
+//            isAdmin = true;
+//            self.render();
+//          });
+//        }
       }));
       view.showEdit = function() {
         appModel.initializeAdminMode(function() {
@@ -286,6 +332,7 @@ define([
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.consumedStack = []; 
       this.setView("#tab_container", view ).render();
+      
       return view;
     },
     
@@ -489,7 +536,7 @@ define([
           if (!_.isEmpty(errors)) {
             console.log('form errors, abort submit: ',errors);
             _.each(_.keys(errors), function(key) {
-              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              $('[name="'+key +'"]').parents('.form-group').addClass('has-error');
             });
             return false;
           } else {
@@ -1003,12 +1050,8 @@ define([
             self.setView("#tab_container", view ).render();
             
             console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
-            self.$("#tab_container-title").html(
-              Iccbl.formatString(
-                '<H4 id="title">Cherry Pick Request: <a href="#screen/{screen_facility_id}/' + 
-                'cherrypickrequest/{cherry_pick_request_id}" >{cherry_pick_request_id}</a>' +
-                '</H4>',
-                model));
+            self.$("#tab_container-title").html(view.getTitle());
+            self.$("#tab_container-title").show();
           });        
         }
         return;
@@ -1056,10 +1099,8 @@ define([
                   self.consumedStack = ['cherrypickrequest',_key];
                   self.listenTo(view , 'uriStack:change', self.reportUriStack);
                   self.setView("#tab_container", view ).render();
-                  
-                  console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
-                  self.$("#tab_container-title").html(
-                    'Cherry Pick Request: ' + model.get('cherry_pick_request_id'));
+                  self.$("#tab_container-title").html(view.getTitle());
+                  self.$("#tab_container-title").show();
                 });        
                 return;
               }
@@ -1074,22 +1115,12 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.$("#tab_container-title").empty();
+        self.$("#tab_container-title").hide();
         self.setView("#tab_container", view ).render();
       }
     },
-    
-//    _get_screen_members: function(model){
-//      
-//      var members = _.object(
-//        model.get('collaborator_usernames'),
-//        model.get('collaborator_names'));
-//      members[model.get('lead_screener_username')] = model.get('lead_screener_name');
-//      members[model.get('lab_head_username')] = model.get('lab_head_name');
-//      return members;
-//    },
     
     showAddCherryPick: function() {
       console.log('add cherry pick request');
@@ -1135,36 +1166,6 @@ define([
       self.reportUriStack([]);
     },
     
-//    setCherryPicks1: function(delegateStack) {
-//      var self = this;
-//      var key = 'cherrypickrequest';
-//      var view = this.tabViews[key];
-//      
-//      if (!view) {
-//        var self = this;
-//        var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
-//        var resource = appModel.getResource('cherrypickrequest');
-//        var view = new ListView({ 
-//          uriStack: _.clone(delegateStack),
-//          schemaResult: resource,
-//          resource: resource,
-//          url: url,
-//          extraControls: []
-//        });
-//        Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
-//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//        self.setView("#tab_container", view ).render();
-//        this.$('li').removeClass('active');
-//        this.$('#'+key).addClass('active');
-//
-//      } else {
-//        self.listenTo(view , 'uriStack:change', this.reportUriStack);
-//        self.setView("#tab_container", view ).render();
-//        self.reportUriStack([]);
-//      }
-//    },
-
     setActivities: function(delegateStack) {
       var self = this;
       var key = 'activities';
@@ -1191,7 +1192,6 @@ define([
           extraControls: []
         });
         Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         this.$('li').removeClass('active');
@@ -1200,8 +1200,8 @@ define([
       } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
-//        self.reportUriStack([]);
       }
+      self.$("#tab_container-title").hide();
     },
     
     setData: function(delegateStack) {
@@ -1214,6 +1214,7 @@ define([
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
+      self.$("#tab_container-title").hide();
     },
 
     setSummary: function(delegateStack) {
@@ -1226,6 +1227,7 @@ define([
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
+      self.$("#tab_container-title").hide();
     },
 
     setBilling: function(delegateStack) {
@@ -1261,13 +1263,12 @@ define([
             
             self.listenTo(view , 'uriStack:change', this.reportUriStack);
             self.setView("#tab_container", view ).render();
-//            self.reportUriStack([]);
           },{ data_for_get: { visibilities: ['billing']}});
       } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
-//        self.reportUriStack([]);
       }
+      self.$("#tab_container-title").hide();
     },
 
     /**
@@ -1285,7 +1286,6 @@ define([
         extraControls: []
       });
       Backbone.Layout.setupView(view);
-//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
@@ -1294,7 +1294,7 @@ define([
       });
       this.$('li').removeClass('active');
       this.$('#summary').addClass('active');
-
+      self.$("#tab_container-title").hide();
     }
 
   });

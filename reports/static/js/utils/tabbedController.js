@@ -171,6 +171,16 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
     
     setDetail: function(delegateStack) {
       // to implement
+
+      // Example, set title
+      var title = self.model.resource.title;
+      if (!self.model.isNew()){
+        title += ': ' + Iccbl.getTitleFromTitleAttribute(self.model, self.model.resource);
+      }
+      $title = this.$el.find('#tab_container-title');
+      $title.html(title);
+      $title.show();
+      
     },    
     
     onClose: function() {

@@ -22,6 +22,17 @@ define([
   {
     return this.filterKeys('visibility','d');
   };  
+  SchemaClass.prototype.adminKeys = function()
+  {
+    var self = this;
+    var keys = Iccbl.sortOnOrdinal(
+      _.keys(self.fields), self.fields)
+    var adminKeys = _(keys).filter(function(key){
+      console.log('key', key, _.result(self.fields[key], 'is_admin'));
+      return _.result(self.fields[key], 'is_admin', false);
+    });
+    return adminKeys;
+  };  
   SchemaClass.prototype.editVisibleKeys = function()
   {
     return this.filterKeys('visibility','e');
@@ -1025,6 +1036,12 @@ define([
       return _.find(user.get('usergroups'), function(usergroup){
         if(usergroup.toLowerCase().indexOf('rnaidsl') > -1) return true;
       });
+    },
+    
+    hasGroup: function(groupName) {
+      var self = this;
+      if(self.getCurrentUser().is_superuser) return true;
+      return _.contains(self.getCurrentUser().usergroups, groupName);
     },
     
     /**

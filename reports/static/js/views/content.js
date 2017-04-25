@@ -158,18 +158,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       }
       
-      var titleFunc = function setContentTitle(val){
-        self.$('#content_title').html(val);
-      }
-      
-      titleFunc(model.resource.title + ': ' + 
-        Iccbl.getTitleFromTitleAttribute(model,model.resource) );
-      
       var view = new viewClass({ model: model, uriStack: uriStack});
+      var titleFunc = function setContentTitle(){
+        var title = model.resource.title + ': ' + 
+            Iccbl.getTitleFromTitleAttribute(model,model.resource);          
+        if (_.isFunction(view.getTitle)){
+          title = view.getTitle();
+        }
+        self.$('#content_title').empty();
+        self.$('#content_title').html(title);
+      }
+      titleFunc();
       model.on('sync', function(model){
         // TODO: it would be better to watch just the title attribute
-        titleFunc(model.resource.title + ': ' + 
-          Iccbl.getTitleFromTitleAttribute(model,model.resource) );
+        titleFunc();
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();

@@ -1,0 +1,13 @@
+{
+  "collaborator_usernames": [
+    "djw11","kls4","sr50","rs360","jas60"
+  ], 
+  "data_sharing_level": 0, 
+  "facility_id": "15", 
+  "lab_head_username": "caroline_shamu", 
+  "lead_screener_username": "kls4", 
+  "project_phase": "primary_screen", 
+  "screen_type": "small_molecule", 
+  "summary": "Tests Small Molecule screen functionality", 
+  "title": "Test Small Molecule functionality"
+}

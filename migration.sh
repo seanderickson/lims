@@ -670,6 +670,19 @@ function setup_test_data {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
     
+  test_screen=16
+  # lead_screener=kls4
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    
 
 
   ####

@@ -761,6 +761,16 @@ echo "start migration: $(ts) ..."
 
 main "$@"
 
+#  gitpull
+  
+#  restoredb
+  
+#  restoredb_data
+    
+#  maybe_activate_virtualenv
+  
+#  pip install -r requirements.txt >>"$LOGFILE" 2>&1
+
 #  frontend_setup
   
 #  django_syncdb

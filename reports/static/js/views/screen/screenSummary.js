@@ -34,17 +34,17 @@ define([
         invoke : 'setScreenings',
         permission: 'libraryscreening'
       },
-      library: {
-        description : 'Libraries Screened',
-        title : 'Libraries Screened',
-        invoke : 'setLibraries',
-        permission: 'screen'
-      },
       plates: {
         description : 'Plates Screened',
         title : 'Plates Screened',
         invoke : 'setPlates',
         permission:'librarycopyplate'
+      },
+      library: {
+        description : 'Libraries Screened',
+        title : 'Libraries Screened',
+        invoke : 'setLibraries',
+        permission: 'screen'
       },
             
     },      
@@ -173,9 +173,6 @@ define([
             dc.set('weak_positives', createPositiveStat(dc.get('weak_positives_count')));
           });
           
-//          var TextWrapCell = Backgrid.Cell.extend({
-//            className: 'text-wrap-cell'
-//          });
           var colTemplate = {
             'cell' : 'string',
             'order' : -1,
@@ -192,7 +189,7 @@ define([
                 'description' : 'Data Column',
                 'order': 1,
                 'sortable': true,
-                'cell': Iccbl.TextWrapCell
+                'cell': Iccbl.StringCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'total_positives',
@@ -200,7 +197,7 @@ define([
                 'description' : 'Total Positives',
                 'order': 2,
                 'sortable': true,
-                'cell': Iccbl.TextWrapCell
+                'cell': Iccbl.StringCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'strong_positives',
@@ -208,7 +205,7 @@ define([
                 'description' : 'Strong Positives',
                 'order': 3,
                 'sortable': true,
-                'cell': Iccbl.TextWrapCell
+                'cell': Iccbl.StringCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'medium_positives',
@@ -216,7 +213,7 @@ define([
                 'description' : 'Medium Positives',
                 'order': 4,
                 'sortable': true,
-                'cell': Iccbl.TextWrapCell
+                'cell': Iccbl.StringCell
               }),
               _.extend({},colTemplate,{
                 'name' : 'weak_positives',
@@ -224,7 +221,7 @@ define([
                 'description' : 'Weak Positives',
                 'order': 5,
                 'sortable': true,
-                'cell': Iccbl.TextWrapCell
+                'cell': Iccbl.StringCell
               }),
           ];
           var colModel = new Backgrid.Columns(columns);
@@ -264,6 +261,9 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
 
+      $title = self.$el.find('#tab_container-title');
+      $title.html('<H5 id="title">Add Library Screening</H5>');
+      $title.show();
       
       this.consumedStack = ['libraryscreening','+add'];
       self.reportUriStack([]);
@@ -297,12 +297,13 @@ define([
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
           
-          var title = model.resource.title;
-          if (!model.isNew()){
-            title += ': ' + Iccbl.getTitleFromTitleAttribute(model, model.resource);
-          }
+          
+//          var title = model.resource.title;
+//          if (!model.isNew()){
+//            title += ': ' + Iccbl.getTitleFromTitleAttribute(model, model.resource);
+//          }
           $title = self.$el.find('#tab_container-title');
-          $title.html(title);
+          $title.html(view.getTitle());
           $title.show();
           
         });        
@@ -334,7 +335,6 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         this.setView("#tab_container", view ).render();
         $title = self.$el.find('#tab_container-title');
@@ -342,51 +342,57 @@ define([
         $title.hide();
       }
     },
-
+    
     setLibraries: function(delegateStack) {
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
-      var resource = appModel.getResource('screened_library');
-
-      var library_link_cell = Iccbl.LinkCell.extend({
-          render: function(){
-            var self = this;
-            Iccbl.LinkCell.prototype.render.apply(this, arguments);
-            var comments = this.model.get('comment_array');
-            if (!_.isEmpty(comments)){
-              comments = Iccbl.parseComments(comments);
-              this.$el.attr('title',comments);
-              this.$el.append(Iccbl.createCommentIcon(
-                comments,
-                'Comments for library: ' + self.model.get('library_short_name')));
-            }
-            return this;
+      var resource = appModel.getResource('library');
+      resource.options = {};
+      var includes = resource.options.includes = [];
+      var fields = resource['fields'];
+      var visible_fields = ['short_name','library_name','experimental_well_count',
+                            'provider', 'screen_type', 'library_type',
+                            'is_pool', 'start_plate', 'end_plate', 
+                            'screening_status', 'date_screenable'];
+      _.each(_.keys(fields),function(fieldkey){
+        if (!_.contains(visible_fields,fieldkey)){
+          fields[fieldkey]['visibility'] = [];
+        }else{
+          if (!_.contains(fields[fieldkey]['visibility'],'l')){
+            fields[fieldkey]['visibility'] = ['l'];
+            includes.unshift(fieldkey);
+          }
+          fields[fieldkey].ordinal = -visible_fields.length + _.indexOf(visible_fields,fieldkey);
+        }
+      });
+      
+      console.log('includes', includes);
+      resource.fields['short_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('short_name');
           }
         });
-      resource.fields['library_name']['backgridCellType'] =
-        library_link_cell.extend(
-          resource.fields['library_name'].display_options);
-      resource.fields['short_name']['backgridCellType'] =
-        library_link_cell.extend(
-          resource.fields['short_name'].display_options);
+      
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
-        extraControls: []
+        extraControls: [],
       });
       Backbone.Layout.setupView(view);
-//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event) {
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Libraries for screen: ' + self.model.key + '</H4>');
-      });
-
+      //self.listenTo(view, 'afterRender', function(event) {
+      //  view.$el.find('#list-title').show().append(
+      //    '<H4 id="title">Libraries for Screening: ' + self.model.key + '</H4>');
+      //});
+      this.$el.find('#tab_container-title').hide();
+      
     },
-    
+
     /**
      * Plates screened
      */
@@ -395,36 +401,37 @@ define([
       var url = [self.model.resource.apiUri,self.model.key,'plates_screened'].join('/');
       var resource = appModel.getResource('librarycopyplate');
       
-      var fields_to_show = ['library_short_name', 'copy_name', 'plate_number',
-                            'screening_count','assay_plate_count',
-                            'last_date_screened','first_date_screened']
+      var fields_to_show = [
+            'library_short_name', 'library_screening_status',
+            'library_comment_array','plate_number',
+            'copies_screened', 'comment_array', 'screening_count','assay_plate_count',
+            'first_date_screened','last_date_screened'];
       
+      var copies_screened_field = _.clone(resource.fields['copy_name']);
+      copies_screened_field['visibility'] = ['l'];
+      copies_screened_field['data_type'] = 'list'
+      copies_screened_field['key'] = 'copies_screened';
+      copies_screened_field['title'] = 'Copies Screened';
+      copies_screened_field['description'] = 'Copies screened for this plate';
+      delete resource.fields['copy_name']
+      resource.fields['copies_screened'] = copies_screened_field;
+
       _.each(_.keys(resource.fields), function(key){
         var field = resource.fields[key];
-        
         if (_.contains(fields_to_show, key)){
           field.ordinal = -fields_to_show.length + _.indexOf(fields_to_show,key);
-          field.visibility = ['l'];
         } else {
-          field.visibility = [];
+          delete resource.fields[key];
         }
-        
       });
+      resource.id_attribute = ['plate_number'];
+      resource.title = 'Plates Screened';
       
       resource.fields['library_short_name']['backgridCellType'] =
         Iccbl.CommentArrayLinkCell.extend({
           comment_attribute: 'library_comment_array',
           title_function: function(model){
             return 'Comments for library: ' + model.get('library_short_name');
-          }
-        });
-      
-      resource.fields['copy_name']['backgridCellType'] =
-        Iccbl.CommentArrayLinkCell.extend({
-          comment_attribute: 'copy_comments',
-          title_function: function(model){
-            return 'Comments for Copy: ' + model.get('library_short_name')
-              + '/' + model.get('copy_name');
           }
         });
       
@@ -439,6 +446,21 @@ define([
           }
         });
       
+      resource.fields['screening_count'].backgridCellType = 
+        Iccbl.LinkCell.extend(_.extend({},
+          resource.fields['screening_count'].display_options,
+          {
+            linkCallback: function(e){
+              e.preventDefault();
+              var search_entry = Iccbl.formatString(
+                'library_plates_screened__contains={copy_name}/{plate_number}',
+                this.model);
+              self.uriStack = ['search', search_entry];
+              self.change_to_tab('libraryscreening');
+            }
+          }));
+      
+      
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
@@ -447,16 +469,12 @@ define([
         extraControls: []
       });
       Backbone.Layout.setupView(view);
-//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event) {
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
-      });
+      this.$el.find('#tab_container-title').hide();
 
-    }
-    
+    },
+
   });
   
   return ScreenSummaryView;

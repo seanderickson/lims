@@ -105,12 +105,46 @@ define([
         'tab_resources': this.tabbed_resources
       }      
     }, 
-    
+
+    getTitle: function() {
+      return Iccbl.formatString(
+        '<H4 id="title">Library Screening: <a href="#screen/{screen_facility_id}/' + 
+        'summary/libraryscreening/{activity_id}" >{activity_id}</a>' +
+        '</H4>',
+        this.model);
+    },
+        
     setPlatesScreened: function(delegateStack) {
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'plates'].join('/');
       var resource = appModel.getResource('librarycopyplate');
+      
+      var fields_to_show = [
+            'library_short_name', 'library_screening_status',
+            'library_comment_array','plate_number',
+            'copies_screened', 'comment_array', 'screening_count','assay_plate_count',
+            'first_date_screened','last_date_screened'];
+      
+      var copies_screened_field = _.clone(resource.fields['copy_name']);
+      copies_screened_field['visibility'] = ['l'];
+      copies_screened_field['data_type'] = 'list'
+      copies_screened_field['key'] = 'copies_screened';
+      copies_screened_field['title'] = 'Copies Screened';
+      copies_screened_field['description'] = 'Copies screened for this plate';
+      delete resource.fields['copy_name']
+      resource.fields['copies_screened'] = copies_screened_field;
 
+      _.each(_.keys(resource.fields), function(key){
+        var field = resource.fields[key];
+        if (_.contains(fields_to_show, key)){
+          field.ordinal = -fields_to_show.length + _.indexOf(fields_to_show,key);
+        } else {
+          delete resource.fields[key];
+        }
+      });
+      resource.id_attribute = ['plate_number'];
+      resource.title = 'Plates Screened';
+      
       resource.fields['library_short_name']['backgridCellType'] =
         Iccbl.CommentArrayLinkCell.extend({
           comment_attribute: 'library_comment_array',
@@ -119,14 +153,14 @@ define([
           }
         });
       
-      resource.fields['copy_name']['backgridCellType'] =
-        Iccbl.CommentArrayLinkCell.extend({
-          comment_attribute: 'copy_comments',
-          title_function: function(model){
-            return 'Comments for Copy: ' + model.get('library_short_name')
-              + '/' + model.get('copy_name');
-          }
-        });
+//      resource.fields['copy_name']['backgridCellType'] =
+//        Iccbl.CommentArrayLinkCell.extend({
+//          comment_attribute: 'copy_comments',
+//          title_function: function(model){
+//            return 'Comments for Copy: ' + model.get('library_short_name')
+//              + '/' + model.get('copy_name');
+//          }
+//        });
       
       resource.fields['plate_number']['backgridCellType'] =
         Iccbl.CommentArrayLinkCell.extend({
@@ -139,6 +173,21 @@ define([
           }
         });
       
+      resource.fields['screening_count'].backgridCellType = 
+        Iccbl.LinkCell.extend(_.extend({},
+          resource.fields['screening_count'].display_options,
+          {
+            linkCallback: function(e){
+              e.preventDefault();
+              var search_entry = Iccbl.formatString(
+                'library_plates_screened__contains={copy_name}/{plate_number}',
+                this.model);
+              self.uriStack = ['search', search_entry];
+              self.change_to_tab('libraryscreening');
+            }
+          }));
+      
+      
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
@@ -149,9 +198,52 @@ define([
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
+
+    },
+    
+    setLibrariesScreened: function(delegateStack) {
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
+      var resource = appModel.getResource('library');
+      resource.options = {};
+      var includes = resource.options.includes = [];
+      var fields = resource['fields'];
+      var visible_fields = ['short_name','library_name','experimental_well_count',
+                            'provider', 'screen_type', 'library_type',
+                            'is_pool', 'start_plate', 'end_plate', 
+                            'screening_status', 'date_screenable'];
+      _.each(_.keys(fields),function(fieldkey){
+        if (!_.contains(visible_fields,fieldkey)){
+          fields[fieldkey]['visibility'] = [];
+        }else{
+          if (!_.contains(fields[fieldkey]['visibility'],'l')){
+            fields[fieldkey]['visibility'] = ['l'];
+            includes.unshift(fieldkey);
+          }
+          fields[fieldkey].ordinal = -visible_fields.length + _.indexOf(visible_fields,fieldkey);
+        }
+      });
+      
+      console.log('includes', includes);
+      resource.fields['short_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('short_name');
+          }
+        });
+      
+      var view = new ListView({ 
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: [],
+      });
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
       });
     },
     
@@ -516,50 +608,60 @@ define([
             });
           }
 
-          // attach is_for_external_library_plates change listener
-          this.listenTo(this, "is_for_external_library_plates:change", function(e){
-            var $target_el = self_editform.$el.find('[key=form-group-library_plates_screened]');
-            var val = self_editform.getValue('is_for_external_library_plates');
-            console.log('is_for_external_library_plates:',val)
-            if(val){
-              $target_el.hide();
-              self_editform.setValue('library_plates_screened',null);
-            } else {
-              $target_el.show();
-            }
-          });
-          // attach listener volume calculator
-          function calculateVolFromLibraryPlates(){
-            var num_replicates = self_editform.getValue('number_of_replicates');
-            var vol_to_assayplates  = self_editform.getValue(
-              'volume_transferred_per_well_to_assay_plates');
-            if(_.isNumber(num_replicates) && _.isNumber(vol_to_assayplates)){
-              if(num_replicates > 0 && vol_to_assayplates > 0){
-                var calculated = num_replicates * vol_to_assayplates;
-                self_editform.setValue(
-                  'volume_transferred_per_well_from_library_plates',calculated);
+          var plates = self.model.get('library_plates_screened');
+          if ( _.isEmpty(plates)){
+            // attach is_for_external_library_plates change listener
+            this.listenTo(this, "is_for_external_library_plates:change", function(e){
+              var $target_el = self_editform.$el.find('[key=form-group-library_plates_screened]');
+              var val = self_editform.getValue('is_for_external_library_plates');
+              console.log('is_for_external_library_plates:',val)
+              if(val){
+                $target_el.hide();
+                self_editform.setValue('library_plates_screened',null);
+              } else {
+                $target_el.show();
               }
-            } else {
-              console.log('cannot calculate volume until form values are entered');
-            }
-          };
-          var calcVolButton = $([
-            '<button class="btn btn-default btn-sm" ',
-              'role="button" id="calc_volume_transferred_per_well_from_library_plates" href="#">',
-              'calculate</button>'
-            ].join(''));
-          self_editform.$el.find(
-            '[key=form-group-volume_transferred_per_well_from_library_plates]'
-            ).append(calcVolButton);
-          calcVolButton.click(function(event){
-            event.preventDefault();
-            calculateVolFromLibraryPlates();
-          });
-          this.listenTo(
-            this, "number_of_replicates:change", calculateVolFromLibraryPlates);
-          this.listenTo(
-            this, "volume_transferred_per_well_to_assay_plates:change", 
-            calculateVolFromLibraryPlates);
+            });
+            // 20170416 - Do not allow edit for
+            // "volume_transferred_per_well_from_library_plates"
+            // attach listener volume calculator
+            function calculateVolFromLibraryPlates(){
+              var num_replicates = self_editform.getValue('number_of_replicates');
+              var vol_to_assayplates  = self_editform.getValue(
+                'volume_transferred_per_well_to_assay_plates');
+              if(_.isNumber(num_replicates) && _.isNumber(vol_to_assayplates)){
+                if(num_replicates > 0 && vol_to_assayplates > 0){
+                  var calculated = num_replicates * vol_to_assayplates;
+                  self_editform.setValue(
+                    'volume_transferred_per_well_from_library_plates',calculated);
+                  self.model.set(
+                    'volume_transferred_per_well_from_library_plates',
+                    calculated);
+                  self_editform.fields
+                    .volume_transferred_per_well_from_library_plates.editor.render();
+                }
+              } else {
+                console.log('cannot calculate volume until form values are entered');
+              }
+            };
+            //var calcVolButton = $([
+            //  '<button class="btn btn-default btn-sm" ',
+            //    'role="button" id="calc_volume_transferred_per_well_from_library_plates" href="#">',
+            //    'calculate</button>'
+            //  ].join(''));
+            //self_editform.$el.find(
+            //  '[key=form-group-volume_transferred_per_well_from_library_plates]'
+            //  ).append(calcVolButton);
+            //calcVolButton.click(function(event){
+            //  event.preventDefault();
+            //  calculateVolFromLibraryPlates();
+            //});
+            this.listenTo(
+              this, "number_of_replicates:change", calculateVolFromLibraryPlates);
+            this.listenTo(
+              this, "volume_transferred_per_well_to_assay_plates:change", 
+              calculateVolFromLibraryPlates);
+          }
         }
       });
       
@@ -599,8 +701,26 @@ define([
               // allow the library_plates_screened to be unset
               fields['library_plates_screened'].required = false;
               fields['library_plates_screened'].regex = null;
+              var plates = self.model.get('library_plates_screened');
+              if ( !_.isEmpty(plates)){
+                var msg = '(all plates must be removed to edit) '
+                _.each([
+                  'is_for_external_library_plates',
+                  'volume_transferred_per_well_to_assay_plates',
+                  'volume_transferred_per_well_from_library_plates',
+                  'number_of_replicates'],
+                  function(disallowed_field){
+                    fields[disallowed_field]['required'] = false;
+                    fields[disallowed_field]['editability'] = [];
+                    fields[disallowed_field]['description'] = 
+                      msg + fields[disallowed_field]['description'];
+                  }
+                );
+              }
             }
             
+            // 20170416 - per JAS, turn off UI editability for volxfer field
+            fields['volume_transferred_per_well_from_library_plates'].editability = [];
             DetailLayout.prototype.showEdit.apply(self,arguments);
           });  
         }, 

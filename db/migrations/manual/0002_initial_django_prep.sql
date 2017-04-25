@@ -450,6 +450,16 @@ update screen_result set date_loaded = TODO:
 
 ALTER TABLE assay_well ALTER COLUMN is_positive SET default false;
 
+/** 
+20170413 Delete "data_loading" assay plates:
+- these plates were created exclusively to track data loading replicate counts,
+- per JAS we will no longer track these values
+- accounting algorithm in SS1 is inaccurate
+**/
+delete from assay_plate 
+  where where screen_result_data_loading_id is not null 
+  and library_screening_id is null;
+
 DROP TABLE cell_lineage;
 DROP TABLE cell_related_projects;
 DROP TABLE cell_markers;

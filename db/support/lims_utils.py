@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
 import decimal
@@ -270,6 +271,26 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
             min_satisfying_set = subset
             break
     return min_satisfying_set
+
+def get_siunit(default_unit=1e-6):
+    '''
+    Return the SI Unit symbol for the default_unit
+    '''
+    siunits = [
+      ['T', 1e12],
+      ['G', 1e9],
+      ['M', 1e6],
+      ['k', 1e3],
+      ['', 1],
+      ['m', 1e-3,],
+      ['μ', 1e-6,],
+      ['n', 1e-9 ],
+      ['p', 1e-12 ]
+      ]
+    for symbol,val in siunits:
+        if val <= default_unit:
+            return symbol
+    return None
 
 def convert_decimal(
     raw_val, default_unit=1e-6, decimals=1, multiplier=None):

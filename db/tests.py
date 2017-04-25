@@ -3455,7 +3455,18 @@ class ScreenResource(DBResourceTestCase):
             library_copy1_input, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume','initial_plate_status'])
         logger.info('created: %r', library_copy1)
- 
+
+        library_copy1_cpp_input = library_copy1_input.copy()
+        library_copy1_cpp_input['usage_type'] = 'cherry_pick_source_plates'
+        library_copy1_cpp_input['copy_name'] = 'A1_cpsp'
+        resource_test_uri = '/'.join([
+            resource_uri,library_copy1_cpp_input['library_short_name'],
+            library_copy1_cpp_input['copy_name']])
+        library_copy1_cpp = self._create_resource(
+            library_copy1_cpp_input, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume','initial_plate_status'])
+        logger.info('created: %r', library_copy1_cpp)
+        
         library_copy2_input = library_copy1_input.copy()
         library_copy2_input['library_short_name'] = library2['short_name']
         resource_test_uri = '/'.join([
@@ -3561,6 +3572,20 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
+        logger.info('5.1 test with cherry_pick_source_plates')
+        key = 'library_plates_screened' 
+        plate_range1cpp = lps_format.format(**library_copy1_cpp).format(**library1)
+        value = [ plate_range1cpp, plate_range2 ]
+        msg = 'cherry_pick_source_plate copy type should fail %r' % value
+        logger.info('test %r', msg)
+        invalid_input5 = library_screening_input.copy()
+        invalid_input5['library_plates_screened'] = value
+        errors, resp = self._create_resource(
+            invalid_input5, resource_uri, resource_test_uri, expect_fail=True)
+        self.assertTrue(resp.status_code==400, msg)
+        self.assertTrue(find_in_dict(key, errors), 
+            'test: %s, not in errors: %r' %(key,errors))
+        
         logger.info('5. Create valid library screening input...')
         logger.info('Patch batch_edit: cred: %r', self.username)
         resp = self.api_client.post(

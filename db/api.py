@@ -871,7 +871,7 @@ class LibraryCopyPlateResource(DbApiResource):
             plates.update(plate_query.all())
         
         if not plates:
-            raise ValidationError(key='raw_search_data', msg='No results found')
+            raise ValidationError(key='Search', msg='No results found')
         logger.info('plates found: %d', len(plates))
         return plates
 
@@ -1111,6 +1111,244 @@ class LibraryCopyPlateResource(DbApiResource):
         
         return query
         
+    @read_authorization
+    def build_screened_plate_response(
+        self, request, screen_facility_id=None, library_screening_id=None,
+         **kwargs):    
+        
+        if screen_facility_id is None and library_screening_id is None:
+            raise NotImplementedError(
+                'must provide a "screen_facility_id" or "library_screening_id"')
+        if screen_facility_id is not None and library_screening_id is not None:
+            raise NotImplementedError(
+                'must provide either a "screen_facility_id" or "library_screening_id"')
+       
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+
+        manual_field_includes = set(param_hash.get('includes', []))
+        logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        if screen_facility_id is not None:
+            filename = 'plates_for_screen_%s' % screen_facility_id
+        else:
+            filename = 'plates_for_screening_%s' % library_screening_id
+            
+        # construct a limited plate view here 
+        # start from the librarycopyplate schema, but limit to plate only fields
+        schema = self.build_schema(user=request.user);
+        
+        fields_to_show = [
+            'library_short_name', 'library_screening_status', 
+            'library_comment_array','plate_number','comment_array', 
+            'screening_count','assay_plate_count',
+            'last_date_screened','first_date_screened']
+        
+        new_fields = {}
+        for k,v in schema['fields'].items():
+            if k in fields_to_show:
+                new_fields[k] = v
+                v['visibility'] = ['l']
+        # Add a "copies_screened" field
+        new_fields['copies_screened'] = schema['fields']['copy_name']
+        new_fields['copies_screened']['key'] = 'copies_screened'
+        new_fields['copies_screened']['title'] = 'Copies Screened'
+        new_fields['copies_screened']['data_type'] = 'list'
+        schema['fields'] = new_fields
+        
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        visibilities = ['l','d']
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            visibilities,
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        rowproxy_generator = None
+        if use_vocab is True:
+            rowproxy_generator = \
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            # use "use_vocab" as a proxy to also adjust siunits for viewing
+            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                field_hash, rowproxy_generator)
+ 
+        # specific setup 
+        _p = self.bridge['plate']
+        _c = self.bridge['copy']
+        _l = self.bridge['library']
+        _ls = self.bridge['library_screening']
+        _la = self.bridge['lab_activity']
+        _a = self.bridge['activity']
+        _ap = self.bridge['assay_plate']
+        _screen = self.bridge['screen']
+        _apilog = self.bridge['reports_apilog']
+        _assay_plates_query = (select([
+            _ls.c.activity_id,
+            _a.c.date_of_activity,
+            _ap.c.plate_id,
+            _c.c.copy_id,
+            _c.c.name.label('copy_name'),
+            _l.c.short_name,
+            _c.c.library_id,
+            _ap.c.plate_number,
+            _concat(
+                _l.c.short_name, '/', _c.c.name, '/', 
+                cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
+            ).label('plate_key'),
+            ])
+            .select_from(
+                _ap.join(_ls,_ap.c.library_screening_id==_ls.c.activity_id)
+                   .join(_a,_ls.c.activity_id==_a.c.activity_id)
+                   .join(_p, _ap.c.plate_id==_p.c.plate_id)
+                   .join(_c, _c.c.copy_id==_p.c.copy_id)
+                   .join(_l, _c.c.library_id==_l.c.library_id)
+                   .join(_la,_ls.c.activity_id==_la.c.activity_id)
+                   .join(_screen,_la.c.screen_id==_screen.c.screen_id)
+                )
+            .where(_ap.c.replicate_ordinal==0))
+        
+        if screen_facility_id is not None:
+            _assay_plates_query = _assay_plates_query.where(
+                _screen.c.facility_id==screen_facility_id)
+        if library_screening_id is not None:
+            _assay_plates_query = _assay_plates_query.where(
+                _ls.c.activity_id==library_screening_id)
+        _assay_plates = _assay_plates_query.cte('assay_plates')
+        _assay_plates_inner = _assay_plates_query.cte('assay_plates_inner')
+        _plate_comment_apilogs = ApiLogResource.get_resource_comment_subquery(
+            self._meta.resource_name)
+        _library_comment_apilogs = \
+            ApiLogResource.get_resource_comment_subquery('library')
+        
+        # Get the library and plate keys to prefilter the logs
+        with get_engine().connect() as conn:
+            library_names = [x[0] for x in 
+                conn.execute(select([distinct(_assay_plates.c.short_name)])
+                    .select_from(_assay_plates))]
+            plate_keys = [x[0] for x in 
+                conn.execute(select([
+                        distinct(_assay_plates.c.plate_key)])
+                    .select_from(_assay_plates)) ]
+            _plate_comment_apilogs = _plate_comment_apilogs.where(
+                _apilog.c.key.in_(plate_keys))
+            _library_comment_apilogs = _library_comment_apilogs.where(
+                _apilog.c.key.in_(library_names))
+        _library_comment_apilogs = \
+            _library_comment_apilogs.cte('_library_comment_apilogs')
+        _plate_comment_apilogs = _plate_comment_apilogs.cte('_comment_apilogs')
+
+        stmt = ( 
+            select([
+                _assay_plates.c.short_name.label('library_short_name'),
+                _l.c.library_name.label('library_name'),
+                _l.c.screening_status.label('library_screening_status'),
+                ( select([
+                    func.array_to_string(
+                        func.array_agg(literal_column('name')), 
+                        LIST_DELIMITER_SQL_ARRAY),
+                    ])
+                    .select_from(
+                        select([distinct(_c.c.name)])
+                        .select_from(_c.join(
+                            _assay_plates_inner,_c.c.copy_id==_assay_plates_inner.c.copy_id))
+                        .where(_assay_plates_inner.c.plate_number==text('assay_plates.plate_number'))
+                        .order_by(_c.c.name).alias('inner_copies'))
+                    ).label('copies_screened'),
+                ( select([func.min(_assay_plates_inner.c.date_of_activity)])
+                    .select_from(_assay_plates_inner)
+                    .where(_assay_plates_inner.c.plate_number==text('assay_plates.plate_number'))
+                    ).label('first_date_screened'),
+                ( select([func.max(_assay_plates_inner.c.date_of_activity)])
+                    .select_from(_assay_plates_inner)
+                    .where(_assay_plates_inner.c.plate_number==text('assay_plates.plate_number'))
+                    ).label('last_date_screened'),
+                _assay_plates.c.plate_number,
+                func.count(None).label('assay_plate_count'),
+                func.count(distinct(_assay_plates.c.activity_id)).label('screening_count'),
+                (
+                    select([func.array_to_string(
+                        func.array_agg(
+                            _concat(                            
+                                cast(_library_comment_apilogs.c.name,
+                                    sqlalchemy.sql.sqltypes.Text),
+                                LIST_DELIMITER_SUB_ARRAY,
+                                cast(_library_comment_apilogs.c.date_time,
+                                    sqlalchemy.sql.sqltypes.Text),
+                                LIST_DELIMITER_SUB_ARRAY,
+                                _library_comment_apilogs.c.comment)
+                        ), 
+                        LIST_DELIMITER_SQL_ARRAY) ])
+                    .select_from(_library_comment_apilogs)
+                    .where(_library_comment_apilogs.c.key==_assay_plates.c.short_name)
+                    ).label('library_comment_array'),
+                (
+                    select([func.array_to_string(
+                        func.array_agg(
+                            _concat(                            
+                                cast(_plate_comment_apilogs.c.name,
+                                    sqlalchemy.sql.sqltypes.Text),
+                                LIST_DELIMITER_SUB_ARRAY,
+                                cast(_plate_comment_apilogs.c.date_time,
+                                    sqlalchemy.sql.sqltypes.Text),
+                                LIST_DELIMITER_SUB_ARRAY,
+                                _plate_comment_apilogs.c.comment)
+                        ), 
+                        LIST_DELIMITER_SQL_ARRAY) ])
+                    .select_from(_plate_comment_apilogs)
+                    .where(_plate_comment_apilogs.c.key.ilike(
+                        _concat(
+                            _assay_plates.c.short_name,
+                            '/%/',
+                            cast(_assay_plates.c.plate_number, sqlalchemy.sql.sqltypes.Text))))
+                    ).label('comment_array'),
+            ])
+            .select_from(
+                _assay_plates.join(_l,_assay_plates.c.library_id==_l.c.library_id))
+            .group_by(
+                _assay_plates.c.short_name,
+                _l.c.library_name,
+                _l.c.screening_status,
+                _assay_plates.c.plate_number) )
+
+        # general setup
+        
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        
+        if not order_clauses:
+            stmt = stmt.order_by("plate_number")
+        
+        compiled_stmt = str(stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s', compiled_stmt)
+        
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash, param_hash=param_hash,
+            is_for_detail=False,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None))
+        
     def build_list_response(self, request, schema=None, **kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -1257,6 +1495,7 @@ class LibraryCopyPlateResource(DbApiResource):
             _c = self.bridge['copy']
             _l = self.bridge['library']
             _ls = self.bridge['library_screening']
+#             _la = self.bridge['lab_activity']
             _a = self.bridge['activity']
             _ap = self.bridge['assay_plate']
             _screen = self.bridge['screen']
@@ -1440,6 +1679,13 @@ class LibraryCopyPlateResource(DbApiResource):
                     _p.c.plate_id==_plate_screening_statistics.c.plate_id)
 
             if for_screen_id is not None:
+                custom_columns['screening_count'] = (
+                    select([distinct(_ls.c.activity_id)])
+                        .select_from(_ap.join(
+                            _screen, _ap.c.screen_id==_screen.c.screen_id))
+                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)
+                        .where(_screen.c.facility_id==for_screen_id)
+                )
                 custom_columns['assay_plate_count'] = (
                     select([func.count(None)])
                         .select_from(_ap.join(
@@ -3260,7 +3506,7 @@ class ScreenResultResource(DbApiResource):
             
             rows_created = 0
             rvs_to_create = 0
-            plates_max_replicate_loaded = {}
+            # plates_max_replicate_loaded = {}
             logger.info('write temp file result values for screen: %r ...',
                 screen_result.screen.facility_id)
             errors = {}
@@ -3309,19 +3555,19 @@ class ScreenResultResource(DbApiResource):
                             colname, val, dc, well, initializer_dict, 
                             assay_well_initializer)
                         
-                        
-                        if (dc.is_derived is False
-                            and well.library_well_type == 'experimental'
-                            and rv_initializer['is_exclude'] is not True):
-                            max_replicate = \
-                                plates_max_replicate_loaded.get(well.plate_number, 0)
-                            if dc.replicate_ordinal > max_replicate:
-                                plates_max_replicate_loaded[well.plate_number] = \
-                                    dc.replicate_ordinal
-                        else:
-                            logger.debug(('not counted for replicate: well: %r, '
-                                'type: %r, initializer: %r'), 
-                                well.well_id, well.library_well_type, rv_initializer)        
+                        # 20170424 - remove data loading replicate tracking - per JAS
+                        # if (dc.is_derived is False
+                        #     and well.library_well_type == 'experimental'
+                        #     and rv_initializer['is_exclude'] is not True):
+                        #     max_replicate = \
+                        #         plates_max_replicate_loaded.get(well.plate_number, 0)
+                        #     if dc.replicate_ordinal > max_replicate:
+                        #         plates_max_replicate_loaded[well.plate_number] = \
+                        #             dc.replicate_ordinal
+                        # else:
+                        #     logger.debug(('not counted for replicate: well: %r, '
+                        #         'type: %r, initializer: %r'), 
+                        #         well.well_id, well.library_well_type, rv_initializer)        
                         writer.writerow(rv_initializer)
                         rvs_to_create += 1
                 
@@ -3371,21 +3617,22 @@ class ScreenResultResource(DbApiResource):
         for dc in sheet_col_to_datacolumn.values():
             dc.save()
             
-        if plates_max_replicate_loaded:
-            plates_max_replicate_loaded = sorted(
-                plates_max_replicate_loaded.values())
-            logger.info(
-                'plates_max_replicate_loaded: %r', plates_max_replicate_loaded)
-            screen_result.screen.min_data_loaded_replicate_count = \
-                plates_max_replicate_loaded[0]
-            screen_result.screen.max_data_loaded_replicate_count = \
-                plates_max_replicate_loaded[-1]
-        else:
-            screen_result.screen.min_data_loaded_replicate_count = 1
-            screen_result.screen.max_data_loaded_replicate_count = 1
-        screen_result.screen.save()
-        logger.info('screen_result.screen.max_data_loaded_replicate_count: %r',
-            screen_result.screen.max_data_loaded_replicate_count)
+        # 20170424 - remove replicate tracking for data load - per JAS
+        # if plates_max_replicate_loaded:
+        #     plates_max_replicate_loaded = sorted(
+        #         plates_max_replicate_loaded.values())
+        #     logger.info(
+        #         'plates_max_replicate_loaded: %r', plates_max_replicate_loaded)
+        #     screen_result.screen.min_data_loaded_replicate_count = \
+        #         plates_max_replicate_loaded[0]
+        #     screen_result.screen.max_data_loaded_replicate_count = \
+        #         plates_max_replicate_loaded[-1]
+        # else:
+        #     screen_result.screen.min_data_loaded_replicate_count = 1
+        #     screen_result.screen.max_data_loaded_replicate_count = 1
+        # screen_result.screen.save()
+        # logger.info('screen_result.screen.max_data_loaded_replicate_count: %r',
+        #     screen_result.screen.max_data_loaded_replicate_count)
         
         logger.info('create_result_values - done.')
 
@@ -10608,6 +10855,12 @@ class LibraryScreeningResource(ActivityResource):
         
         self.plate_resource = None
         self.copywell_resource = None
+        self.library_resource = None
+    
+    def get_library_resource(self):
+        if self.library_resource is None:
+            self.library_resource = LibraryResource()
+        return self.library_resource
         
     def get_plate_resource(self):
         if self.plate_resource is None:
@@ -10639,8 +10892,13 @@ class LibraryScreeningResource(ActivityResource):
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<activity_id>([\d]+))/plates%s$") 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_screened_plates_view'),
-                name="api_dispatch_screened_plates_view"),
+                self.wrap_view('dispatch_plates_screened_view'),
+                name="api_dispatch_plates_screened_view"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<activity_id>([\d]+))/libraries%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_libraries_screened_view'),
+                name="api_dispatch_libraries_screened_view"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<activity_id>([\d]+))/plate_ranges%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -10651,18 +10909,38 @@ class LibraryScreeningResource(ActivityResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_plate_range_view'), 
                 name="api_dispatch_plate_range_view"),
-        ]    
-    def dispatch_screened_plates_view(self, request, **kwargs):
-        kwargs['library_screening_id'] = kwargs.pop('activity_id')
+        ]  
+        
+    def dispatch_plates_screened_view(self, request, **kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-        manual_field_includes = set(param_hash.get('includes', []))
-        manual_field_includes.add('comment_array')
-        manual_field_includes.add('library_comment_array')
-        kwargs['includes'] = manual_field_includes
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+        library_screening_id = kwargs.pop('activity_id')
+        
+        return self.get_plate_resource()\
+            .build_screened_plate_response(
+                request, library_screening_id=library_screening_id, **kwargs)    
 
+    def dispatch_libraries_screened_view(self, request, **kwargs):
+
+        library_screening_id = kwargs.pop('activity_id')
+
+        with get_engine().connect() as conn:
+            _l = self.bridge['library']
+            _ap = self.bridge['assay_plate']
+            _c = self.bridge['copy']
+            _p = self.bridge['plate']
+            
+            library_names = [x[0] for x in 
+                conn.execute(
+                    select([distinct(_l.c.short_name)])
+                    .select_from(
+                        _l.join(_c, _l.c.library_id==_c.c.library_id)
+                          .join(_p, _p.c.copy_id==_c.c.copy_id)
+                          .join(_ap, _ap.c.plate_id==_p.c.plate_id))
+                    .where(_ap.c.library_screening_id==library_screening_id))]
+            
+            return self.get_library_resource().get_list(request,
+                short_name__in=library_names, **kwargs)
+        
     def dispatch_plate_range_view(self, request, **kwargs):
         ''' 
         Special method returns plate ranges: 
@@ -10699,12 +10977,14 @@ class LibraryScreeningResource(ActivityResource):
             except ObjectDoesNotExist:
                 raise Http404(
                     'library_screening does not exist for: %r', activity_id)
-        volume_required = param_hash.get('volume_required', None)
-        if volume_required is None:
+        volume_required = parse_val(param_hash.get('volume_required', None),
+            'volume_required', 'decimal')
+        logger.info('volume_required: %r', volume_required)
+        if volume_required:
+            volume_required = Decimal(volume_required)
+        else:
             if library_screening is not None:
                 volume_required = library_screening.volume_transferred_per_well_from_library_plates
-        else:
-            volume_required = Decimal(volume_required)
             
         _a = self.bridge['activity']
         _c = self.bridge['copy']
@@ -10772,7 +11052,6 @@ class LibraryScreeningResource(ActivityResource):
                 return ranges
                 
             # Convert the query into plate-ranges
-            warnings_seen = False
             librarycopy = None
             start_plate = 0
             end_plate = 0
@@ -10783,19 +11062,18 @@ class LibraryScreeningResource(ActivityResource):
             cherry_picked_plates = set()
             new_row = {}
             for _row in cursor_generator(_result,fields):
-                logger.info('row: %r', _row)
                 librarycopy = '{library_short_name}/{copy_name}'.format(**_row)
                 if librarycopy != current_lc or end_plate < _row['plate_number']-1:
                     if new_row:
                         new_row['end_plate'] = end_plate
                         if cherry_picked_plates:
-                            warnings.add('Plates have been cherry picked: '
-                                + ','.join(find_ranges(cherry_picked_plates)))
+                            warnings.add('%s: cherry picked'
+                                % ','.join(find_ranges(cherry_picked_plates)))
                         if disallowed_status_map:
                             warnings.update([
-                                '%s: %s' % (k, ', '.join(find_ranges(v)))
+                                '%s: %s' % (', '.join(find_ranges(v)),k)
                                     for k,v in disallowed_status_map.items()])
-                        new_row['warnings'] = [x for x in warnings]
+                        new_row['warnings'] = [x for x in sorted(warnings)]
                         _data.append(new_row)
                     disallowed_status_map = defaultdict(set)
                     warnings = set()
@@ -10815,25 +11093,25 @@ class LibraryScreeningResource(ActivityResource):
                     if _row['remaining_well_volume']:
                         if volume_required is not None:
                             if Decimal(_row['remaining_well_volume']) <= volume_required:
-                                warnings.add('insufficient vol: %d: %s uL'
+                                warnings.add('%d: insufficient vol: %s uL'
                                     % (_row['plate_number'], 
                                         lims_utils.convert_decimal(
                                             _row['remaining_well_volume'],1e-6, 1)))
                     else:
-                        warnings.add('No volume recorded: %d' % _row['plate_number'])
+                        warnings.add('%d: no volume recorded' % _row['plate_number'])
                     if _row.get('cplt_screening_count',0) > 0:
                         cherry_picked_plates.add(_row['plate_number'])
                 
             if librarycopy:
                 new_row['end_plate'] = end_plate
                 if cherry_picked_plates:
-                    warnings.add('Plates have been cherry picked: '
-                        + ','.join(find_ranges(cherry_picked_plates)))
+                    warnings.add('%s: cherry picked'
+                        % ','.join(find_ranges(cherry_picked_plates)))
                 if disallowed_status_map:
                     warnings.update([
-                        '%s: %s' % (k, ', '.join(find_ranges(v)))
+                        '%s: %s' % (', '.join(find_ranges(v)),k)
                             for k,v in disallowed_status_map.items()])
-                new_row['warnings'] = [x for x in warnings]
+                new_row['warnings'] = [x for x in sorted(warnings)]
                 _data.append(new_row)
                             
             response_data = {
@@ -11111,7 +11389,7 @@ class LibraryScreeningResource(ActivityResource):
                 errors['library_plates_screened'] = (
                     'Can not specifiy library plates if '
                     '"is_for_external_library_plates"')
-        
+
         return errors
 
 
@@ -11165,7 +11443,7 @@ class LibraryScreeningResource(ActivityResource):
         meta = { 
             API_MSG_SCREENING_TOTAL_PLATE_COUNT: 
                 new_data_display['library_plates_screened_count'],
-            'Volume per well transferred from Plates (uL)': 
+            'Volume per well transferred from Plates (nL)': 
                 new_data_display['volume_transferred_per_well_from_library_plates'],
         }
         meta.update(plate_meta)
@@ -11244,7 +11522,7 @@ class LibraryScreeningResource(ActivityResource):
         meta = { 
             API_MSG_SCREENING_TOTAL_PLATE_COUNT: 
                 new_data_display['library_plates_screened_count'],
-            'Volume per well transferred from Plates (uL)': 
+            'Volume per well transferred from Plates (nL)': 
                 new_data_display['volume_transferred_per_well_from_library_plates'],
         }
         meta.update(plate_meta)
@@ -11302,10 +11580,8 @@ class LibraryScreeningResource(ActivityResource):
                 raise ValidationError(
                     key=_key,
                     msg='does not exist: {val}'.format(val=_val))
-        logger.info('initializer_dict: %r', initializer_dict)
         try:
             library_screening = None
-#             current_volume_transferred_per_well = 0
             if patch:
                 try:
                     logger.info('%r', id_kwargs)
@@ -11360,17 +11636,16 @@ class LibraryScreeningResource(ActivityResource):
                 raise ValidationError(
                     key='library_plates_screened', 
                     msg='required')
-            override_param = parse_val(
-                param_hash.get(API_PARAM_OVERRIDE, False),
-                    API_PARAM_OVERRIDE, 'boolean')
+            # override_param = parse_val(
+            #     param_hash.get(API_PARAM_OVERRIDE, False),
+            #         API_PARAM_OVERRIDE, 'boolean')
             # override_vol_param = parse_val(
             #     param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
             #         API_PARAM_VOLUME_OVERRIDE, 'boolean')
             logger.debug('save library screening, set assay plates: %r', library_screening)
             plate_meta = self._set_assay_plates(
                 request, schema, 
-                library_screening, library_plates_screened,
-                ls_log, override_param) # , override_vol_param
+                library_screening, library_plates_screened, ls_log) # , override_lib_param, override_vol_param
             logger.info('save library screening, assay plates set: %r', library_screening)
             
             ls_log.json_field = json.dumps(plate_meta)
@@ -11447,8 +11722,8 @@ class LibraryScreeningResource(ActivityResource):
     @transaction.atomic    
     def _set_assay_plates(
             self, request, schema, library_screening, library_plates_screened,
+            ls_log):
 #             current_volume_transferred_per_well, new_volume_transferred_per_well,
-            ls_log, override_param):
         '''
         - Create new assay plates
         - Adjust librarycopyplate volume
@@ -11456,8 +11731,8 @@ class LibraryScreeningResource(ActivityResource):
         - Create librarycopyplate logs
         - TODO: create copy logs
         '''
-        logger.info('set assay plates screened for: %r, %r, overrides: %r', 
-            library_screening.activity_id, library_plates_screened, override_param)
+        logger.info('set assay plates screened for: %r, %r', 
+            library_screening.activity_id, library_plates_screened)
         # parse library_plate_ranges
         # E.G. Regex: /(([^:]+):)?(\w+):(\d+)-(\d+)/
         regex_string = schema['fields']['library_plates_screened']['regex']
@@ -11531,8 +11806,8 @@ class LibraryScreeningResource(ActivityResource):
                     raise ValidationError(
                         key='library_plates_screened',
                         msg=('library.screen_type!=screen.screen_type: '
-                             '{library_short_name},{screen_facility_id}'
-                             ).format(**range))
+                             '{start_plate}-{end_plate} (%s)' % start_plate.copy.library.screen_type
+                             ).format(**_data))
                 plate_range = range(
                     start_plate.plate_number, end_plate.plate_number + 1)
 
@@ -11620,6 +11895,10 @@ class LibraryScreeningResource(ActivityResource):
                             plate_warnings.append(
                                 'plate: "%s/%s" status: "%s"'
                                     % (plate.copy.name,plate.plate_number,plate.status))
+                        if plate.copy.usage_type != 'library_screening_plates':
+                            plate_errors.append(
+                                'plate: "%s/%s: %s"' 
+                                % (plate.copy.name, plate.plate_number,plate.copy.usage_type))
                         # 20170407 allow libraryscreening even after 
                         #     # copywells have been created
                         # if plate.cplt_screening_count > 0:
@@ -11642,8 +11921,9 @@ class LibraryScreeningResource(ActivityResource):
                         #                plate.cplt_screening_count))
                         if plate_errors:
                             continue
-                        if not_allowed_libraries and override_param is not True:
-                            continue
+                        # 2017041 - allow screening for "not_allowed" libraries
+                        # if not_allowed_libraries and override_param is not True:
+                        #    continue
 
                         ap = AssayPlate.objects.create(**{  
                             'plate': plate,
@@ -11666,16 +11946,15 @@ class LibraryScreeningResource(ActivityResource):
             not_allowed_libraries = sorted([
                 '%s - status: %s' % (l.short_name,l.screening_status)
                 for l in not_allowed_libraries])
-            if override_param is not True:
-                raise ValidationError({
-                    API_PARAM_OVERRIDE: 'required',
-                    'library_plates_screened': (
-                        'Override required to screen libraries that are '
-                        'not allowed'),
-                    'Libraries': not_allowed_libraries
-                    }
-                )
-        plates_insufficient_volume = []
+            # if override_param is not True:
+            #     raise ValidationError({
+            #         API_PARAM_OVERRIDE: 'required',
+            #         'library_plates_screened': (
+            #             'Override required to screen libraries that are '
+            #             'not allowed'),
+            #         'Libraries': not_allowed_libraries
+            #         }
+            #     )
         
         logger.info('Update the plate screening related plates (and copywells)...')
         # TODO: deprecate volume change after plates are created.
@@ -11729,7 +12008,11 @@ class LibraryScreeningResource(ActivityResource):
         logger.info('Update and check created plates: %r' ,
             show_plates(created_plates))
         volume_to_transfer = library_screening.volume_transferred_per_well_from_library_plates
-        
+        if not volume_to_transfer:
+            raise ValidationError(
+                key='volume_transferred_per_well_from_library_plates',
+                msg='required')
+        plates_insufficient_volume = []
         plate_copywell_stats = {}
         plate_copywell_warnings = {}
         copywell_allocation_meta = {
@@ -11845,7 +12128,7 @@ class LibraryScreeningResource(ActivityResource):
         warnings = {}
         if not_allowed_libraries:
             warnings['library_screening_status'] = \
-                "Override used for libraries: " \
+                "library status: " \
                 + ', '.join(not_allowed_libraries)
         if plate_warnings:
             warnings['plate_status'] = sorted(plate_warnings)
@@ -12149,13 +12432,19 @@ class ScreenResource(DbApiResource):
         self.apilog_resource = None
         self.cpr_resource = None
         self.activity_resource = None
+        self.lcp_resource = None
         self.libraryscreening_resource = None
          
     def clear_cache(self):
         logger.info('clear screen caches')
         DbApiResource.clear_cache(self)
         caches['screen'].clear()
-   
+        
+    def get_librarycopyplate_resource(self):
+        if self.lcp_resource is None:
+            self.lcp_resource = LibraryCopyPlateResource()
+        return self.lcp_resource
+    
     def get_apilog_resource(self):
         if self.apilog_resource is None:
             self.apilog_resource = ApiLogResource()
@@ -12419,23 +12708,11 @@ class ScreenResource(DbApiResource):
         return LibraryResource().dispatch('list', request, **kwargs)    
 
     def dispatch_plates_screened_view(self, request, **kwargs):
-        kwargs['for_screen_id'] = kwargs.pop('facility_id')
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-        manual_field_includes = set(param_hash.get('includes', []))
-        manual_field_includes.add('comment_array')
-        manual_field_includes.add('library_comment_array')
-        kwargs['includes'] = manual_field_includes
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
-
-    # NOTE: no longer supporting plates loaded stats
-    # def dispatch_screen_lcp_loadedview(self, request, **kwargs):
-    #     # FIXME: copyplatesloaded no longer works - 20160607
-    #     # because we are not creating "assay_plates" for screen results anymore
-    #     # can this be modified to show virtual "plates" loaded?
-    #     kwargs['loaded_for_screen_id'] = kwargs.pop('facility_id')
-    #     return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+        screen_facility_id = kwargs.pop('facility_id')
+        
+        return self.get_librarycopyplate_resource()\
+            .build_screened_plate_response(request, screen_facility_id, **kwargs)    
 
     def dispatch_screen_billingview(self, request, **kwargs):
         kwargs['visibilities'] = 'billing'

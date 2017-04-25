@@ -9,5 +9,5 @@
   "project_phase": "primary_screen", 
   "screen_type": "small_molecule", 
   "summary": "Tests Small Molecule screen functionality", 
-  "title": "Small molecule test"
+  "title": "Test Small Molecule functionality"
 }

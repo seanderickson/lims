@@ -756,74 +756,23 @@ function main {
 
 }
 
-function code_bootstrap {
-  # performs a full update, minus the database restoration
-  
-  gitpull
-  
-#  restoredb
-  
-#  restoredb_data
-    
-  maybe_activate_virtualenv
-  
-  pip install -r requirements.txt >>"$LOGFILE" 2>&1
-
-  if [[ -n "$SETTINGS_FILE" ]]; then
-    cp $SETTINGS_FILE lims/settings.py
-  else
-    echo "no SETTINGS_FILE migration.properties setting"
-    # cp lims/settings-dist.py lims/settings.py
-  fi
-  
-  mkdir logs
-  
-  if [[ $RUN_DB_TESTS -ne 0 ]] ; then
-    $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing  \
-      >> "$LOGFILE" 2>&1 || error "django tests failed: $?"
-  fi
-  
-  frontend_setup
-  
-  django_syncdb
-
-  premigratedb  
-
-  bootstrap
-  
-  # the later migrations require the bootstrapped data
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    if [[ $WARNINGS -ne '' ]]; then
-      msg = "${WARNINGS} \n `tail -400 migration.log`"
-      echo $msg | mail -s "Migration completed $(ts), with warning" sean.erickson.hms@gmail.com
-    else
-      tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
-    fi
-  fi  
-  # put this here to see if LSF will start reporting results
-  exit 0
-
-  
-}  
 
 echo "start migration: $(ts) ..."
 
 main "$@"
 
-#  restoredb
+#  frontend_setup
   
-#  restoredb_data
-    
-# maybe_activate_virtualenv
-  
-# django_syncdb
+#  django_syncdb
 
-# premigratedb  
+#  premigratedb  
 
-# bootstrap
+#  bootstrap
   
-  # the later migrations require the bootstrapped data
-# migratedb
+# the later migrations require the bootstrapped data
+#  migratedb
+  
+#  setup_test_data
 
 
 

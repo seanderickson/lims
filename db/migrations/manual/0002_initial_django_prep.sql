@@ -457,7 +457,7 @@ ALTER TABLE assay_well ALTER COLUMN is_positive SET default false;
 - accounting algorithm in SS1 is inaccurate
 **/
 delete from assay_plate 
-  where where screen_result_data_loading_id is not null 
+  where screen_result_data_loading_id is not null 
   and library_screening_id is null;
 
 DROP TABLE cell_lineage;

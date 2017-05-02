@@ -5,8 +5,9 @@
 // workaround for libraries that need jquery $ in webpack
 //window.$ = window.jQuery = require('jquery');  
 
+require('css/external/bootstrap_custom_build/css/bootstrap.css');
 //require('bootstrap/dist/css/bootstrap.css');
-require('css/external/bootstrap.css');
+
 require('backgrid/lib/backgrid.css');
 require('backgrid-paginator/backgrid-paginator.css');
 require('backgrid-filter/backgrid-filter.css');

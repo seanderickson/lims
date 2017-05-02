@@ -513,6 +513,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       }
       if (self.options.title){
         $('#content_title').html(self.options.title);
+        $('#content_title_row').show();
       } else {
         $('#content_title_row').hide();
       }

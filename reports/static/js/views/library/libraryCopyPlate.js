@@ -248,8 +248,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       self.listenTo(view, 'update_title', function(val) {
         if(val) {
           this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+          $('#content_title_row').show();
         } else {
           this.$('#content_title').html(resource.title);
+          $('#content_title_row').show();
         }
       });
         

@@ -73,6 +73,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       newModel.resource = resource;
       this.$('#content_title').html('Create a new ' + resource.title );
+      this.$('#content_title_row').show();
+      
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
           viewClass = VIEWS[resource['detailView']];
@@ -84,28 +86,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
-//      function saveSuccessCallBack(model){
-//        console.log('new model created: ', model);
-//        if (resource.key == 'screen'){
-//          appModel.unset('screens');
-//        }
-//        else if (resource.key == 'library'){
-//          appModel.unset('libraries');
-//        }
-//        else if (resource.key == 'screensaveruser'){
-//          appModel.unset('users');
-//        }
-//        model = new Backbone.Model(model);
-//        var key = Iccbl.getIdFromIdAttribute( model,resource );
-//        model.key = resource.key + '/' + key;
-//        appModel.router.navigate(resource.key + '/' + key, {trigger:true});
-//      };
-      
       view = new viewClass({
         model: newModel, 
         uriStack: uriStack,
         isCreate: true,
-//        saveSuccessCallBack: saveSuccessCallBack
       });
 
       Backbone.Layout.setupView(view);
@@ -118,6 +102,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showDetailTest: function(uriStack){
       var self = this;
       this.$('#content_title').html("Detail Test");
+      this.$('#content_title_row').show();
       var view = new DetailTestView({uriStack: uriStack});
       self.setView('#content', view).render();
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -128,6 +113,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showWellSelectorTest: function(uriStack){
       var self = this;
       this.$('#content_title').html("Well Selector Test");
+      this.$('#content_title_row').show();
       var view = new WellSelectorView({
         uriStack: uriStack
       });
@@ -167,6 +153,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         self.$('#content_title').empty();
         self.$('#content_title').html(title);
+        self.$('#content_title_row').show();
       }
       titleFunc();
       model.on('sync', function(model){
@@ -210,8 +197,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         url += '/children/' + _key;
         
         this.$('#content_title').html('Child logs for: ' + _key);
+        this.$('#content_title_row').show();
       }else{
         this.$('#content_title').html(resource.title + ' listing');
+        this.$('#content_title_row').show();
       }
     
       if(uriStack.length > 1 && uriStack[0] == 'search' 
@@ -225,11 +214,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           url: url
         });
         collection = self.collection = new Collection();
-//        
-//        collection = self.collection = new Collection({
-//          'url': url
-//        });
-        
         var extraControls = [];
         
         if (false){
@@ -284,8 +268,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.listenTo(view, 'update_title', function(val){
           if(val) {
             this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+            this.$('#content_title_row').show();
           }else{
             this.$('#content_title').html(resource.title);
+            this.$('#content_title_row').show();
           }
         });
       
@@ -387,7 +373,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             extraControls: extraControls
           });
         this.$('#content_title').html(resource.title + ' search');
-        
+        this.$('#content_title_row').show();
         
         self.listenTo(view, 'update_title', function(val){
           if(val) {
@@ -514,6 +500,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var view = new WelcomeView();
         self.setView('#content', view).render();
         this.$('#content_title').html(resource.title);
+        this.$('#content_title_row').show();
         return;
       }
       
@@ -526,6 +513,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var view = new WelcomeView();
         self.setView('#content', view).render();
         this.$('#content_title').html(resource.title);
+        this.$('#content_title_row').show();
         return;
       }
       

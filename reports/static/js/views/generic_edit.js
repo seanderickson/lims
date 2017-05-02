@@ -53,7 +53,7 @@ define([
 
     formTemplate: _.template([
       '<form class="iccbl-nested-form" >',
-      '<div class="input-group ">',
+      '<div class="input-group col-sm-4" >',
       '   <div data-fields="number" />',
       '   <div class="input-group-addon iccbl-nested-form-unit" data-fields="unit"/>',
       '</div>',

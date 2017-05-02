@@ -37,6 +37,7 @@ define([
       
       setMessages: function() {
         var messages = appModel.get('messages');
+        console.log('set messages', messages);
         if(!_.isEmpty(messages)){
           this.messageView = new MessageView({model: appModel});
           this.setView("#messages", this.messageView).render();

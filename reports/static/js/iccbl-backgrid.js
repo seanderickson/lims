@@ -17,8 +17,14 @@ var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/
 var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})/
 // Copy name pattern can be any string, starting with an alpha char
-var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+.*$/
-
+var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+[\w,\- ]*$/
+var PLATE_RANGE_KEY_SPECIFIER = Iccbl.PLATE_RANGE_KEY_SPECIFIER
+  = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
+// Note: library is optional in the plate range key
+var PLATE_RANGE_KEY_PATTERN = 
+  Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
+var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
+  = /^(([^:]+):)?([\d\-]+)$/;
 
 /**
  * Convert a plate row index to a letter

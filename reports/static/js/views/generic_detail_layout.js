@@ -88,6 +88,7 @@ define([
     afterRender: function(){
       if (this.title){
         this.$el.find('#content_title').html(this.title).show();
+        $('#content_title_row').show();
       }
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();

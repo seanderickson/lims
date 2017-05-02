@@ -9,9 +9,14 @@ define([
   'views/generic_detail_stickit', 
   'views/list2',
   'views/screen/libraryScreening',
-  'utils/tabbedController'
+  'views/screen/plateRangeSearch',
+  'views/generic_edit',
+  'utils/tabbedController',
+  'utils/plateRangeTable',
+  'templates/genericResource.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView,
-            ListView, LibraryScreeningView, TabbedController) {
+            ListView, LibraryScreeningView, PlateRangeSearchView, EditView, TabbedController, 
+            PlateRangePrototype, genericLayout) {
   
   var ScreenSummaryView = TabbedController.extend({
     
@@ -19,7 +24,6 @@ define([
       var self = this;
       this._classname = 'ScreenSummary';
       TabbedController.prototype.initialize.apply(this,arguments);
-      
     },
 
     tabbed_resources: {
@@ -46,7 +50,12 @@ define([
         invoke : 'setLibraries',
         permission: 'screen'
       },
-            
+      plateranges: {
+        description : 'Plate Range Search View',
+        title : 'Plate Ranges',
+        invoke : 'setPlateRangeSearch',
+        permission: 'screen'
+      },
     },      
     
     /**
@@ -58,7 +67,21 @@ define([
         'base_url': self.model.resource.key + '/' + self.model.key + '/summary',
         'tab_resources': this.tabbed_resources
       }      
-    }, 
+    },
+    
+    setPlateRangeSearch: function(delegateStack) {
+      var self = this;
+      var view = new PlateRangeSearchView({
+        model: self.model,
+        uriStack: _.clone(delegateStack),
+        summaryView: self
+      });
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      this.consumedStack = ['plateranges'];
+      self.reportUriStack([]);
+    },
     
     setDetail: function(delegateStack) {
       console.log('setSummary...', delegateStack);
@@ -297,11 +320,6 @@ define([
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
           
-          
-//          var title = model.resource.title;
-//          if (!model.isNew()){
-//            title += ': ' + Iccbl.getTitleFromTitleAttribute(model, model.resource);
-//          }
           $title = self.$el.find('#tab_container-title');
           $title.html(view.getTitle());
           $title.show();
@@ -459,7 +477,6 @@ define([
               self.change_to_tab('libraryscreening');
             }
           }));
-      
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),

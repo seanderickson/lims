@@ -16,8 +16,6 @@ define([
             PlateRangePrototype, DetailLayout, DetailView, EditView,
             ListView, TabbedController) {
   
-  var plate_range_key_specifier = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
-
   var LibraryScreeningView = TabbedController.extend({
   
     initialize: function(args) {
@@ -443,7 +441,7 @@ define([
           var Collection = Iccbl.CollectionOnClient.extend({
             // explicitly define the id so that collection compare & equals work
             modelId: function(attrs) {
-              return Iccbl.formatString( plate_range_key_specifier, attrs);
+              return Iccbl.formatString( Iccbl.PLATE_RANGE_KEY_SPECIFIER, attrs);
             }
           });
           var plate_collection = new Collection({
@@ -464,14 +462,14 @@ define([
           this.listenTo(plate_collection, 'update', function (plate_collection) {
             self_editform.setValue('library_plates_screened', 
               plate_collection.map(function(model){
-                return Iccbl.formatString(plate_range_key_specifier, model);
+                return Iccbl.formatString(Iccbl.PLATE_RANGE_KEY_SPECIFIER, model);
               }));
           });
           
           if (self.model.get('activity_id')){
             var urlparts = [self.model.resource.apiUri]
             urlparts.push(self.model.get('activity_id'))
-            urlparts.push('plate_ranges')
+            urlparts.push('plate_range_search')
             plate_collection.url = urlparts.join('/');
             plate_collection.fetch().done(function(data){
               PlateRangePrototype._createPlateRangeTable.call(this,
@@ -583,7 +581,7 @@ define([
               if (self.model.get('activity_id')){
                 urlparts.push(self.model.get('activity_id'))
               }
-              urlparts.push('plate_ranges')
+              urlparts.push('plate_range_search')
               $.ajax({
                 url:  urlparts.join('/'),     
                 data: data,

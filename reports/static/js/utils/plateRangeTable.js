@@ -36,7 +36,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
     },
     
     _createPlateRangeTable: function(
-        plate_collection, $target_el, editable, extra_cols){
+        plate_collection, $target_el, editable, extra_cols, screen_facility_id){
       var self = this;
       $target_el.empty();
       
@@ -71,27 +71,75 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           })
         }),
         _.extend({},colTemplate,{
-          'name' : 'start_plate',
-          'label' : 'Start Plate',
-          'description' : 'Start Plate',
+          'name' : 'plate_range',
+          'label' : 'Plate Range',
+          'description' : 'Copy Plate range',
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{start_plate}'
-          })
-        }),
-        _.extend({},colTemplate,{
-          'name' : 'end_plate',
-          'label' : 'End Plate',
-          'description' : 'End Plate',
-          'order': 1,
-          'sortable': true,
-          'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{end_plate}'
+            'hrefTemplate': 
+              '#library/{library_short_name}/copy/{copy_name}/plate' +
+              '/search/plate_number__range={start_plate},{end_plate}',
+            render : function() {
+              var self = this;
+              this.$el.empty();
+              var formattedValue = Iccbl.formatString(
+                '{start_plate}-{end_plate}', self.model);
+              var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
+              self.$el.append($('<a>', {
+                tabIndex : -1,
+                href : interpolatedVal,
+                target : self.target,
+                title: self.title
+              }).text(formattedValue));
+              return this;
+            },
           })
         })
+//        _.extend({},colTemplate,{
+//          'name' : 'start_plate',
+//          'label' : 'Start Plate',
+//          'description' : 'Start Plate',
+//          'order': 1,
+//          'sortable': true,
+//          'cell': Iccbl.LinkCell.extend({
+//            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{start_plate}'
+//          })
+//        }),
+//        _.extend({},colTemplate,{
+//          'name' : 'end_plate',
+//          'label' : 'End Plate',
+//          'description' : 'End Plate',
+//          'order': 1,
+//          'sortable': true,
+//          'cell': Iccbl.LinkCell.extend({
+//            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{end_plate}'
+//          })
+//        })
         
       ];
+      if(_.contains(extra_cols,'library_screening_id') ||
+          (!plate_collection.isEmpty() && plate_collection.at(0).has('library_screening_id'))){
+        columns.push(          
+          _.extend({},colTemplate,{
+            'name' : 'library_screening_id',
+            'label' : 'Screening ID',
+            'description' : 'Library Screening ID',
+            'order': -1,
+            'sortable': true,
+            'formatter': _.extend({}, Iccbl.StringFormatter.prototype, {
+              fromRaw(rawValue){
+                var val = Iccbl.StringFormatter.prototype.fromRaw.call(this,rawValue);
+                if (val=='0') return '';
+                return val;
+              }
+            }),
+            'cell': Iccbl.LinkCell.extend({
+              'hrefTemplate': '#screen/'+ screen_facility_id +'/summmary/libraryscreening/{library_screening_id}'
+            })
+          })
+        );
+      }
       
       if(_.contains(extra_cols,'library_screening_status') ||
           (!plate_collection.isEmpty() && plate_collection.at(0).has('library_screening_status'))){
@@ -108,7 +156,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'library_screening_status',
-            'label' : 'Screening Status',
+            'label' : 'Library Screening Status',
             'description' : 'Library Screening Status',
             'order': 1,
             'sortable': true,
@@ -119,38 +167,50 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           })
         );
       }
-      //if(_.contains(extra_cols,'plate_statuses') ||
-      //    (!plate_collection.isEmpty() && plate_collection.at(0).has('plate_statuses'))){
-      //  columns.push(          
-      //    _.extend({},colTemplate,{
-      //      'name' : 'plate_statuses',
-      //      'label' : 'Plate Status',
-      //      'description' : 'Plate Statuses',
-      //      'order': 1,
-      //      'sortable': true,
-      //      'cell': Iccbl.StringCell.extend({
-      //        'className': 'select-cell',
-      //        formatter: _.extend({}, Iccbl.StringFormatter.prototype, {
-      //          fromRaw(rawValue){
-      //            if(!_.isEmpty(rawValue)&&_.isArray(rawValue)){
-      //              return _.map(rawValue,function(status){
-      //                return status.charAt(0).toUpperCase() + status.slice(1);
-      //              }).join(', ');
-      //            }
-      //            return Iccbl.StringFormatter.prototype.fromRaw.call(this,rawValue);
-      //          }
-      //        })
-      //      })
-      //    })
-      //  );
-      //}
+      var tableClasses = 'backgrid table-striped table-condensed table-hover'
+      var rowClass = null;
+      var StatusColorRow = Backgrid.Row.extend({
+        _setStyle: function() {
+          
+          if (!_.isEmpty(this.model.get('errors'))) {
+            this.$el.addClass('danger');
+          }
+          else if (!_.isEmpty(this.model.get('warnings'))) {
+            this.$el.addClass('warning');
+          }
+        },
+        render: function() {
+          StatusColorRow.__super__.render.apply(this, arguments);
+          this._setStyle();
+          return this;
+        }
+      });
+      
       if(_.contains(extra_cols,'warnings') ||
           (!plate_collection.isEmpty() && plate_collection.at(0).has('warnings'))){
+        rowClass = StatusColorRow;
+        tableClasses = 'backgrid table-condensed table';
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'warnings',
             'label' : 'Warnings',
             'description' : 'Warnings',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.TextWrapCell
+          })
+        );
+      }
+      
+      if(_.contains(extra_cols,'errors') ||
+          (!plate_collection.isEmpty() && plate_collection.at(0).has('errors'))){
+        rowClass = StatusColorRow;
+        tableClasses = 'backgrid table-condensed table';
+        columns.push(          
+          _.extend({},colTemplate,{
+            'name' : 'errors',
+            'label' : 'Errors',
+            'description' : 'Errors: screening not possible',
             'order': 1,
             'sortable': true,
             'cell': Iccbl.TextWrapCell
@@ -183,10 +243,17 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       var cell = $('<div>',{ class: '' });
       
       var plate_range_grid = new Backgrid.Grid({
+        row: rowClass,
         columns: colModel,
         collection: plate_collection,
-        className: 'backgrid table-striped table-condensed table-hover'
+        className: tableClasses
       });
+      this.listenTo(plate_collection,'backgrid:sort', function(col,direction){
+        if (col.get('name')=='plate_range'){
+          // TODO
+        }
+      });
+
       cell.append(plate_range_grid.render().$el);
       $target_el.append(cell);
       

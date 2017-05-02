@@ -2549,16 +2549,18 @@ class ScreenResultResource(DBResourceTestCase):
         self.assertTrue(screen[key]==expected_value,
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
-        key = 'min_data_loaded_replicate_count'
-        expected_value = 2
-        self.assertTrue(screen[key]==expected_value,
-            (key,'expected_value',expected_value,
-                'returned value',screen[key]))
-        key = 'max_data_loaded_replicate_count'        
-        expected_value = 2
-        self.assertTrue(screen[key]==expected_value,
-            (key,'expected_value',expected_value,
-                'returned value',screen[key]))
+        
+        # NOTE: data_loaded statistics have been removed
+        # key = 'min_data_loaded_replicate_count'
+        # expected_value = 2
+        # self.assertTrue(screen[key]==expected_value,
+        #     (key,'expected_value',expected_value,
+        #         'returned value',screen[key]))
+        # key = 'max_data_loaded_replicate_count'        
+        # expected_value = 2
+        # self.assertTrue(screen[key]==expected_value,
+        #     (key,'expected_value',expected_value,
+        #         'returned value',screen[key]))
 
         key = 'assay_readout_types'
         expected_value = ['luminescence', 'flourescence_intensity']

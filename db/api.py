@@ -167,8 +167,7 @@ def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
 
 class DbApiResource(reports.api.ApiResource):
-    '''
-   '''
+
     def __init__(self, **kwargs):
         super(reports.api.ApiResource,self).__init__(**kwargs)
         self.resource_resource = None
@@ -187,14 +186,12 @@ class DbApiResource(reports.api.ApiResource):
     def get_request_user(self,request):
         
         return ScreensaverUser.objects.get(username=request.user.username)
-        
     
     def build_schema(self, user=None):
         logger.debug('build schema for: %r', self._meta.resource_name)
         return self.get_resource_resource()._get_resource_schema(
             self._meta.resource_name, user=user)
     
-
 class PlateLocationResource(DbApiResource):        
     
     class Meta:
@@ -262,9 +259,7 @@ class PlateLocationResource(DbApiResource):
             
         if schema is None:
             raise Exception('schema not initialized')
-            # schema = super(PlateLocationResource, self).build_schema()
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
         
         try:
             
@@ -835,7 +830,9 @@ class LibraryCopyPlateResource(DbApiResource):
         return parsed_searches
         
     @classmethod
-    def find_plates(cls, plate_search_data ):
+    def find_plates(
+        cls, plate_search_data, library_screening_plates_only=False,
+        plate_status_types=None ):
         ''' return set() of LibraryCopyPlate objects matching the
         plate_search_data (raw user search text)
         '''
@@ -863,10 +860,18 @@ class LibraryCopyPlateResource(DbApiResource):
                 for plate_range in parsed_search['plate_range']:
                     plate_qs.append(Q(plate_number__range=plate_range))
             if plate_qs:
-                plate_query = plate_query.filter(reduce(lambda x,y: x|y,plate_qs))
+                plate_query = plate_query.filter(
+                    reduce(lambda x,y: x|y,plate_qs))
             
             if 'copy' in parsed_search:
-                plate_query = plate_query.filter(copy__name__in=parsed_search['copy'])
+                plate_query = plate_query.filter(
+                    copy__name__in=parsed_search['copy'])
+            
+            if library_screening_plates_only is True:
+                plate_query = plate_query.filter(
+                    copy__usage_type='library_screening_plates')
+            if plate_status_types is not None:
+                plate_query = plate_query.filter(status__in=plate_status_types)
                 
             plates.update(plate_query.all())
         
@@ -1261,21 +1266,26 @@ class LibraryCopyPlateResource(DbApiResource):
                     .select_from(
                         select([distinct(_c.c.name)])
                         .select_from(_c.join(
-                            _assay_plates_inner,_c.c.copy_id==_assay_plates_inner.c.copy_id))
-                        .where(_assay_plates_inner.c.plate_number==text('assay_plates.plate_number'))
+                            _assay_plates_inner,_c.c.copy_id
+                                ==_assay_plates_inner.c.copy_id))
+                        .where(_assay_plates_inner.c.plate_number
+                            ==text('assay_plates.plate_number'))
                         .order_by(_c.c.name).alias('inner_copies'))
                     ).label('copies_screened'),
                 ( select([func.min(_assay_plates_inner.c.date_of_activity)])
                     .select_from(_assay_plates_inner)
-                    .where(_assay_plates_inner.c.plate_number==text('assay_plates.plate_number'))
+                    .where(_assay_plates_inner.c.plate_number
+                        ==text('assay_plates.plate_number'))
                     ).label('first_date_screened'),
                 ( select([func.max(_assay_plates_inner.c.date_of_activity)])
                     .select_from(_assay_plates_inner)
-                    .where(_assay_plates_inner.c.plate_number==text('assay_plates.plate_number'))
+                    .where(_assay_plates_inner.c.plate_number
+                        ==text('assay_plates.plate_number'))
                     ).label('last_date_screened'),
                 _assay_plates.c.plate_number,
                 func.count(None).label('assay_plate_count'),
-                func.count(distinct(_assay_plates.c.activity_id)).label('screening_count'),
+                func.count(distinct(_assay_plates.c.activity_id))
+                    .label('screening_count'),
                 (
                     select([func.array_to_string(
                         func.array_agg(
@@ -1290,7 +1300,8 @@ class LibraryCopyPlateResource(DbApiResource):
                         ), 
                         LIST_DELIMITER_SQL_ARRAY) ])
                     .select_from(_library_comment_apilogs)
-                    .where(_library_comment_apilogs.c.key==_assay_plates.c.short_name)
+                    .where(_library_comment_apilogs.c.key
+                        ==_assay_plates.c.short_name)
                     ).label('library_comment_array'),
                 (
                     select([func.array_to_string(
@@ -1310,11 +1321,13 @@ class LibraryCopyPlateResource(DbApiResource):
                         _concat(
                             _assay_plates.c.short_name,
                             '/%/',
-                            cast(_assay_plates.c.plate_number, sqlalchemy.sql.sqltypes.Text))))
+                            cast(_assay_plates.c.plate_number, 
+                                sqlalchemy.sql.sqltypes.Text))))
                     ).label('comment_array'),
             ])
             .select_from(
-                _assay_plates.join(_l,_assay_plates.c.library_id==_l.c.library_id))
+                _assay_plates.join(
+                    _l,_assay_plates.c.library_id==_l.c.library_id))
             .group_by(
                 _assay_plates.c.short_name,
                 _l.c.library_name,
@@ -10900,15 +10913,15 @@ class LibraryScreeningResource(ActivityResource):
                 self.wrap_view('dispatch_libraries_screened_view'),
                 name="api_dispatch_libraries_screened_view"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<activity_id>([\d]+))/plate_ranges%s$") 
+                 r"(?P<activity_id>([\d]+))/plate_range_search%s$") 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_plate_range_view'), 
-                name="api_dispatch_plate_range_view"),
+                self.wrap_view('dispatch_plate_range_search_view'), 
+                name="api_dispatch_plate_range_search_view"),
             url((r"^(?P<resource_name>%s)/"
-                 r"plate_ranges%s$") 
+                 r"plate_range_search%s$") 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_plate_range_view'), 
-                name="api_dispatch_plate_range_view"),
+                self.wrap_view('dispatch_plate_range_search_view'), 
+                name="api_dispatch_plate_range_search_view"),
         ]  
         
     def dispatch_plates_screened_view(self, request, **kwargs):
@@ -10941,9 +10954,9 @@ class LibraryScreeningResource(ActivityResource):
             return self.get_library_resource().get_list(request,
                 short_name__in=library_names, **kwargs)
         
-    def dispatch_plate_range_view(self, request, **kwargs):
+    def dispatch_plate_range_search_view(self, request, **kwargs):
         ''' 
-        Special method returns plate ranges: 
+        Find: 
         - plates already asssociated with the library screening
         - plates matched by the "raw_search_data"
         Note: bypasses the "dispatch" framework call
@@ -10956,36 +10969,58 @@ class LibraryScreeningResource(ActivityResource):
                 response=HttpForbidden(
                     'user: %s, permission: %s/%s not found' 
                     % (request.user,self._meta.resource_name,'read')))
-        
-        logger.info('dispatch_plate_range_view')
-        
         if request.method.lower() not in ['get','post']:
             return self.dispatch('detail', request, **kwargs)
-        
+
+        # With POST, params may come in the request
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        
+
         activity_id = param_hash.get('activity_id', None)
         plate_search_data = param_hash.get('raw_search_data', None)
         if not activity_id and not plate_search_data:
-            raise NotImplementedError('must provide an activity_id or plate_search_data parameter')
-        
-        library_screening = None
+            raise NotImplementedError(
+                'must provide an activity_id or plate_search_data parameter')
+        volume_required = parse_val(param_hash.get('volume_required', None),
+            'volume_required', 'decimal')
+
+        extant_plate_ids = []
         if activity_id:
             try:
                 library_screening = LibraryScreening.objects.get(activity_id=activity_id)
+                if volume_required is None:
+                    volume_required = \
+                        library_screening.volume_transferred_per_well_from_library_plates
+                extant_plate_ids = set([ap.plate_id 
+                    for ap in library_screening.assayplate_set.all()])
             except ObjectDoesNotExist:
                 raise Http404(
                     'library_screening does not exist for: %r', activity_id)
-        volume_required = parse_val(param_hash.get('volume_required', None),
-            'volume_required', 'decimal')
-        logger.info('volume_required: %r', volume_required)
-        if volume_required:
-            volume_required = Decimal(volume_required)
-        else:
-            if library_screening is not None:
-                volume_required = library_screening.volume_transferred_per_well_from_library_plates
-            
+
+        searched_plate_ids = []
+        if plate_search_data: 
+            searched_plate_ids = [x.plate_id for x 
+                in self.get_plate_resource().find_plates(plate_search_data)]
+        
+        _data = []
+        if len(extant_plate_ids)>0 or len(searched_plate_ids)>0:
+            _data = self.get_plate_range_table(
+                searched_plate_ids, extant_plate_ids, volume_required=None)
+        response_data = {
+            API_RESULT_META: { 'total_count': len(_data) },
+            API_RESULT_DATA: _data 
+        }
+        return self.build_response(request, response_data)
+
+    def get_plate_range_table(
+        self, searched_plate_ids, extant_plate_ids, volume_required=None):        
+
+        assert (searched_plate_ids is not None 
+                or extant_plate_ids is not None),\
+            'must specify "searched_plate_ids" and/or "extant_plate_ids"'
+
+        allowed_plate_statuses = ['available', 'retired']
+
         _a = self.bridge['activity']
         _c = self.bridge['copy']
         _p = self.bridge['plate']
@@ -10994,69 +11029,37 @@ class LibraryScreeningResource(ActivityResource):
         j = j.join(_c, _c.c.copy_id==_p.c.copy_id)
         j = j.join(_l, _c.c.library_id==_l.c.library_id)
         
-        with get_engine().connect() as conn:
+        query = ( 
+            select([
+                _l.c.short_name.label('library_short_name'),
+                _l.c.screening_status.label('library_screening_status'),
+                _c.c.name.label('copy_name'),
+                _c.c.usage_type,
+                _p.c.plate_number,
+                _p.c.cplt_screening_count,
+                _p.c.remaining_well_volume,
+                _p.c.status,
+                _p.c.plate_id.in_(extant_plate_ids).label('is_extant') ])
+            .select_from(j)
+            .where(or_(
+                _p.c.plate_id.in_(extant_plate_ids),
+                _p.c.plate_id.in_(searched_plate_ids)))
+            .order_by(_l.c.short_name, _c.c.name, _p.c.plate_number ))
             
-            extant_plate_ids = [x[0] for x in 
-                conn.execute(
-                    self.get_plate_resource()
-                        .get_libraryscreening_plate_subquery(activity_id))]
-            
-            searched_plate_ids = []
-            if plate_search_data: 
-                searched_plate_ids = [x.plate_id for x 
-                    in self.get_plate_resource().find_plates(plate_search_data)]
-            
-            query = ( 
-                select([
-                    _l.c.short_name.label('library_short_name'),
-                    _l.c.screening_status.label('library_screening_status'),
-                    _c.c.name.label('copy_name'),
-                    _c.c.usage_type,
-                    _p.c.plate_number,
-                    _p.c.cplt_screening_count,
-                    _p.c.remaining_well_volume,
-                    _p.c.status,
-                    _p.c.plate_id.in_(extant_plate_ids).label('is_extant') ])
-                .select_from(j)
-                .where(or_(
-                    _p.c.plate_id.in_(extant_plate_ids),
-                    _p.c.plate_id.in_(searched_plate_ids)))
-                .order_by(_l.c.short_name, _c.c.name, _p.c.plate_number ))
-            
-            _data = []
-            _result = conn.execute(query)
-            fields = ['library_short_name', 'library_screening_status', 
-                'copy_name', 'usage_type', 'plate_number',
-                'cplt_screening_count', 'remaining_well_volume','status',
-                'is_extant']
-            
-            def find_ranges(list_of_numbers):
-                list_of_numbers = sorted(list_of_numbers)
-                ranges = []
-                range = []
-                for num in list_of_numbers:
-                    if not range:
-                        range = [num,num]
-                    else:
-                        if range[1] < num-1:
-                            ranges.append(range)
-                            range = [num,num]
-                        else:
-                            range[1] = num
-                if range:
-                    ranges.append(range)
-                ranges = map(lambda x: 
-                    str(x[0]) if x[0]==x[1]
-                    else '%s-%s' % (x[0],x[1]), ranges)
-                logger.debug('found ranges: %r for %r', ranges, list_of_numbers)
-                return ranges
+        fields = ['library_short_name', 'library_screening_status', 
+            'copy_name', 'usage_type', 'plate_number',
+            'cplt_screening_count', 'remaining_well_volume','status',
+            'is_extant']
                 
+        _data = []
+        with get_engine().connect() as conn:
+            _result = conn.execute(query)
+            
             # Convert the query into plate-ranges
             librarycopy = None
             start_plate = 0
             end_plate = 0
             current_lc = None
-            allowed_statuses = ['available', 'retired']
             disallowed_status_map = defaultdict(set)
             warnings = set()
             cherry_picked_plates = set()
@@ -11067,12 +11070,14 @@ class LibraryScreeningResource(ActivityResource):
                     if new_row:
                         new_row['end_plate'] = end_plate
                         if cherry_picked_plates:
-                            warnings.add('%s: cherry picked'
-                                % ','.join(find_ranges(cherry_picked_plates)))
+                            warnings.add('%s: Plates have been cherry picked'
+                                % ','.join(
+                                    lims_utils.find_ranges(cherry_picked_plates)))
                         if disallowed_status_map:
-                            warnings.update([
-                                '%s: %s' % (', '.join(find_ranges(v)),k)
-                                    for k,v in disallowed_status_map.items()])
+                            errors.update([
+                                '%s: %s' % (', '.join(
+                                    lims_utils.find_ranges(v)),k)
+                                        for k,v in disallowed_status_map.items()])
                         new_row['warnings'] = [x for x in sorted(warnings)]
                         _data.append(new_row)
                     disallowed_status_map = defaultdict(set)
@@ -11086,7 +11091,7 @@ class LibraryScreeningResource(ActivityResource):
                     current_lc = librarycopy
                 end_plate = _row['plate_number']
                 if  not _row['is_extant']:
-                    if _row['status'] not in allowed_statuses:
+                    if _row['status'] not in allowed_plate_statuses:
                         disallowed_status_map[_row['status']].add(_row['plate_number'])
                     if  _row['usage_type'] != 'library_screening_plates':
                         warnings.add(_row['usage_type'])
@@ -11105,22 +11110,18 @@ class LibraryScreeningResource(ActivityResource):
             if librarycopy:
                 new_row['end_plate'] = end_plate
                 if cherry_picked_plates:
-                    warnings.add('%s: cherry picked'
-                        % ','.join(find_ranges(cherry_picked_plates)))
+                    warnings.add('%s: Plates have been cherry picked'
+                        % ','.join(
+                            lims_utils.find_ranges(cherry_picked_plates)))
                 if disallowed_status_map:
-                    warnings.update([
-                        '%s: %s' % (', '.join(find_ranges(v)),k)
-                            for k,v in disallowed_status_map.items()])
+                    errors.update([
+                        '%s: %s' % (', '.join(
+                            lims_utils.find_ranges(v)),k)
+                                for k,v in disallowed_status_map.items()])
                 new_row['warnings'] = [x for x in sorted(warnings)]
                 _data.append(new_row)
-                            
-            response_data = {
-                API_RESULT_META: { 'total_count': len(_data) },
-                API_RESULT_DATA: _data 
-            }
-            return self.build_response(request, response_data)
-            
         
+        return _data
                 
     def get_query(self, schema, param_hash):
         '''  LibraryScreeningResource
@@ -11128,7 +11129,8 @@ class LibraryScreeningResource(ActivityResource):
 
         manual_field_includes = set(param_hash.get('includes', []))
         
-        library_plates_screened_search = param_hash.pop('library_plates_screened__contains', None)
+        library_plates_screened_search = param_hash.pop(
+            'library_plates_screened__contains', None)
         if library_plates_screened_search:
             manual_field_includes.add('library_plates_screened')
             
@@ -11162,7 +11164,6 @@ class LibraryScreeningResource(ActivityResource):
             _library_screening.c.activity_id == _la.c.activity_id)
         j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
 
-                 
         custom_columns = \
             super(LibraryScreeningResource, self).get_custom_columns('ls')
         custom_columns.update({
@@ -12551,8 +12552,319 @@ class ScreenResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_publicationdetailview'),
                 name="api_dispatch_screen_publicationdetailview"),
+            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
+                 r"/plate_range_search%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_plate_range_search_view'), 
+                name="api_dispatch_plate_range_search_view"),
         ]    
+
+    def dispatch_plate_range_search_view(self, request, **kwargs):
+        ''' 
+        Find: 
+        - plates already asssociated with the libraryscreenings for the screen
+        - plates matched by the "raw_search_data"
+        Note: bypasses the "dispatch" framework call
+        -- must be authenticated and authorized
+        '''
+        logger.info('screen plate range search view')
+        self.is_authenticated(request)
+        if not self._meta.authorization._is_resource_authorized(
+                self._meta.resource_name,request.user,'read'):
+            raise ImmediateHttpResponse(
+                response=HttpForbidden(
+                    'user: %s, permission: %s/%s not found' 
+                    % (request.user,self._meta.resource_name,'read')))
+        if request.method.lower() not in ['get','post']:
+            return self.dispatch('detail', request, **kwargs)
+
+        # With POST, params may come in the request
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        facility_id = param_hash.get('facility_id', None)
+        plate_search_data = param_hash.get('raw_search_data', None)
+        if not facility_id and not plate_search_data:
+            raise NotImplementedError(
+                'must provide either facility_id or plate_search_data parameter')
+        volume_required = parse_val(param_hash.get('volume_required', None),
+            'volume_required', 'decimal')
+        show_retired_plates = parse_val(
+            param_hash.get('show_retired_plates'),
+            'show_retired_plates','boolean')
+        plate_status_types = ['available']
+        if show_retired_plates:
+            plate_status_types.append('retired')
+        show_first_copy_only = parse_val(
+            param_hash.get('show_first_copy_only',None),
+            'show_first_copy_only','boolean')    
         
+        extant_plate_ids = []
+        if facility_id:
+            try:
+                screen = Screen.objects.get(facility_id=facility_id)
+#                 extant_plate_ids = set([ap.plate_id 
+#                     for ap in library_screening.assayplate_set.all()])
+            except ObjectDoesNotExist:
+                raise Http404(
+                    'library_screening does not exist for: %r', activity_id)
+
+        searched_plate_ids = []
+        if plate_search_data:
+            plates = self.get_librarycopyplate_resource().find_plates(
+                plate_search_data,
+                library_screening_plates_only=True,
+                plate_status_types=plate_status_types)
+            logger.info('show_first_copy_only: %r',show_first_copy_only)
+            if show_first_copy_only is not True:
+                searched_plate_ids = [x.plate_id for x in plates]
+            else:
+                plate_copy_map = defaultdict(list)
+                for plate in plates:
+                    plate_copy_map[plate.plate_number].append(
+                        (plate.copy.name,plate.plate_id))
+                for plate_number,copy_list in plate_copy_map.items():
+                    searched_plate_ids.append(sorted(copy_list)[0][1])
+                
+                
+        _data = []
+#         if len(extant_plate_ids)>0 or len(searched_plate_ids)>0:
+        _data = self.get_plate_range_search_table(
+            screen, searched_plate_ids, volume_required=volume_required)
+        response_data = {
+            API_RESULT_META: { 'total_count': len(_data) },
+            API_RESULT_DATA: _data 
+        }
+        filename = 'plate_search_for_%s' % screen.facility_id
+        return self.build_response(request, response_data, filename=filename)
+
+    def get_plate_range_search_table(
+        self, screen, searched_plate_ids, volume_required=None):        
+
+        warn_library_screening_status = [
+            'requires_permission','not_recommended','retired']
+        error_library_screening_status = [
+            'not_allowed','discarded']
+        allowed_plate_statuses = ['available', 'retired']
+        warn_plate_statuses = ['retired']
+        
+        logger.info('plate range search screen: %r, vol: %r', 
+            screen.facility_id, volume_required)
+        with get_engine().connect() as conn:
+            _a = self.bridge['activity']
+            _c = self.bridge['copy']
+            _p = self.bridge['plate']
+            _l = self.bridge['library']
+            _ls = self.bridge['library_screening']
+            _la = self.bridge['lab_activity']
+            _ap = self.bridge['assay_plate']
+            _screen = self.bridge['screen']
+            
+            fields = ['activity_id', 'library_short_name', 'library_screening_status', 
+                'library_screen_type', 'copy_name', 'usage_type', 'plate_number',
+                'cplt_screening_count', 'remaining_well_volume','status']
+            # 1. query for current library screening plates
+            _assay_plates_query = (select([
+                _ap.c.plate_id,
+                _ap.c.plate_number,
+                _ls.c.activity_id,
+                _a.c.date_of_activity,
+                _c.c.copy_id,
+                _c.c.name.label('copy_name'),
+                _l.c.short_name,
+                _c.c.library_id,
+                _concat(
+                    _l.c.short_name, '/', _c.c.name, '/', 
+                    cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
+                ).label('plate_key'),
+                ])
+                .select_from(
+                    _ap.join(_ls,_ap.c.library_screening_id==_ls.c.activity_id)
+                       .join(_a,_ls.c.activity_id==_a.c.activity_id)
+                       .join(_p, _ap.c.plate_id==_p.c.plate_id)
+                       .join(_c, _c.c.copy_id==_p.c.copy_id)
+                       .join(_l, _c.c.library_id==_l.c.library_id)
+                       .join(_la,_ls.c.activity_id==_la.c.activity_id)
+#                        .join(_screen,_la.c.screen_id==_screen.c.screen_id)
+                    )
+                .where(_ap.c.replicate_ordinal==0)
+                .where(_la.c.screen_id==screen.screen_id))
+            extant_plate_numbers = [x[1] for x in conn.execute(_assay_plates_query)]
+            _assay_plates_query = _assay_plates_query.cte('assay_plates')
+            j = _p
+            j = j.join(_c, _c.c.copy_id==_p.c.copy_id)
+            j = j.join(_l, _c.c.library_id==_l.c.library_id)
+            j = j.join(_assay_plates_query, _p.c.plate_id==_assay_plates_query.c.plate_id)
+            _extant_query = ( 
+                select([
+                    _assay_plates_query.c.activity_id,
+                    _l.c.short_name.label('library_short_name'),
+                    _l.c.screening_status.label('library_screening_status'),
+                    _l.c.screen_type.label('library_screen_type'),
+                    _c.c.name.label('copy_name'),
+                    _c.c.usage_type,
+                    _p.c.plate_number,
+                    _p.c.cplt_screening_count,
+                    _p.c.remaining_well_volume,
+                    _p.c.status,
+                ])
+                .select_from(j)
+                .order_by(
+                    _assay_plates_query.c.activity_id,
+                    _l.c.short_name, _c.c.name, _p.c.plate_number ))
+            _extant_query = _extant_query.cte('extant')
+            
+            # 2. query for searched plates
+            logger.info('searched_plate_ids: %r', searched_plate_ids)
+            j = _p
+            j = j.join(_c, _c.c.copy_id==_p.c.copy_id)
+            j = j.join(_l, _c.c.library_id==_l.c.library_id)
+            _search_query = ( 
+                select([
+                    literal_column('0').label('activity_id'),
+                    _l.c.short_name.label('library_short_name'),
+                    _l.c.screening_status.label('library_screening_status'),
+                    _l.c.screen_type.label('library_screen_type'),
+                    _c.c.name.label('copy_name'),
+                    _c.c.usage_type,
+                    _p.c.plate_number,
+                    _p.c.cplt_screening_count,
+                    _p.c.remaining_well_volume,
+                    _p.c.status,
+                ])
+                .select_from(j)
+                .where(_p.c.plate_id.in_(searched_plate_ids))
+                .order_by(_l.c.short_name, _c.c.name, _p.c.plate_number ))
+            _search_query = _search_query.cte('search_query')
+            
+            _combined_query = union(
+                select([literal_column(x) for x in fields])
+                    .select_from(_extant_query),
+                select([literal_column(x) for x in fields])
+                    .select_from(_search_query)
+                )
+            _combined_query = _combined_query.order_by(
+                nullslast(desc(column('activity_id'))),
+                'library_short_name', 'copy_name','plate_number')    
+
+            compiled_stmt = str(_combined_query.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
+                    
+            _data = []
+
+            _result = conn.execute(_combined_query)
+            
+            # Convert the query into plate-ranges
+            librarycopy = None
+            start_plate = 0
+            end_plate = 0
+            current_lc = None
+            disallowed_status_map = defaultdict(set)
+            warn_status_map = defaultdict(set)
+            already_screened_plate_numbers = set()
+            warnings = set()
+            errors = set()
+            cherry_picked_plates = set()
+            new_row = OrderedDict()
+            
+            for _row in cursor_generator(_result,fields):
+                librarycopy = '{library_short_name}/{copy_name}'.format(**_row)
+                if librarycopy != current_lc or end_plate < _row['plate_number']-1:
+                    if new_row:
+                        new_row['end_plate'] = end_plate
+                        if cherry_picked_plates:
+                            warnings.add('%s: Plate well volumes have been adjusted'
+                                % ','.join(
+                                    lims_utils.find_ranges(cherry_picked_plates)))
+                        if disallowed_status_map:
+                            errors.update([
+                                '%s: Disallowed Plate status: "%s"' % (', '.join(
+                                    lims_utils.find_ranges(v)),k)
+                                        for k,v in disallowed_status_map.items()])
+                        if warn_status_map:
+                            warnings.update([
+                                '%s: Plate status is "%s"' % (', '.join(
+                                    lims_utils.find_ranges(v)),k)
+                                        for k,v in warn_status_map.items()])
+                        if already_screened_plate_numbers:
+                            errors.add('Plates have already been screened: %s'
+                                % (', '.join(
+                                    lims_utils.find_ranges(already_screened_plate_numbers))))
+                        new_row['warnings'] = [x for x in sorted(warnings)]
+                        new_row['errors'] = [x for x in sorted(errors)]
+                        _data.append(new_row)
+                    disallowed_status_map = defaultdict(set)
+                    warn_status_map = defaultdict(set)
+                    already_screened_plate_numbers = set()
+                    warnings = set()
+                    errors = set()
+                    cherry_picked_plates = set()
+                    new_row = OrderedDict((
+                        ('library_screening_id', _row['activity_id']),
+                        ('library_short_name', _row['library_short_name']),
+                        ('library_screening_status', _row['library_screening_status']),
+                        ('copy_name', _row['copy_name']),
+                        ('start_plate', _row['plate_number']),
+                        ))
+                    current_lc = librarycopy
+                end_plate = _row['plate_number']
+                if _row['library_screening_status'] in warn_library_screening_status:
+                    warnings.add('Library screening status is "%s"' 
+                        % _row['library_screening_status'])
+                if _row['library_screening_status'] in error_library_screening_status:
+                    warnings.add('Library screening status is "%s"' 
+                        % _row['library_screening_status'])
+                if _row['library_screen_type'] != screen.screen_type:
+                    errors.add('Library type: %s'% _row['library_screen_type'])
+                if  _row['activity_id'] == 0:
+                    if _row['plate_number'] in extant_plate_numbers:
+                        already_screened_plate_numbers.add(_row['plate_number'])
+                    if _row['status'] not in allowed_plate_statuses:
+                        disallowed_status_map[_row['status']].add(_row['plate_number'])
+                    if _row['status'] in warn_plate_statuses:
+                        warn_status_map[_row['status']].add(_row['plate_number'])
+                    if  _row['usage_type'] != 'library_screening_plates':
+                        errors.add('Copy type: %s' % _row['usage_type'])
+                    if _row['remaining_well_volume']:
+                        if volume_required is not None:
+                            if Decimal(_row['remaining_well_volume']) <= volume_required:
+                                errors.add('%d: insufficient vol: %s uL'
+                                    % (_row['plate_number'], 
+                                        lims_utils.convert_decimal(
+                                            _row['remaining_well_volume'],1e-6, 1)))
+                    else:
+                        warnings.add('%d: no volume recorded' % _row['plate_number'])
+                    if _row.get('cplt_screening_count',0) > 0:
+                        cherry_picked_plates.add(_row['plate_number'])
+                
+            if librarycopy:
+                new_row['end_plate'] = end_plate
+                if cherry_picked_plates:
+                    warnings.add('%s: Plate well volumes have been adjusted'
+                        % ','.join(
+                            lims_utils.find_ranges(cherry_picked_plates)))
+                if disallowed_status_map:
+                    errors.update([
+                        '%s: Disallowed Plate status: "%s"' % (', '.join(
+                            lims_utils.find_ranges(v)),k)
+                                for k,v in disallowed_status_map.items()])
+                if warn_status_map:
+                    warnings.update([
+                        '%s: Plate status is "%s"' % (', '.join(
+                            lims_utils.find_ranges(v)),k)
+                                for k,v in warn_status_map.items()])
+                if already_screened_plate_numbers:
+                    errors.add('Plates have already been screened: %s'
+                        % (', '.join(
+                            lims_utils.find_ranges(already_screened_plate_numbers))))
+                new_row['warnings'] = [x for x in sorted(warnings)]
+                new_row['errors'] = [x for x in sorted(errors)]
+                _data.append(new_row)
+        
+        return _data
+
     def dispatch_screen_detail_uiview(self, request, **kwargs):
         ''' 
         Special method to populate nested entities for the UI 

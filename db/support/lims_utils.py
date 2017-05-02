@@ -326,3 +326,24 @@ def convert_decimal(
     val = val.quantize(decimals, decimal.ROUND_HALF_UP)
     
     return val
+
+def find_ranges(list_of_numbers):
+    list_of_numbers = sorted(list_of_numbers)
+    ranges = []
+    range = []
+    for num in list_of_numbers:
+        if not range:
+            range = [num,num]
+        else:
+            if range[1] < num-1:
+                ranges.append(range)
+                range = [num,num]
+            else:
+                range[1] = num
+    if range:
+        ranges.append(range)
+    ranges = map(lambda x: 
+        str(x[0]) if x[0]==x[1]
+        else '%s-%s' % (x[0],x[1]), ranges)
+    logger.debug('found ranges: %r for %r', ranges, list_of_numbers)
+    return ranges

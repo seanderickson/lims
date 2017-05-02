@@ -434,8 +434,8 @@ function frontend_setup {
   # TODO: frontend tests
   
   # add bootstrap to external folder - needed for the login template 
-  mkdir css/external
-  cp node_modules/bootstrap/dist/css/bootstrap.min.css css/external
+#   mkdir css/external
+#  cp node_modules/bootstrap/dist/css/bootstrap.min.css css/external
   
   cd ../..
   

@@ -58,6 +58,7 @@ import sys
 import unittest
 from unittest.util import safe_repr
 import urlparse
+import dateutil.parser
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
@@ -539,6 +540,27 @@ class BaselineTest(TestCase):
     
 class SerializerTest(TestCase):
 
+    def test_parse_val(self):
+        
+        test_array = [
+            (('1', 'integer_test', 'integer'),1),
+            (('true', 'boolean_test', 'boolean'),True),
+            (('TRUE', 'boolean_test', 'boolean'),True),
+            (('FALSE', 'boolean_test', 'boolean'),False),
+            (('0', 'boolean_test', 'boolean'),False),
+            (('1', 'boolean_test', 'boolean'),True),
+            (('10', 'boolean_test', 'boolean'),False),
+            (('x', 'boolean_test', 'boolean'),False),
+            ((None, 'boolean_test', 'boolean'),None),
+            (('2017-04-25', 'date_test', 'date'),
+                dateutil.parser.parse('2017-04-25').date()),
+        ]
+        for test_data in test_array:
+            result = parse_val(*test_data[0])
+            self.assertEqual(result, test_data[1],
+                '%r != %r' % (result,test_data))
+        
+        
     def test_csv(self):
         # NOTE this tests the obsoleted (non-streaming) Serializers;
         # new serializer uses csv.writer

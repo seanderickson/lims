@@ -1670,41 +1670,41 @@ define([
     
     }, //addVocabularyItem  
     
-    downloadUrl: function($el, url) {
-      // When tracking the download, we're going to have
-      // the server echo back a cookie that will be set
-      // when the download Response has been received.
-      var downloadID = ( new Date() ).getTime();
-      // Add the "downloadID" parameter for the server
-      // Server will set a cookie on the response to signal download complete
-      url += "?downloadID=" + downloadID;
-      // tmpFrame is a target for the download
-      var iframe = $([
-        '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
-        ' style="visibility:hidden;position:absolute;display:none"></iframe>',
-        ].join(''));
-      $el.append(iframe);
-      $('#loading').fadeIn({duration:100});
+    
+    /**
+     * Download the URL:
+     * - use GET for simple URL (with no post_data)
+     * - if post_data is provided, use POST with the post_data in a form.
+     * @param $el document element to be used for a temporary iframe target for
+     * the download.
+     */
+    downloadUrl: function($el, url, post_data) {
+      
+      // When downloading via AJAX, the "Content-Disposition: attachment" 
+      // does not trigger a "load" (completed) event; 
+      // to monitor the state of the download, a "downloadID" is sent to the 
+      // server; the server responds with the downloadID in a response 
+      // cookie when the download is complete.
+      // The code here was helpful:
+      // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
 
+      // Set a downloadID that will be echoed back by the server as a cookie 
+      // when the download is complete.
+      var downloadID = ( new Date() ).getTime();
       var intervalCheckTime = 1000; // 1s
       var maxIntervals = 3600;      // 3600s
       var limitForDownload = 0;
-      // The local cookie cache is defined in the browser
-      // as one large string; we need to search for the
-      // name-value pattern with the above ID.
-      var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
-
-      // Now, we need to start watching the local Cookies to
-      // see when the download ID has been updated by the
-      // response headers.
-      var cookieTimer = setInterval( checkCookies, intervalCheckTime );
-
+      
+      // Watch local document Cookies for the the download ID 
+      // to be updated by the response headers.
       var i = 0;
+      var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
+      var cookieTimer = setInterval( checkCookies, intervalCheckTime );
       function checkCookies() {
         if ( document.cookie.search( cookiePattern ) >= 0 ) {
           clearInterval( cookieTimer );
           $('#loading').fadeOut({duration:100});
-          $('#tmpFrame').remove();
+          $el.find('#tmpFrame').remove();
           return(
             console.log( "Download complete!!" )
           );
@@ -1721,17 +1721,55 @@ define([
         );
         i++;
       }
-      // simple GET request
-      iframe.attr('src', url);
       
+      // Add the "downloadID" parameter for the server
+      // Server will set a cookie on the response to signal download complete
+      
+      if (url.indexOf('?')>0){
+        url += "&downloadID=" + downloadID;
+      }else{
+        url += "?downloadID=" + downloadID;
+      }
+      
+      // tmpFrame is a target for the download
+      var iframe = $([
+        '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
+        ' style="visibility:hidden; position:absolute; display:none"></iframe>',
+        ].join(''));
+      $el.append(iframe);
+      $('#loading').fadeIn({duration:100});
+
+      if(post_data){
+        console.log('post_data found for download', post_data);
+        // create a form for posting
+        var postform = $("<form />", {
+          method: 'POST',
+          action: url
+        });
+        _.each(_.keys(post_data), function(key){
+          var hiddenField = $('<input/>',{
+            type: 'hidden',
+            name: key,
+            value: encodeURI(post_data[key])
+          });
+          postform.append(hiddenField);
+        });
+        iframe.append(postform);
+        console.log('submitting post form...' + url);
+        postform.submit();
+        
+      }else{
+        // simple GET request
+        iframe.attr('src', url);
+      }
     },
 
+    /**
+     * Display a download dialog for the url and resource.
+     */
     download: function(url, resource, post_data){
       var self = this;
       
-      if(url.search(/\?/) < 1 ){
-        url = url + '?';
-      }
       var formSchema = {};
       
       formSchema['use_vocabularies'] = {
@@ -1795,10 +1833,10 @@ define([
           "<div>",
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
-          // tmpFrame is a target for the download
-          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
-          ' style="visibility:hidden;position:absolute;display:none"></iframe>',
-          "</div>"
+//          // tmpFrame is a target for the download
+//          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
+//          ' style="visibility:hidden;position:absolute;display:none"></iframe>',
+//          "</div>"
           ].join(''))
       });
       
@@ -1809,7 +1847,6 @@ define([
           form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
           form.$el.find('[name="use_titles"]').prop('disabled', true);
           form.$el.find('[name="raw_lists"]').prop('disabled', true);
-//          form.$el.find('[name="data_interchange"]').prop('disabled', true);
           form.setValue('data_interchange', true);
         }else{
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
@@ -1829,22 +1866,10 @@ define([
       });
       var el = form.render().el;
       
-//      var default_content = form.getValue('content_type');
-//      console.log('default_content: ' + default_content);
-//      if(default_content != 'csv' && default_content != 'xls'){
-//        $(el).find('[name="use_vocabularies"]').prop('disabled', true);
-//        $(el).find('[name="use_titles"]').prop('disabled', true);
-//        $(el).find('[name="raw_lists"]').prop('disabled', true);
-//        form.$el.find('[name="data_interchange"]').prop('disabled', true);
-//      }
-      
       self.showModal({
         view: el,
         title: 'Download',  
         ok: function(event){
-          var intervalCheckTime = 1000; // 1s
-          var maxIntervals = 3600;      // 3600s
-          var limitForDownload = 0;
           
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
@@ -1857,7 +1882,12 @@ define([
           }
           var values = form.getValue();
 
-          url += '&format=' + values['content_type']
+          if(url.search(/\?/) < 1 ){
+            url += '?';
+          } else {
+            url += '&';
+          }
+          url += 'format=' + values['content_type']
 
           if(values['use_vocabularies']){
             url += '&use_vocabularies=true';
@@ -1872,83 +1902,83 @@ define([
             url += '&data_interchange=true';
           }
           
-          // When downloading via AJAX, the "Content-Disposition: attachment" 
-          // does not trigger a "load" (completed) event; this workaraound
-          // will set a cookie "downloadID" from the server when the download happens.
-          // How to trigger a download and notify JavaScript when finished:
-          // send a downloadID to the server and wait for a response cookie to appear.
-          // The code here was helpful:
-          // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
+          self.downloadUrl(form.$el, url, post_data);
           
-          // When tracking the download, we're going to have
-          // the server echo back a cookie that will be set
-          // when the download Response has been received.
-          var downloadID = ( new Date() ).getTime();
-          // Add the "downloadID" parameter for the server
-          // Server will set a cookie on the response to signal download complete
-          url += "&downloadID=" + downloadID;
-
-          if(post_data){
-            console.log('post_data found for download', post_data);
-            // create a form for posting
-            var el = form.$el.find('#tmpFrame');
-            
-            var postform = $("<form />", {
-              method: 'POST',
-              action: url
-            });
-
-            _.each(_.keys(post_data), function(key){
-              var hiddenField = $('<input/>',{
-                type: 'hidden',
-                name: key,
-                value: encodeURI(post_data[key])
-              });
-              postform.append(hiddenField);
-            });
-            el.append(postform);
-            console.log('submitting post form...' + url);
-            postform.submit();
-            
-          }else{
-            // simple GET request
-            form.$el.find('#tmpFrame').attr('src', url);
-          }
-          
-          
-          $('#loading').fadeIn({duration:100});
-
-          // The local cookie cache is defined in the browser
-          // as one large string; we need to search for the
-          // name-value pattern with the above ID.
-          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
-
-          // Now, we need to start watching the local Cookies to
-          // see when the download ID has been updated by the
-          // response headers.
-          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
-
-          var i = 0;
-          function checkCookies() {
-            if ( document.cookie.search( cookiePattern ) >= 0 ) {
-              clearInterval( cookieTimer );
-              $('#loading').fadeOut({duration:100});
-              return(
-                console.log( "Download complete!!" )
-              );
-            }else if(i >= maxIntervals){
-              clearInterval( cookieTimer );
-              window.alert('download abort after tries: ' + i);
-              return(
-                console.log( "Download abort!!" )
-              );
-            }
-            console.log(
-              "File still downloading...",
-              new Date().getTime()
-            );
-            i++;
-          }
+//          // When downloading via AJAX, the "Content-Disposition: attachment" 
+//          // does not trigger a "load" (completed) event; this workaraound
+//          // will set a cookie "downloadID" from the server when the download happens.
+//          // How to trigger a download and notify JavaScript when finished:
+//          // send a downloadID to the server and wait for a response cookie to appear.
+//          // The code here was helpful:
+//          // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
+//          
+//          var intervalCheckTime = 1000; // 1s
+//          var maxIntervals = 3600;      // 3600s
+//          var limitForDownload = 0;
+//          // When tracking the download, we're going to have
+//          // the server echo back a cookie that will be set
+//          // when the download Response has been received.
+//          var downloadID = ( new Date() ).getTime();
+//          // Add the "downloadID" parameter for the server
+//          // Server will set a cookie on the response to signal download complete
+//          url += "&downloadID=" + downloadID;
+//
+//          if(post_data){
+//            console.log('post_data found for download', post_data);
+//            // create a form for posting
+//            var postform = $("<form />", {
+//              method: 'POST',
+//              action: url
+//            });
+//            _.each(_.keys(post_data), function(key){
+//              var hiddenField = $('<input/>',{
+//                type: 'hidden',
+//                name: key,
+//                value: encodeURI(post_data[key])
+//              });
+//              postform.append(hiddenField);
+//            });
+//            form.$el.find('#tmpFrame').append(postform);
+//            console.log('submitting post form...' + url);
+//            postform.submit();
+//            
+//          }else{
+//            // simple GET request
+//            form.$el.find('#tmpFrame').attr('src', url);
+//          }
+//          $('#loading').fadeIn({duration:100});
+//
+//          // The local cookie cache is defined in the browser
+//          // as one large string; we need to search for the
+//          // name-value pattern with the above ID.
+//          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
+//
+//          // Now, we need to start watching the local Cookies to
+//          // see when the download ID has been updated by the
+//          // response headers.
+//          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
+//
+//          var i = 0;
+//          function checkCookies() {
+//            if ( document.cookie.search( cookiePattern ) >= 0 ) {
+//              clearInterval( cookieTimer );
+//              $('#loading').fadeOut({duration:100});
+//              return(
+//                console.log( "Download complete!!" )
+//              );
+//            }else if(i >= maxIntervals){
+//              clearInterval( cookieTimer );
+//              window.alert('download abort after tries: ' + i);
+//              return(
+//                console.log( "Download abort!!" )
+//              );
+//            }
+//            console.log(
+//              "File still downloading...",
+//              new Date().getTime()
+//            );
+//            i++;
+//          }
         }
         
       });

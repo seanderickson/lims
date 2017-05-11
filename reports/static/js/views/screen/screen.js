@@ -26,7 +26,9 @@ define([
 
   var ScreenView = TabbedController.extend({
     isAdmin: false,
-
+    OK_STATUSES: [
+      'accepted','ongoing','completed','completed_duplicate_with_ongoing' ],
+    
     initialize: function(args) {
       var self = this;
       self.args = args;
@@ -98,6 +100,7 @@ define([
     },
 
     getTitle: function() {
+      var self = this;
       var title = [
          '<H4 id="title">',
          '<a href="#screen/{facility_id}" >{facility_id}</a>: '];
@@ -184,23 +187,6 @@ define([
             self.createPublicationTable(this.$el.find('#publications'));
             self.createAttachedFileTable(this.$el.find('#attached_files'));
             
-//            // TODO: create a metadata setting for "show if present"
-//            if (!self.model.has('perturbagen_molar_concentration')) {
-//              $('#perturbagen_molar_concentration').closest('tr').remove();
-//            }
-//            if (!self.model.has('perturbagen_ug_ml_concentration')) {
-//              $('#perturbagen_ug_ml_concentration').closest('tr').remove();
-//            }
-//            if (!self.model.has('transfection_agent')) {
-//              $('#transfection_agent').closest('tr').remove();
-//            }
-//            if (!self.model.has('pin_transfer_approved_by_username')) {
-//              $('#pin_transfer_date_approved').closest('tr').remove();
-//              $('#pin_transfer_comments').closest('tr').remove();
-//            }
-//            if (self.model.get('screen_type')=='small_molecule'){
-//              $('#title').prepend('<span><small>A screen for compounds that...</small><span><br/>');
-//            }
           }
           
           if (appModel.hasGroup('readEverythingAdmin')) {
@@ -217,14 +203,12 @@ define([
               self.render();
             });
           }
-          
         },
         
         serialize: function() {
           // special handling of the grouped keys for the screen template
 
           var data = DetailView.prototype.serialize.apply(this,arguments);
-          
           var informationKeys = [];
           var groupedKeys = [];
           data['groupedKeys'].each(function(groupKey) {
@@ -236,12 +220,10 @@ define([
           });
           data['groupedKeys'] = _.chain(groupedKeys);
           data['informationKeys'] = _.chain(informationKeys);
-          console.log('data', data);
           return data;
         },
         
         template: _.template(screenTemplate)
-        
       });
 
       var temp_validate = this.model.validate;
@@ -296,17 +278,6 @@ define([
         detailKeys: detailKeys,
         editVisibleKeys: editVisibleKeys,
         DetailView: detailView
-//        showDetail: function(){
-//          var temp = DetailLayout.prototype.showDetail.apply(view,arguments);
-//          console.log('detail view after render.xxxxxx');
-//          var adminControl = $('<a>admin&gt;&gt;</a>');
-//          temp.$el.find('#top-controls').append(adminControl);
-//          adminControl.click(function(e){
-//            e.preventDefault();
-//            isAdmin = true;
-//            self.render();
-//          });
-//        }
       }));
       view.showEdit = function() {
         appModel.initializeAdminMode(function() {
@@ -353,7 +324,7 @@ define([
           $target_el.append($([
             '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
             '<div id="" class="col-xs-12" >',
-            '<table id="activity_summary" class="table-condensed data-list">',
+            '<table id="activity_summary_table" class="table-condensed data-list">',
             '<tr>',
             '<td class="dl-title small">Activities</td>', 
             '<td class="dl-data small">',
@@ -762,7 +733,7 @@ define([
         self.listenTo(collection, "MyCollection:delete", function (model) {
           
           var title = 'Confirm deletion of attached file: ' + 
-          Iccbl.getTitleFromTitleAttribute(model, resource);
+            Iccbl.getTitleFromTitleAttribute(model, resource);
           appModel.showOkCommentForm({
             title: title, 
             ok: function(values){
@@ -836,9 +807,6 @@ define([
         }
         collection.each(function(model) {
         });
-//        var TextWrapCell = Backgrid.Cell.extend({
-//          className: 'text-wrap-cell'
-//        });
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -856,7 +824,8 @@ define([
             'order': 1,
             'sortable': true,
             'cell': Iccbl.LinkCell.extend({
-              hrefTemplate: '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}'
+              hrefTemplate: 
+                '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}'
             })
           }),
           _.extend({},colTemplate,{
@@ -873,7 +842,9 @@ define([
             'description' : 'Requested By',
             'order': 1,
             'sortable': true,
-            'cell': Iccbl.TextWrapCell
+            'cell': Iccbl.TextWrapCell.extend({
+              className: 'text-wrap-cell-extra-narrow'
+            })
           })
         ];
         var colModel = new Backgrid.Columns(columns);
@@ -896,7 +867,8 @@ define([
       }
       
       if (self.model.has('cherry_pick_request_data')) {
-        build_table(new CollectionClass(self.model.get('cherry_pick_request_data')));
+        build_table(new CollectionClass(
+          self.model.get('cherry_pick_request_data')));
       } else {
         var cpr_collection = new CollectionClass();
         cpr_collection.fetch({
@@ -915,6 +887,7 @@ define([
      * using the apilog history of the status attribute
      **/
     createStatusHistoryTable: function($target_el) {
+      console.log('createStatusHistoryTable');
       var self = this;
       var apilogResource = appModel.getResource('apilog');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
@@ -923,20 +896,20 @@ define([
       $target_el.empty();
       
       function build_table(collection) {
+        console.log('build status history table', collection);
         if (collection.isEmpty()) {
           return;
         }
         collection.each(function(model) {
           var diffs = JSON.parse(model.get('diffs'));
           if (!_.isEmpty(diffs.status[1])){
-            model.set('status', appModel.getVocabularyTitle('screen.status', diffs.status[1]));
+            model.set(
+              'status', 
+              appModel.getVocabularyTitle('screen.status', diffs.status[1]));
           }else{
             collection.remove(model);
           }
         });
-//        var TextWrapCell = Backgrid.Cell.extend({
-//          className: 'text-wrap-cell'
-//        });
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -953,7 +926,9 @@ define([
               'description' : 'Screen status',
               'order': 1,
               'sortable': true,
-              'cell': Iccbl.TextWrapCell
+              'cell': Iccbl.TextWrapCell.extend({
+                className: 'text-wrap-cell-extra-narrow'
+              })
             }),
             _.extend({},colTemplate,{
               'name' : 'date_time',
@@ -1049,7 +1024,8 @@ define([
             self.listenTo(view , 'uriStack:change', self.reportUriStack);
             self.setView("#tab_container", view ).render();
             
-            console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
+            console.log('title: ', 
+              Iccbl.getTitleFromTitleAttribute(model, model.resource));
             self.$("#tab_container-title").html(view.getTitle());
             self.$("#tab_container-title").show();
           });        
@@ -1295,6 +1271,22 @@ define([
       this.$('li').removeClass('active');
       this.$('#summary').addClass('active');
       self.$("#tab_container-title").hide();
+    },
+    
+    afterRender: function(){
+      var self = this;
+      TabbedController.prototype.afterRender.apply(this,arguments);
+      
+      if (self.model.has('status') 
+          && !_.contains(self.OK_STATUSES, self.model.get('status'))){
+        $('#content_title').prepend($('<div class="alert alert-danger"></div>').html(
+          'Screen Status: ' + appModel.getVocabularyTitle(
+            'screen.status',self.model.get('status'))));
+      }
+      if (appModel.hasGroup('readEverythingAdmin')){
+        $('#content_title').find('#title').append(
+          Iccbl.createCommentIcon([self.model.get('comments')],'Commments'));
+      }
     }
 
   });

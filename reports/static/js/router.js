@@ -95,7 +95,6 @@ function($, _, Backbone, appModel) {
       var uriStack = appModel.get('uriStack');
       console.log('model_set_route: ' + JSON.stringify(uriStack));
       var route = this.get_route(uriStack);
-      console.log('route: ', route);
       // TODO: this mirrors the handler for route match in main.js
       document.title = 'Screensaver LIMS' + ': ' + route;
 
@@ -107,9 +106,9 @@ function($, _, Backbone, appModel) {
       if(!_.isUndefined(routing_options)){
           options = _.extend(options, routing_options);
       }
-      
       // Clear out error messages after navigating away from page
-//      appModel.unset('messages');
+      appModel.clearErrors();
+      console.log('route: ', route, options);
       
       this.navigate( route, options );
     }

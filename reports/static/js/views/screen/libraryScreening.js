@@ -438,6 +438,13 @@ define([
 
           var self_editform = this;
 
+          var screenResource = appModel.getResource('screen')
+          var urlparts = [screenResource.apiUri,
+                          self.screen.get('facility_id'),
+                          'plate_range_search']
+          urlparts.push(self.model.get('activity_id'));
+          var url = urlparts.join('/');
+          
           var Collection = Iccbl.CollectionOnClient.extend({
             // explicitly define the id so that collection compare & equals work
             modelId: function(attrs) {
@@ -451,7 +458,9 @@ define([
           plate_collection.comparator = 'start_plate';
           this.listenTo(plate_collection, "MyCollection:delete", function (model) {
             plate_collection.remove(model);
-            localRemovedCollection.add(model);
+            if (model.get('library_screening_id') > 0){
+              localRemovedCollection.add(model);
+            }
             localAddedCollection.remove(model);
           });
           this.listenTo(plate_collection,'add', function(model){
@@ -467,14 +476,12 @@ define([
           });
           
           if (self.model.get('activity_id')){
-            var urlparts = [self.model.resource.apiUri]
-            urlparts.push(self.model.get('activity_id'))
-            urlparts.push('plate_range_search')
-            plate_collection.url = urlparts.join('/');
+            plate_collection.url = url;
             plate_collection.fetch().done(function(data){
               PlateRangePrototype._createPlateRangeTable.call(this,
                 plate_collection, self.$el.find('[key="library_plates_screened"]'), 
-                true, ['library_screening_status','warnings']);
+                true, ['-library_screening_id','-plate_locations',
+                       'library_screening_status','warnings','errors']);
               plateRangeSearch();
             });
           } else {
@@ -482,7 +489,8 @@ define([
             //plate_collection.set(_.map(lps,self.library_plate_parser));
             PlateRangePrototype._createPlateRangeTable.call(this,
               plate_collection, self.$el.find('[key="library_plates_screened"]'), 
-              true, ['library_screening_status', 'warnings']);
+              true, ['-library_screening_id', '-plate_locations', 
+                     'library_screening_status', 'warnings','errors']);
             plateRangeSearch();
           }
           
@@ -498,7 +506,7 @@ define([
             var formSchema = {};
             function validatePlateSearch(value, formValues){
               var errors = [];
-              var final_search_array = Iccbl.parsePlateSearch(value,errors);
+              var final_search_array = Iccbl.parseRawPlateSearch(value,errors);
               if (_.isEmpty(final_search_array)){
                 errors.push('no values found for input');
               } else {
@@ -506,11 +514,15 @@ define([
               }
               // Library screening search specific:
               _.each(final_search_array, function(search_line){
-                if (search_line.copies.length > 1){
-                  errors.push('only one copy per line: found: ["' + search_line.copies.join('","') + '"]');
+                if (_.isEmpty(search_line.copies)){
+                  errors.push('must specify a copy: ' + search_line.combined.join(', '))
+                }else if (search_line.copies.length > 1){
+                  errors.push('only one copy per line: found: ["' 
+                    + search_line.copies.join('","') + '"]');
                 }
                 if (_.isEmpty(search_line.plates)&&_.isEmpty(search_line.plate_ranges)){
-                  errors.push('must specify a plate or plate-range: ' + search_line.original_text );
+                  errors.push('must specify a plate or plate-range: ' 
+                    + search_line.combined.join(', ') );
                 }
               });
               if (!_.isEmpty(errors)){
@@ -576,14 +588,11 @@ define([
               data.append(
                 'volume_required', 
                 self_editform.getValue('volume_transferred_per_well_from_library_plates'));
+              // NOTE: show_retired_plates is required for searching
+              data.append('show_retired_plates','true');
               var headers = {}; // can be used to send a comment
-              var urlparts = [self.model.resource.apiUri]
-              if (self.model.get('activity_id')){
-                urlparts.push(self.model.get('activity_id'))
-              }
-              urlparts.push('plate_range_search')
               $.ajax({
-                url:  urlparts.join('/'),     
+                url:  url,     
                 data: data,
                 cache: false,
                 contentType: false,
@@ -594,6 +603,26 @@ define([
                 console.log('success', data);
                 var objects = _.result(data, 'objects');
                 if (!_.isEmpty(objects)){
+                  // The plate_range_search API utility will return all 
+                  // plate ranges for the screen; filter out the ranges for the
+                  // other screenings.
+                  
+                  var activity_id = self.model.get('activity_id');
+                  objects = _.filter(objects, function(object){
+                    var returned_id = _.result(object,'library_screening_id');
+                    if (returned_id == 0){
+                      return true;
+                    }else if (returned_id == activity_id){
+                      return true;
+                    }
+                    return false;
+                  });
+                  var meta = _.result(data,appModel.API_RESULT_META, {});
+                  var warning = _.result(meta, appModel.API_META_MSG_WARNING);
+                  if (warning){
+                    appModel.error(warning);
+                  }
+                  
                   var newCollection = new Collection(objects);
                   newCollection.remove(localRemovedCollection.toArray());
                   newCollection.add(localAddedCollection.toArray());

@@ -1,4 +1,4 @@
-body {
+  body {
 /* 	background-color: #e3e3e3; */
 /*   background-color: #c5d2db; */
 }
@@ -113,6 +113,11 @@ div#application_div > .one-space {
 }
 .panel {
  margin-bottom: 5px;
+}
+.alert,.alert-dismissable {
+  padding: 5px;
+  padding-right: 35px;
+  margin-bottom: 0px;
 }
 
 .menu {
@@ -384,6 +389,20 @@ td.text-wrap-cell {
   white-space: inherit;
   vertical-align: top;
   min-width: 250px;
+}
+
+td.text-wrap-cell-narrow {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: top;
+  min-width: 200px;
+}
+
+td.text-wrap-cell-extra-narrow {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: top;
+  min-width: 100px;
 }
 
 .ms-container ul{

@@ -15,24 +15,36 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
          PlateRangePrototype, DetailView, EditView, genericLayout ) {
   
   /**
-   * Show a table of the plate ranges for the plates in the library 
-   * screenings for the Screen.
-   * Display a plate range search form above the table:
-   * - plates for the search are concatenated with the existing table
-   * - form data set as a "search" param on the URI for the page.
+   * For a given Screen, show current plate ranges, or perform a screening 
+   * inquiry to search for plate ranges.
    * 
+   * Screening inquiry form data may be set as a "search" param on the URI 
+   * for the page to preload the form.
    */
   var PlateRangeSearchView = Backbone.Layout.extend({
     
     template: _.template(genericLayout),
+
+    si_formatter: new Iccbl.SIUnitsFormatter({ symbol: 'L' }),
+    DEFAULT_VOLUME: 33e-9,
+    URI_REPLICATE_VOLUME_PATTERN: /((\d)x)?(([\d\.]+)([un])L)/i,
+    MAX_DAYS_FROM_LAST_SCREENING: 30,
+    ERR_MSG_LAST_SCREENING: 
+      'Last screening was > {max_days} days ago ({last_screening_date})',
+    ERR_MSG_PROTOCOL_REPLICATES: 
+      'Replicate count does not match other screenings: ',
+    ERR_MSG_PROTOCOL_VOL: 'Volume does not match other screenings: ',
     
     initialize: function(args) {
 
       var self = this;
       this.uriStack = args.uriStack;
       this.screenSummaryView = args.summaryView;
+      this.currentLibraryScreenings = args.currentLibraryScreenings;
       this.consumedStack = [];
-
+      
+      this.defaultShowPlatesUri = Iccbl.formatString(
+        '#screen/{facility_id}/summary/plates', self.model);
       var urlStackData = this.urlStackData = this.parseUrlStack(this.uriStack);
       var url = this.url = [
         self.model.resource.apiUri, self.model.get('facility_id'),
@@ -55,7 +67,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       function validatePlateSearch(value, formValues){
         var errors = [];
-        var final_search_array = Iccbl.parsePlateSearch(value,errors);
+        var final_search_array = Iccbl.parseRawPlateSearch(value,errors);
         if (_.isEmpty(final_search_array)){
           errors.push('no values found for input');
         } else {
@@ -65,7 +77,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           if (_.isEmpty(search_line.plates)
               &&_.isEmpty(search_line.plate_ranges)){
             errors.push('must specify a plate or plate-range: ' 
-              + search_line.original_text );
+              + search_line.combined.join(', ') );
           }
         });
         if (!_.isEmpty(errors)){
@@ -93,6 +105,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       _.extend(
         formSchema['volume_required'],
         volumeField['display_options']);
+      formSchema['replicate_count'] = {
+        title: 'Replicates',
+        key: 'replicate_count',
+        editorClass: 'form-control',
+        validators: ['required',EditView.CheckPositiveNonZeroValidator],
+        type: Backbone.Form.editors.Number,
+        template: appModel._field_template
+      };
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs) {
@@ -104,16 +124,51 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (!_.isEmpty(urlStackData.plate_search)){
         formFields.set('plate_search', urlStackData.plate_search.join('\n'));
       }
-      if (urlStackData.volume_required){
+      if (_.isNumber(urlStackData.volume_required)){
         formFields.set('volume_required', urlStackData.volume_required);
+      } else {
+        var lastLibraryScreening = self.getLastLibraryScreening();
+        var volume_required = self.DEFAULT_VOLUME;
+        if (lastLibraryScreening){
+          volume_required = _.result(
+            lastLibraryScreening.attributes,
+            'volume_transferred_per_well_to_assay_plates',
+            volume_required);
+        }
+        formFields.set('volume_required', volume_required);
       }
+      if (_.isNumber(urlStackData.replicate_count)){
+        formFields.set('replicate_count', urlStackData.replicate_count);
+      } else {
+        var replicate_count = 1;
+        var lastLibraryScreening = self.getLastLibraryScreening();
+        if (lastLibraryScreening){
+          replicate_count = _.result(
+            lastLibraryScreening.attributes,
+            'number_of_replicates',
+            replicate_count);
+        }
+        formFields.set('replicate_count', replicate_count);
+      }
+      
       this.form = new Backbone.Form({
         model: formFields,
         template: _.template([
           '<div>',
           '<form class="form-horizontal container" >',
           '<div data-fields="plate_search"></div>',
+          '<div class="row">', 
+          '<div class="col-sm-4">', 
           '<div data-fields="volume_required"></div>',
+          '</div>',
+          '<div class="col-sm-4">', 
+          '<div data-fields="replicate_count"></div>',
+          '</div>',
+          '<div class="col-sm-4">', 
+          '<label class="control-label " for="total_volume_required">Total Volume</label>',
+          '<div id="total_volume_required"></div>',
+          '</div>',
+          '</div>',
           '<div id="plate_search_error" class="text-danger"></div>',
           '</form>',
           '</div>'
@@ -139,6 +194,28 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         ].join(''));
       showFirstCopyOnly.find('input[type="checkbox"]')
         .prop('checked', !urlStackData.show_retired_plates);
+      var showExistingControl = this.showExistingControl = $([
+          '<label class="checkbox-inline" ', 
+          ' style="margin-left: 10px;" ',
+          'title="Show existing plate ranges (from existing screenings)" >',
+          '  <input id="show_existing" ',
+          '    type="checkbox">Show existing plates',
+          '</label>'
+        ].join(''));
+      showExistingControl.find('input[type="checkbox"]')
+        .prop('checked', urlStackData.show_existing);
+
+      var downloadButton = this.downloadButton = $([
+        '<button type="button" class="btn btn-default btn-xs pull-right" ',
+        'id="download_button" >download</button>',
+      ].join(''));
+      var showPlatesLink = this.showPlatesLink = $('<a>', {
+        tabIndex : -1,
+        href : self.defaultShowPlatesUri,
+        target : '_blank',
+        title: 'Display plates for the current page'
+      }).text('show plates');
+      showPlatesLink.addClass('btn btn-default btn-xs pull-right');
 
       // Set up the collection
       
@@ -151,7 +228,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
       });
       var plate_range_collection = this.plate_range_collection = new Collection({});
-      plate_range_collection.fetch();
       
       // FIXME: use this as the default sort to allow column sorting
       plate_range_collection.comparator = function(one,two){
@@ -167,7 +243,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.listenTo(plate_range_collection,'add', function(model){
         model.collection = plate_range_collection; // backbone bug: this should not be necessary
       });
-    
+      
     },
 
     /**
@@ -179,111 +255,137 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.trigger('uriStack:change', actualStack );
     },
 
-    reportFormUri: function(search_value,volume_required,show_retired_plates){
+    /**
+     * Set the form values to the URL using:
+     * Plate Search URI mini-language:
+     * [rest_of_url]/search/[plate_search_mini_language]
+     * where plate_search_mini_language is:
+     * [plate_range_specifier 1];[plate_range_specifier n];[volume_specifier];[show_retired_plates]
+     * where:
+     * plate_range_specifier is:
+     * [copy_name 1],[copy_name n],[plate 1],[plate n],[plate_range 1],[plate_range n]
+     * volume_specifier is:
+     * [fixed point number]|[exponential notation number]
+     * "show_retired_plates is a literal flag
+     */
+    reportFormUri: function(search_value,volume_required,replicate_count, 
+        show_retired_plates,show_existing){
       var self = this;
       var errors = [];
-      var url_search_data = []
-      var plate_search_data_array = Iccbl.parsePlateSearch(search_value,errors);
-      console.log('plate_search: ', plate_search_data_array);
-      _.each(plate_search_data_array, function(plate_search_data){
-        var plate_searches = [];
-        _.each(plate_search_data.plates, function(plate){
-          plate_searches.push(plate);
-        });
-        _.each(plate_search_data.plate_ranges, function(plate_range){
-          plate_searches.push(plate_range);
-        })
-        var copy_searches = [];
-        _.each(plate_search_data.copies,function(copy){
-          copy_searches.push(encodeURIComponent(copy));
-        });
-        search_line = plate_searches.join(',');
-        if (!_.isEmpty(copy_searches)){
-          search_line = copy_searches.join(',') + ',' + search_line;
-        }
-        console.log('search line: ', search_line);
-        url_search_data.push(search_line);
-      });
-      if (volume_required){
-        url_search_data.push(volume_required);
-      }
+      
+      var formData = {};
+      
+      formData.plate_ranges = Iccbl.parseRawPlateSearch(search_value,errors);
+      formData.volume_required = volume_required;
+      formData.replicate_count = replicate_count;
+      
+      var url_search_data = self.encodeFormData(formData);
+      
       if (show_retired_plates=='true'){
         url_search_data.push('show_retired_plates');
       }
-      var newStack = ['search', url_search_data.join(';')];
+      if (show_existing == 'true'){
+        url_search_data.push('show_existing');
+      }
+      var newStack = ['search', url_search_data.join(appModel.SEARCH_DELIMITER)];
       console.log('newStack:', newStack);
       self.reportUriStack(newStack);
     },
+    
+    /**
+     *  plateSearchData { 
+     *    screen_facility_id, volume_required, 
+     *    plate_ranges: [[combined_plate-range-copy array]], 
+     *    replicate_count 
+     *  }
+     */
+    encodeFormData: function(formData){
+      var self = this;
+      var url_search_data = []
 
+      _.each(formData.plate_ranges, function(plate_search_data){
+        // encodeURIComponent to handle spaces and quoting
+        var plate_searches = _.map(plate_search_data.combined, encodeURIComponent);
+        url_search_data.push(plate_searches.join(','));
+      });
+      if (!_.isUndefined(formData.volume_required)){
+        
+        var si_formatter = new Iccbl.SIUnitsFormatter({ symbol: 'L' });
+        var volText = si_formatter.fromRaw(formData.volume_required);
+        // remove space
+        volText = volText.replace(/\s+/,'');
+        if (!_.isUndefined(formData.replicate_count)){
+          volText = formData.replicate_count + 'x' + volText;
+        }
+        url_search_data.push(volText);
+      }
+      return url_search_data;
+    },
+    
+    /**
+     * Decode the form values from the URL "search" parameter, encoded using 
+     * the above described "plate_search_mini_language"
+     * 
+     * @return urlStackData {
+     *  plate_search, volume_required, replicate_count, show_retired, show_existing
+     * }
+     */
     parseUrlStack: function(delegateStack) {
-      
-      console.log('parseUrlStack1', delegateStack);
-      var errors = [];
+      var self = this;
+      console.log('parseUrlStack', delegateStack);
+
       var urlStackData = {
-        show_retired_plates: false
+        show_retired_plates: false,
+        show_existing: false
       };
       if (!_.isEmpty(delegateStack) 
           && delegateStack[0] == 'search'){
         
-        var url_plate_searches = [];
         var search_data = delegateStack[1];
         var extra_volumes = [];
-        console.log('parseUrlStack: ', search_data);
+        var errors = [];
+        var fullPlateSearch = [];
+       
         _.each(search_data.split(';'), function(element){
-          console.log('parse element', element);
+
+          if (appModel.DEBUG) console.log('parse element; "' + element + '"');
+          
           if (element == 'show_retired_plates'){
             urlStackData.show_retired_plates = true;
             return;
           }
-          // Detect decimal (group 1) or number with exponent (group 2) as a volume
-          else if (/^((\d+\.?\d?e\-\d+)?|(\d?\.\d+)?)$/.exec(element)){
+          if (element == 'show_existing'){
+            urlStackData.show_existing = true;
+            return;
+          }
+          // Convert SI unit volume required
+          else if (self.URI_REPLICATE_VOLUME_PATTERN.exec(element)){
+            var match = self.URI_REPLICATE_VOLUME_PATTERN.exec(element);
+            var volMatch = match[3];
             if (urlStackData.volume_required){
-              console.log('more than one volume has been defined, ignoring extra');
-              extra_volumes.push(urlStackData.volume_required);
-              extra_volumes.push(element);
+              extra_volumes.push(volMatch);
             }else{
-              urlStackData.volume_required = element;
+              urlStackData.volume_required = Iccbl.parseSIVolume(volMatch);
             }
+            urlStackData.replicate_count = parseInt(match[2]);
             return;
           }
           
-          var copies = [];
-          var plate_or_plate_ranges = [];
-          var parts = element.split(',');
-          _.each(parts, function(part){
-            part = part.trim();
-            if (_.isEmpty(part)) return;
-            
-            if (part.match(Iccbl.PLATE_PATTERN)){
-              plate_or_plate_ranges.push(part);
-            } else if (part.match(Iccbl.PLATE_RANGE_PATTERN)){
-              plate_or_plate_ranges.push(part);
-            } else {
-              part = decodeURIComponent(part);
-              if (part.match(Iccbl.COPY_NAME_PATTERN)) {
-                if (part.match(/[ \,\-]/)){
-                  part = '"' + part + '"';
-                }
-                copies.push(part);
-              } else {
-                console.log('url part not recognized:', part);
-                errors.push('Not recognized: "' + part + '" in "' + element + '"');
-                return;
+          var plateSearchTextArray = [];
+          var plateData = Iccbl.parseRawPlateSearch(element, errors);
+          _.each(plateData, function(plateClause){
+            plateSearchTextArray = plateSearchTextArray.concat(
+              plateClause.plates, plateClause.plate_ranges);
+            _.each(plateClause.copies,function(copy){
+              if (copy.match(/[ \,\-\:]/)){
+                copy = '"' + copy + '"';
               }
-            }
+              plateSearchTextArray.push(copy);
+            });
           });
-          if (_.isEmpty(plate_or_plate_ranges)){
-            console.log('error, could not detect plates in search line: ', element);
-            errors.push('Plate or plate range not detected: "'+ element + '"');
-            return;
-          }
-          url_search = plate_or_plate_ranges.join(',');
-          if (!_.isEmpty(copies)){
-            url_search = copies.join(',') + ' ' + url_search;
-          }
-          url_plate_searches.push(url_search);
+          fullPlateSearch.push(plateSearchTextArray.join(', '));
         });
-        urlStackData['plate_search'] = url_plate_searches;
+        urlStackData['plate_search'] = fullPlateSearch;
         
         if (!_.isEmpty(extra_volumes)){
           appModel.error(
@@ -292,52 +394,32 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
         if (!_.isEmpty(errors)){
           appModel.error(
-            'Error parsing earch data on the URL: ' + errors.join(','));
+            'Error parsing search data on the URL: ' + errors.join(','));
         }
         console.log('urlStackData', urlStackData);
       }
       return urlStackData;
     },
     
-    /**
-     * Show the LibraryCopyPlates for the current plate ranges
-     */
-    showPlates: function() {
+    setPlatesLink: function() {
       var self = this;
-      var form = self.form;
-      var showFirstCopyOnly = self.showFirstCopyOnly;
-      var showRetiredPlatesControl = self.showRetiredPlatesControl;
-      // Note: the form does not have to be filled in for the plates dialog
-      // var errors = form.commit({ validate: true }); 
-      var plate_search = form.getValue('plate_search');
-      
-      if (!_.isEmpty(plate_search) && !self.plate_range_collection.isEmpty()){
+      if (!self.plate_range_collection.isEmpty()){
 
         var resource = appModel.getResource('librarycopyplate');
-        // TODO: key the search data using the searchID: 
-        // this allows for browser "back" in the session
-        // will also need to listen to URIStack changes and grab the data
-        // from the search ID
-        var searchID = ( new Date() ).getTime();
-        
         // convert the plate range table into explicit plate searches
         var plate_searches = [];
         self.plate_range_collection.each(function(plate_range_model){
           plate_searches.push(Iccbl.formatString(
-            '{start_plate}-{end_plate} {copy_name}', plate_range_model));
+            '{start_plate}-{end_plate},{copy_name}', plate_range_model));
         });
-        console.log('plate_searches: ', plate_searches);
         if (_.isEmpty(plate_searches)){
-          console.log('nothing to search! ', self.plate_collection);
+          console.log('nothing to search! ', self.plate_range_collection);
         }
-        appModel.setSearch(searchID,plate_searches.join('\n'));
-        this.searchID = searchID;
-        appModel.set('routing_options', {replace: false});  
-        var _route = resource.key + '/search/'+ searchID;
-        appModel.router.navigate(_route, {trigger:true});
-        
+        var encodedSearch = encodeURIComponent(plate_searches.join(';'));
+        var route = ['#'+resource.key, 'search', 'raw_search_data=' + encodedSearch];
+        self.showPlatesLink.attr("href", route.join('/'));
       } else {
-        self.screenSummaryView.change_to_tab('plates');
+        self.showPlatesLink.attr("href",self.defaultShowPlatesUri);
       }
     },
     
@@ -345,6 +427,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var self = this;
       var form = self.form;
       var showFirstCopyOnly = self.showFirstCopyOnly;
+      var showExistingControl = self.showExistingControl;
       var showRetiredPlatesControl = self.showRetiredPlatesControl;
 
       // Note: the form does not have to be filled in for the download
@@ -352,7 +435,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var post_data = {};
       post_data['volume_required'] = form.getValue('volume_required');
       post_data['raw_search_data'] = form.getValue('plate_search');
-      console.log('post_data', post_data);
       var show_retired_plates = null;
       if (showRetiredPlatesControl.find('input[type=checkbox]').prop('checked')){
         show_retired_plates = 'true';
@@ -360,6 +442,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
       if (showFirstCopyOnly.find('input[type=checkbox]').prop('checked')){
         post_data['show_first_copy_only'] = 'true';
+      }
+      if (!showExistingControl.find('input[type=checkbox]').prop('checked')){
+        if (!_.isEmpty(form.getValue('plate_search'))){
+          // Only send the hide_existing flag if the form is filled
+          post_data['hide_existing'] = 'true';
+        }
       }
       
       var downloadFormSchema = {};
@@ -393,7 +481,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           ].join(''))
       });
       var el = downloadForm.render().el;
-      
       appModel.showModal({
         view: el,
         title: 'Download',  
@@ -403,13 +490,106 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
       });
     },
+    
+    calculateTotalVolume: function(){
+      var self = this;
+      var form = self.form;
+      var totalVolume = final_volume = form.getValue('volume_required');
+      var replicate_count = form.getValue('replicate_count');
+      if (replicate_count > 0){
+        totalVolume*= replicate_count;
+      }
+      var volText = self.si_formatter.fromRaw(totalVolume);
+      form.$el.find('#total_volume_required').html(volText);
+      return totalVolume;
+    },
 
+    getLastLibraryScreening: function(){
+      if (!this.currentLibraryScreenings.isEmpty()){
+        this.currentLibraryScreenings.sortBy('-date_of_activity');
+        return this.currentLibraryScreenings.findWhere({
+          'is_for_external_library_plates': false});
+      }
+      return null;
+    },
+    
+    checkLastScreeningDate: function(){
+      if (!this.currentLibraryScreenings.isEmpty()){
+        this.currentLibraryScreenings.sortBy('-date_of_activity');
+        var lastScreening = this.currentLibraryScreenings.at(0);
+        var lastDate = new Date(lastScreening.get('date_of_activity'));
+        var currentDate = new Date();
+        console.log('checkLastScreeningDate: ', lastDate, currentDate, 
+          currentDate-lastDate, (currentDate-lastDate)/(24*60*60*1000));
+        var max_interval_ms = this.MAX_DAYS_FROM_LAST_SCREENING*24*60*60*1000;
+        if(currentDate-lastDate > max_interval_ms ){
+          appModel.error(Iccbl.formatString(
+            this.ERR_MSG_LAST_SCREENING, { 
+              max_days: this.MAX_DAYS_FROM_LAST_SCREENING,
+              last_screening_date: Iccbl.getDateString(lastDate) 
+            }));
+        }
+      }
+    },
+    
+    /**
+     * Check the entered protocol against existing screenings and display an 
+     * error message if there are differences.
+     */
+    checkProtocol: function(volume_per_assay_plate, replicate_count) {
+      var self = this;
+      if (!this.currentLibraryScreenings.isEmpty()){
+        var errVol = {}
+        var errReplicates = {};
+        this.currentLibraryScreenings.each(function(model){
+          
+          if (model.get('is_for_external_library_plates')){
+            return;
+          }
+          
+          var otherVol = model.get('volume_transferred_per_well_to_assay_plates');
+          otherVol = parseFloat(otherVol);
+          var otherReplicates = model.get('number_of_replicates');
+          
+          if (otherVol !== volume_per_assay_plate){
+            console.log('other protocol vol', otherVol, volume_per_assay_plate);
+            var otherVolText = self.si_formatter.fromRaw(otherVol);
+            var listing = _.result(errVol,otherVolText,[]);
+            listing.push(model.get('activity_id'));
+            errVol[otherVolText] = listing;
+          }
+          if(otherReplicates != replicate_count) {
+            console.log('other protocol replicates', otherReplicates, replicate_count);
+            var listing = _.result(errReplicates,otherReplicates,[]);
+             listing.push(model.get('activity_id'));
+             errReplicates[otherReplicates] = listing;
+          }
+        });
+        
+        if (!_.isEmpty(errVol)){
+          appModel.error(self.ERR_MSG_PROTOCOL_VOL
+            + _.map(_.pairs(errVol),function(pair){
+              console.log('pair', pair);
+              return '(' + pair[0] + '): ' + pair[1].join(', ');
+            }).join('; '));
+        }
+        if (!_.isEmpty(errReplicates)){
+          appModel.error(self.ERR_MSG_PROTOCOL_REPLICATES 
+            + _.map(_.pairs(errReplicates),function(pair){
+              console.log('pair', pair);
+              return '(' + pair[0] + '): ' + pair[1].join(', ');
+            }).join('; '));
+        }
+      }
+    }, 
+    
     formSubmit: function() {
       var self = this;
       var form = self.form;
       var showFirstCopyOnly = self.showFirstCopyOnly;
       var showRetiredPlatesControl = self.showRetiredPlatesControl;
-
+      var showExistingControl = self.showExistingControl;
+      appModel.clearErrors();
       var errors = form.commit({ validate: true }); 
       if(!_.isEmpty(errors)){
         if (_.contains(errors,'plate_search')){
@@ -427,20 +607,44 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
       var data = new FormData();
       var search_value = form.getValue('plate_search');
-      var volume_required = form.getValue('volume_required');
       data.append('raw_search_data', search_value);
-      data.append('volume_required', volume_required);
+      
+      // NOTE/TODO: 20170504; 
+      // The server API will now support the plate_search mini-language, 
+      // which may be sent as an encoded URI param: e.g. 
+      // raw_search_data=1814-1821,J&raw_search_data=1709,%22B%201%3A125%22
+      // is a valid "raw_search_data" array param for plate searches
+      // returned by:
+      // Iccbl.parseRawPlateSearch(search_value); using 
+      // encodeURIComponent for each line;
+      // User data may also be posted, as-is as form data 
+      // (application/x-www-form-urlencoded), which is done here, 
+      // for the server to parse.
+      
+      var volume_required = form.getValue('volume_required');
+      var replicate_count = form.getValue('replicate_count');
+      var show_existing = null;
+      
+      data.append('volume_required', self.calculateTotalVolume());
       var show_retired_plates = null;
       if (showRetiredPlatesControl.find('input[type=checkbox]').prop('checked')){
         show_retired_plates = 'true';
         data.append('show_retired_plates', 'true');
       }
+      if (showExistingControl.find('input[type=checkbox]').prop('checked')){
+        show_existing = 'true';
+      } else {
+        data.append('hide_existing', 'true');
+      }
       if (showFirstCopyOnly.find('input[type=checkbox]').prop('checked')){
         data.append('show_first_copy_only', 'true');
       }
-      self.reportFormUri(search_value, volume_required, show_retired_plates);
+      self.reportFormUri(search_value, volume_required, replicate_count, 
+        show_retired_plates, show_existing);
       
-      var headers = {}; // can be used to send a comment
+      self.checkProtocol(volume_required, replicate_count);
+      self.checkLastScreeningDate();
+      
       $.ajax({
         url:  self.url,     
         data: data,
@@ -454,7 +658,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var objects = _.result(data, 'objects');
         if (!_.isEmpty(objects)){
           self.plate_range_collection.set(objects);
+        } else {
+          self.plate_range_collection.reset(null);
         }
+        var meta = _.result(data,appModel.API_RESULT_META, {});
+        var warning = _.result(meta, appModel.API_META_MSG_WARNING);
+        if (warning){
+          appModel.error(warning);
+        }
+        self.setPlatesLink();
       }).fail(function(jqXHR, textStatus, errorThrown) { 
         console.log('errors', arguments);
         appModel.jqXHRfail.apply(this,arguments); 
@@ -466,23 +678,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var form = self.form;
       var showFirstCopyOnly = self.showFirstCopyOnly;
       var showRetiredPlatesControl = self.showRetiredPlatesControl;
+      var showExistingControl = self.showExistingControl;
       var urlStackData = self.urlStackData;
-      
+           
       var $form_toggle = $('<a>search >></a>');
-      var $downloadButton = $([
-        '<button type="button" class="btn btn-default btn-xs pull-right" ',
-        'id="download_button" >download</button>',
-      ].join(''));
-      var $showPlatesButton = $([
-        '<button type="button" class="btn btn-default btn-xs pull-right" ',
-        'id="show_plates_button" >show plates</button>',
-      ].join(''));
-      
       var form_shown = false;
       var $form_div = $('<div id="plate_search_form_div" style="display: none;" ></div>');
       $('#resource_content').append($form_toggle);
-      $('#resource_content').append($showPlatesButton);
-      $('#resource_content').append($downloadButton);
+      $('#resource_content').append(self.showPlatesLink);
+      $('#resource_content').append(self.downloadButton);
       $('#resource_content').append($form_div);
       function toggleForm(){
         if (form_shown){
@@ -526,10 +730,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       form.$el.find('form.form-horizontal').append(showRetiredPlatesControl);
       form.$el.find('form.form-horizontal').append(showFirstCopyOnly);
+      form.$el.find('form.form-horizontal').append(showExistingControl);
       
       PlateRangePrototype._createPlateRangeTable.call(this,
         self.plate_range_collection, $('#plate_range_table'), false, 
-        ['library_screening_id', 'library_screening_status', 'warnings','errors'],
+        ['library_screening_id', 'plate_locations', 'warnings','errors'],
         self.model.get('facility_id'));
       
       showRetiredPlatesControl.find('input[type=checkbox]').change(function(e) {
@@ -546,25 +751,40 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
         self.formSubmit();
       });
+      showExistingControl.find('input[type=checkbox]').change(function(e) {
+        self.formSubmit();
+      });
       form.$el.find('#submit_button').click(function(e){
         e.preventDefault();
         self.formSubmit();
       });
-      if (!_.isEmpty(urlStackData.plate_search) || !_.isUndefined(urlStackData.volume_required)){
-        console.log('toggle form on open', urlStackData);
+      if (!_.isEmpty(urlStackData.plate_search) 
+          || !_.isUndefined(urlStackData.volume_required)){
         toggleForm();
-        if (!_.isEmpty(urlStackData.plate_search) && !_.isUndefined(urlStackData.volume_required)){
+        if (!_.isEmpty(urlStackData.plate_search) 
+            && !_.isUndefined(urlStackData.volume_required)){
           self.formSubmit();
         }
+      } else {
+        self.plate_range_collection.fetch();
       }
-      $downloadButton.click(function(e){
+      self.downloadButton.click(function(e){
         e.preventDefault();
         self.formDownload();
       });
-      $showPlatesButton.click(function(e){
-        e.preventDefault();
-        self.showPlates();
+      
+      self.showPlatesLink.click(function(e){
+        if (self.defaultShowPlatesUri == self.showPlatesLink.attr('href')){
+          e.preventDefault();
+          self.screenSummaryView.change_to_tab('plates');          
+        }
       });
+      this.listenTo(
+        form, "replicate_count:change", self.calculateTotalVolume);
+      this.listenTo(
+        form, "volume_required:change", 
+        self.calculateTotalVolume);
+      self.calculateTotalVolume();
     }
   });
 

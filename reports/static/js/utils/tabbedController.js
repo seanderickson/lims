@@ -33,7 +33,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       });
       this.tabbed_resources = displayed_tabbed_resources;
       
-      _.bindAll(this, 'click_tab');
+      _.bindAll(this, 'click_tab','change_to_tab');
     },
 
     tabbed_resources: {
@@ -51,6 +51,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
     reportUriStack: function(reportedUriStack) {
       var consumedStack = this.consumedStack || [];
       var actualStack = consumedStack.concat(reportedUriStack);
+      console.log('reportUriStack: actualStack', actualStack, arguments);
       this.trigger('uriStack:change', actualStack );
     },
     
@@ -110,6 +111,10 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
     },
 
     change_to_tab: function(key) {
+      var self = this;
+      console.log('change_to_tab: ' + key);
+      appModel.clearErrors();
+      
       if (_.has(this.tabbed_resources, key)) {
         this.removeView("#tab_container");
         this.$('li').removeClass('active');
@@ -124,6 +129,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
         var method = this[this.tabbed_resources[key]['invoke']];
         if (_.isFunction(method)) {
           method.apply(this,[delegateStack]);
+//          self.reportUriStack([]);
         } else {
           throw ( 
             "Tabbed resources refers to a non-function: "

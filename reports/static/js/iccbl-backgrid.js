@@ -10,21 +10,42 @@ var Iccbl = root.Iccbl = {
     VERSION : "0.0.1",
     appModel : "This value will be initialized on app start"
 };
+
+// Constants
+
 var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
 var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
 var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
-var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/
-var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})/
-// Copy name pattern can be any string, starting with an alpha char
-var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+[\w,\- ]*$/
+/**
+ * PLATE_COPY_RANGE_SPLITTING_PATTERN
+ * Split a raw plate range input into elements:
+ * - separated by space or comma, except, 
+ * - numbers separated by (spaces) and dash interpreted as a plate range
+ * - quoted strings preserved; to be interpreted as copy names
+ * - quoted strings may contain spaces and special chars if quoted
+ */
+var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTERN = 
+  /\'.*?\'|\".*?\"|\w+\s+\-\s+\w+|[^\,\s]+/g;
+var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/;
+var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = 
+  /^(\d+)\s*-\s*(\d+)$/;
+/** 
+ * COPY_NAME_PATTERN:
+ * -must start with an alpha char
+ * FIXME: does not support embedded commas
+ * - fixme is to clean the copy names in the database to remove commas
+ */
+var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+[\w\- :]*$/
+
 var PLATE_RANGE_KEY_SPECIFIER = Iccbl.PLATE_RANGE_KEY_SPECIFIER
   = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
-// Note: library is optional in the plate range key
 var PLATE_RANGE_KEY_PATTERN = 
   Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
 var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
   = /^(([^:]+):)?([\d\-]+)$/;
+
+// Utility Functions
 
 /**
  * Convert a plate row index to a letter
@@ -41,7 +62,7 @@ var rowToLetter = Iccbl.rowToLetter = function(i){
 
 
 /**
- * Utility function from Backgrid
+ * String padding utility
  */
 function lpad(str, length, padstr) {
   var paddingLen = length - (str + '').length;
@@ -54,6 +75,8 @@ function lpad(str, length, padstr) {
 }
 
 /**
+ * String formatting utility
+ * 
  * Format a string with embedded replacement fields.
  * 
  * "replacment fields" are surrounded by braces '{}'. 
@@ -145,76 +168,6 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
 };
 
 /**
- * Parse a Copy Plate search by line into an array of search lines of the form:
- * search_line: {
-      plates: [],
-      plate_ranges: [],
-      copies: [],
-    }
- */
-var parsePlateSearch = Iccbl.parsePlateSearch = function(rawData, errors){
-  
-  console.log('value', rawData);
-  var search_array = []
-  
-  var or_list = rawData.split('\n');
-
-  _.each(or_list, function(clause){
-    clause = clause.trim();
-    if(clause=='') return;
-    
-    // split quoted strings
-    var parts = _.filter(_.map(
-      clause.split(/(\'.*?\'|\".*?\"|[^\s,;]+)/), 
-      function(val){
-        // unquote
-        return val.replace(/["']+/g,'');
-      }),
-      function(val){
-        val = val.trim();
-        console.log('val', val, _.isEmpty(val));
-        return !_.isEmpty(val) && val != ',';
-      });
-    console.log('parts', parts);
-    search_array.push(parts);
-  });
-  
-  console.log('search_array', search_array);
-
-  var final_search_array = [];
-  _.each(search_array, function(search_line){
-    var copies_found = [];
-    var final_search_line = {
-      original_text: search_line,
-      plates: [],
-      plate_ranges: [],
-      copies: [],
-      is_empty: function(){
-        var result =_.every(_.values(
-          _.omit(this,'original_text')), _.isEmpty);
-        console.log('isEmpty: ', result, this);
-        return result;
-      }
-    };
-    _.each(search_line, function(part){
-      if (PLATE_PATTERN.test(part)){
-        final_search_line.plates.push(part);
-      }else if (PLATE_RANGE_PATTERN.test(part)){
-        final_search_line.plate_ranges.push(part);
-      }else if (COPY_NAME_PATTERN.test(part)){
-        final_search_line.copies.push(part);
-      } else {
-        errors.push('Copy names must begin with a letter: ' + part);
-      }
-    });
-    if (!final_search_line.is_empty()){
-      final_search_array.push(final_search_line);
-    }
-  });
-  return final_search_array;
-}
-
-/**
  * Generate an ISO date string from a JavaScript Date.
  * 
  * @param jsDate a JavaScript Date object
@@ -229,7 +182,6 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
   //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
   //  return date;
 };
-
 
 /**
  * Generate a date string from a Javascript Date.
@@ -252,7 +204,178 @@ var getIccblDateString = Iccbl.getDateString = function(jsDate){
 };
 
 /**
- * Get ID keys from the model 
+ * Parse a Copy Plate search by line into an array of search lines of the form:
+ * input: 
+ * - lines separated by a newline char 
+ * - space or comma separated values, 
+ * - quoted strings preserved; interpreted as copy names
+ * - copy names must begin with a letter, may contain spaces and special chars
+ * if quoted
+ * - numbers separated by (spaces) and dash interpreted as a plate range
+ * output:
+ * search_line: {
+      plates: [],
+      plate_ranges: [],
+      copies: [],
+      combined: []
+    }
+ */
+var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
+  
+  console.log('value', rawData);
+  var search_array = []
+  
+  var or_list = rawData.split('\n');
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    
+    // split quoted strings, split on spaces or commas
+    var parts = _.filter(_.map(
+      clause.match(PLATE_COPY_RANGE_SPLITTING_PATTERN), 
+      function(val){
+        // unquote
+        return val.replace(/["']+/g,'');
+      }),
+      function(val){
+        val = val.trim();
+        return !_.isEmpty(val);
+      });
+    search_array.push(parts);
+  });
+  
+  console.log('search_array', search_array);
+
+  var final_search_array = [];
+  _.each(search_array, function(parts){
+    if(!_.isEmpty(parts)){
+      var final_search_line = {
+        combined: [],
+        plates: [],
+        plate_ranges: [],
+        copies: []
+      };
+      _.each(parts, function(part){
+        if (PLATE_PATTERN.test(part)){
+          final_search_line.plates.push(part);
+        }else if (PLATE_RANGE_PATTERN.test(part)){
+          var rangeParts = PLATE_RANGE_PATTERN.exec(part);
+          final_search_line.plate_ranges.push(rangeParts[1]+'-'+rangeParts[2]);
+        }else if (COPY_NAME_PATTERN.test(part)){
+          final_search_line.copies.push(part);
+        } else {
+          errors.push('Copy names must begin with a letter: ' + part);
+        }
+      });
+      final_search_line.combined = _.union(
+        final_search_line.plates, final_search_line.plate_ranges,
+        final_search_line.copies
+      );
+      
+      final_search_array.push(final_search_line);
+    }
+  });
+  return final_search_array;
+};
+
+
+/**
+ * TODO: refactor this into the SIUnitsFormatter
+ */
+var parseSIVolume = Iccbl.parseSIVolume = function(rawText){
+  var volErrMsg = 'Volume not parsed, must be of the form: ' +
+    '"[number][uL|nL]"';
+  var volMatch = SIUnitsFormatter.prototype.SI_UNIT_PATTERN.exec(rawText);
+  if (!volMatch){
+    throw volErrMsg;
+  }
+
+  var volume = parseFloat(volMatch[1]);
+  // Allow for a maximum of 4 digits
+  volume = volume.toPrecision(4);
+  var multiplier = 1e-6;
+  if (volMatch.length == 4){
+    if (volMatch[3].toLowerCase() == 'u'){
+      multiplier = 1e-6;
+    } else {
+      multiplier = 1e-9;
+    }
+  }
+  volume *= multiplier;
+  return volume;
+}
+
+/**
+ * Parse a screening inquiry of the form:
+ * ignored text ...(#screen_facility_id) (plate ranges) (volume) (replicates),
+ * e.g.
+ * Screener Name (1292) 3560-3567, 1795-1811 100 nL x 2
+ * 
+ * @ return 
+ * { 
+ *    screen_facility_id, volume_required, plate_ranges, replicate_count }
+ */
+var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText, errors) {
+  
+  
+  var screenPattern = /\(\s*(\w+)\s*\)/; 
+  var volumePattern = /\s+([\d\.]+\s*[un]L)\s+x\s*\d+\s*$/i;
+  var replicatePattern = /[un]L\s+x\s*(\d+)/i;
+  var generalErrMsg = 'Screening inquiry format: ' +
+    '"(screen id) plate-ranges volume replicates"';
+  var screenErrMsg = 'Screen Facility ID not parsed - must be of the form: ' +
+    '"(screen_facility_id)" with parenthesis';
+  var volErrMsg = 'Volume not parsed, must be of the form: ' +
+    '"[number][uL|nL]"';
+  var replicateErrMsg = 'Screening replicates not parsed, must be of the form: ' +
+    '"X [number]"';
+  var screenMatch = screenPattern.exec(rawText);
+  if (!screenMatch){
+    errors.push(screenErrMsg);
+  }
+  var volMatch = volumePattern.exec(rawText);
+  if (!volMatch){
+    var detailMessage = 'vol match fails for pattern: "' + volumePattern.source + '" ' +
+      'for the text: "' + rawText + '"';
+    console.log(detailMessage);
+    errors.push(volErrMsg);
+    if (Iccbl.appModel.DEBUG){
+      errors.push(detailMessage);
+    };
+  }
+  var replicateMatch = replicatePattern.exec(rawText);
+  if (!replicateMatch) {
+    errors.push(replicateErrMsg);
+  }
+
+  if (_.isEmpty(errors)){
+    var data = {
+      rawText: rawText
+    };
+    var screenText = screenMatch[0];
+    data['screen_facility_id']= screenMatch[1];
+    var volume = Iccbl.parseSIVolume(volMatch[1])
+    data['volume_required']= volume;
+    data['replicate_count'] = replicateMatch[1];
+    
+    var startPlatesIndex = rawText.indexOf(screenText) + screenText.length;
+    var endPlatesIndex = rawText.indexOf(volMatch[0]);
+    var plateText = rawText.slice(startPlatesIndex,endPlatesIndex);
+    data['plate_ranges'] = Iccbl.parseRawPlateSearch(plateText, errors);
+    
+    if (_.isEmpty(errors)){
+      if (_.isEmpty(data['plate_ranges'])){
+        errors.push('No plate ranges found');
+      } 
+    }
+    return data;
+  }
+  return null;
+};
+
+/**
+ * Return an array of ID keys from the model 
  * 
  * @param schema a resource definition as defined by the API
  * @param model Backbone.Model or Object described by the schema
@@ -287,7 +410,7 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
 };
 
 /**
- * Get the complete ID string for the model.
+ * Generate an ID string for the model
  * 
  * The "complete ID" is formed by joining the ID keys with the forward slash.
  */
@@ -298,7 +421,7 @@ var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute =
 };
 
 /**
- * Get the model key off the URI stack.
+ * Pops the appropriate number of items from the URI stack to form a model key.
  *  
  * - pop one key, in order, for each of the key fields specified in 
  * the resource id_attribute.
@@ -357,8 +480,8 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(
 };
 
 /**
- * Sort keys based on the associated ordinal for the key 
- * in the Resource.fields
+ * Sort an array of keys based on the associated ordinal for each key 
+ * in the Resource.fields "fieldHash"
  */
 var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
   var sorted = _(keys).sort(function(a, b) {
@@ -432,7 +555,10 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
 
 
 /**
- * Match URI fragment (matchstrings) to an array of specifiers.
+ * Determine if an array of URI fragments contains any match with the given 
+ * matchString.
+ * Useful for determining if a partial URI (the matchstring) matches the URL, 
+ * parsed as a URL stack array.
  * 
  * Matches from the right to left; 
  * allowing URI fragments to match their parent URIs. 
@@ -455,8 +581,7 @@ var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
 };
 
 /**
- * Utility Function:
- * createLabel: break long labels into multiple lines for display.
+ * Break a long label into multiple lines for display.
  * 
  * Split label strings on non-word characters and re-join into lines, 
  * where each line is less than max_line_length 
@@ -523,6 +648,7 @@ var createCommentIcon = Iccbl.createCommentIcon = function(comments, title){
   var comment_icon = $(
     '<span class="glyphicon glyphicon-comment" ' +
     'style="color: lightgray; " ></span>');
+  comment_icon.attr('title', comments);
   
   var rows = 10;
   var buttons_on_top = false;
@@ -790,8 +916,10 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   title: null,
 
   /**
-   * @property {string} [target="_blank"] The target attribute of the
+   * @property {string} [target="_self"] The target attribute of the
    *           generated anchor.
+   * - _blank: to create a new tab
+   * - _self
    */
   target: "_self",
   
@@ -937,7 +1065,7 @@ var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
   },
 });
 
-var NumberFormatter = Backgrid.NumberFormatter;
+var NumberFormatter = Iccbl.NumberFormatter = Backgrid.NumberFormatter;
 
 var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
   
@@ -1006,6 +1134,7 @@ var SIUnitsFormatter = Iccbl.SIUnitsFormatter = function () {
  Backgrid.NumberFormatter.apply(this, arguments);
 };
 
+
 SIUnitsFormatter.prototype = new Backgrid.NumberFormatter();
 
 _.extend(SIUnitsFormatter.prototype, {
@@ -1036,6 +1165,8 @@ _.extend(SIUnitsFormatter.prototype, {
     multiplier: 1
   }),
 
+  SI_UNIT_PATTERN: /([\d\.]+)\s*(([puμnmkMGT])\w)?/i,
+  
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.
    * Takes a raw value from a model and returns an optionally formatted string.
@@ -1055,12 +1186,26 @@ _.extend(SIUnitsFormatter.prototype, {
   },
 
   /**
+   * Return the best match SI Unit (unit_symbol,unit_val) for the default_unit_value, 
+   * such that:
+   * default_unit_value can be represented a number between 1 and 1000;
+   * (best_match_symbol_val)<=default_unit_value<(next_higher_symbol_val)
+   */
+  getSIUnit: function(default_unit_value) {
+    var pairUnit = _.find(this.siunits, function(pair){
+      return pair[1] <= Math.abs(default_unit_value); 
+    });
+    
+    return pairUnit;
+  },
+  
+  /**
    * Convert the number to a siunit value
    * 
    * @return Math.round(number*multiplier,decimals) + symbol
    */
   getUnit: function(rawNumber, multiplier, symbol, decimals) {
-     
+    var self = this;
     if(!_.isNumber(rawNumber)){
       try{
         number = parseFloat(rawNumber);
@@ -1089,22 +1234,16 @@ _.extend(SIUnitsFormatter.prototype, {
         console.log('not a number - multiplier: ' + multiplier+ ', ex:' + e);
       }
     }
-
-//    if(multiplier >= 1){
-//      number = number * multiplier;
-//    }else{
-//      console.log("Error, DecimalCell multiplier < 1: " + multiplier);
-//    }
-     
     if(multiplier > 0){
       number = number * multiplier;
     }else{
       console.log("Error, DecimalCell multiplier ! > 0: " + multiplier);
     }
-     
-    pairUnit = _.find(this.siunits, function(pair){
-      return pair[1] <= Math.abs(number); 
-    });
+    
+    var pairUnit = self.getSIUnit(number);
+//    pairUnit = _.find(this.siunits, function(pair){
+//      return pair[1] <= Math.abs(number); 
+//    });
      
     if(_.isUndefined(pairUnit)){
       console.log('could not find units for the input number: ' + number);
@@ -1154,38 +1293,55 @@ _.extend(SIUnitsFormatter.prototype, {
    */
   toRaw: function (formattedValue, model) {
     var self = this;
-    var unit = '';
     var tokens;
     var rawValue, scaledRawValue;
     var unitMultiplier;
     
     if (formattedValue === '') return null;
 
-    tokens = formattedValue.split(' ');
-
-    rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
-
-    if (_.isUndefined(rawValue)) return rawValue;
-
-    if (tokens.length == 2 ) {
-      unit = tokens[1].trim().charAt(0);
+    // TODO: test regex version here
+    var match = this.SI_UNIT_PATTERN.exec(formattedValue);
+    if (!match){
+      throw Exception('SI Unit value not recognized', formattedValue);
     }
-      
-    var pairUnit = _.find(self.siunits, function(pair){
-      return pair[0] == unit;
-    });
-    if (_.isUndefined(pairUnit)){
-      console.log('unknown unit: ' + unit);
-      // FIXME: indicate error to the user
-      return null;
+    var originalNumberPart = match[1];
+    rawValue = NumberFormatter.prototype.toRaw.call(this,originalNumberPart);
+    var pairUnit = [self.defaultSymbol, self.defaultUnit];
+    if (match.length==4){
+      var unit = match[3].toLowerCase();
+      pairUnit = _.find(self.siunits, function(pair){
+        return pair[0] == unit;
+      });
     }
+    
+//    tokens = formattedValue.split(' ');
+//
+//    rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
+//
+//    if (_.isUndefined(rawValue)) return rawValue;
+//
+//    var unit = '';
+//    if (tokens.length == 2 ) {
+//      unit = tokens[1].trim().charAt(0).toLowerCase();
+//    }
+//    var pairUnit = _.find(self.siunits, function(pair){
+//      return pair[0] == unit;
+//    });
+//    if (_.isUndefined(pairUnit)){
+//      console.log('unknown unit: ' + unit);
+//      // FIXME: indicate error to the user
+//      return null;
+//    }
     unitMultiplier = pairUnit[1];
     
     var originalPrecision = 0;
-    if (tokens[0].indexOf('.')>-1){
-      originalPrecision = (tokens[0] + "").split(".")[1].length;
+//    if (tokens[0].indexOf('.')>-1){
+//      originalPrecision = (tokens[0] + "").split(".")[1].length;
+//    }
+    if (originalNumberPart.indexOf('.')>-1){
+      originalPrecision = (originalNumberPart + "").split(".")[1].length;
     }
-    
+
     // use the multiplier to scale the raw value
     newRawValue = rawValue / this.multiplier;
     // use the SIUnit to scale the raw value
@@ -1632,6 +1788,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
     var options = options || {source: this};
     var consumedStack = this.consumedStack || [];
     var actualStack = consumedStack.concat(reportedUriStack);
+    console.log('reportUriStack:', actualStack, options);
     this.model.set({'uriStack': actualStack}, options);     
   },
   
@@ -1647,6 +1804,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
       return;
     }else{
       var uriStack = _.clone(this.model.get('uriStack'));
+      console.log('uriStackChange', uriStack);
       try {
         this.changeUri(uriStack);
       }catch (e){
@@ -1741,7 +1899,11 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       }
     }, 
     includes: function(){
-      return this.listModel.get('includes');
+      var temp = this.listModel.get('includes');
+      if (!_.isEmpty(this.extraIncludes)){
+        temp = _.union(temp,this.extraIncludes);
+      }
+      return temp;
     }
   },
 
@@ -2402,10 +2564,14 @@ var BackgridFormFilter = Backbone.Form.extend({
           operator = key_operator[1];
           operator = lookupOperator(operator);
         }
+        if (operator == 'range'){
+          val = val.split(",").join('-');
+        } else {
+          val = val.split(",").join(', ');
+        }
         if (key_operator[0].charAt(0)=='-'){
           operator = 'not ' + operator;
         }
-        val = val.split(",").join(', ');
         return operator + '&nbsp;' + val;
       }).join('&');
   },

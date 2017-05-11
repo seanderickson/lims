@@ -144,7 +144,7 @@ define([
       if (!_.has(self._options, 'url')) {
         self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
       }
-
+      
       var collection;
       if( !_options.collection){  
         var Collection = Iccbl.MyCollection.extend({
@@ -153,15 +153,11 @@ define([
             return Iccbl.getIdFromIdAttribute( attrs, resource);
           },
           'url': self._options.url,
-          listModel: listModel
-  
+          listModel: listModel,
+          extraIncludes: _.result(args,'extraIncludes')
         });
         
         collection = self.collection = new Collection();
-//          {
-////          'url': self._options.url,
-////          listModel: listModel
-//        });
         this.objects_to_destroy.push(collection);
       }else{
         collection = self.collection = _options.collection;
@@ -189,7 +185,8 @@ define([
       var url = self.collection.url;
       var urlparams = '';
       var search_title_val = '';
-      var _translate_sql_specifier = function(k){
+      
+      function printFieldAndOperator(k){
         if(! k || _.isEmpty(k)) return k;
         var parts = k.split('__');
         var name = k;
@@ -211,12 +208,14 @@ define([
             urlparams += _.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
+                // NOTE: 201705 support for the raw search data
+                kv[1] = encodeURIComponent(kv[1]);
                 return kv.join('=');
               }).join('&');
             search_title_val += _.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
-                return [_translate_sql_specifier(kv[0]),kv[1]].join('=');
+                return [printFieldAndOperator(kv[0]),kv[1]].join('=');
               }).join(' AND ');
           }else if (routeKey === 'order') {
             if(!_.isEmpty(urlparams)) urlparams += '&';
@@ -248,7 +247,7 @@ define([
           _.each(_.keys(hash), function(k){
             var v = hash[k];
             if (temp !== '' ) temp += ' AND ';
-            temp += _translate_sql_specifier(k) + " (" + v + ") ";
+            temp += printFieldAndOperator(k) + " (" + v + ") ";
           });
           if(or_clauses != '') or_clauses += "<br>OR ";
           or_clauses += temp
@@ -294,6 +293,8 @@ define([
             newStack.push(_.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
+                // NOTE: 201705 support for the raw search data
+                kv[1] = encodeURIComponent(kv[1]);
                 return kv.join('=');
               }).join(self.SEARCH_DELIMITER));
           }else if (routeKey === 'order') {

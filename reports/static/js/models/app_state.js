@@ -10,6 +10,12 @@ define([
   var API_VERSION = 'api/v1';
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
+  
+  /**
+   * URIStack search element SEARCH_DELIMITER
+   * NOTE: items on the URIStack avoid looking like URL params; therefore
+   * the "&" separator is not used.
+   */
   var SEARCH_DELIMITER = ';';
   var DEBUG = false;
   
@@ -1247,6 +1253,10 @@ define([
       });
     },
    
+    clearErrors: function(){
+      this.unset('messages');
+    },
+    
     error: function(msg){
       console.log('error: ', msg);
       var msgs = this.get('messages');
@@ -1833,10 +1843,6 @@ define([
           "<div>",
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
-//          // tmpFrame is a target for the download
-//          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
-//          ' style="visibility:hidden;position:absolute;display:none"></iframe>',
-//          "</div>"
           ].join(''))
       });
       
@@ -1904,81 +1910,6 @@ define([
           
           self.downloadUrl(form.$el, url, post_data);
           
-//          // When downloading via AJAX, the "Content-Disposition: attachment" 
-//          // does not trigger a "load" (completed) event; this workaraound
-//          // will set a cookie "downloadID" from the server when the download happens.
-//          // How to trigger a download and notify JavaScript when finished:
-//          // send a downloadID to the server and wait for a response cookie to appear.
-//          // The code here was helpful:
-//          // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
-//          
-//          var intervalCheckTime = 1000; // 1s
-//          var maxIntervals = 3600;      // 3600s
-//          var limitForDownload = 0;
-//          // When tracking the download, we're going to have
-//          // the server echo back a cookie that will be set
-//          // when the download Response has been received.
-//          var downloadID = ( new Date() ).getTime();
-//          // Add the "downloadID" parameter for the server
-//          // Server will set a cookie on the response to signal download complete
-//          url += "&downloadID=" + downloadID;
-//
-//          if(post_data){
-//            console.log('post_data found for download', post_data);
-//            // create a form for posting
-//            var postform = $("<form />", {
-//              method: 'POST',
-//              action: url
-//            });
-//            _.each(_.keys(post_data), function(key){
-//              var hiddenField = $('<input/>',{
-//                type: 'hidden',
-//                name: key,
-//                value: encodeURI(post_data[key])
-//              });
-//              postform.append(hiddenField);
-//            });
-//            form.$el.find('#tmpFrame').append(postform);
-//            console.log('submitting post form...' + url);
-//            postform.submit();
-//            
-//          }else{
-//            // simple GET request
-//            form.$el.find('#tmpFrame').attr('src', url);
-//          }
-//          $('#loading').fadeIn({duration:100});
-//
-//          // The local cookie cache is defined in the browser
-//          // as one large string; we need to search for the
-//          // name-value pattern with the above ID.
-//          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
-//
-//          // Now, we need to start watching the local Cookies to
-//          // see when the download ID has been updated by the
-//          // response headers.
-//          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
-//
-//          var i = 0;
-//          function checkCookies() {
-//            if ( document.cookie.search( cookiePattern ) >= 0 ) {
-//              clearInterval( cookieTimer );
-//              $('#loading').fadeOut({duration:100});
-//              return(
-//                console.log( "Download complete!!" )
-//              );
-//            }else if(i >= maxIntervals){
-//              clearInterval( cookieTimer );
-//              window.alert('download abort after tries: ' + i);
-//              return(
-//                console.log( "Download abort!!" )
-//              );
-//            }
-//            console.log(
-//              "File still downloading...",
-//              new Date().getTime()
-//            );
-//            i++;
-//          }
         }
         
       });
@@ -2100,6 +2031,12 @@ define([
       return modalDialog;
     },
     
+    /**
+     * Create a search string for the URIstack
+     * NOTE: items on the URIStack avoid looking like URL params; therefore
+     * the "&" separator is not used.
+     * @see SEARCH_DELIMITER
+     */
     createSearchString: function(searchHash){
       return _.map(_.pairs(searchHash), 
         function(keyval) {
@@ -2150,6 +2087,7 @@ define([
   appState.API_RESULT_META = API_RESULT_META;
   appState.API_RESULT_DATA = API_RESULT_DATA;
   appState.API_MSG_RESULT = API_MSG_RESULT;
+  appState.API_META_MSG_WARNING = 'Warning';
 
   appState.API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents';
   appState.API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections';

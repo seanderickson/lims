@@ -49,17 +49,27 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         'visible': true,
         'headerCell': Backgrid.HeaderCell
       };
-      var columns = [
-        _.extend({},colTemplate,{
+      var columns = [];
+      
+      var libraryColumn = _.extend({},colTemplate,{
           'name' : 'library_short_name',
           'label' : 'Library',
           'description' : 'Library Short Name',
           'order': 1,
           'sortable': true,
-          'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library_short_name}'
-          })
-        }),
+          'cell':
+            Iccbl.CommentArrayLinkCell.extend({
+              hrefTemplate: '#library/{library_short_name}',
+              comment_attribute: 'library_comment_array',
+              title_function: function(model){
+                return 'Comments for library: ' + model.get('library_short_name');
+              }
+            })
+          });
+      columns.push(libraryColumn);
+      
+      // TODO: rework copy cell when copy comments are implemented in apilogs
+      columns.push(          
         _.extend({},colTemplate,{
           'name' : 'copy_name',
           'label' : 'Copy',
@@ -67,9 +77,25 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}'
+            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}',
+            render: function(){
+              var self = this;
+              Iccbl.LinkCell.prototype.render.apply(this, arguments);
+              var comments = this.model.get('copy_comments');
+              if (!_.isEmpty(comments)){
+                this.$el.attr('title', comments);
+                this.$el.append(Iccbl.createCommentIcon(
+                  comments,
+                  'Comments for Copy: ' 
+                    + self.model.get('library_short_name') + '/'
+                    + self.model.get('source_copy_name')
+                  ));
+              }
+              return this;
+            }
           })
-        }),
+        }));
+      columns.push(          
         _.extend({},colTemplate,{
           'name' : 'plate_range',
           'label' : 'Plate Range',
@@ -83,43 +109,41 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             render : function() {
               var self = this;
               this.$el.empty();
-              var formattedValue = Iccbl.formatString(
-                '{start_plate}-{end_plate}', self.model);
+              var start_plate = self.model.get('start_plate');
+              var end_plate = self.model.get('end_plate');
+              var formattedValue = start_plate;
+              if (start_plate != end_plate){
+                formattedValue += '-' + end_plate;
+              }
               var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
-              self.$el.append($('<a>', {
-                tabIndex : -1,
-                href : interpolatedVal,
-                target : self.target,
-                title: self.title
-              }).text(formattedValue));
+              var $link = $('<a>', {
+                  tabIndex : -1,
+                  href : interpolatedVal,
+                  target : self.target,
+                  title: self.title
+                }).text(formattedValue);
+
+              var comments = self.model.get('plate_comment_array');
+              if (!_.isEmpty(comments)){
+                comments = Iccbl.parseComments(comments);
+                $link.attr('title',comments);
+                $link.append(Iccbl.createCommentIcon(
+                  comments,
+                  'Comments for ' + formattedValue ));
+              }
+              self.$el.append($link);
+              
               return this;
             },
           })
-        })
-//        _.extend({},colTemplate,{
-//          'name' : 'start_plate',
-//          'label' : 'Start Plate',
-//          'description' : 'Start Plate',
-//          'order': 1,
-//          'sortable': true,
-//          'cell': Iccbl.LinkCell.extend({
-//            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{start_plate}'
-//          })
-//        }),
-//        _.extend({},colTemplate,{
-//          'name' : 'end_plate',
-//          'label' : 'End Plate',
-//          'description' : 'End Plate',
-//          'order': 1,
-//          'sortable': true,
-//          'cell': Iccbl.LinkCell.extend({
-//            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{end_plate}'
-//          })
-//        })
-        
-      ];
-      if(_.contains(extra_cols,'library_screening_id') ||
-          (!plate_collection.isEmpty() && plate_collection.at(0).has('library_screening_id'))){
+        }));
+      
+      if(_.contains(extra_cols, '-library_screening_id')){
+        // omit this column
+      }
+      else if(_.contains(extra_cols,'library_screening_id') ||
+          (!plate_collection.isEmpty() 
+              && plate_collection.at(0).has('library_screening_id'))){
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'library_screening_id',
@@ -135,14 +159,33 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
               }
             }),
             'cell': Iccbl.LinkCell.extend({
-              'hrefTemplate': '#screen/'+ screen_facility_id +'/summmary/libraryscreening/{library_screening_id}'
+              'hrefTemplate': '#screen/'+ screen_facility_id 
+              +'/summmary/libraryscreening/{library_screening_id}'
             })
           })
         );
       }
+      if(_.contains(extra_cols, '-plate_locations')){
+        // omit this column
+      }
+      else if(_.contains(extra_cols,'plate_locations') ||
+          (!plate_collection.isEmpty() 
+              && plate_collection.at(0).has('plate_locations'))){
+        columns.push(          
+          _.extend({},colTemplate,{
+            'name' : 'plate_locations',
+            'label' : 'Locations',
+            'description' : 'Plate Locations',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.TextWrapCell
+          })
+        );
+      }      
       
       if(_.contains(extra_cols,'library_screening_status') ||
-          (!plate_collection.isEmpty() && plate_collection.at(0).has('library_screening_status'))){
+          (!plate_collection.isEmpty() 
+              && plate_collection.at(0).has('library_screening_status'))){
         var optionValues = [];
         var vocabulary_scope_ref = 'library.screening_status';
         try{
@@ -197,7 +240,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Warnings',
             'order': 1,
             'sortable': true,
-            'cell': Iccbl.TextWrapCell
+            'cell': Iccbl.TextWrapCell.extend({
+              className: 'text-wrap-cell-narrow'
+            })
           })
         );
       }
@@ -213,7 +258,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Errors: screening not possible',
             'order': 1,
             'sortable': true,
-            'cell': Iccbl.TextWrapCell
+            'cell': Iccbl.TextWrapCell.extend({
+              className: 'text-wrap-cell-narrow'
+            })
           })
         );
       }
@@ -248,11 +295,11 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         collection: plate_collection,
         className: tableClasses
       });
-      this.listenTo(plate_collection,'backgrid:sort', function(col,direction){
-        if (col.get('name')=='plate_range'){
-          // TODO
-        }
-      });
+//      this.listenTo(plate_collection,'backgrid:sort', function(col,direction){
+//        if (col.get('name')=='plate_range'){
+//          // TODO
+//        }
+//      });
 
       cell.append(plate_range_grid.render().$el);
       $target_el.append(cell);

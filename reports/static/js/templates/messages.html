@@ -1,16 +1,17 @@
 <div class="col-sm-10">
-<div class='alert alert-warning alert-dismissible'>
-<button type="button" class="close" id="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-<ul>
-<% 
-messages.each(function(message) {
-%>
-<li>
-<%
-  print(message);
-%>
-<%
-}); %>
-</ul>
-</div>
+  <div class='alert alert-warning alert-dismissible' 
+    style=''>
+    <button type="button" class="close" id="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+    <ul>
+      <% 
+      messages.each(function(message) {
+      %>
+      <li>
+      <%
+        print(message);
+      %>
+      <%
+      }); %>
+    </ul>
+  </div>
 </div>

@@ -52,7 +52,7 @@ define([
       },
       plateranges: {
         description : 'Plate Range Search View',
-        title : 'Plate Ranges',
+        title : 'Plate Screening Inquiry',
         invoke : 'setPlateRangeSearch',
         permission: 'screen'
       },
@@ -71,16 +71,42 @@ define([
     
     setPlateRangeSearch: function(delegateStack) {
       var self = this;
-      var view = new PlateRangeSearchView({
-        model: self.model,
-        uriStack: _.clone(delegateStack),
-        summaryView: self
+      var delegateStack = _.clone(delegateStack);
+
+      // Get the current library screenings
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'libraryscreening'].join('/');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url
       });
-      Backbone.Layout.setupView(view);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      this.consumedStack = ['plateranges'];
-      self.reportUriStack([]);
+      var currentLibraryScreenings = this.currentLibraryScreenings = new CollectionClass();
+      currentLibraryScreenings.fetch({
+        data: { 
+          limit: 0,
+          order_by: ['-date_of_activity']
+        }
+      })
+      .done(function() {
+
+        delegateStack.push('show_existing');
+        var view = new PlateRangeSearchView({
+          model: self.model,
+          uriStack: delegateStack,
+          summaryView: self,
+          currentLibraryScreenings: currentLibraryScreenings
+        });
+        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        this.consumedStack = ['plateranges'];
+        self.reportUriStack([]);
+        
+      })
+      .fail(function() { 
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+      });      
+      
     },
     
     setDetail: function(delegateStack) {
@@ -323,7 +349,7 @@ define([
           $title = self.$el.find('#tab_container-title');
           $title.html(view.getTitle());
           $title.show();
-          
+          self.reportUriStack([]);
         });        
         return;
       } else {
@@ -358,6 +384,7 @@ define([
         $title = self.$el.find('#tab_container-title');
         $title.empty();
         $title.hide();
+      self.reportUriStack([]);
       }
     },
     
@@ -408,6 +435,7 @@ define([
       //    '<H4 id="title">Libraries for Screening: ' + self.model.key + '</H4>');
       //});
       this.$el.find('#tab_container-title').hide();
+      self.reportUriStack([]);
       
     },
 
@@ -485,10 +513,11 @@ define([
         url: url,
         extraControls: []
       });
-      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
       this.$el.find('#tab_container-title').hide();
+      self.reportUriStack([]);
 
     },
 

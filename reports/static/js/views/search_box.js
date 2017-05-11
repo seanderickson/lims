@@ -6,8 +6,10 @@ define([
     'iccbl_backgrid',
     'models/app_state',
     'views/generic_edit',
+    'views/screen/plateRangeSearch',
     'templates/search-box.html'
-], function($, _, Backbone, backbone_forms, Iccbl, appModel, EditView, searchBoxTemplate) {
+], function($, _, Backbone, backbone_forms, Iccbl, appModel, EditView, 
+    PlateRangeSearchView, searchBoxTemplate) {
     
   
   var SearchView = Backbone.Layout.extend({
@@ -26,7 +28,8 @@ define([
         '<div class="form-group" key="form-group-<%=key %>" >',
         '<label title="<%= help %>" for="<%= editorId %>"><%= title %></label>',
         '<div>',
-        '  <span placeholder="testing.." data-editor></span>',
+        '  <span key="<%=key%>" placeholder="testing.." data-editor></span>',
+    '      <div data-error class="text-danger" ></div>',
         '</div>',
         '</div>'
         ].join('')),
@@ -110,6 +113,49 @@ define([
         template: self.formTemplate,
         el: '#search-box-3'
       });
+      
+      ///// Screening Inquiry
+      var schema5 = {};
+      function validateScreeningInquiry(value, formValues){
+        var errors = [];
+        var parsedData = Iccbl.parseRawScreeningInquiry(value,errors);
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'screening_inquiry',
+            message: errors.join('; ')
+          };
+        }
+      };
+      schema5['screening_inquiry'] = {
+        title: 'Screening Inquiry',
+        key: 'screening_inquiry',
+        help: 'Enter a screening inquiry',
+        placeholder: 'e.g. (Screen #) 1000-2000,2015,3017 100 nL x 2',
+        validators: ['required',validateScreeningInquiry],
+        type: TextArea2,
+        template: self.fieldTemplate,
+        editorClass: 'form-control'
+      };
+      var FormFields5 = Backbone.Model.extend({
+        schema: schema5,
+        validate: function(attrs) {
+          var errors = {};
+          if (!_.isEmpty(errors)) return errors;
+        }
+      });
+      var formFields5 = new FormFields5({
+      });
+      
+      var form5 = self.form5 = new Backbone.Form({
+        model: formFields5,
+        template: self.formTemplate,
+        el: '#search-box-5'
+      });      
       
       ///// Cherry Pick Request
       var schema4 = {};
@@ -287,20 +333,23 @@ define([
       }
       $('#search-box-2').html($form2);
       $form2.append([
-          '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+          '<button type="submit" ',
+          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
           ].join(''));
 
       $form2.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
         var errors = form2.commit({ validate: true }); 
+        var text_to_search = self.form2.getValue()['copyplate'];
+        Iccbl.parseRawPlateSearch(text_to_search,errors);
         if(!_.isEmpty(errors)){
           console.log('form2 errors, abort submit: ' + JSON.stringify(errors));
           $form2.find('[name="copyplate"]').addClass(self.errorClass);
+          // FIXME: add errors to the form
           return;
         }else{
           $form2.find('[name="copyplate"]').removeClass(self.errorClass);
         }
-        var text_to_search = self.form2.getValue()['copyplate'];
         // must change the route, and create a post
         
         var resource = appModel.getResource('librarycopyplate');
@@ -329,7 +378,8 @@ define([
       }
       $('#search-box-3').html($form3);
       $form3.append([
-          '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+          '<button type="submit" ',
+          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
           ].join(''));
 
       $form3.find('[ type="submit" ]').click(function(e){
@@ -338,6 +388,7 @@ define([
         if(!_.isEmpty(errors)){
           console.log('form3 errors, abort submit: ' + JSON.stringify(errors));
           $form3.find('[name="well"]').addClass(self.errorClass);
+          // FIXME: add errors to the form
           return;
         }else{
           $form3.find('[name="well"]').removeClass(self.errorClass);
@@ -358,6 +409,43 @@ define([
         // when using uristack, there is the problem of who set appModel.routing_options last:
         // a race condition is set up between list2.js and search_box.js
         //        appModel.set({'uriStack': newStack});     
+      });      
+      
+      ///// Screening Inquiry
+      var form5 = this.form5;
+      var $form5 = this.form5.render().$el;
+      if (this.form5_data){
+        this.form5.setValue('well', this.form5_data);
+      }
+      $('#search-box-5').html($form5);
+      $form5.append([
+          '<button type="submit" ',
+          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+          ].join(''));
+
+      $form5.find('[ type="submit" ]').click(function(e){
+        e.preventDefault();
+        var errors = form5.commit({ validate: true }); 
+        if(!_.isEmpty(errors)){
+          console.log('form5 errors, abort submit: ' + JSON.stringify(errors));
+          $form5.find('[name="screening_inquiry"]').addClass(self.errorClass);
+          return;
+        }else{
+          $form5.find('[name="screening_inquiry"]').removeClass(self.errorClass);
+        }
+
+        var searchValue = form5.getValue('screening_inquiry');
+        var errorArray = [];
+        var parsedSearch = Iccbl.parseRawScreeningInquiry(searchValue,errorArray);
+        if (!_.isEmpty(errorArray)){
+          throw Exception('Unexpected errors after submit:', errorArray);
+        }
+        var urlSearchParts = PlateRangeSearchView.prototype.encodeFormData.call(this,parsedSearch);
+        var uriStack = ['screen', parsedSearch.screen_facility_id,
+                        'summary','plateranges','search',
+                        urlSearchParts.join(appModel.SEARCH_DELIMITER)]
+        console.log('route: ', uriStack);
+        appModel.router.navigate(uriStack.join('/'), {trigger:true});
       });      
       
       ///// CPR

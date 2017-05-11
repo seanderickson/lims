@@ -281,7 +281,6 @@
         "rpp_selections" : [24,96,384,1000],
         "rpp": 24,
         "search": { 
-          "copy_usage_type__in": "cherry_pick_source_plates",
           "library_well_type__in": "experimental"
         }
       }

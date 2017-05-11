@@ -859,7 +859,24 @@ _.extend(StringFormatter.prototype, {
  */
 var TextWrapCell = Iccbl.TextWrapCell = Backgrid.Cell.extend({
   formatter: Iccbl.StringFormatter,
-  className: 'text-wrap-cell'
+  className: 'text-wrap-cell',
+
+  /**
+   * Override render to use $el.html() instead of $el.text()
+   * - the "text()" method escapes string values
+   */
+  render: function () {
+    var $el = this.$el;
+    $el.empty();
+    var model = this.model;
+    var columnName = this.column.get("name");
+    $el.html(this.formatter.fromRaw(model.get(columnName), model));
+    $el.addClass(columnName);
+    this.updateStateClassesMaybe();
+    this.delegateEvents();
+    return this;
+  },
+  
 });
 
 /**

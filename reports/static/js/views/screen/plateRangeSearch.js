@@ -34,6 +34,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     ERR_MSG_PROTOCOL_REPLICATES: 
       'Replicate count does not match other screenings: ',
     ERR_MSG_PROTOCOL_VOL: 'Volume does not match other screenings: ',
+    ERR_MSG_PIN_TRANSFER_NOT_APPROVED: 'The pin transfer approval date has not been entered',
     
     initialize: function(args) {
 
@@ -177,9 +178,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var showRetiredPlatesControl = this.showRetiredPlatesControl = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',
-          'title="Show \'retired\' plates" >',
+          'title="Show all \'available\' and \'retired\' plates" >',
           '  <input id="show_retired_plates_control" ',
-          '    type="checkbox">Show retired plates',
+          '    type="checkbox">Show available and retired plates',
           '</label>'
         ].join(''));
       showRetiredPlatesControl.find('input[type="checkbox"]')
@@ -187,9 +188,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var showFirstCopyOnly = this.showFirstCopyOnly = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',
-          'title="Show the first copy (alphabetical, by copy name)" >',
+          'title="Show the first active copy ',
+          '(status is &quot;available&quot, located in freezer 1, ',
+          'alphabetical sort, by copy name)" >',
           '  <input id="show_first_copy_only" ',
-          '    type="checkbox">Show first matching copy only',
+          '    type="checkbox">Show first active copy only',
           '</label>'
         ].join(''));
       showFirstCopyOnly.find('input[type="checkbox"]')
@@ -197,7 +200,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var showExistingControl = this.showExistingControl = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',
-          'title="Show existing plate ranges (from existing screenings)" >',
+          'title="Show plate ranges from existing screenings for the screen" >',
           '  <input id="show_existing" ',
           '    type="checkbox">Show existing plates',
           '</label>'
@@ -238,7 +241,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
         var start1 = one.get('start_plate');
         var start2 = two.get('start_plate');
-        return start1 < start2 ? -1 : start1 == start2 ? 0 : 1;
+        if (start1!=start2){
+          return start1 < start2 ? -1 : 1;
+        }
+        var copy1 = one.get('copy_name');
+        var copy2 = two.get('copy_name');
+        
+        return copy1 < copy2 ? -1: 1;
+        
       };
       this.listenTo(plate_range_collection,'add', function(model){
         model.collection = plate_range_collection; // backbone bug: this should not be necessary
@@ -486,7 +496,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         title: 'Download',  
         ok: function(event){
           var url = self.url + '?format=' + downloadForm.getValue('content_type');
-          appModel.downloadUrl(downloadForm.$el, url, post_data);
+          appModel.downloadUrl(url, post_data);
         }
       });
     },
@@ -580,6 +590,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               return '(' + pair[0] + '): ' + pair[1].join(', ');
             }).join('; '));
         }
+      }
+      
+      if (_.isEmpty(self.model.get('pin_transfer_date_approved'))){
+        appModel.error(self.ERR_MSG_PIN_TRANSFER_NOT_APPROVED);
       }
     }, 
     

@@ -240,6 +240,14 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Warnings',
             'order': 1,
             'sortable': true,
+            'formatter': _.extend({}, Iccbl.StringFormatter.prototype, {
+              fromRaw(rawValue){
+                if (!_.isEmpty(rawValue)){
+                  return rawValue.join('<br>');
+                }
+                return '';
+              }
+            }),
             'cell': Iccbl.TextWrapCell.extend({
               className: 'text-wrap-cell-narrow'
             })
@@ -258,6 +266,14 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Errors: screening not possible',
             'order': 1,
             'sortable': true,
+            'formatter': _.extend({}, Iccbl.StringFormatter.prototype, {
+              fromRaw(rawValue){
+                if (!_.isEmpty(rawValue)){
+                  return rawValue.join('<br>');
+                }
+                return '';
+              }
+            }),
             'cell': Iccbl.TextWrapCell.extend({
               className: 'text-wrap-cell-narrow'
             })

@@ -1688,7 +1688,7 @@ define([
      * @param $el document element to be used for a temporary iframe target for
      * the download.
      */
-    downloadUrl: function($el, url, post_data) {
+    downloadUrl: function(url, post_data) {
       
       // When downloading via AJAX, the "Content-Disposition: attachment" 
       // does not trigger a "load" (completed) event; 
@@ -1705,6 +1705,19 @@ define([
       var maxIntervals = 3600;      // 3600s
       var limitForDownload = 0;
       
+      // Add the "downloadID" parameter for the server
+      // Server will set a cookie on the response to signal download complete
+      
+      if (url.indexOf('?')>0){
+        url += "&downloadID=" + downloadID;
+      }else{
+        url += "?downloadID=" + downloadID;
+      }
+      
+      // tmpFrame is a target for the download
+      var $iframe = $('#tmpFrame');
+      $('#loading').fadeIn({duration:100});
+
       // Watch local document Cookies for the the download ID 
       // to be updated by the response headers.
       var i = 0;
@@ -1714,7 +1727,6 @@ define([
         if ( document.cookie.search( cookiePattern ) >= 0 ) {
           clearInterval( cookieTimer );
           $('#loading').fadeOut({duration:100});
-          $el.find('#tmpFrame').remove();
           return(
             console.log( "Download complete!!" )
           );
@@ -1732,23 +1744,6 @@ define([
         i++;
       }
       
-      // Add the "downloadID" parameter for the server
-      // Server will set a cookie on the response to signal download complete
-      
-      if (url.indexOf('?')>0){
-        url += "&downloadID=" + downloadID;
-      }else{
-        url += "?downloadID=" + downloadID;
-      }
-      
-      // tmpFrame is a target for the download
-      var iframe = $([
-        '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
-        ' style="visibility:hidden; position:absolute; display:none"></iframe>',
-        ].join(''));
-      $el.append(iframe);
-      $('#loading').fadeIn({duration:100});
-
       if(post_data){
         console.log('post_data found for download', post_data);
         // create a form for posting
@@ -1764,13 +1759,13 @@ define([
           });
           postform.append(hiddenField);
         });
-        iframe.append(postform);
+        $iframe.append(postform);
         console.log('submitting post form...' + url);
         postform.submit();
         
       }else{
         // simple GET request
-        iframe.attr('src', url);
+        $iframe.attr('src', url);
       }
     },
 
@@ -1908,7 +1903,7 @@ define([
             url += '&data_interchange=true';
           }
           
-          self.downloadUrl(form.$el, url, post_data);
+          self.downloadUrl(url, post_data);
           
         }
         

@@ -60,12 +60,27 @@ define([
       });
       
       var schema2 = {};
+      function validatePlateSearch(value, formValues){
+        var errors = [];
+        var parsedData = Iccbl.parseRawPlateSearch(value,errors);
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'copyplate',
+            message: errors.join('; ')
+          };
+        }
+      };
       schema2['copyplate'] = {
         title: 'Search for Plate & Copy',
         key: 'copyplate',
         help: 'enter a comma separated list',
         placeholder: 'e.g. 1000-1005 B\n2000 C',
-        key:  'search_value', // TODO: "key" not needed>?
+        validators: ['required',validatePlateSearch],
         type: TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
@@ -340,16 +355,14 @@ define([
       $form2.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
         var errors = form2.commit({ validate: true }); 
-        var text_to_search = self.form2.getValue()['copyplate'];
-        Iccbl.parseRawPlateSearch(text_to_search,errors);
         if(!_.isEmpty(errors)){
-          console.log('form2 errors, abort submit: ' + JSON.stringify(errors));
+          console.log('form5 errors, abort submit: ' + JSON.stringify(errors));
           $form2.find('[name="copyplate"]').addClass(self.errorClass);
-          // FIXME: add errors to the form
           return;
         }else{
           $form2.find('[name="copyplate"]').removeClass(self.errorClass);
         }
+        var text_to_search = self.form2.getValue()['copyplate'];
         // must change the route, and create a post
         
         var resource = appModel.getResource('librarycopyplate');

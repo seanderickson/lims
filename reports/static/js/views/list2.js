@@ -928,7 +928,8 @@ define([
         appModel.download(
             self.getCollectionUrl(limitForDownload), 
             self._options.resource, 
-            { search_data: JSON.stringify(self._options.search_data) } ); 
+//            { search_data: JSON.stringify(self._options.search_data) } ); 
+            { raw_search_data: self._options.search_data } ); 
       }else{
         appModel.download(
             self.getCollectionUrl(limitForDownload), 

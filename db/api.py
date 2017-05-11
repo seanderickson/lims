@@ -1529,7 +1529,6 @@ class LibraryCopyPlateResource(DbApiResource):
                 plate_ids = [p.plate_id for p in plates]
                 
             # general setup
-          
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
@@ -11268,7 +11267,6 @@ class LibraryScreeningResource(ActivityResource):
                                     error_key % lims_utils.convert_decimal(
                                         vol_after_transfer,1e-6, 1),
                                     plate_number)
-                                logger.info('add vol err: %r', self.errors)
                     else:
                         self.addPlateWarning(LSR.MSG_NO_PLATE_VOLUME,plate_number)
                     if _row.get('cplt_screening_count',0) > 0:
@@ -11296,7 +11294,7 @@ class LibraryScreeningResource(ActivityResource):
                 for k,v in self.plate_errors.items():
                     full_errors.append(
                         '%s: %s' % (k, ', '.join(lims_utils.find_ranges(v))))
-                return '; '.join(full_errors)
+                return sorted(full_errors)
 
             def showWarnings(self):
                 full_warnings = [ '%s: %s' % (k,', '.join(v))
@@ -11304,7 +11302,7 @@ class LibraryScreeningResource(ActivityResource):
                 for k,v in self.plate_warnings.items():
                     full_warnings.append(
                         '%s: %s' % (k, ', '.join(lims_utils.find_ranges(v))))
-                return '; '.join(full_warnings)
+                return sorted(full_warnings)
 
         logger.info('plate range search screen: %r, vol: %r', 
             screen.facility_id, volume_required)
@@ -11419,20 +11417,20 @@ class LibraryScreeningResource(ActivityResource):
                 .select_from(j)
                 .where(_p.c.plate_id.in_(searched_plate_ids))
                 .order_by(_l.c.short_name, _c.c.name, _p.c.plate_number ))
-            _search_query = _search_query.cte('search_query')
             
             if extant_plate_numbers:
+                _search_query = _search_query.cte('search_query')
                 _combined_query = union(
                     select([literal_column(x) for x in fields])
                         .select_from(_extant_query),
                     select([literal_column(x) for x in fields])
                         .select_from(_search_query)
                     )
+                _combined_query = _combined_query.order_by(
+                    nullslast(desc(column('activity_id'))),
+                    'library_short_name', 'copy_name','plate_number')    
             else:
                 _combined_query = _search_query
-            _combined_query = _combined_query.order_by(
-                nullslast(desc(column('activity_id'))),
-                'library_short_name', 'copy_name','plate_number')    
 
             compiled_stmt = str(_combined_query.compile(
                 dialect=postgresql.dialect(),
@@ -11441,6 +11439,7 @@ class LibraryScreeningResource(ActivityResource):
                     
             _result = conn.execute(_combined_query)
             
+            logger.info('executed, build table...')
             # Convert the query into plate-ranges
             _data = []
             librarycopy = None
@@ -11494,12 +11493,60 @@ class LibraryScreeningResource(ActivityResource):
         for _dict in _data:
             _dict['library_comment_array'] = \
                 library_comments.get(_dict['library_short_name'],None)
-        self.get_plate_comments_for_plate_range_data(_data)
+
+        self.get_plate_comments_for_plate_range_data(_data, _combined_query)
         
         return _data
 
-    def get_plate_comments_for_plate_range_data(self, _data):
+    def get_plate_comments_for_plate_range_data(self, _data, join_query):
         
+        logger.info('get plate comments...')
+        for _dict in _data:
+            _dict['plate_comment_array'] = set()
+        _comment_apilogs = \
+            ApiLogResource.get_resource_comment_subquery('librarycopyplate')
+        _apilogs = self.bridge['reports_apilog']
+        _join_query = join_query.cte('join_query')
+        _comment_apilogs = \
+            _comment_apilogs.where(_apilogs.c.key.in_(
+                select([_join_query.c.plate_key])
+                .select_from(_join_query)
+            ))
+        _comment_apilogs = _comment_apilogs.cte('logs')
+        query = (
+            select([
+                _comment_apilogs.c.key,
+                func.array_agg(
+                    _concat(                            
+                        cast(_comment_apilogs.c.name,
+                            sqlalchemy.sql.sqltypes.Text),
+                        LIST_DELIMITER_SUB_ARRAY,
+                        cast(_comment_apilogs.c.date_time,
+                            sqlalchemy.sql.sqltypes.Text),
+                        LIST_DELIMITER_SUB_ARRAY,
+                        '(',_comment_apilogs.c.key, ') ',
+                        _comment_apilogs.c.comment)
+                    )
+            ])
+            .select_from(_comment_apilogs)
+            .group_by(_comment_apilogs.c.key)
+        )
+        
+        with get_engine().connect() as conn:
+            for x in conn.execute(query):
+                key = x[0]
+                comment_array = x[1]
+                for _dict in _data:
+                    if key in _dict['plate_keys']:
+                        _dict['plate_comment_array'].update(comment_array)
+        for _dict in _data:
+            _dict['plate_comment_array'] = list(_dict['plate_comment_array'])            
+
+        logger.info('plate comments generated')
+
+    def get_plate_comments_for_plate_range_data_bak(self, _data):
+        
+        logger.info('get plate comments...')
         cumulative_plate_keys = set()
         for _dict in _data:
             _dict['plate_comment_array'] = set()
@@ -11537,7 +11584,11 @@ class LibraryScreeningResource(ActivityResource):
         for _dict in _data:
             _dict['plate_comment_array'] = list(_dict['plate_comment_array'])            
 
+        logger.info('plate comments generated')
+
     def get_library_comments(self, library_keys):
+
+        logger.info('get library comments...')
 
         _comment_apilogs = \
             ApiLogResource.get_resource_comment_subquery('library').cte('logs')
@@ -11564,6 +11615,7 @@ class LibraryScreeningResource(ActivityResource):
             comments = defaultdict(list)
             for x in conn.execute(query):
                 comments[x[0]] = x[1]
+            logger.info('library comments generated')
             return comments
 
     def get_query(self, schema, param_hash):

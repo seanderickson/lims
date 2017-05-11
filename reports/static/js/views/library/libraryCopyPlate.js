@@ -109,6 +109,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       var uriStack = _.clone(this.uriStack);
       resource = appModel.cloneResource(resource);
       
+      var extraIncludes = [];
+      var commentColumns = ['library_comment_array','comment_array','copy_comments'];
       console.log('uriStack', uriStack);
       var showEditLocationButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
@@ -129,7 +131,16 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       '<a class="btn btn-default btn-sm pull-down" ',
         'role="button" id="patch_resource" href="#">',
         'Upload data</a>'
-      ].join(''));   
+      ].join(''));
+      
+      var showCommentsControl = $([
+          '<label class="checkbox-inline" ', 
+          ' style="margin-left: 10px;" ',
+          'title="Show comments" >',
+          '  <input id="show_comments" ',
+          '    type="checkbox">show comments',
+          '</label>'
+        ].join(''));
 
       var extraControls = [];
       if (appModel.hasPermission(resource.key, 'write')){
@@ -137,6 +148,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
          showEditLocationButton, showEditPlatesButton, showHistoryButton,
          showUploadButton];
       }
+      extraControls.push(showCommentsControl);
       
       showHistoryButton.click(function(e) {
         e.preventDefault();
@@ -195,11 +207,44 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
         });
         
       }  
+      if (!_.isEmpty(self.library) || !_.isEmpty(self.copy)){
+        extraIncludes = _.union(
+          extraIncludes,commentColumns);
+        showCommentsControl.find('input[type="checkbox"]')
+          .prop('checked', true);
+      }
+      resource.fields['library_short_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'library_comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('library_short_name');
+          }
+        });
+      resource.fields['copy_name']['backgridCellType'] =
+        Iccbl.LinkCell.extend({
+          'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}',
+          render: function(){
+            var self = this;
+            Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            var comments = this.model.get('copy_comments');
+            if (!_.isEmpty(comments)){
+              this.$el.attr('title', comments);
+              this.$el.append(Iccbl.createCommentIcon(
+                comments,
+                'Comments for Copy: ' 
+                  + self.model.get('library_short_name') + '/'
+                  + self.model.get('source_copy_name')
+                ));
+            }
+            return this;
+          }
+        });
       
       resource.fields['plate_number'].backgridCellType = 
-        Iccbl.LinkCell.extend(_.extend({},
+        Iccbl.CommentArrayLinkCell.extend(_.extend({},
           resource.fields['plate_number'].display_options,
           {
+            comment_attribute: 'comment_array',
             linkCallback: function(e){
               e.preventDefault();
               // re-fetch the full model
@@ -215,13 +260,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       
       // TODO: extending the passed args to get the "search_data", or other 
       // passed args, grab options explicitly instead 201608
-      options = _.extend({
+      options = _.extend({}, self._args ,{
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
         url: url,
-        extraControls: extraControls
-        }, self._args ) ;
+        extraControls: extraControls,
+        extraIncludes: extraIncludes
+        }) ;
       var view = new ListView(options);
       showEditLocationButton.click(function(e) {
         e.preventDefault();
@@ -245,6 +291,17 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             appModel.jqXHRfail.apply(this,arguments); 
           });
       });
+      showCommentsControl.find('input[type=checkbox]').change(function(e) {
+        e.preventDefault();
+        if (showCommentsControl.find('input[type=checkbox]').prop('checked')){
+          view.collection.extraIncludes = _.union(extraIncludes,commentColumns);
+          view.collection.fetch();
+        } else {
+          view.collection.extraIncludes = [];
+          view.collection.fetch();
+        }
+      });
+      
       self.listenTo(view, 'update_title', function(val) {
         if(val) {
           this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');

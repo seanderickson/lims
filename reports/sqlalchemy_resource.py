@@ -478,6 +478,7 @@ class SqlAlchemyResource(IccblBaseResource):
         combined_filter_hash = filter_hash
         filter_expression = and_(*filter_hash.values())
 
+        # 20170511 - nested search_data not used (for well, plate, or screening inquiry)
         # Treat the nested "search_data" as sets of params to be OR'd together,
         # then AND'd with the regular filters (if any)
         search_data = param_hash.get('search_data', None)

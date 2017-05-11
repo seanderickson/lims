@@ -1910,7 +1910,7 @@ class ApiLogResource(ApiResource):
                     .where(_logdiff.c.log_id==_apilog.c.id))))
             .order_by(desc(_apilog.c.date_time)))
         return _comment_apilogs
-        
+    
     @read_authorization
     def get_list(self,request,**kwargs):
 

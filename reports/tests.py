@@ -82,6 +82,7 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 import reports.utils.log_utils
+from decimal import Decimal
 
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ def is_boolean(field):
 
 def numerical_equivalency(val, val2):
     try:
-        if float(val) == float(val2):
+        if Decimal(val) == Decimal(val2):
             return True
     except:
         pass
@@ -162,7 +163,8 @@ def equivocal(val1, val2):
                 return False, ('val1', val1, 'val2', val2 )
         return True, ('val1', val1, 'val2', val2 )
 
-    if isinstance(val1, (int, long, float, complex)):
+    if ( isinstance(val1, (int, long, float, complex, Decimal))
+        or isinstance(val2, (int, long, float, complex, Decimal))):
         if numerical_equivalency(val1, val2):
             return True, ('val1', val1, 'val2', val2 )
 

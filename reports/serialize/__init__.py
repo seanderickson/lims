@@ -127,7 +127,7 @@ def parse_val(value, key, data_type, options=None):
 
 def parse_json_field(val, key, json_field_type):
     'Parse a field nested in the json_obj'
-     
+    logger.debug('parse_json_field: %r, %r, %r', val,key,json_field_type)
     # FIXME: now that tastypie is removed, 
     # json_field_type should equal data_type
     if json_field_type == 'fields.CharField':

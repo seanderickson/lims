@@ -11,7 +11,19 @@ import re
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
 
-QUOTED_WORD_PATTERN = re.compile(r'''(\'.*?\'|\".*?\"|[^\s,;]+)''')
+## PLATE_SEARCH_LINE_SPLITTING_PATTERN:
+# Each plate search range is split
+# - on newline
+# - on semicolon (*201705, to support GET request urlencoding)
+PLATE_SEARCH_LINE_SPLITTING_PATTERN = re.compile(r'[\n;]+')
+## PLATE_RANGE_SPLITTING_PATTERN:
+# Split a raw plate range input into elements:
+# - separated by space or comma, except, 
+# - numbers separated by (spaces) and dash interpreted as a plate range
+# - quoted strings preserved; to be interpreted as copy names
+# - quoted strings may contain spaces and special chars if quoted
+PLATE_RANGE_SPLITTING_PATTERN = \
+    re.compile(r'''\'.*?\'|\".*?\"|\w+\s+\-\s+\w+|[^\,\s]+''')
 
 logger = logging.getLogger(__name__)
 
@@ -272,9 +284,11 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
             break
     return min_satisfying_set
 
-def get_siunit(default_unit=1e-6):
+def get_siunit(default_unit_value=1e-6):
     '''
-    Return the SI Unit symbol for the default_unit
+    Return the best match SI Unit symbol for the default_unit_value, such that:
+    default_unit_value can be represented a number between 1 and 1000;
+    (best_match_symbol_val)<=default_unit_value<(next_higher_symbol_val)
     '''
     siunits = [
       ['T', 1e12],
@@ -288,7 +302,7 @@ def get_siunit(default_unit=1e-6):
       ['p', 1e-12 ]
       ]
     for symbol,val in siunits:
-        if val <= default_unit:
+        if val <= default_unit_value:
             return symbol
     return None
 

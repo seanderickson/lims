@@ -34,7 +34,7 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED,\
     API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED,\
     API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED,\
-    LibraryCopyPlateResource
+    LibraryCopyPlateResource, LibraryScreeningResource
 from db.api import API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE
 from db.api import VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
@@ -417,13 +417,12 @@ class LibraryResource(DBResourceTestCase):
     
     def test_a_plate_search_parser(self):
         
-        
         test_search_1 = '''
         1000
         1000-2000 A
         B 3000-4000
         5000-6000 A,B,C     
-        9000,2000,3000 5000-4000 A,"b-c",D
+        9000,2000,3000 5000-4000 A,"b-c",D,"Stock A"
         '''
         
         # NOTE that sublists should also be sorted in ascending order,
@@ -434,10 +433,11 @@ class LibraryResource(DBResourceTestCase):
             { 'plate_range': [3000,4000], 'copy': 'B' },
             { 'plate_range': [5000,6000], 'copy': ['A','B','C'] },
             { 'plate': [2000,3000,9000], 'plate_range': [4000,5000], 
-                'copy': ['A','D', 'b-c'] },
+                'copy': ['A','D', 'b-c','Stock A'] },
         ]
         
-        parsed_searches = LibraryCopyPlateResource.parse_plate_copy_search(test_search_1)
+        parsed_searches = \
+            LibraryCopyPlateResource.parse_plate_copy_search(test_search_1)
         
         # extract single values from lists for convenience
         for parsed_search in parsed_searches:
@@ -449,9 +449,10 @@ class LibraryResource(DBResourceTestCase):
         for expected_search in expected_parsed:
             found = False
             for parsed_search in parsed_searches:
-                if parsed_search == expected_search:
-                    found = True
-                    break
+                for k,v in expected_search.items():
+                    if parsed_search[k] != v:
+                        break
+                found = True    
             if found is not True:
                 not_found.append(expected_search)
         
@@ -667,7 +668,7 @@ class LibraryResource(DBResourceTestCase):
             'library_short_name': library_data['short_name'],
             'copy_name': "A",
             'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': '0.000040'
+            'initial_plate_well_volume': Decimal('0.000040')
         
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
@@ -677,7 +678,7 @@ class LibraryResource(DBResourceTestCase):
         library_copy = self._create_resource(
             copy_input_data, resource_uri, resource_test_uri, 
             excludes=['initial_plate_well_volume'])
-        
+
         # 4. Verify created Plates
         logger.info('Verify plates created...')
         uri = '/'.join([resource_test_uri,'plate'])
@@ -952,9 +953,9 @@ class LibraryResource(DBResourceTestCase):
         logger.info('patch a copywell...')
         
         copywell_input = copywell_data[0]
-        original_volume = float(copywell_input['volume'])
-        volume_adjustment = 0.000008
-        copywell_input['volume'] = round(original_volume-volume_adjustment, 8)
+        original_volume = Decimal(copywell_input['volume'])
+        volume_adjustment = Decimal('0.000008')
+        copywell_input['volume'] = original_volume-volume_adjustment
         
         patch_uri = '/'.join([resource_uri,copywell_input['well_id']]) 
         resp = self.api_client.patch(
@@ -967,9 +968,9 @@ class LibraryResource(DBResourceTestCase):
         
         new_copywell = patch_response[API_RESULT_DATA]
         self.assertEqual(
-            volume_adjustment, float(new_copywell['consumed_volume']))
+            volume_adjustment, Decimal(new_copywell['consumed_volume']))
         self.assertEqual(
-            float(copywell_input['volume']), float(new_copywell['volume']))
+            Decimal(copywell_input['volume']), Decimal(new_copywell['volume']))
     
     def test13_plate_locations(self):
 
@@ -3126,9 +3127,9 @@ class ScreenResource(DBResourceTestCase):
             copywell_input['copy_name'],str(copywell_input['plate_number']))
         logger.info('1.A Patch the copy well: %r', copywell_input)
         
-        original_volume = float(copywell_input['volume'])
-        volume_adjustment = 0.000004
-        copywell_input['volume'] = round(original_volume-volume_adjustment, 8)
+        original_volume = Decimal(copywell_input['volume'])
+        volume_adjustment = Decimal('0.000004')
+        copywell_input['volume'] = original_volume-volume_adjustment
         
         patch_uri = '/'.join([resource_uri,copywell_input['well_id']]) 
         resp = self.api_client.patch(
@@ -3141,9 +3142,9 @@ class ScreenResource(DBResourceTestCase):
         
         new_copywell = patch_response[API_RESULT_DATA]
         self.assertEqual(
-            volume_adjustment, float(new_copywell['consumed_volume']))
+            volume_adjustment, Decimal(new_copywell['consumed_volume']))
         self.assertEqual(
-            float(copywell_input['volume']), float(new_copywell['volume']))
+            Decimal(copywell_input['volume']), Decimal(new_copywell['volume']))
 
         logger.info('2. Create valid library screening input...')
 
@@ -3154,7 +3155,7 @@ class ScreenResource(DBResourceTestCase):
                 start_plate=library2['start_plate'],
                 end_plate=int(library2['start_plate']+10))
         library_plates_screened = [ plate_range1, plate_range2 ]
-        volume_to_transfer = "0.000006000"
+        volume_to_transfer = "0.000000600"
         library_screening_input = {
             'screen_facility_id': screen['facility_id'],
             'date_of_activity': "2008-01-18",
@@ -3166,7 +3167,7 @@ class ScreenResource(DBResourceTestCase):
             'number_of_replicates': 2,
             'performed_by_username': self.admin_user['username'],
             'volume_transferred_per_well_from_library_plates': volume_to_transfer,
-            'volume_transferred_per_well_to_assay_plates': "0.000003000"
+            'volume_transferred_per_well_to_assay_plates': "0.000000300"
         }
         resource_uri = BASE_URI_DB + '/libraryscreening'
         resource_test_uri = BASE_URI_DB + '/libraryscreening'
@@ -3208,7 +3209,10 @@ class ScreenResource(DBResourceTestCase):
         
         # 1.b Inspect the returned library screening
         for k,v in library_screening_input.items():
-            self.assertEqual(v, library_screening_output[k])
+            v2 = library_screening_output[k]
+            self.assertTrue(equivocal(v,v2),
+                'test key: %r:%r != %r' % (k, v, v2))
+#             self.assertEqual(v, library_screening_output[k])
         
         # 1.c check the copywell separately
         cw_resource_uri = '/'.join([
@@ -3232,8 +3236,8 @@ class ScreenResource(DBResourceTestCase):
         self.assertEqual(len(new_copywell_data),1,
             'copywell_data: %r' % new_copywell_data)
         new_copywell_data = new_copywell_data[0]
-        expected_volume = round(
-            Decimal(copywell_input['volume']) - Decimal(volume_to_transfer), 8)
+        expected_volume = (
+            Decimal(copywell_input['volume']) - Decimal(volume_to_transfer))
         self.assertEqual(
             Decimal(new_copywell_data['volume']),expected_volume,
             'copywell_data: vol expected %r, found: %r' % (
@@ -3442,11 +3446,18 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
 
         logger.info('create library copy...')
+        
+        # Start with less volume than required
+        min_allowed_small_molecule_volume = \
+            LibraryScreeningResource.MIN_WELL_VOL_SMALL_MOLECULE
+        valid_test_volume = Decimal('0.000000200') # 200nL
+        
         library_copy1_input = {
             'library_short_name': library1['short_name'],
             'copy_name': "A",
             'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': '0.000010',
+            'initial_plate_well_volume':
+                 '{:.9f}'.format(min_allowed_small_molecule_volume + valid_test_volume*5),
             'initial_plate_status': 'available'
         }  
         resource_uri = BASE_URI_DB + '/librarycopy'
@@ -3502,14 +3513,18 @@ class ScreenResource(DBResourceTestCase):
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 2,
             'performed_by_username': self.admin_user['username'],
-            'volume_transferred_per_well_from_library_plates': "0.000006000",
-            'volume_transferred_per_well_to_assay_plates': "0.000003000"
+            'volume_transferred_per_well_from_library_plates': 
+                '{0:.9f}'.format(valid_test_volume*2),
+            'volume_transferred_per_well_to_assay_plates': 
+                '{0:.9f}'.format(valid_test_volume)
         }
         resource_uri = BASE_URI_DB + '/libraryscreening'
         resource_test_uri = BASE_URI_DB + '/libraryscreening'
         data_for_get = {
             'screen_facility_id__eq': screen['facility_id']
         }
+        
+        # TESTS - Begin with "failing" tests
         
         logger.info('1. Creating (failed) library_screening with invalid inputs...')
         key = 'screen_facility_id' 
@@ -3574,7 +3589,28 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        logger.info('5.1 test with cherry_pick_source_plates')
+        logger.info('5.a. test insufficient volume...')
+        key = 'library_plates_screened' 
+        test_xfer_vol = \
+            Decimal(library_copy1_input['initial_plate_well_volume']) - valid_test_volume
+        msg = ('insufficient volume {initial_plate_well_volume} '
+            'for copy1: {copy_name} should fail').format(**library_copy1_input)
+        logger.info('test %r', msg)
+        invalid_input5 = library_screening_input.copy()
+        invalid_input5['volume_transferred_per_well_from_library_plates'] = \
+            '{:.9f}'.format(test_xfer_vol) 
+        errors, resp = self._create_resource(
+            invalid_input5, resource_uri, resource_test_uri, expect_fail=True)
+        self.assertTrue(resp.status_code==400, msg)
+        logger.info('errors: %r', errors)
+        self.assertTrue(find_in_dict(key, errors), 
+            'test: %s, not in errors: %r' %(key,errors))
+        key2 = API_MSG_LCPS_INSUFFICIENT_VOLUME
+        self.assertTrue(find_in_dict(key2, errors), 
+            'test: %s, not in errors: %r' %(key2,errors))
+
+        
+        logger.info('5.b test with cherry_pick_source_plates')
         key = 'library_plates_screened' 
         plate_range1cpp = lps_format.format(**library_copy1_cpp).format(**library1)
         value = [ plate_range1cpp, plate_range2 ]
@@ -3588,7 +3624,9 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
         
-        logger.info('5. Create valid library screening input...')
+        # 10 - "valid" test
+        
+        logger.info('10. Create valid library screening input...')
         logger.info('Patch batch_edit: cred: %r', self.username)
         resp = self.api_client.post(
             resource_uri,format='json', 
@@ -3598,7 +3636,7 @@ class ScreenResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         
-        # 5.a Inspect meta "Result" section
+        # 10.a Inspect meta "Result" section
         resp = self.deserialize(resp)
         logger.info('resp: %r', resp)
 
@@ -3620,11 +3658,13 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
         library_screening_output = resp[API_RESULT_DATA][0]
         
-        # 5.b Inspect the returned library screening
+        # 10.b Inspect the returned library screening
         for k,v in library_screening_input.items():
-            self.assertEqual(v, library_screening_output[k])
+            v2 = library_screening_output[k]
+            self.assertTrue(equivocal(v,v2),
+                'test key: %r:%r != %r' % (k, v, v2))
 
-        # 5.c verify new plate volumes (just the first library)
+        # 10.c verify new plate volumes (just the first library)
         # retrieve plates from the server
         _data_for_get = { 
             'plate_number__range': 
@@ -3651,7 +3691,7 @@ class ScreenResource(DBResourceTestCase):
                 'expected: %r, actual: %r' % (
                     expected_remaining_volume, plate_data))
 
-        # 5.d. Test Screen statistics
+        # 10.d. Test Screen statistics
         screen = self.get_screen(screen['facility_id'])
 
         key = 'library_screenings'
@@ -3681,8 +3721,8 @@ class ScreenResource(DBResourceTestCase):
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
 
-        # 5.e Inspect PATCH logs after adding a plate range
-
+        # 10.e Logs
+        
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
@@ -3732,7 +3772,10 @@ class ScreenResource(DBResourceTestCase):
             expected_remaining_volume, 
             Decimal(diffs['remaining_well_volume'][1]))
         
-        logger.info('7. Test - add a plate_range...')
+        # 11 Add a plate range:
+        # Inspect PATCH logs after adding a plate range
+        
+        logger.info('11. Test - add a plate_range...')
         library_screening_input2 = { 
             'activity_id': library_screening_output['activity_id'],
             'library_plates_screened': 
@@ -3758,7 +3801,7 @@ class ScreenResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
 
-        # 7.a Inspect meta "Result" section
+        # 11.a Inspect meta "Result" section
         resp = self.deserialize(resp)
         logger.info('resp: %r', resp)
 
@@ -3779,9 +3822,11 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
         library_screening_output2 = resp[API_RESULT_DATA][0]
         for k,v in library_screening_input2.items():
-            self.assertEqual(v, library_screening_output2[k])
+            v2 = library_screening_output2[k]
+            self.assertTrue(equivocal(v,v2),
+                'test key: %r:%r != %r' % (k, v, v2))
         
-        # 7.c Inspect PATCH logs after adding a plate range
+        # 11.c Inspect PATCH logs after adding a plate range
         logger.info('new plate ranges: %r', 
             library_screening_output2['library_plates_screened'])
         data_for_get={ 
@@ -3833,7 +3878,7 @@ class ScreenResource(DBResourceTestCase):
             expected_remaining_volume, 
             Decimal(diffs['remaining_well_volume'][1]))
         
-        # 7.e check a modified plate
+        # 11.e check a modified plate
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
         modified_plate = self.get_single_resource(plate_resource_uri, {
             'copy_name': library_copy2['copy_name'],
@@ -3863,7 +3908,7 @@ class ScreenResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         
-        # 8.a Inspect meta "Result" section
+        # 11.a Inspect meta "Result" section
         resp = self.deserialize(resp)
         logger.info('resp: %r', resp)
 
@@ -3884,7 +3929,9 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
         library_screening_output3 = resp[API_RESULT_DATA][0]
         for k,v in library_screening_input3.items():
-            self.assertEqual(v, library_screening_output3[k])
+            v2 = library_screening_output3[k]
+            self.assertTrue(equivocal(v,v2),
+                'test key: %r:%r != %r' % (k, v, v2))
 
         # verify new plate volumes = initial_plate_well_volume
         # retrieve plates from the server
@@ -3914,7 +3961,7 @@ class ScreenResource(DBResourceTestCase):
                 'initial well volume expected: %r, actual: %r' % (
                     expected_remaining_volume, plate_data))
         
-        # 9. test valid input with start_plate==end_plate (no end plate)
+        # 12. test valid input with start_plate==end_plate (no end plate)
         
         logger.info('test valid single plate input...')
 
@@ -3935,11 +3982,11 @@ class ScreenResource(DBResourceTestCase):
 
         library_screening_input4 = library_screening_input.copy()
         library_screening_input4['date_of_activity'] = '2016-08-01'
-        # Note: 4 uL remaining after previous library screening
+        # 200 nL requested (should be 7.9 uL)
         library_screening_input4['volume_transferred_per_well_from_library_plates'] = \
-            '0.000002000'
+            '0.000000200'
         library_screening_input4['volume_transferred_per_well_to_assay_plates'] = \
-            '0.000002000'
+            '0.000000200'
         library_screening_input4['number_of_replicates'] = 1
         library_screening_input4['library_plates_screened'] =  \
             library_plates_screened
@@ -3951,7 +3998,7 @@ class ScreenResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
 
-        # 9.a Inspect meta "Result" section
+        # 12.a Inspect meta "Result" section
         resp = self.deserialize(resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
@@ -3973,7 +4020,9 @@ class ScreenResource(DBResourceTestCase):
         for k,v in library_screening_input4.items():
             if k == 'library_plates_screened':
                 continue # see next test, below
-            self.assertEqual(v, library_screening_output4[k])
+            v2 = library_screening_output4[k]
+            self.assertTrue(equivocal(v,v2),
+                'test key: %r:%r != %r' % (k, v, v2))
         logger.info('created library screening, with single-plate range: %r',
             library_screening_output4)
         found_count = 0

@@ -26,8 +26,8 @@ define([
 
   var ScreenView = TabbedController.extend({
     isAdmin: false,
-    OK_STATUSES: [
-      'accepted','ongoing','completed','completed_duplicate_with_ongoing' ],
+    OK_STATUSES: ['accepted','ongoing'],
+    COMPLETED_STATUSES: ['completed','completed_duplicate_with_ongoing' ],
     
     initialize: function(args) {
       var self = this;
@@ -109,8 +109,12 @@ define([
       }
       title.push('{title}');
       title.push('</H4>');
-      
-      return Iccbl.formatString(title.join(''), this.model);
+      var titleDiv = $(Iccbl.formatString(title.join(''), this.model));
+      if (appModel.hasGroup('readEverythingAdmin')){
+        titleDiv.append(
+          Iccbl.createCommentIcon([self.model.get('comments')],'Commments'));
+      }
+      return titleDiv;
     },
         
     setDetail: function(delegateStack) {
@@ -1276,16 +1280,18 @@ define([
     afterRender: function(){
       var self = this;
       TabbedController.prototype.afterRender.apply(this,arguments);
-      
-      if (self.model.has('status') 
-          && !_.contains(self.OK_STATUSES, self.model.get('status'))){
-        $('#content_title').prepend($('<div class="alert alert-danger"></div>').html(
-          'Screen Status: ' + appModel.getVocabularyTitle(
-            'screen.status',self.model.get('status'))));
-      }
-      if (appModel.hasGroup('readEverythingAdmin')){
-        $('#content_title').find('#title').append(
-          Iccbl.createCommentIcon([self.model.get('comments')],'Commments'));
+      $('#content_title_message').empty();
+      if (self.model.has('status')) {
+        if (_.contains(self.COMPLETED_STATUSES, self.model.get('status'))){
+          $('#content_title_message').append($('<div class="alert alert-success"></div>').html(
+            'Screen Status: ' + appModel.getVocabularyTitle(
+              'screen.status',self.model.get('status'))));
+        }
+        else if (!_.contains(self.OK_STATUSES, self.model.get('status'))){
+          $('#content_title_message').prepend($('<div class="alert alert-danger"></div>').html(
+            'Screen Status: ' + appModel.getVocabularyTitle(
+              'screen.status',self.model.get('status'))));
+        }
       }
     }
 

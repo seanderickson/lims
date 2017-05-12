@@ -151,6 +151,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         if (_.isFunction(view.getTitle)){
           title = view.getTitle();
         }
+        self.$('#content_title_message').empty();
         self.$('#content_title').empty();
         self.$('#content_title').html(title);
         self.$('#content_title_row').show();

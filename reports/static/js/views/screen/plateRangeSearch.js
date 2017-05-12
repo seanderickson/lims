@@ -27,7 +27,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
 
     si_formatter: new Iccbl.SIUnitsFormatter({ symbol: 'L' }),
     DEFAULT_VOLUME: 33e-9,
-    URI_REPLICATE_VOLUME_PATTERN: /((\d)x)?(([\d\.]+)([un])L)/i,
+    URI_REPLICATE_VOLUME_PATTERN: /((\d+)x)?(([\d\.]+)([un])L)/i,
     MAX_DAYS_FROM_LAST_SCREENING: 30,
     ERR_MSG_LAST_SCREENING: 
       'Last screening was > {max_days} days ago ({last_screening_date})',

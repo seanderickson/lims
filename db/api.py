@@ -39,8 +39,7 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
-from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
-    MultiAuthentication
+from tastypie.authentication import BasicAuthentication, MultiAuthentication
 from tastypie.exceptions import BadRequest
 from tastypie.http import HttpNotFound
 import tastypie.http
@@ -77,7 +76,7 @@ from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, ApiLogResource, \
     write_authorization, read_authorization
 import reports.api
-from reports.api_base import un_cache
+from reports.api_base import un_cache, IccblSessionAuthentication
 from reports.models import Vocabulary, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH, API_ACTION_CREATE
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
@@ -199,7 +198,7 @@ class PlateLocationResource(DbApiResource):
     class Meta:
         queryset = PlateLocation.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'platelocation'
         serializer = LimsSerializer()
@@ -739,7 +738,7 @@ class LibraryCopyPlateResource(DbApiResource):
     class Meta:
         queryset = Plate.objects.all() 
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'librarycopyplate'
         
@@ -2153,7 +2152,7 @@ class ScreenResultResource(DbApiResource):
     
         queryset = ScreenResult.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'screenresult'
         ordering = []
@@ -3843,7 +3842,7 @@ class DataColumnResource(DbApiResource):
 
         queryset = DataColumn.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'datacolumn'
         ordering = []
@@ -4162,7 +4161,7 @@ class CopyWellResource(DbApiResource):
         
         queryset = CopyWell.objects.all().order_by('well_id')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'copywell'
         ordering = []
@@ -4807,7 +4806,7 @@ class CherryPickRequestResource(DbApiResource):
     
         queryset = CherryPickRequest.objects.all().order_by('well_id')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'cherrypickrequest'
         ordering = []
@@ -6750,7 +6749,7 @@ class ScreenerCherryPickResource(DbApiResource):
     class Meta:
 
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'screenercherrypick'
         
@@ -7347,7 +7346,7 @@ class LabCherryPickResource(DbApiResource):
     class Meta:
 
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'labcherrypick'
         
@@ -8366,7 +8365,7 @@ class CherryPickPlateResource(DbApiResource):
 
         queryset = CherryPickAssayPlate.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'cherrypickassayplate'
         
@@ -8768,7 +8767,7 @@ class LibraryCopyResource(DbApiResource):
 
         queryset = Copy.objects.all().order_by('name')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'librarycopy'
         ordering = []
@@ -9259,7 +9258,7 @@ class PublicationResource(DbApiResource):
 
         queryset = Publication.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         serializer = LimsSerializer()
         resource_name = 'publication'
@@ -9621,7 +9620,7 @@ class AttachedFileResource(DbApiResource):
 
         queryset = AttachedFile.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         serializer = LimsSerializer()
         resource_name = 'attachedfile'
@@ -10021,7 +10020,7 @@ class UserAgreementResource(AttachedFileResource):
 
         queryset = AttachedFile.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         serializer = LimsSerializer()
         resource_name = 'useragreement'
@@ -10277,7 +10276,7 @@ class ActivityResource(DbApiResource):
 
         queryset = Activity.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'activity'
         serializer = LimsSerializer()
@@ -10679,7 +10678,7 @@ class CherryPickLiquidTransferResource(ActivityResource):
 
         queryset = Screening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -10784,7 +10783,7 @@ class CherryPickScreeningResource(ActivityResource):
 
         queryset = Screening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -10960,7 +10959,7 @@ class LibraryScreeningResource(ActivityResource):
 
         queryset = LibraryScreening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblIccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -12708,7 +12707,7 @@ class ServiceActivityResource(ActivityResource):
 
         queryset = ServiceActivity.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -12936,7 +12935,7 @@ class ScreenResource(DbApiResource):
 
         queryset = Screen.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblIccblSessionAuthentication())
         authorization = ScreenAuthorization()
         resource_name = 'screen'
         ordering = []
@@ -14203,7 +14202,7 @@ class StudyResource(ScreenResource):
         max_limit = 10000
         always_return_data = True
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = ScreenAuthorization()
         serializer = ScreenResultSerializer()
         queryset = Screen.objects.all()  # .order_by('facility_id')
@@ -14231,7 +14230,7 @@ class UserChecklistItemResource(DbApiResource):
 
         queryset = UserChecklistItem.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -14524,7 +14523,7 @@ class ScreensaverUserResource(DbApiResource):
 
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -15104,7 +15103,7 @@ class NaturalProductReagentResource(DbApiResource):
         queryset = Reagent.objects.all()
         
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'naturalproductreagent'
         
@@ -15164,7 +15163,7 @@ class SilencingReagentResource(DbApiResource):
     
         queryset = Reagent.objects.all()
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'silencingreagent'
         ordering = []
@@ -15502,7 +15501,7 @@ class SmallMoleculeReagentResource(DbApiResource):
 
         queryset = Reagent.objects.all() 
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -15658,7 +15657,7 @@ class ReagentResource(DbApiResource):
 
         queryset = Reagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'reagent'
         ordering = []
@@ -16125,7 +16124,7 @@ class WellResource(DbApiResource):
 
         queryset = Well.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             SessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'well'
         ordering = []
@@ -16749,7 +16748,7 @@ class LibraryResource(DbApiResource):
 
         queryset = Library.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         resource_name = 'library'
         

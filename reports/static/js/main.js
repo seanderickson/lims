@@ -55,16 +55,7 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
    * and
    * http://stackoverflow.com/questions/15388694/does-sessionauthentication-work-in-tastypie-for-http-post
    */
-  function readCookie(name) {
-    var nameEQ = escape(name) + "=";
-    var ca = document.cookie.split(';');
-    for (var i = 0; i < ca.length; i++) {
-        var c = ca[i];
-        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) === 0) return unescape(c.substring(nameEQ.length, c.length));
-    }
-    return null;
-  };
+
   // sending a csrftoken with every ajax request
   function csrfSafeMethod(method) {
       // these HTTP methods do not require CSRF protection
@@ -74,7 +65,7 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
       crossDomain: false, // obviates need for sameOrigin test
       beforeSend: function(xhr, settings) {
           if (!csrfSafeMethod(settings.type)) {
-              xhr.setRequestHeader("X-CSRFToken", readCookie('csrftoken'));
+              xhr.setRequestHeader("X-CSRFToken", appModel.readCookie('csrftoken'));
           }
       }
   });

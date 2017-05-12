@@ -34,8 +34,7 @@ from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct, exists
-from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
-    MultiAuthentication
+from tastypie.authentication import BasicAuthentication, MultiAuthentication
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, \
     BadRequest
 from tastypie.http import HttpForbidden, HttpNotFound, \
@@ -46,7 +45,8 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError
 from reports import ValidationError, _now
-from reports.api_base import IccblBaseResource, un_cache, Authorization
+from reports.api_base import IccblBaseResource, un_cache, Authorization, \
+    IccblSessionAuthentication
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, API_ACTION_DELETE, \
                            API_ACTION_CREATE
@@ -1803,7 +1803,7 @@ class ApiLogResource(ApiResource):
         queryset = ApiLog.objects.all().order_by(
             'ref_resource_name', 'username','date_time')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization= ApiLogAuthorization() #Authorization()        
         ordering = []
         serializer = LimsSerializer()
@@ -2159,7 +2159,7 @@ class FieldResource(ApiResource):
         queryset = MetaHash.objects.filter(
             scope__startswith="fields.").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization= AllAuthenticatedReadAuthorization()
         ordering = []
         filtering = {} 
@@ -2514,7 +2514,7 @@ class ResourceResource(ApiResource):
         queryset = MetaHash.objects.filter(
             scope="resource").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization= AllAuthenticatedReadAuthorization()
         ordering = []
         filtering = {} 
@@ -2907,7 +2907,7 @@ class VocabularyResource(ApiResource):
         queryset = Vocabulary.objects.all().order_by(
             'scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization= UserGroupAuthorization()        
         ordering = []
         serializer = LimsSerializer()
@@ -3341,7 +3341,7 @@ class UserResource(ApiResource):
     class Meta:
         queryset = UserProfile.objects.all().order_by('username') 
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         
         # TODO: implement field filtering: users can only see other users details
         # if in readEverythingAdmin group
@@ -3819,7 +3819,7 @@ class UserGroupResource(ApiResource):
         queryset = UserGroup.objects.all();        
         
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization = UserGroupAuthorization() #SuperUserAuthorization()        
 
         ordering = []
@@ -4491,7 +4491,7 @@ class PermissionResource(ApiResource):
     class Meta:
         queryset = Permission.objects.all().order_by('scope', 'key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
+            BasicAuthentication(), IccblSessionAuthentication())
         authorization= UserGroupAuthorization()         
         object_class = object
         

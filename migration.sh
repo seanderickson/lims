@@ -428,14 +428,20 @@ function frontend_setup {
   npm --version 2>&1 || error "npm not found: $?"
   rm -rf ./node_modules 
   npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
+  cd ../..
   
+  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
+
+}
+
+function frontend_deploy {
+
+  echo "frontend_deploy: $(ts) ..." >> "$LOGFILE"
+
+  cd reports/static >>"$LOGFILE" 2>&1
   npm run build 2>&1 || error "npm run build failed: $?"
   
   # TODO: frontend tests
-  
-  # add bootstrap to external folder - needed for the login template 
-#   mkdir css/external
-#  cp node_modules/bootstrap/dist/css/bootstrap.min.css css/external
   
   cd ../..
   
@@ -457,8 +463,8 @@ function frontend_setup {
   if [ -e ../wsgi/app.wsgi ]; then
     touch ../wsgi/app.wsgi
   fi
-    
-  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
+
+  echo "frontend_deploy done: $(ts)" >> "$LOGFILE"
 
 }
 
@@ -725,6 +731,8 @@ function main {
   
   frontend_setup
   
+  frontend_deploy  
+  
   django_syncdb
 
   premigratedb  
@@ -772,6 +780,8 @@ main "$@"
 #  pip install -r requirements.txt >>"$LOGFILE" 2>&1
 
 #  frontend_setup
+
+#  frontend_deploy
   
 #  django_syncdb
 

@@ -10959,7 +10959,7 @@ class LibraryScreeningResource(ActivityResource):
 
         queryset = LibraryScreening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             IccblIccblSessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
@@ -12935,7 +12935,7 @@ class ScreenResource(DbApiResource):
 
         queryset = Screen.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(),
-                                             IccblIccblSessionAuthentication())
+                                             IccblSessionAuthentication())
         authorization = ScreenAuthorization()
         resource_name = 'screen'
         ordering = []

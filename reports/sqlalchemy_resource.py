@@ -460,7 +460,7 @@ class SqlAlchemyResource(IccblBaseResource):
         
         @param param_hash: a hash of filter data:
         - filters defined as filter_key, filter_value; combined using "AND"
-        - nested "search_data":
+        - nested "nested_search_data":
             - an array of hashes of filter_data, to be OR'd together
             - each hash consists of filter_key, filter_value
         @return (
@@ -479,23 +479,24 @@ class SqlAlchemyResource(IccblBaseResource):
         filter_expression = and_(*filter_hash.values())
 
         # 20170511 - nested search_data not used (for well, plate, or screening inquiry)
-        # Treat the nested "search_data" as sets of params to be OR'd together,
+        # Treat the nested "nested_search_data" as sets of params to be OR'd together,
         # then AND'd with the regular filters (if any)
-        search_data = param_hash.get('search_data', None)
-        if search_data:
-            logger.info('search_data: %r', search_data)
-            if isinstance(search_data, basestring):
-                # standard, convert single valued list params
-                search_data = [search_data]
-            if isinstance(search_data, dict):
-                # standard, convert single valued list params
-                search_data = [search_data]
-
+        nested_search_data = param_hash.get('nested_search_data', None)
+        if nested_search_data:
+            logger.info('nested_search_data: %r', nested_search_data)
+            if isinstance(nested_search_data, basestring):
+                nested_search_data = json.loads(nested_search_data)
+            if isinstance(nested_search_data, dict):
+                # a standard dict of filters, to be OR'd with the current filter expression
+                nested_search_data = [nested_search_data]
+            if not isinstance(nested_search_data, (list,tuple)):
+                raise Exception('nested_search_data must be a list of dicts')
             # each item in the search data array is a search hash, to be or'd
             search_expressions = []
             filter_fields = set(filter_hash.keys())
-            for search_hash in search_data:
+            for search_hash in nested_search_data:
                 logger.info('search_hash: %s' % search_hash)
+                
                 (search_filter_hash,readable_search_filter_hash) = \
                     SqlAlchemyResource.\
                         build_sqlalchemy_filter_hash(schema,search_hash)
@@ -678,6 +679,9 @@ class SqlAlchemyResource(IccblBaseResource):
 
         if param_hash is None:
             return (None,None)
+        
+        if not isinstance(param_hash, dict):
+            raise Exception('filter hash must be a dict: %r', param_hash)
         
         filter_hash = {}
         readable_filter_hash = {}

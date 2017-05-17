@@ -493,7 +493,8 @@ class ApiResource(SqlAlchemyResource):
     @read_authorization
     def search(self, request, **kwargs):
         '''
-        Treats a POST request like a GET (with posted search_data)
+        Treats a POST request like a GET (with posted raw_search_data):
+        - for large raw_search_data (too large for URL param encoding)
         '''
          
         DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
@@ -502,35 +503,28 @@ class ApiResource(SqlAlchemyResource):
          
         all_params = self._convert_request_to_dict(request)
         all_params.update(kwargs)
-        search_data = all_params.get('search_data', None)
+
+        # NOTE: remove "nested_search_data" 20170515;
+        # - this data must be sent with each request
+        # nested_search_data = all_params.get('nested_search_data', None)
         raw_search_data = all_params.get('raw_search_data', None)
          
-        if search_data:
-            # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
-            # deserializer
-            search_data = urllib.unquote(search_data)
-            search_data = json.loads(search_data)   
-            # cache the search data on the session, to support subsequent requests
-            # to download or modify
-            request.session[search_ID] = search_data  
-        elif raw_search_data:
+        if raw_search_data:
             raw_search_data = urllib.unquote(raw_search_data)
-#             raw_search_data = json.loads(raw_search_data)   
             # cache the search data on the session, to support subsequent requests
             # to download or modify
             request.session[search_ID] = raw_search_data  
         else:
             if search_ID in request.session:
-                search_data = request.session[search_ID]
+                raw_search_data = request.session[search_ID]
             else:
                 raise BadRequest(
-                    'search_data for id missing: %r, %r.'
-                    '.search requires a "search_data" param'
+                    'raw_search_data for id missing: %r, %r.'
+                    '.search requires a "raw_search_data" param'
                     % (search_ID, self._meta.resource_name))
         
         if DEBUG_SEARCH:
-            logger.info('search_data: %r, %r', search_data, raw_search_data)
-        kwargs['search_data'] = search_data
+            logger.info('raw_search_data: %r', raw_search_data)
         kwargs['raw_search_data'] = raw_search_data
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
  

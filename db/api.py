@@ -1468,7 +1468,8 @@ class LibraryCopyPlateResource(DbApiResource):
             if isinstance(plate_ids,basestring):
                 plate_ids = [int(x) for x in plate_ids.split(',')]
         plate_search_data = param_hash.pop('raw_search_data', None)
-
+        logger.info('plate raw_search_data: %r', plate_search_data)
+        
         if len(filter(lambda x: x is not None, 
             [cherry_pick_request_id, for_screen_id, 
                 library_screening_id, plate_ids, plate_search_data]))>1:
@@ -1898,33 +1899,44 @@ class LibraryCopyPlateResource(DbApiResource):
     @transaction.atomic    
     def batch_edit(self, request, **kwargs):
         '''
-        Batch edit is like patch, except:
-        - bypasses the "dispatch" framework call
-        - can use the "search_data" to find the plates
-        -- must be authenticated and authorized
+        Batch edit is a POST operation:
+        
+        librarycopyplate batch_edit uses a POST form to send both
+        the search data (3 types of search filter: "nested_search_data",  
+        "raw_search_data", and GET search params),
+        as well as the update data (in the form of "plate_info" and "plate_location")
+        (Instead of sending all plates to be PATCHED);
         '''
-        self.is_authenticated(request)
-        if not self._meta.authorization._is_resource_authorized(
-                self._meta.resource_name,request.user,'write'):
-            raise ImmediateHttpResponse(
-                response=HttpForbidden(
-                    'user: %s, permission: %s/%s not found' 
-                    % (request.user,self._meta.resource_name,'write')))
-
+        # NOTE: authentication is being performed by wrap_view
+        # self.is_authenticated(request)
+        # if not self._meta.authorization._is_resource_authorized(
+        #         self._meta.resource_name,request.user,'write'):
+        #     raise ImmediateHttpResponse(
+        #         response=HttpForbidden(
+        #             'user: %s, permission: %s/%s not found' 
+        #             % (request.user,self._meta.resource_name,'write')))
+        convert_post_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
         logger.info('batch_edit plates...')
         
-        schema = super(LibraryCopyPlateResource, self).build_schema()
-        deserialized = self.deserialize(request)
+        schema = param_hash.pop('schema', None)
+        if not schema:
+            # schema = super(LibraryCopyPlateResource, self).build_schema()
+            raise Exception('no schema...')
         
-        data = deserialized.get('data', None)
-        if data is None:
-            raise BadRequest('must submit "data" on the request')
+        logger.info('param_hash: %r', param_hash)
         
-        plate_info_data = data.get('plate_info', None)
-        location_data = data.get('plate_location', None)
+        plate_info_data = param_hash.pop('plate_info', None)
+        if plate_info_data: 
+            plate_info_data = json.loads(plate_info_data)
+        logger.info('plate_info: %r', plate_info_data)
+        
+        location_data = param_hash.pop('plate_location', None)
+        if location_data:
+            location_data = json.loads(location_data)
+
         if plate_info_data is not None and location_data is not None:
             raise BadRequest('batch info: edit only one of %r'
                 % ['plate_info', 'plate_location'])
@@ -1932,13 +1944,26 @@ class LibraryCopyPlateResource(DbApiResource):
             raise BadRequest('"data" must contain one of %r'
                 % ['plate_info', 'plate_location'])
         
+        # Use the rest of the POST data for the plate search
+        nested_search_data = param_hash.pop('nested_search_data', None)
+        plate_kwargs = param_hash.copy()
+        if nested_search_data:
+            plate_kwargs['nested_search_data'] = json.loads(nested_search_data)
+        
+        logger.info('plate_kwargs: %r', plate_kwargs)
+        
         if plate_info_data is not None:
             # Find all of the plates
-            kwargs['search_data'] = deserialized.pop('search_data', {})
-            kwargs['includes'] = ['plate_id']
-            original_data = self._get_list_response_internal(**kwargs)
+            plate_kwargs['includes'] = ['plate_id']
+            original_data = self._get_list_response_internal(**plate_kwargs)
+            if not original_data:
+                raise HttpNotFound
+            logger.info('got the plate objects for search data: %d', len(original_data))
+            logger.debug('plates %r', ['{copy_name}/{plate_number}'.format(**lcp)
+                for lcp in original_data])
             
             plate_ids = [x['plate_id'] for x in original_data]
+
             query = Plate.objects.all().filter(plate_id__in=plate_ids)
             for key,value in plate_info_data.items():
                 fi = schema['fields'].get(key,None)
@@ -1955,14 +1980,14 @@ class LibraryCopyPlateResource(DbApiResource):
                     
             logger.info('batch update complete, logging...')
             
-            new_data = self._get_list_response_internal(**kwargs)
+            new_data = self._get_list_response_internal(**plate_kwargs)
             
             parent_log = self.make_log(request)
             parent_log.key = self._meta.resource_name
             parent_log.uri = self._meta.resource_name
             parent_log.save()
-            kwargs['parent_log'] = parent_log
-            logs = self.log_patches(request, original_data, new_data,**kwargs)
+            plate_kwargs['parent_log'] = parent_log
+            logs = self.log_patches(request, original_data, new_data,**plate_kwargs)
             patch_count = len(logs)
             update_count = len([x for x in logs if x.diffs ])
             unchanged_count = patch_count - update_count
@@ -1978,7 +2003,6 @@ class LibraryCopyPlateResource(DbApiResource):
                 request, {API_RESULT_META: meta }, response_class=HttpResponse, 
                 **kwargs)
             
-        location_data = data.get('plate_location', None)
         if location_data is not None:
             plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
             if (not location_data 
@@ -1997,13 +2021,14 @@ class LibraryCopyPlateResource(DbApiResource):
                     original_location_data.get('copy_plate_ranges',None)
     
             # Find all of the plates
-            kwargs['search_data'] = deserialized.pop('search_data', {})
-            original_data = self._get_list_response_internal(**kwargs)
-            
+            original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
                 raise HttpNotFound
+            logger.info('got the plate objects for search data: %d', len(original_data))
+            logger.debug('plates for batch edit %r', 
+                ['{copy_name}/{plate_number}'.format(**lcp)
+                    for lcp in original_data])
             
-            logger.info('get the plate objects for search data: %d', len(original_data))
             logger.info('convert the plates into ranges...')
             library_copy_ranges = {}
             for plate_data in original_data:
@@ -2023,8 +2048,6 @@ class LibraryCopyPlateResource(DbApiResource):
                     % (library_copy, 
                        str(plate_range[0]),
                        str(plate_range[-1]) ))
-#                        str(plate_range[0]).zfill(5),
-#                        str(plate_range[-1]).zfill(5) ))
     
             logger.info(
                 'patch original location: %r, with copy_ranges: %r', 
@@ -2039,6 +2062,9 @@ class LibraryCopyPlateResource(DbApiResource):
             parent_log.uri = self._meta.resource_name
             parent_log.save()
             kwargs['parent_log'] = parent_log
+            
+            # Consider: create PATCH logs for each of the plates patched as well
+            
             response = self.get_platelocation_resource().patch_detail(
                 request, 
                 data=location_data,
@@ -7763,8 +7789,12 @@ class LabCherryPickResource(DbApiResource):
             schema = deepcopy(
                 super(LabCherryPickResource, self).build_schema(user=user))
             original_fields = schema['fields']
+            # 20170516 - keep the well_id field; required for the structure_image field
+            # omit_redundant_fields = [
+            #     'well_id','plate_number','well_name','library_well_type',
+            #     'library_short_name','library_name']
             omit_redundant_fields = [
-                'well_id','plate_number','well_name','library_well_type',
+                'plate_number','well_name','library_well_type',
                 'library_short_name','library_name']
             if library_classification:
                 # Add in reagent fields
@@ -7793,6 +7823,8 @@ class LabCherryPickResource(DbApiResource):
             
             # Overlay the original lcp fields on the top
             schema['fields'].update(original_fields)
+            
+            
             logger.debug('new lcp fields: %r',
                 [(field['key'],field['scope']) for field in schema['fields'].values()])
             return schema

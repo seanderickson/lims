@@ -1148,44 +1148,50 @@ class LibraryResource(DBResourceTestCase):
         start_plate = library_data['start_plate']
         short_name = library_data['short_name']
         
-        # 1. patch new data to the copyplates
-        
-        new_plate_data = {
+        # 1. POST new data to the copyplates
+        # NOTE: the librarycopyplate batch_edit uses a POST form to send both
+        # the search data (3 types of search filter: "nested_search_data",  
+        # "raw_search_data", and GET search params),
+        # as well as the update data (in the form of 
+        # "plate_info" and "plate_location")
+        plate_info = {
             'status': 'available',
             'remaining_well_volume': '0.000030', 
             'plate_type': 'nunc_96'
         }
-        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
-        
         data = {
-            'data': { 'plate_info': new_plate_data }, 
-            'search_data': {
+            'plate_info': json.dumps(plate_info) , 
+            'nested_search_data': json.dumps({
                 'library_short_name': library_data['short_name'],
-                'copy_name': copy_data['copy_name'] }
+                'copy_name': copy_data['copy_name'] })
             }
-        
-        resp = self.api_client.patch(
-            resource_uri,format='json', 
+        # NOTE: the tastypie client does not correctly encode the multipart
+        # form data for a POST, so the django client is used
+        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
+        resp = self.django_client.post(
+            resource_uri, content_type=MULTIPART_CONTENT, 
             data=data, 
-            authentication=self.get_credentials())
+            **data_for_get)
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        patch_response = self.deserialize(resp)
+        post_response = self.deserialize(resp)
         
         # Inspect meta "Result" section
         self.assertTrue(
-            API_RESULT_META in patch_response, '%r' % patch_response)
-        meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+            API_RESULT_META in post_response, '%r' % post_response)
+        meta = post_response[API_RESULT_META]
+        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
             API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
-            '%r' % patch_response)
+            '%r' % post_response)
         self.assertTrue(
             meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
                 % (API_MSG_SUBMIT_COUNT, meta))
-        logger.info('patch_response: %r', patch_response)
+        logger.info('post_response: %r', post_response)
         
         # 2. Verify plates
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -1208,48 +1214,49 @@ class LibraryResource(DBResourceTestCase):
         
         plates_data_output = plates_data
         for plate_data_output in plates_data_output:
-            for field in new_plate_data.keys():
+            for field in plate_info.keys():
                 self.assertTrue(
-                    equivocal(plate_data_output[field],new_plate_data[field]),
+                    equivocal(plate_data_output[field],plate_info[field]),
                     'plate data: expected: %r, rcvd: %r'
-                    % (new_plate_data[field],plate_data_output[field]))
+                    % (plate_info[field],plate_data_output[field]))
             self.assertEqual(
                 _now().date().strftime("%Y-%m-%d"), 
                 plate_data_output['date_plated'],
                 'expected date_plated: %r, %r' 
                     %(_now().date(), plate_data_output['date_plated']))
 
-        # 3. patch new data - status to retired
-        new_plate_data['status'] = 'retired'
+        # 3. POST new data - set the status to retired
+        plate_info['status'] = 'retired'
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         
         data = {
-            'data': { 'plate_info': new_plate_data }, 
-            'search_data': {
+            'plate_info': json.dumps(plate_info) , 
+            'nested_search_data': json.dumps({
                 'library_short_name': library_data['short_name'],
-                'copy_name': copy_data['copy_name'] }
+                'copy_name': copy_data['copy_name'] })
             }
-        
-        resp = self.api_client.patch(
-            resource_uri,format='json', 
+        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        resp = self.django_client.post(
+            resource_uri, content_type=MULTIPART_CONTENT, 
             data=data, 
-            authentication=self.get_credentials())
+            **data_for_get)
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        patch_response = self.deserialize(resp)
+        post_response = self.deserialize(resp)
         
         # Inspect meta "Result" section
         self.assertTrue(
-            API_RESULT_META in patch_response, '%r' % patch_response)
-        meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+            API_RESULT_META in post_response, '%r' % post_response)
+        meta = post_response[API_RESULT_META]
+        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % patch_response)
+            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % post_response)
         self.assertTrue(meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
             % (API_MSG_SUBMIT_COUNT, meta))
-        logger.info('patch_response: %r', patch_response)
+        logger.info('post_response: %r', post_response)
         
         # 4. Verify plates status changed to "retired"
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -1270,7 +1277,7 @@ class LibraryResource(DBResourceTestCase):
             'could not find all of the plates in the range: %r, %r'
             % ([start_plate,end_plate],plates_data))
         
-        plates_data_output = plates_data
+        plates_data_output = plates_data    
         for plate_data_output in plates_data_output:
             self.assertEqual('retired', plate_data_output['status'])
             self.assertEqual(
@@ -1282,6 +1289,7 @@ class LibraryResource(DBResourceTestCase):
     def test16_batch_edit_copyplate_location(self):
         
         logger.info('test16_batch_edit_copyplate_location ...')
+
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
         end_plate = library_data['end_plate']
@@ -1292,33 +1300,41 @@ class LibraryResource(DBResourceTestCase):
             'room': 'room1', 'freezer': 'freezer1', 'shelf': 'shelf1',
             'bin': 'bin1',
         }
-        
-        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
-        
+        # NOTE: the librarycopyplate batch_edit uses a POST form to send both
+        # the search data (3 types of search filter: "nested_search_data",  
+        # "raw_search_data", and GET search params),
+        # as well as the update data (in the form of 
+        # "plate_info" and "plate_location")
         data = {
-            'data': { 'plate_location': plate_location_input }, 
-            'search_data': {
+            'plate_location': json.dumps(plate_location_input) , 
+            'nested_search_data': json.dumps({
                 'library_short_name': library_data['short_name'],
-                'copy_name': copy_data['copy_name'] }
+                'copy_name': copy_data['copy_name'] })
             }
-        
-        logger.info('Patch batch_edit: cred: %r', self.username)
-        resp = self.api_client.patch(
-            resource_uri,format='json', 
+
+        logger.info('Patch batch_edit: data: %r', data)
+
+        # NOTE: the tastypie client does not correctly encode the multipart
+        # form data for a POST, so the django client is used
+        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
+        resp = self.django_client.post(
+            resource_uri, content_type=MULTIPART_CONTENT, 
             data=data, 
-            authentication=self.get_credentials())
+            **data_for_get)
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        patch_response = self.deserialize(resp)
+        post_response = self.deserialize(resp)
         
         # Inspect meta "Result" section
         self.assertTrue(
-            API_RESULT_META in patch_response, '%r' % patch_response)
-        meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+            API_RESULT_META in post_response, '%r' % post_response)
+        meta = post_response[API_RESULT_META]
+        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % patch_response)
+            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % post_response)
         self.assertTrue(meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
             'Wrong %r count: %r' 
             % (API_MSG_SUBMIT_COUNT,meta))
@@ -1392,7 +1408,6 @@ class LibraryResource(DBResourceTestCase):
                 self.assertTrue(diffs['bin']==[None, 'bin1'],
                     'wrong diff: %r' % diffs )
             else:
-                # parent log
                 logger.info('parent log: %r', logvalue)
                 self.assertTrue(logvalue['key']=='librarycopyplate',
                     'parent_log key should be "librarycopyplate", %r' % logvalue)
@@ -3115,8 +3130,8 @@ class ScreenResource(DBResourceTestCase):
         
         copywell_data = new_obj[API_RESULT_DATA]
         expected_wells = plate_size;
-        logger.info('returned copywell: %r', copywell_data[0])
-        logger.info('returned copywell: %r', copywell_data[-1])
+        logger.debug('returned copywell: %r', copywell_data[0])
+        logger.debug('(last) returned copywell: %r', copywell_data[-1])
         self.assertEqual(len(copywell_data),expected_wells)
         
         # Only modify one well here
@@ -6105,7 +6120,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
-        logger.info('date_volume_reserved logs: %r', apilogs)
+        logger.debug('date_volume_reserved logs: %r', apilogs)
         
         # Find the deallocate log:
         deallocate_log = None
@@ -6120,7 +6135,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
-        logger.info('deallocate child logs: %r', apilogs)
+        logger.debug('deallocate child logs: %r', apilogs)
         expected_deallocate_logs = 19 # 6+3+6 copywell, 4 plate
         self.assertEqual(expected_deallocate_logs, len(apilogs))
         for apilog in apilogs:
@@ -6469,8 +6484,8 @@ class CherryPickRequestResource(DBResourceTestCase):
                 % (source_well_id, new_lab_cherry_picks.keys()))
             if source_well_id != test_wellid_to_change:
                 prev_lcp = current_lcps[source_well_id]
-                logger.info('new_lcp: %r ',lcp)
-                logger.info('prev lcp: %r', prev_lcp)
+                logger.debug('new_lcp: %r ',lcp)
+                logger.debug('prev lcp: %r', prev_lcp)
                 for key,val in prev_lcp.items():
                     self.assertEqual(val,lcp[key], 
                         'key: %r, prev: %r, new: %r' % (key, lcp[key],val))

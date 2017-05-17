@@ -111,8 +111,10 @@ define([
       title.push('</H4>');
       var titleDiv = $(Iccbl.formatString(title.join(''), this.model));
       if (appModel.hasGroup('readEverythingAdmin')){
-        titleDiv.append(
-          Iccbl.createCommentIcon([self.model.get('comments')],'Commments'));
+        if (!_.isEmpty(self.model.get('comments'))){
+          titleDiv.append(
+            Iccbl.createCommentIcon([self.model.get('comments')],'Commments'));
+        }
       }
       return titleDiv;
     },

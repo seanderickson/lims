@@ -151,8 +151,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         if (_.isFunction(view.getTitle)){
           title = view.getTitle();
         }
-        self.$('#content_title_message').empty();
-        self.$('#content_title').empty();
         self.$('#content_title').html(title);
         self.$('#content_title_row').show();
       }
@@ -255,7 +253,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         }
         view = new viewClass({ 
-//            model: appModel, 
             uriStack: uriStack,
             schemaResult: resource, 
             resource: resource,
@@ -285,21 +282,23 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     }, // end showList
     
     /**
-     * Create a list view using the stateful searchID given on the uriStack. 
+     * Create a list view using the stateful searchID given on the uriStack.
+     * Search data will be POSTed as "raw_search_data"
+     * NOTE: removed "search_data" - (nested_search_data) 20170515;
+     * - nested_search_data must be sent with each request
+     * - TODO: support for large nested_search_data via same mechanism
      */
     createListSearchView: function(resource, viewClass, uriStack){
+      console.log('createListSearchView...')
       var self = this;
-      console.log('createListSearchView')
       var url;
       var searchID;
-      var search_data;
+      var raw_search_data;
 
-      console.log('create a collection with search data: ', uriStack);
-      
       this.consumedStack.push(uriStack.shift());
       searchID = uriStack.shift();
       this.consumedStack.push(searchID);
-      search_data = appModel.getSearch(searchID);
+      raw_search_data = appModel.getSearch(searchID);
       
       // NOTE: 20170412 - API client search data is sent as "raw_search_data"; 
       // - not structured and parsed
@@ -310,15 +309,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // field name search specifiers (each dict specifies an AND clause, and 
       // each dict is OR'd). See appModel.createCommentTable for an example.
       
-      if(_.isUndefined(search_data) || _.isEmpty(search_data)){
-        var msg = 'Content List search requires a "search_data:'
+      if(_.isUndefined(raw_search_data) || _.isEmpty(raw_search_data)){
+        var msg = 'Content List search requires a "raw_search_data:'
           +searchID +'" in current browser state';
         console.log(msg);
         appModel.error(msg);
         return;
       }
       
-      var search_data_key = 'raw_search_data';
       var resources_supporting_raw_search = ['well','reagent','librarycopyplate'];
         
       if (!_.contains(resources_supporting_raw_search,resource.key)){
@@ -336,8 +334,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options.data = _.extend({}, options.data);
           // NOTE: for future implementation; use JSON.stringify if sending the
           // structured "search_data" instead of "raw_search_data"
-          //options.data[search_data_key] = JSON.stringify(search_data);
-          options.data[search_data_key] = search_data;
+          options.data['raw_search_data'] = raw_search_data;
           options.type = 'POST';
           return Iccbl.MyCollection.prototype.fetch.call(this, options);
         }
@@ -350,7 +347,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var extraControls = [];
         
         // Special button to modifiy the reagent search
-        // TODO: implement this for other searches, if search_data is complex/large
+        // TODO: implement this for other searches, if raw_search_data is complex/large
         if (resource.key == 'reagent' || resource.key == 'librarycopyplate'){
           var $modifySearch = $([
             '<a class="btn btn-default btn-sm pull-down" ',
@@ -361,7 +358,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           extraControls.push($modifySearch);
           $modifySearch.click(function(e){
             e.preventDefault();
-            self.showSearch(resource, search_data);
+            self.showSearch(resource, raw_search_data);
           });
         }
         
@@ -370,10 +367,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             schemaResult: newResource, 
             resource: newResource, 
             collection: collection, 
-            search_data: search_data,
+            raw_search_data: raw_search_data,
             extraControls: extraControls
           });
-        this.$('#content_title').html(resource.title + ' search');
         this.$('#content_title_row').show();
         
         self.listenTo(view, 'update_title', function(val){
@@ -400,7 +396,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     /** 
      * Show/modify the reagent search list view 
      **/
-    showSearch: function(resource, search_data) {
+    showSearch: function(resource, raw_search_data) {
       var schema = {
         search_data: {
           title: 'Search Data',
@@ -420,7 +416,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         schema: schema
       });
       var formFields = new FormFields({
-        search_data: search_data
+        search_data: raw_search_data
       });
       var form = new Backbone.Form({
         model: formFields,
@@ -449,6 +445,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     // Backbone layoutmanager callback
     cleanup: function(){
       console.log('cleanup:', this.objects_to_destroy.length);
+
       var oldView = this.getView('#content');
       if(!_.isUndefined(oldView)){
         oldView.off();
@@ -459,6 +456,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         obj.remove();
         obj.off();
       });
+      this.$('#content_title_message').empty();
+      this.$('#content_title').empty();
       this.objects_to_destroy = [];
     },
 

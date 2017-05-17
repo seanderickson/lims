@@ -21,8 +21,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
     template: _.template(layout),
     
     initialize: function(args) {
-      this._args = args;
       this._classname = 'libraryCopyPlate';
+      this._args = args;
       this.resource = args.resource;
       this.uriStack = args.uriStack;
       this.library = args.library;
@@ -142,11 +142,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           '</label>'
         ].join(''));
 
-      var extraControls = [];
+      var extraControls = _.result(self._args, 'extraControls', []);
       if (appModel.hasPermission(resource.key, 'write')){
-        extraControls = [
+        extraControls = extraControls.concat([
          showEditLocationButton, showEditPlatesButton, showHistoryButton,
-         showUploadButton];
+         showUploadButton]);
       }
       extraControls.push(showCommentsControl);
       
@@ -320,15 +320,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
     batchEditPlatesDialog: function(listView) {
       var self = this;
       console.log('batch edit plates dialog...');
-      // find any extra search data
-      post_data = {};
-      if(_.has(listView._options, 'search_data')) {
-        console.log('search data found on the list._options: ', listView._options.search_data);
-        // endcode for the post_data arg; post data elements are sent 
-        // as urlencoded values via a POST form for simplicity
-        post_data['search_data'] = JSON.stringify(listView._options.search_data);  
-      }
+
       // Construct the form
+      
       var initfun = function() {
         var formSchema = {};
         var fieldTemplate = appModel._field_template;
@@ -342,7 +336,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           options: appModel.getVocabularySelectOptions('plate.status'),
           template: fieldTemplate 
         };
-        
         formSchema['plate_type'] = {
           title: 'Plate Type',
           key: 'plate_type',
@@ -351,7 +344,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           options: appModel.getVocabularySelectOptions('plate.type'),
           template: fieldTemplate 
         };
-        
         formSchema['remaining_well_volume'] = {
           title: 'Remaining Well Volume',
           key: 'well_volume',
@@ -450,19 +442,33 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
         function submitForm(values, callback) {
           var headers = {};
           headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+          
           delete values['comments']
-          var post_data = {
-            data: { 'plate_info': values },
-            search_data: listView._options.search_data 
+          
+          console.log('values', values);
+          
+          // Batch edit is a POST operation:
+          // Instead of sending all plates to be PATCHED:
+          // - send plate search data in the form of (raw_search_data, 
+          // nested_search_data, URL params for the sqlalchemy filters);
+          // - and send the (plate_location data or plate_info data) with the data
+          // to modify for all of the plates matching the search
+          var post_data = new FormData();
+          post_data.append('plate_info', JSON.stringify(values));
+
+          if(_.has(listView._options, 'raw_search_data')) {
+            post_data.append('raw_search_data',listView._options.raw_search_data);  
           }
-          
-          if (self.library && self.copy) {
-            search_data = _.result(post_data,'search_data', {});
-            search_data['library_short_name'] = self.library.get('short_name');
-            search_data['copy_name'] = self.copy.get('copy_name');
-            post_data['search_data'] = search_data;
-          }            
-          
+          var nested_search_data = {};
+          if (self.library){
+            nested_search_data['library_short_name'] = self.library.get('short_name');
+          }
+          if (self.copy){
+            nested_search_data['copy_name'] = self.copy.get('copy_name');
+          }
+          if (!_.isEmpty(nested_search_data)){
+            post_data.append('nested_search_data', JSON.stringify(nested_search_data));
+          }
           var url = self.resource.apiUri + '/batch_edit';
           
           var listParamString = listView.getCollectionUrl();
@@ -472,12 +478,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
           $.ajax({
             url: url,    
-            data: JSON.stringify(post_data),
             cache: false,
-            contentType: 'application/json',
+            contentType: false,
+            processData: false,
             dataType: 'json', // what is expected back from the server
-            processData: false, // do not process data being sent
-            type: 'PATCH',
+            data: post_data,
+            type: 'POST',
             headers: headers
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
@@ -549,14 +555,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
     batchEditLocationsDialog: function(listView) {
       var self = this;
       console.log('batch edit locations dialog...');
-      // find any extra search data
-      post_data = {};
-      if(_.has(listView._options, 'search_data')) {
-        console.log('search data found on the list._options: ', listView._options.search_data);
-        // endcode for the post_data arg; post data elements are sent 
-        // as urlencoded values via a POST form for simplicity
-        post_data['search_data'] = JSON.stringify(listView._options.search_data);  
-      }
       // Construct the form
       var initfun = function() {
         var plateLocationTree = appModel.getPlateLocationTree();
@@ -678,18 +676,28 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           var headers = {};
           headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
           
-          var post_data = {
-            data: { 'plate_location': values },
-            search_data: listView._options.search_data 
+          // Batch edit is a POST operation:
+          // Instead of sending all plates to be PATCHED:
+          // - send plate search data in the form of (raw_search_data, 
+          // nested_search_data, URL params for the sqlalchemy filters);
+          // - and send the (plate_location data or plate_info data) with the data
+          // to modify for all of the plates matching the search
+          var post_data = new FormData();
+          post_data.append('plate_location', JSON.stringify(values));
+          
+          if(_.has(listView._options, 'raw_search_data')) {
+            post_data.append('raw_search_data',listView._options.raw_search_data);  
           }
-          
-          if (self.library && self.copy) {
-            search_data = _.result(post_data,'search_data', {});
-            search_data['library_short_name'] = self.library.get('short_name');
-            search_data['copy_name'] = self.copy.get('copy_name');
-            post_data['search_data'] = search_data;
-          }            
-          
+          var nested_search_data = {};
+          if (self.library){
+            nested_search_data['library_short_name'] = self.library.get('short_name');
+          }
+          if (self.copy){
+            nested_search_data['copy_name'] = self.copy.get('copy_name');
+          }
+          if (!_.isEmpty(nested_search_data)){
+            post_data.append('nested_search_data', JSON.stringify(nested_search_data));
+          }
           var url = self.resource.apiUri + '/batch_edit';
           
           var listParamString = listView.getCollectionUrl();
@@ -699,12 +707,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
           $.ajax({
             url: url,    
-            data: JSON.stringify(post_data),
             cache: false,
-            contentType: 'application/json',
+            contentType: false,
+            processData: false,
             dataType: 'json', // what is expected back from the server
-            processData: false, // do not process data being sent
-            type: 'PATCH',
+            data: post_data,
+            type: 'POST',
             headers: headers
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
@@ -733,7 +741,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
               });
               return false;
             }            
-            // TODO: construct the batch url and submit
             var values = form.getValue()
             
             if (_.isUndefined(findPlateLocation(
@@ -756,10 +763,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
         });
       };
-      console.log('call init...');
       $(this).queue([appModel.getPlateLocationTree,initfun]);
-
-    },
+    }
     
   });
 

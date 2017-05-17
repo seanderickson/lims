@@ -27,7 +27,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
 
     si_formatter: new Iccbl.SIUnitsFormatter({ symbol: 'L' }),
     DEFAULT_VOLUME: 33e-9,
-    URI_REPLICATE_VOLUME_PATTERN: /((\d+)x)?(([\d\.]+)([un])L)/i,
     MAX_DAYS_FROM_LAST_SCREENING: 30,
     ERR_MSG_LAST_SCREENING: 
       'Last screening was > {max_days} days ago ({last_screening_date})',
@@ -344,7 +343,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var self = this;
       console.log('parseUrlStack', delegateStack);
 
-      var urlStackData = {
+      var defaultUrlStackData = {
         show_retired_plates: false,
         show_existing: false
       };
@@ -352,61 +351,16 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           && delegateStack[0] == 'search'){
         
         var search_data = delegateStack[1];
-        var extra_volumes = [];
         var errors = [];
-        var fullPlateSearch = [];
-       
-        _.each(search_data.split(';'), function(element){
-
-          if (appModel.DEBUG) console.log('parse element; "' + element + '"');
-          
-          if (element == 'show_retired_plates'){
-            urlStackData.show_retired_plates = true;
-            return;
-          }
-          if (element == 'show_existing'){
-            urlStackData.show_existing = true;
-            return;
-          }
-          // Convert SI unit volume required
-          else if (self.URI_REPLICATE_VOLUME_PATTERN.exec(element)){
-            var match = self.URI_REPLICATE_VOLUME_PATTERN.exec(element);
-            var volMatch = match[3];
-            if (urlStackData.volume_required){
-              extra_volumes.push(volMatch);
-            }else{
-              urlStackData.volume_required = Iccbl.parseSIVolume(volMatch);
-            }
-            urlStackData.replicate_count = parseInt(match[2]);
-            return;
-          }
-          
-          var plateSearchTextArray = [];
-          var plateData = Iccbl.parseRawPlateSearch(element, errors);
-          _.each(plateData, function(plateClause){
-            plateSearchTextArray = plateSearchTextArray.concat(
-              plateClause.plates, plateClause.plate_ranges);
-            _.each(plateClause.copies,function(copy){
-              if (copy.match(/[ \,\-\:]/)){
-                copy = '"' + copy + '"';
-              }
-              plateSearchTextArray.push(copy);
-            });
-          });
-          fullPlateSearch.push(plateSearchTextArray.join(', '));
-        });
-        urlStackData['plate_search'] = fullPlateSearch;
-        
-        if (!_.isEmpty(extra_volumes)){
-          appModel.error(
-            'More than one volume required specified in the URL; ' +
-            'Extra specifiers are ignored: ' + extra_volumes.join(', '));
-        }
+        urlStackData = Iccbl.parseScreeningInquiryURLParam(search_data, errors);
         if (!_.isEmpty(errors)){
           appModel.error(
             'Error parsing search data on the URL: ' + errors.join(','));
         }
+        urlStackData = _.extend({}, defaultUrlStackData, urlStackData);
         console.log('urlStackData', urlStackData);
+      } else {
+        urlStackData = defaultUrlStackData;
       }
       return urlStackData;
     },

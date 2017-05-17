@@ -227,6 +227,11 @@ define([
       return this.currentUser;
     },
     
+    /**
+     * Use the AppModel to hold search state:
+     * - search_box writes
+     * - list views read
+     */
     setSearch: function(searchId, search_object){
       console.log('setSearch', searchId, search_object)
       localStorage.setItem(''+searchId, JSON.stringify(search_object));
@@ -1383,6 +1388,7 @@ define([
           return;
         }
 
+        // _.map(_.pairs(search_data...
         var search_ui_url = 'search/' + _.map(
           _.zip(_.keys(search_data),_.values(search_data)), 
           function(kv){

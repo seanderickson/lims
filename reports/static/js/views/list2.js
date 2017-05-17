@@ -91,16 +91,6 @@ define([
           self.urlSuffix = key + '/' + value;
           continue;
         }
-//        if(key == 'children'){
-//          // This is a hack to show the children of an apilog, see 
-//          // reports.api.ApiLogResource.prepend_urls for further details
-//          var substack = _.rest(uriStack,i)
-//          var substack_consumed = []
-//          var _key = Iccbl.popKeyFromStack(resource, substack, substack_consumed);
-//          i += substack_consumed.length;
-//          self.urlSuffix = key + '/' + _key;
-//          console.log('urlSuffix: ' + self.urlSuffix);
-//        }
         
         if(_.contains(this.LIST_MODEL_ROUTE_KEYS, key)){
           
@@ -238,10 +228,10 @@ define([
       }
       console.log('collection url: ' + url)
       
-      if(_.has(self._options, 'search_data')){
-        console.log('search data found on the self._options: ', self._options.search_data);
+      if(_.has(self._options, 'nested_search_data')){
+        console.log('nested_search_datafound on the self._options: ', self._options.nested_search_data);
         var or_clauses = '';
-        var search_list = self._options.search_data;
+        var search_list = self._options.nested_search_data;
         _.each(search_list, function(hash){
           var temp = '';
           _.each(_.keys(hash), function(k){
@@ -921,15 +911,15 @@ define([
       e.preventDefault();
       
       // find any extra search data
-      if(_.has(self._options, 'search_data')){
-        console.log('search data found on the list._options: ', self._options.search_data);
+      if(_.has(self._options, 'raw_search_data')){
+        console.log('raw_search_data found on the list._options: ',
+          self._options.raw_search_data);
         // endcode for the post_data arg; post data elements are sent 
         // as urlencoded values via a POST form for simplicity
         appModel.download(
             self.getCollectionUrl(limitForDownload), 
             self._options.resource, 
-//            { search_data: JSON.stringify(self._options.search_data) } ); 
-            { raw_search_data: self._options.search_data } ); 
+            { raw_search_data: self._options.raw_search_data } ); 
       }else{
         appModel.download(
             self.getCollectionUrl(limitForDownload), 

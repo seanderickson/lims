@@ -17,6 +17,9 @@ var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
 var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
 var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
+
+
+var PLATE_SEARCH_LINE_SPLITTING_PATTERN = Iccbl.PLATE_SEARCH_LINE_SPLITTING_PATTERN = /[\n;]+/
 /**
  * PLATE_COPY_RANGE_SPLITTING_PATTERN
  * Split a raw plate range input into elements:
@@ -26,7 +29,7 @@ var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
  * - quoted strings may contain spaces and special chars if quoted
  */
 var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTERN = 
-  /\'.*?\'|\".*?\"|\w+\s+\-\s+\w+|[^\,\s]+/g;
+  /\'.*?\'|\".*?\"|\d+\s*\-\s*\d+|[^\,\s]+/g;
 var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/;
 var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = 
   /^(\d+)\s*-\s*(\d+)$/;
@@ -44,6 +47,7 @@ var PLATE_RANGE_KEY_PATTERN =
   Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
 var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
   = /^(([^:]+):)?([\d\-]+)$/;
+var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)([un])L)/i;
 
 // Utility Functions
 
@@ -225,7 +229,7 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
   console.log('value', rawData);
   var search_array = []
   
-  var or_list = rawData.split('\n');
+  var or_list = rawData.split(PLATE_SEARCH_LINE_SPLITTING_PATTERN);
 
   _.each(or_list, function(clause){
     clause = clause.trim();
@@ -372,6 +376,73 @@ var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText
     return data;
   }
   return null;
+};
+
+
+/**
+ * Decode the screening inquiry values from the URL "search" parameter, encoded using 
+ * the above described "plate_search_mini_language"
+ * 
+ * @return urlStackData {
+ *  plate_search, volume_required, replicate_count, show_retired, show_existing
+ * }
+ */
+var parseScreeningInquiryURLParam 
+    = Iccbl.parseScreeningInquiryURLParam 
+    = function(urlData, errors) {
+
+  var urlStackData = {};
+  var extra_volumes = [];
+  var errors = [];
+  var fullPlateSearch = [];
+ 
+  _.each(urlData.split(';'), function(element){
+
+    if (Iccbl.appModel.DEBUG) console.log('parse element; "' + element + '"');
+    
+    if (element == 'show_retired_plates'){
+      urlStackData.show_retired_plates = true;
+      return;
+    }
+    if (element == 'show_existing'){
+      urlStackData.show_existing = true;
+      return;
+    }
+    // Convert SI unit volume required
+    else if (URI_REPLICATE_VOLUME_PATTERN.exec(element)){
+      var match = URI_REPLICATE_VOLUME_PATTERN.exec(element);
+      var volMatch = match[3];
+      if (urlStackData.volume_required){
+        extra_volumes.push(volMatch);
+      }else{
+        urlStackData.volume_required = Iccbl.parseSIVolume(volMatch);
+      }
+      urlStackData.replicate_count = parseInt(match[2]);
+      return;
+    }
+    
+    var plateSearchTextArray = [];
+    var plateData = Iccbl.parseRawPlateSearch(element, errors);
+    _.each(plateData, function(plateClause){
+      plateSearchTextArray = plateSearchTextArray.concat(
+        plateClause.plates, plateClause.plate_ranges);
+      _.each(plateClause.copies,function(copy){
+        if (copy.match(/[ \,\-\:]/)){
+          copy = '"' + copy + '"';
+        }
+        plateSearchTextArray.push(copy);
+      });
+    });
+    fullPlateSearch.push(plateSearchTextArray.join(', '));
+  });
+  urlStackData['plate_search'] = fullPlateSearch;
+    
+  if (!_.isEmpty(extra_volumes)){
+    errors.push(
+      'More than one volume required specified in the URL; ' +
+      'Extra specifiers are ignored: ' + extra_volumes.join(', '));
+  }
+  return urlStackData;
 };
 
 /**

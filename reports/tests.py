@@ -50,6 +50,7 @@ $ ./manage.py test --settings=lims.test_settings
 from __future__ import unicode_literals
 
 import cStringIO
+from decimal import Decimal
 import json
 import logging
 import os
@@ -58,8 +59,8 @@ import sys
 import unittest
 from unittest.util import safe_repr
 import urlparse
-import dateutil.parser
 
+import dateutil.parser
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.utils import ProgrammingError
@@ -82,17 +83,19 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 import reports.utils.log_utils
-from decimal import Decimal
 
 
 logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
+
 import reports; 
 try:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__[0]))
 except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__))
+
+DEBUG = False
 
 def find_in_dict(key,content):
     ''' 
@@ -109,7 +112,8 @@ def find_in_dict(key,content):
     return None
 
 def is_boolean(field):
-    if type(field) == bool: return True
+    if type(field) == bool: 
+        return True
     
     if isinstance(field, basestring):
         val = field.lower()
@@ -120,6 +124,8 @@ def is_boolean(field):
 
 def numerical_equivalency(val, val2):
     try:
+        if DEBUG:
+            logger.info('numerical equivalency: %r to %r', val1, val2)
         if Decimal(val) == Decimal(val2):
             return True
     except:
@@ -159,10 +165,17 @@ def equivocal(val1, val2):
     
     if not val1:
         if val2:
-            if val2 or len(val2) > 0:
+            if len(val2) > 0:
                 return False, ('val1', val1, 'val2', val2 )
         return True, ('val1', val1, 'val2', val2 )
 
+    if (is_boolean(val1) is True or is_boolean(val2) is True ):
+        if (parse_val(val1,'testval1','boolean')
+            == parse_val(val2,'testval2','boolean')):
+            return True, ('val1', val1, 'val2', val2 )
+        else:
+            return False, ('boolean not equivalent: val1', val1, 'val2', val2 )
+        
     if ( isinstance(val1, (int, long, float, complex, Decimal))
         or isinstance(val2, (int, long, float, complex, Decimal))):
         if numerical_equivalency(val1, val2):
@@ -171,28 +184,30 @@ def equivocal(val1, val2):
         val1 = str(val1)
         val2 = str(val2)
         if val1 != val2:
+            if DEBUG:
+                logger.info('fail final numerical test: %r to %r', val1, val2)
             return False, ('val1', val1, 'val2', val2 )
         
     
     if isinstance(val1, basestring):
-        # val1 = str(val1)
         # if string value, then decode back to unicode
+        if DEBUG:
+            logger.info('val1 %r, decode: %r', val1, decode_from_utf8(val1))
         val1 = decode_from_utf8(val1)
         if hasattr(val2, "__getitem__") or hasattr(val2, "__iter__"): 
             # allow single item lists to be equal to string
             if len(val2) == 1:
                 val2 = val2[0]
-#         val2 = str(val2)
+        if DEBUG:
+            logger.info('val2 %r, decode: %r', val2, decode_from_utf8(val2))
         val2 = decode_from_utf8(val2)
-#         if isinstance(val2, basestring):
-#             # if string value, then decode back to unicode
-#             val2 = val2.decode()
-#         else:
-#             val2 = str(val2)
+        if DEBUG:
+            logger.info('string equivalency: %r to %r', val1, val2)
+
         if val1 != val2:
-            if (is_boolean(val1) and 
-                    parse_val(val1,'testval1','boolean')
-                        == parse_val(val2,'testval2','boolean')):
+            if ((is_boolean(val1) or is_boolean(val2) ) 
+                and parse_val(val1,'testval1','boolean')
+                    == parse_val(val2,'testval2','boolean')):
                 return True, ('val1', val1, 'val2', val2 )
             elif numerical_equivalency(val1,val2):
                 return True, ('val1', val1, 'val2', val2 )
@@ -398,7 +413,7 @@ class BaselineTest(TestCase):
     '''
     
     def test0_equivocal(self):
-        logger.debug('>> test0_equivocal <<')
+        logger.info('>> test0_equivocal <<')
         
         test_true = [
             ['',''],
@@ -412,7 +427,8 @@ class BaselineTest(TestCase):
             ['true','True'],
             # Test that boolean strings can come back as booleans 
             # (if booleanfield is defined)
-            ['TRUE',True], 
+            ['TRUE',True],
+            [ True, 'True'],
             ['TRUE',1], 
             ['false','False'],
             ['FALSE','false'],
@@ -441,13 +457,13 @@ class BaselineTest(TestCase):
             ['False',True],
             ]
         for [a,b] in test_false:
-            logger.debug(
+            logger.info(
                 'csv serialization equivocal falsy test: %r to %r', a, b)
             result, msgs = equivocal(a,b)
             self.assertFalse(result, msgs)
     
     def test1_assert_obj1_to_obj2(self):
-
+        logger.info('test1_assert_obj1_to_obj2...')
         # test that all of obj1 in obj2 (may be more in obj2)
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj2 = { 'one': '1', 'two': 'two', 'three':'', 'four': 'blah'}
@@ -466,7 +482,7 @@ class BaselineTest(TestCase):
         logger.debug('====== test1_assert_obj1_to_obj2 done ====')
 
     def test2_find_obj_in_list(self):
-        logger.debug('====== test2_find_obj_in_list ====')
+        logger.info('====== test2_find_obj_in_list ====')
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj1a = { 'one': '2', 'two': 'two', 'three':''}
@@ -492,7 +508,7 @@ class BaselineTest(TestCase):
         logger.debug('====== test2_find_obj_in_list done ====')
 
     def test3_find_all_obj_in_list(self):
-        logger.debug('====== test3_find_all_obj_in_list ====')
+        logger.info('====== test3_find_all_obj_in_list ====')
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj1a = { 'one': '2', 'two': 'two', 'three':''}
@@ -510,7 +526,7 @@ class BaselineTest(TestCase):
         logger.debug('====== test3_find_all_obj_in_list done ====')
 
     def test4_user_example(self):
-        logger.debug('====== test4_user_example ====')
+        logger.info('====== test4_user_example ====')
         bootstrap_items = [   
             {
                 'ecommons_id': 'st1',

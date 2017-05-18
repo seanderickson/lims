@@ -4371,12 +4371,9 @@ class CopyWellResource(DbApiResource):
                         func.coalesce(
                             _cw.c.molar_concentration,_p.c.molar_concentration) )],
                     else_=None),
-                'screening_count': (
+                'cumulative_freeze_thaw_count': (
                     (func.coalesce(_p.c.screening_count,0) 
                         + func.coalesce(_p.c.cplt_screening_count,0))),
-                # TODO: 20170104 - track cherry_pick_screening_count as well
-                #  
-                
                 
                 
                 # 'adjustments': case([
@@ -7621,7 +7618,7 @@ class LabCherryPickResource(DbApiResource):
                 lcps_to_deselect)
             # Note: signal update_screening_count=False
             # do not adjust the plate.cplt_screening_count or the 
-            # copywell.screening_count (see deallocate_cherry_pick_volumes for
+            # copywell.cherry_pick_screening_count (see deallocate_cherry_pick_volumes for
             # rational.
             result_meta_allocate = \
                 self.get_copywell_resource().deallocate_cherry_pick_volumes(
@@ -11406,6 +11403,7 @@ class LibraryScreeningResource(ActivityResource):
                     _c.c.usage_type,
                     _p.c.plate_number,
                     _p.c.cplt_screening_count,
+                    # TODO: consider using the cumulative_freeze_thaw_count
                     _p.c.screening_count,
                     _p.c.remaining_well_volume,
                     _p.c.status,
@@ -11441,6 +11439,7 @@ class LibraryScreeningResource(ActivityResource):
                     _c.c.usage_type,
                     _p.c.plate_number,
                     _p.c.cplt_screening_count,
+                    # TODO: consider using the cumulative_freeze_thaw_count
                     _p.c.screening_count,
                     _p.c.remaining_well_volume,
                     _p.c.status,

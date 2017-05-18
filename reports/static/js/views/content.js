@@ -424,7 +424,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
       var _form_el = form.render().el;
       appModel.showModal({
-        title: 'Search for Wells',
+        title: 'Search for ' + resource.title,
         view: _form_el,
         ok: function() {
           var errors = form.commit();

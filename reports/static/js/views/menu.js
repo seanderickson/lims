@@ -66,7 +66,8 @@ define([
         this.$('li').removeClass('active');
         if(_.isEmpty(uriStack)) return; // Home, for now
 
-        var menus = appModel.get('menu');
+//        var menus = appModel.get('menu');
+        var menus = appModel.getMenu();
         var found_menus = this.find_submenu_path(menus, ui_resource_id);
         if(_.isUndefined(found_menus)){
           console.log('unknown submenu: ' + ui_resource_id);
@@ -88,6 +89,8 @@ define([
         if(this.ui_resource_id){
           this.$('#' + this.ui_resource_id).addClass('active');
         }
+        window.scrollTo(0, 0);
+        
       },
 
       find_submenu_path : function(menu, id){
@@ -153,8 +156,7 @@ define([
           return;
         }
 
-        var menus = appModel.get('menu');
-
+        var menus = appModel.getMenu();
         var menu = this.find_submenu(menus, ui_resource_id);
         if(_.isUndefined(menu)){
           window.alert('unknown submenu: ' + ui_resource_id);
@@ -193,7 +195,23 @@ define([
         // Clear out error messages after navigating away from page
         appModel.unset('messages');
 
-      }
+      },
+      
+      //collapseAll: function(menu) {
+      //  var self = this;
+      //  console.log('collapse1', menu);
+      //  if (_.result(menu, 'expanded', false) == true){
+      //    menu['expanded'] = false;
+      //  }
+      //  var submenus = _.result(menu,'submenus');
+      //  if (submenus){
+      //    _.each(_.values(submenus), function(menu){
+      //      self.collapseAll(menu);
+      //    });
+      //  }
+      //}
+      
+      
    
     });
 

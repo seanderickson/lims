@@ -164,7 +164,7 @@ def equivocal(val1, val2):
         return True, ('val1', val1, 'val2', val2 )
     
     if not val1:
-        if val2:
+        if val2 and isinstance(val2, list):
             if len(val2) > 0:
                 return False, ('val1', val1, 'val2', val2 )
         return True, ('val1', val1, 'val2', val2 )

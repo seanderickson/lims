@@ -34,6 +34,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       'Replicate count does not match other screenings: ',
     ERR_MSG_PROTOCOL_VOL: 'Volume does not match other screenings: ',
     ERR_MSG_PIN_TRANSFER_NOT_APPROVED: 'The pin transfer approval date has not been entered',
+    ERR_MSG_DATA_MEETING_NOT_COMPLETED: 'The data meeting completed date has not been entered',
     
     initialize: function(args) {
 
@@ -548,6 +549,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       
       if (_.isEmpty(self.model.get('pin_transfer_date_approved'))){
         appModel.error(self.ERR_MSG_PIN_TRANSFER_NOT_APPROVED);
+      }
+      if (_.isEmpty(self.model.get('data_meeting_complete'))){
+        appModel.error(self.ERR_MSG_DATA_MEETING_NOT_COMPLETED);
       }
     }, 
     

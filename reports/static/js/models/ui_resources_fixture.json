@@ -273,7 +273,7 @@
       "title": "Small Molecule Copy Freeze Thaw",
       "api_resource": "librarycopy",
       "options": { 
-        "order": [],
+        "order": ["-avg_plate_screening_count"],
         "includes": [
           "-copy_plate_count","-min_molar_concentration",
           "-max_molar_concentration","-min_mg_ml_concentration",
@@ -284,6 +284,24 @@
           "screen_type__in": "small_molecule",
           "-usage_type__in": "cherry_pick_source_plates",
           "avg_plate_screening_count__gte": 12
+        }
+      }
+    },
+    "librarycopy_sm_min_volume": {
+      "title": "Small Molecule Copy Min Vol Remaining",
+      "api_resource": "librarycopy",
+      "options": { 
+        "order": ["min_plate_volume"],
+        "includes": [
+          "-copy_plate_count","-min_molar_concentration",
+          "-max_molar_concentration","-min_mg_ml_concentration",
+          "-max_mg_ml_concentration","-plate_locations"],
+        "search": {
+          "plates_available__gt": 0,
+          "min_plate_volume__lt": 0.000007,
+          "screen_type__in": "small_molecule",
+          "-usage_type__in": "cherry_pick_source_plates",
+          "-library_type__in": "dos"
         }
       }
     },
@@ -300,7 +318,7 @@
       "listView": "LibraryCopyPlateView",
       "api_resource": "librarycopyplate",
       "options": { 
-        "order": [],
+        "order": ["-screening_count","plate_number","copy_name"],
         "includes": [
           "-experimental_copy_well_count","-status_date","-plate_type",
           "-avg_remaining_volume", "-molar_concentration",
@@ -310,6 +328,26 @@
           "-copy_usage_type__in": "cherry_pick_source_plates", 
           "-library_type__in": "dos",
           "screening_count__gte": "12",
+          "status__in": "available"
+        }
+      }
+    },
+    "librarycopyplate_sm_min_vol": {
+      "title": "Small Molecule Plate Min Vol Remaining",
+      "detailView": "LibraryCopyPlateView",
+      "listView": "LibraryCopyPlateView",
+      "api_resource": "librarycopyplate",
+      "options": { 
+        "order": ["remaining_well_volume","plate_number","copy_name"],
+        "includes": [
+          "-experimental_copy_well_count","-status_date","-plate_type",
+          "-avg_remaining_volume", "-molar_concentration",
+          "-mg_ml_concentration","-first_date_screened","-last_date_screened"],
+        "search": {
+          "screen_type__in": "small_molecule",
+          "-copy_usage_type__in": "cherry_pick_source_plates", 
+          "-library_type__in": "dos",
+          "remaining_well_volume__lt": 0.000007,
           "status__in": "available"
         }
       }

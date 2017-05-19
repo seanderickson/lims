@@ -65,6 +65,9 @@
           "submenus": {
             "librarycopy_sm_freeze_thaw": {
               "view": "list"
+            },
+            "librarycopy_sm_min_volume": {
+              "view": "list"
             }
           }
         },
@@ -73,6 +76,9 @@
           "expanded": false,
           "submenus": {
             "librarycopyplate_sm_freeze_thaw": {
+              "view": "list"
+            },
+            "librarycopyplate_sm_min_vol": {
               "view": "list"
             }
           }

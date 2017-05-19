@@ -1393,10 +1393,10 @@ class LibraryCopyPlateResource(DbApiResource):
         if not order_clauses:
             stmt = stmt.order_by("plate_number")
         
-        compiled_stmt = str(stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s', compiled_stmt)
+        # compiled_stmt = str(stmt.compile(
+        # dialect=postgresql.dialect(),
+        # compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
         
         title_function = None
         if use_titles is True:
@@ -2880,8 +2880,18 @@ class ScreenResultResource(DbApiResource):
 
             title_function = None
             if use_titles is True:
+                extra_titles = {
+                    'plate': 'Plate Number',
+                    'well': 'Well Name',
+                    'type': 'Assay Well Control Type',
+                    'exclude': 'Excluded'}
                 def title_function(key):
-                    return field_hash[key]['title']
+                    if key in field_hash:
+                        return field_hash[key]['title']
+                    elif key in extra_titles:
+                        return extra_titles[key]
+                    else:
+                        return key
             rowproxy_generator = None
             if ( use_vocab or content_type != JSON_MIMETYPE):
                 # NOTE: xls export uses vocab values

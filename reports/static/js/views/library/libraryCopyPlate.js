@@ -47,7 +47,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       var library = this.library;
       var copy = this.copy;
       var resourceId = 'librarycopyplate';
-      var resource = appModel.getResource(resourceId);
+      
+      var resource = _.result(self._args, 'resource', appModel.getResource(resourceId));
 
       if (self.model){
         self.showDetail(self.model);
@@ -258,16 +259,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             }
           }));
       
-      // TODO: extending the passed args to get the "search_data", or other 
-      // passed args, grab options explicitly instead 201608
-      options = _.extend({},{
+      options = {
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: extraControls,
         extraIncludes: extraIncludes
-        }, self._args ) ;
+      };
+      
       var view = new ListView(options);
       showEditLocationButton.click(function(e) {
         e.preventDefault();

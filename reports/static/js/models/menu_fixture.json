@@ -60,10 +60,22 @@
       "view": "",
       "submenus": {
         "librarycopy": {
-          "view": "list"
+          "view": "list",
+          "expanded": false,
+          "submenus": {
+            "librarycopy_sm_freeze_thaw": {
+              "view": "list"
+            }
+          }
         },
         "librarycopyplate": {
-          "view": "list"
+          "view": "list",
+          "expanded": false,
+          "submenus": {
+            "librarycopyplate_sm_freeze_thaw": {
+              "view": "list"
+            }
+          }
         },
         "copywell": {
           "view": "list",
@@ -75,7 +87,7 @@
             "copywell_rnai_cpr": {
               "view": "list"
             }
-          }
+          }          
         },
         "platelocation": {
           "view": "list"
@@ -84,9 +96,6 @@
           "view": "list"
         },
         "reagent":{
-          "view": "list"
-        },
-        "cherrypickassayplate":{
           "view": "list"
         },
         "activity":{

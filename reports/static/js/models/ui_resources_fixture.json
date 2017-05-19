@@ -269,12 +269,50 @@
       "options": { 
         "order": []  }
     },
+    "librarycopy_sm_freeze_thaw": {
+      "title": "Small Molecule Copy Freeze Thaw",
+      "api_resource": "librarycopy",
+      "options": { 
+        "order": [],
+        "includes": [
+          "-copy_plate_count","-min_molar_concentration",
+          "-max_molar_concentration","-min_mg_ml_concentration",
+          "-max_mg_ml_concentration","-plate_locations"],
+        "search": {
+          "plates_available__gt": 0,
+          "-library_type__in": "dos",
+          "screen_type__in": "small_molecule",
+          "-usage_type__in": "cherry_pick_source_plates",
+          "avg_plate_screening_count__gte": 12
+        }
+      }
+    },
     "librarycopyplate": {
       "title": "Copy Plate",
       "detailView": "LibraryCopyPlateView",
       "listView": "LibraryCopyPlateView",
       "options": { 
         "order": []  }
+    },
+    "librarycopyplate_sm_freeze_thaw": {
+      "title": "Small Molecule Plate Freeze Thaw",
+      "detailView": "LibraryCopyPlateView",
+      "listView": "LibraryCopyPlateView",
+      "api_resource": "librarycopyplate",
+      "options": { 
+        "order": [],
+        "includes": [
+          "-experimental_copy_well_count","-status_date","-plate_type",
+          "-avg_remaining_volume", "-molar_concentration",
+          "-mg_ml_concentration","-first_date_screened","-last_date_screened"],
+        "search": {
+          "screen_type__in": "small_molecule",
+          "-copy_usage_type__in": "cherry_pick_source_plates", 
+          "-library_type__in": "dos",
+          "screening_count__gte": "12",
+          "status__in": "available"
+        }
+      }
     },
     "copywell": {
       "options": { 

@@ -260,14 +260,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       
       // TODO: extending the passed args to get the "search_data", or other 
       // passed args, grab options explicitly instead 201608
-      options = _.extend({}, self._args ,{
+      options = _.extend({},{
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: extraControls,
         extraIncludes: extraIncludes
-        }) ;
+        }, self._args ) ;
       var view = new ListView(options);
       showEditLocationButton.click(function(e) {
         e.preventDefault();

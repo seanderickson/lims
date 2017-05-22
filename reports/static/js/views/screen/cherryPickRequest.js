@@ -985,7 +985,7 @@ define([
           console.log('download plate mapping file');
           var url = [self.model.resource.apiUri,self.model.key,
                      'plate_mapping_file'].join('/');
-          appModel.downloadUrl(self.$el,url);
+          appModel.downloadUrl(url);
         });
         
         showPlateMappingButton.click(function(e){

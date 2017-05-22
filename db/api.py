@@ -13281,9 +13281,6 @@ class ScreenResource(DbApiResource):
         
     def dispatch_screen_libraryview(self, request, **kwargs):
         kwargs['for_screen_id'] = kwargs.pop('facility_id')
-#         manual_field_includes = kwargs.get('includes', [])
-#         manual_field_includes.append('comment_array')
-#         kwargs['includes'] = manual_field_includes
         return LibraryResource().dispatch('list', request, **kwargs)    
 
     def dispatch_plates_screened_view(self, request, **kwargs):
@@ -13342,6 +13339,7 @@ class ScreenResource(DbApiResource):
         filename = self._get_filename(readable_filter_hash, **extra_params)
               
         order_params = param_hash.get('order_by', [])
+        order_params.append('-facility_id')
         field_hash = self.get_visible_fields(
             schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
@@ -14337,7 +14335,6 @@ class UserChecklistItemResource(DbApiResource):
         schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
         item_group = param_hash.pop('item_group', None)
         if item_group:
             param_hash['item_group__eq'] = item_group
@@ -14867,23 +14864,6 @@ class ScreensaverUserResource(DbApiResource):
                         == _su.c.screensaver_user_id)),
                 'lab_name': lab_head_table.c.lab_name_full,
                 'lab_head_username': lab_head_table.c.username,
-#                 'lab_name': (
-#                     select([
-#                         func.array_to_string(
-#                             array([
-#                                 _lhsu.c.last_name, ', ', _lhsu.c.first_name,
-#                                 ' - ', affiliation_table.c.title,
-#                                 ' (', affiliation_table.c.category, ')']), '')])
-#                     .select_from(
-#                         _lhsu.join(
-#                             affiliation_table,
-#                             affiliation_table.c.affiliation_name 
-#                                 == _lhsu.c.lab_head_affiliation))
-#                     .where(_lhsu.c.screensaver_user_id == _su.c.lab_head_id)),
-#                 'lab_head_username': (
-#                     select([_lhsu.c.username])
-#                     .select_from(_lhsu)
-#                     .where(_lhsu.c.screensaver_user_id == _su.c.lab_head_id)),
                 'facility_usage_roles': (
                     select([
                         func.array_to_string(

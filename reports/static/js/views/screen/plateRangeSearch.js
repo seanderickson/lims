@@ -125,7 +125,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (!_.isEmpty(urlStackData.plate_search)){
         formFields.set('plate_search', urlStackData.plate_search.join('\n'));
       }
-      if (_.isNumber(urlStackData.volume_required)){
+      if (_.isNumber(parseFloat(urlStackData.volume_required))){
         formFields.set('volume_required', urlStackData.volume_required);
       } else {
         var lastLibraryScreening = self.getLastLibraryScreening();

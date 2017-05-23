@@ -47,7 +47,7 @@ var PLATE_RANGE_KEY_PATTERN =
   Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
 var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
   = /^(([^:]+):)?([\d\-]+)$/;
-var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)([un])L)/i;
+var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
 
 // Utility Functions
 
@@ -294,19 +294,20 @@ var parseSIVolume = Iccbl.parseSIVolume = function(rawText){
   if (!volMatch){
     throw volErrMsg;
   }
-
+//  console.log('parse volMatch', volMatch);
   var volume = parseFloat(volMatch[1]);
-  // Allow for a maximum of 4 digits
-  volume = volume.toPrecision(4);
+  // Allow for a maximum of 3 digits
+  volume = volume.toPrecision(3);
   var multiplier = 1e-6;
   if (volMatch.length == 4){
-    if (volMatch[3].toLowerCase() == 'u'){
-      multiplier = 1e-6;
-    } else {
+    if (volMatch[3].toLowerCase() == 'n'){
       multiplier = 1e-9;
+    } else {
+      multiplier = 1e-6;
     }
   }
   volume *= multiplier;
+  volume = volume.toPrecision(3);
   return volume;
 }
 
@@ -1245,15 +1246,15 @@ _.extend(SIUnitsFormatter.prototype, {
       ['k', 1e3],
       ['', 1],
       ['m', 1e-3,],
-      ['μ', 1e-6,],
       ['u', 1e-6,],
+      ['μ', 1e-6,],
       ['n', 1e-9 ],
       ['p', 1e-12 ]
       ],
     multiplier: 1
   }),
 
-  SI_UNIT_PATTERN: /([\d\.]+)\s*(([puμnmkMGT])\w)?/i,
+  SI_UNIT_PATTERN: /([\d\.]+)\s*((\w|\xB5|\x{03BC})\w)?/i,
   
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.

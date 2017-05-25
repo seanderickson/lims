@@ -28,11 +28,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     si_formatter: new Iccbl.SIUnitsFormatter({ symbol: 'L' }),
     DEFAULT_VOLUME: 33e-9,
     MAX_DAYS_FROM_LAST_SCREENING: 30,
+    NUMBER_OF_PREVIOUS_PROTOCOLS_TO_CONSIDER: 3,
     ERR_MSG_LAST_SCREENING: 
-      'Last screening was > {max_days} days ago ({last_screening_date})',
+      'Last visit was > {max_days} days ago ({last_screening_date})',
     ERR_MSG_PROTOCOL_REPLICATES: 
-      'Replicate count does not match other screenings: ',
-    ERR_MSG_PROTOCOL_VOL: 'Volume does not match other screenings: ',
+      'Replicate count does not match other visits: ',
+    ERR_MSG_PROTOCOL_VOL: 'Volume does not match other visits: ',
     ERR_MSG_PIN_TRANSFER_NOT_APPROVED: 'The pin transfer approval date has not been entered',
     ERR_MSG_DATA_MEETING_NOT_COMPLETED: 'The data meeting completed date has not been entered',
     
@@ -506,7 +507,20 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (!this.currentLibraryScreenings.isEmpty()){
         var errVol = {}
         var errReplicates = {};
-        this.currentLibraryScreenings.each(function(model){
+        var screeningsForProtocolCheck = _.reject(
+            this.currentLibraryScreenings.sortBy('-date_of_activity'),
+            function(model){
+              return model.get('is_for_external_library_plates');
+            });
+        
+        if (_.isEmpty(screeningsForProtocolCheck)){
+          return;
+        }
+        screeningsForProtocolCheck = screeningsForProtocolCheck.slice(
+          0,this.NUMBER_OF_PREVIOUS_PROTOCOLS_TO_CONSIDER);
+        
+        console.log('screeningsForProtocolCheck', screeningsForProtocolCheck);
+        _.each(screeningsForProtocolCheck,function(model){
           
           if (model.get('is_for_external_library_plates')){
             return;
@@ -541,8 +555,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         if (!_.isEmpty(errReplicates)){
           appModel.error(self.ERR_MSG_PROTOCOL_REPLICATES 
             + _.map(_.pairs(errReplicates),function(pair){
-              console.log('pair', pair);
-              return '(' + pair[0] + '): ' + pair[1].join(', ');
+              return '( count: ' + pair[0] + '): ' + pair[1].join(', ');
             }).join('; '));
         }
       }

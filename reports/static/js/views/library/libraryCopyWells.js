@@ -52,7 +52,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // Detail view
         var well_id = uriStack.shift();
         this.consumedStack = [well_id];
-        _key = library.key + '/' + copy.get('copy_name')+ '/' + well_id;
+        var _key = library.key + '/' + copy.get('copy_name')+ '/' + well_id;
         appModel.getModel(resourceId, _key, this.showDetail );
       } else {
         // List view
@@ -319,14 +319,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               e.preventDefault();
               var well_id = this.model.get('well_id');
               self.consumedStack = [well_id];
-              _key = [self.library.key, self.copy.get('copy_name'), well_id].join('/');
+              var _key = [self.library.key, self.copy.get('copy_name'), well_id].join('/');
               appModel.getModel('copywell', _key, self.showDetail );
             }
           }));
             
       
       var view = new ListView({ 
-        _name: 'WellsListView',
         uriStack: uriStack,
         schemaResult: resource,
         resource: resource,
@@ -334,7 +333,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         collection: collection,
         extraControls: extraControls
       });
-      view._instanceName = 'WellsListView_instance';
         
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);

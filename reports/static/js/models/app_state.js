@@ -706,7 +706,8 @@ define([
         var vocabulary = this.getVocabulary(scope);
         _.each(_.keys(vocabulary),function(choice){
           if(vocabulary[choice].is_retired){
-            console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+            console.log(
+              'skipping retired vocab: ',choice,vocabulary[choice].title );
           }else{
             choiceHash.push({ val: choice, label: vocabulary[choice].title });
           }
@@ -740,7 +741,8 @@ define([
         var matchedVocabularies = {};
         _.each(_.keys(vocabularies), function(candidateScope){
           if(candidateScope.match('^' + scope + '$')){
-            console.log('matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
+            console.log(
+              'matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
             _.extend(matchedVocabularies,vocabularies[candidateScope]);
           }
         });
@@ -808,7 +810,7 @@ define([
         });
 
         // 1. Create a resource hash, keyed by the resource id key
-        // 2. Augment uiResources with the (api)resources
+        // 2. Extend the (api)resources with the uiResource value overrides
         var ui_resources = self.get('ui_resources');
         var resources = {};
         _.each(resourcesCollection, function(resource){
@@ -817,20 +819,20 @@ define([
           
           if (_.has(ui_resources, resource.key)) {
             ui_resources[resource.key] = _.extend(
-                {}, ui_resources[resource.key], resource);
+                {}, resource, ui_resources[resource.key]);
           } else {
             ui_resources[resource.key] = _.extend({},resource);
           }
         });
 
         // 3. for "virtual" uiResources, find the underlying apiResource, 
-        // and augment the uiResource with it
+        // and extend it using the uiResource overrides
         _.each(_.keys(ui_resources), function(key){
           var ui_resource = ui_resources[key];
           // then augment the ui resources with their api_resource, if different
           if ( key !== ui_resource.api_resource ) {
             ui_resources[key] = _.extend(
-                {}, resources[ui_resource.api_resource], ui_resource);
+                {}, ui_resource, resources[ui_resource.api_resource]);
           }
         });
         
@@ -849,6 +851,12 @@ define([
       
       var self = this;
       var resource = self.getResource(resourceId);
+      
+      return this.newModelFromResource(resource,defaults);
+    },
+    
+    newModelFromResource(resource,defaults){
+
       var defaults = defaults || {};
       
       _.each(resource.allEditVisibleKeys(), function(key){
@@ -888,21 +896,41 @@ define([
       });
 
       var NewModel = Backbone.Model.extend({
-        urlRoot: resource.apiUri , defaults: defaults 
+        urlRoot: resource.apiUri , 
+        defaults: defaults,
+        parse: function(resp,options){
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+        }
       });
       var newModel = new NewModel();
       newModel.resource = resource;
       
       return newModel;
     },
+
+    _get_user_screen_choices: function(userModel) {
+        var screenOptions = this.getScreenOptions();
+        var userScreens = _.union(
+          userModel.get('screens_collaborator'),
+          userModel.get('screens_lab_head'),
+          userModel.get('screens_lead'));
+        var options = _.filter(screenOptions, function(option){
+          return _.contains(userScreens, option['val']);
+        });
+        console.log('found user screens: ' + 
+          userModel.get('username'), options);
+        return options;
+    },
     
-    _get_screen_members: function(model){
+    _get_screen_member_choices: function(screenModel) {
       // FIXME: should extend the Model for Screen
       var members = _.object(
-        model.get('collaborator_usernames'),
-        model.get('collaborator_names'));
-      members[model.get('lead_screener_username')] = model.get('lead_screener_name');
-      members[model.get('lab_head_username')] = model.get('lab_head_name');
+        screenModel.get('collaborator_usernames'),
+        screenModel.get('collaborator_names'));
+      members[screenModel.get('lead_screener_username')] = 
+        screenModel.get('lead_screener_name');
+      members[screenModel.get('lab_head_username')] = 
+        screenModel.get('lab_head_name');
       return members;
     },
     
@@ -918,26 +946,19 @@ define([
       if(_.isArray(key)){
         key = key.join('/');
       }
-      console.log('model key:', key);
       var url = options.url || resource.apiUri + '/' + key;
       console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
         url : url,
         defaults : { },
         parse: function(resp, options){
-          // workaround for if the server returns the object in an "objects" array
-          if(_.has(resp,API_RESULT_DATA) && _.isArray(resp.objects)
-              && resp.objects.length == 1 ){
-            resp = resp.objects[0];
-          }
-          return resp;
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
         }
       });
       var instance = new ModelClass();
       instance.fetch({
         data: data_for_get,
         success : function(model) {
-          console.log('model retrieved:', model);
           model.resource = resource;
           model.key = key;
           model.set('id', key); // used by model.isNew(), if set use PATCH on save
@@ -1101,7 +1122,6 @@ define([
       if(!_.has(uiResources, resourceId)) {
         throw "Unknown resource: " + resourceId;
       }
-//      return uiResources[resourceId];
       return this.cloneResource(uiResources[resourceId]);
     },
     
@@ -1126,7 +1146,10 @@ define([
       var options = options || {};
       var ModelClass = Backbone.Model.extend({
         url : schemaUrl,
-        defaults : {}
+        defaults : {},
+        parse: function(resp, options){
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+        }
       });
       var instance = new ModelClass();
       instance.fetch({
@@ -1136,7 +1159,8 @@ define([
           _.each(_.values(schema.fields), self.parseSchemaField );
           var schemaClass = new SchemaClass();
           var ui_resource = _.extend(schema, schemaClass);
-          ui_resource.apiUri = '/' + [ui_resource.api_name,self.apiVersion,ui_resource.key].join('/');
+          ui_resource.apiUri = '/' + [
+            ui_resource.api_name,self.apiVersion,ui_resource.key].join('/');
           callback(ui_resource)
         }
       }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
@@ -1192,7 +1216,6 @@ define([
       }else{
         console.log('obj: ', dict);
         if (_.isArray(dict)){
-//          return dict.join(', ');
           return dict;
         }else{
           return [dict];
@@ -1249,6 +1272,7 @@ define([
       if(_.keys(jsonObj).length == 1){
         title = _.keys(jsonObj)[0];
         jsonObj = jsonObj[title];
+        title = title.charAt(0).toUpperCase() + title.slice(1);
       }
       var buttons_on_top = false;
       var msg_rows = this.dict_to_rows(jsonObj);

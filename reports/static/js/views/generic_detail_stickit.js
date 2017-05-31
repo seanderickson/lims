@@ -215,6 +215,22 @@ define([
           return value;
         }
       }
+      function integerGetter(value){
+        return value;
+        // TODO: use the NumberFormatter to show numbers with thousands separator:
+        // --- on hold --- rework using options so only values (not IDs) are formatted
+        //var formatter = new Iccbl.NumberFormatter({ decimals: 0 });
+        //if(_.isString(value) || _.isNumber(value)){
+        //  formatted = formatter.fromRaw(value);
+        //  if (appModel.DEBUG){
+        //    console.log('integer getter: v:', value, ', formatted: ', 
+        //      formatted, ', options: ', cell_options);
+        //  }
+        //  return formatted;
+        //}else{
+        //  return value;
+        //}
+      }
       function booleanGetter(value){
         if(_.isBoolean(value)){
           if (value === true) return 'True';
@@ -229,7 +245,7 @@ define([
         'list': listGetter,
         'float': decimalGetter,
         'decimal': decimalGetter,
-        //'integer': defaultGetter,
+        'integer': integerGetter,
         //'string' : defaultGetter,
         'boolean' : booleanGetter
         //'datetime': defaultGetter,
@@ -361,7 +377,6 @@ define([
 	  },
 	  
     afterRender : function() {
-      console.log('generic detail stickit, afterRender');
       var self = this;
       this.stickit(this.model, this.bindings);
       this.schemaFieldsModel = new Backbone.Model(this.model.resource.fields);

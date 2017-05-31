@@ -33,8 +33,8 @@ define([
         invoke: 'setDetail'
       },
       libraryscreening: {
-        description : 'Library Screenings',
-        title : 'Screenings',
+        description : 'Visits (Library Screenings)',
+        title : 'Visits',
         invoke : 'setScreenings',
         permission: 'libraryscreening'
       },
@@ -292,7 +292,7 @@ define([
     },
 
     addLibraryScreening: function() {
-      console.log('add library screening');
+      console.log('add library screening visit');
       var self = this;
       var defaults = {
         screen_facility_id: self.model.get('facility_id'),
@@ -311,7 +311,7 @@ define([
       self.setView("#tab_container", view ).render();
 
       $title = self.$el.find('#tab_container-title');
-      $title.html('<H5 id="title">Add Library Screening</H5>');
+      $title.html('<H5 id="title">Add Library Screening Visit</H5>');
       $title.show();
       
       this.consumedStack = ['libraryscreening','+add'];
@@ -363,13 +363,21 @@ define([
         if (appModel.hasPermission('libraryscreening','write')) {
           var $addLibraryScreeningButton = $(
             '<a class="btn btn-default btn-sm" role="button" \
-            id="addLibraryScreening" href="#">Add Library Screening</a>');
+            id="addLibraryScreening" href="#">Add Library Screening Visit</a>');
           $addLibraryScreeningButton.click(function(e) {
             e.preventDefault();
             self.addLibraryScreening();
           });
           extraControls.push($addLibraryScreeningButton);
         }
+        lsResource.fields['activity_class']['visibility'] = ['l','d'];
+        lsResource.fields['type']['visibility'] = [];
+        
+        _.each(_.values(lsResource.fields), function(fi){
+          if (_.result(fi.display_options, 'optgroup')=='screen'){
+            fi.visibility = [];
+          }
+        });
         
         view = new ListView({ 
           uriStack: _.clone(delegateStack),

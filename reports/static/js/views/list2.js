@@ -325,11 +325,15 @@ define([
       
       // search: set in Iccbl Collection
       
+      // FIXME: test 20170525
+      var options = {silent: true};
+      /////
+      
       self.listModel.set({ 
         'rpp': state.pageSize, 
         'page': currentPage,
         'order': _.clone(state.orderStack) 
-      });
+      }, options);
       
     },
 

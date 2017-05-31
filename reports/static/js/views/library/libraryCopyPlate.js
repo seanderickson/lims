@@ -145,8 +145,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
 
       var extraControls = _.result(self._args, 'extraControls', []);
       if (appModel.hasPermission(resource.key, 'write')){
+        // FIXME: 20170519 History button not working with filters
+        //extraControls = extraControls.concat([
+        // showEditLocationButton, showEditPlatesButton, showHistoryButton,
+        // showUploadButton]);
         extraControls = extraControls.concat([
-         showEditLocationButton, showEditPlatesButton, showHistoryButton,
+         showEditLocationButton, showEditPlatesButton, 
          showUploadButton]);
       }
       extraControls.push(showCommentsControl);
@@ -161,6 +165,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             self.library.get('short_name'),
             self.copy.get('copy_name')].join('/');
         }
+        // FIXME: 20170519 History button not working with filters
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
         console.log('history route: ' + route);

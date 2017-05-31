@@ -957,6 +957,10 @@ define([
     },
     
     _createVocabularyChoices: function(fi) {
+      // 1. start with fieldinformation.choices
+      // 2. override with fieldinformation.vocabulary:
+      // 2.a from fieldinformation.vocabulary, if available
+      // 2.b fetch and add vocabulary from server
       var choiceHash = fi.choices || [];
       if (!_.isEmpty(fi.vocabulary_scope_ref)) {
         choiceHash = []
@@ -1154,6 +1158,7 @@ define([
     
     cancel: function(e) {
       e.preventDefault();
+      appModel.clearPagePending();
       this.remove();
       appModel.router.back();
     }, 
@@ -1163,11 +1168,14 @@ define([
      */
     save_success: function(data, textStatus, jqXHR){
       var self = this;
-      console.log('success');
-//      model = new Backbone.Model(data);
-      var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-//      model.key = self.model.resource.key + '/' + key;
-      appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+      var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
+      if (!_.isEmpty(key)){
+        appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+      } else {
+        console.log('model key is empty after save', data, self.model);
+        this.remove();
+        appModel.router.back();
+      }
     },
     
     save_fail: function(jqXHR, textStatus, errorThrown) { 

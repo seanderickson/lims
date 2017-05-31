@@ -181,6 +181,8 @@ define([
               if( ui_resource_id == 'reports'){
                 appModel.setUriStack([]);
                 return;
+              } else if (_.isEmpty(menu['view'])){
+                return;
               }else{
                 appModel.setUriStack([ui_resource_id]);
               }

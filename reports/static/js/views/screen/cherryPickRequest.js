@@ -138,14 +138,12 @@ define([
           if (!_.isEmpty(meta)) {
             appModel.showJsonMessages(meta);
           }
-          if (_.isUndefined(self.model) || _.isUndefined(self.model.key)){
-            var model = _.result(data, appModel.API_RESULT_DATA, null);
-            if (!_.isEmpty(model)){
-              model = new Backbone.Model(model);
-              model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+          if (_.isUndefined(this.model) || _.isUndefined(this.model.key)){
+            if (! this.model.isNew()){
+              this.model.key = Iccbl.getIdFromIdAttribute( this.model,this.model.resource );
               appModel.router.navigate([
                 self.screen.resource.key,self.screen.key,'cherrypickrequest',
-                model.key].join('/'), 
+                this.model.key].join('/'), 
                 {trigger:true});
             } else { 
               appModel.router.navigate([
@@ -153,6 +151,22 @@ define([
                 ].join('/'), 
                 {trigger:true});
             }
+
+// 20170525: model.parse fixed in app_state; this should not be needed
+//            var model = _.result(data, appModel.API_RESULT_DATA, null);
+//            if (!_.isEmpty(model)){
+//              model = new Backbone.Model(model);
+//              model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+//              appModel.router.navigate([
+//                self.screen.resource.key,self.screen.key,'cherrypickrequest',
+//                model.key].join('/'), 
+//                {trigger:true});
+//            } else { 
+//              appModel.router.navigate([
+//                self.screen.resource.key,self.screen.key,'cherrypickrequest'
+//                ].join('/'), 
+//                {trigger:true});
+//            }
           }else{
             appModel.router.navigate([
               self.screen.resource.key,self.screen.key,'cherrypickrequest',
@@ -215,7 +229,7 @@ define([
         appModel.initializeAdminMode(function(){
           var fields = self.model.resource.fields;
           fields['requested_by_username'].choices = 
-            appModel._get_screen_members(self.screen);
+            appModel._get_screen_member_choices(self.screen);
           // TODO: resource/cherrypickrequest/write
           appModel.getAdminUserOptions(function(options){
             fields['volume_approved_by_username'].choices = options;
@@ -717,7 +731,7 @@ define([
                 key: 'screened_by_username',
                 type: EditView.ChosenSelect,
                 editorClass: 'chosen-select',
-                options: appModel._get_screen_members(self.screen),
+                options: appModel._get_screen_member_choices(self.screen),
                 validators: ['required'], 
                 template: appModel._field_template
               },

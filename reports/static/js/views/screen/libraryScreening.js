@@ -15,7 +15,10 @@ define([
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             PlateRangePrototype, DetailLayout, DetailView, EditView,
             ListView, TabbedController) {
-  
+
+  /**
+   * LibraryScreening
+   */
   var LibraryScreeningView = TabbedController.extend({
   
     initialize: function(args) {
@@ -45,13 +48,6 @@ define([
         }
       }
       
-//      this.tabbed_resources = _.extend({},this.local_tabbed_resources);
-//      if (! this.model.get('number_plates')>0){
-//        delete this.tabbed_resources['cherrypickplates'];
-//      }
-//      if(self.model.get('total_number_lcps') == 0){
-//        delete this.tabbed_resources['labcherrypicks'];
-//      }      
       TabbedController.prototype.initialize.apply(this,arguments);
       
       if (_.isUndefined(this.screen)){
@@ -106,7 +102,7 @@ define([
 
     getTitle: function() {
       return Iccbl.formatString(
-        '<H4 id="title">Library Screening: <a href="#screen/{screen_facility_id}/' + 
+        '<H4 id="title">Library Screening Visit: <a href="#screen/{screen_facility_id}/' + 
         'summary/libraryscreening/{activity_id}" >{activity_id}</a>' +
         '</H4>',
         this.model);
@@ -257,6 +253,7 @@ define([
 
       var url = _.result(self.model,'url');
      
+      // TODO: create a LibraryScreeningDetailView subclass of DetailLayout
       var detailView = DetailView.extend({
         
         afterRender: function(){
@@ -305,22 +302,37 @@ define([
         overrides_granted: {},
 
         save_success: function(data, textStatus, jqXHR){
-          var inner_self = this;
           var meta = _.result(data, 'meta', null);
           if (meta) {
             appModel.showJsonMessages(meta);
           }
-          var objects = _.result(data, 'objects', null)
-          if (objects && objects.length == 1) {
-            model = new Backbone.Model(objects[0]);
-            var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+
+          if (! this.model.isNew()){
+            var key = Iccbl.getIdFromIdAttribute( this.model,this.model.resource );
             appModel.router.navigate([
-              self.screen.resource.key,self.screen.key,'summary/libraryscreening',key].join('/'), 
+                self.screen.resource.key,self.screen.key,
+                'summary/libraryscreening',key].join('/'), 
               {trigger:true});
-          } else {
-            console.log('no objects in the response', data);
-            appModel.error('Could not display the server response');
+          } else { 
+            appModel.router.navigate([
+                self.screen.resource.key,self.screen.key,
+                'summary/libraryscreening'].join('/'), 
+              {trigger:true});
           }
+
+          // 20170525: model.parse fixed in app_state; this should not be needed
+          //var objects = _.result(data, 'objects', null)
+          //if (objects && objects.length == 1) {
+          //  model = new Backbone.Model(objects[0]);
+          //  var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
+          //  appModel.router.navigate([
+          //      self.screen.resource.key,self.screen.key,
+          //      'summary/libraryscreening',key].join('/'), 
+          //    {trigger:true});
+          //} else {
+          //  console.log('no objects in the response', data);
+          //  appModel.error('Could not display the server response');
+          //}
         },
         
         save: function(changedAttributes, options){
@@ -365,7 +377,6 @@ define([
                           function(keyval){
                             return keyval.join('=');
                           }).join('&')
-                        console.log('new url', new_url);
                         return new_url;
                       };
                       var new_comment = formValues['comments']
@@ -638,16 +649,19 @@ define([
           var plates = self.model.get('library_plates_screened');
           if ( _.isEmpty(plates)){
             // attach is_for_external_library_plates change listener
-            this.listenTo(this, "is_for_external_library_plates:change", function(e){
-              var $target_el = self_editform.$el.find('[key=form-group-library_plates_screened]');
-              var val = self_editform.getValue('is_for_external_library_plates');
-              console.log('is_for_external_library_plates:',val)
-              if(val){
-                $target_el.hide();
-                self_editform.setValue('library_plates_screened',null);
-              } else {
-                $target_el.show();
-              }
+            this.listenTo(this, "is_for_external_library_plates:change", 
+              function(e){
+                var $target_el = self_editform.$el.find(
+                  '[key=form-group-library_plates_screened]');
+                var val = self_editform.getValue(
+                  'is_for_external_library_plates');
+                console.log('is_for_external_library_plates:',val)
+                if(val){
+                  $target_el.hide();
+                  self_editform.setValue('library_plates_screened',null);
+                } else {
+                  $target_el.show();
+                } 
             });
             // 20170416 - Do not allow edit for
             // "volume_transferred_per_well_from_library_plates"
@@ -692,6 +706,7 @@ define([
         }
       });
       
+      // FIXME: 20170519, pick needed values only from the args 
       view = new DetailLayout(_.extend(self.args, { 
         model: this.model,
         uriStack: delegateStack, 
@@ -701,29 +716,14 @@ define([
         showEdit: function() {
           var self = this;
           appModel.initializeAdminMode(function(){
-            // TODO: replace with appModel.get_screen_members
             var fields = self.model.resource.fields;
-            var users = appModel.get('users');
-            var userOptions = [
-              { val: self.screen.get('lead_screener_username'), 
-                label: self.screen.get('lead_screener_name') },
-              { val: self.screen.get('lab_head_username'), 
-                label: self.screen.get('lab_name') },
-            ];
-            userOptions = userOptions.concat(_.map(_.zip(
-              self.screen.get('collaborator_usernames'),
-              self.screen.get('collaborator_names')),
-              function(pair){
-              return { val: pair[0], label: pair[1] };
-            }));
-            fields['performed_by_username']['choices'] = (
-                [{ val: '', label: ''}].concat(userOptions));
+            fields['performed_by_username']['choices'] = 
+              appModel._get_screen_member_choices(self.screen);
             
             fields['screen_facility_id']['editability'] = [];
             fields['library_plates_screened'].display_options = _.extend(
               {}, fields['library_plates_screened'].display_options, {widthClass: 'col-sm-8'});
             
-            console.log('self.model.isNew()', self.model.isNew(),fields['library_plates_screened']);
             if (!self.model.isNew()){
               // allow the library_plates_screened to be unset
               fields['library_plates_screened'].required = false;

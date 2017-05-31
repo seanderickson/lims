@@ -465,6 +465,9 @@ td.dl-title.admin-field {
  color: maroon;
 }
 
+.glyphicon-comment {
+ padding-left: 1ch;
+}
 /** scrollable table (fixed headers) attempt **/
 /* .backgrid table { */
 /* border-collapse: collapse; */

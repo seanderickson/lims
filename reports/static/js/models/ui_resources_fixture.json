@@ -25,7 +25,7 @@
         "header_message": "All users (Screeners and Staff)",
         "title": "Screensaver Users",
         "route": "list/screensaveruser",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "UserView",
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
@@ -37,7 +37,7 @@
         "header_message": "Screening Users",
         "title": "Screeners",
         "route": "list/screeners",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "UserView",
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
@@ -50,7 +50,7 @@
         "header_message": "Staff",
         "title": "Staff Users",
         "route": "list/staff",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "UserView",
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
@@ -59,18 +59,19 @@
           "search": {"is_staff__exact": "True"} }
     },
     "libraryscreening": {
+      "title": "Library Screening Visit",
       "detailView": "LibraryScreeningView",
-      "list_view": "ListView",
+      "listView": "ListView",
       "api_resource": "libraryscreening"
     },
     "cherrypickrequest": {
       "detailView": "CherryPickRequestView",
-      "list_view": "ListView",
+      "listView": "ListView",
       "api_resource": "cherrypickrequest"
     },
     "small_molecule_cprs": {
       "detailView": "CherryPickRequestView",
-      "list_view": "ListView",
+      "listView": "ListView",
       "header_message": "Small Molecule Screen CPRs",
       "title": "Small Molecule CPRs",
       "api_resource": "cherrypickrequest",
@@ -80,7 +81,7 @@
     },
     "rnai_cprs": {
       "detailView": "CherryPickRequestView",
-      "list_view": "ListView",
+      "listView": "ListView",
       "header_message": "RNAi CPRs",
       "title": "RNAi CPRs",
       "api_resource": "cherrypickrequest",
@@ -90,8 +91,8 @@
     },
     "cherrypickassayplate": {
       "detailView": "DetailView",
-      "list_view": "ListView",
-      "api_resource": "cherrypickrequest"
+      "listView": "ListView",
+      "api_resource": "cherrypickassayplate"
     },
     "externallibraryscreening": {
       "api_resource": "libraryscreening"
@@ -100,7 +101,7 @@
         "header_message": "All screens (Small Molecule and RNAi)",
         "title": "Screens",
         "route": "list/screen",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "ScreenView",
         "api_resource": "screen",
         "url_root": "/db/api/v1",
@@ -113,7 +114,7 @@
         "header_message": "Small Molecule Screens",
         "title": "Small Molecule Screen",
         "route": "list/small_molecule_screens",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "DetailView",
         "api_resource": "screen",
         "url_root": "/db/api/v1",
@@ -128,7 +129,7 @@
         "header_message": "All screens (Small Molecule and RNAi)",
         "title": "RNAi Screen",
         "route": "list/rnai_screens",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "DetailView",
         "api_resource": "screen",
         "url_root": "/db/api/v1",
@@ -142,7 +143,7 @@
         "header_message": "Studies",
         "title": "Studies",
         "route": "list/studies",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "ScreenView",
         "api_resource": "study",
         "url_root": "/db/api/v1",
@@ -160,7 +161,7 @@
         "header_message": "All libraries (Small Molecule and RNAi)",
         "title": "Libraries",
         "route": "list/library",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
@@ -177,7 +178,7 @@
         "header_message": "Screened Libraries",
         "title": "Libraries",
         "route": "list/library",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
@@ -190,7 +191,7 @@
         "header_message": "Small Molecule Libraries",
         "title": "Small Molecule Libraries",
         "route": "list/smallmoleculelibrary",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
@@ -210,7 +211,7 @@
         "header_message": "RNAi Libraries",
         "title": "RNAi Libraries",
         "route": "list/rnalibrary",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
@@ -230,7 +231,7 @@
         "description": "View all libraries (any Screening Status)",
         "title": "All Active and Retired Libraries",
         "route": "list/library",
-        "list_view": "ListView",
+        "listView": "ListView",
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
@@ -254,7 +255,7 @@
       "header_message": "Wells",
       "title": "Well",
       "route": "list/reagent",
-      "list_view": "ListView",
+      "listView": "ListView",
       "detailView": "LibraryWellView",
       "api_resource": "reagent",
       "url_root": "/db/api/v1",
@@ -366,7 +367,7 @@
       }
     },
     "copywell_sm_cpr": {
-      "list_view": "ListView",
+      "listView": "ListView",
       "header_message": "Small Molecule, Cherry Pick Source Copy Well",
       "title": "Copy Well (small molecule, cherry pick source plates)",
       "api_resource": "copywell",
@@ -382,7 +383,7 @@
       }
     },
     "copywell_rnai_cpr": {
-      "list_view": "ListView",
+      "listView": "ListView",
       "header_message": "RNAi, Cherry Pick Source Copy Well",
       "title": "Copy Well (RNAi, cherry pick source plates)",
       "api_resource": "copywell",
@@ -400,11 +401,53 @@
     "platelocation": {
       "title": "Copy Plate Location",
       "detailView": "PlateLocationView",
-      "list_view": "PlateLocationView",
+      "listView": "ListView",
       "api_resource": "platelocation",
       "options": { 
         "search": {"plate_count__gt":0},
         "order": []  }
+    },
+    "activity": {
+      "title": "Activity",
+      "detailView": "ActivityView",
+      "listView": "ActivityListView",
+      "api_resource": "activity",
+      "options": { 
+        "order": []  
+      }
+    },
+    "activity_lab": {
+      "title": "Lab Activities",
+      "detailView": "ActivityView",
+      "listView": "ActivityListView",
+      "api_resource": "activity",
+      "options": {
+        "search": {
+          "-activity_class" : "serviceactivity"
+        },
+        "order": []  
+      }
+    },
+    "activity_service": {
+      "title": "Service Activities",
+      "detailView": "ActivityView",
+      "listView": "ActivityListView",
+      "api_resource": "activity",
+      "options": { 
+        "search": {
+          "activity_class" : "serviceactivity"
+        },
+        "order": []  
+      }
+    },
+    "activity_all": {
+      "title": "Activities",
+      "detailView": "ActivityView",
+      "listView": "ActivityListView",
+      "api_resource": "activity",
+      "options": { 
+        "order": []  
+      }
     },
     "userchecklistitem": {
       "options": {
@@ -416,7 +459,7 @@
       "header_message": "Detail Test View",
       "title": "Detail Test View",
       "route": "list/detailtest",
-      "list_view": "ListView",
+      "listView": "ListView",
       "detailView": "DetailTestView",
       "api_resource": "reagent"
     },

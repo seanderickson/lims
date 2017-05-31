@@ -2838,6 +2838,9 @@ var TextFormFilter = CriteriumFormFilter.extend({
     });
     this.model = new FormFields();
     this.model.set('lower_criteria','='); // default
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria','form_textarea','invert_field']; 
     
     TextFormFilter.__super__.initialize.apply(this, arguments);
@@ -3080,6 +3083,9 @@ var DateFormFilter = CriteriumFormFilter.extend({
     });
     this.model = new FormFields();
     this.model.set('lower_criteria','='); // default
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria','lower_value','form_textarea',
                            'upper_value','invert_field']; 
     
@@ -3111,6 +3117,17 @@ var DateFormFilter = CriteriumFormFilter.extend({
 
   clear: function(){
     this.model.set('lower_criteria',null);
+  },
+
+  isSet: function(){
+    var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
+    var found = _.find(_.keys(values), function(key){
+      return values[key] !== '';
+    });
+    return !_.isEmpty(found);
   },
   
   _search: function(hash){
@@ -3261,6 +3278,9 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = new FormFields();
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria'] 
     
     BooleanFormFilter.__super__.initialize.apply(this, arguments);
@@ -3368,6 +3388,11 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       throw Exception('must define a fieldinformation');
     }
     
+    // Create a form of checkboxes, one for each vocabulary item:
+    // 1. start with fieldinformation.choices
+    // 2. override with fieldinformation.vocabulary:
+    // 2.a from fieldinformation.vocabulary, if available
+    // 2.b fetch and add vocabulary from server
     var choiceHash = {}
     var vocabulary;
     if(_.isUndefined(this.fieldinformation.choices)){
@@ -3391,7 +3416,9 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
           choiceHash[choice] = vocabulary[choice].title;
         });
       }catch(e){
-        console.log('vocabulary error', this.column.get('name'),e);
+        console.log(
+          'vocabulary error', this.fieldinformation.key,
+          this.fieldinformation.vocabulary_scope_ref);
       }
     }
 
@@ -3404,6 +3431,10 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
             '"choices" list: field key: ' + this.column.get('name')].join(''));
       this.fieldinformation.choices = [];
     }
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
+    // - for SelectorFormFilter, add all choices, to create a checkbox for each
     var selectedFields = _.clone(this.fieldinformation.choices);
     
     _.each(_.keys(choiceHash), function(choice){

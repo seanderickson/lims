@@ -7807,7 +7807,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # 3 delete serviceactivity
         resource_uri = '/'.join([
-            BASE_URI_DB,'serviceactivity',str(new_obj['activity_id']])
+            BASE_URI_DB,'serviceactivity',str(new_obj['activity_id'])])
         resp = self.api_client.delete(
             resource_uri, authentication=self.get_credentials())
         self.assertTrue(

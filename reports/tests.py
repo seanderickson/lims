@@ -160,24 +160,28 @@ def equivocal(val1, val2):
     - with lists, ordering has changed, or members have been converted to 
     their string representation.
     '''
+    if DEBUG:
+        logger.info('equivocal: %r, %r', val1, val2)
     if val1 == val2:
+        if DEBUG:
+            logger.info('1equivocal: %r, %r', val1, val2)
         return True, ('val1', val1, 'val2', val2 )
     
-    if not val1:
-        if val2 and isinstance(val2, list):
-            if len(val2) > 0:
-                return False, ('val1', val1, 'val2', val2 )
-        return True, ('val1', val1, 'val2', val2 )
-
     if (is_boolean(val1) is True or is_boolean(val2) is True ):
         if (parse_val(val1,'testval1','boolean')
             == parse_val(val2,'testval2','boolean')):
+            if DEBUG:
+                logger.info('boolean equivalent: %r, %r',
+                    parse_val(val1,'testval1','boolean'),
+                    parse_val(val2,'testval2','boolean') )
             return True, ('val1', val1, 'val2', val2 )
         else:
             return False, ('boolean not equivalent: val1', val1, 'val2', val2 )
         
     if ( isinstance(val1, (int, long, float, complex, Decimal))
         or isinstance(val2, (int, long, float, complex, Decimal))):
+        if DEBUG:
+            logger.info('numerical equivocal: %r, %r', val1, val2)
         if numerical_equivalency(val1, val2):
             return True, ('val1', val1, 'val2', val2 )
 
@@ -190,6 +194,16 @@ def equivocal(val1, val2):
         
     
     if isinstance(val1, basestring):
+
+        # TODO: rework API: equates empty string to "None"
+        if not val1:
+            if not val2:
+                return True, ('val1', val1, 'val2', val2 )
+            else:
+                return False, ('val1', val1, 'val2', val2 )
+        if not val2:
+            return False, ('val2 is empty', 'val1', val1 )
+            
         # if string value, then decode back to unicode
         if DEBUG:
             logger.info('val1 %r, decode: %r', val1, decode_from_utf8(val1))
@@ -208,17 +222,29 @@ def equivocal(val1, val2):
             if ((is_boolean(val1) or is_boolean(val2) ) 
                 and parse_val(val1,'testval1','boolean')
                     == parse_val(val2,'testval2','boolean')):
+                if DEBUG:
+                    logger.info('boolean true')
                 return True, ('val1', val1, 'val2', val2 )
             elif numerical_equivalency(val1,val2):
                 return True, ('val1', val1, 'val2', val2 )
                 
             return False, ('val1', val1, 'val2', val2 )
+        else:
+            if DEBUG:
+                logger.info('String true: %r: %r', val1, val2)
+            return True, ('val1', val1, 'val2', val2    )
     else: # better be a list
+        # TODO: rework API: equates empty list to "None"
+        if not val1:
+            if not val2:
+                return True, ('val1', val1, 'val2', val2 )
+            else:
+                return False, ('val1', val1, 'val2', val2 )
+        if not val2:
+            return False, ('val2 is empty', 'val1', val1 )
         if not isinstance(val1, list) and isinstance(val2, list):
             return False, (
                 'Must be a list if not a string', 'val1', val1, 'val2', val2)
-        if not val2:
-            return False, ('val2 is None', 'val1', val1 )
         for v in val1:
             if not v: 
                 if val2 and len(val2) > 0:
@@ -227,7 +253,14 @@ def equivocal(val1, val2):
                 v = decode_from_utf8(v)
                 if v not in [decode_from_utf8(v2) for v2 in val2]:
                     return False, ('val1', val1, 'val2', val2 )
-    return True, ('val1', val1, 'val2', val2 )
+        if DEBUG:
+            logger.info('list equivocal True: %r, %r', val1, val2)
+        return True, ('val1', val1, 'val2', val2 )
+    
+    logger.error(
+        'equivocal: val not recognized (simple, boolean, numerical, string or list)'
+        ', val1: %r:%r, val2: %r:%r', type(val1),val1, type(val2), val2)
+    return False, ('val1', val1, 'val2', val2)
     
 def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
     '''
@@ -349,7 +382,8 @@ class NoDbTestRunner(DiscoverRunner):
 # 
 # FIXME: override of testrunner class to catch teardown error:
 # - caused by holding another db connection for the sqlalchemy bridge
-# NOTE-(verify in DiscoverRunner): when using this testrunner, the class finder is different; note that the 
+# NOTE-(verify in DiscoverRunner): 
+# when using this testrunner, the class finder is different; note that the 
 # path excludes the module, so 
 # "reports.SDFSerializerTest.test2_clean_data_sdf"
 # not 
@@ -439,9 +473,10 @@ class BaselineTest(TestCase):
             ## TODO: test date strings 
         
         for [a,b] in test_true:
-            logger.info(
-                'csv serialization equivocal truthy test %r to %r', a, b)
             result, msgs = equivocal(a,b)
+            logger.info(
+                'equivocal true %r to %r: %r: %r', 
+                a, b, result, msgs)
             self.assertTrue(result, msgs)
 
         test_false = [
@@ -457,10 +492,11 @@ class BaselineTest(TestCase):
             ['False',True],
             ]
         for [a,b] in test_false:
-            logger.info(
-                'csv serialization equivocal falsy test: %r to %r', a, b)
             result, msgs = equivocal(a,b)
-            self.assertFalse(result, msgs)
+            logger.info(
+                'equivocal false: %r to %r: %r: %r', 
+                a, b, result, msgs)
+            self.assertFalse(result, '%r != %r, %r' % (a, b, msgs))
     
     def test1_assert_obj1_to_obj2(self):
         logger.info('test1_assert_obj1_to_obj2...')

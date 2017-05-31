@@ -832,7 +832,7 @@ define([
           // then augment the ui resources with their api_resource, if different
           if ( key !== ui_resource.api_resource ) {
             ui_resources[key] = _.extend(
-                {}, ui_resource, resources[ui_resource.api_resource]);
+                {}, resources[ui_resource.api_resource], ui_resource);
           }
         });
         

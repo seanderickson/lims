@@ -12,6 +12,8 @@ define([
   'views/screen/screenSummary', 
   'views/screen/screenData',
   'views/screen/cherryPickRequest',
+  'views/activityListView',
+  'views/serviceActivity',
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
   'views/generic_edit',
@@ -21,7 +23,7 @@ define([
   'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
-            DetailLayout, DetailView, EditView, 
+            ActivityListView, ServiceActivityView, DetailLayout, DetailView, EditView, 
             ListView, UploadDataForm, TabbedController, screenTemplate) {
 
   var ScreenView = TabbedController.extend({
@@ -63,8 +65,8 @@ define([
         invoke : 'setDetail'
       },
       summary : {
-        description : 'Screening Summary',
-        title : 'Screening Summary',
+        description : 'Visit Summary',
+        title : 'Visit Summary',
         invoke : 'setSummary',
         permission: 'screensummary'
       },
@@ -276,6 +278,7 @@ define([
       model.urlRoot = this.model.resource.apiUri;
       /////
       
+      // FIXME: 20170519, pick needed values only from the args 
       view = new DetailLayout(_.extend(self.args, { 
         model: model, 
         uriStack: delegateStack,
@@ -1129,7 +1132,7 @@ define([
       var newModel = appModel.createNewModel('cherrypickrequest', defaults);
 
       newModel.resource.fields['requested_by_username'].choices = 
-        appModel._get_screen_members(self.model);
+        appModel._get_screen_member_choices(self.model);
       newModel.resource.fields['volume_approved_by_username'].choices = 
         appModel.getAdminUserOptions();
       
@@ -1148,40 +1151,118 @@ define([
       self.reportUriStack([]);
     },
     
+    /**
+     * 
+     */
     setActivities: function(delegateStack) {
+      console.log('set activities');
       var self = this;
-      var key = 'activities';
-      var view = this.tabViews[key];
+      var resource = appModel.getResource('activity');
       
-      if (!view) {
+      _.each(_.values(resource.fields), function(field){
+        if(_.result(field.display_options,'optgroup')=='screen'){
+          field['visibility'] = [];
+        }
+      });
+      
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail View
+        if (delegateStack[0]!='+add') {
+          var activity_id = delegateStack.shift();
+          self.consumedStack.push(activity_id);
+          var _key = activity_id
+          appModel.getModel(resource.key, _key, function(model){
+            view = new ServiceActivityView({
+              model: model, 
+              user: self.model,
+              uriStack: _.clone(delegateStack)
+            });
+            Backbone.Layout.setupView(view);
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            self.setView("#tab_container", view ).render();
+          });        
+          return;
+          
+        } else {
+          
+          // Do not allow return to +add screen
+          delegateStack.shift();
+          self.setActivities(delegateStack);
+          return;
+        }
+
+      }else{
         var self = this;
         var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
-        var resource = appModel.getResource('activity');
+        var extraControls = [];
+        var addServiceActivityButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_button" href="#">',
+            'Add Service Activity</a>'
+          ].join(''));
+        addServiceActivityButton.click(function(e){
+          e.preventDefault();
+          delegateStack.unshift('+add');
+          var saResource = Iccbl.appModel.getResource('serviceactivity');
+          var defaults = {
+            screen_facility_id: self.model.get('facility_id'),
+            performed_by_username: appModel.getCurrentUser().username
+          };
+          
+          // Funding supports: populate select with screen funding supports;
+          // - if only one screen funding support; set it as default
+          var funding_supports = self.model.get('funding_supports');
+          var funding_support_field = saResource.fields['funding_support']
+          if (_.isEmpty(funding_supports)){
+            appModel.showModalMessage('Screen must have funding supports entered');
+            appModel.showModalMessage({
+              title: 'Screen must have funding supports entered',
+              body: 'Enter screen funding supports before creating service activities'
+            });
+          } else {
+            var vocabulary = appModel.getVocabularySelectOptions(
+              funding_support_field.vocabulary_scope_ref);
+            vocabulary = _.filter(vocabulary, function(item){
+              return _.contains(funding_supports,item.val);
+            });
+            funding_support_field.choices = vocabulary;
+            funding_support_field.vocabulary_scope_ref = '';
+            if (funding_supports.length == 1){
+              defaults['funding_support'] = funding_supports[0];
+            }
+          }
+          
+          var newModel = appModel.newModelFromResource(saResource, defaults);
+          var view = new ServiceActivityView({
+            model: newModel,
+            screen: self.model,
+            uriStack: _.clone(delegateStack)
+          });
+          Backbone.Layout.setupView(view);
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+          self.reportUriStack(['+add']);
+          appModel.setPagePending();
+        });
+        if(appModel.hasPermission(self.model.resource.key, 'edit')){
+          extraControls.unshift(addServiceActivityButton);
+        }
         
-        var sa_vocab = appModel.getVocabulary('activity.type');
-        resource.fields['type'].vocabulary = 
-          _.map(sa_vocab, function(v) {
-            return [v.title,v.key];
-          }); // TODO: app model method for this
-        
-        console.log('combined vocab', resource.fields['type'].vocabulary );
-        
-        var view = new ListView({ 
+        var view = new ActivityListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: resource,
           resource: resource,
           url: url,
-          extraControls: []
+          extraControls: extraControls
         });
+        
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
-        this.$('li').removeClass('active');
-        this.$('#'+key).addClass('active');
+//        this.$('li').removeClass('active');
+//        this.$('#'+key).addClass('active');
 
-      } else {
-        self.listenTo(view , 'uriStack:change', this.reportUriStack);
-        self.setView("#tab_container", view ).render();
       }
       self.$("#tab_container-title").hide();
     },

@@ -18,6 +18,7 @@ define([
   'views/user/user2',
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
+  'views/activityListView',
   'utils/uploadDataForm',
   'test/detailTest',
   'utils/wellSelector',
@@ -29,7 +30,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView, 
          ScreenView, LibraryScreeningView, CherryPickRequestView,
          PlateLocationView, UserAdminView, 
-         UserView, UserGroupAdminView, UploadDataForm, DetailTestView, 
+         UserView, UserGroupAdminView, ActivityListView, UploadDataForm, DetailTestView, 
          WellSelectorView, layout, 
          welcomeLayout, aboutLayout) {
   
@@ -47,7 +48,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'UserAdminView': UserAdminView,
     'UserGroupAdminView': UserGroupAdminView,
     'DetailTestView': DetailTestView,
-    'WellSelectorView': WellSelectorView
+    'WellSelectorView': WellSelectorView,
+    'ActivityListView': ActivityListView
   };
     
   var ContentView = Iccbl.UriContainerView.extend({
@@ -168,7 +170,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     // Show a listing of a resource, get the parameters from the uriStack
     showList: function(resource, uriStack) {
       
-      console.log('showList: uriStack', uriStack);
+      console.log('showList: uriStack', resource, uriStack);
 
       var self = this;
       var uriStack = _.clone(uriStack);

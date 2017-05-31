@@ -13,8 +13,8 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CopyWellResource, UserChecklistItemResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
-    CherryPickLiquidTransferResource, CherryPickScreeningResource, \
     UserAgreementResource, PublicationResource,PlateLocationResource
+#     CherryPickLiquidTransferResource, CherryPickScreeningResource, \
 
 import db.api
 
@@ -44,8 +44,8 @@ v1_api.register(SilencingReagentResource())
 v1_api.register(NaturalProductReagentResource())
 v1_api.register(CopyWellResource())
 v1_api.register(LibraryScreeningResource())
-v1_api.register(CherryPickLiquidTransferResource())
-v1_api.register(CherryPickScreeningResource())
+# v1_api.register(CherryPickLiquidTransferResource())
+# v1_api.register(CherryPickScreeningResource())
 v1_api.register(UserAgreementResource())
 v1_api.register(PublicationResource())
 v1_api.register(db.api.ResourceResource())

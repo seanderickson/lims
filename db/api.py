@@ -486,6 +486,10 @@ class PlateLocationResource(DbApiResource):
         Override to generate informational summary for callee
         '''
         
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         deserialized = kwargs.pop('data', None)
         # allow for internal data to be passed
         if deserialized is None:
@@ -496,7 +500,6 @@ class PlateLocationResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -554,7 +557,10 @@ class PlateLocationResource(DbApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
 
         logger.info('patch platelocation')
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
 
         with transaction.atomic():
@@ -1907,6 +1913,10 @@ class LibraryCopyPlateResource(DbApiResource):
         as well as the update data (in the form of "plate_info" and "plate_location")
         (Instead of sending all plates to be PATCHED);
         '''
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         # NOTE: authentication is being performed by wrap_view
         # self.is_authenticated(request)
         # if not self._meta.authorization._is_resource_authorized(
@@ -1920,12 +1930,6 @@ class LibraryCopyPlateResource(DbApiResource):
         param_hash.update(kwargs)
         
         logger.info('batch_edit plates...')
-        
-        schema = param_hash.pop('schema', None)
-        if not schema:
-            # schema = super(LibraryCopyPlateResource, self).build_schema()
-            raise Exception('no schema...')
-        
         logger.info('param_hash: %r', param_hash)
         
         plate_info_data = param_hash.pop('plate_info', None)
@@ -2088,7 +2092,10 @@ class LibraryCopyPlateResource(DbApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('patch obj, deserialized: %r', deserialized)
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
 
         id_kwargs = self.get_id(deserialized, **kwargs)
@@ -3325,6 +3332,10 @@ class ScreenResultResource(DbApiResource):
     @un_cache 
     @transaction.atomic       
     def patch_detail(self, request, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         if 'screen_facility_id' not in kwargs:
             raise BadRequest('screen_facility_id is required')
         screen_facility_id = kwargs['screen_facility_id']
@@ -3344,7 +3355,6 @@ class ScreenResultResource(DbApiResource):
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
         self.clear_cache(all=True)
         
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
 
         screen = Screen.objects.get(facility_id=screen_facility_id)
@@ -4148,7 +4158,10 @@ class DataColumnResource(DbApiResource):
 
         logger.debug('patch_obj %s', deserialized)
         
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         # FIXME: default values
         initializer_dict = {
@@ -4465,7 +4478,10 @@ class CopyWellResource(DbApiResource):
         # TODO: optimize for list inputs (see well.patch)
         logger.debug('patch_obj %s', deserialized)
 
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
@@ -5590,7 +5606,7 @@ class CherryPickRequestResource(DbApiResource):
     @transaction.atomic
     def post_detail(self, request, **kwargs):
         # FIXME: Set the log URI using the containing screen URI
-        return DbApiResource.post_detail(self, request, **kwargs)
+        return DbApiResource.post_detail(self, request, full_create_log=True, **kwargs)
 
     @write_authorization
     @transaction.atomic      
@@ -5599,6 +5615,10 @@ class CherryPickRequestResource(DbApiResource):
         '''
         Override to generate informational summary for callee
         '''
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         deserialized = kwargs.pop('data', None)
         # allow for internal data to be passed
         if deserialized is None:
@@ -5612,7 +5632,6 @@ class CherryPickRequestResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -5639,7 +5658,7 @@ class CherryPickRequestResource(DbApiResource):
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('original: %r, new: %r', original_data, new_data)
         log = self.log_patch(
-            request, original_data,new_data,log=log,
+            request, original_data,new_data,log=log, full_create_log=True, 
             excludes=['screener_cherry_picks'],
             **kwargs_for_log)
         # Set the log URI using the containing screen URI
@@ -5661,8 +5680,10 @@ class CherryPickRequestResource(DbApiResource):
     @un_cache
     def patch_obj(self, request, deserialized, **kwargs):
         
-
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
 
@@ -6854,6 +6875,10 @@ class ScreenerCherryPickResource(DbApiResource):
          created on the "patch_detail" with the 
          cherry_pick_request.screener_cherry_picks attribute
         '''
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         
         if 'cherry_pick_request_id' not in kwargs:
             raise BadRequest('cherry_pick_request_id')
@@ -6876,7 +6901,6 @@ class ScreenerCherryPickResource(DbApiResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
 
         original_cpr_data = self.get_cpr_resource()._get_detail_response_internal(**{
@@ -7445,6 +7469,10 @@ class LabCherryPickResource(DbApiResource):
     @transaction.atomic
     def patch_list(self, request, **kwargs):
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         cw_formatter = LabCherryPickResource.LCP_COPYWELL_KEY
         
         convert_post_to_put(request)
@@ -7456,7 +7484,6 @@ class LabCherryPickResource(DbApiResource):
         set_deselected_to_zero = parse_val(
             param_hash.get(API_PARAM_SET_DESELECTED_TO_ZERO, False),
                 API_PARAM_SET_DESELECTED_TO_ZERO, 'boolean')
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
 
         if 'cherry_pick_request_id' not in kwargs:
@@ -7706,11 +7733,8 @@ class LabCherryPickResource(DbApiResource):
                     cpr, lcps_to_allocate, parent_log, plates_to_ignore=plates_to_ignore)
             result_meta_allocate.update(result_meta)
             
-            previous_date_reserved = cpr.date_volume_reserved
             cpr.date_volume_reserved = _now().date() 
             cpr.save()
-#             parent_log.diffs = {
-#                 'date_volume_reserved': [previous_date_reserved, cpr.date_volume_reserved ]}
         
         changed = sorted(changed)
         deselected = sorted(deselected)
@@ -8631,6 +8655,10 @@ class CherryPickPlateResource(DbApiResource):
     @transaction.atomic
     def patch_list(self, request, **kwargs):
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         if 'cherry_pick_request_id' not in kwargs:
             raise BadRequest('cherry_pick_request_id')
         cpr_id = kwargs['cherry_pick_request_id']
@@ -8644,7 +8672,6 @@ class CherryPickPlateResource(DbApiResource):
             deserialized = deserialized[self._meta.collection_name]
         logger.debug('patch cpaps: %r', deserialized)
         
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
         assay_plates = { cpap.plate_ordinal:cpap 
@@ -8746,6 +8773,7 @@ class CherryPickPlateResource(DbApiResource):
             cplt = CherryPickLiquidTransfer.objects.create(
                 status="Successful",
                 screen=cpr.screen,
+                cherry_pick_request = cpr,
                 volume_transferred_per_well_from_library_plates
                     =cpr.transfer_volume_per_well_approved,
                 apilog_uri=parent_log.log_uri,
@@ -8753,6 +8781,10 @@ class CherryPickPlateResource(DbApiResource):
                 performed_by = plated_cpaps[0].plated_by,
                 created_by = self.get_request_user(request)
             )
+            
+            # Set the legacy cplt link; NOTE: this is not used in V2
+            cpap.cherry_pick_liquid_transfer = cplt
+            cpap.save()
             # TODO: set api log to activity
             # cplt.log_id = parent_log
         if screened_cpaps:
@@ -9121,7 +9153,10 @@ class LibraryCopyResource(DbApiResource):
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
 
@@ -9349,6 +9384,11 @@ class PublicationResource(DbApiResource):
         return self.build_list_response(request, **kwargs)
 
     def build_list_response(self, request, **kwargs):
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -9358,7 +9398,6 @@ class PublicationResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
         
         logger.info('params: %r', param_hash.keys())
         
@@ -9469,11 +9508,15 @@ class PublicationResource(DbApiResource):
     @un_cache        
     @transaction.atomic
     def post_detail(self, request, **kwargs):
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
                 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
-        schema = kwargs['schema']
         fields = schema['fields']
         id_attribute = resource = schema['id_attribute']
 
@@ -9565,7 +9608,8 @@ class PublicationResource(DbApiResource):
                 kwargs_for_log['%s' % id_field] = val
         logger.info('get new data: %r', kwargs_for_log)
         new_data = self._get_detail_response_internal(**kwargs_for_log)
-        log = self.log_patch(request, None, new_data, **kwargs_for_log)
+        log = self.log_patch(
+            request, None, new_data, full_create_log=True, **kwargs_for_log)
         if log:
             log.save()
         logger.info('created log: %r', log)
@@ -9602,7 +9646,10 @@ class PublicationResource(DbApiResource):
     def delete_detail(self, request, **kwargs):
 
         logger.info('delete publication...')
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
     
         publication_id = kwargs.get('publication_id', None)
@@ -9745,9 +9792,12 @@ class AttachedFileResource(DbApiResource):
             - custom deserialization of the attached file from form parameters
         '''
         logger.info('post attached file')
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        schema = kwargs['schema']
         fields = schema['fields']
         id_attribute = schema['id_attribute']
         initializer_dict = {}
@@ -9865,7 +9915,9 @@ class AttachedFileResource(DbApiResource):
             'parent_log': parent_log 
         }
         new_data = self._get_detail_response_internal(**kwargs_for_log)
-        log = self.log_patch(request, None,new_data,**kwargs_for_log)
+        log = self.log_patch(
+            request, None,new_data, 
+            full_create_log=True,**kwargs_for_log)
         if log:
             log.save()
 
@@ -9878,6 +9930,10 @@ class AttachedFileResource(DbApiResource):
     @un_cache        
     @transaction.atomic
     def delete_detail(self, request, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         attached_file_id = kwargs.pop('attached_file_id', None)
         if not attached_file_id:
             NotImplementedError('must provide a attached_file_id parameter')
@@ -9893,7 +9949,6 @@ class AttachedFileResource(DbApiResource):
 
         af.delete()
         
-        schema = kwargs['schema']
         id_attribute = resource = schema['id_attribute']
 
         log = self.make_log(request, **kwargs)
@@ -9927,6 +9982,10 @@ class AttachedFileResource(DbApiResource):
         return self.build_list_response(request, **kwargs)
 
     def build_list_response(self, request, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -9936,7 +9995,6 @@ class AttachedFileResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 #         filename = self._get_filename(schema, kwargs)
@@ -10309,6 +10367,18 @@ class UserAgreementResource(AttachedFileResource):
 class ActivityResource(DbApiResource):
     '''
     Activity Resource is a combination of the LabActivity and the ServiceActivity
+    
+    NOTE: 20170523
+    ActivityResource needs to be reworked; the current design is from the 
+    legacy Screensaver 1; 
+    Activity is both a logging facility and a join class between User, Screen, 
+    and CherryPickRequest.
+    Refactor to make Activity a Reporting resource that logs:
+    - performed by
+    - serviced resource: Screen, User
+    - serviced context: Screen, User, CherryPickRequest
+    - referenced resources: Equipment
+    - 
     '''
 
     class Meta:
@@ -10390,12 +10460,12 @@ class ActivityResource(DbApiResource):
         _created_by1 = _user_cte.alias('created_by1_%s' % alias_qualifier)
         _activity = self.bridge['activity']
         _su = self.bridge['screensaver_user']
-        _lhsu = _su.alias('lhsu_la')
+        _lhsu = _su.alias('lhsu_%s' % alias_qualifier)
         _sfs = self.bridge['screen_funding_supports']
-
-#         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-#         affiliation_table = affiliation_table.cte('affiliation_%s' % alias_qualifier)
-        lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
+        
+        
+        lab_head_table = \
+            ScreensaverUserResource.get_lab_head_cte(alias_qualifier).cte('lab_heads_%s' % alias_qualifier)
 
         
         return {
@@ -10435,32 +10505,6 @@ class ActivityResource(DbApiResource):
                 select([lab_head_table.c.username])
                 .select_from(lab_head_table)
                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-#             'screen_lab_name':
-#                 (select([func.array_to_string(array(
-#                         [_lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
-#                          affiliation_table.c.title,
-#                          ' (', affiliation_table.c.category, ')']), '')])
-#                     .select_from(
-#                         _lhsu.join(
-#                             affiliation_table,
-#                             affiliation_table.c.affiliation_name 
-#                                 == _lhsu.c.lab_head_affiliation))
-#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-#             'screen_lab_affiliation': 
-#                 (select([_concat(
-#                         affiliation_table.c.title, ' (',
-#                         affiliation_table.c.category, ')')])
-#                     .select_from(
-#                         _lhsu.join(
-#                             affiliation_table,
-#                             affiliation_table.c.affiliation_name 
-#                                 == _lhsu.c.lab_head_affiliation))
-#                     .where(
-#                         _lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-#             'screen_lab_head_username':
-#                 (select([_lhsu.c.username])
-#                     .select_from(_lhsu)
-#                     .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
             'screen_funding_supports':
                 select([func.array_to_string(
                     func.array_agg(literal_column('funding_support')
@@ -10504,6 +10548,8 @@ class ActivityResource(DbApiResource):
         # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
         manual_field_includes.add('activity_class')
+        # for join to cherrypickrequest (TODO: req'd to complete activity id link)
+        manual_field_includes.add('cherry_pick_request_id')
         param_hash['includes'] = list(manual_field_includes)
         
         (filter_expression, filter_hash, readable_filter_hash) = \
@@ -10512,12 +10558,12 @@ class ActivityResource(DbApiResource):
         filename = self._get_filename(readable_filter_hash)
               
         order_params = param_hash.get('order_by', [])
+        order_params.append('-date_of_activity')
         field_hash = self.get_visible_fields(
             schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
-        order_params.append('date_of_activity')
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
 
@@ -10547,8 +10593,8 @@ class ActivityResource(DbApiResource):
             if field['scope'] == 'fields.activity'] :
             if key not in columns_la:
                 logger.info(
-                    ('programming error: get_lab_activity_query '
-                     'is missing the col: %r'), key)
+                    ('get_lab_activity_query '
+                     'adding dummy col: %r'), key)
                 la_columns.append(cast(
                     literal_column("null"), 
                     sqlalchemy.sql.sqltypes.Text).label(key))
@@ -10574,11 +10620,9 @@ class ActivityResource(DbApiResource):
 
         _library_screening = self.bridge['library_screening']
         _cps = self.bridge['cherry_pick_screening']
+        _cplt = self.bridge['cherry_pick_liquid_transfer']
         _screen = self.bridge['screen']
         
-        # TODOS: typing: 201703, cherry pick rework
-        # TODO: replace cherry pick liquid transfer with a "type" of Cherry Pick Plating
-        # TODO: replace cherry pick screening with a "type" of Cherry Pick Screening
         activity_type_column = cast(case([
             (_library_screening.c.activity_id != None,
                case([(_library_screening.c.is_for_external_library_plates,
@@ -10590,6 +10634,11 @@ class ActivityResource(DbApiResource):
             else_='cplt'), sqlalchemy.sql.sqltypes.Text)
 
         return { 
+            'cherry_pick_request_id': 
+                cast(func.coalesce(
+                        _cps.c.cherry_pick_request_id, 
+                        _cplt.c.cherry_pick_request_id, None), 
+                    sqlalchemy.sql.sqltypes.Text),
             'type': activity_type_column,
             'activity_class': activity_type_column,
             }
@@ -10635,10 +10684,12 @@ class ActivityResource(DbApiResource):
         # TODO: delegate to sub_classes (when built)
         _library_screening = self.bridge['library_screening']
         _cps = self.bridge['cherry_pick_screening']
+        _cplt = self.bridge['cherry_pick_liquid_transfer']
         j = j.join(
             _library_screening,
             _la.c.activity_id == _library_screening.c.activity_id, isouter=True)
         j = j.join(_cps, _la.c.activity_id == _cps.c.activity_id, isouter=True)
+        j = j.join(_cplt, _la.c.activity_id == _cplt.c.activity_id, isouter=True)
                 
         custom_columns = self.get_custom_lab_activity_columns('lab_activity')
         custom_columns.update(self.get_custom_columns('la'))
@@ -10663,6 +10714,10 @@ class ActivityResource(DbApiResource):
         return (field_hash, columns, stmt, count_stmt)
 
     def build_list_response(self, request, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -10672,8 +10727,6 @@ class ActivityResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
-        
         is_for_detail = kwargs.pop('is_for_detail', False)
 #         filename = self._get_filename(schema, kwargs)
         
@@ -10709,25 +10762,23 @@ class ActivityResource(DbApiResource):
             logger.exception('on get list')
             raise e  
 
-
-class CherryPickLiquidTransferResource(ActivityResource):
-    ''' DEPRECATED: new CherryPickRequest does not use cplt '''
+class ServiceActivityResource(ActivityResource):    
 
     class Meta:
 
-        queryset = Screening.objects.all()
+        queryset = ServiceActivity.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
                                              IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
-        resource_name = 'cplt'
+        resource_name = 'serviceactivity'
         max_limit = 10000
         always_return_data = True
 
     def __init__(self, **kwargs):
-        super(CherryPickLiquidTransferResource, self).__init__(**kwargs)
+        super(ServiceActivityResource, self).__init__(**kwargs)
 
     def prepend_urls(self):
 
@@ -10739,24 +10790,173 @@ class CherryPickLiquidTransferResource(ActivityResource):
                  r"(?P<activity_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def patch_obj(self, request, deserialized, **kwargs):
+
+        schema = kwargs.pop('schema', None)
+        if schema is None:
+            raise Exception('schema not initialized')
+        fields = schema['fields']
+
+        # NOTE: parse params only if needed for client overrides
+        # param_hash = self._convert_request_to_dict(request)
+        # param_hash.update(kwargs)
+        # logger.debug('param_hash: %r', param_hash)
+
+        id_kwargs = self.get_id(deserialized, **kwargs)
+
+        logger.info('patch ServiceActivity: %r', deserialized)
+        
+        patch = bool(id_kwargs)
+        initializer_dict = self.parse(deserialized, create=not patch)
+        errors = self.validate(initializer_dict, patch=patch)
+        if errors:
+            raise ValidationError(errors)
+        
+        activity_type = deserialized.get('type', None)
+        if activity_type:
+            initializer_dict['service_activity_type'] = activity_type
+
+        serviced_username = deserialized.get('serviced_username', None)
+        performed_by_username = deserialized.get('performed_by_username', None)
+        serviced_screen_facility_id = deserialized.get('screen_facility_id', None)
+        
+        if not patch:
+            if serviced_username is None and serviced_screen_facility_id is None:
+                msg = 'Either serviced user or serviced screen_facility_id is required'
+                raise ValidationError({
+                    'serviced_username': msg,
+                    'screen_facility_id': msg
+                    })
+            if not activity_type:
+                raise ValidationError(
+                    key='type',
+                    msg='required')
+            if not performed_by_username:
+                raise ValidationError(
+                    key='performed_by_username',
+                    msg='required')
+
+        if serviced_username:
+            try:
+                serviced_user = ScreensaverUser.objects.get(
+                    username=serviced_username)
+                initializer_dict['serviced_user'] = serviced_user
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key='serviced_username',
+                    msg='username does not exist: %r' % serviced_username)
+        if serviced_screen_facility_id:
+            try:
+                serviced_screen = Screen.objects.get(
+                    facility_id=serviced_screen_facility_id)
+                initializer_dict['serviced_screen'] = serviced_screen
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key='screen_facility_id',
+                    msg='screen does not exist: %r' % serviced_screen_facility_id)
+        if performed_by_username:
+            try:
+                performed_by_user = ScreensaverUser.objects.get(
+                    username=performed_by_username)
+                initializer_dict['performed_by'] = performed_by_user
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key='performed_by_username',
+                    msg='username does not exist: %r' % performed_by_username)
+
+        service_activity = None
+        if patch:
+            try:
+                service_activity = ServiceActivity.objects.get(
+                    pk=id_kwargs['activity_id'])
+            except ObjectDoesNotExist:
+                raise Http404(
+                    'ServiceActivity does not exist for: %r', id_kwargs)
+        else:
+            # Set the created_by field:
+            # NOTE: deprecate for SS V2
+            try:
+                adminuser = ScreensaverUser.objects.get(username=request.user.username)
+            except ObjectDoesNotExist as e:
+                logger.error('admin user: %r does not exist', request.user.username )
+                raise
+            
+            service_activity = ServiceActivity()
+            service_activity.created_by = adminuser
+        
+        model_field_names = [
+            x.name for x in service_activity._meta.get_fields()]
+        for key, val in initializer_dict.items():
+            if key in model_field_names:
+                setattr(service_activity, key, val)
+
+        service_activity.save()
+        logger.info('saved service_activity: %r', service_activity)
+        return { API_RESULT_OBJ: service_activity }
+
+    def make_log_key(self, log, attributes, id_attribute=None, schema=None, **kwargs):
+
+        logger.debug('make_log_key: %r, %r, %r', attributes, id_attribute, kwargs)
+        
+        if attributes:
+            ActivityResource.make_log_key(
+                self, log, attributes, id_attribute=id_attribute, schema=schema, **kwargs)
+            logger.info('log key: %r, %r', log.key, log)
     
-    def get_custom_columns(self, alias_qualifier):
-        '''
-        Convenience method for subclasses: reusable custom columns
-        @param alias_qualifier a sql compatible string used to name subqueries
-            so that this method may be called multiple times to compose a query
-        '''
-        ccs = super(CherryPickLiquidTransferResource, self).get_custom_columns(
-            alias_qualifier)
-        return ccs
+            keys = []
+            # Always create the service activity log for the user, if available 
+            if attributes.get('serviced_username', None):
+                keys.append('screensaveruser')
+                keys.append(attributes['serviced_username'])
+            elif attributes.get('screen_facility_id', None):
+                keys.append('screen')
+                keys.append(attributes['screen_facility_id'])
+            keys.append(self._meta.resource_name)
+            log.uri = '%s/%s' % ('/'.join(keys), log.key)
+        
+            logger.info('log uri: %r, %r', log.uri, log)
 
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def delete_obj(self, request, deserialized, **kwargs):
+
+        activity_id = kwargs.get('activity_id', None)
+        if activity_id:
+            try:
+                sa = ServiceActivity.objects.get(
+                    activity_id=activity_id)
+                sa.delete()
+            except ObjectDoesNotExist:
+                logger.warn('no such ServiceActivity: %s' % activity_id)
+                raise Exception(
+                    'ServiceActivity for activity_id: %s not found' % activity_id)
+        else:
+            raise Exception(
+                'ServiceActivity delete action requires an activity_id %s' 
+                % kwargs)
+        
     def get_query(self, param_hash):
 
-        # general setup
         schema = self.build_schema()
+        logger.debug('serviceactivity fields: %r', schema['fields'].keys())
         
+        # general setup
+        alias_qualifier = 'sa'
         manual_field_includes = set(param_hash.get('includes', []))
+        # for join to screen query (TODO: only include if screen fields rqst'd)
+        manual_field_includes.add('screen_id')
         
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
@@ -10764,205 +10964,68 @@ class CherryPickLiquidTransferResource(ActivityResource):
         filename = self._get_filename(readable_filter_hash)
               
         order_params = param_hash.get('order_by', [])
+        order_params.append('-date_of_activity')
         field_hash = self.get_visible_fields(
             schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
+        field_hash = { key:val for key, val in field_hash.items() 
+            if val['scope'] == 'fields.serviceactivity'}  
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
         # specific setup
         _a = self.bridge['activity']
-        _la = self.bridge['lab_activity']
-        _cplt = self.bridge['cherry_pick_liquid_transfer']
+        _sa = self.bridge['service_activity']
         _screen = self.bridge['screen']
-        _cpap = self.bridge['cherry_pick_assay_plate']
-        _cherry_pick = self.bridge['cherry_pick_request']
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_serviced_sa')
+        _serviced = _user_cte.alias('serviced_user')
+        
         j = _a
-        j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
-        j = j.join(_cplt, _cplt.c.activity_id == _la.c.activity_id)        
-        j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
-
-        custom_columns = {
-            'type': literal_column("'cplt'"),
-            'activity_class': literal_column("'cplt'"),
-            'cherry_pick_request_id': (
-                select([_cpap.c.cherry_pick_request_id])
-                    .select_from(_cpap)
-                    .where(_cpap.c.cherry_pick_liquid_transfer_id 
-                        == _a.c.activity_id)
-                    .limit(1))
-            }
-        custom_columns.update(self.get_custom_columns('cplt'))
-        
-        base_query_tables = ['activity', 'lab_activity',
-            'cherry_pick_liquid_transfer', 'screen', 'cherry_pick'] 
-        columns = self.build_sqlalchemy_columns(
-            field_hash.values(), base_query_tables=base_query_tables,
-            custom_columns=custom_columns)
-        
-        stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s', compiled_stmt)
-        # general setup
-         
-        (stmt, count_stmt) = self.wrap_statement(
-            stmt, order_clauses, filter_expression)
-        
-        return (field_hash, columns, stmt, count_stmt,filename)
-
-
-class CherryPickScreeningResource(ActivityResource):    
-    ''' DEPRECATED: new CherryPickRequest does not use cherry pick screening '''
-
-    class Meta:
-
-        queryset = Screening.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
-                                             IccblSessionAuthentication())
-        authorization = UserGroupAuthorization()
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        resource_name = 'cherrypickscreening'
-        max_limit = 10000
-        always_return_data = True
-
-    def __init__(self, **kwargs):
-        super(CherryPickScreeningResource, self).__init__(**kwargs)
-
-    def prepend_urls(self):
-
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url((r"^(?P<resource_name>%s)/" 
-                 r"(?P<activity_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
-
-    def get_query(self, param_hash):
-        
-        # general setup
-        schema = self.build_schema()
-        
-        manual_field_includes = set(param_hash.get('includes', []))
-        
-        (filter_expression, filter_hash, readable_filter_hash) = \
-            SqlAlchemyResource.build_sqlalchemy_filters(
-                schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
-              
-        order_params = param_hash.get('order_by', [])
-        field_hash = self.get_visible_fields(
-            schema['fields'], filter_hash.keys(), manual_field_includes,
-            param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])),
-            order_params=order_params)
-        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-            order_params, field_hash)
-         
-        # specific setup
-        _a = self.bridge['activity']
-        _la = self.bridge['lab_activity']
-        _screening = self.bridge['screening']
-        _cps = self.bridge['cherry_pick_screening']
-        _cpr = self.bridge['cherry_pick_request']
-        _screen = self.bridge['screen']
-        j = _a
-        j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
-        j = j.join(_screening, _screening.c.activity_id == _la.c.activity_id)
-        j = j.join(_cps, _cps.c.activity_id == _la.c.activity_id)
+        j = j.join(_sa, _a.c.activity_id == _sa.c.activity_id)
         j = j.join(
-            _cpr,
-            _cpr.c.cherry_pick_request_id == _cps.c.cherry_pick_request_id)
-        j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
-                
+            _serviced,
+            _sa.c.serviced_user_id == _serviced.c.screensaver_user_id, isouter=True)
+        j = j.join(
+            _screen,
+            _sa.c.serviced_screen_id == _screen.c.screen_id, isouter=True)
+        
+        # Get custom columns from the parent (ActivityResource); the
+        # ServiceActivity query rows contain the needed activity and screen ids
         custom_columns = \
-            super(CherryPickScreeningResource, self).get_custom_columns('ls')
+            super(ServiceActivityResource, self).get_custom_columns('sa')
         custom_columns.update({
-            'type': cast(
-                literal_column("'cherrypickscreening'"), 
+            'activity_class': cast(
+                literal_column("'serviceactivity'"), 
                 sqlalchemy.sql.sqltypes.Text),
-            'activity_class': 
-                cast(
-                    literal_column("'cherrypickscreening'"), 
-                    sqlalchemy.sql.sqltypes.Text),
+            'serviced_user': _serviced.c.name,
+            'serviced_username': _serviced.c.username,
             })
 
-        base_query_tables = ['activity', 'lab_activity', 'screening',
-            'cherry_pick_screening', 'cherry_pick_request', 'screen'] 
+        base_query_tables = ['activity', 'service_activity', 'screen'] 
         columns = self.build_sqlalchemy_columns(
             field_hash.values(), base_query_tables=base_query_tables,
             custom_columns=custom_columns)
         
         stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s', compiled_stmt)
+
+        # general setup
          
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
+
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
         
         return (field_hash, columns, stmt, count_stmt, filename)
-        
-    @read_authorization
-    def build_list_response(self, request, **kwargs):
- 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
-        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
-        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
-        if is_data_interchange:
-            use_vocab = False
-            use_titles = False
-        schema = kwargs['schema']
-         
-        is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
- 
-        try:
-             
-            (field_hash, columns, stmt, count_stmt,filename) = self.get_query(param_hash)
-             
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
-                    field_hash, rowproxy_generator)
-  
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-             
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-              
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
+
 
 class LibraryScreeningResource(ActivityResource):
     
+    # Constants: may be overridden in the settings.py
     MIN_WELL_VOL_SMALL_MOLECULE = Decimal('0.0000069') # 6.9 uL
     MIN_WELL_VOL_RNAI = Decimal(0)
     
@@ -11042,17 +11105,10 @@ class LibraryScreeningResource(ActivityResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url(r"^(?P<resource_name>%s)/schema%s$" 
-#                 % (self._meta.alt_resource_name, trailing_slash()),
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<activity_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             url((r"^(?P<resource_name>%s)/" 
-#                  r"(?P<activity_id>([\d]+))%s$")
-#                     % (self._meta.alt_resource_name, trailing_slash()),
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<activity_id>([\d]+))/plates%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -11258,7 +11314,6 @@ class LibraryScreeningResource(ActivityResource):
         class ErrorDict():
             ''' Track errors and warnings for each plate range
             '''
-            
             def __init__(self):
                 self.errors = defaultdict(set)
                 self.warnings = defaultdict(set)
@@ -11659,7 +11714,14 @@ class LibraryScreeningResource(ActivityResource):
             return comments
 
     def get_query(self, schema, param_hash):
-        '''  LibraryScreeningResource
+        '''  
+        LibraryScreeningResource
+        - NOTE: overrides the ActivityResource get_query:
+        - TODO: LibraryScreeningResource does not need to extend ActivityResource
+        
+        special use case: 
+        - use "library_plates_screened__contains" param to query for 
+        LibraryScreenings that have screened a particular set of plate-copies
         '''
 
         manual_field_includes = set(param_hash.get('includes', []))
@@ -11674,6 +11736,7 @@ class LibraryScreeningResource(ActivityResource):
                 schema, param_hash=param_hash)
               
         order_params = param_hash.get('order_by', [])
+        order_params.append('-date_of_activity')
         field_hash = self.get_visible_fields(
             schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
@@ -11699,15 +11762,19 @@ class LibraryScreeningResource(ActivityResource):
             _library_screening.c.activity_id == _la.c.activity_id)
         j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
 
+        # Get custom columns from the parent (ActivityResource); the
+        # LibraryScreening query rows contain the needed activity and screen ids
         custom_columns = \
             super(LibraryScreeningResource, self).get_custom_columns('ls')
         custom_columns.update({
-            'type': cast(
-                literal_column("'libraryscreening'"), 
-                sqlalchemy.sql.sqltypes.Text),
-            'activity_class': cast(
-                literal_column("'libraryscreening'"), 
-                sqlalchemy.sql.sqltypes.Text),
+            'type': cast(case([
+                (_library_screening.c.is_for_external_library_plates,
+                        'externallibraryscreening')],
+                    else_='libraryscreening'), sqlalchemy.sql.sqltypes.Text),
+            'activity_class': cast(case([
+                (_library_screening.c.is_for_external_library_plates,
+                        'externallibraryscreening')],
+                    else_='libraryscreening'), sqlalchemy.sql.sqltypes.Text),
             'libraries_screened_count': literal_column(
                 '(select count(distinct(l.*)) from library l '
                 'join copy using(library_id) join plate using(copy_id) '
@@ -11782,7 +11849,11 @@ class LibraryScreeningResource(ActivityResource):
         
     @read_authorization
     def build_list_response(self, request, **kwargs):
- 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
+
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -11791,7 +11862,6 @@ class LibraryScreeningResource(ActivityResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
          
         is_for_detail = kwargs.pop('is_for_detail', False)
  
@@ -11929,7 +11999,10 @@ class LibraryScreeningResource(ActivityResource):
 
     def build_patch_detail(self, request, deserialized, log=None, **kwargs):
 
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -11987,9 +12060,13 @@ class LibraryScreeningResource(ActivityResource):
         return _data
 
     def build_post_detail(self, request, deserialized, log=None, **kwargs):
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
         logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
@@ -12045,7 +12122,9 @@ class LibraryScreeningResource(ActivityResource):
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         if not new_data:
             raise BadRequest('no data found for the new obj created by post: %r', obj)
-        self.log_patch(request, original_data,new_data,log=log, **kwargs)
+        self.log_patch(
+            request, original_data,new_data,log=log, 
+            full_create_log=True, **kwargs)
         log.save()
 
         # FIXME: create a log for the parent screen
@@ -12740,220 +12819,258 @@ class LibraryScreeningResource(ActivityResource):
         #             raise Exception(
         #                 'library_screening delete action requires an activity_id %s' 
         #                 % kwargs)
+
             
-
-class ServiceActivityResource(ActivityResource):    
-
-    class Meta:
-
-        queryset = ServiceActivity.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
-                                             IccblSessionAuthentication())
-        authorization = UserGroupAuthorization()
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        excludes = ['digested_password']
-        resource_name = 'serviceactivity'
-        max_limit = 10000
-        always_return_data = True
-
-    def __init__(self, **kwargs):
-        super(ServiceActivityResource, self).__init__(**kwargs)
-
-    def prepend_urls(self):
-
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url((r"^(?P<resource_name>%s)/" 
-                 r"(?P<activity_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-        ]    
-
-    @write_authorization
-    @un_cache
-    @transaction.atomic
-    def patch_obj(self, request, deserialized, **kwargs):
-
-        schema = kwargs['schema']
-        fields = schema['fields']
-        initializer_dict = {}
-        # TODO: wrapper for parsing
-        for key in fields.keys():
-            if deserialized.get(key, None):
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
-        
-        serviced_username = deserialized.get('serviced_username', None)
-        if not serviced_username:
-            raise Exception('serviced_username not specified %s' % deserialized)
-        activity_type = deserialized.get('type', None)
-        if not activity_type:
-            raise Exception('activity type not specified %s' % deserialized)
-        # TODO: drive this from the metadata "field" property
-        initializer_dict['service_activity_type'] = activity_type
-        performed_by_username = deserialized.get('performed_by_username', None)
-        if not performed_by_username:
-            raise ValidationError(
-                key='performed_by_username',
-                msg='required')
-        try:
-            serviced_user = ScreensaverUser.objects.get(
-                username=serviced_username)
-            initializer_dict['serviced_user'] = serviced_user
-        except ObjectDoesNotExist:
-            logger.exception(
-                'serviced_user/username does not exist: %s' % serviced_username)
-            raise
-        try:
-            performed_by_user = ScreensaverUser.objects.get(
-                username=performed_by_username)
-            initializer_dict['performed_by_user_id'] = performed_by_user.pk
-        except ObjectDoesNotExist:
-            logger.exception(
-                'admin_user/username does not exist: %s' % admin_username)
-            raise
-
-        try:
-            activity = None
-            service_activity = None
-            if 'activity_id' in initializer_dict:
-                try:
-                    activity_id = initializer_dict['activity_id']
-                    activity = Activity.objects.get(pk=activity_id)
-                    service_activity = ServiceActivity.objects.get(
-                        activity=activity)
-                except ObjectDoesNotExist:
-                    logger.error('Activity does not exist: %s' % activity_id)
-                    raise Exception('Activity does not exist: %s' % activity_id)
-            else:
-                activity = Activity.objects.create(
-                    performed_by=performed_by_user,
-                    date_of_activity=initializer_dict['date_of_activity'])
-                if 'log' in kwargs:
-                    activity.apilog_uri = kwargs['log'].log_uri
-            for key, val in initializer_dict.items():
-                if hasattr(activity, key):
-                    # note: setattr only works for simple attributes, not foreign keys
-                    setattr(activity, key, val)
-                else:
-                    logger.warn(
-                        'no such attribute on activity: %s:%r' % (key, val))
-            activity.save()
-            if not service_activity:
-                service_activity = ServiceActivity.objects.create(
-                    activity=activity,
-                    serviced_user=serviced_user)
-                logger.info('created service_activity: %s' % service_activity)
-            logger.info('initializer dict %s' % initializer_dict)
-            for key, val in initializer_dict.items():
-                if hasattr(service_activity, key):
-                    # note: setattr only works for simple attributes, not foreign keys
-                    setattr(service_activity, key, val)
-                else:
-                    logger.warn('no such attribute on service_activity: %s:%r' 
-                        % (key, val))
-            service_activity.save()
-            return { API_RESULT_OBJ: service_activity }
-        except Exception, e:
-            logger.exception('on patch_obj')
-            raise e
-    
-    @write_authorization
-    @un_cache
-    @transaction.atomic
-    def delete_obj(self, request, deserialized, **kwargs):
-
-        activity_id = kwargs.get('activity_id', None)
-        if activity_id:
-            try:
-                ServiceActivity.objects.get(
-                    activity__activity_id=activity_id).delete()
-            except ObjectDoesNotExist:
-                logger.warn('no such ServiceActivity: %s' % activity_id)
-                raise Exception(
-                    'ServiceActivity for activity_id: %s not found' % activity_id)
-        else:
-            raise Exception(
-                'ServiceActivity delete action requires an activity_id %s' 
-                % kwargs)
-        
-    def get_query(self, param_hash):
-
-        schema = self.build_schema()
-        logger.debug('serviceactivity fields: %r', schema['fields'].keys())
-        
-        # general setup
-        alias_qualifier = 'sa'
-        manual_field_includes = set(param_hash.get('includes', []))
-        # for join to screen query (TODO: only include if screen fields rqst'd)
-        manual_field_includes.add('screen_id')
-        
-        (filter_expression, filter_hash, readable_filter_hash) = \
-            SqlAlchemyResource.build_sqlalchemy_filters(
-                schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
-              
-        order_params = param_hash.get('order_by', [])
-        field_hash = self.get_visible_fields(
-            schema['fields'], filter_hash.keys(), manual_field_includes,
-            param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])),
-            order_params=order_params)
-        field_hash = { key:val for key, val in field_hash.items() 
-            if val['scope'] == 'fields.serviceactivity'}  
-        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-            order_params, field_hash)
-         
-        # specific setup
-        _a = self.bridge['activity']
-        _sa = self.bridge['service_activity']
-        _screen = self.bridge['screen']
-        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_serviced')
-        _serviced = _user_cte.alias('serviced_user')
-        
-        j = _a
-        j = j.join(_sa, _a.c.activity_id == _sa.c.activity_id)
-        j = j.join(
-            _serviced,
-            _sa.c.serviced_user_id == _serviced.c.screensaver_user_id)
-        j = j.join(
-            _screen,
-            _sa.c.serviced_screen_id == _screen.c.screen_id, isouter=True)
-        
-        custom_columns = \
-            super(ServiceActivityResource, self).get_custom_columns('sa')
-        custom_columns.update({
-            'activity_class': cast(
-                literal_column("'serviceactivity'"), 
-                sqlalchemy.sql.sqltypes.Text),
-            'serviced_user': _serviced.c.name,
-            'serviced_username': _serviced.c.username,
-            })
-
-        base_query_tables = ['activity', 'service_activity', 'screen'] 
-        columns = self.build_sqlalchemy_columns(
-            field_hash.values(), base_query_tables=base_query_tables,
-            custom_columns=custom_columns)
-        
-        stmt = select(columns.values()).select_from(j)
-
-        # general setup
-         
-        (stmt, count_stmt) = self.wrap_statement(
-            stmt, order_clauses, filter_expression)
-        
-        return (field_hash, columns, stmt, count_stmt, filename)
-
+# class CherryPickLiquidTransferResource(ActivityResource):
+#     ''' DEPRECATED: new CherryPickRequest does not use cplt '''
+# 
+#     class Meta:
+# 
+#         queryset = Screening.objects.all()
+#         authentication = MultiAuthentication(BasicAuthentication(),
+#                                              IccblSessionAuthentication())
+#         authorization = UserGroupAuthorization()
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         resource_name = 'cplt'
+#         max_limit = 10000
+#         always_return_data = True
+# 
+#     def __init__(self, **kwargs):
+#         super(CherryPickLiquidTransferResource, self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+# 
+#         return [
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url((r"^(?P<resource_name>%s)/" 
+#                  r"(?P<activity_id>([\d]+))%s$")
+#                     % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#         ]    
+#     
+#     def get_custom_columns(self, alias_qualifier):
+#         '''
+#         Convenience method for subclasses: reusable custom columns
+#         @param alias_qualifier a sql compatible string used to name subqueries
+#             so that this method may be called multiple times to compose a query
+#         '''
+#         ccs = super(CherryPickLiquidTransferResource, self).get_custom_columns(
+#             alias_qualifier)
+#         return ccs
+# 
+#     def get_query(self, param_hash):
+# 
+#         # general setup
+#         schema = self.build_schema()
+#         
+#         manual_field_includes = set(param_hash.get('includes', []))
+#         
+#         (filter_expression, filter_hash, readable_filter_hash) = \
+#             SqlAlchemyResource.build_sqlalchemy_filters(
+#                 schema, param_hash=param_hash)
+#         filename = self._get_filename(readable_filter_hash)
+#               
+#         order_params = param_hash.get('order_by', [])
+#         field_hash = self.get_visible_fields(
+#             schema['fields'], filter_hash.keys(), manual_field_includes,
+#             param_hash.get('visibilities'),
+#             exact_fields=set(param_hash.get('exact_fields', [])),
+#             order_params=order_params)
+#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#             order_params, field_hash)
+#          
+#         # specific setup
+#         _a = self.bridge['activity']
+#         _la = self.bridge['lab_activity']
+#         _cplt = self.bridge['cherry_pick_liquid_transfer']
+#         _screen = self.bridge['screen']
+#         _cpap = self.bridge['cherry_pick_assay_plate']
+#         _cherry_pick = self.bridge['cherry_pick_request']
+#         j = _a
+#         j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
+#         j = j.join(_cplt, _cplt.c.activity_id == _la.c.activity_id)        
+#         j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
+# 
+#         custom_columns = {
+#             'type': literal_column("'cplt'"),
+#             'activity_class': literal_column("'cplt'"),
+#             'cherry_pick_request_id': (
+#                 select([_cpap.c.cherry_pick_request_id])
+#                     .select_from(_cpap)
+#                     .where(_cpap.c.cherry_pick_liquid_transfer_id 
+#                         == _a.c.activity_id)
+#                     .limit(1))
+#             }
+#         custom_columns.update(self.get_custom_columns('cplt'))
+#         
+#         base_query_tables = ['activity', 'lab_activity',
+#             'cherry_pick_liquid_transfer', 'screen', 'cherry_pick'] 
+#         columns = self.build_sqlalchemy_columns(
+#             field_hash.values(), base_query_tables=base_query_tables,
+#             custom_columns=custom_columns)
+#         
+#         stmt = select(columns.values()).select_from(j)
+#         compiled_stmt = str(stmt.compile(
+#             dialect=postgresql.dialect(),
+#             compile_kwargs={"literal_binds": True}))
+#         logger.info('compiled_stmt %s', compiled_stmt)
+#         # general setup
+#          
+#         (stmt, count_stmt) = self.wrap_statement(
+#             stmt, order_clauses, filter_expression)
+#         
+#         return (field_hash, columns, stmt, count_stmt,filename)
+# 
+# 
+# class CherryPickScreeningResource(ActivityResource):    
+#     ''' DEPRECATED: new CherryPickRequest does not use cherry pick screening '''
+# 
+#     class Meta:
+# 
+#         queryset = Screening.objects.all()
+#         authentication = MultiAuthentication(BasicAuthentication(),
+#                                              IccblSessionAuthentication())
+#         authorization = UserGroupAuthorization()
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         resource_name = 'cherrypickscreening'
+#         max_limit = 10000
+#         always_return_data = True
+# 
+#     def __init__(self, **kwargs):
+#         super(CherryPickScreeningResource, self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+# 
+#         return [
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url((r"^(?P<resource_name>%s)/" 
+#                  r"(?P<activity_id>([\d]+))%s$")
+#                     % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#         ]    
+# 
+#     def get_query(self, param_hash):
+#         
+#         # general setup
+#         schema = self.build_schema()
+#         
+#         manual_field_includes = set(param_hash.get('includes', []))
+#         
+#         (filter_expression, filter_hash, readable_filter_hash) = \
+#             SqlAlchemyResource.build_sqlalchemy_filters(
+#                 schema, param_hash=param_hash)
+#         filename = self._get_filename(readable_filter_hash)
+#               
+#         order_params = param_hash.get('order_by', [])
+#         field_hash = self.get_visible_fields(
+#             schema['fields'], filter_hash.keys(), manual_field_includes,
+#             param_hash.get('visibilities'),
+#             exact_fields=set(param_hash.get('exact_fields', [])),
+#             order_params=order_params)
+#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#             order_params, field_hash)
+#          
+#         # specific setup
+#         _a = self.bridge['activity']
+#         _la = self.bridge['lab_activity']
+#         _screening = self.bridge['screening']
+#         _cps = self.bridge['cherry_pick_screening']
+#         _cpr = self.bridge['cherry_pick_request']
+#         _screen = self.bridge['screen']
+#         j = _a
+#         j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
+#         j = j.join(_screening, _screening.c.activity_id == _la.c.activity_id)
+#         j = j.join(_cps, _cps.c.activity_id == _la.c.activity_id)
+#         j = j.join(
+#             _cpr,
+#             _cpr.c.cherry_pick_request_id == _cps.c.cherry_pick_request_id)
+#         j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
+#                 
+#         custom_columns = \
+#             super(CherryPickScreeningResource, self).get_custom_columns('ls')
+#         custom_columns.update({
+#             'type': cast(
+#                 literal_column("'cherrypickscreening'"), 
+#                 sqlalchemy.sql.sqltypes.Text),
+#             'activity_class': 
+#                 cast(
+#                     literal_column("'cherrypickscreening'"), 
+#                     sqlalchemy.sql.sqltypes.Text),
+#             })
+# 
+#         base_query_tables = ['activity', 'lab_activity', 'screening',
+#             'cherry_pick_screening', 'cherry_pick_request', 'screen'] 
+#         columns = self.build_sqlalchemy_columns(
+#             field_hash.values(), base_query_tables=base_query_tables,
+#             custom_columns=custom_columns)
+#         
+#         stmt = select(columns.values()).select_from(j)
+#         compiled_stmt = str(stmt.compile(
+#             dialect=postgresql.dialect(),
+#             compile_kwargs={"literal_binds": True}))
+#         logger.info('compiled_stmt %s', compiled_stmt)
+#          
+#         (stmt, count_stmt) = self.wrap_statement(
+#             stmt, order_clauses, filter_expression)
+#         
+#         return (field_hash, columns, stmt, count_stmt, filename)
+#         
+#     @read_authorization
+#     def build_list_response(self, request, **kwargs):
+#  
+#         param_hash = self._convert_request_to_dict(request)
+#         param_hash.update(kwargs)
+#         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+#         use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+#         use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+#         if is_data_interchange:
+#             use_vocab = False
+#             use_titles = False
+#         schema = kwargs['schema']
+#          
+#         is_for_detail = kwargs.pop('is_for_detail', False)
+# #         filename = self._get_filename(schema, kwargs)
+#  
+#         try:
+#              
+#             (field_hash, columns, stmt, count_stmt,filename) = self.get_query(param_hash)
+#              
+#             rowproxy_generator = None
+#             if use_vocab is True:
+#                 rowproxy_generator = \
+#                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+#                 # use "use_vocab" as a proxy to also adjust siunits for viewing
+#                 rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+#                     field_hash, rowproxy_generator)
+#   
+#             title_function = None
+#             if use_titles is True:
+#                 def title_function(key):
+#                     return field_hash[key]['title']
+#             if is_data_interchange:
+#                 title_function = DbApiResource.datainterchange_title_function(
+#                     field_hash,schema['id_attribute'])
+#              
+#             return self.stream_response_from_statement(
+#                 request, stmt, count_stmt, filename,
+#                 field_hash=field_hash,
+#                 param_hash=param_hash,
+#                 is_for_detail=is_for_detail,
+#                 rowproxy_generator=rowproxy_generator,
+#                 title_function=title_function, meta=kwargs.get('meta', None),
+#                 use_caching=True)
+#               
+#         except Exception, e:
+#             logger.exception('on get list')
+#             raise e  
 
 class ScreenAuthorization(UserGroupAuthorization):
     
@@ -13837,6 +13954,9 @@ class ScreenResource(DbApiResource):
         ScreenResource
         '''
         logger.info('ScreenResource - build_list_response')
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -13846,7 +13966,7 @@ class ScreenResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
+#         schema = kwargs['schema']
          
         is_for_detail = kwargs.pop('is_for_detail', False)
  
@@ -14324,6 +14444,10 @@ class UserChecklistItemResource(DbApiResource):
 
     def build_list_response(self, request, **kwargs):
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -14332,7 +14456,6 @@ class UserChecklistItemResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         item_group = param_hash.pop('item_group', None)
@@ -14491,8 +14614,12 @@ class UserChecklistItemResource(DbApiResource):
     @un_cache
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
+        
         logger.info('patch checklist item: %r', deserialized)
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         # TODO: wrapper for parsing
@@ -14503,31 +14630,39 @@ class UserChecklistItemResource(DbApiResource):
         
         username = deserialized.get('username', None)
         if not username:
-            raise Exception('username not specified %s' % deserialized)
+            raise ValidationError(
+                key='username',
+                msg='required')
         item_group = deserialized.get('item_group', None)
         if not item_group:
-            raise Exception('item_group not specified %s' % deserialized)
+            raise ValidationError(
+                key='item_group',
+                msg='required')
         item_name = deserialized.get('item_name', None)
         if not item_name:
-            raise Exception('item_name not specified %s' % deserialized)
+            raise ValidationError(
+                key='item_name',
+                msg='required')
         admin_username = deserialized.get('admin_username', None)
         if not admin_username:
-            raise Exception('admin_username not specified %s' % deserialized)
+            raise ValidationError(
+                key='admin_username',
+                msg='required')
 
         try:
             user = ScreensaverUser.objects.get(username=username)
             initializer_dict['screensaver_user_id'] = user.pk
         except ObjectDoesNotExist:
-            logger.exception('user/username does not exist: %s' % username)
-            raise
+            raise ValidationError(
+                key='username',
+                msg='username does not exist: %r' % username)
         try:
             admin_user = ScreensaverUser.objects.get(username=admin_username)
             initializer_dict['admin_user_id'] = admin_user.pk
         except ObjectDoesNotExist:
-            logger.exception(
-                'admin_user/username does not exist: %s' % admin_username)
-            raise Exception(
-                'admin_user/username does not exist: %s' % admin_username)
+            raise ValidationError(
+                key='admin_username',
+                msg='username does not exist: %r' % admin_username)
 
         try:
             try:
@@ -14723,10 +14858,11 @@ class ScreensaverUserResource(DbApiResource):
         return user_table
         
     @classmethod
-    def get_lab_head_cte(cls):
+    def get_lab_head_cte(cls, alias_qualifier=''):
         
-        affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte().cte('lab_affil')
-        _user = ScreensaverUserResource.get_user_cte().cte('lab_head_users')
+        affiliation_table = \
+            ScreensaverUserResource.get_lab_affiliation_cte().cte('lab_affil_%s' %alias_qualifier)
+        _user = ScreensaverUserResource.get_user_cte().cte('lab_head_users_%s'%alias_qualifier)
         bridge = get_tables()
         _su = bridge['screensaver_user']
         
@@ -14782,6 +14918,10 @@ class ScreensaverUserResource(DbApiResource):
 
     def build_list_response(self, request, **kwargs):
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -14790,7 +14930,6 @@ class ScreensaverUserResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        schema = kwargs['schema']
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 #         filename = self._get_filename(schema, kwargs)
@@ -14968,7 +15107,10 @@ class ScreensaverUserResource(DbApiResource):
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         # TODO: wrapper for parsing
@@ -16429,6 +16571,11 @@ class WellResource(DbApiResource):
         # so put is allowed to create, but patch must reference extant reagent 
         # (changes reagent assoc with well)
          
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
+
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         library = Library.objects.get(
@@ -16440,7 +16587,6 @@ class WellResource(DbApiResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:

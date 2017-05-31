@@ -1099,10 +1099,16 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ServiceActivity',
             fields=[
+                ('activitylink', models.OneToOneField(
+                    primary_key=True, parent_link=True, db_column='activity_id', 
+                    serialize=False, to='db.Activity')),
                 ('service_activity_type', models.TextField()),
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.Activity')),
+#                 ('activity', models.OneToOneField(primary_key=True, 
+#                     serialize=False, to='db.Activity')),
 #                 ('funding_support', models.TextField(null=True)),
-                ('funding_support_link', models.ForeignKey(db_column='funding_support_id', to='db.FundingSupport', null=True)),
+                ('funding_support_link', models.ForeignKey(
+                    db_column='funding_support_id', to='db.FundingSupport', 
+                    null=True)),
             ],
             options={
                 'db_table': 'service_activity',

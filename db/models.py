@@ -45,12 +45,17 @@ class Activity(models.Model):
             % (self.activity_id, self.performed_by))
 
 
-class ServiceActivity(models.Model):
+class ServiceActivity(Activity):
     
-    activity = models.OneToOneField(Activity, primary_key=True)
+    activitylink = models.OneToOneField(
+        Activity, primary_key=True, parent_link=True,db_column='activity_id')
+#     activity = models.OneToOneField(Activity, primary_key=True)
     service_activity_type = models.TextField()
+    
+    # NOTE: SS Version 2: require either serviced screen or serviced user
     serviced_screen = models.ForeignKey('Screen', null=True)
-    serviced_user = models.ForeignKey('ScreensaverUser')
+    serviced_user = models.ForeignKey('ScreensaverUser', null=True)
+    
     funding_support = models.TextField(null=True)
     
     class Meta:
@@ -58,10 +63,10 @@ class ServiceActivity(models.Model):
 
     def __repr__(self):
         return (
-            '<ServiceActivity(activity=%r, '
+            '<ServiceActivity(activity_id=%r, performed_by=%r, '
             'service_activity_type=%r, serviced_screen=%r, serviced_user=%r)>' 
-            % (self.activity, self.service_activity_type,
-               self.serviced_screen, self.serviced_user.username))
+            % (self.activity_id, self.performed_by, self.service_activity_type,
+               self.serviced_screen, self.serviced_user))
 
 
 class LabActivity(Activity):
@@ -81,7 +86,7 @@ class LabActivity(Activity):
         return (
             '<LabActivity(activity_id=%r, performed_by=%r, '
             'screen=%r, volume=%r)>' 
-            % (self.activity_id, self.performed_by, self.screen.facility_id,
+            % (self.activity_id, self.performed_by, self.screen,
                 self.volume_transferred_per_well_from_library_plates))
 
 class Screening(LabActivity):
@@ -682,6 +687,7 @@ class CherryPickScreening(Screening):
 # TODO: record plating as a status on cherry pick/CPAP
 class CherryPickLiquidTransfer(LabActivity):
     
+    cherry_pick_request = models.ForeignKey('CherryPickRequest', null=False)
     labactivitylink = models.OneToOneField(
         'LabActivity', primary_key=True, parent_link=True, 
         db_column='activity_id')

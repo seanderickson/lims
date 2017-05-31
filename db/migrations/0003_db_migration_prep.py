@@ -15,6 +15,13 @@ from db.support.data_converter import default_converter
 
 logger = logging.getLogger(__name__)
 
+#####
+# Migration prep:
+# Perform migrations required so that Django may use the legacy schema for 
+# subsequent actions
+# * This migration must be performed before the migration bootstrap step
+# * see migration.sh
+#####
 
 def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
     resource_uri = '/reports/api/v1/vocabulary/%s/%s/'

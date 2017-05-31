@@ -156,6 +156,7 @@ def _create_ls_log(
 def _create_plate_activity_log(activity_dict):
     log = ApiLog()
     log.ref_resource_name = librarycopyplate_resource_name
+    log.api_action = 'PATCH'
     log.key = '/'.join([
         activity_dict['library_short_name'],activity_dict['copy_name'],
         str(int(activity_dict['plate_number']))])
@@ -169,6 +170,25 @@ def _create_plate_activity_log(activity_dict):
     log.username = activity_dict['username']
     log.user_id = activity_dict['screensaver_user_id']
     return log
+
+def create_copy_comments_logs(apps, schema_editor):
+    
+    #TODO convert copy.comments to apilogs
+    
+    pass
+    
+def create_screen_comments_logs(apps, schema_editor):
+    
+    #TODO convert screen.comments to apilogs
+    
+    pass
+    
+def create_user_comments_logs(apps, schema_editor):
+    
+    #TODO convert screen.comments to apilogs
+    
+    pass
+    
 
 def create_plate_generic_logs(apps, schema_editor):
     logger.info('create plate generic activity logs')

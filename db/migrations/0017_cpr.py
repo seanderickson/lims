@@ -207,7 +207,34 @@ class Migration(migrations.Migration):
             from activity a 
             where a.activity_id=cherry_pick_assay_plate.cherry_pick_liquid_transfer_id;
         '''),
-            
+
+        # Create a link from CPLT directly to CPR for Activity reporting
+        migrations.AddField(
+            model_name='cherrypickliquidtransfer',
+            name='cherry_pick_request',
+            field=models.ForeignKey(to='db.CherryPickRequest', null=True),
+        ),
+        migrations.RunSQL('''
+        UPDATE cherry_pick_liquid_transfer
+            SET cherry_pick_request_id = update_ids.cherry_pick_request_id
+            from (
+            select distinct(cpap.cherry_pick_request_id), activity_id 
+            from cherry_pick_liquid_transfer cplt 
+            join cherry_pick_assay_plate cpap on (cherry_pick_liquid_transfer_id=activity_id) 
+            order by activity_id asc ) update_ids
+            where update_ids.activity_id=cherry_pick_liquid_transfer.activity_id;
+        '''),
+        # NOTE: Following should not occur, but including to fix test bed condition
+        # migrations.RunSQL('''
+        #     DELETE from cherry_pick_liquid_transfer
+        #     where cherry_pick_request_id is null;        
+        # '''),
+        migrations.AlterField(
+            model_name='cherrypickliquidtransfer',
+            name='cherry_pick_request',
+            field=models.ForeignKey(to='db.CherryPickRequest', null=False),
+        ),
+
         # Adjust the plate_ordinal to be one's based
         migrations.RunSQL(
             'update cherry_pick_assay_plate '
@@ -250,5 +277,18 @@ class Migration(migrations.Migration):
                 =cherry_pick_assay_plate.cherry_pick_assay_plate_id
               order by date_of_activity desc limit 1);
         '''),
+#         migrations.RunSQL('''
+#             update plate
+#             set key = library.short_name || '/' || copy.name || '/' || plate_number
+#             from copy join library using(library_id)
+#             where copy.copy_id = plate.copy_id;
+#         '''),
+#         
+#         migrations.AlterField(
+#             model_name='plate',
+#             name='key',
+#             field=models.TextField(unique=True),
+#         ),
+        
     ]
     

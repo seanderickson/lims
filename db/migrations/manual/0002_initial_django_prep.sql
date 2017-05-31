@@ -177,8 +177,6 @@ alter table :_table add primary key(id);
 alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
 alter sequence :_table_sequence owned by :_table.id;
 
-
-
 \set _table screen_keyword
 \set _unique_constraint screen_id,keyword
 
@@ -197,8 +195,6 @@ alter table :_table add primary key(id);
 /** Set the default nextval for Django ORM (AutoField) usage. **/
 alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
 alter sequence :_table_sequence owned by :_table.id;
-
-
 
 /**
   *** Add id field to silencing_reagent_duplex_wells ***
@@ -223,7 +219,6 @@ alter table silencing_reagent_duplex_wells
     alter column id set default nextval('silencing_reagent_duplex_wells_sequence'::regclass);
 alter sequence silencing_reagent_duplex_wells_sequence 
     owned by silencing_reagent_duplex_wells.id;
-
 
 alter table silencing_reagent_duplex_wells 
     RENAME COLUMN silencing_reagent_id to silencingreagent_id;
@@ -448,6 +443,9 @@ TODO: verify that the ldld here is the same as the sr.date_loaded
 update screen_result set date_loaded = TODO: 
 **/
 
+/**
+ * Django is not setting this in migration 0002
+**/
 ALTER TABLE assay_well ALTER COLUMN is_positive SET default false;
 
 /** 

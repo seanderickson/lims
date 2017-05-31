@@ -584,7 +584,10 @@ class ApiResource(SqlAlchemyResource):
             return self.patch_detail(request, **kwargs)
         
         logger.info('Limit the potential candidates for logging to found id_kwargs...')
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         
         kwargs_for_log = kwargs.copy()
         if 'schema' in kwargs_for_log:
@@ -661,6 +664,10 @@ class ApiResource(SqlAlchemyResource):
         # TODO: enforce a policy that either objects are patched or deleted
         # and then posted/patched
         # raise NotImplementedError('put_detail must be implemented')
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
             
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
@@ -685,7 +692,6 @@ class ApiResource(SqlAlchemyResource):
         #     return self.put_detail(request, **kwargs)
         
         # Limit the potential candidates for logging to found id_kwargs
-        schema = kwargs['schema']
         id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for _data in deserialized:
@@ -881,8 +887,9 @@ class ApiResource(SqlAlchemyResource):
     @transaction.atomic      
     def post_detail(self, request, **kwargs):
         '''
-        POST is used to create or update a resource; not idempotent;
+        POST is used to create a resource; 
         - The LIMS client will use POST to create exclusively
+        - Error if the resource exists
         '''
         
         if kwargs.get('data', None):
@@ -903,17 +910,21 @@ class ApiResource(SqlAlchemyResource):
     def build_post_detail(self, request, deserialized, log=None, **kwargs):
         ''' Inner post detail method, returns native dict '''
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         # Note, find kwargs that are available, validate=False, for if they DNE
         kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
         
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         
         logger.info('post detail: %r, %r, %r', 
             self._meta.resource_name, kwargs_for_log, id_attribute)
 
+        # NOTE: create a log if possible, with id_attribute, for downstream
+        log = self.make_log(request, kwargs_for_log, id_attribute=id_attribute)
         original_data = None
-        log = self.make_log(request)
         if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
             # A full id exists, query for the existing state
             try:
@@ -926,12 +937,7 @@ class ApiResource(SqlAlchemyResource):
                 raise ValidationError({ 
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
             original_data = None
-        
-            # NOTE: create a log if possible, with id_attribute, for downstream
-            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute if x in kwargs_for_log])
-            log.uri = '/'.join([log.ref_resource_name,log.key])
-            log.save()
-            logger.debug('log saved: %r', log)
+        log.save()
         
         logger.debug('patch_obj: %r, %r', deserialized, log)
         logger.debug('patch_obj: %r', kwargs)
@@ -942,7 +948,7 @@ class ApiResource(SqlAlchemyResource):
             # TODO: 20170109, legacy, convert patch_obj to return:
             # { API_RESULT_OBJ, API_RESULT_META }
             obj = patch_result
-        logger.debug('build post detail: %r', obj)
+        logger.info('build post detail: %r', obj)
         for id_field in id_attribute:
             if id_field not in kwargs_for_log:
                 val = getattr(obj, id_field,None)
@@ -950,19 +956,15 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log['%s' % id_field] = val
                 else:
                     logger.warn('id field: %r not found in new obj: %r', id_field, obj)
-        # Note: update the log with the id_attribute after object is created
-        if log.key is None:
-            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-        if log.uri is None:
-            log.uri = '/'.join([log.ref_resource_name,log.key])
-        log.save()
 
         # get new state, for logging
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         if not new_data:
             raise BadRequest(
                 'no data found for the new obj created by post: %r', obj)
-        self.log_patch(request, original_data,new_data,log=log, **kwargs)
+        self.log_patch(
+            request, original_data,new_data,log=log, 
+            id_attribute=id_attribute, **kwargs)
         log.save()
         
         # 20170109 - return complex data
@@ -994,22 +996,25 @@ class ApiResource(SqlAlchemyResource):
     def build_patch_detail(self, request, deserialized, **kwargs):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
+        # NOTE: creating a log, even if no data have changed (may be comment only)
+        log = self.make_log(request)
         original_data = None
         if kwargs_for_log:
             try:
                 original_data = self._get_detail_response_internal(**kwargs_for_log)
+                if not log.key:
+                    self.make_log_key(log, original_data, id_attribute=id_attribute)
                 logger.debug('original data: %r', original_data)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
-        # NOTE: creating a log, even if no data have changed (may be comment only)
-        log = self.make_log(request)
-        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-        log.uri = '/'.join([log.ref_resource_name,log.key])
         log.save()
 
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
@@ -1026,19 +1031,13 @@ class ApiResource(SqlAlchemyResource):
                 val = getattr(obj, id_field,None)
                 if val is not None:
                     kwargs_for_log['%s' % id_field] = val
-        # Note: update the log with the id_attribute after object is created
-        if log.key is None:
-            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-        if log.uri is None:
-            log.uri = '/'.join([log.ref_resource_name,log.key])
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
+        self.log_patch(
+            request, original_data,new_data,log=log, 
+            id_attribute=id_attribute, **kwargs)
         log.save()
         logger.info('log saved: %r', log)
-
-        new_data = self._get_detail_response_internal(**kwargs_for_log)
-        self.log_patch(request, original_data,new_data,log=log, **kwargs)
-        log.save()
         
-#         return new_data
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: new_data, }
         if API_RESULT_META in patch_result:
@@ -1061,6 +1060,10 @@ class ApiResource(SqlAlchemyResource):
         
         # TODO: if put_detail is used: rework based on post_detail
         raise NotImplementedError('put_detail must be implemented')
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
 
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -1077,7 +1080,6 @@ class ApiResource(SqlAlchemyResource):
         # the ID keys on create (use POST/PATCH)
         
         kwargs_for_log = self.get_id(deserialized, validate=True, **kwargs)
-        schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         # kwargs_for_log = {}
         # for id_field in id_attribute:
@@ -1148,9 +1150,8 @@ class ApiResource(SqlAlchemyResource):
         if not kwargs_for_log:
             raise Exception('required id keys %s' % id_attribute)
         original_data = self._get_detail_response_internal(**kwargs_for_log)
-        log = self.make_log(request)
-        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
-        log.uri = '/'.join([self._meta.resource_name,log.key])
+        log = self.make_log(
+            request, attributes=original_data, id_attribute=id_attribute)
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
         log.api_action = API_ACTION_DELETE
@@ -1159,16 +1160,13 @@ class ApiResource(SqlAlchemyResource):
         self.delete_obj(request, {}, log=log, **kwargs_for_log)
 
         # Log
-        # TODO: consider log_patches
-        
         logger.info('deleted: %s' %kwargs_for_log)
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
         
-        id_attribute = schema['id_attribute']
-
-        log.diffs = { k:[v,None] for k,v in original_data.items()}
+        # 20170601 - no diffs for delete
+        # log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
 
@@ -1475,7 +1473,7 @@ class ApiResource(SqlAlchemyResource):
     
         return log
     
-    def make_log(self, request, **kwargs):
+    def make_log(self, request, attributes=None, **kwargs):
         ''' 
         Create an *unsaved* log using values from the request and kwargs:
         
@@ -1484,7 +1482,9 @@ class ApiResource(SqlAlchemyResource):
             :request.method
             :request.user
         '''
-
+        logger.debug(
+            'make_log: %r, %r, %r', self._meta.resource_name, attributes, kwargs)
+        
         log = ApiLog()
         log.api_action = str((request.method)).upper()
         log.ref_resource_name = self._meta.resource_name
@@ -1492,8 +1492,6 @@ class ApiResource(SqlAlchemyResource):
         log.user_id = request.user.id 
         log.date_time = _now()
  
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
         if HEADER_APILOG_COMMENT in request.META:
             log.comment = request.META[HEADER_APILOG_COMMENT]
      
@@ -1501,28 +1499,37 @@ class ApiResource(SqlAlchemyResource):
             for key, value in kwargs.items():
                 if hasattr(log, key):
                     setattr(log, key, value)
-#         log.save()
+        
+        if attributes is not None:
+            self.make_log_key(log, attributes, **kwargs)
+            
         return log
 
+    def make_log_key(
+            self, log, attributes, id_attribute=None, schema=None, **kwargs):
+        
+        logger.debug('make_log_key: %r, %r, %r', log, attributes, id_attribute)
+        
+        if id_attribute is None:
+            if schema is None:
+                schema = self.build_schema()
+            id_attribute = schema['id_attribute']
+        log.key = '/'.join([
+            str(attributes[x]) for x in id_attribute if x in attributes])
+        log.uri = '/'.join([log.ref_resource_name,log.key])
+
+        logger.debug('make_log_key: %r, %r', log.key, log.uri)
+    
     def log_patch(self, request, prev_dict, new_dict, log=None, 
-            id_attribute=None, excludes=None, exclude_patterns=None, **kwargs):
+            id_attribute=None, excludes=None, exclude_patterns=None, 
+            full_create_log=False, **kwargs):
+
+        DEBUG_PATCH_LOG = False
         
         default_exclude_patterns = ['comment_array']
         if exclude_patterns is None:
             exclude_patterns = default_exclude_patterns
-#         if excludes:
-#             excludes = [x for x in set(default_excludes) | set(excludes)]
-#         else:
-#             excludes = default_excludes
-#         logger.info('log patch, excludes: %r', excludes)
             
-        DEBUG_PATCH_LOG = False
-        if DEBUG_PATCH_LOG:
-            logger.info('log patch: %r', id_attribute)
-        
-        if id_attribute is None:
-            schema = self.build_schema()
-            id_attribute = schema['id_attribute']
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
@@ -1533,12 +1540,10 @@ class ApiResource(SqlAlchemyResource):
                 prev_dict, new_dict)
 
         if log is None:
-            log = self.make_log(request)
-
+            log = self.make_log(
+                request, attributes=new_dict, id_attribute=id_attribute)
         if not log.key:
-            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-        if not log.uri:
-            log.uri = '/'.join([log.ref_resource_name,log.key])
+            self.make_log_key(log, new_dict, id_attribute=id_attribute)
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
@@ -1553,13 +1558,12 @@ class ApiResource(SqlAlchemyResource):
                 log = None
         else: # creating
             log.api_action = API_ACTION_CREATE
-#             log.added_keys = json.dumps(new_dict.keys())
-#             log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
-            log.diffs = { 
-                key: [None,val] for key,val in new_dict.items() 
-                    if val is not None }
+            if full_create_log is True:
+                log.diffs = { 
+                    key: [None,val] for key,val in new_dict.items() 
+                        if val is not None }
             if DEBUG_PATCH_LOG:
-                logger.info('create, api log: %s', log)
+                logger.info('create, api log: %r', log)
     
         for k,v in kwargs.items():
             if isinstance(k,basestring):
@@ -1617,7 +1621,8 @@ class ApiResource(SqlAlchemyResource):
                         prev_dict, deleted_items)
                 deleted_items.remove(prev_dict)
                 
-            log = self.log_patch(request, prev_dict, new_dict, **kwargs)  
+            log = self.log_patch(
+                request, prev_dict, new_dict, id_attribute=id_attribute, **kwargs)  
             if DEBUG_PATCH_LOG:
                 logger.info('patch log: %r', log)          
             if log:
@@ -1625,10 +1630,9 @@ class ApiResource(SqlAlchemyResource):
             
         for deleted_dict in deleted_items:
             
-            log = self.make_log(request)
-            log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
-        
+            log = self.make_log(
+                request, attributes=deleted_dict, id_attribute=id_attribute)
+
             # user can specify any valid, escaped json for this field
             # if 'apilog_json_field' in bundle.data:
             #     log.json_field = bundle.data['apilog_json_field']
@@ -1637,159 +1641,16 @@ class ApiResource(SqlAlchemyResource):
                 log.parent_log = kwargs.get('parent_log', None)
 
             log.api_action = API_ACTION_DELETE
-            log.diffs = { key:[val,None] for key,val in deleted_dict.items() }
+            # 20170601 - no diffs for delete
+            # log.diffs = { key:[val,None] for key,val in deleted_dict.items() }
             logs.append(log)
             if DEBUG_PATCH_LOG:
                 logger.info('delete, api log: %r',log)
 
         logger.debug('logs: %r', logs)
         logs = ApiLog.bulk_create(logs)
-#         logger.debug('bulk create logs: %r', logs)
-#         with get_engine().connect() as conn:
-#             last_id = int(conn.execute(
-#                 'select last_value from reports_apilog_id_seq;').scalar() or 0)
-#         logs = ApiLog.objects.bulk_create(logs)
-#         #NOTE: postgresql & django 1.10 only: ids are created on bulk create
-#         
-#         bulk_create_diffs = []
-#         for i,log in enumerate(logs):
-#             for key, logdiffs in log.diffs.items():
-#                 logger.info('diff key: %r, diffs: %r', key, logdiffs)
-#                 bulk_create_diffs.append(
-#                     LogDiff(
-#                         log_id=last_id+i+1,
-#                         field_key = key,
-#                         field_scope = 'fields.%s' % log.ref_resource_name,
-#                         before=logdiffs[0],
-#                         after=logdiffs[1])
-#                 )
-#         LogDiff.objects.bulk_create(bulk_create_diffs)
-            
         return logs
 
-#     def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
-#         DEBUG_PATCH_LOG = False
-#         
-#         id_attribute = kwargs.get('id_attribute', None)
-#         if id_attribute is None:
-#             schema = self.build_schema()
-#             id_attribute = schema['id_attribute']
-#         log_comment = None
-#         if HEADER_APILOG_COMMENT in request.META:
-#             log_comment = request.META[HEADER_APILOG_COMMENT]
-#         
-#         if DEBUG_PATCH_LOG:
-#             logger.info(
-#                 'prev_dict: %s, ======new_dict====: %s', 
-#                 prev_dict, new_dict)
-# 
-#         if log is None:
-#             log = self.make_log(request)
-# 
-#         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-#         log.uri = '/'.join([log.ref_resource_name,log.key])
-# 
-#         if 'parent_log' in kwargs:
-#             log.parent_log = kwargs.get('parent_log', None)
-#         if prev_dict:
-#             full = kwargs.get('full', False)
-#             difflog = compare_dicts(prev_dict,new_dict, full=full)
-#             if difflog.get('diff_keys',None) or difflog.get('diffs',None):
-#                 log.diff_dict_to_api_log(difflog)
-#                 if DEBUG_PATCH_LOG:
-#                     logger.info('update, api log: %r' % log)
-#             else:
-#                 # don't save the log
-#                 if DEBUG_PATCH_LOG:
-#                     logger.info('no diffs found: %r, %r, %r' 
-#                         % (prev_dict,new_dict,difflog))
-#                 log = None
-#         else: # creating
-#             log.api_action = API_ACTION_CREATE
-#             log.added_keys = json.dumps(new_dict.keys())
-#             log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
-#             if DEBUG_PATCH_LOG:
-#                 logger.info('create, api log: %s', log)
-# 
-#         return log
-# 
-#     def log_patches(self,request, original_data, new_data, **kwargs):
-#         '''
-#         log differences between dicts having the same identity in the arrays:
-#         @param original_data - data from before the API action
-#         @param new_data - data from after the API action
-#         - dicts have the same identity if the id_attribute keys have the same
-#         value.
-#         '''
-#         DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
-#         logs = []
-#         
-#         log_comment = None
-#         if HEADER_APILOG_COMMENT in request.META:
-#             log_comment = request.META[HEADER_APILOG_COMMENT]
-#         
-#         if DEBUG_PATCH_LOG:
-#             logger.info('log patches: %s' %kwargs)
-#             logger.debug('log patches original: %s, =====new data===== %s',
-#                 original_data,new_data)
-#         
-#         schema = self.build_schema()
-#         id_attribute = schema['id_attribute']
-#         
-#         deleted_items = list(original_data)        
-#         for new_dict in new_data:
-#             if not new_dict:
-#                 continue
-#             if DEBUG_PATCH_LOG:
-#                 logger.info('new dict: %r, %r', new_dict, id_attribute)
-#             prev_dict = None
-#             for c_dict in original_data:
-#                 if c_dict:
-#                     if DEBUG_PATCH_LOG:
-#                         logger.info('consider prev dict: %s', c_dict)
-#                     prev_dict = c_dict
-#                     for key in id_attribute:
-#                         if new_dict[key] != c_dict[key]:
-#                             prev_dict = None
-#                             break
-#                     if prev_dict:
-#                         break # found
-#             if prev_dict:
-#                 # if found, then it is modified, not deleted
-#                 if DEBUG_PATCH_LOG:
-#                     logger.info('remove from deleted dict %r, %r',
-#                         prev_dict, deleted_items)
-#                 deleted_items.remove(prev_dict)
-#                 
-#             log = self.log_patch(request, prev_dict, new_dict, **kwargs)            
-#             if log:
-#                 logs.append(log)   
-#             
-#         for deleted_dict in deleted_items:
-#             
-#             log = self.make_log(request)
-#             log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
-#             log.uri = '/'.join([self._meta.resource_name,log.key])
-#         
-#             # user can specify any valid, escaped json for this field
-#             # if 'apilog_json_field' in bundle.data:
-#             #     log.json_field = bundle.data['apilog_json_field']
-#             
-#             if 'parent_log' in kwargs:
-#                 log.parent_log = kwargs.get('parent_log', None)
-# 
-#             log.api_action = API_ACTION_DELETE
-#             log.diff_keys = json.dumps(deleted_dict.keys())
-#             log.diffs = json.dumps(deleted_dict,cls=DjangoJSONEncoder)
-#             logs.append(log)
-#             if DEBUG_PATCH_LOG:
-#                 logger.info('delete, api log: %r',log)
-#         
-#         
-#         logger.debug('bulk create logs: %r', logs)
-#         ApiLog.objects.bulk_create(logs)
-#         
-#         return logs
                 
 class ApiLogResource(ApiResource):
     
@@ -1837,19 +1698,7 @@ class ApiLogResource(ApiResource):
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             url((r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)"
-#                  r"/(?P<date_time>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(.[^\/])*)%s$")
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_parent_log_detail'), name="api_dispatch_parent_log_detail"),
-        ]    
-     
-#     def dispatch_parent_log_detail(self,**kwargs):
-#         
-#         kwargs['key'] = None
-#         
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-#         kwargs['is_for_detail']=True
-#         return self.build_list_response(request, **kwargs)
+        ]
         
     def dispatch_clear_cache(self, request, **kwargs):
         self.clear_cache()
@@ -1916,6 +1765,11 @@ class ApiLogResource(ApiResource):
     def build_list_response(self,request, **kwargs):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#             schema = super(ApiLogResource,self).build_schema()
+
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -1934,9 +1788,6 @@ class ApiLogResource(ApiResource):
         if is_for_detail:
             param_hash['offset'] = 0
              
-        schema = super(ApiLogResource,self).build_schema()
-        
-#         filename = self._get_filename(schema, kwargs)
 
         try:
             
@@ -2104,10 +1955,10 @@ class ApiLogResource(ApiResource):
             if 'diffs' in field_hash:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -2448,7 +2299,10 @@ class FieldResource(ApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('deserialized: %r', deserialized)
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -2820,7 +2674,10 @@ class ResourceResource(ApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('patch_obj: %r', deserialized)
-        schema = kwargs['schema']
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -2991,6 +2848,10 @@ class VocabularyResource(ApiResource):
         cache.delete('vocabulary_listing')
         
     def build_list_response(self,request, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
@@ -3005,10 +2866,6 @@ class VocabularyResource(ApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = kwargs['schema']
-
-#         filename = self._get_filename(schema, kwargs)
 
         key = param_hash.pop('key', None)
         if key:
@@ -3259,10 +3116,13 @@ class VocabularyResource(ApiResource):
     @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         logger.debug('patching: %r', deserialized)
         start_time = time.time()
 
-        schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -3666,6 +3526,10 @@ class UserResource(ApiResource):
     @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
 
         logger.info('patch_obj: %r, %r', 
             deserialized,{ k:v for k,v in kwargs.items() if k!= 'schema' } )
@@ -3674,7 +3538,6 @@ class UserResource(ApiResource):
         username = id_kwargs.get('username', None)
         ecommons_id = id_kwargs.get('ecommons_id', None)
         
-        schema = kwargs['schema']
         fields = schema['fields']
 
         auth_user_fields = { name:val for name,val in fields.items() 
@@ -3878,9 +3741,13 @@ class UserGroupResource(ApiResource):
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
+
         name = self.find_name(deserialized,**kwargs)
         
-        schema = kwargs['schema']
         fields = schema['fields']
 
         group_fields = { name:val for name,val in fields.items() 
@@ -4555,6 +4422,10 @@ class PermissionResource(ApiResource):
 
     def build_list_response(self,request, **kwargs):
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -4563,11 +4434,7 @@ class PermissionResource(ApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-
-        schema = kwargs['schema']
-        
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
         scope = param_hash.pop('scope', None)
         if scope:
             param_hash['scope__eq'] = scope

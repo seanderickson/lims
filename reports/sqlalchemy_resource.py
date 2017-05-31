@@ -122,7 +122,7 @@ class SqlAlchemyResource(IccblBaseResource):
             val = request.GET.getlist(key)
             if DEBUG:
                 logger.info('get key: %r, val: %r', key, val)
-            # Jquery Ajax will post array list params with a "[]" suffix - 20151015
+            # Jquery Ajax will send array list params with a "[]" suffix - 20151015
             if '[]' in key and key[-2:] == '[]':
                 key = key[:-2]
             if len(val) == 1:
@@ -792,12 +792,8 @@ class SqlAlchemyResource(IccblBaseResource):
             content_type=JSON_MIMETYPE)
         content_type = self.get_serializer().get_accept_content_type(request)
         logger.info('_get_list_response_internal: %r', content_type)
-#         request = HttpRequest(content_type=JSON_MIMETYPE)
         class User:
             is_superuser = True
-#             @staticmethod
-#             def is_superuser():
-#                 return true
         request.user = User
         result = self._get_list_response(request, **kwargs)
         return result
@@ -868,6 +864,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 else:
                     logger.info('no cache hit, execute count')
                     if limit == 1:
+                        logger.info('set count to 1, detail view')
                         count = 1
                     else:
                         count = conn.execute(count_stmt).scalar()
@@ -940,8 +937,6 @@ class SqlAlchemyResource(IccblBaseResource):
         - limit == 0 and use_caching is True
         
         '''
-        
-        
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
         logger.info('stream_response_from_statement: %r %r', self._meta.resource_name, format )

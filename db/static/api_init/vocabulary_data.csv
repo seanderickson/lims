@@ -103,6 +103,10 @@ iccb_l_nsrb_staff,user.classification,vocabularies/user.classification/iccb_l_ns
 other,user.classification,vocabularies/user.classification/other/,7,,Other,Other,
 unassigned,user.classification,vocabularies/user.classification/unassigned/,8,,Unassigned,Unassigned,
 serviceactivity,activity.class,vocabularies/activity.class/serviceactivity/,5,,"Service Activity","Service Activity",
+cherrypickscreening,activity.class,vocabularies/activity.class/cherrypickscreening/,1,,"Cherry Pick Screening","Cherry Pick Screening",
+libraryscreening,activity.class,vocabularies/activity.class/libraryscreening/,2,,"Library Screening","Library Screening",
+externallibraryscreening,activity.class,vocabularies/activity.class/externallibraryscreening/,3,,"External Library Screening","External Library Screening",
+cplt,activity.class,vocabularies/activity.class/cplt/,4,,"Cherry Pick Liquid Transfer","Cherry Pick Liquid Transfer",
 cherrypickscreening,activity.type,vocabularies/activity.class/cherrypickscreening/,3,"listed as 'retired' because this is only used in read, not create functions","Cherry Pick Screening","Cherry Pick Screening",TRUE
 libraryscreening,activity.type,vocabularies/activity.class/libraryscreening/,1,"listed as 'retired' because this is only used in read, not create functions","Library Screening","Library Screening",TRUE
 externallibraryscreening,activity.type,vocabularies/activity.class/external_library_screening/,2,"listed as 'retired' because this is only used in read, not create functions","External Library Screening","External Library Screening",TRUE

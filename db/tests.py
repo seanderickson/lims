@@ -3047,6 +3047,10 @@ class ScreenResource(DBResourceTestCase):
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
         })
+        
+        # FIXME: create an "LibraryScreeningPerformers" admin group
+        performed_by = self.admin_user
+        
         logger.info('create libraries...')
         library1 = self.create_library({
             'start_plate': 1000, 
@@ -3180,7 +3184,7 @@ class ScreenResource(DBResourceTestCase):
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 2,
-            'performed_by_username': self.admin_user['username'],
+            'performed_by_username': performed_by['username'],
             'volume_transferred_per_well_from_library_plates': volume_to_transfer,
             'volume_transferred_per_well_to_assay_plates': "0.000000300"
         }
@@ -3430,6 +3434,10 @@ class ScreenResource(DBResourceTestCase):
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
         })
+        
+        # FIXME: create an "LibraryScreeningPerformers" admin group
+        performed_by_user = self.admin_user
+        
         logger.info('create library...')
         library1 = self.create_library({
             'start_plate': 1000, 
@@ -3527,7 +3535,7 @@ class ScreenResource(DBResourceTestCase):
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 2,
-            'performed_by_username': self.admin_user['username'],
+            'performed_by_username': performed_by_user['username'],
             'volume_transferred_per_well_from_library_plates': 
                 '{0:.9f}'.format(valid_test_volume*2),
             'volume_transferred_per_well_to_assay_plates': 
@@ -4144,6 +4152,7 @@ class ScreenResource(DBResourceTestCase):
         uri = ('/db/publication/%s/attached_file' 
             % publication_received['publication_id'])
         try:
+            # FIXME: create an admin user with publication/write privs
             admin_user = User.objects.get(username=self.admin_user['username'])
             view, args, kwargs = resolve(uri)
             kwargs['request'] = self.api_client.client.request()
@@ -4176,7 +4185,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.debug('publication log: %r', apilog)
+        logger.info('publication log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
         self.assertTrue('attached_filename' in apilog['diff_keys'])
         self.assertTrue(base_filename in apilog['diffs'])
@@ -4223,6 +4232,7 @@ class ScreenResource(DBResourceTestCase):
         uri = ('/db/publication/%s/attached_file' 
             % publication_received['publication_id'])
         try:
+            # FIXME: create an admin user with publication/write privs
             admin_user = User.objects.get(username=self.admin_user['username'])
             view, args, kwargs = resolve(uri)
             kwargs['request'] = self.api_client.client.request()
@@ -4261,6 +4271,7 @@ class ScreenResource(DBResourceTestCase):
         })
 
         # 1. Set the pin_transfer data
+        # FIXME: admin approved pin tranfer user only
         pin_transfer_data_expected = {
             'pin_transfer_approved_by_username': self.screening_user['username'],
             'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
@@ -4316,6 +4327,69 @@ class ScreenResource(DBResourceTestCase):
                     'key: %r, %r, %r' 
                     % (key,new_screen_item[key],
                         pin_transfer_data_expected[key]))
+    
+    def test6_service_activity(self):
+        logger.info('test6_service_activity...')
+        # Create a Screen
+        data = {
+            'screen_type': 'small_molecule',
+        }
+        screen_item = self.create_screen(data=data)
+        
+        self.assertTrue(
+            'facility_id' in screen_item, 
+            'the facility_id was not created')
+        
+        # FIXME: performed_by_username belongs to ServiceActivityPerformers group
+        performed_by_user = self.create_screensaveruser(
+            { 'username': 'service_activity_performer'})
+
+        service_activity_post = {
+            'screen_facility_id': screen_item['facility_id'],
+            'type': "image_analysis",
+            'comments': "test",
+            'date_of_activity': "2015-10-27",
+            'funding_support': "clardy_grants",
+            'performed_by_username': performed_by_user['username'],
+        }
+        
+        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resp = self.api_client.post(
+            resource_uri, 
+            format='json', 
+            data=service_activity_post, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        resp = self.api_client.get(
+            resource_uri,
+            format='json', 
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        result,msgs = assert_obj1_to_obj2(
+            service_activity_post, new_obj[API_RESULT_DATA][0])
+        self.assertTrue(result,msgs)
+
+        # Test apilog
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'serviceactivity', 
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.debug('serviceactivity log: %r', apilog)
+        self.assertTrue(apilog['api_action'] == 'CREATE')
+        
         
 class CherryPickRequestResource(DBResourceTestCase):
         
@@ -4624,6 +4698,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         resource_uri = BASE_URI_DB + '/cherrypickrequest'
         
         # FIXME: test requested by username is in screen
+        
+        # FIXME: create a "CherryPickRequestVolumeApprovers" group
+        volume_approver = self.test_admin_user
+        
         new_cpr_data = {
             'screen_facility_id': screen['facility_id'],
             # TODO: use a "CherryPickRequestAdmin"
@@ -4631,7 +4709,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'date_requested': '2016-12-05',
             'transfer_volume_per_well_requested': '0.000000002', 
             'transfer_volume_per_well_approved': '0.000000002',
-            'volume_approved_by_username': self.test_admin_user['username'],
+            'volume_approved_by_username': volume_approver['username'],
             'assay_plate_type': 'eppendorf_384',
             # wells to use: B03,C03,B04,C04,B05,C05
             'wells_to_leave_empty': (
@@ -7018,11 +7096,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.screening_user = self.create_screensaveruser(
             { 'username': 'screening1'})
         
+        # FIXME: test more specific admin user permissions
         self.test_admin_user = self.create_screensaveruser(
             { 'username': 'adminuser'})
-
         # create an admin
-        
         patch_obj = { 'objects': [
             {
                 'username': 'adminuser',
@@ -7149,10 +7226,14 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.test0_create_user();
         
         test_username = self.user1['username']
+        
+        # FIXME: create a "ChecklistAdmin" usergroup
+        checklist_admin = self.test_admin_user
+        
         checklist_item_patch = {
             'objects': [
                 { 
-                    'admin_username': self.test_admin_user['username'], 
+                    'admin_username': checklist_admin['username'], 
                     'item_group': "mailing_lists_wikis",
                     'item_name': "added_to_iccb_l_nsrb_email_list",
                     'status': "activated",
@@ -7198,9 +7279,11 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # Test using embedded "contents" field               
         test_username = self.user1['username']
-        admin_username = self.test_admin_user['username']
+        # FIXME: create an admin with ScreensaverUser/write permission
+        attached_file_admin = self.test_admin_user
+        
         attachedfile_item_post = {
-            'created_by_username': admin_username, 
+            'created_by_username': attached_file_admin['username'], 
             'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
             'filename': "test_pasted_text.txt",
             'contents': "This is a test of pasted text\n1\n2\n3\n\n end\n",
@@ -7242,7 +7325,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         af = new_obj[API_RESULT_DATA][0]
         uri = '/db/attachedfile/%s/content' % af['attached_file_id']
         try:
-            admin_user = User.objects.get(username=admin_username)
+            admin_user = User.objects.get(username=attached_file_admin['username'])
             view, args, kwargs = resolve(uri)
             kwargs['request'] = self.api_client.client.request()
             kwargs['request'].user=admin_user
@@ -7354,6 +7437,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         
         test_username = self.user1['username']
+        # FIXME: create an admin with ScreensaverUser/write priv
         admin_username = self.test_admin_user['username']
         first_usergroup_to_add = 'smDsl2MutualPositives'
         # TEST 1 - Try adding a SM dsl
@@ -7606,43 +7690,154 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.test0_create_user();
         
         test_username = self.user1['username']
-        admin_username = self.test_admin_user['username']
+        
+        # FIXME: performed_by_username belongs to ServiceActivityPerformers group
+        performed_by_user = self.create_screensaveruser(
+            { 'username': 'service_activity_performer'})
+        performed_by_user2 = self.create_screensaveruser(
+            { 'username': 'service_activity_performer2'})
+
         service_activity_post = {
             'serviced_username': test_username,
             'type': "image_analysis",
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
-            'performed_by_username': admin_username,
+            'performed_by_username': performed_by_user['username'],
         }
+
+        # 1. Create        
+        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resp = self.api_client.post(
+            resource_uri, 
+            format='json', 
+            data=service_activity_post, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        resp = self.api_client.get(
+            resource_uri,
+            format='json', 
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new service activity result: %r', new_obj)
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        new_obj = new_obj[API_RESULT_DATA][0]
+        result,msgs = assert_obj1_to_obj2(
+            service_activity_post, new_obj)
+        self.assertTrue(result,msgs)
+
+        # 1a. Test apilog
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'serviceactivity', 
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.debug('serviceactivity log: %r', apilog)
+        self.assertTrue(apilog['api_action'] == 'CREATE')
+        self.assertEquals(
+            apilog['uri'], 
+            'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
+                .format(**new_obj))
         
-        try:       
-            resource_uri = BASE_URI_DB + '/serviceactivity'
-            resp = self.api_client.post(
-                resource_uri, 
-                format='json', 
-                data=service_activity_post, 
-                authentication=self.get_credentials())
-            self.assertTrue(
-                resp.status_code in [200,201,202], 
-                (resp.status_code, self.get_content(resp)))
-    
-            data_for_get = { 'limit': 0, 'includes': ['*'] }
-            resp = self.api_client.get(
-                resource_uri,
-                format='json', 
-                authentication=self.get_credentials(), data=data_for_get )
-            self.assertTrue(
-                resp.status_code in [200], 
-                (resp.status_code, self.get_content(resp)))
-            new_obj = self.deserialize(resp)
-            result,msgs = assert_obj1_to_obj2(
-                service_activity_post, new_obj[API_RESULT_DATA][0])
-            self.assertTrue(result,msgs)
+        # TODO: test with a serviced screen
         
-        except Exception, e:
-            logger.exception('on serviceactivity test')
-            raise e
         
-        # TODO: delete serivceactivity
-        # TODO: serviceactivity logs
+        # 2. patch
+        service_activity_post = {
+            'activity_id': new_obj['activity_id'],
+            'performed_by_username': performed_by_user2['username']}
+
+        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=service_activity_post, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        resp = self.api_client.get(
+            resource_uri,
+            format='json', 
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new service activity result: %r', new_obj)
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEquals(1, len(new_obj[API_RESULT_DATA]))
+        new_obj = new_obj[API_RESULT_DATA][0]
+        result,msgs = assert_obj1_to_obj2(
+            service_activity_post, new_obj)
+        self.assertTrue(result,msgs)
+        
+        # 2.a Test apilog
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'serviceactivity',
+            'diff_keys': 'performed_by_username' 
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('serviceactivity log: %r', apilog)
+        self.assertTrue(apilog['api_action'] == 'PATCH')
+        self.assertEquals(
+            apilog['uri'], 
+            'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
+                .format(**new_obj))
+        
+        # 3 delete serviceactivity
+        resource_uri = '/'.join([
+            BASE_URI_DB,'serviceactivity',str(new_obj['activity_id']])
+        resp = self.api_client.delete(
+            resource_uri, authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code == 204, 
+            (resp.status_code, self.get_content(resp)))
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code == 404, 
+            ('error, publication should be deleted', resp.status_code, 
+                self.get_content(resp)))
+
+        # 3.a Test delete apilog
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'serviceactivity',
+            'api_action': 'DELETE'
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('serviceactivity log: %r', apilog)
+        self.assertTrue(apilog['api_action'] == 'DELETE')
+        self.assertEquals(
+            apilog['uri'], 
+            'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
+                .format(**new_obj))
+

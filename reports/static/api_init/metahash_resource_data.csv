@@ -1,8 +1,8 @@
 key,scope,resource_uri,table,id_attribute,title_attribute,ordinal,comment,description,title,visibility,alias,is_restricted,api_name,content_types,require_comment_on_save
-resource,resource,/reports/api/v1/resource/resource/,reports_metahash,[key],[title],0,,"Resource describes tables, queries that are available through the API",Resources,[l;d;e;c],,,reports,[json],TRUE
-field,resource,/reports/api/v1/resource/field/,reports_metahash,[scope;key],[scope;/;title],0,,"Field Resource","Field Information",[l;d;e;c],,,reports,[xls],TRUE
-vocabulary,resource,/reports/api/v1/resource/vocabulary/,reports_vocabulary,[scope;key],[scope;/;title],0,,"Vocabularies describe controlled vocabularies",Vocabularies,[l;d;e;c],,,reports,[xls],TRUE
-apilog,resource,/reports/api/v1/resource/apilog/,reports_apilog,[ref_resource_name;key;date_time],[ref_resource_name;/;key;/;date_time],0,,"The Change log resource","Change log",[l;d],,,reports,[xls],TRUE
-user,resource,/reports/api/v1/resource/user/,reports_userprofile,[username],"[first_name;' ';last_name;' (';username;)]",0,,"The admin user view",Users,[l;d;e;c],,,reports,[xls],TRUE
-usergroup,resource,/reports/api/v1/resource/usergroup/,reports_usergroup,[name],[name],0,,"The Django group",Groups,[l;d;e;c],,,reports,[xls],TRUE
-permission,resource,/reports/api/v1/resource/permission/,reports_permission,[scope;key;type],[scope;/;key;:;type],0,,"The Django permission",Permissions,[l;d;e;c],,,reports,[xls],TRUE
+resource,resource,/reports/api/v1/resource/resource/,reports_metahash,[key],[title],0,,"Resource describes tables, queries that are available through the API",Resources,[l;d;e;c],,,reports,[json],
+field,resource,/reports/api/v1/resource/field/,reports_metahash,[scope;key],[scope;/;title],0,,"Field Resource","Field Information",[l;d;e;c],,,reports,[xls],
+vocabulary,resource,/reports/api/v1/resource/vocabulary/,reports_vocabulary,[scope;key],[scope;/;title],0,,"Vocabularies describe controlled vocabularies",Vocabularies,[l;d;e;c],,,reports,[xls],
+apilog,resource,/reports/api/v1/resource/apilog/,reports_apilog,[ref_resource_name;key;date_time],[ref_resource_name;/;key;/;date_time],0,,"The Change log resource","Change log",[l;d],,,reports,[xls],
+user,resource,/reports/api/v1/resource/user/,reports_userprofile,[username],"[first_name;' ';last_name;' (';username;)]",0,,"The admin user view",Users,[l;d;e;c],,,reports,[xls],
+usergroup,resource,/reports/api/v1/resource/usergroup/,reports_usergroup,[name],[name],0,,"The Django group",Groups,[l;d;e;c],,,reports,[xls],
+permission,resource,/reports/api/v1/resource/permission/,reports_permission,[scope;key;type],[scope;/;key;:;type],0,,"The Django permission",Permissions,[l;d;e;c],,,reports,[xls],

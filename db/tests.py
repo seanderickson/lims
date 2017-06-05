@@ -3038,7 +3038,26 @@ class ScreenResource(DBResourceTestCase):
                 'key %r, val: %r not expected: %r' 
                     % (key, value, screen_item[key]))
         logger.debug('screen created with facility id: %r', screen_item)
+        
+    def test1b_create_follow_up_screen(self):    
+        logger.info('test1_create_screen...')        
+        data = {
+            'screen_type': 'small_molecule',
+            'cell_lines': ['293_hek_293','colo_858'],
+        }
+        screen_item = self.create_screen(data=data)
+        
+        self.assertTrue(
+            'facility_id' in screen_item, 
+            'the facility_id was not created')
+        
+        for key, value in data.items():
+            self.assertEqual(value, screen_item[key], 
+                'key %r, val: %r not expected: %r' 
+                    % (key, value, screen_item[key]))
+        logger.debug('screen created: %r', screen_item)
 
+        
     def test2a_create_library_screening_cherry_picked_copies(self):
         logger.info('test2a_create_library_screening_cherry_picked_copies...')
                 
@@ -3612,27 +3631,6 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        logger.info('5.a. test insufficient volume...')
-        key = 'library_plates_screened' 
-        test_xfer_vol = \
-            Decimal(library_copy1_input['initial_plate_well_volume']) - valid_test_volume
-        msg = ('insufficient volume {initial_plate_well_volume} '
-            'for copy1: {copy_name} should fail').format(**library_copy1_input)
-        logger.info('test %r', msg)
-        invalid_input5 = library_screening_input.copy()
-        invalid_input5['volume_transferred_per_well_from_library_plates'] = \
-            '{:.9f}'.format(test_xfer_vol) 
-        errors, resp = self._create_resource(
-            invalid_input5, resource_uri, resource_test_uri, expect_fail=True)
-        self.assertTrue(resp.status_code==400, msg)
-        logger.info('errors: %r', errors)
-        self.assertTrue(find_in_dict(key, errors), 
-            'test: %s, not in errors: %r' %(key,errors))
-        key2 = API_MSG_LCPS_INSUFFICIENT_VOLUME
-        self.assertTrue(find_in_dict(key2, errors), 
-            'test: %s, not in errors: %r' %(key2,errors))
-
-        
         logger.info('5.b test with cherry_pick_source_plates')
         key = 'library_plates_screened' 
         plate_range1cpp = lps_format.format(**library_copy1_cpp).format(**library1)
@@ -4071,7 +4069,29 @@ class ScreenResource(DBResourceTestCase):
         # 10. test deletion of a library screening
         
         
-        # 11. TODO: test library not "allowed" override
+        # TODO: test volume warning message:
+        # 20170605 - JAS - allow insufficient volume        
+        # logger.info('5.a. test insufficient volume...')
+        # key = 'library_plates_screened' 
+        # test_xfer_vol = \
+        #     Decimal(library_copy1_input['initial_plate_well_volume']) - valid_test_volume
+        # msg = ('insufficient volume {initial_plate_well_volume} '
+        #     'for copy1: {copy_name} should fail').format(**library_copy1_input)
+        # logger.info('test %r', msg)
+        # invalid_input5 = library_screening_input.copy()
+        # invalid_input5['volume_transferred_per_well_from_library_plates'] = \
+        #     '{:.9f}'.format(test_xfer_vol) 
+        # errors, resp = self._create_resource(
+        #     invalid_input5, resource_uri, resource_test_uri, expect_fail=True)
+        # self.assertTrue(resp.status_code==400, msg)
+        # logger.info('errors: %r', errors)
+        # self.assertTrue(find_in_dict(key, errors), 
+        #     'test: %s, not in errors: %r' %(key,errors))
+        # key2 = API_MSG_LCPS_INSUFFICIENT_VOLUME
+        # self.assertTrue(find_in_dict(key2, errors), 
+        #     'test: %s, not in errors: %r' %(key2,errors))
+
+        
         
     def test3_create_publication(self):
 
@@ -4280,9 +4300,7 @@ class ScreenResource(DBResourceTestCase):
         screen_update_data = {
             'facility_id': screen_item['facility_id']
             }
-        
-        for key, val in pin_transfer_data_expected.items():
-            screen_update_data[key] = val
+        screen_update_data.update(pin_transfer_data_expected)
         resource_uri = \
             BASE_URI_DB + '/screen/' + screen_update_data['facility_id']
         resp = self.api_client.patch(
@@ -7096,6 +7114,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.screening_user = self.create_screensaveruser(
             { 'username': 'screening1'})
         
+        self.assertTrue(self.screening_user['is_active'])
+        
         # FIXME: test more specific admin user permissions
         self.test_admin_user = self.create_screensaveruser(
             { 'username': 'adminuser'})
@@ -7106,20 +7126,28 @@ class ScreensaverUserResource(DBResourceTestCase):
                 'is_superuser': True
             }]
         }
-        resource_uri = BASE_REPORTS_URI + '/user'
+        resource_uri = BASE_URI_DB + '/screensaveruser'
 
-        try:       
-            resp = self.api_client.patch(
-                resource_uri, 
-                format='json', data=patch_obj, 
-                authentication=self.get_credentials())
-            self.assertTrue(
-                resp.status_code in [200,201,202], 
-                (resp.status_code, self.get_content(resp)))
-        except Exception, e:
-            logger.exception('on patching adminuser %s' % patch_obj)
-            raise
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=patch_obj, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+
+        
+
     
+    def test02_change_username(self):
+        
+        # 20170601 - changing usernames is not allowed, must create a new user
+        # and migrate data to the new user
+        
+        pass;
+        
+        
+        
     def test01_create_lab_head(self):
 
         # 20161205 - Lab Affiliation has been implemented as a vocabulary:
@@ -7841,3 +7869,11 @@ class ScreensaverUserResource(DBResourceTestCase):
             'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
                 .format(**new_obj))
 
+    def test_7_lab_head_members(self):
+        
+        # TODO: 20170605
+        
+        pass
+
+
+        

@@ -1191,7 +1191,6 @@ class ApiResource(SqlAlchemyResource):
         raise NotImplementedError('delete obj must be implemented')
     
     @write_authorization
-    @un_cache        
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
@@ -2294,7 +2293,6 @@ class FieldResource(ApiResource):
         MetaHash.objects.get(**id_kwargs).delete()
     
     @write_authorization
-    @un_cache        
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         
@@ -2473,11 +2471,6 @@ class ResourceResource(ApiResource):
         Override resource method - bootstrap the "Resource" resource schema
         '''
 
-#         # get the resource fields
-#         request = HttpRequest()
-#         class User:
-#             is_superuser = True
-#         request.user = User
         resource_fields = self.get_field_resource()._get_list_response_internal(
             scope='fields.resource')
         # build a hash out of the fields
@@ -2669,7 +2662,6 @@ class ResourceResource(ApiResource):
         MetaHash.objects.get(**id_kwargs).delete()
     
     @write_authorization
-    @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
         
@@ -3035,14 +3027,6 @@ class VocabularyResource(ApiResource):
             kwargs = {
                 'limit': '0'
             }
-#             request=HttpRequest()
-#             request.session = Session()
-#             class User:
-#                 is_superuser = True
-# #                 @staticmethod
-# #                 def is_superuser():
-# #                     return true
-#             request.user = User
             _data = self._get_list_response_internal(**kwargs)
             for v in _data:
                 _scope = v['scope']
@@ -3108,18 +3092,16 @@ class VocabularyResource(ApiResource):
         return result
     
     def validate(self, _dict, patch=False, schema=None):
-        if not set(_dict.keys()) & self.requried_fields:
+        if (patch is False and not set(_dict.keys()) & self.requried_fields):
             raise ValidationError(key='required_fields', msg='%r' %self.requried_fields)
         return {}
     
     @write_authorization
-    @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         logger.debug('patching: %r', deserialized)
         start_time = time.time()
 
@@ -3511,7 +3493,7 @@ class UserResource(ApiResource):
                 id_kwargs = { 'ecommons_id': kwargs['ecommons_id']}
             else:
                 raise ( ValueError, 
-                    'neither username or ecommons_id not specified: %r, %r' 
+                    'neither username nor ecommons_id not specified: %r, %r' 
                         % (deserialized,kwargs) )
         return id_kwargs
     
@@ -3523,30 +3505,28 @@ class UserResource(ApiResource):
         UserProfile.objects.get(**id_kwargs).delete()
     
     @write_authorization
-    @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
-
-        logger.info('patch_obj: %r, %r', 
-            deserialized,{ k:v for k,v in kwargs.items() if k!= 'schema' } )
-        
-        id_kwargs = self.get_id(deserialized,**kwargs)
-        username = id_kwargs.get('username', None)
-        ecommons_id = id_kwargs.get('ecommons_id', None)
-        
         fields = schema['fields']
+
+        logger.info('patch_obj: %r, %r', deserialized, kwargs )
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        logger.info('patch user: %r', id_kwargs)
+        
 
         auth_user_fields = { name:val for name,val in fields.items() 
             if val['table'] and val['table']=='auth_user'}
         userprofile_fields = { name:val for name,val in fields.items() 
             if val['table'] and val['table']=='reports_userprofile'}
-        
+
+        is_patch = False
         try:
             # create the auth_user
+            username = id_kwargs.get('username', None)
+            ecommons_id = id_kwargs.get('ecommons_id', None)
             if not username:
                 logger.info(
                     'username not specified, setting username to ecommons_id: %s', 
@@ -3556,27 +3536,27 @@ class UserResource(ApiResource):
                 
             try:
                 user = DjangoUser.objects.get(username=username)
-                errors = self.validate(deserialized, patch=True)
+                is_patch = True
+                errors = self.validate(deserialized, patch=is_patch)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
                 logger.info('User %s does not exist, creating', id_kwargs)
-                errors = self.validate(deserialized, patch=False)
+                errors = self.validate(deserialized, patch=is_patch)
                 if errors:
                     raise ValidationError(errors)
                 user = DjangoUser.objects.create_user(username=username)
                 user.is_active = True
                 logger.info('created Auth.User: %s', user)
 
-            initializer_dict = {}
-            for key in auth_user_fields.keys():
-                if key in deserialized:
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key, 
-                        auth_user_fields[key]['data_type']) 
-            logger.info('auth user initializer: %r', initializer_dict)
-            if initializer_dict:
-                for key,val in initializer_dict.items():
+            initializer_dict = self.parse(deserialized, create=not is_patch)
+            logger.info('initializer_dict: %r', initializer_dict)
+
+            auth_initializer_dict = {
+                k:v for k,v in initializer_dict.items() if k in auth_user_fields}
+            logger.info('auth user initializer: %r', auth_initializer_dict)
+            if auth_initializer_dict:
+                for key,val in auth_initializer_dict.items():
                     if hasattr(user,key):
                         setattr(user,key,val)
                 user.save()
@@ -3584,14 +3564,6 @@ class UserResource(ApiResource):
             else:
                 logger.info('no auth_user fields to update %s', deserialized)
                 
-            # create the reports userprofile
-            initializer_dict = {}
-            for key in userprofile_fields.keys():
-                if key in deserialized:
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key,
-                        userprofile_fields[key]['data_type']) 
-
             userprofile = None
             try:
                 userprofile = UserProfile.objects.get(**id_kwargs)
@@ -3606,10 +3578,13 @@ class UserResource(ApiResource):
             userprofile.user = user
             userprofile.save()
 
-            if initializer_dict:
+            # create the reports userprofile
+            userprofile_initializer_dict = {
+                k:v for k,v in initializer_dict.items() if k in userprofile_fields}
+            if userprofile_initializer_dict:
                 logger.info('initializer dict: %r', initializer_dict)
-                for key,val in initializer_dict.items():
-                    logger.debug('set: %s to %r, %s',key,val,hasattr(userprofile, key))
+                for key,val in userprofile_initializer_dict.items():
+                    logger.info('set: %s to %r, %s',key,val,hasattr(userprofile, key))
                     
                     if key == 'permissions':
                         # FIXME: first check if permissions have changed
@@ -3666,7 +3641,7 @@ class UserResource(ApiResource):
             return { API_RESULT_OBJ: userprofile }
             
         except Exception:
-            logger.exception('on put_detail')
+            logger.exception('on patch_obj')
             raise  
 
 
@@ -3737,7 +3712,6 @@ class UserGroupResource(ApiResource):
         UserGroup.objects.get(name=name).delete()
     
     @write_authorization
-    @un_cache 
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
 

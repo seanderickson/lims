@@ -135,7 +135,6 @@ API_MSG_LCPS_ASSIGNED = 'Assigned to Copies'
 API_MSG_LCPS_UNFULFILLED = 'Unfulfilled'
 API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume'
 API_MSG_LCPS_VOLUME_OVERRIDDEN = 'Insufficient volume overridden'
-API_MSG_PLATES_VOLUME_OVERRIDDEN = 'Insufficient volume overridden'
 API_MSG_LCPS_REMOVED = 'Lab Cherry Picks Removed'
 API_MSG_LCP_PLATES_ASSIGNED = 'Copy Plate assigned'
 API_MSG_LCP_SOURCE_PLATES_ALLOCATED = 'Source plates having wells allocated'
@@ -474,7 +473,6 @@ class PlateLocationResource(DbApiResource):
             logger.exception('on get list')
             raise e   
 
-    @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_detail must be implemented')
 
@@ -552,7 +550,6 @@ class PlateLocationResource(DbApiResource):
                 **kwargs)
             
     @write_authorization
-    @un_cache
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
@@ -2087,7 +2084,6 @@ class LibraryCopyPlateResource(DbApiResource):
         return errors
     
     @write_authorization
-    @un_cache
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         
@@ -4152,7 +4148,6 @@ class DataColumnResource(DbApiResource):
         return (columnName, _dict)
 
     @write_authorization
-    @un_cache
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
@@ -4472,7 +4467,6 @@ class CopyWellResource(DbApiResource):
         raise NotImplementedError('delete_obj is not implemented')
     
     @write_authorization
-    @un_cache
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         # TODO: optimize for list inputs (see well.patch)
@@ -5609,8 +5603,8 @@ class CherryPickRequestResource(DbApiResource):
         return DbApiResource.post_detail(self, request, full_create_log=True, **kwargs)
 
     @write_authorization
-    @transaction.atomic      
     @un_cache  
+    @transaction.atomic      
     def patch_detail(self, request, **kwargs):
         '''
         Override to generate informational summary for callee
@@ -5677,7 +5671,6 @@ class CherryPickRequestResource(DbApiResource):
     
     @write_authorization
     @transaction.atomic
-    @un_cache
     def patch_obj(self, request, deserialized, **kwargs):
         
         schema = kwargs.pop('schema', None)
@@ -9136,7 +9129,6 @@ class LibraryCopyResource(DbApiResource):
             logger.exception('on get list')
             raise e   
 
-    @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_list must be implemented')
                 
@@ -9149,7 +9141,6 @@ class LibraryCopyResource(DbApiResource):
         ScreensaverUser.objects.get(**id_kwargs).delete()
     
     @write_authorization
-    @un_cache
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
@@ -10799,7 +10790,6 @@ class ServiceActivityResource(ActivityResource):
         ]    
 
     @write_authorization
-    @un_cache
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
@@ -10818,7 +10808,7 @@ class ServiceActivityResource(ActivityResource):
         logger.info('patch ServiceActivity: %r', deserialized)
         
         patch = bool(id_kwargs)
-        initializer_dict = self.parse(deserialized, create=not patch)
+        initializer_dict = self.parse(deserialized, create=not patch, schema=schema)
         errors = self.validate(initializer_dict, patch=patch)
         if errors:
             raise ValidationError(errors)
@@ -11981,7 +11971,6 @@ class LibraryScreeningResource(ActivityResource):
             logger.exception('on get list')
             raise e  
 
-    @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_detail must be implemented')
     
@@ -12145,7 +12134,6 @@ class LibraryScreeningResource(ActivityResource):
         return _data
 
     @write_authorization
-    @un_cache
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
@@ -12167,7 +12155,7 @@ class LibraryScreeningResource(ActivityResource):
 
         id_kwargs = self.get_id(deserialized, **kwargs)
         patch = bool(id_kwargs)
-        initializer_dict = self.parse(deserialized, create=not patch)
+        initializer_dict = self.parse(deserialized, create=not patch, schema=schema)
         errors = self.validate(initializer_dict, patch=patch)
         if errors:
             raise ValidationError(errors)
@@ -12659,8 +12647,7 @@ class LibraryScreeningResource(ActivityResource):
             remaining_well_volume = plate.remaining_well_volume or Decimal(0)
             remaining_well_volume -= volume_to_transfer
             if remaining_well_volume < min_plate_volume_after_transfer:
-                # 20170407 - per JAS/KR,
-                # raise an Error instead for insufficient vol
+                # 20170605 - JAS - allowed, but show warning
                 logger.info('plate: %r, insufficient vol: %r', 
                     plate_key, remaining_well_volume)
                 plates_insufficient_volume.append(
@@ -12720,18 +12707,17 @@ class LibraryScreeningResource(ActivityResource):
             # Modified: 20170407 - per JAS/KR,
             # raise an Error instead for insufficient vol
             plates_insufficient_volume = sorted(plates_insufficient_volume)
-            # if override_vol_param is not True:
-            msg = '%d plates' % len(plates_insufficient_volume)
-            if library_screening.screen.screen_type == 'small_molecule':
-                extra_msg = (' (%s uL is required for Small Molecule)'
-                    %  lims_utils.convert_decimal(
-                        self.MIN_WELL_VOL_SMALL_MOLECULE, 1e-6, 1))
-                msg += extra_msg
-            raise ValidationError({
-                # API_PARAM_VOLUME_OVERRIDE: 'required',
-                API_MSG_LCPS_INSUFFICIENT_VOLUME: msg,
-                'library_plates_screened': plates_insufficient_volume
-                })
+            # msg = '%d plates' % len(plates_insufficient_volume)
+            # if library_screening.screen.screen_type == 'small_molecule':
+            #     extra_msg = (' (%s uL is required for Small Molecule)'
+            #         %  lims_utils.convert_decimal(
+            #             self.MIN_WELL_VOL_SMALL_MOLECULE, 1e-6, 1))
+            #     msg += extra_msg
+            # raise ValidationError({
+            #     # API_PARAM_VOLUME_OVERRIDE: 'required',
+            #     API_MSG_LCPS_INSUFFICIENT_VOLUME: msg,
+            #     'library_plates_screened': plates_insufficient_volume
+            #     })
 
         if all_plate_ids:
             logger.info('Fetch the new Plate state: '
@@ -12772,10 +12758,9 @@ class LibraryScreeningResource(ActivityResource):
             meta[API_MSG_WARNING] = warnings
         
         logger.info('return meta information: %r', meta)
-        # MODIFIED: 20170407 - per JAS/KR,
-        # raise an Error instead for insufficient vol
-        # if plates_insufficient_volume:
-        #    meta[API_MSG_PLATES_VOLUME_OVERRIDDEN] = plates_insufficient_volume
+        # MODIFIED: 20170605 - per JAS/KR, overdraw volume but warn
+        if plates_insufficient_volume:
+           meta[API_MSG_LCPS_INSUFFICIENT_VOLUME] = plates_insufficient_volume
         return meta
     
     @write_authorization
@@ -13091,7 +13076,7 @@ class ScreenResource(DbApiResource):
     
     class Meta:
 
-        queryset = Screen.objects.all()  # .order_by('facility_id')
+        queryset = Screen.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
                                              IccblSessionAuthentication())
         authorization = ScreenAuthorization()
@@ -13503,7 +13488,7 @@ class ScreenResource(DbApiResource):
                 _collaborator.c.username,
                 _collaborator.c.email,
                 _concat(
-                    _collaborator.c.name, ' <', _collaborator.c.email, '>'
+                    _collaborator.c.name, '<', _collaborator.c.email, '>'
                     ).label('fullname')])
             .select_from(_collaborator.join(
                 _screen_collaborators,
@@ -13683,7 +13668,7 @@ class ScreenResource(DbApiResource):
                 'collaborator_names': (
                     select([
                         func.array_to_string(
-                            func.array_agg(collaborators.c.fullname),
+                            func.array_agg(collaborators.c.name),
                             LIST_DELIMITER_SQL_ARRAY)])
                     .select_from(collaborators)
                     .where(collaborators.c.screen_id 
@@ -14115,13 +14100,13 @@ class ScreenResource(DbApiResource):
             param_hash.get(API_PARAM_OVERRIDE, False),
                 API_PARAM_OVERRIDE, 'boolean')
         patch_facility_id = deserialized.get('facility_id', None)
-        if patch_facility_id is not None and override_param is not True:
+        if patch_facility_id and override_param is not True:
             raise ValidationError({
                 'facility_id':
                     'May not be specified in screen creation: %r' % patch_facility_id,
                 API_PARAM_OVERRIDE: 'required' })
         
-        if patch_facility_id is None:    
+        if not patch_facility_id:    
             # find a new facility id
             max_facility_id_sql = '''
                 select facility_id::text, project_phase from screen 
@@ -14146,11 +14131,11 @@ class ScreenResource(DbApiResource):
         return self.patch_detail(request,**kwargs)
         
     @write_authorization
-    @un_cache
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
+        logger.info('patch screen: %r, %r', id_kwargs, deserialized)
         try:
             create = False
             try:
@@ -14200,14 +14185,16 @@ class ScreenResource(DbApiResource):
             _key = 'pin_transfer_approved_by_username'
             pin_transfer_approved_by = None
             if _key in initializer_dict:
-                try:
-                    pin_transfer_approved_by = (
-                        ScreensaverUser.objects.get(
-                            username=initializer_dict[_key]))
-                except ObjectDoesNotExist:
-                    raise ValidationError(
-                        key=_key,
-                        msg='No such username: %r' % initializer_dict[_key])
+                val = initializer_dict[_key]
+                if val:
+                    try:
+                        pin_transfer_approved_by = (
+                            ScreensaverUser.objects.get(
+                                username=val))
+                    except ObjectDoesNotExist:
+                        raise ValidationError(
+                            key=_key,
+                            msg='No such username: %r' % val)
             
             related_initializer = {}
             related_initializer['cell_lines'] = \
@@ -14289,16 +14276,16 @@ class ScreenResource(DbApiResource):
                     screen.pin_transfer_admin_activity.save()
             if screen.pin_transfer_admin_activity is None:
                 # secondary pin transfer validation
-                if pin_transfer_date_approved is not None:
+                if pin_transfer_date_approved:
                     raise ValidationError(
                         key='pin_transfer_date_approved',
                         msg='requires pin_transfer_approved_by_username')    
-                if pin_transfer_comments is not None:
+                if pin_transfer_comments:
                     raise ValidationError(
                         key='pin_transfer_comments',
                         msg='requires pin_transfer_approved_by_username')    
             else:
-                if pin_transfer_date_approved is not None:
+                if pin_transfer_date_approved:
                     screen.pin_transfer_admin_activity.date_of_activity = \
                         pin_transfer_date_approved
                 if pin_transfer_comments is not None:
@@ -14611,7 +14598,6 @@ class UserChecklistItemResource(DbApiResource):
             'delete obj is not implemented for UserChecklistItem')
     
     @write_authorization
-    @un_cache
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
         
@@ -14688,6 +14674,23 @@ class UserChecklistItemResource(DbApiResource):
         except Exception, e:
             logger.error('on patch_obj')
             raise e
+
+
+class ScreensaverUserAuthorization(UserGroupAuthorization):
+    
+    def _is_screen_authorized(self, screen, screensaver_user, permission_type):
+        
+        authorized = super(ScreenAuthentication,self)._is_resource_authorized(
+            'screen', screensaver_user.user.user, permission_type)
+        if not authorized and permission_type == 'read':
+            if screensaver_user in screen.collaborators:
+                authorized = True
+            elif screensaver_user == screen.lead_screener:
+                authorized = True
+            elif screensaver_user == screen.lab_head:
+                authorized = True
+        return authorized
+    
 
 
 class ScreensaverUserResource(DbApiResource):    
@@ -15103,30 +15106,16 @@ class ScreensaverUserResource(DbApiResource):
         return id_kwargs
                 
     @write_authorization
-    @un_cache
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         fields = schema['fields']
-        initializer_dict = {}
-        # TODO: wrapper for parsing
-        logger.debug('fields: %r, deserialized: %r', fields.keys(), deserialized)
-        for key in fields.keys():
-            if deserialized.get(key, None) is not None:
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
 
         id_kwargs = self.get_id(deserialized, **kwargs)
 
-        username = id_kwargs.get('username', None)
-        ecommons_id = id_kwargs.get('ecommons_id', None)
-        fields = { name:val for name, val in fields.items() 
-            if val['scope'] == 'fields.screensaveruser'}
-        logger.debug('fields.screensaveruser fields: %s', fields.keys())
         try:
             # create/get userprofile
             patch_response = self.get_user_resource().patch_obj(request, deserialized, **kwargs)
@@ -15135,6 +15124,7 @@ class ScreensaverUserResource(DbApiResource):
 
             # create the screensaver_user
             screensaver_user = None
+            is_patch=True
             try:
                 screensaver_user = ScreensaverUser.objects.get(user=user)
                 logger.info('found user to patch: %r', screensaver_user)
@@ -15143,6 +15133,9 @@ class ScreensaverUserResource(DbApiResource):
                     raise ValidationError(errors)
             except ObjectDoesNotExist:
                 logger.info('create user: %r', deserialized)
+                is_patch = False
+                username = id_kwargs.get('username', None)
+                ecommons_id = id_kwargs.get('ecommons_id', None)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
                     raise ValidationError(errors)
@@ -15156,8 +15149,9 @@ class ScreensaverUserResource(DbApiResource):
                             ScreensaverUser.objects.get(
                                 user__ecommons_id=ecommons_id)
                     else:
-                        raise NotImplementedError(
-                            'username or ecommons_id must be specified')
+                        raise ValidationError(
+                            key='username',
+                            msg='username or ecommons_id must be specified')
                 except ObjectDoesNotExist, e:
                     if not username:
                         logger.info(
@@ -15176,12 +15170,13 @@ class ScreensaverUserResource(DbApiResource):
                     screensaver_user = \
                         ScreensaverUser.objects.create(username=username)
                     screensaver_user.save()
-            initializer_dict = {}
-            for key in fields.keys():
-                if key in deserialized:
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key, None), key,
-                        fields[key]['data_type']) 
+
+            screensaveruser_fields = { name:val for name, val in fields.items() 
+                if val['scope'] == 'fields.screensaveruser'}
+            logger.info(
+                'fields.screensaveruser fields: %s', screensaveruser_fields.keys())
+            initializer_dict = self.parse(
+                deserialized, create=not is_patch, fields=screensaveruser_fields.values())
             if initializer_dict:
                 for key, val in initializer_dict.items():
                     if hasattr(screensaver_user, key):
@@ -17339,11 +17334,14 @@ class LibraryResource(DbApiResource):
         Library.objects.get(**id_kwargs).delete()
     
     @write_authorization
-    @un_cache        
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        
         logger.info('patch library: %r', deserialized)
-        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
+        id_kwargs = self.get_id(deserialized, validate=True, schema=schema, **kwargs)
         # create/update the library
         create = False
         try:
@@ -17355,7 +17353,7 @@ class LibraryResource(DbApiResource):
                 logger.info('Library %s does not exist, creating', id_kwargs)
                 library = Library(**id_kwargs)
 
-            initializer_dict = self.parse(deserialized, create=create)
+            initializer_dict = self.parse(deserialized, create=create, schema=schema)
             errors = self.validate(initializer_dict, patch=not create)
             if errors:
                 raise ValidationError(errors)

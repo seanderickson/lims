@@ -405,6 +405,10 @@ td.text-wrap-cell-extra-narrow {
   min-width: 100px;
 }
 
+.backgrid.nested-table th {
+ white-space: normal;
+}
+
 .ms-container ul{
   display: block;
 }

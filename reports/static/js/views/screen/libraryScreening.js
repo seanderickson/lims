@@ -348,6 +348,10 @@ define([
               /// see cherryPickRequest.js
               console.log('errors', arguments);
               
+              // REMOVED: 20170412: 
+              // MODIFIED: 20170605 - allow insufficient volume; warn only
+              // per JAS/KR; raise error, no override allowed for insufficient volume
+              // TODO: following code not needed.
               var jsonError = _.result(jqXHR, 'responseJSON');
               if (!_.isUndefined(jsonError)){
                 var error = _.result(jsonError, 'errors');
@@ -393,47 +397,9 @@ define([
                     }
                   });
                 // REMOVED: 20170412: 
+                // MODIFIED: 20170605 - allow insufficient volume; warn only
                 // per JAS/KR; raise error, no override allowed for insufficient volume
                 //} else if (!_.isUndefined(volumeErrorFlag)){
-                //  var title = _.result(error, 'library_plates_screened');
-                //  if (!title){
-                //    console.log('Error: expecting "library_plates_screened" error message');
-                //    title = 'Override required to screen plates with insufficient volume';
-                //  }
-                //  var bodyMsg = 'Insufficient volume for plates (unspecified)';
-                //  var errors = _.result(error, 'Plates');
-                //  if (!errors){
-                //    console.log('Plates should be reported in the response');
-                //  }else{
-                //    bodyMsg = 'Plates: ' + errors.join(', ');
-                //  }
-                //  appModel.showOkCommentForm({
-                //    title: title,
-                //    body: bodyMsg,
-                //    okText: 'Confirm Override',
-                //    ok: function(formValues) {
-                //      inner_self.overrides_granted[appModel.API_PARAM_VOLUME_OVERRIDE] = 'true';
-                //      self.model.url = function(){
-                //        var new_url = url + '?' + _.map(_.pairs(inner_self.overrides_granted),
-                //          function(keyval){
-                //            return keyval.join('=');
-                //          }).join('&')
-                //        console.log('new url', new_url);
-                //        return new_url;
-                //      };
-                //      var new_comment = formValues['comments']
-                //      if (new_comment){
-                //        if (comment){
-                //          comment += '; ' + new_comment;
-                //        } else {
-                //          comment = new_comment
-                //        }
-                //        options.headers[appModel.HEADER_APILOG_COMMENT] = comment;
-                //        console.log('new comments', comment);
-                //      }
-                //      inner_self.save(changedAttributes, options);
-                //    }
-                //  });
                 } else {
                   inner_self.save_fail.apply(this,arguments);
                 }
@@ -722,7 +688,8 @@ define([
             
             fields['screen_facility_id']['editability'] = [];
             fields['library_plates_screened'].display_options = _.extend(
-              {}, fields['library_plates_screened'].display_options, {widthClass: 'col-sm-8'});
+              {}, fields['library_plates_screened'].display_options, 
+              {widthClass: 'col-sm-8'});
             
             if (!self.model.isNew()){
               // allow the library_plates_screened to be unset

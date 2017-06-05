@@ -70,7 +70,7 @@ define([
     showEdit: function() {
       console.log('showEdit: editView: ',EditView);
       var self = this;
-      view = new this.EditView(_.extend({}, self.args, 
+      var view = new this.EditView(_.extend({}, self.args, 
         { 
           model: self.model, 
           uriStack: self.uriStack 

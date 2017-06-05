@@ -125,17 +125,20 @@ define([
       var self,outerSelf = self = this;
       var key = 'detail';
       var fields = self.model.resource.fields;
+      var model = this.model;
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      if (this.model.get('project_phase')!= 'annotation') {
+      if (model.get('project_phase')!= 'annotation') {
         fields['collaborator_usernames'].vocabulary = (
-            _.object(this.model.get('collaborator_usernames'),
-              this.model.get('collaborator_names')));
+            _.object(model.get('collaborator_usernames'),
+              model.get('collaborator_names')));
       }
+      
       var editView = EditView.extend({
         save_success: function(data, textStatus, jqXHR){
           EditView.prototype.save_success.apply(this,arguments);
-          appModel.unset('users');
+          appModel.unset('screens', {silent: true});
+          appModel.getScreens();
         },
         afterRender: function() {
           var form = this;
@@ -166,7 +169,7 @@ define([
             }
           };
 
-          screenTypeSettings(this.model.get('screen_type'));
+          screenTypeSettings(model.get('screen_type'));
           // Note the "screen_type:change" syntax is backwards from Backbone
           form.on('screen_type:change', function(e){
             screenTypeSettings(form.getValue('screen_type'));
@@ -175,6 +178,25 @@ define([
             form.setValue('status_date', new Date());
           });
           EditView.prototype.afterRender.apply(this,arguments);
+        },
+        validate: function() {
+          // FIXME: 20170605 refactor: this must be tested to verify it works
+          var errs = EditView.prototype.validate.apply(this,arguments);
+          errors = errs || {};
+          console.log('extra validation...')
+          if (!_.isEmpty(this.model.get('data_privacy_expiration_notified_date'))) {
+            if (!_.isEmpty(this.model.get('max_allowed_data_privacy_expiration_date'))) {
+              errors['max_allowed_data_privacy_expiration_date'] = (
+                'can not be set if the expiration notified date is set');
+            }
+            if (!_.isEmpty(this.model.get('min_allowed_data_privacy_expiration_date'))) {
+              errors['min_allowed_data_privacy_expiration_date'] = (
+                'can not be set if the expiration notified date is set');
+            }
+          }
+          
+          if (!_.isEmpty(errors)) return errors;
+          return null;
         }
       });
       
@@ -186,7 +208,7 @@ define([
         afterRender: function() {
           var dview = DetailView.prototype.afterRender.apply(this,arguments);
           
-          if (self.model.get('project_phase')=='annotation') {
+          if (model.get('project_phase')=='annotation') {
             // do nothing
           } else {
             self.createStatusHistoryTable($('#status_table'));
@@ -234,49 +256,33 @@ define([
         template: _.template(screenTemplate)
       });
 
-      var temp_validate = this.model.validate;
-      this.model.validate = function(attrs, options) {
-        errs = temp_validate();
-        if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))) {
-          if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))) {
-            errs['max_allowed_data_privacy_expiration_date'] = (
-              'can not be set if the expiration notified date is set');
-          }
-          if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))) {
-            errs['min_allowed_data_privacy_expiration_date'] = (
-              'can not be set if the expiration notified date is set');
-          }
-        }
-        return _.isEmpty(errs) ? null : errs;
-      };
-        
-      var editableKeys = self.model.resource.updateKeys();
-      if (self.model.isNew()) {
-        editableKeys = _.union(editableKeys,self.model.resource.createKeys());
+      var editableKeys = model.resource.updateKeys();
+      if (model.isNew()) {
+        editableKeys = _.union(editableKeys,model.resource.createKeys());
       }
       editableKeys = _.filter(editableKeys, function(key){
         return ! _.contains(fields[key].visibility, 'billing');
       });
-      var editVisibleKeys = self.model.resource.allEditVisibleKeys();
+      var editVisibleKeys = model.resource.allEditVisibleKeys();
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
         return ! _.contains(fields[key].visibility, 'billing');
       });
-      var detailKeys = self.model.resource.detailKeys();
-      var adminKeys = self.model.resource.adminKeys();
-      console.log('adminKeys', adminKeys);
+      var detailKeys = model.resource.detailKeys();
+      var adminKeys = model.resource.adminKeys();
       if (!self.isAdmin){
         detailKeys = _.difference(detailKeys, adminKeys);
       }
-      
       /////
       // pick just the non-billing fields: prevent backbone save from sending
       // uninitialized billing fields on create
-      var modelKeys = detailKeys.concat(editVisibleKeys);
-      model = new Backbone.Model(this.model.pick(modelKeys));
-      model.set('id', this.model.get('id'));
-      model.resource = this.model.resource;
-      model.urlRoot = this.model.resource.apiUri;
-      /////
+      _.each(_.keys(model.resource.fields), function(fkey){
+        var fi = model.resource.fields[fkey];
+        if (!_.contains(detailKeys.concat(editVisibleKeys), fkey)){
+          fi.editability = [];
+//          model.unset(fkey);
+        }
+      });
+      
       
       // FIXME: 20170519, pick needed values only from the args 
       view = new DetailLayout(_.extend(self.args, { 
@@ -303,7 +309,31 @@ define([
           // TODO: this should default only after pp value is entered
           //view.model.set('publishable_protocol_entered_by',
           //    appModel.getCurrentUser().username);
-          DetailLayout.prototype.showEdit.apply(view,arguments);
+
+          // pick just the non-billing fields: prevent backbone save from sending
+          // uninitialized billing fields on create
+          var modelKeys = detailKeys.concat(editVisibleKeys);
+          editModel = new Backbone.Model(model.pick(modelKeys));
+          editModel.set('id', model.get('id'));
+          editModel.resource = model.resource;
+          editModel.urlRoot = model.resource.apiUri;
+          editModel.parse = model.parse;
+
+          console.log('showEdit: editView: ',editView);
+          var self = this;
+          var editViewInstance = new editView(_.extend({}, self.args, 
+            { 
+              model: editModel, 
+              uriStack: self.uriStack 
+            }));
+          Backbone.Layout.setupView(editViewInstance);
+          view.listenTo(editViewInstance,'remove',function(){
+            view.removeView(editViewInstance);
+            view.showDetail();
+          });
+          view.listenTo(editViewInstance, 'uriStack:change', self.reportUriStack);
+          view.setView("#detail_content", editViewInstance).render();
+          return editViewInstance;
         });  
       };
       this.$("#tab_container-title").html("");
@@ -595,14 +625,22 @@ define([
       });
       
       var collection = new CollectionClass();
-      var colModel = Iccbl.createBackgridColModel(resource.fields); 
+
+//      _.each(_.keys(resource.fields), function(key){
+//        var fi = resource.fields[key];
+//        fi.backgridCellType = Iccbl.TextWrapCell.extend({
+//          className: 'text-wrap-cell-extra-narrow'
+//        });
+//      });
+      var colModel = Iccbl.createBackgridColModel(resource.fields);
+      
       var grid = new Backgrid.Grid({
         columns: colModel,
         collection: collection,
-        className: 'backgrid table-striped table-condensed table-hover'
+        className: 'backgrid table-striped table-condensed table-hover nested-table'
       });
       $target_el.empty();
-      var cell = $('<div>',{ class: 'col-xs-4' });
+      var cell = $('<div>',{ class: '' });
       var grid_el = grid.render().$el;
       cell.html(grid_el);
 
@@ -701,10 +739,10 @@ define([
       var grid = new Backgrid.Grid({
         columns: colModel,
         collection: collection,
-        className: 'backgrid table-striped table-condensed table-hover'
+        className: 'backgrid table-striped table-condensed table-hover nested-table'
       });
       $target_el.empty();
-      var cell = $('<div>',{ class: 'col-xs-4' });
+      var cell = $('<div>',{ class: '' });
       var grid_el = grid.render().$el;
       cell.html(grid_el);
 
@@ -990,7 +1028,7 @@ define([
       var addButton = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="add_' + fieldKey + '_button" href="#">',
-          'Add a vocabulary item...</a>'
+          'Add a ' + vocabulary_name + ' vocabulary item...</a>'
         ].join(''));
       addButton.click(function(event) {
         event.preventDefault();
@@ -1260,8 +1298,6 @@ define([
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
-//        this.$('li').removeClass('active');
-//        this.$('#'+key).addClass('active');
 
       }
       self.$("#tab_container-title").hide();
@@ -1364,7 +1400,7 @@ define([
       var self = this;
       TabbedController.prototype.afterRender.apply(this,arguments);
       $('#content_title_message').empty();
-      if (self.model.has('status')) {
+      if (!_.isEmpty(self.model.get('status'))) {
         if (_.contains(self.COMPLETED_STATUSES, self.model.get('status'))){
           $('#content_title_message').append($('<div class="alert alert-success"></div>').html(
             'Screen Status: ' + appModel.getVocabularyTitle(

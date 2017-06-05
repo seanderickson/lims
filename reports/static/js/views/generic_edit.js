@@ -828,7 +828,9 @@ define([
 
         } else {
           
-          console.log('build edit schema for key: ',key);
+          if (appModel.DEBUG){
+            console.log('build edit schema for key: ',key);
+          }
           self.finalEditableKeys.push(key);
           if (_.has(typeMap, fi.data_type)) {
             _.extend(fieldSchema, typeMap[fi.data_type]);
@@ -854,7 +856,9 @@ define([
           }
           fieldSchema.validators = self._createValidators(fi);
           
-          console.log('editSchema for key created: ', key, editSchema[key]);
+          if (appModel.DEBUG){
+            console.log('editSchema for key created: ', key, editSchema[key]);
+          }
           
         }
 
@@ -1267,8 +1271,10 @@ define([
         return;
       }
       
-      if (self.fullSaveOnEdit || self.model.isNew()) {
-        changedAttributes = null; // force a full save
+      // NOTE: backbone will save all attributes if model.isNew
+      // so changedAttributes will have no effect.
+      if (self.fullSaveOnEdit ) {
+        changedAttributes = null; 
       } else {
         changedAttributes = self._getChangedAttributes(this.model);
         if (! changedAttributes || _.isEmpty(changedAttributes)) {
@@ -1282,16 +1288,6 @@ define([
       // Wait for the server before setting the new attributes on the model
       options['wait'] = true;
       
-//      // Fixup the URL - if it points to the model instance, make it point to 
-//      // the API resource only: tastypie wants this
-//      // Note: this is happening if the model was fetched specifically for this
-//      // page, and has the url used to fetch it, rather than the collection url.
-//      url = options['url'] || _.result(this.model, 'url');
-//      // TODO: this should be optional (for most resources, to have url end with '/'
-//      if ( url && url.charAt(url.length-1) != '/') {
-//        url += '/';
-//      }
-      
       if (!  self.model.isNew()) {
         options['patch'] = true;
       }        
@@ -1299,6 +1295,7 @@ define([
       var headers = options['headers'] = {};
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {
+        var title = 'Enter a comment'
         appModel.showOkCommentForm( title, function(values) {
           headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
         });
@@ -1307,77 +1304,6 @@ define([
       self.save(changedAttributes, options);
     },      
       
-//      if (!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)) {
-//        this.saveCallBack(this.model,headers,options, url);
-//      } else {
-//        console.log('save, changedAttributes: ', changedAttributes);
-//        // NOTE: if model.isNew() (post), backbone save will send all attributes, 
-//        // else, (patch) only changedAtributes are sent.
-//        this.model.save(changedAttributes, options)
-//          .done(function(data, textStatus, jqXHR){ 
-//            self.save_success(arguments);
-//          })
-////          .success(function(model, resp) {
-////            console.log('success');
-////            if (self.saveSuccessCallBack) {
-////              self.saveSuccessCallBack(model);
-////            } else {
-////              // Note removed 201611 - force a reload of all edits, 
-////              // will run extra render operations
-////              //if (!options['patch']) {
-////                // this is an +add event
-////                model = new Backbone.Model(model);
-////                var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-////                model.key = self.model.resource.key + '/' + key;
-////                appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
-////              //} else {
-////              //  // just remove the edit view and use the model to refresh
-////              //  console.log('trigger remove');
-////              //  self.trigger('remove');
-////              //}
-////            }
-////          })
-////          .done(function(model, resp) {
-////            // TODO: done replaces success as of jq 1.8
-////            console.log('model saved');
-////          })
-//          // NOTE: chained, fail behaves like $.ajax().fail(jqXHR, textstatus, errorThrown)
-//          // whereas the error callback takes (model, response, options)
-//          .fail(function(jqXHR, textStatus, errorThrown) { 
-//            
-//            if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
-//              var errors = _.result(jqXHR.responseJSON,'errors',null);
-//              if (errors) {
-//                console.log('errors in response:', errors);
-//                _.each(_.keys(errors), function(key) {
-//                  var error = errors[key];
-//                  if (_.has(self.fields, key)) {
-//                    self.fields[key].setError(error);
-//                  }
-//                  $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-//                  console.log('added error for: "', key, '", val: "', 
-//                    self.fields[key].getValue(), '"');
-//                });
-//                return;
-//              }
-//            }
-//            self.save_fail(arguments);
-////            if (options['patch']) {
-////              self.model.fetch();
-////            } else {
-////              self.remove();
-////              appModel.router.back();
-////            }
-////            Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-////            console.log('trigger remove');
-////            self.trigger('remove');
-//          });
-////          .always(function() {
-////            // always replaces complete as of jquery 1.8
-////          });
-//      }
-//    },
-    
     /**
      * Child view bubble up URI stack change event
      */

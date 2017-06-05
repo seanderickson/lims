@@ -147,7 +147,8 @@ define([
         EditView: EditView.extend({
           save_success: function(data, textStatus, jqXHR){
             EditView.prototype.save_success.apply(this,arguments);
-            appModel.unset('libraries');
+            appModel.unset('libraries', {silent: true});
+            appModel.getLibraries();
           }
         }),
         buttons: buttons 

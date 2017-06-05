@@ -1035,6 +1035,25 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   },
 });
 
+var DateLinkCell = Iccbl.DateLinkCell = Iccbl.LinkCell.extend({
+
+  render : function() {
+    var self = this;
+    this.$el.empty();
+    var formattedValue = getIccblDateString(
+      this.model.get(this.column.get("name")));
+    var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
+    self.$el.append($('<a>', {
+      tabIndex : -1,
+      href : interpolatedVal,
+      target : self.target,
+      title: self.title
+    }).text(formattedValue));
+    return this;
+  }
+
+});
+
 
 var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
   
@@ -1759,7 +1778,7 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
     DateCell.__super__.initialize.apply(this, arguments);
     var formatter = this.formatter;
     //   formatter.includeDate = this.includeDate;
-    //   formatter.includeTime = this.includeTime;
+    formatter.includeTime = false;
     //   formatter.includeMilli = this.includeMilli;
 
     var placeholder = "MM/DD/YYYY";
@@ -4106,6 +4125,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       
       if (display_type=='link' && data_type=='list'){
         backgridCellType = Iccbl.UriListCell;
+      }
+      if (display_type=='link' && data_type=='date'){
+        backgridCellType = Iccbl.DateLinkCell;
       }
     }else{
       if (Iccbl.appModel.DEBUG)

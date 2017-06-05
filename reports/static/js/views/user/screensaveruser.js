@@ -88,7 +88,8 @@ define([
       var editView = EditView.extend({
         save_success: function(data, textStatus, jqXHR){
           EditView.prototype.save_success.apply(this,arguments);
-          appModel.unset('');
+          appModel.unset('users', {silent: true});
+          appModel.getUsers();
         },
         
         afterRender: function(){

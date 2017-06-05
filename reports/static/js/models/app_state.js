@@ -34,7 +34,6 @@ define([
     var keys = Iccbl.sortOnOrdinal(
       _.keys(self.fields), self.fields)
     var adminKeys = _(keys).filter(function(key){
-      console.log('key', key, _.result(self.fields[key], 'is_admin'));
       return _.result(self.fields[key], 'is_admin', false);
     });
     return adminKeys;
@@ -752,6 +751,7 @@ define([
         }
         throw "Unknown vocabulary: " + scope;
       }
+      console.log('vocabulary: ' + scope, vocabularies[scope]);
       return vocabularies[scope];
     },
     
@@ -855,7 +855,7 @@ define([
       return this.newModelFromResource(resource,defaults);
     },
     
-    newModelFromResource(resource,defaults){
+    newModelFromResource: function(resource,defaults){
 
       var defaults = defaults || {};
       
@@ -889,15 +889,17 @@ define([
                 }
               }
             }else{
-              defaults[key] = ''; // placeholders for the edit form
+              defaults[key] = null; // placeholders for the edit form
             }
           }
         }
       });
 
       var NewModel = Backbone.Model.extend({
+        __classname: 'iccbl-model-' + resource.key,
         urlRoot: resource.apiUri , 
         defaults: defaults,
+        resource: resource,
         parse: function(resp,options){
           return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
         }

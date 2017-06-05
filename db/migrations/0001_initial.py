@@ -1795,6 +1795,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterUniqueTogether(
             name='assayplate',
-            unique_together=set([('library_screening', 'plate_number', 'replicate_ordinal')]),
+            unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
         ),
     ]

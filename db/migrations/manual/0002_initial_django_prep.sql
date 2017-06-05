@@ -458,6 +458,15 @@ delete from assay_plate
   where screen_result_data_loading_id is not null 
   and library_screening_id is null;
 
+/**
+ * Alter the assay_plate unique index:
+ * - Django migration command for this is not working on orchestra/postgreSQL 8.4
+ **/
+DROP INDEX assay_plate_unique_index;
+ALTER TABLE assay_plate 
+  ADD CONSTRAINT assay_plate_unique_index
+  UNIQUE(library_screening_id, plate_id, replicate_ordinal); 
+
 DROP TABLE cell_lineage;
 DROP TABLE cell_related_projects;
 DROP TABLE cell_markers;

@@ -6,6 +6,7 @@ import json
 import logging
 
 from django.db import migrations, models, transaction
+from django.db.models import F
 from django.db.utils import IntegrityError
 from pytz import timezone
 import pytz
@@ -158,6 +159,43 @@ def migrate_screen_status(apps,schema_editor):
     
     logger.info('updated: %d screen status entries', count)
 
+def migrate_screen_project_phase(apps,schema_editor):
+    '''
+    project_phase is used to distinguish primary screens, follow up screens, 
+    and studies.
+    - migration:
+    - populate screen.parent_screen
+    - if project_phase != annotation, set the screen.study_type = null
+    '''
+    
+    # 1. Identify and set the parent screens for follow up screens
+    Screen = apps.get_model('db','Screen')
+    for screen in (Screen.objects.all()
+        .filter(project_id__isnull=False)
+        .exclude(project_id__exact='')
+        .exclude(project_id__exact=F('facility_id'))):
+        logger.info('screen: %r find parent screen: %r', 
+            screen.facility_id, screen.project_id)
+        parent_screen = Screen.objects.get(facility_id=screen.project_id)
+        screen.parent_screen = parent_screen
+        logger.info(
+            'screen: %s, parent_screen: %s', 
+            screen.facility_id, parent_screen.facility_id)
+        screen.save()
+        logger.info('%r, %r', screen.facility_id, screen.parent_screen.facility_id)
+
+#     # 2. verify that all "follow up" screens have a parent screen
+#     query = ( Screen.objects.all()
+#         .filter(project_phase__exact='follow_up_screen')
+#         .exclude(parent_screen__isnull=True))
+#     if query.exists():
+#         raise Exception('not all follow_up_screens were converted: %r',
+#             [x.facility_id for x in query.all()])
+# 
+    # 3. Set the "study_type" to null for all non-study screens
+    query = ( Screen.objects.all().exclude(project_phase__exact='annotation'))
+    count = query.update(study_type=None)
+    logger.info('study_type set to null for screens (count): %d', count)
 
 class Migration(migrations.Migration):
 
@@ -168,5 +206,28 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(migrate_screen_status),
         migrations.RunPython(migrate_pin_transfer_approval),
+        migrations.AddField(
+            model_name='screen',
+            name='parent_screen',
+            field=models.ForeignKey(
+                related_name='follow_up_screen', to='db.Screen', null=True),
+        ),
+        migrations.AlterField(
+            model_name='screen',
+            name='study_type',
+            field=models.TextField(null=True),
+        ),
+        migrations.RunPython(migrate_screen_project_phase),
+        
+        # TODO: reinstate for final migration; leaving fields in the db for 
+        # now - 20170607
+        # migrations.RemoveField(
+        #     model_name='screen',
+        #     name='project_id',
+        # ),
+        # migrations.RemoveField(
+        #     model_name='screen',
+        #     name='project_phase',
+        # ),
 
     ]

@@ -3469,7 +3469,7 @@ class ScreenResultResource(DbApiResource):
         })
         screenresult_log.save()
         
-        if screen.project_phase != 'annotation':
+        if screen.study_type is None:
             logger.info('pre-generate the mutual positives index...')
             self.get_mutual_positives_columns(screen_result.screen_result_id)
             logger.info('done - pre-generate the mutual positives index')
@@ -13139,6 +13139,7 @@ class ScreenResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_detail_uiview'), 
                 name="api_dispatch_screen_detail_uiview"),
+
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/libraries%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -13283,7 +13284,7 @@ class ScreenResource(DbApiResource):
                 
                 _cpr_data = \
                     self.get_cpr_resource()._get_list_response_internal(**{
-                        'limit': 10,
+                        'limit': 5,
                         'screen_facility_id__eq': _data['facility_id'],
                         'order_by': ['-date_requested'],
                         'exact_fields': [
@@ -13307,7 +13308,8 @@ class ScreenResource(DbApiResource):
                 screen_cache.set(cache_key, _data)
         else:
             logger.info('cache key set: %s', cache_key)
-                
+          
+              
         # Serialize
         # FIXME: refactor to generalize serialization:
         # see build_response method (needs rework)
@@ -13315,18 +13317,17 @@ class ScreenResource(DbApiResource):
             request,format=kwargs.get('format', None))
         if content_type in [XLS_MIMETYPE,CSV_MIMETYPE]:
             _data = {'objects': [_data]}
+            filename = 'screen_detail_%s' % facility_id
         response = HttpResponse(
             content=self.get_serializer().serialize(
                 _data, content_type),
             content_type=content_type)
         if content_type == XLS_MIMETYPE:
             response['Content-Disposition'] = \
-                'attachment; filename=%s.xlsx' % self._get_filename(
-                    self.build_schema(), kwargs)
+                'attachment; filename=%s.xlsx' % filename
         if content_type == CSV_MIMETYPE:
             response['Content-Disposition'] = \
-                'attachment; filename=%s.csv' % self._get_filename(
-                    self.build_schema(), kwargs)
+                'attachment; filename=%s.csv' % filename
         downloadID = request.GET.get('downloadID', None)
         if downloadID:
             logger.info('set cookie "downloadID" %r', downloadID )
@@ -13453,6 +13454,8 @@ class ScreenResource(DbApiResource):
         # specific setup
         base_query_tables = ['screen', 'screen_result']
         _screen = self.bridge['screen']
+        _followup_screen = _screen.alias('fus')
+        _parent_screen = _screen.alias('ps')
         _screen_result = self.bridge['screen_result']
         _ap = self.bridge['assay_plate']
         _aw = self.bridge['assay_well']
@@ -13657,6 +13660,19 @@ class ScreenResource(DbApiResource):
 
         try:
             custom_columns = {
+                'follow_up_screens': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_followup_screen.c.facility_id),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(_followup_screen)
+                    .where(_followup_screen.c.parent_screen_id
+                        == literal_column('screen.screen_id'))),
+                'parent_screen': (
+                    select([_parent_screen.c.facility_id])
+                    .select_from(_parent_screen)
+                    .where(_parent_screen.c.screen_id
+                        == literal_column('screen.parent_screen_id'))),
                 'collaborator_usernames': (
                     select([
                         func.array_to_string(
@@ -14054,26 +14070,26 @@ class ScreenResource(DbApiResource):
         id_kwargs = self.get_id(deserialized, **kwargs)
         Screen.objects.get(**id_kwargs).delete()
     
-    def validate(self, _dict, patch=False, current_object=None):
-        errors = DbApiResource.validate(self, _dict, patch=patch)
-        # if not errors:
-        #     errors = {}
-        #     dped = _dict.get('data_privacy_expiration_date', None)
-        #     dped_notified = _dict.get('data_privacy_expiration_notified_date', None)
-        #     min_dped = _dict.get('min_allowed_data_privacy_expiration_date', None)
-        #     max_dped = _dict.get('max_allowed_data_privacy_expiration_date', None)
-        #     if not dped:
-        #         if min_dped or max_dped:
-        #             errs['data_privacy_expiration_date'] = \
-        #                 'can not be null if min/max dates are set'
-        #     if dped_notified:
-        #         if min_dped:
-        #             errs['min_allowed_data_privacy_expiration_date'] = \
-        #                 'can not be set if the expiration notified date is set'
-        #         if self.max_allowed_data_privacy_expiration_date:
-        #             errs['min_allowed_data_privacy_expiration_date'] = \
-        #                 'can not be set if the expiration notified date is set'
-        return errors
+#     def validate(self, _dict, patch=False, current_object=None):
+#         errors = DbApiResource.validate(self, _dict, patch=patch)
+#         # if not errors:
+#         #     errors = {}
+#         #     dped = _dict.get('data_privacy_expiration_date', None)
+#         #     dped_notified = _dict.get('data_privacy_expiration_notified_date', None)
+#         #     min_dped = _dict.get('min_allowed_data_privacy_expiration_date', None)
+#         #     max_dped = _dict.get('max_allowed_data_privacy_expiration_date', None)
+#         #     if not dped:
+#         #         if min_dped or max_dped:
+#         #             errs['data_privacy_expiration_date'] = \
+#         #                 'can not be null if min/max dates are set'
+#         #     if dped_notified:
+#         #         if min_dped:
+#         #             errs['min_allowed_data_privacy_expiration_date'] = \
+#         #                 'can not be set if the expiration notified date is set'
+#         #         if self.max_allowed_data_privacy_expiration_date:
+#         #             errs['min_allowed_data_privacy_expiration_date'] = \
+#         #                 'can not be set if the expiration notified date is set'
+#         return errors
 
     @write_authorization
     @un_cache
@@ -14103,14 +14119,15 @@ class ScreenResource(DbApiResource):
         if patch_facility_id and override_param is not True:
             raise ValidationError({
                 'facility_id':
-                    'May not be specified in screen creation: %r' % patch_facility_id,
+                    'May not be specified in screen creation: %s' % patch_facility_id,
                 API_PARAM_OVERRIDE: 'required' })
         
         if not patch_facility_id:    
             # find a new facility id
             max_facility_id_sql = '''
-                select facility_id::text, project_phase from screen 
-                where project_phase='primary_screen' 
+                select facility_id::text from screen 
+                where parent_screen_id is null
+                and study_type is null 
                 and facility_id ~ '^[[:digit:]]+$' 
                 order by facility_id::integer desc
                 limit 1;
@@ -14134,7 +14151,10 @@ class ScreenResource(DbApiResource):
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
         
-        id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        id_kwargs = self.get_id(deserialized, validate=True, schema=schema, **kwargs)
         logger.info('patch screen: %r, %r', id_kwargs, deserialized)
         try:
             create = False
@@ -14144,16 +14164,17 @@ class ScreenResource(DbApiResource):
                 create = True
                 screen = Screen(**id_kwargs)
 
-            initializer_dict = self.parse(deserialized, create=create)
+            initializer_dict = self.parse(deserialized,  schema=schema, create=create)
             logger.info('initializer_dict: %r', initializer_dict)
                 
-            errors = self.validate(deserialized, patch=not create)
+            errors = self.validate(deserialized,  schema=schema, patch=not create)
             if errors:
                 raise ValidationError(errors)
             
             _key = 'lab_head_username'
             if _key in initializer_dict:
-                try:
+                try: 
+                    # may not be null
                     initializer_dict['lab_head'] = ScreensaverUser.objects.get(
                         username=initializer_dict[_key])
                 except ObjectDoesNotExist:
@@ -14163,6 +14184,7 @@ class ScreenResource(DbApiResource):
             _key = 'lead_screener_username'
             if _key in initializer_dict:
                 try:
+                    # may not be null
                     initializer_dict['lead_screener'] = (
                         ScreensaverUser.objects.get(
                             username=initializer_dict[_key]))
@@ -14171,9 +14193,11 @@ class ScreenResource(DbApiResource):
                         key=_key,
                         msg='No such username: %r' % initializer_dict[_key])
             _key = 'collaborator_usernames'
-            if initializer_dict.get(_key, None):
+            if initializer_dict.get(_key, None) is not None:
+                collaborator_usernames = initializer_dict[_key]
                 collaborators = []
-                for collaborator_username in initializer_dict[_key]:
+                # may empty
+                for collaborator_username in collaborator_usernames:
                     try:
                         collaborators.append(ScreensaverUser.objects.get(
                             username=collaborator_username))
@@ -14195,6 +14219,10 @@ class ScreenResource(DbApiResource):
                         raise ValidationError(
                             key=_key,
                             msg='No such username: %r' % val)
+            pin_transfer_date_approved = \
+                initializer_dict.get('pin_transfer_date_approved',None)
+            pin_transfer_comments = \
+                initializer_dict.get('pin_transfer_comments', None)
             
             related_initializer = {}
             related_initializer['cell_lines'] = \
@@ -14207,11 +14235,13 @@ class ScreenResource(DbApiResource):
                 initializer_dict.pop('publications', None)
                 
             for key, val in initializer_dict.items():
+                logger.info('k: %r, v: %r', key, val)
                 if hasattr(screen, key):
+                    logger.info('setting %r', key)
                     setattr(screen, key, val)
             screen.clean()
             screen.save()
-            
+            logger.info('screen.study_type: %r', screen.study_type)
             # NOTE: collaborators cannot be set until after the object is saved:
             # the many-to-many related manager is not functional until then.
             if 'collaborators' in initializer_dict:
@@ -14224,7 +14254,7 @@ class ScreenResource(DbApiResource):
             
             _key = 'cell_lines'
             _val = related_initializer.get(_key, None)
-            if _val:
+            if _val is not None:
                 (ScreenCellLines.objects
                     .filter(screen=screen)
                     .exclude(cell_line__in=_val)
@@ -14239,7 +14269,7 @@ class ScreenResource(DbApiResource):
                             cell_line=cell_line)
             _key = 'funding_supports'
             _val = related_initializer.get(_key, None)
-            if _val:
+            if _val is not None:
                 (ScreenFundingSupports.objects
                     .filter(screen=screen)
                     .exclude(funding_support__in=_val)
@@ -14254,11 +14284,6 @@ class ScreenResource(DbApiResource):
                             funding_support=funding_support)
             
             # Set the pin transfer approval data
-            pin_transfer_date_approved = \
-                initializer_dict.get('pin_transfer_date_approved',None)
-            pin_transfer_comments = \
-                initializer_dict.get('pin_transfer_comments', None)
-
             if pin_transfer_approved_by is not None:
                 if screen.pin_transfer_admin_activity is None:
                     activity = \
@@ -14296,7 +14321,7 @@ class ScreenResource(DbApiResource):
             # TODO: determine if this is still used
             _key = 'keywords'
             _val = related_initializer.get(_key, None)
-            if _val:
+            if _val is not None:
                 (ScreenKeyword.objects
                     .filter(screen=screen)
                     .exclude(keyword__in=_val)
@@ -14312,7 +14337,7 @@ class ScreenResource(DbApiResource):
             
             _key = 'publications'
             _val = related_initializer.get(_key, None)
-            if _val:
+            if _val is not None:
                 current_publications = set([ 
                     str(x) for x in
                         screen.publication_set.all()
@@ -14333,6 +14358,33 @@ class ScreenResource(DbApiResource):
                         publication_id__in=publications_add)
                     screen.publication_set.add(query)
             
+            _key = 'parent_screen'
+            _val = deserialized.get(_key, None)
+            if _val:
+                if ( screen.parent_screen 
+                    and screen.parent_screen.facility_id != _val):
+                    raise ValidationError(
+                        key=_key,
+                        msg='May not be reassigned')
+                elif screen.parent_screen is None:
+                    try:
+                        parent_screen = Screen.objects.get(facility_id=_val)
+                        
+                        if screen.screen_type != parent_screen.screen_type:
+                            raise ValidationError(
+                                key=_key,
+                                msg='Parent screen must have the same screen_type')
+                        if screen.lab_head != parent_screen.lab_head:
+                            raise ValidationError(
+                                key=_key,
+                                msg='Parent screen must have the same lab_head')
+                        
+                        screen.parent_screen = parent_screen
+                    except ObjectDoesNotExist:
+                        raise ValidationError(
+                            key=_key,
+                            msg='Does not exist: %r' % _val)
+
             screen.save()
             logger.info('patch_obj done')
             return { API_RESULT_OBJ: screen }
@@ -14365,9 +14417,59 @@ class StudyResource(ScreenResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
         
-        kwargs['project_phase__exact'] = 'annotation'
+        kwargs['study_type__isnull'] = False
         
         return super(StudyResource,self).build_list_response(request, **kwargs)
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic        
+    def post_detail(self, request, **kwargs):
+        '''
+        POST is used to create or update a resource; not idempotent;
+        - The LIMS client will use POST to create exclusively
+        '''
+        logger.info('post_detail, study')
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        logger.debug('patch detail %s, %s', deserialized,kwargs)
+
+        patch_facility_id = deserialized.get('facility_id', None)
+        if not patch_facility_id:    
+            raise ValidationError(
+                key='facility_id', msg='required')
+        logger.info('new study facility id to be created: %r', patch_facility_id)
+        kwargs['facility_id'] = patch_facility_id
+        
+        return self.patch_detail(request,**kwargs)
+
+    @write_authorization
+    @un_cache  
+    @transaction.atomic      
+    def patch_detail(self, request, **kwargs):
+        '''
+        PATCH is used to create or update a resource; not idempotent
+        '''
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs.pop('data')
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+        data_sharing_level = deserialized.get('data_sharing_level', None)
+        if data_sharing_level is None:
+            deserialized['data_sharing_level'] = 0
+        _data = self.build_patch_detail(request, deserialized, **kwargs)
+
+        return self.build_response(
+            request, _data, response_class=HttpResponse, **kwargs)
+
 
 
 class UserChecklistItemResource(DbApiResource):    
@@ -16352,7 +16454,7 @@ class WellResource(DbApiResource):
         screens = {}        
         for rv in (ResultValue.objects
                 .filter(well_id=well_id)
-                .filter(data_column__screen_result__screen__project_phase='annotation')):
+                .filter(data_column__screen_result__screen__study_type__isnull=False)):
             screen = rv.data_column.screen_result.screen
             if screen.facility_id not in screens:
                 _screen_data = screens.setdefault(
@@ -16411,7 +16513,7 @@ class WellResource(DbApiResource):
                 .select_from(_aw
                     .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
                     .join(_s, _sr.c.screen_id==_s.c.screen_id))
-                .where(_s.c.project_phase != 'annotation'))
+                .where(_s.c.study_type != None))
         fields = ['facility_id', 'confirmed_positive_value', 'is_positive']
 
         with get_engine().connect()as conn:

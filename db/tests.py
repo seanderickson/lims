@@ -169,12 +169,11 @@ class DBResourceTestCase(IResourceTestCase):
             _data[k] = v
         return _data
 
-    def create_screen(self, data=None, uri_params=None):
+    def create_screen(self, data=None, uri_params=None, resource_uri=None):
         ''' Create a test Screen through the API'''
         
         
         lab_head = self.create_lab_head()
-        
         lead_screener = self.create_screensaveruser()
         collaborator1 = self.create_screensaveruser()
         collaborator2 = self.create_screensaveruser()
@@ -188,7 +187,8 @@ class DBResourceTestCase(IResourceTestCase):
             input_data['lead_screener_username'] = lead_screener['username']
         input_data['collaborator_usernames'] = [
             collaborator1['username'], collaborator2['username']]
-        resource_uri = '/'.join([BASE_URI_DB, 'screen'])
+        if resource_uri is None:
+            resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         
         if uri_params is not None:
             resource_uri += '?' + '&'.join(uri_params)
@@ -201,16 +201,16 @@ class DBResourceTestCase(IResourceTestCase):
         resp = self.api_client.post(
             resource_uri, format='json', data=input_data, 
             authentication=self.get_credentials())
-        new_obj = self.deserialize(resp)
-        new_obj = new_obj[API_RESULT_DATA]
         self.assertTrue(
             resp.status_code in [200,201], 
             (resp.status_code, self.get_content(resp)))
     
+        new_obj = self.deserialize(resp)
+        new_obj = new_obj[API_RESULT_DATA]
         new_obj = self.get_screen(new_obj['facility_id'])    
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
         self.assertTrue(result, msg)
-        logger.debug('item created: %r', new_obj)
+        logger.info('item created: %r', new_obj)
         return new_obj
     
     def create_copy(self, copy_input_data ):   
@@ -226,7 +226,6 @@ class DBResourceTestCase(IResourceTestCase):
     
     def get_screen(self, facility_id, data_for_get=None):
         ''' Retrieve a Screen from the API'''
-        
         resource_uri = '/'.join([BASE_URI_DB, 'screen', facility_id])
         return self.get_single_resource(resource_uri, data_for_get)
 
@@ -3025,6 +3024,7 @@ class ScreenResource(DBResourceTestCase):
         data = {
             'screen_type': 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
+            'species': 'bacteria',
             'facility_id': '10'
         }
         screen_item = self.create_screen(
@@ -3044,6 +3044,7 @@ class ScreenResource(DBResourceTestCase):
         data = {
             'screen_type': 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
+            'species': 'bacteria',
         }
         screen_item = self.create_screen(data=data)
         
@@ -3056,7 +3057,91 @@ class ScreenResource(DBResourceTestCase):
                 'key %r, val: %r not expected: %r' 
                     % (key, value, screen_item[key]))
         logger.debug('screen created: %r', screen_item)
+        
+        follow_up_data = {
+            'facility_id': screen_item['facility_id'] + 'A',
+            'parent_screen': screen_item['facility_id'], 
+            'title': screen_item['title']+'-follow up',
+            'summary': screen_item['summary'],
+            'lead_screener_username': screen_item['lead_screener_username'],
+            'lab_head_username': screen_item['lab_head_username'],
+            'collaborator_usernames': screen_item['collaborator_usernames'],
+            'data_sharing_level': screen_item['data_sharing_level'],
+            'screen_type': screen_item['screen_type']
+        }
+        
+        resource_uri = BASE_URI_DB + '/screen?override=true'
+        
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            data=follow_up_data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        data_for_get = {
+            'facility_id': follow_up_data['facility_id']}
+        follow_up_screen = self.get_single_resource(resource_uri, data_for_get)
+        for key, value in follow_up_data.items():
+            (result,msgs) = equivocal(value, follow_up_screen[key])
+            self.assertTrue(result, 
+                'key %r, val: %r not expected: %r' 
+                    % (key, value, follow_up_screen[key]))
+        
+    def test1c_create_study(self):
+        logger.info('test1c_create_study...')        
 
+        lab_head = self.create_lab_head()
+        lead_screener = self.create_screensaveruser()
+        collaborator1 = self.create_screensaveruser()
+        collaborator2 = self.create_screensaveruser()
+        input_data = ScreenFactory.attributes()
+        data = {
+            'facility_id': '100000',
+            'screen_type': 'small_molecule',
+            'study_type': 'in_silico',
+            'data_sharing_level': None,
+            'lab_head_username': lab_head['username'],
+            'lead_screener_username': lead_screener['username'],
+            'collaborator_usernames': [
+                collaborator1['username'], collaborator2['username']]
+            
+        }
+        input_data.update(data)
+        logger.info('input_data: %r', input_data)
+        
+        resource_uri = '/'.join([BASE_URI_DB, 'study'])
+        resp = self.api_client.post(
+            resource_uri, format='json', data=input_data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code, self.get_content(resp)))
+    
+        new_obj = self.deserialize(resp)
+        new_obj = new_obj[API_RESULT_DATA]
+        logger.info('created %r', new_obj)
+
+        data_for_get = { 
+            'limit': 0,
+            'includes': '*'
+        }
+        test_resource_uri = '/'.join([BASE_URI_DB, 'study', new_obj['facility_id']])
+        screen_item =  self.get_single_resource(resource_uri, data_for_get)
+        
+        for key, value in data.items():
+            if key == 'data_sharing_level':
+                continue
+            self.assertEqual(value, screen_item[key], 
+                'key %r, val: %r not expected: %r' 
+                    % (key, value, screen_item[key]))
+            
+        self.assertEqual(screen_item['data_sharing_level'], 0, 
+            'if not specified, study data sharing level should be 0: %r' 
+            % screen_item['data_sharing_level'])
+        logger.debug('study created: %r', screen_item)
+        
+        # TODO: study result values
         
     def test2a_create_library_screening_cherry_picked_copies(self):
         logger.info('test2a_create_library_screening_cherry_picked_copies...')
@@ -3209,9 +3294,9 @@ class ScreenResource(DBResourceTestCase):
         }
         resource_uri = BASE_URI_DB + '/libraryscreening'
         resource_test_uri = BASE_URI_DB + '/libraryscreening'
-        data_for_get = {
-            'screen_facility_id__eq': screen['facility_id']
-        }
+#         data_for_get = {
+#             'screen_facility_id__eq': screen['facility_id']
+#         }
 
         resp = self.api_client.post(
             resource_uri,format='json', 

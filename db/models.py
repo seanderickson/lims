@@ -766,8 +766,15 @@ class Screen(models.Model):
 
     screen_id = models.AutoField(primary_key=True) 
     facility_id = models.TextField(unique=True)
-    project_phase = models.TextField()
-    project_id = models.TextField()
+    
+    parent_screen = models.ForeignKey(
+        'Screen', null=True, related_name='follow_up_screen')
+    
+    # REMOVE for SS2
+#     project_phase = models.TextField()
+#     project_id = models.TextField()
+    
+    
     # New, from status migration (0004)
     status = models.TextField(null=True)
     status_date = models.DateField(null=True)
@@ -819,7 +826,7 @@ class Screen(models.Model):
     
     abase_study_id = models.TextField()
     abase_protocol_id = models.TextField()
-    study_type = models.TextField(null=False)
+    study_type = models.TextField(null=True)
     url = models.TextField()
     
     to_be_requested = models.BooleanField(default=False) 

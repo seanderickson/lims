@@ -64,7 +64,7 @@ define([
     clickEdit: function(event){
       event.preventDefault();
       this.reportUriStack(['edit']);
-      this.showEdit('edit');
+      this.showEdit();
     },
 
     showEdit: function() {
@@ -94,11 +94,11 @@ define([
         viewId = this.uriStack.shift();
         if (viewId == 'edit') {
           this.uriStack.push(viewId);
-          this.showEdit(viewId);
+          this.showEdit();
           return;
         }else if (viewId == '+add') {
           this.uriStack.push(viewId);
-          this.showEdit(viewId);
+          this.showEdit();
           return;
         }
       }

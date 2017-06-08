@@ -120,27 +120,62 @@ define([
       }
       return titleDiv;
     },
-        
+       
+    /**
+     * TODO: create a ScreenDetail class
+     */
     setDetail: function(delegateStack) {
       var self,outerSelf = self = this;
       var key = 'detail';
-      var fields = self.model.resource.fields;
+      var resource = self.model.resource;
+      var fields = resource.fields;
       var model = this.model;
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      if (model.get('project_phase')!= 'annotation') {
-        fields['collaborator_usernames'].vocabulary = (
-            _.object(model.get('collaborator_usernames'),
-              model.get('collaborator_names')));
+      fields['collaborator_usernames'].vocabulary = (
+          _.object(model.get('collaborator_usernames'),
+            model.get('collaborator_names')));
+
+      if (!_.isEmpty(model.get('parent_screen'))){
+        fields['parent_screen'].visibility=['d'];
+      }
+      if (!_.isEmpty(model.get('follow_up_screens'))){
+        fields['follow_up_screens'].visibility=['d'];
+      }
+      
+      // Manage visible fields; admin fields
+      var editableKeys = model.resource.updateKeys();
+      if (model.isNew()) {
+        editableKeys = _.union(editableKeys,model.resource.createKeys());
+      }
+      editableKeys = _.filter(editableKeys, function(key){
+        return ! _.contains(fields[key].visibility, 'billing');
+      });
+      var editVisibleKeys = model.resource.allEditVisibleKeys();
+      editVisibleKeys = _.filter(editVisibleKeys, function(key){
+        return ! _.contains(fields[key].visibility, 'billing');
+      });
+      var detailKeys = model.resource.detailKeys();
+      var adminKeys = model.resource.adminKeys();
+      if (!self.isAdmin){
+        detailKeys = _.difference(detailKeys, adminKeys);
       }
       
       var editView = EditView.extend({
+
+        initialize: function() {
+          var self = this;
+          EditView.prototype.initialize.apply(this,arguments);
+        }, 
+        
         save_success: function(data, textStatus, jqXHR){
           EditView.prototype.save_success.apply(this,arguments);
           appModel.unset('screens', {silent: true});
           appModel.getScreens();
         },
+        
         afterRender: function() {
+        
           var form = this;
           outerSelf._addVocabularyButton(
             this, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
@@ -177,8 +212,10 @@ define([
           form.on('status:change', function(e){
             form.setValue('status_date', new Date());
           });
+          
           EditView.prototype.afterRender.apply(this,arguments);
         },
+
         validate: function() {
           // FIXME: 20170605 refactor: this must be tested to verify it works
           var errs = EditView.prototype.validate.apply(this,arguments);
@@ -200,6 +237,63 @@ define([
         }
       });
       
+      // Custom showEdit function allows lazy loading of user choices fields
+      // FIXME: it would be better to extend DetailLayout.showEdit
+      var showEdit = function(updateModel) {
+        var self = this;
+        var model = updateModel || self.model;
+        var fields = model.resource.fields;
+        appModel.initializeAdminMode(function() {
+          
+          // FIXME: if "edit" page is reloaded, option lists here may not be loaded
+          // - caused by search_box dynamic form ajax request contention
+          // - result is that the choices are not populated here
+          // - fix lazy load search box options; or force showEdit to block 
+          // until loaded
+          
+          var userOptions = appModel.getUserOptions();
+          fields['collaborator_usernames']['choices'] = userOptions;
+          fields['lead_screener_username']['choices'] = (
+              [{ val: '', label: ''}].concat(userOptions));
+          fields['lab_head_username']['choices'] = (
+              appModel.getPrincipalInvestigatorOptions() );
+          fields['publishable_protocol_entered_by']['choices'] = (
+              appModel.getAdminUserOptions() );
+          fields['pin_transfer_approved_by_username']['choices'] = (
+              appModel.getAdminUserOptions() );
+          
+          // TODO: this should default only after pp value is entered
+          //view.model.set('publishable_protocol_entered_by',
+          //    appModel.getCurrentUser().username);
+
+          // pick just the non-billing fields: prevent backbone save from sending
+          // uninitialized billing fields on create
+          var modelKeys = detailKeys.concat(editVisibleKeys);
+          editModel = new Backbone.Model(model.pick(modelKeys));
+          editModel.set('id', model.get('id'));
+          editModel.resource = model.resource;
+          editModel.urlRoot = model.resource.apiUri;
+          editModel.url = model.url;
+          editModel.parse = model.parse;
+
+          console.log('showEdit: editView: ',editView);
+          var editViewInstance = new editView(_.extend({}, self.args, 
+            { 
+              model: editModel, 
+              uriStack: self.uriStack 
+            }));
+          Backbone.Layout.setupView(editViewInstance);
+          view.listenTo(editViewInstance,'remove',function(){
+            view.removeView(editViewInstance);
+            view.showDetail();
+          });
+          view.listenTo(editViewInstance, 'uriStack:change', self.reportUriStack);
+          view.setView("#detail_content", editViewInstance).render();
+          return editViewInstance;
+        });  
+      };
+
+      
       var view = this.tabViews[key];
       if (view) {
         this.removeView(this.tabViews[key]);
@@ -208,17 +302,66 @@ define([
         afterRender: function() {
           var dview = DetailView.prototype.afterRender.apply(this,arguments);
           
-          if (model.get('project_phase')=='annotation') {
-            // do nothing
+          if (!_.isEmpty(model.get('study_type'))) {
+            // do nothing for studies here
           } else {
             self.createStatusHistoryTable($('#status_table'));
             self.createActivitySummary($('#activity_summary'));
             self.createCprTable($('#cpr_table'));
             self.createPublicationTable(this.$el.find('#publications'));
             self.createAttachedFileTable(this.$el.find('#attached_files'));
-            
           }
           
+          if (_.isEmpty(model.get('parent_screen'))){
+            
+            // Follow up screens can be added, if the current screen is not a 
+            // follow up screen itself.
+            
+            var addFollowUpScreenControl = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="followUpScreenButton" href="#">',
+                'Add a Follow Up Screen</a>'
+              ].join(''));
+            $('#generic-detail-buttonpanel').append(addFollowUpScreenControl);
+            addFollowUpScreenControl.click(function(e){
+              e.preventDefault();
+              
+              var newFacilityId = self.model.get('facility_id') + 'A';
+              if (!_.isEmpty(model.get('follow_up_screens'))){
+                var other = self.model.get('follow_up_screens').sort();
+                var last = other[other.length-1];
+                var newLetter =  String.fromCharCode(last.charCodeAt(last.length-1)+1);
+                newFacilityId =  self.model.get('facility_id') + newLetter;
+              }
+              
+              var defaults = {
+                facility_id: newFacilityId,
+                screen_type: self.model.get('screen_type'),
+                parent_screen: self.model.get('facility_id'),
+                collaborator_usernames: self.model.get('collaborator_usernames'),
+                lead_screener_username: self.model.get('lead_screener_username'),
+                lab_head_username: self.model.get('lab_head_username'),
+                data_sharing_level: self.model.get('data_sharing_level')
+              };
+              var newModel = appModel.newModelFromResource(resource, defaults);
+              newModel.url = function(){
+                return resource.apiUri + '?override=true';
+              }
+              
+              console.log('new follow up screen:', newModel);
+              self.consumedStack = ['+add'];
+              editVisibleKeys.push('parent_screen');
+              showEdit(newModel);
+              self.$('ul.nav-tabs > li').addClass('disabled');
+              self.reportUriStack();
+              var titleDiv = $('#detail_container').find('#content_title')
+              titleDiv.append(
+                '<H4 id="title">Follow Up Screen for ' + 
+                self.model.get('facility_id') + '</H4>');
+              titleDiv.show();
+            });
+                                              
+          }
           if (appModel.hasGroup('readEverythingAdmin')) {
             var adminControl = $('<a id="admin-control"></a>');
             if (self.isAdmin){
@@ -256,35 +399,8 @@ define([
         template: _.template(screenTemplate)
       });
 
-      var editableKeys = model.resource.updateKeys();
-      if (model.isNew()) {
-        editableKeys = _.union(editableKeys,model.resource.createKeys());
-      }
-      editableKeys = _.filter(editableKeys, function(key){
-        return ! _.contains(fields[key].visibility, 'billing');
-      });
-      var editVisibleKeys = model.resource.allEditVisibleKeys();
-      editVisibleKeys = _.filter(editVisibleKeys, function(key){
-        return ! _.contains(fields[key].visibility, 'billing');
-      });
-      var detailKeys = model.resource.detailKeys();
-      var adminKeys = model.resource.adminKeys();
-      if (!self.isAdmin){
-        detailKeys = _.difference(detailKeys, adminKeys);
-      }
-      /////
-      // pick just the non-billing fields: prevent backbone save from sending
-      // uninitialized billing fields on create
-      _.each(_.keys(model.resource.fields), function(fkey){
-        var fi = model.resource.fields[fkey];
-        if (!_.contains(detailKeys.concat(editVisibleKeys), fkey)){
-          fi.editability = [];
-//          model.unset(fkey);
-        }
-      });
       
-      
-      // FIXME: 20170519, pick needed values only from the args 
+      // FIXME: 20170519: it would be better to pick needed values only from the args 
       view = new DetailLayout(_.extend(self.args, { 
         model: model, 
         uriStack: delegateStack,
@@ -294,48 +410,9 @@ define([
         editVisibleKeys: editVisibleKeys,
         DetailView: detailView
       }));
-      view.showEdit = function() {
-        appModel.initializeAdminMode(function() {
-          var userOptions = appModel.getUserOptions();
-          fields['collaborator_usernames']['choices'] = userOptions;
-          fields['lead_screener_username']['choices'] = (
-              [{ val: '', label: ''}].concat(userOptions));
-          fields['lab_head_username']['choices'] = (
-              appModel.getPrincipalInvestigatorOptions() );
-          fields['publishable_protocol_entered_by']['choices'] = (
-              appModel.getAdminUserOptions() );
-          fields['pin_transfer_approved_by_username']['choices'] = (
-              appModel.getAdminUserOptions() );
-          // TODO: this should default only after pp value is entered
-          //view.model.set('publishable_protocol_entered_by',
-          //    appModel.getCurrentUser().username);
-
-          // pick just the non-billing fields: prevent backbone save from sending
-          // uninitialized billing fields on create
-          var modelKeys = detailKeys.concat(editVisibleKeys);
-          editModel = new Backbone.Model(model.pick(modelKeys));
-          editModel.set('id', model.get('id'));
-          editModel.resource = model.resource;
-          editModel.urlRoot = model.resource.apiUri;
-          editModel.parse = model.parse;
-
-          console.log('showEdit: editView: ',editView);
-          var self = this;
-          var editViewInstance = new editView(_.extend({}, self.args, 
-            { 
-              model: editModel, 
-              uriStack: self.uriStack 
-            }));
-          Backbone.Layout.setupView(editViewInstance);
-          view.listenTo(editViewInstance,'remove',function(){
-            view.removeView(editViewInstance);
-            view.showDetail();
-          });
-          view.listenTo(editViewInstance, 'uriStack:change', self.reportUriStack);
-          view.setView("#detail_content", editViewInstance).render();
-          return editViewInstance;
-        });  
-      };
+      // FIXME: it would be better to extend DetailLayout.showEdit here
+      view.showEdit = showEdit
+        
       this.$("#tab_container-title").html("");
 
       this.tabViews[key] = view;
@@ -626,12 +703,6 @@ define([
       
       var collection = new CollectionClass();
 
-//      _.each(_.keys(resource.fields), function(key){
-//        var fi = resource.fields[key];
-//        fi.backgridCellType = Iccbl.TextWrapCell.extend({
-//          className: 'text-wrap-cell-extra-narrow'
-//        });
-//      });
       var colModel = Iccbl.createBackgridColModel(resource.fields);
       
       var grid = new Backgrid.Grid({
@@ -920,7 +991,7 @@ define([
         var cpr_collection = new CollectionClass();
         cpr_collection.fetch({
           data: { 
-            limit: 10,
+            limit: 5,
             screen_facility_id__eq: self.model.key,
             order_by: ['-date_requested']
           },
@@ -1248,28 +1319,31 @@ define([
             performed_by_username: appModel.getCurrentUser().username
           };
           
-          // Funding supports: populate select with screen funding supports;
-          // - if only one screen funding support; set it as default
-          var funding_supports = self.model.get('funding_supports');
-          var funding_support_field = saResource.fields['funding_support']
-          if (_.isEmpty(funding_supports)){
-            appModel.showModalMessage('Screen must have funding supports entered');
-            appModel.showModalMessage({
-              title: 'Screen must have funding supports entered',
-              body: 'Enter screen funding supports before creating service activities'
-            });
-          } else {
-            var vocabulary = appModel.getVocabularySelectOptions(
-              funding_support_field.vocabulary_scope_ref);
-            vocabulary = _.filter(vocabulary, function(item){
-              return _.contains(funding_supports,item.val);
-            });
-            funding_support_field.choices = vocabulary;
-            funding_support_field.vocabulary_scope_ref = '';
-            if (funding_supports.length == 1){
-              defaults['funding_support'] = funding_supports[0];
-            }
-          }
+          // 20170605 - JAS - no funding support if attached to a screen
+          saResource.fields['funding_support']['editability'] = [];
+          saResource.fields['funding_support']['visibility'] = [];
+          //// Funding supports: populate select with screen funding supports;
+          //// - if only one screen funding support; set it as default
+          //var funding_supports = self.model.get('funding_supports');
+          //var funding_support_field = saResource.fields['funding_support']
+          //if (_.isEmpty(funding_supports)){
+          //  appModel.showModalMessage('Screen must have funding supports entered');
+          //  appModel.showModalMessage({
+          //    title: 'Screen must have funding supports entered',
+          //    body: 'Enter screen funding supports before creating service activities'
+          //  });
+          //} else {
+          //  var vocabulary = appModel.getVocabularySelectOptions(
+          //    funding_support_field.vocabulary_scope_ref);
+          //  vocabulary = _.filter(vocabulary, function(item){
+          //    return _.contains(funding_supports,item.val);
+          //  });
+          //  funding_support_field.choices = vocabulary;
+          //  funding_support_field.vocabulary_scope_ref = '';
+          //  if (funding_supports.length == 1){
+          //    defaults['funding_support'] = funding_supports[0];
+          //  }
+          //}
           
           var newModel = appModel.newModelFromResource(saResource, defaults);
           var view = new ServiceActivityView({

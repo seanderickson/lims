@@ -5,9 +5,10 @@ define([
   'iccbl_backgrid',
   'models/app_state',
   'views/generic_edit',
-  'templates/generic-tabbed.html'
+  'templates/generic-tabbed.html',
+  'views/generic_detail_layout'
 ], 
-function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
+function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout) {
 
   var TabbedController = Backbone.Layout.extend({
     
@@ -142,6 +143,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       }
     },
 
+    /**
+     * TODO: not used?//
+     */
     showAdd: function() {
       console.log('add view');
       
@@ -159,6 +163,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       this.$('#detail').addClass('active');
     },
     
+    /**
+     * TODO: not used?//
+     */
     showEdit: function() {
       var self = this;
       var delegateStack = _.clone(this.uriStack);

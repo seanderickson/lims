@@ -69,10 +69,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showAdd: function(resource, uriStack){
       
       var self = this;
-      var newModel = appModel.createNewModel(resource.key);
       var viewClass = DetailLayout;
       var view;
       
+      var newModel = appModel.createNewModel(resource.key);
       newModel.resource = resource;
       this.$('#content_title').html('Create a new ' + resource.title );
       this.$('#content_title_row').show();

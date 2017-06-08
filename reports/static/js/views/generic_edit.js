@@ -45,15 +45,15 @@ define([
 //    defaultValue: 0,
     
     fieldTemplate: _.template([
-      '<div data-editor class="form-control col-sm-10" title="<%= help %>"  >'
+      '<div data-editor class="form-control col-sm-4" title="<%= help %>"  >'
       ].join('')),
     unitFieldTemplate: _.template([
       '<div data-editor title="<%= help %>"  >'
       ].join('')),
 
     formTemplate: _.template([
-      '<form class="iccbl-nested-form" >',
-      '<div class="input-group col-sm-4" >',
+      '<form class="iccbl-nested-form siunit" >',
+      '<div class="input-group" >',
       '   <div data-fields="number" />',
       '   <div class="input-group-addon iccbl-nested-form-unit" data-fields="unit"/>',
       '</div>',

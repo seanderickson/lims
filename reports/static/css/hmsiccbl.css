@@ -88,6 +88,12 @@ media="screen"
 display: inherit;
 }
 
+.siunit .input-group div.form-control ,
+.siunit .input-group .form-control input {
+ border-top-left-radius: 4px;
+ border-bottom-left-radius: 4px;
+}
+
 div#application_div > .one-space {
     padding-right: 0px;
     padding-left: 2px;

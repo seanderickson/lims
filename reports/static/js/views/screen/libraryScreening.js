@@ -351,11 +351,12 @@ define([
               // REMOVED: 20170412: 
               // MODIFIED: 20170605 - allow insufficient volume; warn only
               // per JAS/KR; raise error, no override allowed for insufficient volume
-              // TODO: following code not needed.
               var jsonError = _.result(jqXHR, 'responseJSON');
               if (!_.isUndefined(jsonError)){
                 var error = _.result(jsonError, 'errors');
                 var libraryErrorFlag = _.result(error,appModel.API_PARAM_OVERRIDE);
+                // MODIFIED: 20170605 - allow insufficient volume; warn only
+                // per JAS/KR; raise error, no override allowed for insufficient volume
                 var volumeErrorFlag = _.result(error,appModel.API_PARAM_VOLUME_OVERRIDE)
                 if (!_.isUndefined(libraryErrorFlag)){
                   var title = _.result(error, 'library_plates_screened');

@@ -34,7 +34,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
           else {
             if (!_.isEmpty(this.model.get('serviced_username'))){
               hrefTemplate = '#screensaveruser/{serviced_username}/serviceactivity/{activity_id}';
-            }else if (!_.isEmpty(this.model.get('screen_facility_id'))){
+            } 
+            else if (!_.isEmpty(this.model.get('screen_facility_id'))){
               hrefTemplate = '#screen/{screen_facility_id}/activities/{activity_id}';
             } else {
               console.log('Activity does not have a serviced user or screen!', this.model)

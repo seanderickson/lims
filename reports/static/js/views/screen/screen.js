@@ -289,6 +289,7 @@ define([
           });
           view.listenTo(editViewInstance, 'uriStack:change', self.reportUriStack);
           view.setView("#detail_content", editViewInstance).render();
+          appModel.setPagePending();
           return editViewInstance;
         });  
       };
@@ -1277,14 +1278,23 @@ define([
       if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail View
+        
+        // Only service activities are viewed; lab activities link to visits & cprs
+        saResource = appModel.getResource('serviceactivity');
+        // ServiceActivity for a screen; turn of edit for screen field and funding
+        saResource.fields['screen_facility_id'].editability = [];
+        saResource.fields['funding_support']['editability'] = [];
+        saResource.fields['funding_support']['visibility'] = [];
+        
         if (delegateStack[0]!='+add') {
+        
           var activity_id = delegateStack.shift();
           self.consumedStack.push(activity_id);
           var _key = activity_id
-          appModel.getModel(resource.key, _key, function(model){
+          appModel.getModelFromResource(saResource, _key, function(model){
             view = new ServiceActivityView({
               model: model, 
-              user: self.model,
+              screen: self.model,
               uriStack: _.clone(delegateStack)
             });
             Backbone.Layout.setupView(view);
@@ -1302,6 +1312,8 @@ define([
         }
 
       }else{
+        // List view
+        
         var self = this;
         var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
         var extraControls = [];
@@ -1312,13 +1324,14 @@ define([
           ].join(''));
         addServiceActivityButton.click(function(e){
           e.preventDefault();
-          delegateStack.unshift('+add');
           var saResource = Iccbl.appModel.getResource('serviceactivity');
           var defaults = {
             screen_facility_id: self.model.get('facility_id'),
             performed_by_username: appModel.getCurrentUser().username
           };
           
+          saResource.fields['serviced_user']['visibility'] = [];
+          saResource.fields['screen_facility_id']['editability'] = [];
           // 20170605 - JAS - no funding support if attached to a screen
           saResource.fields['funding_support']['editability'] = [];
           saResource.fields['funding_support']['visibility'] = [];
@@ -1349,13 +1362,15 @@ define([
           var view = new ServiceActivityView({
             model: newModel,
             screen: self.model,
-            uriStack: _.clone(delegateStack)
+            uriStack: ['+add']
           });
           Backbone.Layout.setupView(view);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
-          self.reportUriStack(['+add']);
-          appModel.setPagePending();
+
+          self.consumedStack = ['activities'];
+          self.reportUriStack([]);
+          view.reportUriStack(['+add']);
         });
         if(appModel.hasPermission(self.model.resource.key, 'edit')){
           extraControls.unshift(addServiceActivityButton);

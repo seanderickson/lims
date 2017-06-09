@@ -497,8 +497,10 @@ define([
     
     setServiceActivities: function(delegateStack) {
       var self = this;
-      var resource = appModel.getResource('serviceactivity');
-
+      var saResource = appModel.getResource('serviceactivity');
+      saResource.fields['serviced_username']['editability'] = [];
+      saResource.fields['activity_class']['visibility'] = [];
+      
       if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         
@@ -506,7 +508,7 @@ define([
           var activity_id = delegateStack.shift();
           self.consumedStack.push(activity_id);
           var _key = activity_id
-          appModel.getModel(resource.key, _key, function(model){
+          appModel.getModelFromResource(saResource, _key, function(model){
             view = new ServiceActivityView({
               model: model, 
               user: self.model,
@@ -550,9 +552,7 @@ define([
           
           addServiceActivityButton.click(function(e){
             e.preventDefault();
-            delegateStack.unshift('+add');
-            self.addServiceActivity(delegateStack);
-            self.reportUriStack(['+add']);
+            self.addServiceActivity();
           });
           showHistoryButton.click(function(e){
             e.preventDefault();
@@ -566,10 +566,10 @@ define([
             appModel.router.navigate(route, {trigger: true});
             self.remove();
           });
-          if(appModel.hasPermission(self.model.resource.key, 'edit')){
+          if(appModel.hasPermission(saResource.key, 'edit')){
             extraControls.unshift(addServiceActivityButton);
           }
-          if(appModel.hasPermission(self.model.resource.key, 'edit')){
+          if(appModel.hasPermission(saResource.key, 'edit')){
             extraControls.unshift(showDeleteButton);
           }
           extraControls.unshift(showHistoryButton);
@@ -579,8 +579,8 @@ define([
                      'serviceactivities'].join('/');
           view = new ActivityListView({ 
             uriStack: _.clone(delegateStack),
-            schemaResult: resource,
-            resource: resource,
+            schemaResult: saResource,
+            resource: saResource,
             url: url,
             extraControls: extraControls
           });
@@ -600,81 +600,32 @@ define([
       }
     },
     
-    addServiceActivity: function(delegateStack) {
+    addServiceActivity: function() {
       var self = this;
       
-      var resource = Iccbl.appModel.getResource('serviceactivity');
+      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      saResource.fields['serviced_username']['editability'] = [];
+      
       var defaults = {
         serviced_username: self.model.get('username'),
         serviced_user: self.model.get('name'),
         performed_by_username: appModel.getCurrentUser().username
       };
-      var newModel = appModel.newModelFromResource(resource, defaults);
+      var newModel = appModel.newModelFromResource(saResource, defaults);
       var view = new ServiceActivityView({
         model: newModel,
         user: self.model,
-        uriStack: _.clone(delegateStack)
+        uriStack: ['+add']
       });
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-      
+
+      self.consumedStack = ['serviceactivity'];
+      self.reportUriStack([]);
+      view.reportUriStack(['+add']);
+
     },
-//    addServiceActivitybak: function(delegateStack) {
-//      var self = this;
-//      
-//      var resource = Iccbl.appModel.getResource('serviceactivity');
-//      appModel.initializeAdminMode(function(){
-//        resource.fields['performed_by_username']['choices'] = 
-//          appModel.getAdminUserOptions();
-//        
-//        var screen_facility_field = resource.fields['screen_facility_id'];
-//        screen_facility_field['edit_type'] = 'select';
-//        screen_facility_field['choices'] = appModel._get_user_screen_choices(self.model);
-//        
-//        var defaults = {
-//          serviced_username: self.model.get('username'),
-//          serviced_user: self.model.get('name'),
-//          performed_by_username: appModel.getCurrentUser().username
-//        };
-//        var newModel = appModel.newModelFromResource(resource, defaults);
-//
-//        var editView = EditView.extend({
-//          
-//          save_success: function(data, textStatus, jqXHR){
-//            var meta = _.result(data, 'meta', null);
-//            if (meta) {
-//              appModel.showJsonMessages(meta);
-//            }
-//  
-//            if (! this.model.isNew()){
-//              var key = Iccbl.getIdFromIdAttribute( this.model,this.model.resource );
-//              appModel.router.navigate([
-//                  self.model.resource.key,self.model.key,
-//                  'serviceactivity',key].join('/'), 
-//                {trigger:true});
-//            } else { 
-//              appModel.router.navigate([
-//                  self.model.resource.key,self.model.key,
-//                  'serviceactivity'].join('/'), 
-//                {trigger:true});
-//            }
-//
-//          }
-//        });
-//        
-//        var view = new DetailLayout({
-//          model: newModel,
-//          uriStack: _.clone(delegateStack),
-//          EditView: editView,
-//        });
-//        Backbone.Layout.setupView(view);
-//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//        self.setView("#tab_container", view ).render();
-//
-//      });
-//      
-//    },
     
     setAttachedFiles: function(delegateStack) {
       var self = this;

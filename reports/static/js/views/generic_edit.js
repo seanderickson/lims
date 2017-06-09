@@ -975,7 +975,10 @@ define([
             if (vocabulary[choice].is_retired) {
               console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
             } else {
-              choiceHash.push({ val: choice, label: vocabulary[choice].title });
+              choiceHash.push({ 
+                val: choice, 
+                label: vocabulary[choice].title,
+                ordinal: vocabulary[choice].ordinal });
             }
           });
           if (fi.edit_type == 'select' && !fi.required ) {
@@ -988,6 +991,10 @@ define([
           appModel.error(msg);
         }
       }
+      choiceHash = _.sortBy(choiceHash, function(choice){
+        return choice.ordinal;
+      });
+
       return choiceHash;
     },
     

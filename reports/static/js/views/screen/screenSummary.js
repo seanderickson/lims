@@ -314,8 +314,9 @@ define([
       $title.html('<H5 id="title">Add Library Screening Visit</H5>');
       $title.show();
       
-      this.consumedStack = ['libraryscreening','+add'];
+      this.consumedStack = ['libraryscreening'];
       self.reportUriStack([]);
+      view.reportUriStack(['+add']);
     },
     
     setScreenings: function(delegateStack) {

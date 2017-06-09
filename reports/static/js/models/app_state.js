@@ -403,7 +403,7 @@ define([
           users.each(function(user){
             var username = user.get('username');
             var name = user.get('name');
-            options.push({ val: username, label: name + ':' + username });
+            options.push({ val: username, label: name + ': ' + username });
           }, resource);
           self.set(prop,options);
           if (callBack) callBack(options);
@@ -708,7 +708,10 @@ define([
             console.log(
               'skipping retired vocab: ',choice,vocabulary[choice].title );
           }else{
-            choiceHash.push({ val: choice, label: vocabulary[choice].title });
+            choiceHash.push({ 
+              val: choice, 
+              label: vocabulary[choice].title, 
+              ordinal: vocabulary[choice].ordinal });
           }
         });
       }catch(e){
@@ -716,6 +719,9 @@ define([
         console.log(msg,e);
         this.error(msg);
       }
+      choiceHash = _.sortBy(choiceHash, function(choice){
+        return choice.ordinal;
+      });
       return choiceHash;
     },
     
@@ -933,6 +939,9 @@ define([
         screenModel.get('lead_screener_name');
       members[screenModel.get('lab_head_username')] = 
         screenModel.get('lab_head_name');
+      members = _.map(_.pairs(members), function(pair){
+        return { 'val': pair[0], 'label': pair[1] + ': ' + pair[0] };
+      });
       return members;
     },
     
@@ -940,11 +949,15 @@ define([
      * Get a model from the server
      */
     getModel: function(resourceId, key, callBack, options) {
+      var resource = this.getResource(resourceId);
+      return this.getModelFromResource(resource, key, callBack, options);
+    },
+    
+    getModelFromResource: function(resource, key, callBack, options) {
       var self = this;
       var options = options || {};
       var failCallback = options.failCallback;
       var data_for_get = _.extend({ includes: '*' }, options.data_for_get );
-      var resource = this.getResource(resourceId);
       if(_.isArray(key)){
         key = key.join('/');
       }

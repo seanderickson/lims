@@ -16,6 +16,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
   var ServiceActivityView = DetailLayout.extend({
     
     initialize: function(args) {
+      
       console.log('serviceActivityView', args);
       var self = this;
       self._args = args;
@@ -73,17 +74,27 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     
     showEdit: function() {
       var self = this;
-      appModel.initializeAdminMode(function(){
+
+      function getUser(callback){
+        if (!self.user && !_.isEmpty(self.model.get('serviced_username'))){
+          appModel.getModel(
+            'screensaveruser', self.model.get('serviced_username'), 
+            function(servicedUserModel){
+              self.user = servicedUserModel;
+              callback();
+            });
+        } else {
+          callback();
+        }
+      };
+      
+        
+      function setupEditView(callback){
         var resource = self.model.resource;
         resource.fields['performed_by_username']['choices'] = 
           appModel.getAdminUserOptions();
 
-        // TODO: verify either serviced_user or serviced_screen are allowed
-        
-        if (self.user){
-          var serviced_username_field = resource.fields['serviced_username'];
-          serviced_username_field['editability'] = [];
-          
+        if (self.user ){
           var screen_facility_field = resource.fields['screen_facility_id'];
           screen_facility_field['edit_type'] = 'select';
           var choices = appModel._get_user_screen_choices(self.user);
@@ -91,20 +102,20 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           screen_facility_field['choices'] = choices;
         }
         if (self.screen){
-          var screen_facility_field = resource.fields['screen_facility_id'];
-          screen_facility_field['editability'] = [];
-
-          var serviced_user_field = resource.fields['serviced_user'];
-          serviced_user_field['visibility'] = [];
-          serviced_user_field['editability'] = [];
           
           var serviced_username_field = resource.fields['serviced_username'];
-          serviced_username_field['editability'] = ['c','u'];
           serviced_username_field['edit_type'] = 'select';
-          serviced_username_field['choices'] = appModel._get_screen_member_choices(self.screen);
+          serviced_username_field['choices'] = 
+            appModel._get_screen_member_choices(self.screen);
         }
         view = DetailLayout.prototype.showEdit.apply(self,arguments);
-      });
+      };
+      
+      $(this).queue([
+       getUser,
+       appModel.getAdminUserOptions,
+       setupEditView]);
+      
     }
   });
 

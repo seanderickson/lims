@@ -82,6 +82,7 @@ define([
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#detail_content", view ).render();
+      appModel.setPagePending();
       return view;
     },
     
@@ -112,6 +113,7 @@ define([
 
     cancel: function(event){
       event.preventDefault();
+      appModel.clearPagePending();
       this.showDetail();
     },    
     

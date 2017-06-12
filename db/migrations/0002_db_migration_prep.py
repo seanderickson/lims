@@ -251,28 +251,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-#         migrations.CreateModel(
-#             name='Substance',
-#             fields=[
-#                 ('id', models.AutoField(verbose_name='ID', serialize=False, 
-#                     auto_created=True, primary_key=True)),
-#                 ('comment', models.TextField(null=True)),
-#             ],
-#             options={
-#                 'db_table': 'substance',
-#             },
-#         ),
+        migrations.CreateModel(
+            name='Substance',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, 
+                    auto_created=True, primary_key=True)),
+                ('comment', models.TextField(null=True)),
+            ],
+            options={
+                'db_table': 'substance',
+            },
+        ),
         
         migrations.AddField(
             model_name='library',
             name='version_number',
             field=models.IntegerField(default=0),
         ),
-#         migrations.AddField(
-#             model_name='reagent',
-#             name='substance_id',
-#             field=models.CharField(null=True,max_length=8),
-#         ),
+        migrations.AddField(
+            model_name='reagent',
+            name='substance_id',
+            field=models.CharField(null=True,max_length=8),
+        ),
         migrations.AlterField(
             model_name='silencingreagent',
             name='is_restricted_sequence',
@@ -283,14 +283,6 @@ class Migration(migrations.Migration):
             name='is_restricted_structure',
             field=models.NullBooleanField(default=False),
         ),
-        
-        # TODO: create substance ID's for reagents
-        # migrations.RunPython(create_reagent_ids),
-        # migrations.AlterField(
-        #     model_name='reagent',
-        #     name='substance_id',
-        #     field=models.CharField(unique=True, max_length=8),
-        #     ),
         
         migrations.AddField(
             model_name='screen',

@@ -351,12 +351,12 @@ function migratedb {
     fi
 
     # substance ID generation left until last
-    # migration='0099' 
-    #if [[ ! $completed_migrations =~ $migration ]]; then
-    #  echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-    #  $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-    #  echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    #fi
+    migration='0099' 
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
   fi
     
   echo "migrations completed: $(ts) " >> "$LOGFILE"

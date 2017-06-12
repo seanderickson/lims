@@ -104,7 +104,6 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     "lims.webpack_bundle_hash_name_processor.bundle_context_processor",    
 #     "lims.context_processors.login_url_with_redirect",
 )
-    
 
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
@@ -137,6 +136,8 @@ INSTALLED_APPS = (
     'tastypie', # manual says this is "not necessary, but useful"
     'reports',
     'lims',
+    # NOTE: initial reports migration: may require removal of "db" to solve
+    # circular dependency
     'db',
 )
 

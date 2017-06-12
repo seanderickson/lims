@@ -364,6 +364,13 @@ class Vocabulary(models.Model):
     alias                   = models.CharField(max_length=64)
     ordinal                 = models.IntegerField();
     title                   = models.CharField(max_length=512)
+    is_retired              = models.NullBooleanField()
+    comment                 = models.TextField(null=True)
+    description             = models.TextField(null=True)
+    
+    # checklist item fields (consider moving to userchecklistitem)
+    expire_interval_days    = models.IntegerField(null=True)
+    expire_notifiy_days     = models.IntegerField(null=True)
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to 
     # migrate them out to real fields for rel db use cases)

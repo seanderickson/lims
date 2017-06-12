@@ -229,5 +229,10 @@ class Migration(migrations.Migration):
         #     model_name='screen',
         #     name='project_phase',
         # ),
+        
+        migrations.AlterField(
+            model_name='screen', name='project_phase', 
+            field=models.TextField(null=True),
+        ),
 
     ]

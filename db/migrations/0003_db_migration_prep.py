@@ -108,8 +108,8 @@ def create_simple_vocabularies(apps):
 
                 ['screen_type', 'screen.type',
                     apps.get_model('db', 'Screen').objects.all()],
-                ['project_phase', 'screen.project_phase',
-                    apps.get_model('db', 'Screen').objects.all()],
+#                 ['project_phase', 'screen.project_phase',
+#                     apps.get_model('db', 'Screen').objects.all()],
                 
                 ['screening_status', 'library.screening_status',
                     apps.get_model('db', 'Library').objects.all()],

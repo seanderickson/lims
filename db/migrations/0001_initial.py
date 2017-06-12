@@ -24,7 +24,6 @@ from django.db.models.deletion import SET_NULL
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reports', '0001_initial'),
     ]
 
     operations = [

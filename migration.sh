@@ -346,12 +346,12 @@ function migratedb {
     fi
 
     # substance ID generation left until last
-    migration='0099' 
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
+    # migration='0099' 
+    #if [[ ! $completed_migrations =~ $migration ]]; then
+    #  echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    #  $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    #  echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    #fi
   fi
     
   echo "migrations completed: $(ts) " >> "$LOGFILE"
@@ -397,22 +397,6 @@ function bootstrap {
     error "bootstrap db failed: $?"
   fi
   
-  echo "bootstrap the server production data..."
-  
-  PYTHONPATH=. python reports/utils/db_init.py  \
-    --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
-    -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1
-  if [[ $? -ne 0 ]]; then
-    kill $server_pid
-    error "bootstrap production data failed: $?"
-  fi
-
-  # add user "sde" to the screensaver_users table 20150831
-  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
-    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
-    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
-
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
   echo "kill $final_server_pid"
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
@@ -468,6 +452,47 @@ function frontend_deploy {
 
 }
 
+function setup_production_users {
+
+  echo "setup_production_users: $(ts) ..." >> "$LOGFILE"
+
+  echo "setup_production_users using a local dev server on port $BOOTSTRAP_PORT..."
+  
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status"
+    exit $runserver_status
+  fi
+#  echo "wait for server process: ($!) to start..."
+#  wait $server_pid
+  sleep 3
+  
+  PYTHONPATH=. python reports/utils/db_init.py  \
+    --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
+    -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions.csv \
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1
+  if [[ $? -ne 0 ]]; then
+    kill $server_pid
+    error "bootstrap production data failed: $?"
+  fi
+
+  # add user "sde" to the screensaver_users table 20150831
+  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
+    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
+    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
+
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  # kill $server_pid
+
+  echo "setup_production_users done: $(ts)" >> "$LOGFILE"
+
+}
 
 function setup_test_data {
   # Create data for end-user testing
@@ -746,6 +771,8 @@ function main {
     tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
   fi  
   
+  setup_production_users
+  
   setup_test_data
 
   # put this here to see if LSF will start reporting results
@@ -791,6 +818,8 @@ main "$@"
   
 # the later migrations require the bootstrapped data
 #  migratedb
+  
+#  setup_production_users
   
 #  setup_test_data
 

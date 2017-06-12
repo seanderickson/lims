@@ -771,8 +771,8 @@ class Screen(models.Model):
         'Screen', null=True, related_name='follow_up_screen')
     
     # REMOVE for SS2
-#     project_phase = models.TextField()
-#     project_id = models.TextField()
+    project_phase = models.TextField()
+    project_id = models.TextField(null=True)
     
     
     # New, from status migration (0004)
@@ -1273,9 +1273,9 @@ class Substance(models.Model):
 class Reagent(models.Model):
 
     reagent_id = models.AutoField(primary_key=True)
-    substance_id = models.CharField(
-        max_length=8, unique=True, 
-        default=create_id)
+#     substance_id = models.CharField(
+#         max_length=8, unique=True, 
+#         default=create_id)
     
     vendor_identifier = models.TextField()
     vendor_name = models.TextField()

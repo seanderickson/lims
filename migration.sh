@@ -173,11 +173,16 @@ function restoredb_data {
     echo "+++ LOADING attached file and result data ... "
     echo "+++ LOADING attached file data: ${D}/screensaver*${filespec}.attached_file.pg_dump $(ts)" >> "$LOGFILE"
 
-    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    PG_RESTORE_CMD = "pg_restore"
+    if [[ $IS_DEV_SERVER -eq 1 ]]; then
+      PG_RESTORE_CMD = "nice -5 pg_restore"
+    fi
+
+    $PG_RESTORE_CMD -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
 
     echo "+++ LOADING result data: ${D}/screensaver*${filespec}.result_data.pg_dump $(ts)" >> "$LOGFILE"
-    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    $PG_RESTORE_CMD -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
   

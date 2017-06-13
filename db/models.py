@@ -771,7 +771,7 @@ class Screen(models.Model):
         'Screen', null=True, related_name='follow_up_screen')
     
     # REMOVE for SS2
-    project_phase = models.TextField()
+    project_phase = models.TextField(null=True)
     project_id = models.TextField(null=True)
     
     

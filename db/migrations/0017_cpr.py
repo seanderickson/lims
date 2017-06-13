@@ -152,7 +152,7 @@ class Migration(migrations.Migration):
             ' group by cherry_pick_request_id) cplts '
             ' where cplts.cherry_pick_request_id '
             '   = cherry_pick_request.cherry_pick_request_id;'),
-        # set null=Fals after update
+        # set null=False after update
         migrations.AlterField(
             model_name='screenercherrypick',
             name='searched_well',
@@ -235,24 +235,48 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(to='db.CherryPickRequest', null=False),
         ),
 
-        # Adjust the plate_ordinal to be one's based
-        migrations.RunSQL(
-            'update cherry_pick_assay_plate '
-            'set plate_ordinal = cherry_pick_assay_plate.plate_ordinal+1 '
-            'from  '
-            '( '
-            '    select distinct(cherry_pick_request_id) '
-            '    from cherry_pick_assay_plate '
-            '    where plate_ordinal = 0 '
-            '    order by cherry_pick_request_id ' 
-            ') cprs join ( '
-            '    select '
-            '    cherry_pick_assay_plate_id, cherry_pick_request_id, plate_ordinal  '
-            '    from cherry_pick_assay_plate  '
-            '    order by cherry_pick_request_id, plate_ordinal desc '
-            ') ids using(cherry_pick_request_id) '
-            'where cherry_pick_assay_plate.cherry_pick_assay_plate_id '
-            '= ids.cherry_pick_assay_plate_id;'),
+#         # Adjust the plate_ordinal to be one's based
+#         migrations.RunSQL(
+#             'update cherry_pick_assay_plate '
+#             'set plate_ordinal = cherry_pick_assay_plate.plate_ordinal+1 '
+#             'from  '
+#             '( '
+#             '    select distinct(cherry_pick_request_id) '
+#             '    from cherry_pick_assay_plate '
+#             '    where plate_ordinal = 0 '
+#             '    order by cherry_pick_request_id ' 
+#             ') cprs join ( '
+#             '    select '
+#             '    cherry_pick_assay_plate_id, cherry_pick_request_id, plate_ordinal  '
+#             '    from cherry_pick_assay_plate  '
+#             '    order by cherry_pick_request_id, plate_ordinal desc '
+#             ') ids using(cherry_pick_request_id) '
+#             'where cherry_pick_assay_plate.cherry_pick_assay_plate_id '
+#             '= ids.cherry_pick_assay_plate_id;'),
+
+        # FIXME: simple reorder of the ordinal is causing a constraint error;
+        # so drop the constraint, and reorder, then recreate the constraint
+        # (TODO: look for SQL error)
+        migrations.RunSQL('''
+            alter table cherry_pick_assay_plate drop constraint new_key ;        
+        '''),
+        migrations.RunSQL('''
+        update cherry_pick_assay_plate
+        set plate_ordinal = cpaps.plate_ordinal+1
+        from (
+            select cherry_pick_request_id, 
+            cherry_pick_assay_plate_id, 
+            plate_ordinal, attempt_ordinal
+            from cherry_pick_assay_plate 
+            order by cherry_pick_request_id asc, attempt_ordinal asc, plate_ordinal desc ) cpaps
+        where cpaps.cherry_pick_assay_plate_id = cherry_pick_assay_plate.cherry_pick_assay_plate_id;        
+        '''),
+        # Recreate the index: note "attempt_ordinal" is deprecated but kept for legacy compatibility
+        migrations.RunSQL('''
+            alter table cherry_pick_assay_plate 
+            add constraint cherry_pick_assay_plate_cherry_pick_request_id_plate_ordina_key 
+            unique(cherry_pick_request_id, plate_ordinal,attempt_ordinal);        
+        '''),
         # NOTE: the legacy system allows for multiple screening activities;
         # use the last one to set the screening_date
         migrations.RunSQL('''

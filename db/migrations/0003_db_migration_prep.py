@@ -358,11 +358,12 @@ def create_checklist_vocabularies(apps):
         
         
         for obj in (apps.get_model('db', 'ChecklistItem')
-                .objects.all().distinct('item_name')):
+                .objects.all().distinct('item_name')
+                .order_by('checklist_item_group','order_statistic')):
             key = default_converter(obj.item_name)
             scope = _scope % default_converter(obj.checklist_item_group)
             
-            # NOTE: fore user_checklist_item overload of vocabularies:
+            # NOTE: for user_checklist_item overload of vocabularies:
             if key in ('current_rnai_user_agreement_active',
                 'current_small_molecule_user_agreement_active'):
                 expire_interval_days = 720 

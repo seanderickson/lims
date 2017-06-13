@@ -234,5 +234,11 @@ class Migration(migrations.Migration):
             model_name='screen', name='project_phase', 
             field=models.TextField(null=True),
         ),
+        migrations.AlterField(
+            model_name='screen',
+            name='project_id',
+            field=models.TextField(null=True),
+        ),
+        
 
     ]

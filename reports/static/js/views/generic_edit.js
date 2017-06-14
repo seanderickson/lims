@@ -560,6 +560,11 @@ define([
       console.log('Editview initialize: ', args);
       var self = this;
       
+      if (!_.isUndefined(args.isCreate)){
+        this.isCreate = args.isCreate;
+      } else {
+        this.isCreate = false;
+      }
       this.uriStack = args.uriStack;
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
@@ -583,7 +588,7 @@ define([
         this.editableKeys = args.editableKeys;
       } else { 
         this.editableKeys = this.modelSchema.updateKeys();
-        if (args.isCreate || this.model.isNew()) {
+        if (this.isCreate || this.model.isNew()) {
           this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
         }
       }
@@ -1179,8 +1184,9 @@ define([
      */
     save_success: function(data, textStatus, jqXHR){
       var self = this;
-      var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
-      if (!_.isEmpty(key)){
+      if (! self.model.isNew()){
+        console.log('save success show detail page...');
+        var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
         appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
       } else {
         console.log('model key is empty after save', data, self.model);
@@ -1233,8 +1239,10 @@ define([
     
     save: function(changedAttributes, options){
       var self = this;
+      console.log('save', this.model);
       this.model.save(changedAttributes, options)
         .done(function(data, textStatus, jqXHR){ 
+          appModel.clearPagePending();
           self.save_success.apply(this,arguments);
         })
         .fail(function(jqXHR, textStatus, errorThrown) { 
@@ -1247,6 +1255,7 @@ define([
       var self = this;
       var errors, changedAttributes,
         options = {};
+      console.log('click_save');
       
       $('.has-error').removeClass('has-error');
       $('[data-error]').empty();

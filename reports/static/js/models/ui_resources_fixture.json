@@ -451,8 +451,7 @@
     },
     "userchecklistitem": {
       "options": {
-        "rpp": 200,
-        "search": {"item_group__ne": "legacy"}
+        "rpp": 200
       }
     },
     "detail_test": {

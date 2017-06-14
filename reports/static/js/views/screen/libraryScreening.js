@@ -579,7 +579,14 @@ define([
                 type: 'POST',
               }).done(function(data, textStatus, jqXHR){
                 console.log('success', data);
-                var objects = _.result(data, 'objects');
+
+                var meta = _.result(data,appModel.API_RESULT_META, {});
+                var warning = _.result(meta, appModel.API_META_MSG_WARNING);
+                if (warning){
+                  appModel.error(warning);
+                }
+
+                var objects = _.result(data, appModel.API_RESULT_DATA);
                 if (!_.isEmpty(objects)){
                   // The plate_range_search API utility will return all 
                   // plate ranges for the screen; filter out the ranges for the
@@ -595,12 +602,6 @@ define([
                     }
                     return false;
                   });
-                  var meta = _.result(data,appModel.API_RESULT_META, {});
-                  var warning = _.result(meta, appModel.API_META_MSG_WARNING);
-                  if (warning){
-                    appModel.error(warning);
-                  }
-                  
                   var newCollection = new Collection(objects);
                   newCollection.remove(localRemovedCollection.toArray());
                   newCollection.add(localAddedCollection.toArray());

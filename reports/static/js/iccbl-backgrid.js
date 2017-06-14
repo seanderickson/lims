@@ -454,6 +454,7 @@ var parseScreeningInquiryURLParam
  * @return array
  */
 var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
+  if (! model) return;
   
   if (_.has(schema, 'id_attribute')) {
   
@@ -467,10 +468,10 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
       }else{
         keyval = _.result(model,item);
       }
-      if (_.isUndefined(keyval)){
-        throw new TypeError('ID key: ' + item + ', not found on: ' + model);
+      if (!_.isUndefined(keyval)){
+        idList.push(keyval);
+        //throw new TypeError('ID key: ' + item + ', not found on: ' + model);
       }
-      idList.push(keyval);
     });
     return idList;
   } else {
@@ -1558,6 +1559,19 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
 });  
 
 var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
+
+  initialize: function(){
+    
+    SelectCell.__super__.initialize.apply(this, arguments);
+    var self = this;
+    this.model.on('change:'+this.column.get("name") , function(){
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
+    });
+  },
+  
   /** 
    * override Backgrid.SelectCell:
    * - render to return the cell value if optionValues is malformed or missing 
@@ -1774,6 +1788,7 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
   @param {Backgrid.Column} options.column
   */
   initialize: function (options) {
+    var self = this;
     // Note __super__ == Backgrid.DateCell.prototype
     DateCell.__super__.initialize.apply(this, arguments);
     var formatter = this.formatter;
@@ -1788,6 +1803,13 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
           {}, this.editor.prototype.attributes, this.editor.attributes, {
             placeholder: placeholder
           })
+    });
+    
+    this.model.on('change:'+this.column.get("name") , function(){
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
     });
   }
   

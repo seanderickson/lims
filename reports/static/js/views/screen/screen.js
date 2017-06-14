@@ -37,7 +37,7 @@ define([
       this._classname = 'ScreenView';
 
       this.tabbed_resources = this.screen_tabbed_resources;
-      if (self.model.get('project_phase') == 'annotation') {
+      if (! _.isEmpty(self.model.get('study_type'))) {
         this.tabbed_resources = this.study_tabbed_resources;
       } 
       
@@ -125,11 +125,20 @@ define([
      * TODO: create a ScreenDetail class
      */
     setDetail: function(delegateStack) {
+      
       var self,outerSelf = self = this;
       var key = 'detail';
       var resource = self.model.resource;
       var fields = resource.fields;
       var model = this.model;
+      
+      if (! model.isNew() 
+          && !_.isEmpty(delegateStack)  && delegateStack[0] == '+add'){
+        // do not allow return to +add
+        console.log('cannot return to screen/id/+add...');
+        delegateStack.shift();
+      }
+      
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
       fields['collaborator_usernames'].vocabulary = (
@@ -275,12 +284,14 @@ define([
           editModel.urlRoot = model.resource.apiUri;
           editModel.url = model.url;
           editModel.parse = model.parse;
+          editModel.isNew = model.isNew;
 
           console.log('showEdit: editView: ',editView);
           var editViewInstance = new editView(_.extend({}, self.args, 
             { 
-              model: editModel, 
-              uriStack: self.uriStack 
+              model: editModel,
+              uriStack: self.uriStack,
+              isCreate: true
             }));
           Backbone.Layout.setupView(editViewInstance);
           view.listenTo(editViewInstance,'remove',function(){
@@ -1006,8 +1017,8 @@ define([
      * using the apilog history of the status attribute
      **/
     createStatusHistoryTable: function($target_el) {
-      console.log('createStatusHistoryTable');
       var self = this;
+      console.log('createStatusHistoryTable, ', self.model.key, self.model);
       var apilogResource = appModel.getResource('apilog');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: apilogResource.apiUri 

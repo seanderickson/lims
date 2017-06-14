@@ -906,8 +906,20 @@ define([
         urlRoot: resource.apiUri , 
         defaults: defaults,
         resource: resource,
+        /**
+         * Override parse:
+         * - unnest the post_obj_response from { objects: [ post_obj_response ] }
+         * - set the model.id; so that isNew() will report false
+         */
         parse: function(resp,options){
-          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+          var serverAttrs = _.result(resp, Iccbl.appModel.API_RESULT_DATA);
+          if (serverAttrs&& _.isArray(serverAttrs)){
+            if (serverAttrs.length == 1){
+              serverAttrs = serverAttrs[0];
+            }
+          }
+          serverAttrs[this.idAttribute] = Iccbl.getIdFromIdAttribute(serverAttrs,resource );
+          return serverAttrs;
         }
       });
       var newModel = new NewModel();

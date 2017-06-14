@@ -358,7 +358,7 @@ def create_checklist_vocabularies(apps):
         
         
         for obj in (apps.get_model('db', 'ChecklistItem')
-                .objects.all().distinct('item_name')
+                .objects.all()
                 .order_by('checklist_item_group','order_statistic')):
             key = default_converter(obj.item_name)
             scope = _scope % default_converter(obj.checklist_item_group)

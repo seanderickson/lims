@@ -941,6 +941,7 @@ define([
         self.remove();
       });
 
+      // Set up a "post" collection to track changed models
       var PostCollection = Backbone.Collection.extend({
         url: url,
         toJSON: function(){
@@ -1004,6 +1005,13 @@ define([
                   changedCollection.reset();
                   collection.fetch({ reset: true });
                 },
+                success: function(){
+                  console.log('success');
+                  collection.fetch();
+                },
+                done: function(){
+                  console.log('done');
+                }
               });
           }
         });
@@ -1018,6 +1026,15 @@ define([
         collection: collection,
         extraControls: [showSaveButton, showHistoryButton]
       });
+      view.grid.columns.on('update', function(){
+        view.$el.find('td').removeClass('edited');
+      });
+      collection.on('sync', function(){
+        console.log('synced');
+        view.$el.find('td').removeClass('edited');
+        appModel.clearPagePending();
+      });
+      
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
 //      self.reportUriStack([]);

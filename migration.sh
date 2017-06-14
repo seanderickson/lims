@@ -488,7 +488,7 @@ function setup_production_users {
   # add user "sde" to the screensaver_users table 20150831
   curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
     -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
-    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
+    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv  >>"$LOGFILE" 2>&1
 
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
   echo "kill $final_server_pid"
@@ -524,13 +524,13 @@ function setup_test_data {
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
 
   test_screen=10a
   # RNAi test
@@ -538,26 +538,26 @@ function setup_test_data {
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
 
   test_screen=11
   # lead_screener=djw11
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=11a
   # RNAi test
@@ -565,32 +565,32 @@ function setup_test_data {
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
 
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=12
   # lead_screener=sr50
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=12a
   # RNAi
@@ -598,32 +598,32 @@ function setup_test_data {
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=13
   # lead_screener=rs360
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=13a
   # RNAi
@@ -631,32 +631,32 @@ function setup_test_data {
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=14
   # lead_screener=rw105
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=14a
   # RNAi test
@@ -664,60 +664,60 @@ function setup_test_data {
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=15
   # lead_screener=sde4
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=15a
   # lead_screener=sde4
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
 
   # test RNAi Duplex  
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   # test RNAi Pool  
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
   test_screen=16
   # lead_screener=kls4
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/test_screen_${test_screen}.json \
     -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
   
   cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
   PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
     -f db/static/test_data/screens/${cherry_pick_patch_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
-    --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
 
 

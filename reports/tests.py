@@ -276,7 +276,8 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
     
     intersect_keys = original_keys.intersection(updated_keys)
     if intersect_keys != original_keys:
-        return False, ('keys missing', original_keys-intersect_keys)
+        return False, ('keys missing:', 
+            original_keys-intersect_keys, sorted(original_keys), sorted(updated_keys))
     for key in keys:
         if key not in obj1:
             continue
@@ -1139,7 +1140,7 @@ class IResourceTestCase(SimpleTestCase):
         logger.info('input_data to create: %r', input_data)
         logger.info('data_for_get: %r', data_for_get)
         logger.info('resource: %r, resource_test_uri: %r', 
-            resource_uri,resource_test_uri)
+            resource_uri, resource_test_uri)
 
         logger.info('post to %r...', resource_uri)
         resp = self.api_client.post(
@@ -1266,7 +1267,7 @@ class IResourceTestCase(SimpleTestCase):
             self.assertTrue(
                 resp.status_code <= 204, 
                 (resp.status_code, self.get_content(resp)))
-            logger.debug('get: %r,%r', resource_uri, data_for_get)
+            logger.info('get: %r,%r, %r', resource_uri, data_for_get, id_keys_to_check)
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
@@ -1282,10 +1283,10 @@ class IResourceTestCase(SimpleTestCase):
                     inputobj,new_obj[API_RESULT_DATA], 
                     id_keys_to_check=id_keys_to_check, 
                     excludes=keys_not_to_check )
+                logger.debug('objects returned: %r', new_obj[API_RESULT_DATA])
                 self.assertTrue(
                     result, 
-                    ('not found', outputobj,'=== objects returned ===', 
-                        new_obj[API_RESULT_DATA])) 
+                    ('not found', inputobj, 'msg', outputobj))
                 # once found, perform equality based on all keys (in obj1)
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
                     excludes=keys_not_to_check)

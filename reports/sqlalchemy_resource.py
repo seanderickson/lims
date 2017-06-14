@@ -59,13 +59,11 @@ def _concat_with_sep(args=None,sep=None):
     Use as a replacement for sqlalchemy.sql.functions.concat
     - "concat" is not available in postgresql 8.4
     '''
-    logger.warn('args: %r', args)
     new_args = []
     for arg in args:
         new_args.append(arg)
         new_args.append(sep)
     new_args = new_args[:-1]
-    logger.warn('new args: %r', new_args)
     return _concat(*new_args)
 
 class SqlAlchemyResource(IccblBaseResource):

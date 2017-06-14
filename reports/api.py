@@ -968,7 +968,7 @@ class ApiResource(SqlAlchemyResource):
         log.save()
         
         # 20170109 - return complex data
-        new_data = { API_RESULT_DATA: [ new_data ], }
+        new_data = { API_RESULT_DATA: new_data, }
         if API_RESULT_META in patch_result:
             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
         logger.debug('new_data: %r', new_data)
@@ -1039,7 +1039,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('log saved: %r', log)
         
         # 20170109 - return complex data
-        new_data = { API_RESULT_DATA: [ new_data ], }
+        new_data = { API_RESULT_DATA: new_data, }
         if API_RESULT_META in patch_result:
             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
         return new_data

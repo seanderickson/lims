@@ -11300,7 +11300,7 @@ class LibraryScreeningResource(ActivityResource):
         '''    
 
         LSR = self
-        logger.info('get_plate_range_search_table...')
+        logger.info('get_plate_range_search_table for ids: %r ...', searched_plate_ids)
         class ErrorDict():
             ''' Track errors and warnings for each plate range
             '''
@@ -11531,15 +11531,18 @@ class LibraryScreeningResource(ActivityResource):
             start_plate = 0
             end_plate = 0
             current_lc = None
+            current_ls = None
 
             new_row = OrderedDict()
             errorDict = ErrorDict()
             plate_locations = set()
             plate_keys = set()
             for _row in cursor_generator(_result,fields):
+                logger.debug('row: %r', _row)
                 librarycopy = '{library_short_name}/{copy_name}'.format(**_row)
                 plate_number = _row['plate_number']
                 if ( librarycopy != current_lc 
+                        or current_ls != _row['activity_id']
                         or end_plate < _row['plate_number']-1):
                     if new_row:
                         new_row['plate_locations'] = [x for x in plate_locations]
@@ -11560,6 +11563,7 @@ class LibraryScreeningResource(ActivityResource):
                         ('start_plate', _row['plate_number']),
                         ))
                     current_lc = librarycopy
+                    current_ls = _row['activity_id']
                 end_plate = _row['plate_number']
                 errorDict.check_row(_row)
                 plate_locations.add(_row['plate_location'])
@@ -11991,7 +11995,6 @@ class LibraryScreeningResource(ActivityResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
 
@@ -12028,7 +12031,8 @@ class LibraryScreeningResource(ActivityResource):
         log.save()
         logger.info('log saved: %r', log)
         
-        # FIXME: create a log for the parent screen
+        # TODO: create a log for the parent screen:
+        # For now, the log.uri can be used to query for logs for screen
 
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         kwargs_for_log[HTTP_PARAM_USE_VOCAB] = True
@@ -12230,7 +12234,7 @@ class LibraryScreeningResource(ActivityResource):
             logger.info('save library screening, fields: %r', library_screening)
             library_screening.save()
             library_plates_screened = deserialized.get(
-                'library_plates_screened', [])
+                'library_plates_screened', None)
             if not library_plates_screened and not patch:
                 raise ValidationError(
                     key='library_plates_screened', 
@@ -12241,14 +12245,17 @@ class LibraryScreeningResource(ActivityResource):
             # override_vol_param = parse_val(
             #     param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
             #         API_PARAM_VOLUME_OVERRIDE, 'boolean')
-            logger.debug('save library screening, set assay plates: %r', library_screening)
-            plate_meta = self._set_assay_plates(
-                request, schema, 
-                library_screening, library_plates_screened, ls_log) # , override_lib_param, override_vol_param
-            logger.info('save library screening, assay plates set: %r', library_screening)
             
-            ls_log.json_field = json.dumps(plate_meta)
-            logger.info('parent_log: %r', ls_log)
+            plate_meta = {}
+            if library_plates_screened is not None:
+                logger.debug('save library screening, set assay plates: %r', library_screening)
+                plate_meta = self._set_assay_plates(
+                    request, schema, 
+                    library_screening, library_plates_screened, ls_log) # , override_lib_param, override_vol_param
+                logger.info('save library screening, assay plates set: %r', library_screening)
+            
+                ls_log.json_field = json.dumps(plate_meta)
+                logger.info('parent_log: %r', ls_log)
             self.create_screen_screening_statistics(library_screening.screen)
             self.create_screened_experimental_well_count(library_screening)
             
@@ -14490,9 +14497,14 @@ class UserChecklistItemResource(DbApiResource):
 
     def __init__(self, **kwargs):
         
-        self.user_resource = None
+        self.screensaveruser_resource = None
         super(UserChecklistItemResource, self).__init__(**kwargs)
 
+    def get_su_resource(self):
+        if self.screensaveruser_resource is None:
+            self.screensaveruser_resource = ScreensaverUserResource()
+        return self.screensaveruser_resource
+    
     def prepend_urls(self):
         
         return [
@@ -14591,6 +14603,7 @@ class UserChecklistItemResource(DbApiResource):
                 select([
                     _vocab.c.ordinal,
                     _vocab.c.key.label('item_group'),
+                    _vocab.c.is_retired.label('item_group_is_retired'),
                     func.array_to_string(
                         array(['checklistitem', _vocab.c.key, 'name']), '.')
                         .label('checklistitemgroup')])
@@ -14601,7 +14614,9 @@ class UserChecklistItemResource(DbApiResource):
                 select([
                     _vocab.c.ordinal,
                     cig_table.c.item_group,
-                    _vocab.c.key.label('item_name')])
+                    cig_table.c.item_group_is_retired,
+                    _vocab.c.key.label('item_name'),
+                    _vocab.c.is_retired ])
                 .select_from(
                     _vocab.join(cig_table,
                         _vocab.c.scope == cig_table.c.checklistitemgroup))
@@ -14633,7 +14648,6 @@ class UserChecklistItemResource(DbApiResource):
             entered_checklists = entered_checklists.cte('entered_checklists')
             
             # This entire query doesn't fit the pattern, construct it manually
-            # bleah
             custom_columns = {
                 'username': func.coalesce(
                     entered_checklists.c.username, username),
@@ -14643,7 +14657,9 @@ class UserChecklistItemResource(DbApiResource):
                 'item_name' : ci_table.c.item_name,
                 'status': func.coalesce(
                     entered_checklists.c.status, 'not_completed'),
-                'status_date': entered_checklists.c.status_date
+                'status_date': entered_checklists.c.status_date,
+                'is_retired': ci_table.c.is_retired,
+                'item_group_is_retired': ci_table.c.item_group_is_retired,
                 }
 
             base_query_tables = ['user_checklist_item', 'screensaver_user'] 
@@ -14699,6 +14715,107 @@ class UserChecklistItemResource(DbApiResource):
         raise NotImplementedError(
             'delete obj is not implemented for UserChecklistItem')
     
+    
+#     def build_patch_detail(self, request, deserialized, **kwargs):
+#         # cache state, for logging
+#         # Look for id's kwargs, to limit the potential candidates for logging
+#         schema = kwargs.pop('schema', None)
+#         if not schema:
+#             raise Exception('schema not initialized')
+# 
+#         
+#         username = deserialized.get('username', None)
+#         if not username:
+#             raise ValidationError(
+#                 key='username',
+#                 msg='required')
+# #             
+# #         try:
+# #             user = ScreensaverUser.objects.get(username=username)
+# # 
+# #             # parent log: screensaver_user.completed_checklist_items
+# #             # parent log: screensaver_user.activated_checklist_items
+# #             
+# #             query = (
+# #                 UserChecklistItem.objects.all()
+# #                     .filter(scrensaver_user=user)
+# #                     .filter(status='completed'))
+# #             if query.exists():
+# #                 
+# #             
+# #         except ObjectDoesNotExist:
+# #             raise ValidationError(
+# #                 key='username',
+# #                 msg='username does not exist: %r' % username)
+#         
+#         id_attribute = schema['id_attribute']
+#         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
+# 
+# 
+#         # create a user parent log
+#         
+#         parent_log = self.get_su_resource().make_log(
+#             request, attributes={ 'username': username })
+#         parent_log.save()
+#         
+#         log = self.make_log(request)
+#         log.uri = '/'.join([
+#             parent_log.ref_resource_name,parent_log.key,
+#             log.ref_resource_name,log.key])
+#         ### TODO fininsh parent log 20170612
+#         
+#         log.parent_log = parent_log
+#         
+#         original_data = None
+#         if kwargs_for_log:
+#             try:
+#                 original_data = self._get_detail_response_internal(**kwargs_for_log)
+#                 if not log.key:
+#                     self.make_log_key(log, original_data, id_attribute=id_attribute)
+#                 logger.debug('original data: %r', original_data)
+#             except Exception, e: 
+#                 logger.exception('exception when querying for existing obj: %s', 
+#                     kwargs_for_log)
+#         
+#         log.save()
+#         
+#         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
+#         if API_RESULT_OBJ in patch_result:
+#             obj = patch_result[API_RESULT_OBJ]
+#         else:
+#             # TODO: 20170109, legacy, convert patch_obj to return:
+#             # { API_RESULT_OBJ, API_RESULT_META }
+#             obj = patch_result
+#         logger.debug('build patch detail: %r', obj)
+#         
+#         for id_field in id_attribute:
+#             if id_field not in kwargs_for_log:
+#                 val = getattr(obj, id_field,None)
+#                 if val is not None:
+#                     kwargs_for_log['%s' % id_field] = val
+#         new_data = self._get_detail_response_internal(**kwargs_for_log)
+#         self.log_patch(
+#             request, original_data,new_data,log=log, 
+#             id_attribute=id_attribute, **kwargs)
+#         log.save()
+#         logger.info('log saved: %r', log)
+# 
+#         prev_status = None
+#         if original_data:
+#             prev_status = original_data.get('status', None)
+#         parent_log.diffs = { 
+#             '{item_group}/{item_name}'.format(**new_data): [
+#                  prev_status, new_data.get('status',None)] }
+#         parent_log.save()
+#         
+#         
+#         # 20170109 - return complex data
+#         new_data = { API_RESULT_DATA: new_data, }
+#         if API_RESULT_META in patch_result:
+#             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
+#         return new_data    
+#     
+    
     @write_authorization
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
@@ -14707,7 +14824,6 @@ class UserChecklistItemResource(DbApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         # TODO: wrapper for parsing
@@ -15026,7 +15142,6 @@ class ScreensaverUserResource(DbApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -15037,7 +15152,6 @@ class ScreensaverUserResource(DbApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
 
         try:
             
@@ -15073,9 +15187,7 @@ class ScreensaverUserResource(DbApiResource):
             _screen_collab = self.bridge['screen_collaborators']
             _fur = self.bridge['user_facility_usage_role']
             _lhsu = _su.alias('lhsu')
-            
-#             affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte().cte('la')
-            
+
             lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
             
             custom_columns = {

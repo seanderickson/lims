@@ -7344,47 +7344,62 @@ class ScreensaverUserResource(DBResourceTestCase):
         checklist_admin = self.test_admin_user
         
         checklist_item_patch = {
-            'objects': [
-                { 
-                    'admin_username': checklist_admin['username'], 
-                    'item_group': "mailing_lists_wikis",
-                    'item_name': "added_to_iccb_l_nsrb_email_list",
-                    'status': "activated",
-                    'status_date': "2015-09-02",
-                    'username': test_username
-                }
-            ]}
+            'admin_username': checklist_admin['username'], 
+            'item_group': "mailing_lists_wikis",
+            'item_name': "added_to_iccb_l_nsrb_email_list",
+            'status': "activated",
+            'status_date': "2015-09-02",
+            'username': test_username
+        }
         
-        try:       
-            resource_uri = BASE_URI_DB + '/userchecklistitem/%s' % test_username
-            resp = self.api_client.patch(
-                resource_uri, 
-                format = 'json', 
-                data = checklist_item_patch, 
-                authentication=self.get_credentials())
-            self.assertTrue(
-                resp.status_code in [200,201,202], 
-                (resp.status_code, self.get_content(resp)))
+        test_comment = 'Some test comment 123 xyz'
+        
+        header_data = { HEADER_APILOG_COMMENT: test_comment}
+        
+        resource_uri = BASE_URI_DB + '/userchecklistitem/%s' % test_username
+        resp = self.api_client.patch(
+            resource_uri, 
+            format = 'json', 
+            data = { API_RESULT_DATA: checklist_item_patch}, 
+            authentication=self.get_credentials(),
+            **header_data)
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
 
-            data_for_get = { 'limit': 0, 'includes': ['*'] }
-            resp = self.api_client.get(
-                resource_uri + '/mailing_lists_wikis/added_to_iccb_l_nsrb_email_list',
-                format='json', 
-                authentication=self.get_credentials(), data=data_for_get )
-            self.assertTrue(
-                resp.status_code in [200], 
-                (resp.status_code, self.get_content(resp)))
-            new_obj = self.deserialize(resp)
-            result,msgs = assert_obj1_to_obj2(
-                checklist_item_patch[API_RESULT_DATA][0], new_obj)
-            self.assertTrue(result,msgs)
-        
-        except Exception, e:
-            logger.exception('on userchecklist')
-            raise e
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        resp = self.api_client.get(
+            resource_uri + '/mailing_lists_wikis/added_to_iccb_l_nsrb_email_list',
+            format='json', 
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('UCI created: %r', new_obj)
+        result,msgs = assert_obj1_to_obj2(
+            checklist_item_patch, new_obj)
+        self.assertTrue(result,msgs)
         
         # TODO: checklistitem logs
-                    
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'userchecklistitem', 
+            'key__contains': test_username + '/' + new_obj['item_group']
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        logger.info('logs: %r', apilogs)
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        self.assertTrue(apilog['comment']==test_comment,
+            'comment %r should be: %r' % (apilog['comment'], test_comment))
+        self.assertTrue('status' in apilog['diff_keys'])
+        self.assertTrue(checklist_item_patch['status'] in apilog['diffs'])
+        
+        
     def test3_attached_files(self):
         
         logger.info('test3_attached_files...')

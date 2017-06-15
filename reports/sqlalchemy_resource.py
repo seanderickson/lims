@@ -16,9 +16,8 @@ from sqlalchemy import select, asc, text
 import sqlalchemy
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
-from sqlalchemy.sql import and_, or_, not_          
+from sqlalchemy.sql import and_, or_, not_, func
 from sqlalchemy.sql import asc, desc, alias, Alias
-from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
@@ -580,7 +579,8 @@ class SqlAlchemyResource(IccblBaseResource):
         if data_type in ['integer', 'float', 'decimal']:
             col = cast(col, sqlalchemy.sql.sqltypes.Numeric)
         elif data_type == 'boolean':
-            col = cast(col, sqlalchemy.sql.sqltypes.Boolean)
+            if filter_type != 'is_null':
+                col = cast(func.coalesce(col,False), sqlalchemy.sql.sqltypes.Boolean)
         if data_type == 'string':
             col = cast(col, sqlalchemy.sql.sqltypes.Text)
         if filter_type in ['exact', 'eq']:

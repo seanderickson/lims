@@ -6,3 +6,5 @@ item_name,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistite
 status,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/status/,,,4,,string,,,select,TRUE,Status,Status,TRUE,,checklistitem.status,[l;d],[l],
 status_date,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/status_date/,,,5,,date,,,,TRUE,"Status Date","Status Date",TRUE,,,[l;d],[l],
 admin_username,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/admin_username/,custom,,6,,string,,,,TRUE,"Admin Username","Admin Username",TRUE,,,[l;d],,
+is_retired,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/is_retired/,custom,,7,,boolean,,,,TRUE,"Is Retired","Is Retired",TRUE,,,[d],,
+item_group_is_retired,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/item_group_is_retired/,custom,,8,,boolean,,,,TRUE,"Checklist Item Group is retired","Item Group Is Retired",TRUE,,,[d],,

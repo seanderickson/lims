@@ -322,8 +322,12 @@ def create_attached_file_type_vocab(apps):
 
 
 def create_checklist_vocabularies(apps):
-    # create a separate vocab file: checklist_item_vocab, add to api_init.csv
-    # output vocabs into a vocabulary patch file
+    ''' 
+    Create a separate vocab file: checklist_item_vocab, add to api_init.csv
+    output vocabs into a vocabulary patch file 
+    - idempotent
+    '''
+    
     vocab_file = os.path.join(
         PROJECT_ROOT, '..',
         'db', 'static', 'api_init', 'vocabulary_checklists_data.csv')
@@ -398,7 +402,7 @@ def create_checklist_vocabularies(apps):
                 'ordinal': 2
             },
             {
-                'key': 'na',
+                'key': 'n_a',
                 'title': 'N/A',
                 'ordinal': 3
             },

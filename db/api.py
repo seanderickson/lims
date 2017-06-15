@@ -14683,6 +14683,12 @@ class UserChecklistItemResource(DbApiResource):
             if not username:
                 stmt = stmt.order_by(entered_checklists.c.username)
             # general setup
+            if ('item_group_is_retired' not in readable_filter_hash
+                and 'is_retired' not in readable_filter_hash):
+                stmt = stmt.where(
+                    func.coalesce(ci_table.c.item_group_is_retired,False) != True)
+                stmt = stmt.where(
+                    func.coalesce(ci_table.c.is_retired,False) != True)
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)

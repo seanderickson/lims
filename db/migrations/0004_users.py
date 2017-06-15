@@ -19,6 +19,12 @@ from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
+def create_user_comments_logs(apps, schema_editor):
+    
+    #TODO convert screen.comments to apilogs
+    
+    pass
+    
 def create_screensaver_users(apps, schema_editor):
     '''
     Create entries in auth_user, reports.UserProfile for each valid entry 
@@ -43,7 +49,7 @@ def create_screensaver_users(apps, schema_editor):
         obj = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
         obj.delete()
     except Exception,e:
-        logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     # remove the second jgq10 erroneous account
     ssuid = 3166
@@ -54,7 +60,7 @@ def create_screensaver_users(apps, schema_editor):
         su.username = username
         su.save()
     except Exception,e:
-        logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
 
     ssuid = 830
     # for ruchir shahs old acct
@@ -65,7 +71,7 @@ def create_screensaver_users(apps, schema_editor):
         su.username = username
         su.save()
     except Exception,e:
-        logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     ssuid = 3945
     # for min-joon han dupl
@@ -76,7 +82,7 @@ def create_screensaver_users(apps, schema_editor):
         su.username = username
         su.save()
     except Exception,e:
-        logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     ssuid = 129
     # for maria chmura
@@ -84,7 +90,7 @@ def create_screensaver_users(apps, schema_editor):
         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
         su.delete()
     except Exception,e:
-        logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     # sean johnston second account
     ssuid = 3758 
@@ -95,7 +101,7 @@ def create_screensaver_users(apps, schema_editor):
         su.username = username
         su.save()
     except Exception,e:
-        logger.error(str(('cannot find screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     # to be deleted, duplicate account for Zecai      | Liang     | zl59 
     ssuid = 4505
@@ -106,7 +112,7 @@ def create_screensaver_users(apps, schema_editor):
         su.username = username
         su.save()
     except Exception,e:
-        logger.error(str(('cannot find screensaver_user_id', ssuid, e)))
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     for su in ScreensaverUser.objects.all():
         logger.debug("processing ecommons: %r, login_id: %r, email: %r, %s,%s"
@@ -205,6 +211,13 @@ def create_screensaver_users(apps, schema_editor):
 
 
 def create_user_checklist_items(apps, schema_editor):
+    '''
+    Convert ChecklistItemEvent entries into UserChecklistItems
+    - create ApiLogs to track status changes
+    - also track the status_notified
+    
+    - not idempotent, can be re-run by deleting UCIs and Apilogs
+    '''
     
     # prerequisites: 
     # - convert checklist_item / checklist_item_event entries into into 
@@ -225,14 +238,15 @@ def create_user_checklist_items(apps, schema_editor):
 
     # create entries in the user_checklist_item table
     # note: status values are hard-coded to correspond to the vocabulary
-    # keys (created in migration 0002)
+    # keys (created in migration 0003)
     sql_keys = [
-        'suid','cigroup','ciname',
+        'checklist_item_event_id', 'suid','cigroup','ciname',
         'su_username','admin_username','admin_suid','admin_upid',
         'date_performed', 'date_created','status','is_notified'
         ]
     sql = '''
 select
+cie.checklist_item_event_id,
 screening_room_user_id,
 ci.checklist_item_group,
 ci.item_name,
@@ -242,13 +256,16 @@ admin.screensaver_user_id admin_suid,
 up.id admin_upid,
 cie.date_performed,
 cie.date_created,
-case when cie.is_not_applicable then 'n_a'
- when ci.is_expirable and cie.date_performed is not null then
-case when cie.is_expiration then 'deactivated' else 'activated' end
- when cie.date_performed is not null then 'completed'     
- else 'not_completed'
- end as status,
- ( 
+case 
+    when cie.is_not_applicable then 'n_a'
+    when ci.is_expirable and cie.date_performed is not null then
+        case 
+            when cie.is_expiration then 'deactivated' 
+            else 'activated' end
+    when cie.date_performed is not null then 'completed'     
+    else 'not_completed'
+end as status,
+( 
    select 1 from screening_room_user sru 
     where sru.last_notified_smua_checklist_item_event_id = cie.checklist_item_event_id
        UNION    
@@ -271,18 +288,31 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
     log = None
     
     uci_hash = {}
+    notified_uci_hash = {}
     unique_log_keys = set()
     try:
         cursor.execute(sql)
         i = 0
+        
+        # Iterate through the ChecklistItemEvents:
+        # - Ordered by date_performed asc
+        # - create a UserChecklistItem key [username,checklist_item_group,checklist_item_name] 
+        # - first occurrence creates a new UCI
+        # - subsequent occurrences represent 
+        # - keep track of UCIs in hash
+        # - look for previous UCI 
+        
         for row in cursor:
             _dict = dict(zip(sql_keys,row))
-            
+            uci = None
             key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
-            previous_dict = uci_hash.get(key)
+            previous_dict = uci_hash.get(key, None)
+            notified_previous_dict = notified_uci_hash.get(key, None)
             logger.debug('previous_dict: %s:%s' % (key,previous_dict))
 
-            date_time = pytz.timezone('US/Eastern').localize(_dict['date_created'])                
+            date_time = _dict['date_created']
+            if date_time.tzinfo is None:
+                date_time = pytz.timezone('US/Eastern').localize(_dict['date_created'])                
             if date_time.date() != _dict['date_performed']:
                 # only use the less accurate date_performed date if that date
                 # is not equal to the date_created date
@@ -291,17 +321,21 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                         _dict['date_performed'],
                         datetime.datetime.min.time()))
                 
-            
             if previous_dict:
+                # NOTE: for SMUA, there may be multiple events before "deactivation" event;
+                # - so the previous dict will be updated multiple times here,
+                # - 60 days from the last
                 uci = previous_dict['obj']
                 uci.admin_user_id = int(_dict['admin_suid'])
                 uci.status = _dict['status']
                 uci.previous_status = previous_dict['status']
-                if(previous_dict['is_notified']):
-                    # notified date will be this event - 60 days (smua/rnaiua)
-                    uci.status_notified_date = (
-                        _dict['date_performed'] - datetime.timedelta(days=60))
                 uci.status_date = _dict['date_performed']
+
+                if _dict['status'] == 'deactivated':
+                    if notified_previous_dict:
+                        uci.status_notified_date = (
+                            _dict['date_performed'] - datetime.timedelta(days=60))
+                    
                 
                 logger.debug('saving, dict: %s, prev_dict: %s, status date %s, status_notified: %s', 
                     _dict, previous_dict, uci.status_date, uci.status_notified_date)
@@ -311,6 +345,8 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 
             else:
                 uci_hash[key] = _dict
+                if _dict['is_notified']:
+                    notified_uci_hash[key] = _dict
                 logger.debug(str(('create user checklist item', _dict, 
                     _dict['date_performed'].isoformat())))
                 uci = UserChecklistItem.objects.create(
@@ -335,7 +371,11 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             log.date_time = date_time
             log.api_action = 'PATCH'
             log.uri = '/'.join([log.ref_resource_name,log.key])
-            log.comment = 'status=%s' % _dict['status']
+            log.json_field = { 
+                'migration': 'ChecklistItemEvent',
+                'data': { 'checklist_item_event_id': 
+                    _dict['checklist_item_event_id'] }          
+                }
             
             # is the key (date_time, actually) unique?
             full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
@@ -347,38 +387,32 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 
             unique_log_keys.add(full_key)
             if previous_dict:
-                diff_keys = ['status']
-                diffs = {}
-                logger.debug(str(('found previous_dict', previous_dict)))
-                diff_keys.append('admin_username')
-                diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
-                
-                diff_keys.append('status_date')
-                diffs['status_date'] = [
+                log.diffs['status'] = [previous_dict['status'],_dict['status']]
+                log.diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
+                log.diffs['status_date'] = [
                     previous_dict['date_performed'].isoformat(), 
                     _dict['date_performed'].isoformat()]
                 
-                diffs['status'] = [previous_dict['status'],_dict['status']]
+                # NOTE: not tracking all the previous status's
+                log.diffs['previous_status'] = [ None, previous_dict['status']]
+            else:
+                log.api_action = 'CREATE'
+                log.diffs['status'] = [ None, _dict['status']]
+                log.diffs['status_date'] = [
+                    None,_dict['date_performed'].isoformat()]
                 
-                diff_keys.append('previous_status')
-                diffs['previous_status'] = [ None, previous_dict['status']]
-            
-                log.diff_keys = json.dumps(diff_keys)
-                log.diffs = json.dumps(diffs)
- 
-            logger.debug('create log: %s', log)
-            
             log.save()
-            log = None
+            logger.debug('created log: %r, %r', log, log.diffs )
             if i%1000 == 0:
-                logger.info(str(('created', i, 'logs')))
+                logger.info('created %d logs', i)
+                logger.info('key: %r', key)
+                logger.info('created log: %r, %r', log, log.diffs )
     except Exception, e:
         logger.exception('migration exc')
         raise e  
 
     print 'created %d user_checklist_items' % i
-
-
+    
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -405,4 +439,5 @@ class Migration(migrations.Migration):
         #     completed
 
         migrations.RunPython(create_screensaver_users),
+        migrations.RunPython(create_user_checklist_items),
     ]

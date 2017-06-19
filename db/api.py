@@ -13291,7 +13291,7 @@ class ScreenResource(DbApiResource):
                 
                 _cpr_data = \
                     self.get_cpr_resource()._get_list_response_internal(**{
-                        'limit': 5,
+                        'limit': 0,
                         'screen_facility_id__eq': _data['facility_id'],
                         'order_by': ['-date_requested'],
                         'exact_fields': [
@@ -13461,7 +13461,7 @@ class ScreenResource(DbApiResource):
         # specific setup
         base_query_tables = ['screen', 'screen_result']
         _screen = self.bridge['screen']
-        _followup_screen = _screen.alias('fus')
+        _child_screen = _screen.alias('child_screen')
         _parent_screen = _screen.alias('ps')
         _screen_result = self.bridge['screen_result']
         _ap = self.bridge['assay_plate']
@@ -13667,15 +13667,15 @@ class ScreenResource(DbApiResource):
 
         try:
             custom_columns = {
-                'follow_up_screens': (
+                'reconfirmation_screens': (
                     select([
                         func.array_to_string(
-                            func.array_agg(_followup_screen.c.facility_id),
+                            func.array_agg(_child_screen.c.facility_id),
                             LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_followup_screen)
-                    .where(_followup_screen.c.parent_screen_id
+                    .select_from(_child_screen)
+                    .where(_child_screen.c.parent_screen_id
                         == literal_column('screen.screen_id'))),
-                'parent_screen': (
+                'primary_screen': (
                     select([_parent_screen.c.facility_id])
                     .select_from(_parent_screen)
                     .where(_parent_screen.c.screen_id
@@ -14365,7 +14365,7 @@ class ScreenResource(DbApiResource):
                         publication_id__in=publications_add)
                     screen.publication_set.add(query)
             
-            _key = 'parent_screen'
+            _key = 'primary_screen'
             _val = deserialized.get(_key, None)
             if _val:
                 if ( screen.parent_screen 
@@ -14380,11 +14380,11 @@ class ScreenResource(DbApiResource):
                         if screen.screen_type != parent_screen.screen_type:
                             raise ValidationError(
                                 key=_key,
-                                msg='Parent screen must have the same screen_type')
+                                msg='Primary screen must have the same screen_type')
                         if screen.lab_head != parent_screen.lab_head:
                             raise ValidationError(
                                 key=_key,
-                                msg='Parent screen must have the same lab_head')
+                                msg='Primary screen must have the same lab_head')
                         
                         screen.parent_screen = parent_screen
                     except ObjectDoesNotExist:

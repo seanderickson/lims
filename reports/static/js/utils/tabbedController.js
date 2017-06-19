@@ -76,6 +76,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
         viewId = this.uriStack.shift();
 
         if(viewId == '+add'){
+          console.log('disable tabs during add operation...');
           this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId); 
           viewId = 'detail';

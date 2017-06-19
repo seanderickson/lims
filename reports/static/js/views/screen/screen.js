@@ -20,11 +20,14 @@ define([
   'views/list2', 
   'utils/uploadDataForm',
   'utils/tabbedController',
-  'templates/generic-detail-screen.html'
+  'templates/generic-detail-stickit.html',
+  'templates/generic-detail-stickit-one-column.html'
+//  'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
             ActivityListView, ServiceActivityView, DetailLayout, DetailView, EditView, 
-            ListView, UploadDataForm, TabbedController, screenTemplate) {
+            ListView, UploadDataForm, TabbedController, detailTemplate,
+            detailOneColTemplate) {
 
   var ScreenView = TabbedController.extend({
     isAdmin: false,
@@ -63,6 +66,12 @@ define([
         description : 'Screen Details',
         title : 'Screen Details',
         invoke : 'setDetail'
+      },
+      protocol : {
+        description : 'Screen Protocol Information',
+        title : 'Protocol',
+        invoke : 'setProtocol',
+        permission: 'screen'
       },
       summary : {
         description : 'Visit Summary',
@@ -145,11 +154,11 @@ define([
           _.object(model.get('collaborator_usernames'),
             model.get('collaborator_names')));
 
-      if (!_.isEmpty(model.get('parent_screen'))){
-        fields['parent_screen'].visibility=['d'];
+      if (!_.isEmpty(model.get('primary_screen'))){
+        fields['primary_screen'].visibility=['d'];
       }
-      if (!_.isEmpty(model.get('follow_up_screens'))){
-        fields['follow_up_screens'].visibility=['d'];
+      if (!_.isEmpty(model.get('reconfirmation_screens'))){
+        fields['reconfirmation_screens'].visibility=['d'];
       }
       
       // Manage visible fields; admin fields
@@ -317,58 +326,59 @@ define([
           if (!_.isEmpty(model.get('study_type'))) {
             // do nothing for studies here
           } else {
-            self.createStatusHistoryTable($('#status_table'));
-            self.createActivitySummary($('#activity_summary'));
-            self.createCprTable($('#cpr_table'));
-            self.createPublicationTable(this.$el.find('#publications'));
-            self.createAttachedFileTable(this.$el.find('#attached_files'));
+            self.createStatusHistoryTable($('#detail_extra_information'));
+            self.createActivitySummary($('#detail_extra_information'));
+            self.createCprTable($('#detail_extra_information'));
+            if (appModel.hasGroup('readEverythingAdmin')) {
+              self.createAttachedFileTable(this.$el.find('#attached_files'));
+            }
           }
           
-          if (_.isEmpty(model.get('parent_screen'))){
+          if (_.isEmpty(model.get('primary_screen'))){
             
-            // Follow up screens can be added, if the current screen is not a 
-            // follow up screen itself.
+            // Reconfirmation up screens can be added, if the current screen is not a 
+            // reconfirmation up screen itself.
             
-            var addFollowUpScreenControl = $([
+            var addReconfirmationScreenControl = $([
               '<a class="btn btn-default btn-sm pull-down" ',
-                'role="button" id="followUpScreenButton" href="#">',
-                'Add a Follow Up Screen</a>'
+                'role="button" id="reconfirmationScreenButton" href="#">',
+                'Add a Reconfirmation Screen</a>'
               ].join(''));
-            $('#generic-detail-buttonpanel').append(addFollowUpScreenControl);
-            addFollowUpScreenControl.click(function(e){
+            $('#generic-detail-buttonpanel').append(addReconfirmationScreenControl);
+            addReconfirmationScreenControl.click(function(e){
               e.preventDefault();
               
               var newFacilityId = self.model.get('facility_id') + 'A';
-              if (!_.isEmpty(model.get('follow_up_screens'))){
-                var other = self.model.get('follow_up_screens').sort();
+              if (!_.isEmpty(model.get('reconfirmation_screens'))){
+                var other = self.model.get('reconfirmation_screens').sort();
                 var last = other[other.length-1];
                 var newLetter =  String.fromCharCode(last.charCodeAt(last.length-1)+1);
                 newFacilityId =  self.model.get('facility_id') + newLetter;
               }
               
-              var defaults = {
-                facility_id: newFacilityId,
-                screen_type: self.model.get('screen_type'),
-                parent_screen: self.model.get('facility_id'),
-                collaborator_usernames: self.model.get('collaborator_usernames'),
-                lead_screener_username: self.model.get('lead_screener_username'),
-                lab_head_username: self.model.get('lab_head_username'),
-                data_sharing_level: self.model.get('data_sharing_level')
-              };
+              var defaults = self.model.pick([
+                'screen_type', 'lab_head_username', 'lead_screener_username', 
+                'data_sharing_level',
+                'collaborator_usernames', 'title', 'summary', 'species', 
+                'cell_lines', 'transfection_agent', 
+                'perturbagen_molar_concentration','perturbagen_ug_ml_concentration'
+              ]);
+              defaults['facility_id'] = newFacilityId;
+              defaults['primary_screen'] = self.model.get('facility_id');
               var newModel = appModel.newModelFromResource(resource, defaults);
               newModel.url = function(){
                 return resource.apiUri + '?override=true';
               }
               
-              console.log('new follow up screen:', newModel);
+              console.log('new reconfirmation up screen:', newModel);
               self.consumedStack = ['+add'];
-              editVisibleKeys.push('parent_screen');
+              editVisibleKeys.push('primary_screen');
               showEdit(newModel);
               self.$('ul.nav-tabs > li').addClass('disabled');
               self.reportUriStack();
               var titleDiv = $('#detail_container').find('#content_title')
               titleDiv.append(
-                '<H4 id="title">Follow Up Screen for ' + 
+                '<H4 id="title">Reconfirmation Up Screen for ' + 
                 self.model.get('facility_id') + '</H4>');
               titleDiv.show();
             });
@@ -391,24 +401,28 @@ define([
         },
         
         serialize: function() {
-          // special handling of the grouped keys for the screen template
-
           var data = DetailView.prototype.serialize.apply(this,arguments);
-          var informationKeys = [];
-          var groupedKeys = [];
-          data['groupedKeys'].each(function(groupKey) {
-            if (_.result(groupKey,'title',null) == 'Information') {
-              informationKeys = informationKeys.concat(groupKey.fields);
-            } else {
-              groupedKeys.push(groupKey);
-            }
-          });
-          data['groupedKeys'] = _.chain(groupedKeys);
-          data['informationKeys'] = _.chain(informationKeys);
+          // special handling of the grouped keys for the screen template
+          //var informationKeys = [];
+          //var groupedKeys = [];
+          //var informationKeysOnly = [];
+          //
+          //data['groupedKeys'].each(function(groupKey) {
+          //  if (_.result(groupKey,'title',null) == 'Information') {
+          //    informationKeys = informationKeys.concat(groupKey.fields);
+          //  } 
+          //  else {
+          //    groupedKeys.push(groupKey);
+          //  }
+          //});
+          //console.log('information keys', informationKeys);
+          //data['keys'] = _.chain(informationKeys);
+          //data['groupedKeys'] = _.chain(informationKeys);
+          //data['informationKeys'] = _.chain(informationKeys);
           return data;
         },
         
-        template: _.template(screenTemplate)
+        template: _.template(detailTemplate)
       });
 
       
@@ -441,7 +455,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-      $target_el.empty();
+//      $target_el.empty();
       
       function build_table(collection) {
           if (collection.isEmpty()) {
@@ -715,6 +729,9 @@ define([
       
       var collection = new CollectionClass();
 
+      resource.fields['title']['backgridCellType'] = Iccbl.LinkCell.extend({
+        className: 'text-wrap-cell'
+      });
       var colModel = Iccbl.createBackgridColModel(resource.fields);
       
       var grid = new Backgrid.Grid({
@@ -815,6 +832,9 @@ define([
       
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
+      });
+      resource.fields['filename']['backgridCellType'] = Iccbl.LinkCell.extend({
+        className: 'text-wrap-cell'
       });
       
       var collection = new CollectionClass();
@@ -929,7 +949,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: cprResource.apiUri 
       });
-      $target_el.empty();
+//      $target_el.empty();
       
       function build_table(collection) {
         if (collection.isEmpty()) {
@@ -937,6 +957,9 @@ define([
         }
         collection.each(function(model) {
         });
+        var originalLength = collection.length;
+        collection = new Backbone.Collection(collection.slice(0,10));
+        
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -983,8 +1006,9 @@ define([
 
         $target_el.append($([
           '<div class="col-xs-12"><strong>',
-          'Recent <a href="#screen/' + self.model.get('facility_id'),
-          '/cherrypick">Cherry Pick Requests</a></strong></div>',
+          'Recent Cherry Pick Requests ',
+          '<a href="#screen/' + self.model.get('facility_id'),
+          '/cherrypickrequest">(Total: ' + originalLength + ')</a></strong></div>',
           '<div class="col-xs-12" id="cprs"/>'].join('')));
         
         var _grid = new Backgrid.Grid({
@@ -1003,7 +1027,7 @@ define([
         var cpr_collection = new CollectionClass();
         cpr_collection.fetch({
           data: { 
-            limit: 5,
+            limit: 0,
             screen_facility_id__eq: self.model.key,
             order_by: ['-date_requested']
           },
@@ -1023,7 +1047,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: apilogResource.apiUri 
       });
-      $target_el.empty();
+//      $target_el.empty();
       
       function build_table(collection) {
         console.log('build status history table', collection);
@@ -1413,6 +1437,51 @@ define([
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
+      self.$("#tab_container-title").hide();
+    },
+    
+    setProtocol: function(delegateStack) {
+      var self = this;
+      var key = 'protocol';
+      var view = this.tabViews[key];
+      if (!view) {
+        
+        var protocolKeys = self.model.resource.filterKeys('visibility', 'protocol');
+        var editableKeys = _.intersection(
+          self.model.resource.updateKeys(), protocolKeys);
+        var editVisibleKeys = _.intersection(
+          self.model.resource.allEditVisibleKeys(),protocolKeys);
+        console.log('protocol keys', protocolKeys);
+        var buttons = ['download','history'];
+        
+        if (appModel.hasPermission('screen', 'write')) {
+          buttons.push('edit');
+        }
+        var detailView = DetailView.extend({
+          template: _.template(detailOneColTemplate),
+          afterRender: function() {
+            var dview = DetailView.prototype.afterRender.apply(this,arguments);
+            self.createPublicationTable(this.$el.find('#publications'));
+          }
+        });
+        
+        view = new DetailLayout({ 
+          model: self.model, 
+          uriStack: delegateStack,
+          detailKeys: protocolKeys,
+          editVisibleKeys: editVisibleKeys,
+          editableKeys: editableKeys,
+          buttons: buttons,
+          DetailView: detailView
+        });
+        self.tabViews[key] = view;
+        
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      } else {
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      }
       self.$("#tab_container-title").hide();
     },
 

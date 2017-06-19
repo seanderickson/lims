@@ -4129,6 +4129,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'image': Iccbl.ImageCell,
     'boolean': Iccbl.BooleanCell,
     'list': Iccbl.TextWrapCell,
+    'full_string': Iccbl.TextWrapCell,
     'comment_array': Iccbl.CommentArrayCell
   }
   

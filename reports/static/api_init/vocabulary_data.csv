@@ -4,7 +4,8 @@ d,field.visibility,/reports/api/v1/vocabulary/field.visibility/d/,2,,"Allow visi
 e,field.visibility,/reports/api/v1/vocabulary/field.visibility/e/,3,,"Visible in edit views","Visible in edit views"
 summary,field.visibility,/reports/api/v1/vocabulary/field.visibility/summary/,4,,"Visible in summary views (if available)","Visible in summary views"
 billing,field.visibility,/reports/api/v1/vocabulary/field.visibility/billing/,5,,"Visible in billing views","Visible in billing views"
-api,field.visibility,/reports/api/v1/vocabulary/field.visibility/api/,6,,"Visible at the API, but not in the UI","Visible on the API only"
+protocol,field.visibility,/reports/api/v1/vocabulary/field.visibility/protocol/,6,,"Visible in protocol views (Screens)","Visible in protocol views"
+api,field.visibility,/reports/api/v1/vocabulary/field.visibility/api/,7,,"Visible at the API, but not in the UI","Visible on the API only"
 c,field.editability,/reports/api/v1/vocabulary/field.editability/c/,1,,"Visible on creation","Visible on creation"
 u,field.editability,/reports/api/v1/vocabulary/field.editability/u/,2,,"Visible on update","Visible on update"
 l,field.editability,/reports/api/v1/vocabulary/field.editability/l/,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"
@@ -24,6 +25,7 @@ link,field.display_type,/reports/api/v1/vocabulary/field.display_type/link/,1,,"
 image,field.display_type,/reports/api/v1/vocabulary/field.display_type/image/,2,"This value will actually be the URI that serves the image.","Image URI",Image
 siunit,field.display_type,/reports/api/v1/vocabulary/field.display_type/siunit/,3,,"A numeric value that is displayed with SI units and prefix","SI Unit"
 comment_array,field.display_type,/reports/api/v1/vocabulary/field.display_type/comment_array/,4,,"An array of nested ApiLog comments","ApiLog Comment Array"
+full_string,field.display_type,/reports/api/v1/vocabulary/field.display_type/full_string/,5,,"Display text in a wrapping text cell","Long String Cell"
 select,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/select/,1,,"Select a single value from a controlled vocabulary",Select
 multiselect,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect/,2,,"Checkbox select multiple values from a controlled vocabulary",Multi-select
 multiselect2,field.edit_type,/reports/api/v1/vocabulary/field.edit_type/multiselect2/,3,,"Dual column multi-select",Multi-select2

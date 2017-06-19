@@ -74,15 +74,16 @@ define([
   
   /**
    * Groups the keys by the display_options "group":
-   * {
-   *    group: name,
-   *    fields: [fieldkey1, fieldkey2, fieldkey3... ]
-   * 
+   * @ return an array of: 
+   * [ {
+   *     group: name,
+   *     fields: [fieldkey1, fieldkey2, fieldkey3... ]
+   *    }, ...]
    */
   SchemaClass.prototype.groupedKeys = function(keys){
     var self = this;
     var groupedKeys = [];
-    var groups = {};
+    var groups = {}; // note, hash is being used only as a lazy cache, not returned
     _.each(keys,function(key){
       var fi = self.fields[key];
       if (fi && fi.display_options && fi.display_options.group){

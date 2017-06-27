@@ -397,7 +397,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     # For string field ordering, double sort as numeric and text
                     order_clause = text(
                         "(substring({field_name}, '^[0-9]+'))::int desc " # cast to integer
-                        ",substring({field_name}, '[^0-9_].*$')  "  # works as text
+                        ",substring({field_name}, '[^0-9_].*$')  desc"  # works as text
                         .format(field_name=field_name))
             else:
                 order_clause = nullsfirst(asc(column(field_name)))

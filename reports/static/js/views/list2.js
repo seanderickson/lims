@@ -129,7 +129,6 @@ define([
       };
 
       var orderStack = self.listModel.get('order') || [];
-      _state.orderStack = _.clone(orderStack);
       
       if (!_.has(self._options, 'url')) {
         self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
@@ -332,7 +331,6 @@ define([
       self.listModel.set({ 
         'rpp': state.pageSize, 
         'page': currentPage,
-        'order': _.clone(state.orderStack) 
       }, options);
       
     },
@@ -453,7 +451,8 @@ define([
       
       this.listenTo(this.listModel, 'change:page', function(){
         var page = self.listModel.get('page');
-        this.collection.getPage(page, {reset: true });
+        self.collection.getPage(page, {reset: true });
+        self.reportState();
       });
       this.listenTo(this.listModel, 'change:search', function(){
         // TODO: this listener should be set in the collection initializer
@@ -476,9 +475,7 @@ define([
       });
       
       // New 20161213
-      this.listenTo(
-        this.listModel, 
-        'change:includes', 
+      this.listenTo(this.listModel, 'change:includes', 
         function(model, changed, options){
           
           var reset = true;
@@ -569,7 +566,7 @@ define([
               self.grid.insertColumn(
                 Iccbl.createBackgridColumn(
                     key,field,
-                    self.collection.state.orderStack),
+                    self.listModel.get('order')),
                     { at: index});
             } else {
               console.log('column already included', key)
@@ -677,7 +674,7 @@ define([
         body: body,
         row: self._options.row,
         collection: self.collection,
-        className: "backgrid col-sm-12 table-striped table-condensed table-hover"
+        className: "backgrid left-align col-sm-12 table-striped table-condensed table-hover"
       });
       this.objects_to_destroy.push(grid);
       //var gridHeader = this.gridHeader = new Backgrid.Grid({
@@ -765,7 +762,12 @@ define([
       self.listenTo(self.collection, "remove", self.checkState);
       self.listenTo(self.collection, "reset", self.checkState);
       self.listenTo(self.collection, "sort", self.checkState);
-      
+      self.listenTo(self.collection, "pageable:state:change", function(state){
+        if (state && state.currentPage){
+          self.listModel.set('page', state.currentPage, {silent: true});
+          self.reportState();
+        }
+      });
       var finalGrid = self.finalGrid = this.grid.render();
       self.objects_to_destroy.push(finalGrid);
       self.$("#table-div").append(finalGrid.el);
@@ -823,7 +825,6 @@ define([
       }
 
       var orderStack = self.listModel.get('order') || [];
-      self.collection.state.orderStack = _.clone(orderStack);
       if(!_.isEmpty(orderStack)){
         self.collection.setSorting();
       }
@@ -904,7 +905,6 @@ define([
     clear_sorts: function(){
       this.collection.trigger("Iccbl:clearSorts");
       this.listModel.unset('order');
-      this.collection.state.orderStack = [];
       this.collection.getFirstPage({reset: true, fetch: true});
     },
     
@@ -1267,6 +1267,7 @@ define([
       console.log('show_other_screens', other_screens);
       var self = this;
       var schemaUrl = [self._options.url,'schema'].join('/');
+      var orderStack = self.listModel.get('order') || [];
       appModel.getResourceFromUrl(schemaUrl, function(newSchema){
         var count = 0;
         _.each(_.values(newSchema['fields']),function(newField){
@@ -1276,7 +1277,7 @@ define([
               self.grid.insertColumn(
                   Iccbl.createBackgridColumn(
                       newField['key'],newField,
-                      self.collection.state.orderStack));
+                      orderStack));
             }
           }
         });
@@ -1302,6 +1303,7 @@ define([
     show_mutual_positives: function(screen_facility_id, show_mutual_positives){
       var self = this;
       var _fields = this._options.schemaResult.fields;
+      var orderStack = self.listModel.get('order') || [];
 
       if (show_mutual_positives){
 
@@ -1316,7 +1318,7 @@ define([
                 self.grid.insertColumn(
                     Iccbl.createBackgridColumn(
                         newField['key'],newField,
-                        self.collection.state.orderStack));
+                        orderStack));
               }
             }
           });
@@ -1340,7 +1342,6 @@ define([
       
       }else{
         var searchHash = _.clone(self.listModel.get('search'));
-        var orderStack = self.listModel.get('order') || [];
         _.each(_.pairs(_fields), function(pair){
           var key = pair[1]['key'];
           var prop = pair[1];
@@ -1379,6 +1380,7 @@ define([
     show_mutual_positives_bak: function(screen_facility_id, show_mutual_positives){
       var self = this;
       var _fields = this._options.schemaResult.fields;
+      var orderStack = self.listModel.get('order') || [];
 
       if (show_mutual_positives){
         
@@ -1396,7 +1398,7 @@ define([
               self.grid.insertColumn(
                 Iccbl.createBackgridColumn(
                     key,prop,
-                    self.collection.state.orderStack));
+                    orderStack));
             }
           }
         });
@@ -1406,7 +1408,6 @@ define([
         self.listModel.set('search',searchHash);
       }else{
         var searchHash = _.clone(self.listModel.get('search'));
-        var orderStack = self.listModel.get('order') || [];
         _.each(_.pairs(_fields), function(pair){
           var key = pair[1]['key'];
           var prop = pair[1];

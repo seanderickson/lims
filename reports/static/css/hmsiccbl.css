@@ -1,4 +1,4 @@
-  body {
+body {
 /* 	background-color: #e3e3e3; */
 /*   background-color: #c5d2db; */
 }
@@ -477,6 +477,10 @@ td.dl-title.admin-field {
 
 .glyphicon-comment {
  padding-left: 1ch;
+}
+
+table.backgrid.left-align td{
+ text-align: left;
 }
 /** scrollable table (fixed headers) attempt **/
 /* .backgrid table { */

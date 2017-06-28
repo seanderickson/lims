@@ -58,7 +58,19 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         afterRender: function(){
 
           EditView.prototype.afterRender.apply(this,arguments);
-
+          if(appModel.hasPermission('usergroup', 'edit')){
+            var addServiceActivityPerformerButton = $([
+              '<button type="submit" ',
+              'class="btn btn-default btn-sm" " >Add Service Activity Performer</input>',
+              ].join(''));
+            this.$el.find('[key="form-group-performed_by_username"]').append(
+              addServiceActivityPerformerButton);
+            addServiceActivityPerformerButton.click(function(e){
+              e.preventDefault();
+              var urlPath = ['usergroup','serviceActivityPerformers','edit'];
+              appModel.router.navigate(urlPath.join('/'),{trigger:true});
+            });
+          }          
         }//editView.afterRender
       }, self._args);//editView
       args.EditView = editView;
@@ -91,24 +103,25 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         
       function setupEditView(callback){
         var resource = self.model.resource;
-        resource.fields['performed_by_username']['choices'] = 
-          appModel.getAdminUserOptions();
-
-        if (self.user ){
-          var screen_facility_field = resource.fields['screen_facility_id'];
-          screen_facility_field['edit_type'] = 'select';
-          var choices = appModel._get_user_screen_choices(self.user);
-          choices.unshift({ 'val': '', 'label': 'not selected' });
-          screen_facility_field['choices'] = choices;
-        }
-        if (self.screen){
-          
-          var serviced_username_field = resource.fields['serviced_username'];
-          serviced_username_field['edit_type'] = 'select';
-          serviced_username_field['choices'] = 
-            appModel._get_screen_member_choices(self.screen);
-        }
-        view = DetailLayout.prototype.showEdit.apply(self,arguments);
+        appModel.getUsersInGroupOptions('serviceActivityPerformers', function(options){
+          resource.fields['performed_by_username']['choices'] = options;
+  
+          if (self.user ){
+            var screen_facility_field = resource.fields['screen_facility_id'];
+            screen_facility_field['edit_type'] = 'select';
+            var choices = appModel._get_user_screen_choices(self.user);
+            choices.unshift({ 'val': '', 'label': 'not selected' });
+            screen_facility_field['choices'] = choices;
+          }
+          if (self.screen){
+            
+            var serviced_username_field = resource.fields['serviced_username'];
+            serviced_username_field['edit_type'] = 'select';
+            serviced_username_field['choices'] = 
+              appModel._get_screen_member_choices(self.screen);
+          }
+          view = DetailLayout.prototype.showEdit.apply(self,arguments);
+        });
       };
       
       $(this).queue([

@@ -107,7 +107,7 @@
         "url_root": "/db/api/v1",
         "description": "View screen information",
         "options": { 
-          "search": { "project_phase__ne": "annotation" }
+          "search": { "study_type__is_null": true }
         }
     },
     "small_molecule_screens": {
@@ -121,7 +121,7 @@
         "description": "View small molecule screen information",
         "options": { 
           "search": { "screen_type__in": "small_molecule",
-                      "project_phase__ne": "annotation"
+                      "study_type__is_null": true
                     }
         }
     },
@@ -136,7 +136,7 @@
         "description": "View rnai screen information",
         "options": { 
           "search": { "screen_type__in": "rnai",
-                      "project_phase__ne": "annotation" }
+                      "study_type__is_null": true }
         }
     },
     "study": {
@@ -149,6 +149,7 @@
         "url_root": "/db/api/v1",
         "description": "View Studies",
         "options": { 
+          "search": { "study_type__is_null": false }
         }
     },
     "screenresult": {

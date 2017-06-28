@@ -1303,6 +1303,7 @@ define([
       console.log('set activities');
       var self = this;
       var resource = appModel.getResource('activity');
+      var saResource = Iccbl.appModel.getResource('serviceactivity');
       
       _.each(_.values(resource.fields), function(field){
         if(_.result(field.display_options,'optgroup')=='screen'){
@@ -1315,7 +1316,6 @@ define([
         // Detail View
         
         // Only service activities are viewed; lab activities link to visits & cprs
-        saResource = appModel.getResource('serviceactivity');
         // ServiceActivity for a screen; turn of edit for screen field and funding
         saResource.fields['screen_facility_id'].editability = [];
         saResource.fields['funding_support']['editability'] = [];
@@ -1359,10 +1359,8 @@ define([
           ].join(''));
         addServiceActivityButton.click(function(e){
           e.preventDefault();
-          var saResource = Iccbl.appModel.getResource('serviceactivity');
           var defaults = {
-            screen_facility_id: self.model.get('facility_id'),
-            performed_by_username: appModel.getCurrentUser().username
+            screen_facility_id: self.model.get('facility_id')
           };
           
           saResource.fields['serviced_user']['visibility'] = [];
@@ -1407,7 +1405,7 @@ define([
           self.reportUriStack([]);
           view.reportUriStack(['+add']);
         });
-        if(appModel.hasPermission(self.model.resource.key, 'edit')){
+        if(appModel.hasPermission(saResource.key, 'edit')){
           extraControls.unshift(addServiceActivityButton);
         }
         
@@ -1568,17 +1566,19 @@ define([
     afterRender: function(){
       var self = this;
       TabbedController.prototype.afterRender.apply(this,arguments);
-      $('#content_title_message').empty();
+      $('#content_title_message').find('#screen_status_message').remove();
       if (!_.isEmpty(self.model.get('status'))) {
         if (_.contains(self.COMPLETED_STATUSES, self.model.get('status'))){
-          $('#content_title_message').append($('<div class="alert alert-success"></div>').html(
-            'Screen Status: ' + appModel.getVocabularyTitle(
-              'screen.status',self.model.get('status'))));
+          $('#content_title_message').append(
+            $('<div id="screen_status_message" class="alert alert-success"></div>').html(
+              'Screen Status: ' + appModel.getVocabularyTitle(
+                'screen.status',self.model.get('status'))));
         }
         else if (!_.contains(self.OK_STATUSES, self.model.get('status'))){
-          $('#content_title_message').prepend($('<div class="alert alert-danger"></div>').html(
-            'Screen Status: ' + appModel.getVocabularyTitle(
-              'screen.status',self.model.get('status'))));
+          $('#content_title_message').prepend(
+            $('<div id="screen_status_message" class="alert alert-danger"></div>').html(
+              'Screen Status: ' + appModel.getVocabularyTitle(
+                'screen.status',self.model.get('status'))));
         }
       }
     }

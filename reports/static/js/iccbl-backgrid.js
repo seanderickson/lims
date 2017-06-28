@@ -13,7 +13,7 @@ var Iccbl = root.Iccbl = {
 
 // Constants
 
-var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/; // MM/DD/YYYY
 var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
 var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
@@ -149,11 +149,11 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
   if ((rawData + '').trim() === '') return null;
 
   if(ICCBL_DATE_RE.test(rawData)){
-    var DDMMYYYY = ICCBL_DATE_RE.exec(rawData) || [];
+    var MMDDYYYY = ICCBL_DATE_RE.exec(rawData) || [];
     var jsDate = new Date(
-      DDMMYYYY[3] * 1 || 0,
-      DDMMYYYY[2] * 1 - 1 || 0,
-      DDMMYYYY[1] * 1 || 0);
+      MMDDYYYY[3] * 1 || 0,
+      MMDDYYYY[1] * 1 - 1 || 0,
+      MMDDYYYY[2] * 1 || 0);
     console.log('date: raw: ', rawData, 'converted', jsDate);
     return jsDate;
   }else{
@@ -788,13 +788,19 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
   /**
    * Override collection parse method: Parse server response data.
    */
-  parse : function(response) {
+  parse : function(resp) {
     console.log('Collection on client, parse called');
-    if(_.has(response,'objects') && _.isArray(response.objects) ){
-      return response.objects;
+    if (Iccbl.appModel.API_RESULT_DATA){
+      return resp[Iccbl.appModel.API_RESULT_DATA];
+    } else {
+      return resp.objects;
     }
-    return response;
+//    if(_.has(response,'objects') && _.isArray(response.objects) ){
+//      return response.objects;
+//    }
+//    return response;
   },
+  
   setSearch: function(){
     //nop, for now
   }
@@ -873,27 +879,62 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
     Backgrid.Cell.prototype.initialize.apply(this, arguments);
     
     var self = this;
+    var initialValue = this.initialValue = this.model.get(this.column.get('name'));
     this.model.on('change:'+this.column.get("name") , function(){
       // Block updates caused by adding columns
       if (!_.isUndefined(self.model.previous(self.column.get("name")))){
-        self.$el.addClass('edited');
+        if (self.isEdited()){
+          self.$el.addClass('edited');
+      } else {
+        self.$el.removeClass('edited');
+      }
       }
     });
-  }
+  },
+  
+  isEdited: function() {
+    var val = this.model.get(this.column.get('name'));
+    return val !== this.initialValue;
+  },
+  
+  isEditable: function(){
+    var model = this.model, column = this.column;
+    return Backgrid.callByNeed(column.editable(), column, model);
+  },
+  
 });
 
+/**
+ * Override BooleanCell:
+ * - cellClick toggles the checkbox
+ * - "edited" flag is set and initialValue is tracked
+ */
 var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
   
   initialize: function(){
     
     BooleanCell.__super__.initialize.apply(this, arguments);
     var self = this;
+    var initialValue = this.initialValue = this.model.get(this.column.get('name'));
+    
     this.model.on('change:'+this.column.get("name") , function(){
-      // Block updates caused by adding columns
-      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+      if (self.isEdited()){
         self.$el.addClass('edited');
+      } else {
+        self.$el.removeClass('edited');
       }
     });
+  },
+  
+  isEditable: function(){
+    var model = this.model, column = this.column;
+    return Backgrid.callByNeed(column.editable(), column, model);
+  },
+  
+  isEdited: function() {
+    var val = this.model.get(this.column.get('name'));
+    console.log('isEdited:', this.initialValue, val, val !== this.initialValue);
+    return val !== this.initialValue;
   },
   
   // Set up to toggle the checkbox whenever the TD is clicked
@@ -901,12 +942,41 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
     'click': 'cellClicked'
   },
   
-  cellClicked: function(){
-    console.log('clicked...');
+  cellClicked: function(e){
+    e.stopPropagation();
+    if (this.isEditable()){
+      var model = this.model, column = this.column;
+      var checked = model.get(column.get("name"));
+      if (this.isEdited()){
+        if (checked){
+          model.set(column.get("name"), this.initialValue);
+        } else {
+          model.set(column.get("name"), !checked);
+        }
+      } else {
+        model.set(column.get("name"), !checked);
+      }
+    }
+  },
+  
+  render: function () {
     var model = this.model, column = this.column;
-    var checked = model.get(column.get("name"));
-    model.set(column.get("name"), !checked);
+    var val = this.formatter.fromRaw(model.get(column.get("name")), model);
+    this.$el.empty();
+    if (this.isEditable()){
+      this.$el.css('text-align','center');
+      this.$el.append($("<input>", {
+        tabIndex: -1,
+        type: "checkbox",
+        checked: this.formatter.fromRaw(model.get(column.get("name")), model)
+      }));
+      //      this.delegateEvents();
+    } else {
+      this.$el.text(val);
+    }
+    return this;
   }
+
 });
   
 var StringFormatter = Iccbl.StringFormatter = function () {};
@@ -1136,6 +1206,11 @@ var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
       
 });
 
+/**
+ * @deprecated
+ * Render the cell as a link that triggers the MyCollection:detail event
+ *
+ */
 var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
   
   className : "detail-cell",
@@ -1612,7 +1687,6 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
           }
         }
       }
-      
     }
     var isEmpty = ( _.isEmpty(rawData) 
         || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])))
@@ -1685,11 +1759,11 @@ _.extend(DatetimeFormatter.prototype, {
     if (_.isNull(formattedData) || _.isUndefined(formattedData)) return '';
     if ((formattedData + '').trim() === '') return null;
     if(ICCBL_DATE_RE.test(formattedData)){
-      var DDMMYYYY = ICCBL_DATE_RE.exec(formattedData) || [];
+      var MMDDYYYY = ICCBL_DATE_RE.exec(formattedData) || [];
       var jsDate = new Date(
-        DDMMYYYY[3] * 1 || 0,
-        DDMMYYYY[2] * 1 - 1 || 0,
-        DDMMYYYY[1] * 1 || 0);
+        MMDDYYYY[3] * 1 || 0,
+        MMDDYYYY[1] * 1 - 1 || 0,
+        MMDDYYYY[2] * 1 || 0);
       var temp = getISODateString(jsDate);
       return temp;
     }else{
@@ -1726,19 +1800,19 @@ _.extend(DatetimeFormatter.prototype, {
       time = date && parts[1] ? parts[1] : TIME_RE.test(parts[0]) ? parts[0] : '';
     }
     // FIXME: review this 
-    var DDMMYYYY = ICCBL_DATE_RE.exec(date) || [];
+    var MMDDYYYY = ICCBL_DATE_RE.exec(date) || [];
     var HHmmssSSS = TIME_RE.exec(time) || [];
 
     if (validate) {
-      if (this.includeDate && _.isUndefined(DDMMYYYY[0])) return;
+      if (this.includeDate && _.isUndefined(MMDDYYYY[0])) return;
       if (this.includeTime && _.isUndefined(HHmmssSSS[0])) return;
       if (!this.includeDate && date) return;
       if (!this.includeTime && time) return;
     }
 
-    var jsDate = new Date(DDMMYYYY[3] * 1 || 0,
-                                   DDMMYYYY[2] * 1 - 1 || 0,
-                                   DDMMYYYY[1] * 1 || 0,
+    var jsDate = new Date(MMDDYYYY[3] * 1 || 0,
+                                   MMDDYYYY[1] * 1 - 1 || 0,
+                                   MMDDYYYY[2] * 1 || 0,
                                    HHmmssSSS[1] * 1 || null,
                                    HHmmssSSS[2] * 1 || null,
                                    HHmmssSSS[3] * 1 || null,
@@ -1772,8 +1846,190 @@ _.extend(DatetimeFormatter.prototype, {
 });
 
 /**
+ * DateCellEditor replacement:
+ * - bootstrap-datepicker editor
+ * - use bootstrap-datepicker to convert user input to a JavaScript Date
+ */
+var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
+
+  template: [
+     '  <input type="text" class="form-control" >',
+     ].join(''),
+
+  initialize: function (options) {
+    DateCell2Editor.__super__.initialize.apply(this, arguments);
+    _.bindAll(this, 'saveOrCancel', 'postRender');
+    
+    this.value = new Date(this.model.get(this.column.get('name')));
+  },
+  
+  setValue: function(value) {
+    $('input', this.el).datepicker('setUTCDate', value);
+  },
+
+  getValue: function() {
+      var input = $('input', this.el);
+      var date = input.datepicker('getDate');
+      try{
+        return Iccbl.getISODateString(date);
+      } catch(e) {
+        console.log('invalid date', e, date);
+        return date;
+      }
+  },
+    
+  /**
+     Renders a text input with the cell value formatted for display, if it
+     exists.
+  */
+  render: function () {
+    var el = $(this.el);
+    el.html(this.template);
+
+    var input = $('input', el);
+    input.datepicker({
+        dateFormat: 'dd/mm/yyyy',
+        autoclose: true,
+        todayBtn: 'linked',
+        todayHighlight: true,
+        orientation: "bottom auto"
+    }).on('hide', this.saveOrCancel);
+    
+    // manually get the input-group-addon click
+    $('#datepicker-icon',el).click(function(e) {
+      input.datepicker().focus();
+    });
+    this.setValue(this.value);
+      
+    return this;
+  },
+  
+  saveOrCancel: function (e) {
+    var model = this.model;
+    var column = this.column;
+      var newValue = this.getValue();
+      model.set(column.get("name"), newValue);
+      var NewCommand = function() {};
+      NewCommand.prototype = new Backgrid.Command(e);
+      _.extend(NewCommand.prototype, {
+        save: function(){ return true; }
+      });
+      var command = new NewCommand(e);
+      model.trigger("backgrid:edited", model, column, command);
+  },
+  
+  postRender: function (model, column) {
+    if (column == null || column.get("name") == this.column.get("name")) {
+      // move the cursor to the end on firefox if text is right aligned
+      if (this.$el.css("text-align") === "right") {
+        var val = this.$el.val();
+        this.$el.focus().val(null).val(val);
+      }
+      else this.$el.focus();
+    }
+    return this;
+  }
+});
+
+/**
+ * DateCell replacement:
+ * - bootstrap-datepicker editor
+ * - simplified date serialization:
+ * - bypass the Backgrid.DateTimeFormatter on fromRaw,
+ * - use bootstrap-datepicker to convert user input to a JavaScript Date
+ */
+var DateCell2 = Iccbl.DateCell2 = Backgrid.Cell.extend({
+  
+  initialize: function(){
+    Iccbl.DateCell2.__super__.initialize.apply(this, arguments);
+    var self = this;
+  }, 
+  
+  /**
+     Render a text string in a table cell. The text is converted from the
+     model's raw value for this cell's column.
+  */
+  render: function () {
+    var $el = this.$el;
+    $el.empty();
+    var model = this.model;
+    var columnName = this.column.get("name");
+    $el.text(this.fromRaw(model.get(columnName), model));
+    $el.addClass(columnName);
+    this.updateStateClassesMaybe();
+    this.delegateEvents();
+    return this;
+  },
+
+  /**
+   * Convert model value to display:
+   * - simplified from the Backgrid.DateTimeFormatter.fromRaw
+   */
+  fromRaw: function (rawData, model) {
+    
+    if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
+    if (_.isDate(rawData)){
+      return getIccblDateString(rawData);
+    } else {
+      rawData = rawData.trim();
+      if ((rawData + '').trim() === '') return null;
+      
+      return getIccblDateString(Iccbl.dateParse(rawData));
+    }
+  },
+
+  isEditable: function() {
+    return Backgrid.callByNeed(this.column.editable(), this.column, this.model);
+  },
+  
+  enterEditMode: function () {
+    var model = this.model;
+    var column = this.column;
+    
+    if (this.isEditable()) {
+
+      // ICCBL-Hack to stop the column from resizing on entering edit mode  
+      // https://github.com/cloudflare/backgrid/issues/489
+      this.$el.width((this.$el.outerWidth()) + 'px');
+      
+      this.currentEditor = new DateCell2Editor({
+        model: model,
+        column: column
+      });
+      
+      model.trigger("backgrid:edit", model, column, this, this.currentEditor);
+
+      // Need to redundantly undelegate events for Firefox
+      this.undelegateEvents();
+      this.$el.empty();
+      this.currentEditor.render();
+      this.$el.append(this.currentEditor.$el);
+      this.$el.addClass("editor");
+
+      model.trigger("backgrid:editing", model, column, this, this.currentEditor);
+    }
+  },
+  
+  /**
+     Removes the editor and re-render in display mode.
+  */
+  exitEditMode: function () {
+    this.$el.removeClass("error");
+    this.currentEditor.remove();
+    this.stopListening(this.currentEditor);
+    delete this.currentEditor;
+    this.$el.removeClass("editor");
+    this.render();
+  }
+
+});
+
+
+
+/**
  * Override DateCell
  * - set the format to MM/DD/YYYY
+ * @deprecated use DateCell2 instead
  */
 var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
 
@@ -1991,6 +2247,14 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     var self = this;
     this.options = options;
     Backbone.PageableCollection.prototype.initialize.apply(this, options);
+    
+    // Define an order_by callback for backbone.paginator:
+    // backbone.paginator will "map extra query parameters" when performing fetch
+    this.queryParams.order_by = function(){
+      // Note: the orderStack is converted using "traditional" array serialization:
+      // see: http://api.jquery.com/jQuery.param/
+      return self.listModel.get('order');
+    }
   },
 
   mode: 'server',
@@ -2003,7 +2267,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   state : {
     pageSize : 25,  // TODO: probably not necessary
   },
-  
+
   // PageableCollection.fetch() uses the queryParams attribute to interpret
   // the server response and to determine the data hash sent to the server.
   // Adjust the query params for tastypie.
@@ -2016,18 +2280,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
                             // vocabularies - FIXME: make this a setting?
     totalRecords : null, // unset for tastypie
     totalPages : null, // unset for tastypie
-    sortKey : "order_by", // modified for tastypie
+    //    sortKey : "order_by", // modified for tastypie
     order : null, // unset for tastypie
-    order_by : function() {// modified for tastypie: use only
-      if ( typeof this.state !== 'undefined' 
-            && this.state.orderStack
-            && this.state.orderStack.length ) {
-        // Note: convert the orderStack using "traditional" array serialization
-        // see: http://api.jquery.com/jQuery.param/
-        // var val = this.state.orderStack.join('&order_by=');
-        return this.state.orderStack;
-      }
-    }, 
     includes: function(){
       var temp = this.listModel.get('includes');
       if (!_.isEmpty(this.extraIncludes)){
@@ -2041,14 +2295,19 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * Override
    */
   parseState : function(response, queryParams, state, options) {
-    // hack the response for tastypie:
-    // note, this is because the pageable collection doesn't work with the
-    // backbone-tastypie.js fix
+    // Adjust for expected response from server:
     var state = _.clone(state);
-    if(!response.meta && response.meta.total_count){
-      msg = 'error in response: no meta information';
+    var meta = _.result(response,Iccbl.appModel.API_RESULT_META);
+    if (!meta){
+      console.log('error no meta: ', response);
+      msg = 'error in response: no "' + Iccbl.appModel.API_RESULT_META + '"';
       Iccbl.appModel.error(msg);
       throw Exception(msg);
+    }
+    if(! _.isNumber(meta.total_count)){
+      console.log('error "total_count" not found in meta: ', meta);
+      Iccbl.appModel.error('error in server response');
+      throw Exception('error in server response');
     }
     state.totalRecords = response.meta.total_count;
     
@@ -2066,7 +2325,11 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * Override
    */
   parseRecords: function (resp, options) {
-    return resp.objects;
+    if (Iccbl.appModel.API_RESULT_DATA){
+      return resp[Iccbl.appModel.API_RESULT_DATA];
+    } else {
+      return resp.objects;
+    }
   },
       
   /**
@@ -2200,9 +2463,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * from state based on "queryParams"
    */
   setSorting : function(sortKey, order, options) {
+    var self = this;
     var state = this.state;
     
-    var orderStack = state.orderStack || [];
+    var orderStack = this.listModel.get('order') || [];
     
     var newdir = order == 1 ? '-' : order == -1 ? '': null;
     
@@ -2236,7 +2500,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     
     console.log('Ordering update: old: ' + JSON.stringify(orderStack) 
         + ', new: ' + JSON.stringify(newStack));
-    state.orderStack = newStack;
+    self.listModel.set('order', newStack);
     
     // Backbone.PageableCollection.prototype.setSorting.call(this, sortKey,
     // order);
@@ -2369,12 +2633,12 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   collectionSorted: function(collection, options){
     var self = this;
     var name = this.column.get('name');
-    var state = this.collection.state;
 
     var i = 0;
-    if (state) {
+    if (this.collection.listModel) {
       
-      _.each(state.orderStack, function(order_entry){
+      var orderStack = this.collection.listModel.get('order') || [];
+      _.each(orderStack, function(order_entry){
         i++;
         var dir = order_entry.substring(0,1);
         var direction = null;
@@ -2419,10 +2683,10 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
       this.$el.addClass(direction);
        
       var num = 1;
-      if(self.collection.state.orderStack &&
-          !_.isEmpty(self.collection.state.orderStack)){
+      var orderStack = self.collection.listModel.get('order') || [];
+      if (!_.isEmpty(orderStack)) {
         var i = 0;
-        var found = _.find(self.collection.state.orderStack, function(fieldname){
+        var found = _.find(orderStack, function(fieldname){
           i++;
           if(fieldname == name || fieldname == '-' + name){ 
             num = i;
@@ -2430,10 +2694,8 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
           }
         });
         if(!found){
-          // TODO: is this still necessary?
-          num = self.collection.state.orderStack.length+1; 
+          num = orderStack.length+1; 
         }
-        
       }
       sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>" 
           + num + "<b class='sort-caret'></b></span>");
@@ -3950,7 +4212,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
   },
   
   render: function(){
-    SIUnitFormFilter.__super__.render.call(this, arguments);
+    SIUnitFormFilter.__super__.render.apply(this, arguments);
     
     // Fixme: these values must be set after render, because inheritance is not
     // proper for this class.
@@ -4119,9 +4381,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
   var cell_options = prop.display_options || {};
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
+
   var backgridCellType = StringCell;
   var typeMap = {
-    'date': Iccbl.DateCell,
+    'date': Iccbl.DateCell2,
     'link': Iccbl.LinkCell,
     'siunit': Iccbl.SIUnitsCell,
     'float': Iccbl.NumberCell, //'Number',
@@ -4132,6 +4395,25 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'full_string': Iccbl.TextWrapCell,
     'comment_array': Iccbl.CommentArrayCell
   }
+
+  if(!_.isEmpty(prop.vocabulary)){
+    cell_options.optionValues = prop.vocabulary; 
+  }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
+    var optionValues = [];
+    var vocabulary_scope_ref = prop.vocabulary_scope_ref;
+    try{
+      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
+        _.each(_.keys(vocabulary),function(choice){
+          optionValues.push([vocabulary[choice].title,choice]);
+        });
+    }catch(e){
+      console.log('build column errorr: e',e);
+    }
+    cell_options = _.extend(cell_options,{
+      optionValues: optionValues,
+      vocabulary_scope_ref: vocabulary_scope_ref
+    } );
+  }
   
   if (_.has(prop, 'backgridCellType')){
     console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
@@ -4141,7 +4423,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       backgridCellType = backgridCellType.extend(cell_options);
     }
   } else {
-    if(_.has(typeMap,display_type)){
+    if(!_.isEmpty(cell_options.optionValues)){
+      backgridCellType = Iccbl.SelectCell;
+    }else if(_.has(typeMap,display_type)){
       if (Iccbl.appModel.DEBUG)
         console.log('field', key, display_type, 'typemap',typeMap[display_type])
       var backgridCellType = typeMap[display_type];
@@ -4160,8 +4444,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       backgridCellType = backgridCellType.extend(cell_options);
     }
     
-  }
-  
+  }  
 //  if (data_type == 'list'){
 //    backgridCellType = backgridCellType.extend({
 //      formatter: Iccbl.StringFormatter
@@ -4182,28 +4465,6 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   });
   if(_.has(prop,'editability') && _.contains(prop['editability'],'l')){
     column['editable'] = true;
-  }
-  if(!_.isEmpty(prop.vocabulary)){
-    // Note: this is probably backwards, since it appears SelectCell
-    // wants [title,val], not [val,title]
-    cell_options.optionValues = prop.vocabulary; 
-    column['cell'] = Iccbl.SelectCell.extend(cell_options);
-  }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
-    var optionValues = [];
-    var vocabulary_scope_ref = prop.vocabulary_scope_ref;
-    try{
-      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
-        _.each(_.keys(vocabulary),function(choice){
-          optionValues.push([vocabulary[choice].title,choice]);
-        });
-    }catch(e){
-      console.log('build column errorr: e',e);
-    }
-    cell_options = _.extend(cell_options,{
-      optionValues: optionValues,
-      vocabulary_scope_ref: vocabulary_scope_ref
-    } );
-    column['cell'] = Iccbl.SelectCell.extend(cell_options);
   }
   if(orderStack && _.contains(orderStack, key)){
     column['direction'] = 'ascending';

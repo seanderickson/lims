@@ -459,6 +459,39 @@ define([
       }
 //      return options;
     },
+    
+    getUsersInGroupOptions: function(usergroup, callBack){
+      var self = this;
+      var prop = 'usergroup_' + usergroup + '_Options';
+      var options = this.get(prop);
+      if(!options){
+        this.getUsersInGroup(usergroup, function(users){
+          var options = [{ val:'',label:'' }];
+          users.each(function(user){
+            var username = user.get('username');
+            var name = user.get('name');
+            options.push({ val: username, label: name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+        else return options;
+      }
+    },
+    
+    getUsersInGroup: function(usergroup, callBack) {
+      return this.getCachedResourceCollection(
+        usergroup + '_users', 
+        this.dbApiUri + '/screensaveruser', 
+        { 
+          usergroups__eq: usergroup,
+          exact_fields: ['username','name','email'], 
+          order_by: ['name']
+        }, 
+        callBack );
+    },
 
     getUserGroupOptions: function(callBack){
       var self = this;
@@ -1405,8 +1438,11 @@ define([
       if(! self.isPagePending()){
         options.ok();
       }else{
-        options.title = options.title || 'Please confirm';
-        var pendingMessage = self.get('pagePendingMessage') || "Pending changes in the page: continue anyway?";
+        options.title = options.title || 'Cancel pending changes?';
+        options.cancelText = 'Return to save changes';
+        options.okText = 'Cancel changes'
+        var pendingMessage = self.get('pagePendingMessage') 
+          || "Your changes are unsaved. Continue anyway?";
         options.body = options.body || pendingMessage;
         var pendingFunction = this.get('pagePending');
         if(_.isFunction(pendingFunction)){

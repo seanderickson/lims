@@ -320,21 +320,11 @@ define([
               {trigger:true});
           }
 
-          // 20170525: model.parse fixed in app_state; this should not be needed
-          //var objects = _.result(data, 'objects', null)
-          //if (objects && objects.length == 1) {
-          //  model = new Backbone.Model(objects[0]);
-          //  var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-          //  appModel.router.navigate([
-          //      self.screen.resource.key,self.screen.key,
-          //      'summary/libraryscreening',key].join('/'), 
-          //    {trigger:true});
-          //} else {
-          //  console.log('no objects in the response', data);
-          //  appModel.error('Could not display the server response');
-          //}
         },
         
+        /**
+         * Override save to handle librar overrides
+         */
         save: function(changedAttributes, options){
           var inner_self = this;
           var options = options || { headers: {} };
@@ -492,18 +482,50 @@ define([
               }
               // Library screening search specific:
               _.each(final_search_array, function(search_line){
+                var is_error = false;
                 if (_.isEmpty(search_line.copies)){
                   errors.push('must specify a copy: ' + search_line.combined.join(', '))
+                  is_error = true;
                 }else if (search_line.copies.length > 1){
                   errors.push('only one copy per line: found: ["' 
                     + search_line.copies.join('","') + '"]');
+                  is_error = true;
                 }
                 if (_.isEmpty(search_line.plates)&&_.isEmpty(search_line.plate_ranges)){
                   errors.push('must specify a plate or plate-range: ' 
                     + search_line.combined.join(', ') );
+                  is_error = true
+                }
+                
+                if(is_error != true){
+                  // search for overlapping ranges with extant ranges
+                  // expected ranges
+                  var copy_name = search_line.copies[0];
+                  var plate_ranges = [];
+                  _.each(search_line.plates, function(plate){
+                    plate_ranges.push([plate,plate]);
+                  });
+                  _.each(search_line.plate_ranges, function(range){
+                    plate_ranges.push(range.split('-'));
+                  });
+                  _.each(plate_ranges, function(range){
+                    plate_collection.each(function(extantModel){
+                      if (extantModel.get('copy_name') == copy_name){
+                        var start = extantModel.get('start_plate');
+                        var end = extantModel.get('end_plate');
+                        if( (range[0] >= start && range[0] <= end)
+                            || (range[1] >= start && range[1] <= end)) {
+                          errors.push(
+                            'Plate Range is overlapping: ' 
+                            + range[0] + '-' + range[1] + ' ' + copy_name 
+                            + ', first remove the existing range, then re-enter the new range.'); 
+                        }
+                      }
+                    });
+                  });
                 }
               });
-              if (!_.isEmpty(errors)){
+              if (!_.isEmpty(errors)) {
                 return {
                   type: 'plate_search',
                   message: errors.join('; ')

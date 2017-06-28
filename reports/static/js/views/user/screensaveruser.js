@@ -31,11 +31,11 @@ define([
         invoke: "setScreens",
         resource: 'screen'
       },
-      userchecklistitem: {
-        description: "User Checklist Items",
-        title: "User Checklist Items",
-        invoke: "setUserChecklistItems",
-        resource: 'userchecklistitem'
+      userchecklist: {
+        description: "User Checklist",
+        title: "User Checklist",
+        invoke: "setUserChecklist",
+        resource: 'userchecklist'
       },
       attachedfile: {
         description: "Attached Files",
@@ -174,7 +174,7 @@ define([
               e.preventDefault();
               self.updateUserAgreement('rnai');
             });
-            this.$el.find('#generic-form-top').append([
+            this.$el.find('#generic-detail-buttonpanel').append([
                addSMScreenButton,addRnaiScreenButton,updateRNAUAButton,updateSMUAButton]);
           }
         }
@@ -910,17 +910,17 @@ define([
       
     },
 
-    setUserChecklistItems: function(delegateStack) {
+    setUserChecklist: function(delegateStack) {
       var self = this;
-      var key = 'userchecklistitem';
-      var resource = appModel.getResource('userchecklistitem');
+      var key = 'userchecklist';
+      var resource = appModel.getResource('userchecklist');
       var url = [self.model.resource.apiUri, 
                  self.model.key,
-                 'checklistitems'].join('/');
+                 'checklist'].join('/');
 
       var showSaveButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="save_button" href="#">',
+          'role="button" id="save_button" style="display: none; href="#">',
           'save</a>'
         ].join(''));
       var showHistoryButton = $([
@@ -932,114 +932,255 @@ define([
         e.preventDefault();
         var newUriStack = ['apilog','order','-date_time', 'search'];
         var search = {};
-        search['ref_resource_name'] = 'userchecklistitem';
-        search['changes__icontains'] = '"username": "' + self.model.get('username') + '"';
+        search['ref_resource_name'] = 'userchecklist';
+        search['key__contains'] = self.model.get('username') + '/';
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
         console.log('history route: ' + route);
         appModel.router.navigate(route, {trigger: true});
         self.remove();
       });
-
-      // Set up a "post" collection to track changed models
-      var PostCollection = Backbone.Collection.extend({
-        url: url,
-        toJSON: function(){
-          return {
-            objects: Collection.__super__.toJSON.apply(this) 
-          };
-        }
-      });
-      var changedCollection = new PostCollection();
-      var UserChecklistModel = Backbone.Model.extend({
-        url: url,
-        initialize : function() {
-          this.on('change', function(model, options) {
-            // Prevent save on update
-            if (options.save === false)
-                return;
-            model.url = url;
-            if(_.isEmpty(model.get('status_date'))){
-              model.set('status_date', Iccbl.getISODateString(new Date()));
-            }
-            if(_.isEmpty(model.get('admin_username'))){
-              model.set('admin_username', appModel.getCurrentUser().username);
-            }
-            changedCollection.add(model);
-            appModel.setPagePending();
-          });
-        },
-      });
-
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
-      collection = new Collection();
-      collection.model = UserChecklistModel;
+      var fetchCollection = new Collection();
 
-      showSaveButton.click(function(e){
+      
+      if (appModel.hasPermission('userchecklist', 'write')){
         
-        e.preventDefault();
-        console.log('changed collection', changedCollection,changedCollection.url);
-        
-        if(changedCollection.isEmpty()){
-          appModel.error('No changes to save');
-          return;
-        }
-        
-        appModel.showOkCommentForm({
-          ok: function(formValues){
-            console.log('form values', formValues);
-            var comments = formValues['comments'];
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+        resource.fields['date_effective']['backgridCellType'] = Iccbl.DateCell2.extend({
+          
+          isEditable: function(){
+            if (this.model.edited == true){
+              return true;
+            } else {
+              if (this.model.get('status') != 'not_completed'){
+                return true;
+              }
+            }
+            return false;
+          },
+          
+          initialize: function(){
+            Iccbl.DateCell2.__super__.initialize.apply(this, arguments);
+            var self = this;
+            self.model.on('change:date_effective' , function(){
+              if (self.model.edited){
+                self.$el.addClass('edited');
+              } else {
+                self.$el.parent().children().removeClass('edited');
+              }
+            });
+          }, 
+        });
+        resource.fields['status']['editability'] = ['l'];
+        resource.fields['status']['backgridCellType'] = Iccbl.BooleanCell.extend({
+          initialize: function(){
+            Iccbl.BooleanCell.__super__.initialize.apply(this, arguments);
+            var self = this;
+            this.column.editable = function(){ return false; }
+            var model = this.model;
+            model.on('change:is_checked' , function(){
+              if (model.edited){
+                self.$el.addClass('edited');
+              } else {
+                self.$el.parent().children().removeClass('edited');
+              }
+            });
+          },
+          
+          cellClicked: function(){
+            var model = this.model, column = this.column;
+            var checked = !model.get('is_checked');
+            model.set('is_checked', checked);
+            this.render();
+          },
+
+          render: function(){
+            var self = this;
+            Iccbl.BooleanCell.prototype.render.apply(this, arguments);
             
-            Backbone.sync(
-              "patch",
-              changedCollection,
-              {
-                headers: headers,
-                error: function(){
-                  appModel.jqXHRfail.apply(this,arguments);
-                  console.log('error, refetch', arguments);
-                  changedCollection.reset();
-                  collection.fetch({ reset: true });
-                },
-                success: function(){
-                  console.log('success');
-                  collection.fetch();
-                },
-                done: function(){
-                  console.log('done');
-                }
-              });
+            var text;
+            var rawValue = this.model.get("is_checked");
+            var statusValue = this.model.get('status');
+            
+            if (rawValue != true){
+              if(_.isEmpty(this.model.get('date_effective'))){
+                text = 'Not Completed';
+              } else { 
+                text = 'Deactivated';
+              }
+            } else {
+              text = 'Activated';
+            }
+            this.$el.text(text);
+            this.delegateEvents();
+            
+            return this;
           }
         });
-
-      });
-        
-      view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        collection: collection,
-        extraControls: [showSaveButton, showHistoryButton]
-      });
-      view.grid.columns.on('update', function(){
-        view.$el.find('td').removeClass('edited');
-      });
-      collection.on('sync', function(){
-        console.log('synced');
-        view.$el.find('td').removeClass('edited');
-        appModel.clearPagePending();
-      });
+    
+        // Set up a "post" collection to track changed models
+        var PostCollection = Backbone.Collection.extend({
+          url: url,
+          // explicitly define the id so that collection compare & equals work
+          modelId: function(attrs) {
+            return Iccbl.getIdFromIdAttribute( attrs, resource);
+          }
+        });
+        var changedCollection = new PostCollection();
+        var UserChecklistModel = Backbone.Model.extend({
+          url: url,
+          edited: false,
+          initialize : function() {
+            Backbone.Model.prototype.initialize.call(this,arguments);
+            var originalModel = new Backbone.Model(this.attributes);
+            this.on('change:is_checked', function(model, options) {
+              this.edited = true;
+              var checked = model.get('is_checked');
+              if (originalModel.get('status') == 'activated'){
+                if (checked){
+                  this.edited = false;
+                }
+              }else{
+                if (!checked){
+                  this.edited = false;
+                }
+              }
+              if (this.edited){
+                model.set('date_effective', Iccbl.getISODateString(new Date()));
+                var adminUser = appModel.getCurrentUser();
+                model.set('admin_username', adminUser.username);
+                model.set('admin_name', adminUser.first_name + ' ' + adminUser.last_name);
+                changedCollection.add(model);
+              } else {
+                model.set(originalModel.attributes);
+                changedCollection.remove(model);
+              }
+              
+              if (!changedCollection.isEmpty()){
+                showSaveButton.show();
+                appModel.setPagePending();
+              }else{
+                showSaveButton.hide();
+                appModel.clearPagePending();
+              }
+            });
+            this.on('change:date_effective', function(model, options){
+              // if the date is changed separately, then only do not toggle other values
+              if (originalModel.get('date_effective') != model.get('date_effective')) {
+                this.edited = true;
+                changedCollection.add(model);
+              } else {
+                if (this.edited != true){
+                  changedCollection.remove(model);
+                }
+              }
+              if (!changedCollection.isEmpty()){
+                showSaveButton.show();
+                appModel.setPagePending();
+              }
+            });
+          },
+        });
+        var Collection = Iccbl.MyCollection.extend({
+          url: url
+        });
+        var fetchCollection = new Collection();
+        fetchCollection.model = UserChecklistModel;
+    
+        showSaveButton.click(function(e){
+          
+          e.preventDefault();
+          console.log('changed collection', changedCollection,changedCollection.url);
+          
+          if(changedCollection.isEmpty()){
+            appModel.error('No changes to save');
+            return;
+          }
+          var headers = {};
+          Backbone.sync(
+            "patch",
+            changedCollection,
+            {
+              headers: headers,
+              error: function(){
+                appModel.jqXHRfail.apply(this,arguments);
+                console.log('error, refetch', arguments);
+                changedCollection.reset();
+                fetchCollection.fetch({ reset: true });
+              },
+              success: function(){
+                console.log('success');
+                fetchCollection.fetch();
+              },
+              done: function(){
+                console.log('done');
+              }
+            }
+          );
+          // 20170615 - removed per JAS/KR; comment not necessary
+          //appModel.showOkCommentForm({
+          //  ok: function(formValues){
+          //    console.log('form values', formValues);
+          //    var comments = formValues['comments'];
+          //    var headers = {};
+          //    headers[appModel.HEADER_APILOG_COMMENT] = comments;
+          //    
+          //    Backbone.sync(
+          //      "patch",
+          //      changedCollection,
+          //      {
+          //        headers: headers,
+          //        error: function(){
+          //          appModel.jqXHRfail.apply(this,arguments);
+          //          console.log('error, refetch', arguments);
+          //          changedCollection.reset();
+          //          collection.fetch({ reset: true });
+          //        },
+          //        success: function(){
+          //          console.log('success');
+          //          collection.fetch();
+          //        },
+          //        done: function(){
+          //          console.log('done');
+          //        }
+          //      }
+          //    );
+          //  }
+          //}); // showOkCommentForm
+        }); // save button click handler
+        displayUserChecklist(fetchCollection);
+      } else {
+        displayUserChecklist(fetchCollection);
+      }
       
-      Backbone.Layout.setupView(view);
-      self.consumedStack = [key]; 
-//      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
+      function displayUserChecklist(collection) {
+        view = new ListView({ 
+          uriStack: _.clone(delegateStack),
+          schemaResult: resource,
+          resource: resource,
+          url: url,
+          collection: collection,
+          extraControls: [showSaveButton, showHistoryButton],
+          tableClass: 'left-align'
+        });
+        view.grid.columns.on('update', function(){
+          view.$el.find('td').removeClass('edited');
+        });
+        collection.on('sync', function(){
+          console.log('synced');
+          view.$el.find('td').removeClass('edited');
+          appModel.clearPagePending();
+        });
+        
+        Backbone.Layout.setupView(view);
+        self.consumedStack = [key]; 
+  //      self.reportUriStack([]);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      };
+        
     }
     
   });

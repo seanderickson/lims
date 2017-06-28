@@ -261,7 +261,14 @@ define([
   var DatePicker = Backbone.Form.editors.Base.extend({
 
     tagName: 'datepicker',
-
+    template: [
+         '<div class="input-group date" >',
+         '  <input type="text" class="form-control">',
+         '  <span class="input-group-addon" id="datepicker-icon" >',
+         '    <i class="glyphicon glyphicon-th"  ></i>',
+         '  </span>',
+         '</div>'                                             
+      ].join(''),
     events: {
         'change': function() {
             // The 'change' event should be triggered whenever something happens
@@ -329,14 +336,7 @@ define([
     
     render: function() {
       var el = $(this.el);
-      el.html([
-         '<div class="input-group date" >',
-         '  <input type="text" class="form-control">',
-         '  <span class="input-group-addon" id="datepicker-icon" >',
-         '    <i class="glyphicon glyphicon-th"  ></i>',
-         '  </span>',
-         '</div>'                                             
-      ].join(''));
+      el.html(this.template);
 
       var input = $('input', el);
       input.datepicker({
@@ -1224,17 +1224,11 @@ define([
           return;
         }
       }
-//      if (options['patch']) {
-//        self.model.fetch();
-//      } else {
-//        self.remove();
-//        appModel.router.back();
-//      }
       Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-      console.log('trigger remove');
-      self.trigger('remove');
-      self.remove();
-      appModel.router.back();
+//      console.log('trigger remove');
+//      self.trigger('remove');
+//      self.remove();
+//      appModel.router.back();
     },
     
     save: function(changedAttributes, options){
@@ -1336,6 +1330,6 @@ define([
   EditView.SIunitEditor = SIunitEditor;
   EditView.CheckPositiveValidator = CheckPositiveValidator;
   EditView.CheckPositiveNonZeroValidator = CheckPositiveNonZeroValidator;
-  
+  Iccbl.EditView = EditView;
 	return EditView;
 });

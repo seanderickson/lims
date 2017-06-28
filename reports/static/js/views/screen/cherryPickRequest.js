@@ -502,15 +502,38 @@ define([
           })
         };
       
-        var Collection = Iccbl.CollectionOnClient.extend({
-          // explicitly define the id so that collection compare & equals work
+        var ListCollectionClass = Iccbl.MyCollection.extend({
+          /** explicitly define the id so that collection compare & equals work **/
           modelId: function(attrs) {
             return Iccbl.getIdFromIdAttribute( attrs, resource);
           },
-          url: url 
+          url: url,
+          /** Override parse to set selected default value **/
+          parseRecords: function(resp,options){
+            var modelArray = ListCollectionClass.__super__.parseRecords.apply(this, arguments);
+            _.each(modelArray, function(model){
+              model['selected'] = false;
+            });
+            return modelArray;
+          }
+        });
+        var SelectionCollectionClass = Iccbl.CollectionOnClient.extend({
+          /** explicitly define the id so that collection compare & equals work **/
+          modelId: function(attrs) {
+            return Iccbl.getIdFromIdAttribute( attrs, resource);
+          },
+          url: url,
+          /** Override parse to set selected default value **/
+          parse: function(resp){
+            var modelArray = SelectionCollectionClass.__super__.parse.apply(this, arguments);
+            _.each(modelArray, function(model){
+              model['selected'] = false;
+            });
+            return modelArray;
+          }
         });
         
-        selectionCollection = new Collection();
+        selectionCollection = new SelectionCollectionClass();
         
         // Fetch the entire cpap collection to use for selection tracking
         selectionCollection.fetch({
@@ -632,7 +655,9 @@ define([
           ].join(''));
         extraControls.push(showPlateMappingButton);
 
+        collection = new ListCollectionClass();
         var view = new ListView({ 
+          collection: collection,
           uriStack: _.clone(delegateStack),
           schemaResult: resource,
           resource: resource,

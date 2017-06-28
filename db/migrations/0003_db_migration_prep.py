@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-import unicodecsv as csv
 import logging
 import os
 import re
 
 from django.db import migrations, models
 
+from db.support.data_converter import default_converter
 import lims
 from lims.base_settings import PROJECT_ROOT
-from db.support.data_converter import default_converter
+import unicodecsv as csv
 
 
 logger = logging.getLogger(__name__)
@@ -289,7 +289,7 @@ def create_attached_file_type_vocab(apps):
                 'nerce_screener_supplies_list']
             row = [resource_uri % (scope, key), key, scope, ordinal, title, is_retired] 
             vocab_writer.writerow(row)
-            logger.info(str(('created', row)))
+            logger.info('created: %r', row)
             
             (apps.get_model('db', 'AttachedFile').objects
                 .filter(attached_file_type=obj).update(type=key))
@@ -322,127 +322,30 @@ def create_attached_file_type_vocab(apps):
 
 
 def create_checklist_vocabularies(apps):
-    ''' 
-    Create a separate vocab file: checklist_item_vocab, add to api_init.csv
-    output vocabs into a vocabulary patch file 
-    - idempotent
-    '''
     
     vocab_file = os.path.join(
         PROJECT_ROOT, '..',
         'db', 'static', 'api_init', 'vocabulary_checklists_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
-    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     with open(vocab_file, 'w') as _file:
         vocab_writer = csv.writer(_file)
-        header = ['resource_uri', 'key', 'scope', 'ordinal', 'title', 
-            'expire_interval_days', 'expire_notifiy_days', ''] 
+        header = ['key', 'scope', 'ordinal', 'title','comment'] 
         vocab_writer.writerow(header)
 
-        # ci_group_map = {}
-        scope = 'checklistitem.group'
-        default_order = ['mailing', 'forms', 'non-harvard', 'imaging', 'legacy']
-        for obj in (apps.get_model('db', 'ChecklistItem')
-                .objects.all().distinct('checklist_item_group')):
-            key = default_converter(obj.checklist_item_group)
-            ordinal = 0
-            for i, x in enumerate(default_order):
-                if x in obj.checklist_item_group.lower():
-                    ordinal = i 
-                    break
-                
-            title = obj.checklist_item_group
-            row = [resource_uri % (scope, key), key, scope, ordinal, title, None, None]
-            vocab_writer.writerow(row)
-            # ci_group_map[obj.checklist_item_group] = key 
-            logger.info(str(('created', row)))
-
-        _scope = 'checklistitem.%s.name'
-        # ci_name_map = {}
-        
-        
-        for obj in (apps.get_model('db', 'ChecklistItem')
+        scope = 'userchecklist.name'
+        for i,obj in enumerate(apps.get_model('db', 'ChecklistItem')
                 .objects.all()
                 .order_by('checklist_item_group','order_statistic')):
-            key = default_converter(obj.item_name)
-            scope = _scope % default_converter(obj.checklist_item_group)
-            
-            # NOTE: for user_checklist_item overload of vocabularies:
-            if key in ('current_rnai_user_agreement_active',
-                'current_small_molecule_user_agreement_active'):
-                expire_interval_days = 720 
-                expire_notifiy_days = 60
-            else:
-                expire_interval_days = None 
-                expire_notifiy_days = None
-                
-            title = obj.item_name
-            ordinal = obj.order_statistic
-            row = [resource_uri % (scope, key), key, scope, ordinal, title, 
-                expire_interval_days, expire_notifiy_days ]
+            item_name = obj.item_name
+            key = default_converter(item_name)
+            comment = 'group: %s' % obj.checklist_item_group
+            title = item_name
+            ordinal = i
+            row = [key, scope, ordinal, title, comment ]
             vocab_writer.writerow(row)
-            # ci_name_map[obj.item_name] = key
-            logger.info(str(('created', row)))
-            
-        scope = 'checklistitem.status'
-        status_values = [
-            {
-                'key': 'not_completed',
-                'title': 'Not Completed',
-                'ordinal': 0
-            },
-            {
-                'key': 'activated',
-                'title': 'Activated',
-                'ordinal': 1
-            },
-            {
-                'key': 'deactivated',
-                'title': 'Deactivated',
-                'ordinal': 2
-            },
-            {
-                'key': 'n_a',
-                'title': 'N/A',
-                'ordinal': 3
-            },
-            {
-                'key': 'completed',
-                'title': 'Completed',
-                'ordinal': 4
-            },
-        ]
-        
-        for _dict in status_values:
-            _dict['scope'] = scope
-            row = [resource_uri % (_dict['scope'], _dict['key']),
-                _dict['key'], _dict['scope'], _dict['ordinal'], _dict['title'], None, None]
-            vocab_writer.writerow(row)
-            logger.info(str(('created', row)))
+            logger.info('created: %r', row)
     
-    api_init_actions_file = os.path.join(
-        lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'api_init_actions.csv')
-    logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
-    with open(api_init_actions_file, 'a+') as _file:
-        new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
-        reader = csv.reader(_file)
-        found = False
-        for row in reader:
-            if row == new_row:
-                found = True
-                break
-        if not found:
-            logger.info('write api_init row: %s' % new_row)
-            writer = csv.writer(_file)
-            writer.writerow(new_row)
-        else:
-            logger.info('api_init entry for row already created: %r' % row)
-
-
-    logger.info('vocabulary creation done')
-
-
+    
 def create_vocabularies(apps, schema_editor):
     
     create_simple_vocabularies(apps)
@@ -517,7 +420,7 @@ class Migration(migrations.Migration):
             from transfection_agent ta 
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
-        
+         
         migrations.RemoveField(
             model_name='screen',
             name='transfection_agent',
@@ -527,6 +430,6 @@ class Migration(migrations.Migration):
             old_name='transfection_agent_text', 
             new_name='transfection_agent'
         ),
-        
+         
         migrations.RunPython(update_facility_usage_roles),
     ]

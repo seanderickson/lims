@@ -563,35 +563,27 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='UserChecklistItem',
+            name='UserChecklist',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', 
-                    serialize=False, auto_created=True, primary_key=True)),
-                ('item_group', models.TextField()),
-                ('item_name', models.TextField()),
-                ('status', models.TextField()),
-                ('previous_status', models.TextField(null=True)),
-                ('status_date', models.DateField()),
-                ('status_notified_date', models.DateField(null=True)),
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
+                ('name', models.TextField()),
+                ('is_checked', models.BooleanField()),
+                ('date_effective', models.DateField()),
+                ('date_notified', models.DateField(null=True)),
+                ('admin_user', models.ForeignKey(
+                    related_name='userchecklist_entered', 
+                    to='db.ScreensaverUser')),
+                ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
             ],
             options={
-                'db_table': 'user_checklist_item',
+                'db_table': 'user_checklist',
             },
         ),
-        migrations.AddField(
-            model_name='userchecklistitem',
-            name='admin_user',
-            field=models.ForeignKey(related_name='userchecklistitems_created', 
-                to='db.ScreensaverUser'),
-        ),
-        migrations.AddField(
-            model_name='userchecklistitem',
-            name='screensaver_user',
-            field=models.ForeignKey(to='db.ScreensaverUser'),
-        ),
         migrations.AlterUniqueTogether(
-            name='userchecklistitem',
-            unique_together=set([('screensaver_user', 'item_group', 'item_name')]),
+            name='userchecklist',
+            unique_together=set([('screensaver_user', 'name')]),
         ),
         migrations.AddField(
             model_name='attachedfile',
@@ -823,68 +815,5 @@ class Migration(migrations.Migration):
 #             field=models.NullBooleanField(),
 #         ),
 
-#         ##### Preliminary - Cherry Pick rework #####
-#         migrations.CreateModel(
-#             name='CherryPickRequest2',
-#             fields=[
-#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-#                 ('transfer_volume_per_well_approved', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
-#                 ('transfer_volume_per_well_requested', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
-#                 ('date_requested', models.DateField()),
-#                 ('date_volume_approved', models.DateField(null=True)),
-#                 ('comments', models.TextField(null=True)),
-#                 ('assay_protocol_comments', models.TextField(null=True)),
-#                 ('cherry_pick_assay_protocols_followed', models.TextField(null=True)),
-#                 ('cherry_pick_followup_results_status', models.TextField(null=True)),
-#                 ('is_randomized_assay_plate_layout', models.BooleanField(default=False)),
-#                 ('keep_source_plate_cherry_picks_together', models.BooleanField(default=True)),
-#                 ('max_skipped_wells_per_plate', models.IntegerField(null=True)),
-#             ],
-#             options={
-#                 'db_table': 'cherry_pick_request2',
-#             },
-#         ),
-#         migrations.CreateModel(
-#             name='CherryPickWell',
-#             fields=[
-#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-#                 ('status', models.TextField(null=True)),
-#                 ('attempts', models.IntegerField(null=True)),
-#                 ('destination_well', models.TextField(null=True)),
-#             ],
-#             options={
-#                 'db_table': 'cherry_pick_well',
-#             },
-#         ),
-#         migrations.AddField(
-#             model_name='cherrypickwell',
-#             name='copy',
-#             field=models.ForeignKey(to='db.Copy', null=True),
-#         ),
-#         migrations.AddField(
-#             model_name='cherrypickwell',
-#             name='cherry_pick_request',
-#             field=models.ForeignKey(related_name='wells', to='db.CherryPickRequest2'),
-#         ),
-#         migrations.AddField(
-#             model_name='cherrypickwell',
-#             name='source_well',
-#             field=models.ForeignKey(to='db.Well'),
-#         ),
-#         migrations.AddField(
-#             model_name='cherrypickrequest2',
-#             name='requested_by',
-#             field=models.ForeignKey(related_name='requested_cherry_pick2', to='db.ScreensaverUser'),
-#         ),
-#         migrations.AddField(
-#             model_name='cherrypickrequest2',
-#             name='screen',
-#             field=models.ForeignKey(to='db.Screen'),
-#         ),
-#         migrations.AddField(
-#             model_name='cherrypickrequest2',
-#             name='volume_approved_by',
-#             field=models.ForeignKey(related_name='approved_cherry_pick2', to='db.ScreensaverUser', null=True),
-#         ),
         
     ]

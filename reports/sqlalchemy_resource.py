@@ -447,7 +447,8 @@ class SqlAlchemyResource(IccblBaseResource):
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
         if DEBUG_FILTERS:
-            logger.info('filter_value_to_python: %r: %r', original_value, value)
+            logger.info('filter_value_to_python: %r: %r, %r', 
+                original_value, value, filter_type)
         return value
 
     @staticmethod
@@ -757,13 +758,14 @@ class SqlAlchemyResource(IccblBaseResource):
                 format='json',
                 includes=includes,
                 **kwargs)
-            _data = []
+            _data = {}
             if response.status_code == 200:
                 _data = self._meta.serializer.deserialize(
                     LimsSerializer.get_content(response), JSON_MIMETYPE)
             else:
-                logger.debug(
-                    'no data found for %r, %r', self._meta.resource_name, kwargs)
+                logger.info(
+                    'no data found for %r, %r, %r', 
+                    self._meta.resource_name, kwargs, response.status_code)
             return _data
         except Http404:
             return {}
@@ -1000,7 +1002,6 @@ class SqlAlchemyResource(IccblBaseResource):
                     cache_hit = self._cached_resultproxy(
                         conn, stmt, count_stmt, param_hash, limit, offset)
                     if cache_hit:
-                        logger.info('cache hit: %r', output_filename)
                         result = cache_hit['cached_result']
                         count = cache_hit['count']
                     else:
@@ -1012,6 +1013,11 @@ class SqlAlchemyResource(IccblBaseResource):
                     
                 else:
                     logger.info('not cached, execute count stmt...')
+                    # compiled_stmt = str(count_stmt.compile(
+                    #     dialect=postgresql.dialect(),
+                    #     compile_kwargs={"literal_binds": True}))
+                    # logger.info('compiled_stmt %s', compiled_stmt)
+                    
                     count = conn.execute(count_stmt).scalar()
                     logger.info('excuted count stmt: %d', count)
                     result = conn.execute(stmt)

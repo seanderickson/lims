@@ -80,3 +80,4 @@ screensaver_user_role,fields.screen,custom,,/reports/api/v1/field/fields.screen/
 keywords,fields.screen,custom,,/reports/api/v1/field/fields.screen/keywords/,65,,TRUE,"A set of keywords associated with the screen",Keywords,TRUE,,,,,list,,,textarea,,,,,
 coms_registration_number,fields.screen,,,/reports/api/v1/field/fields.screen/coms_registration_number/,35,,TRUE,"COMS number, provided by PI's lab","COMS Registration Number",TRUE,,,,,string,,,,,,,,
 coms_approval_date,fields.screen,,,/reports/api/v1/field/fields.screen/coms_approval_date/,36,,TRUE,"The date of approval by COMS or the date on which we determine that our existing approval already covers the proposed experiments","ICCB-L COMS Approval Date",TRUE,,,,,date,,,,,,,,
+study_type,fields.screen,,,/reports/api/v1/field/fields.screen/study_type/,8,,TRUE,"The study type (null for screens)","Study Type",TRUE,,study.type,,,string,,,,,,,,

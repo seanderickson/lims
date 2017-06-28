@@ -1,10 +1,11 @@
-key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,alias
-username,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/username/,screensaver_user,,0,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[d],,
-user_fullname,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/user_fullname/,custom,,1,,string,,,,TRUE,"The full name of the user (last, first)",Name,TRUE,,,[d],,
-item_group,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/item_group/,,,2,,string,,,select,TRUE,"Item Group","Item Group",TRUE,,checklistitem.group,[l;d],,
-item_name,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/item_name/,,,3,,string,link,"{ 'hrefTemplate': '#userchecklistitem/{username}/{item_group}/{item_name}' }",select,TRUE,"Item Name","Item Name",TRUE,,checklistitem.*name,[l;d],,
-status,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/status/,,,4,,string,,,select,TRUE,Status,Status,TRUE,,checklistitem.status,[l;d],[l],
-status_date,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/status_date/,,,5,,date,,,,TRUE,"Status Date","Status Date",TRUE,,,[l;d],[l],
-admin_username,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/admin_username/,custom,,6,,string,,,,TRUE,"Admin Username","Admin Username",TRUE,,,[l;d],,
-is_retired,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/is_retired/,custom,,7,,boolean,,,,TRUE,"Is Retired","Is Retired",TRUE,,,[d],,
-item_group_is_retired,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/item_group_is_retired/,custom,,8,,boolean,,,,TRUE,"Checklist Item Group is retired","Item Group Is Retired",TRUE,,,[d],,
+key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability
+username,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/username/,screensaver_user,,0,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[d],[c]
+user_name,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/user_name/,custom,,1,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,"The full name of the user (last, first)","User Name",TRUE,,,[d],
+name,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/name/,,,3,,string,link,"{ 'hrefTemplate': '#userchecklist/{username}/{name}' }",select,TRUE,"Checklist Item Name",Name,TRUE,,userchecklist.name,[l;d],[c]
+status,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/status/,custom,,4,,string,,,,TRUE,"Checklist Item Status",Status,TRUE,,userchecklist.status,[l;d],
+is_checked,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/is_checked/,,,4,,boolean,,,,TRUE,"Is Checked","Is Checked",TRUE,,,,[c;u]
+date_effective,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/date_effective/,,,5,,date,,,,TRUE,"Effective Date",Date,TRUE,,,[l;d],[c;u]
+date_notified,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/date_notified/,,,6,,date,,,,TRUE,"Date Notified","Date Notified",TRUE,,,[d],[c;u]
+admin_username,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/admin_username/,custom,,7,,string,link,"{ 'hrefTemplate': '#screensaveruser/{admin_username}' }",,TRUE,"Admin Username","Admin Username",TRUE,,,,[c;u]
+admin_name,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/admin_name/,custom,,8,,string,link,"{ 'hrefTemplate': '#screensaveruser/{admin_username}' }",select,TRUE,"The full name of the administative user who performed this operation","Admin User Name",TRUE,,,[l;d],
+is_retired,fields.userchecklist,/reports/api/v1/field/fields.userchecklist/is_retired/,custom,,9,,boolean,,,,TRUE,"Is Retired","Is Retired",TRUE,,,[d],

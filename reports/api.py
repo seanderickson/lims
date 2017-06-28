@@ -78,6 +78,7 @@ API_MSG_ACTION = 'Action'
 
 DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
 
 
 class UserGroupAuthorization(Authorization):
@@ -241,7 +242,9 @@ def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None):
     whereas "not full" only logs the creation; with this strategy, logs 
     must be played backwards to recreate an entity state.
     '''
-    logger.debug('compare dicts: %r, %r, %r, excludes: %r', dict1, dict2, excludes)
+    if DEBUG_PATCH_LOG:
+        logger.info('compare dicts: %r, %r, excludes: %r, %r', 
+            dict1, dict2, excludes, exclude_patterns)
     
     _excludes = set(['resource_uri'])
     if excludes:
@@ -262,6 +265,8 @@ def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None):
         if v1 is not None or v2 is not None:
             if v1 != v2:
                 diffs[key] = [v1,v2]
+    if DEBUG_PATCH_LOG:
+        logger.info('diffs: %r', diffs)
     return diffs
 
     
@@ -1501,7 +1506,8 @@ class ApiResource(SqlAlchemyResource):
         
         if attributes is not None:
             self.make_log_key(log, attributes, **kwargs)
-            
+        if DEBUG_PATCH_LOG:
+            logger.info('created log: %r', log) 
         return log
 
     def make_log_key(
@@ -1523,8 +1529,6 @@ class ApiResource(SqlAlchemyResource):
             id_attribute=None, excludes=None, exclude_patterns=None, 
             full_create_log=False, **kwargs):
 
-        DEBUG_PATCH_LOG = False
-        
         default_exclude_patterns = ['comment_array']
         if exclude_patterns is None:
             exclude_patterns = default_exclude_patterns
@@ -1564,12 +1568,14 @@ class ApiResource(SqlAlchemyResource):
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %r', log)
     
-        for k,v in kwargs.items():
-            if isinstance(k,basestring):
-                if hasattr(log,k):
-                    setattr(log, k, v)
-            else:
-                logger.info('non-string kwarg: %r, %r', k, v)
+#         for k,v in kwargs.items():
+#             if isinstance(k,basestring):
+#                 if hasattr(log,k):
+#                     if DEBUG_PATCH_LOG:
+#                         logger.info('setattr: %r: %r', k, v)
+#                     setattr(log, k, v)
+#             else:
+#                 logger.info('non-string kwarg: %r, %r', k, v)
         if DEBUG_PATCH_LOG:
             logger.info('log patch done: %r', log)
         return log
@@ -1583,7 +1589,6 @@ class ApiResource(SqlAlchemyResource):
         - dicts have the same identity if the id_attribute keys have the same
         value.
         '''
-        DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
         logs = []
         
         log_comment = None
@@ -1954,10 +1959,10 @@ class ApiLogResource(ApiResource):
             if 'diffs' in field_hash:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
-            compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -3511,7 +3516,7 @@ class UserResource(ApiResource):
             raise Exception('schema not initialized')
         fields = schema['fields']
 
-        logger.info('patch_obj: %r, %r', deserialized, kwargs )
+        logger.info('patch_obj for user: %r, %r', deserialized, kwargs )
         id_kwargs = self.get_id(deserialized,**kwargs)
         logger.info('patch user: %r', id_kwargs)
         
@@ -3717,115 +3722,109 @@ class UserGroupResource(ApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
 
         name = self.find_name(deserialized,**kwargs)
-        
         fields = schema['fields']
 
         group_fields = { name:val for name,val in fields.items() 
             if val['table'] and val['table']=='reports_usergroup'}
+        create = False
+
+        usergroup = None
         try:
-            # create the group
-
-            initializer_dict = {}
-            for key in fields.keys():
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key,None), key, 
-                    fields[key]['data_type']) 
-
-            logger.info('initializer_dict: %r', initializer_dict)
-            usergroup = None
-            try:
-                usergroup = UserGroup.objects.get(name=name)
-            except ObjectDoesNotExist, e:
-                logger.info('Reports UserGroup %r does not exist, creating',name)
-                usergroup = UserGroup.objects.create(name=name)
-                usergroup.save()
-            
-            for key,val in initializer_dict.items():
-                if key == 'permissions':
-                    usergroup.permissions.clear()
-                    pr = self.get_permission_resource()
-                    for p in val:
-                        permission_key = ( 
-                            pr.find_key_from_resource_uri(p))
-                        try:
-                            permission = Permission.objects.get(**permission_key)
-                        except ObjectDoesNotExist, e:
-                            logger.warn('no such permission %r, %r, %r', 
-                                p, permission_key, initializer_dict)
-                            # if permission does not exist, create it
-                            # TODO: should be created through the permission resource
-                            permission = Permission.objects.create(**permission_key)
-                            permission.save()
-                        usergroup.permissions.add(permission)
-                        usergroup.save()
-                        logger.debug(
-                            'added permission %r to group %r', 
-                            permission,usergroup)
-                elif key == 'users':
-                    usergroup.users.clear()
-                    ur = self.get_user_resource()
-                    for u in val:
-                        user_key = ur.find_key_from_resource_uri(u)
-                        try:
-                            user = UserProfile.objects.get(**user_key)
-                            usergroup.users.add(user)
-                            logger.debug('added user %r to group %r', 
-                                user, usergroup)
-                        except ObjectDoesNotExist, e:
-                            logger.info('no such user: %r, %r, %r', 
-                                u, user_key, initializer_dict)
-                            raise Exception(
-                                'group: %r, no such user: %r', initializer_dict, u)
-                elif key == 'super_groups':
-                    usergroup.super_groups.clear()
-                    usergroup.save()
-                    for ug in val:
-                        ug_key = self.find_key_from_resource_uri(ug)
-                        try:
-                            supergroup = UserGroup.objects.get(**ug_key)
-                            usergroup.super_groups.add(supergroup)
-                            logger.debug('added supergroup %r to group: %r',
-                                supergroup,usergroup)
-                        except ObjectDoesNotExist, e:
-                            logger.warn(
-                                'no such supergroup: %r, initializer: %r',
-                                ug_key,initializer_dict)
-                            raise Exception(
-                                'group: %r, no such supergroup: %r', initializer_dict, ug)
-                elif key == 'sub_groups':
-                    usergroup.sub_groups.clear()
-                    usergroup.save()
-                    for ug in val:
-                        ug_key = self.find_key_from_resource_uri(ug)
-                        try:
-                            subgroup = UserGroup.objects.get(**ug_key)
-                            subgroup.super_groups.add(usergroup)
-                            subgroup.save()
-                            logger.debug('added subgroup %r to group %r', 
-                                subgroup, usergroup)
-                        except ObjectDoesNotExist, e:
-                            logger.warn(
-                                'no such subgroup: %r, initializer: %r',
-                                ug_key,initializer_dict)
-                            raise Exception(
-                                'group: %r, no such subgroup: %r', initializer_dict, ug)
-                elif key in group_fields and hasattr(usergroup,key):
-                    setattr(usergroup,key,val)
-                else:
-                    logger.debug(
-                        'unknown attribute: %r:%r, usergroup: %r, initializer: %r', 
-                        key, val, usergroup,initializer_dict)
+            usergroup = UserGroup.objects.get(name=name)
+            logger.info('modifying usergroup: %r', usergroup)
+        except ObjectDoesNotExist, e:
+            logger.info('Reports UserGroup %r does not exist, creating',name)
+            usergroup = UserGroup.objects.create(name=name)
+            create = True
             usergroup.save()
-            return { API_RESULT_OBJ: usergroup }
-            
-        except Exception, e:
-            logger.exception('on put_detail')
-            raise e  
 
+        initializer_dict = self.parse(deserialized, create=create, schema=schema)
+        logger.info('initializer_dict: %r', initializer_dict)
         
+        for key,val in initializer_dict.items():
+            if key == 'permissions':
+                logger.info('patching %r: %r', key, val)
+                usergroup.permissions.clear()
+                pr = self.get_permission_resource()
+                for p in val:
+                    permission_key = ( 
+                        pr.find_key_from_resource_uri(p))
+                    try:
+                        permission = Permission.objects.get(**permission_key)
+                    except ObjectDoesNotExist, e:
+                        logger.warn('no such permission %r, %r, %r', 
+                            p, permission_key, initializer_dict)
+                        # if permission does not exist, create it
+                        # TODO: should be created through the permission resource
+                        permission = Permission.objects.create(**permission_key)
+                        permission.save()
+                    usergroup.permissions.add(permission)
+                    usergroup.save()
+                    logger.debug(
+                        'added permission %r to group %r', 
+                        permission,usergroup)
+            elif key == 'users':
+                logger.info('patching %r: %r', key, val)
+                usergroup.users.clear()
+                ur = self.get_user_resource()
+                for u in val:
+                    user_key = ur.find_key_from_resource_uri(u)
+                    try:
+                        user = UserProfile.objects.get(**user_key)
+                        usergroup.users.add(user)
+                        logger.debug('added user %r to group %r', 
+                            user, usergroup)
+                    except ObjectDoesNotExist, e:
+                        logger.info('no such user: %r, %r, %r', 
+                            u, user_key, initializer_dict)
+                        raise Exception(
+                            'group: %r, no such user: %r', initializer_dict, u)
+            elif key == 'super_groups':
+                logger.info('patching %r: %r', key, val)
+                usergroup.super_groups.clear()
+                usergroup.save()
+                for ug in val:
+                    ug_key = self.find_key_from_resource_uri(ug)
+                    try:
+                        supergroup = UserGroup.objects.get(**ug_key)
+                        usergroup.super_groups.add(supergroup)
+                        logger.debug('added supergroup %r to group: %r',
+                            supergroup,usergroup)
+                    except ObjectDoesNotExist, e:
+                        logger.warn(
+                            'no such supergroup: %r, initializer: %r',
+                            ug_key,initializer_dict)
+                        raise Exception(
+                            'group: %r, no such supergroup: %r', initializer_dict, ug)
+            elif key == 'sub_groups':
+                logger.info('patching %r: %r', key, val)
+                usergroup.sub_groups.clear()
+                usergroup.save()
+                for ug in val:
+                    ug_key = self.find_key_from_resource_uri(ug)
+                    try:
+                        subgroup = UserGroup.objects.get(**ug_key)
+                        subgroup.super_groups.add(usergroup)
+                        subgroup.save()
+                        logger.debug('added subgroup %r to group %r', 
+                            subgroup, usergroup)
+                    except ObjectDoesNotExist, e:
+                        logger.warn(
+                            'no such subgroup: %r, initializer: %r',
+                            ug_key,initializer_dict)
+                        raise Exception(
+                            'group: %r, no such subgroup: %r', initializer_dict, ug)
+            elif key in group_fields and hasattr(usergroup,key):
+                setattr(usergroup,key,val)
+            else:
+                logger.debug(
+                    'unknown attribute: %r:%r, usergroup: %r, initializer: %r', 
+                    key, val, usergroup,initializer_dict)
+        usergroup.save()
+        return { API_RESULT_OBJ: usergroup }
+            
     @staticmethod    
     def recursive_supergroup_query(bridge):
         '''
@@ -3996,6 +3995,10 @@ class UserGroupResource(ApiResource):
 
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -4006,10 +4009,6 @@ class UserGroupResource(ApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = super(UserGroupResource,self).build_schema()
-
-#         filename = self._get_filename(schema, kwargs)
         
         name = param_hash.pop('name', None)
         if name:
@@ -4247,10 +4246,10 @@ class UserGroupResource(ApiResource):
             (stmt,count_stmt) = \
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
                         
             title_function = None
             if use_titles is True:

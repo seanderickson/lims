@@ -52,7 +52,7 @@ from db.models import ScreensaverUser, Screen, \
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
-    CachedQuery, UserChecklistItem, AttachedFile, \
+    CachedQuery, UserChecklist, AttachedFile, \
     ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
@@ -10116,7 +10116,7 @@ class UserAgreementResource(AttachedFileResource):
     def __init__(self, **kwargs):
         
         self.screensaveruser_resource = None
-        self.userchecklistitem_resource = None
+        self.userchecklist_resource = None
         super(UserAgreementResource, self).__init__(**kwargs)
 
     def get_screensaveruser_resource(self):
@@ -10124,10 +10124,10 @@ class UserAgreementResource(AttachedFileResource):
             self.screensaveruser_resource = ScreensaverUserResource()
         return self.screensaveruser_resource
     
-    def get_userchecklistitem_resource(self):
-        if not self.userchecklistitem_resource:
-            self.userchecklistitem_resource = UserChecklistItemResource()
-        return self.userchecklistitem_resource
+    def get_userchecklist_resource(self):
+        if not self.userchecklist_resource:
+            self.userchecklist_resource = UserChecklistResource()
+        return self.userchecklist_resource
 
     def prepend_urls(self):
         
@@ -10230,11 +10230,7 @@ class UserAgreementResource(AttachedFileResource):
                 dsl_usergroup not in rna_usergroups):
             raise ValidationError(key='usergroup',
                 msg='must be in %r or %r' % (small_molecule_usergroups,rna_usergroups))
-        apilog = self.make_log(request)
-        apilog.ref_resource_name = 'screensaveruser'
-        apilog.uri = [apilog.ref_resource_name, username]
-        apilog.key = username
-#         apilog.diff_keys = ['data_sharing_level']
+        apilog = self.get_screensaveruser_resource().make_log(request, attributes=user_data)
         
         # - the user agreement is an attached file to the user
         super(UserAgreementResource,self).post_detail(request, **kwargs)
@@ -10258,102 +10254,29 @@ class UserAgreementResource(AttachedFileResource):
         user_resource.patch_obj(request, user_data)
 
         # create a checklist item for the user agreement
-        user_checklist_item_resource = self.get_userchecklistitem_resource()
+        user_checklist_item_resource = self.get_userchecklist_resource()
         checklist_data = {
             'username': username, 
-            'item_name': checklist_item_name,
-            'item_group': 'forms',
+            'name': checklist_item_name,
             'admin_username': admin_user.username,
-            'status': 'completed',
-            'status_date': timezone.now().strftime("%Y%m%d") 
+            'is_checked': True,
+            'date_effective': timezone.now().strftime("%Y%m%d") 
             }
         
         user_checklist_item_resource.patch_obj(request, checklist_data)
-
+        
+        
+        # 20170626 TODO: "activate" the user
+        # - in SS1, add the "Data Access Role" (ScreensaverUserRole): "screensaverUserLogin"
+        # In SS2:
+        # 1. set user.is_active: true
+        # 2. set usergroup(s): add to "screensaverUser"
+        
         return tastypie.http.HttpCreated()
 
     # TODO: create a "UserAgreementResource.delete_detail"
 
 
-# 
-# select
-# a.activity_id,
-# (
-# CASE WHEN (select activity_id from library_screening ls where ls.activity_id = a.activity_id) is not null THEN (
-#    CASE WHEN (select is_for_external_library_plates from library_screening ls where ls.activity_id=a.activity_id) is true THEN 'External Library Screening' ELSE 'Library Screening' END )
-#      WHEN (select activity_id from cherry_pick_screening cs where cs.activity_id = a.activity_id ) is not null THEN 'Cherry Pick Screening'
-#      WHEN (select activity_id from cherry_pick_liquid_transfer cplt where cplt.activity_id = a.activity_id ) is not null THEN 'Cherry Pick Liquid Transfer'
-# else 'unknown_activity_type_tell_sean'
-# END 
-# ) activity_type,
-# a.date_of_activity date_performed,
-# a.date_created date_recorded,
-# (select first_name || ' ' || last_name from screensaver_user su where su.screensaver_user_id = a.performed_by_id) performed_by,
-# s.facility_id,
-# screen_type,
-# lab.last_name || ', ' || lab.first_name as lab_head,
-# '' as serviced_user,
-# la.affiliation_name as lab_affiliation,
-# min(fs.value) as funding_support,
-# si.status as status,
-# (select min(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_first_activity,
-# (select max(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_last_activity,
-# regexp_replace(a.comments, E'[\\s]+', ' ','g') as comments
-# from activity a
-# join lab_activity lac using(activity_id)
-# join screen s using(screen_id)
-# left join screensaver_user lab on(s.lab_head_id = lab.screensaver_user_id)
-# left join lab_head lab2 on(lab.screensaver_user_id = lab2.screensaver_user_id)
-# left join lab_affiliation la on(lab2.lab_affiliation_id = la.lab_affiliation_id)
-# left join screen_funding_support_link fsl on(s.screen_id = fsl.screen_id)
-# left join funding_support fs on(fs.funding_support_id = fsl.funding_support_id)
-# left join screen_status_item si on(si.screen_id = s.screen_id)
-# left join screen_result sr on(sr.screen_id = s.screen_id)
-# where (si.status is null or si.status_date = (select max(status_date) from screen_status_item si1 where si1.screen_id = s.screen_id)) /*can result in > 1 row per screen, if 2 statuses have same max date*/
-# group by s.facility_id,s.screen_id, screen_type, lab_head, s.date_created, si.status, si.status_date, sr.date_created, 
-# a.activity_id, a.date_of_activity, a.date_created, a.performed_by_id, la.affiliation_name, a.comments
-#  UNION ALL
-# select
-# a.activity_id,
-# sa.service_activity_type as activity_type,
-# a.date_of_activity date_performed,
-# a.date_created date_recorded,
-# (select first_name || ' ' || last_name from screensaver_user su where su.screensaver_user_id = a.performed_by_id) performed_by,
-# s.facility_id,
-# screen_type,
-# ( CASE WHEN (select screensaver_user_id from lab_head lh where lh.screensaver_user_id = sa.serviced_user_id) is not null  THEN (
-#     ( select lh.last_name || ', ' || lh.first_name
-#         from lab_head lab join screensaver_user lh on lab.screensaver_user_id=lh.screensaver_user_id where lab.screensaver_user_id = sa.serviced_user_id ))
-#     ELSE ( select lh.last_name || ', ' || lh.first_name 
-#         from screening_room_user sru 
-#         join screensaver_user lh on sru.lab_head_id=lh.screensaver_user_id 
-#         where sru.screensaver_user_id = sa.serviced_user_id )
-# END ) as lab_head,
-# serviced.last_name || ', ' || serviced.first_name as serviced_user,
-# ( CASE WHEN (select screensaver_user_id from lab_head lh where lh.screensaver_user_id = sa.serviced_user_id) is not null  THEN (
-#      ( select la.affiliation_name
-#         from lab_head lab join lab_affiliation la using(lab_affiliation_id) where lab.screensaver_user_id = sa.serviced_user_id ))
-#        ELSE ( select la.affiliation_name from screening_room_user sru 
-#         join lab_head lh on sru.lab_head_id=lh.screensaver_user_id
-#         join lab_affiliation la using(lab_affiliation_id) 
-#         where sru.screensaver_user_id = sa.serviced_user_id )
-# END ) as lab_affiliation,
-# min(fs.value) as funding_support,
-# si.status as status,
-# (select min(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_first_activity,
-# (select max(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_last_activity,
-# regexp_replace(a.comments, E'[\\s]+', ' ','g') as comments
-# from activity a
-# join service_activity sa using(activity_id)
-# left join screen s on(serviced_screen_id=screen_id)
-# left join screensaver_user serviced on (serviced.screensaver_user_id=sa.serviced_user_id)
-# left join funding_support fs on(fs.funding_support_id = sa.funding_support_id)
-# left join screen_status_item si on(si.screen_id = s.screen_id)
-# left join screen_result sr on(sr.screen_id = s.screen_id)
-# where (si.status is null or si.status_date = (select max(status_date) from screen_status_item si1 where si1.screen_id = s.screen_id)) /*can result in > 1 row per screen, if 2 statuses have same max date*/
-# group by s.facility_id,s.screen_id, screen_type, lab_head, s.date_created, si.status, si.status_date, sr.date_created, 
-# a.activity_id, a.date_of_activity, a.date_created, a.performed_by_id,serviced_user, sa.serviced_user_id, sa.service_activity_type, a.comments
-# order by facility_id, activity_id
 
 class ActivityResource(DbApiResource):
     '''
@@ -12185,84 +12108,80 @@ class LibraryScreeningResource(ActivityResource):
                 raise ValidationError(
                     key=_key,
                     msg='does not exist: {val}'.format(val=_val))
-        try:
-            library_screening = None
-            if patch:
-                try:
-                    logger.info('%r', id_kwargs)
-                    library_screening = LibraryScreening.objects.get(
-                        pk=id_kwargs['activity_id'])
-                    current_volume_transferred_per_well = \
-                        library_screening.volume_transferred_per_well_from_library_plates
-                    new_volume_xfer = initializer_dict.get(
-                        'volume_transferred_per_well_from_library_plates',None) 
-                    if ( new_volume_xfer is not None and 
-                        current_volume_transferred_per_well
-                            != new_volume_xfer ):
-                        if library_screening.assayplate_set.exists():
-                            raise ValidationError({
-                                'volume_transferred_per_well_from_library_plates':
-                                    ( 
-                                    'Can not be changed if plates have been assigned; '
-                                    '(%r to %r' 
-                                    % (current_volume_transferred_per_well,new_volume_xfer)),
-                                'library_plates_screened': (
-                                    'Remove all plates before changing volume assigned')
-                                })
-                except ObjectDoesNotExist:
-                    raise Http404(
-                        'library_screening does not exist for: %r', id_kwargs)
-            else:
-                # Set the created_by field:
-                # NOTE: after migration LibraryScreening will no longer have 
-                # this field
-                try:
-                    adminuser = ScreensaverUser.objects.get(username=request.user.username)
-                except ObjectDoesNotExist as e:
-                    logger.error('admin user: %r does not exist', request.user.username )
-                    raise
-                
-                library_screening = LibraryScreening()
-                library_screening.created_by = adminuser
+        library_screening = None
+        if patch:
+            try:
+                logger.info('%r', id_kwargs)
+                library_screening = LibraryScreening.objects.get(
+                    pk=id_kwargs['activity_id'])
+                current_volume_transferred_per_well = \
+                    library_screening.volume_transferred_per_well_from_library_plates
+                new_volume_xfer = initializer_dict.get(
+                    'volume_transferred_per_well_from_library_plates',None) 
+                if ( new_volume_xfer is not None and 
+                    current_volume_transferred_per_well
+                        != new_volume_xfer ):
+                    if library_screening.assayplate_set.exists():
+                        raise ValidationError({
+                            'volume_transferred_per_well_from_library_plates':
+                                ( 
+                                'Can not be changed if plates have been assigned; '
+                                '(%r to %r' 
+                                % (current_volume_transferred_per_well,new_volume_xfer)),
+                            'library_plates_screened': (
+                                'Remove all plates before changing volume assigned')
+                            })
+            except ObjectDoesNotExist:
+                raise Http404(
+                    'library_screening does not exist for: %r', id_kwargs)
+        else:
+            # Set the created_by field:
+            # NOTE: after migration LibraryScreening will no longer have 
+            # this field
+            try:
+                adminuser = ScreensaverUser.objects.get(username=request.user.username)
+            except ObjectDoesNotExist as e:
+                logger.error('admin user: %r does not exist', request.user.username )
+                raise
             
-            model_field_names = [
-                x.name for x in library_screening._meta.get_fields()]
-            for key, val in initializer_dict.items():
-                if key in model_field_names:
-                    setattr(library_screening, key, val)
+            library_screening = LibraryScreening()
+            library_screening.created_by = adminuser
+        
+        model_field_names = [
+            x.name for x in library_screening._meta.get_fields()]
+        for key, val in initializer_dict.items():
+            if key in model_field_names:
+                setattr(library_screening, key, val)
 
-            logger.info('save library screening, fields: %r', library_screening)
-            library_screening.save()
-            library_plates_screened = deserialized.get(
-                'library_plates_screened', None)
-            if not library_plates_screened and not patch:
-                raise ValidationError(
-                    key='library_plates_screened', 
-                    msg='required')
-            # override_param = parse_val(
-            #     param_hash.get(API_PARAM_OVERRIDE, False),
-            #         API_PARAM_OVERRIDE, 'boolean')
-            # override_vol_param = parse_val(
-            #     param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
-            #         API_PARAM_VOLUME_OVERRIDE, 'boolean')
-            
-            plate_meta = {}
-            if library_plates_screened is not None:
-                logger.debug('save library screening, set assay plates: %r', library_screening)
-                plate_meta = self._set_assay_plates(
-                    request, schema, 
-                    library_screening, library_plates_screened, ls_log) # , override_lib_param, override_vol_param
-                logger.info('save library screening, assay plates set: %r', library_screening)
-            
-                ls_log.json_field = json.dumps(plate_meta)
-                logger.info('parent_log: %r', ls_log)
-            self.create_screen_screening_statistics(library_screening.screen)
-            self.create_screened_experimental_well_count(library_screening)
-            
-            return { API_RESULT_OBJ: library_screening, API_RESULT_META: plate_meta}
-        except Exception, e:
-            logger.exception('on patch_obj')
-            raise e
+        logger.info('save library screening, fields: %r', library_screening)
+        library_screening.save()
+        library_plates_screened = deserialized.get(
+            'library_plates_screened', None)
+        if not library_plates_screened and not patch:
+            raise ValidationError(
+                key='library_plates_screened', 
+                msg='required')
+        # override_param = parse_val(
+        #     param_hash.get(API_PARAM_OVERRIDE, False),
+        #         API_PARAM_OVERRIDE, 'boolean')
+        # override_vol_param = parse_val(
+        #     param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
+        #         API_PARAM_VOLUME_OVERRIDE, 'boolean')
+        
+        plate_meta = {}
+        if library_plates_screened is not None:
+            logger.debug('save library screening, set assay plates: %r', library_screening)
+            plate_meta = self._set_assay_plates(
+                request, schema, 
+                library_screening, library_plates_screened, ls_log) # , override_lib_param, override_vol_param
+            logger.info('save library screening, assay plates set: %r', library_screening)
+        
+            ls_log.json_field = json.dumps(plate_meta)
+            logger.info('parent_log: %r', ls_log)
+        self.create_screen_screening_statistics(library_screening.screen)
+        self.create_screened_experimental_well_count(library_screening)
+        
+        return { API_RESULT_OBJ: library_screening, API_RESULT_META: plate_meta}
         
     def create_screened_experimental_well_count(self, library_screening):
         # TODO: this should be dynamic
@@ -12498,6 +12417,13 @@ class LibraryScreeningResource(ActivityResource):
         plate_errors = []
         plate_warnings = []
         for plate_range in plate_ranges:
+            for plate in plate_range:
+                if plate in created_plates:
+                    plate_errors.append(
+                        'plate: "%s/%s" overlaps an existing plate range'
+                            % (plate.copy.name, plate.plate_number))    
+                    continue
+            
             for replicate in range(library_screening.number_of_replicates):
                 for plate in plate_range:
                     if plate not in extant_plates:
@@ -12520,7 +12446,6 @@ class LibraryScreeningResource(ActivityResource):
                             plate_errors.append(
                                 'plate: "%s/%s" status: "%s"'
                                     % (plate.copy.name,plate.plate_number,plate.status))
-                            
                         if plate.copy.usage_type not in self.ALLOWED_COPY_USAGE_TYPE:
                             plate_errors.append(
                                 'plate: "%s/%s": "%s"' 
@@ -14172,7 +14097,7 @@ class ScreenResource(DbApiResource):
                 screen = Screen(**id_kwargs)
 
             initializer_dict = self.parse(deserialized,  schema=schema, create=create)
-            logger.info('initializer_dict: %r', initializer_dict)
+            logger.debug('initializer_dict: %r', initializer_dict)
                 
             errors = self.validate(deserialized,  schema=schema, patch=not create)
             if errors:
@@ -14242,9 +14167,7 @@ class ScreenResource(DbApiResource):
                 initializer_dict.pop('publications', None)
                 
             for key, val in initializer_dict.items():
-                logger.info('k: %r, v: %r', key, val)
                 if hasattr(screen, key):
-                    logger.info('setting %r', key)
                     setattr(screen, key, val)
             screen.clean()
             screen.save()
@@ -14252,7 +14175,6 @@ class ScreenResource(DbApiResource):
             # NOTE: collaborators cannot be set until after the object is saved:
             # the many-to-many related manager is not functional until then.
             if 'collaborators' in initializer_dict:
-                logger.info('collaborators: %r', initializer_dict['collaborators'])
                 screen.collaborators = initializer_dict.get('collaborators', None)
             
             logger.info('save/created screen: %r', screen)
@@ -14478,27 +14400,20 @@ class StudyResource(ScreenResource):
             request, _data, response_class=HttpResponse, **kwargs)
 
 
-
-class UserChecklistItemResource(DbApiResource):    
+class UserChecklistResource(DbApiResource):
 
     class Meta:
-
-        queryset = UserChecklistItem.objects.all()
+        
         authentication = MultiAuthentication(BasicAuthentication(),
                                              IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
-        excludes = ['']
-        resource_name = 'userchecklistitem'
-        max_limit = 10000
-        always_return_data = True
+        resource_name = 'userchecklist'
 
     def __init__(self, **kwargs):
         
         self.screensaveruser_resource = None
-        super(UserChecklistItemResource, self).__init__(**kwargs)
+        super(UserChecklistResource, self).__init__(**kwargs)
 
     def get_su_resource(self):
         if self.screensaveruser_resource is None:
@@ -14512,8 +14427,7 @@ class UserChecklistItemResource(DbApiResource):
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/(?P<username>([\d\w]+))/" 
-                 r"(?P<item_group>([\d\w_]+))/"
-                 r"(?P<item_name>([\d\w_]+))%s$")
+                 r"(?P<name>([\d\w_]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))%s$" 
@@ -14527,12 +14441,9 @@ class UserChecklistItemResource(DbApiResource):
         username = kwargs.get('username', None)
         if not username:
             raise NotImplementedError('must provide a username parameter')
-        item_group = kwargs.get('item_group', None)
-        if not item_group:
-            raise NotImplementedError('must provide a item_group parameter')
-        item_name = kwargs.get('item_name', None)
-        if not item_name:
-            raise NotImplementedError('must provide a item_name parameter')
+        name = kwargs.get('name', None)
+        if not name:
+            raise NotImplementedError('must provide a name parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -14548,7 +14459,6 @@ class UserChecklistItemResource(DbApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -14559,269 +14469,155 @@ class UserChecklistItemResource(DbApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        item_group = param_hash.pop('item_group', None)
-        if item_group:
-            param_hash['item_group__eq'] = item_group
-        item_name = param_hash.pop('item_name', None)
-        if item_name:
-            param_hash['item_name__eq'] = item_name
+        checklist_name = param_hash.pop('name', None)
+        if checklist_name:
+            param_hash['name__eq'] = checklist_name
         
-        try:
+        # general setup
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes.add('is_checked');
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash)
+              
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        rowproxy_generator = None
+        if use_vocab is True:
+            rowproxy_generator = \
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        
+        # specific setup
+        #             _su = self.bridge['screensaver_user']
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('cl_user')
+        _admin_cte = ScreensaverUserResource.get_user_cte().cte('cl_admin')
+        #             _admin = _su.alias('admin')
+        _up = self.bridge['reports_userprofile']
+        _user_checklist = self.bridge['user_checklist']
+        _vocab = self.bridge['reports_vocabulary']
+        
+        # get the checklist vocabulary
+        checklist_table = (
+            select([
+                _vocab.c.ordinal,
+                _vocab.c.key.label('name'),
+                _vocab.c.is_retired.label('is_retired'),
+            ])
+            .select_from(_vocab)
+            .where(_vocab.c.scope == 'userchecklist.name'))
+        checklist_table = Alias(checklist_table)
+        
+        # build the entered checklists
+        
+        j = _user_checklist
+        j = j.join(
+            _user_cte, _user_checklist.c.screensaver_user_id == _user_cte.c.screensaver_user_id)
+        j = j.join(
+            _admin_cte, _user_checklist.c.admin_user_id == _admin_cte.c.screensaver_user_id)
+        entered_checklists = select([
+            _user_cte.c.username,
+            _user_cte.c.name.label('user_name'),
+            _user_checklist.c.name,
+            _user_checklist.c.is_checked,
+            _user_checklist.c.date_effective,
+            _user_checklist.c.date_notified,
+            _admin_cte.c.username.label('admin_username'),
+            _admin_cte.c.name.label('admin_name'),
             
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
+            ]).select_from(j)
+        username = param_hash.pop('username', None)
+        if username:
+            entered_checklists = entered_checklists.where(
+                _user_cte.c.username == username)
+        entered_checklists = entered_checklists.cte('entered_checklists')
+        
+        # This entire query doesn't fit the pattern, construct it manually
+        custom_columns = {
+            'username': func.coalesce(
+                entered_checklists.c.username, username),
+            'user_name': entered_checklists.c.user_name,
+            'admin_username': entered_checklists.c.admin_username,
+            'admin_name': entered_checklists.c.admin_name,
+            'name' : checklist_table.c.name,
+            'is_checked': func.coalesce(
+                entered_checklists.c.is_checked, False),
+            'status': case([
+                ( entered_checklists.c.is_checked == True, 'activated')],
+                else_=case([
+                    (entered_checklists.c.date_effective != None, 'deactivated')],
+                    else_='not_completed')) ,
+            'date_effective': entered_checklists.c.date_effective,
+            'date_notified': entered_checklists.c.date_notified,
+            'is_retired': checklist_table.c.is_retired,
+            }
+        
+        base_query_tables = ['user_checklist', 'screensaver_user'] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+        
+        isouter = False
+        if username:
+            # if username, then this is a user specific view:
+            # - outer join in the two so that a full list is generated
+            isouter = True
             
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
-                  
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
+        j = checklist_table
+        j = j.join(
+            entered_checklists,
+            checklist_table.c.name == entered_checklists.c.name,
+            isouter=isouter)
+        
+        stmt = select(columns.values()).select_from(j)
+        if not username:
+            stmt = stmt.order_by(entered_checklists.c.username)
+        # general setup
+        if 'is_retired' not in readable_filter_hash:
+            stmt = stmt.where(
+                func.coalesce(checklist_table.c.is_retired,False) != True)
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+        
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
              
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup
-            _su = self.bridge['screensaver_user']
-            _admin = _su.alias('admin')
-            _up = self.bridge['reports_userprofile']
-            _uci = self.bridge['user_checklist_item']
-            _vocab = self.bridge['reports_vocabulary']
-            
-            # get the checklist items & groups
-            cig_table = (
-                select([
-                    _vocab.c.ordinal,
-                    _vocab.c.key.label('item_group'),
-                    _vocab.c.is_retired.label('item_group_is_retired'),
-                    func.array_to_string(
-                        array(['checklistitem', _vocab.c.key, 'name']), '.')
-                        .label('checklistitemgroup')])
-                .select_from(_vocab)
-                .where(_vocab.c.scope == 'checklistitem.group'))
-            cig_table = Alias(cig_table)
-            ci_table = (
-                select([
-                    _vocab.c.ordinal,
-                    cig_table.c.item_group,
-                    cig_table.c.item_group_is_retired,
-                    _vocab.c.key.label('item_name'),
-                    _vocab.c.is_retired ])
-                .select_from(
-                    _vocab.join(cig_table,
-                        _vocab.c.scope == cig_table.c.checklistitemgroup))
-                ).order_by(cig_table.c.ordinal, _vocab.c.ordinal)
-            ci_table = ci_table.cte('ci')
-
-            # build the entered checklists
-            
-            j = _uci
-            j = j.join(
-                _su, _uci.c.screensaver_user_id == _su.c.screensaver_user_id)
-            j = j.join(
-                _admin, _uci.c.admin_user_id == _admin.c.screensaver_user_id)
-            entered_checklists = select([
-                _su.c.username,
-                func.array_to_string(
-                    array([_su.c.last_name, _su.c.first_name]), ', ')
-                    .label('user_fullname'),
-                _uci.c.item_group,
-                _uci.c.item_name,
-                _uci.c.status,
-                _uci.c.status_date,
-                _admin.c.username.label('admin_username')
-                ]).select_from(j)
-            username = param_hash.pop('username', None)
-            if username:
-                entered_checklists = entered_checklists.where(
-                    _su.c.username == username)
-            entered_checklists = entered_checklists.cte('entered_checklists')
-            
-            # This entire query doesn't fit the pattern, construct it manually
-            custom_columns = {
-                'username': func.coalesce(
-                    entered_checklists.c.username, username),
-                'user_fullname': entered_checklists.c.user_fullname,
-                'admin_username': entered_checklists.c.admin_username,
-                'item_group': ci_table.c.item_group,
-                'item_name' : ci_table.c.item_name,
-                'status': func.coalesce(
-                    entered_checklists.c.status, 'not_completed'),
-                'status_date': entered_checklists.c.status_date,
-                'is_retired': ci_table.c.is_retired,
-                'item_group_is_retired': ci_table.c.item_group_is_retired,
-                }
-
-            base_query_tables = ['user_checklist_item', 'screensaver_user'] 
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
-
-            isouter = False
-            if username:
-                # if username, then this is a user specific view:
-                # - outer join in the two so that a full list is generated
-                isouter = True
-                
-            j = ci_table
-            j = j.join(
-                entered_checklists,
-                ci_table.c.item_name == entered_checklists.c.item_name,
-                isouter=isouter)
-            
-            stmt = select(columns.values()).select_from(j)
-            if not username:
-                stmt = stmt.order_by(entered_checklists.c.username)
-            # general setup
-            if ('item_group_is_retired' not in readable_filter_hash
-                and 'is_retired' not in readable_filter_hash):
-                stmt = stmt.where(
-                    func.coalesce(ci_table.c.item_group_is_retired,False) != True)
-                stmt = stmt.where(
-                    func.coalesce(ci_table.c.is_retired,False) != True)
-             
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
 
     @write_authorization
     @un_cache
     @transaction.atomic
     def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError(
-            'delete obj is not implemented for UserChecklistItem')
-    
-    
-#     def build_patch_detail(self, request, deserialized, **kwargs):
-#         # cache state, for logging
-#         # Look for id's kwargs, to limit the potential candidates for logging
-#         schema = kwargs.pop('schema', None)
-#         if not schema:
-#             raise Exception('schema not initialized')
-# 
-#         
-#         username = deserialized.get('username', None)
-#         if not username:
-#             raise ValidationError(
-#                 key='username',
-#                 msg='required')
-# #             
-# #         try:
-# #             user = ScreensaverUser.objects.get(username=username)
-# # 
-# #             # parent log: screensaver_user.completed_checklist_items
-# #             # parent log: screensaver_user.activated_checklist_items
-# #             
-# #             query = (
-# #                 UserChecklistItem.objects.all()
-# #                     .filter(scrensaver_user=user)
-# #                     .filter(status='completed'))
-# #             if query.exists():
-# #                 
-# #             
-# #         except ObjectDoesNotExist:
-# #             raise ValidationError(
-# #                 key='username',
-# #                 msg='username does not exist: %r' % username)
-#         
-#         id_attribute = schema['id_attribute']
-#         kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
-# 
-# 
-#         # create a user parent log
-#         
-#         parent_log = self.get_su_resource().make_log(
-#             request, attributes={ 'username': username })
-#         parent_log.save()
-#         
-#         log = self.make_log(request)
-#         log.uri = '/'.join([
-#             parent_log.ref_resource_name,parent_log.key,
-#             log.ref_resource_name,log.key])
-#         ### TODO fininsh parent log 20170612
-#         
-#         log.parent_log = parent_log
-#         
-#         original_data = None
-#         if kwargs_for_log:
-#             try:
-#                 original_data = self._get_detail_response_internal(**kwargs_for_log)
-#                 if not log.key:
-#                     self.make_log_key(log, original_data, id_attribute=id_attribute)
-#                 logger.debug('original data: %r', original_data)
-#             except Exception, e: 
-#                 logger.exception('exception when querying for existing obj: %s', 
-#                     kwargs_for_log)
-#         
-#         log.save()
-#         
-#         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
-#         if API_RESULT_OBJ in patch_result:
-#             obj = patch_result[API_RESULT_OBJ]
-#         else:
-#             # TODO: 20170109, legacy, convert patch_obj to return:
-#             # { API_RESULT_OBJ, API_RESULT_META }
-#             obj = patch_result
-#         logger.debug('build patch detail: %r', obj)
-#         
-#         for id_field in id_attribute:
-#             if id_field not in kwargs_for_log:
-#                 val = getattr(obj, id_field,None)
-#                 if val is not None:
-#                     kwargs_for_log['%s' % id_field] = val
-#         new_data = self._get_detail_response_internal(**kwargs_for_log)
-#         self.log_patch(
-#             request, original_data,new_data,log=log, 
-#             id_attribute=id_attribute, **kwargs)
-#         log.save()
-#         logger.info('log saved: %r', log)
-# 
-#         prev_status = None
-#         if original_data:
-#             prev_status = original_data.get('status', None)
-#         parent_log.diffs = { 
-#             '{item_group}/{item_name}'.format(**new_data): [
-#                  prev_status, new_data.get('status',None)] }
-#         parent_log.save()
-#         
-#         
-#         # 20170109 - return complex data
-#         new_data = { API_RESULT_DATA: new_data, }
-#         if API_RESULT_META in patch_result:
-#             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
-#         return new_data    
-#     
-    
+            'delete obj is not implemented for UserChecklist')
+
     @write_authorization
     @transaction.atomic()
     def patch_obj(self, request, deserialized, **kwargs):
@@ -14831,73 +14627,66 @@ class UserChecklistItemResource(DbApiResource):
         if not schema:
             raise Exception('schema not initialized')
         fields = schema['fields']
-        initializer_dict = {}
-        # TODO: wrapper for parsing
-        for key in fields.keys():
-            if deserialized.get(key, None):
-                initializer_dict[key] = parse_val(
-                    deserialized.get(key, None), key, fields[key]['data_type']) 
         
         username = deserialized.get('username', None)
         if not username:
             raise ValidationError(
                 key='username',
                 msg='required')
-        item_group = deserialized.get('item_group', None)
-        if not item_group:
-            raise ValidationError(
-                key='item_group',
-                msg='required')
-        item_name = deserialized.get('item_name', None)
+        item_name = deserialized.get('name', None)
         if not item_name:
             raise ValidationError(
-                key='item_name',
+                key='name',
                 msg='required')
+
+        try:
+            user = ScreensaverUser.objects.get(username=username)
+        except ObjectDoesNotExist:
+            raise ValidationError(
+                key='username',
+                msg='username does not exist: %r' % username)
+        create = False
+        try:
+            uci = UserChecklist.objects.get(
+                screensaver_user=user,
+                name=item_name)
+            patch = True
+            logger.info('UserChecklist to patch: %r', uci)
+        except ObjectDoesNotExist:
+            logger.info(
+                'UserChecklist does not exist: %s/%s, creating' 
+                % (username, item_name))
+            uci = UserChecklist(
+                screensaver_user=user,
+                name=item_name)
+            create = True
+
+        initializer_dict = self.parse(deserialized, create=create, schema=schema)
+        errors = self.validate(initializer_dict, patch=not create, schema=schema)
+        if errors:
+            raise ValidationError(errors)
+
         admin_username = deserialized.get('admin_username', None)
         if not admin_username:
             raise ValidationError(
                 key='admin_username',
                 msg='required')
-
-        try:
-            user = ScreensaverUser.objects.get(username=username)
-            initializer_dict['screensaver_user_id'] = user.pk
-        except ObjectDoesNotExist:
-            raise ValidationError(
-                key='username',
-                msg='username does not exist: %r' % username)
         try:
             admin_user = ScreensaverUser.objects.get(username=admin_username)
             initializer_dict['admin_user_id'] = admin_user.pk
+            # Note, hasattr does not work for foreign keys if not initialized, must use the key
         except ObjectDoesNotExist:
             raise ValidationError(
                 key='admin_username',
                 msg='username does not exist: %r' % admin_username)
 
-        try:
-            try:
-                uci = UserChecklistItem.objects.get(
-                    screensaver_user=user,
-                    item_group=item_group, item_name=item_name)
-            except ObjectDoesNotExist:
-                logger.info(
-                    'UserChecklistItem does not exist: %s/%s/%s, creating' 
-                    % (username, item_group, item_name))
-                uci = UserChecklistItem()
-            for key, val in initializer_dict.items():
-                if hasattr(uci, key):
-                    # note: setattr does not work for foreign keys
-                    setattr(uci, key, val)
-                else:
-                    logger.warn(
-                        'no such attribute on user_checklist_item: %s:%r' 
-                        % (key, val))
-            
-            uci.save()
-            return { API_RESULT_OBJ: uci }
-        except Exception, e:
-            logger.error('on patch_obj')
-            raise e
+        for key, val in initializer_dict.items():
+            if hasattr(uci, key):
+                setattr(uci, key, val)
+        
+        uci.save()
+        logger.info('UserChecklist %r created: %r', uci, create)
+        return { API_RESULT_OBJ: uci }
 
 
 class ScreensaverUserAuthorization(UserGroupAuthorization):
@@ -14914,7 +14703,6 @@ class ScreensaverUserAuthorization(UserGroupAuthorization):
             elif screensaver_user == screen.lab_head:
                 authorized = True
         return authorized
-    
 
 
 class ScreensaverUserResource(DbApiResource):    
@@ -14954,10 +14742,10 @@ class ScreensaverUserResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_groupview'),
                 name="api_dispatch_user_groupview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/checklistitems%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/checklist%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_user_checklistitemview'),
-                name="api_dispatch_user_checklistitemview"),
+                self.wrap_view('dispatch_user_checklistview'),
+                name="api_dispatch_user_checklistview"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/attachedfiles%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_attachedfileview'),
@@ -14989,8 +14777,8 @@ class ScreensaverUserResource(DbApiResource):
     def dispatch_user_groupview(self, request, **kwargs):
         return UserGroupResource().dispatch('list', request, **kwargs)    
     
-    def dispatch_user_checklistitemview(self, request, **kwargs):
-        return UserChecklistItemResource().dispatch('list', request, **kwargs)    
+    def dispatch_user_checklistview(self, request, **kwargs):
+        return UserChecklistResource().dispatch('list', request, **kwargs)    
     
     def dispatch_user_attachedfileview(self, request, **kwargs):
         method = 'list'
@@ -15242,9 +15030,6 @@ class ScreensaverUserResource(DbApiResource):
                 if field.get('scope', None) in default_fields }
             field_hash = _temp
             logger.debug('final field hash: %s', field_hash.keys())
-            logger.info(
-                'TODO: passing screensaver_user fields to reports_userprofile '
-                'causes warnings')
             sub_columns = self.get_user_resource().build_sqlalchemy_columns(
                 field_hash.values(),
                 custom_columns=custom_columns)
@@ -15273,11 +15058,11 @@ class ScreensaverUserResource(DbApiResource):
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
-            logger.debug(
-                'stmt: %s',
-                str(stmt.compile(
-                    dialect=postgresql.dialect(),
-                    compile_kwargs={"literal_binds": True})))
+            # logger.info(
+            #     'stmt: %s',
+            #     str(stmt.compile(
+            #         dialect=postgresql.dialect(),
+            #         compile_kwargs={"literal_binds": True})))
             title_function = None
             if use_titles is True:
                 def title_function(key):
@@ -15393,7 +15178,7 @@ class ScreensaverUserResource(DbApiResource):
 
             screensaveruser_fields = { name:val for name, val in fields.items() 
                 if val['scope'] == 'fields.screensaveruser'}
-            logger.info(
+            logger.debug(
                 'fields.screensaveruser fields: %s', screensaveruser_fields.keys())
             initializer_dict = self.parse(
                 deserialized, create=not is_patch, fields=screensaveruser_fields.values())
@@ -16366,6 +16151,7 @@ class ReagentResource(DbApiResource):
         
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
+        param_hash.pop('schema', None)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
         use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
         use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)

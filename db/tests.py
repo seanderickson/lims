@@ -41,7 +41,7 @@ from db.api import VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
     VOCAB_LCP_STATUS_PLATED
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
-    UserChecklistItem, AttachedFile, ServiceActivity, Screen, Well, Publication, \
+    UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
     PlateLocation, LibraryScreening
 import db.models
 from db.support import lims_utils, screen_result_importer, bin_packer
@@ -3060,7 +3060,7 @@ class ScreenResource(DBResourceTestCase):
         
         follow_up_data = {
             'facility_id': screen_item['facility_id'] + 'A',
-            'parent_screen': screen_item['facility_id'], 
+            'primary_screen': screen_item['facility_id'], 
             'title': screen_item['title']+'-follow up',
             'summary': screen_item['summary'],
             'lead_screener_username': screen_item['lead_screener_username'],
@@ -3696,17 +3696,17 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        logger.info('4. test overlapping plate range...')
+        logger.info('4. test overlapping plate range... ')
         key = 'library_plates_screened' 
         value = [ 
-            lps_format.format(**library_copy1).format(**{
+            lps_format.format(**library_copy2).format(**{
                 'start_plate': library2['start_plate'],
                 'end_plate': int(library2['start_plate'])+2 }),
-            lps_format.format(**library_copy1).format(**{
+            lps_format.format(**library_copy2).format(**{
                 'start_plate': library2['start_plate']+1,
                 'end_plate': int(library2['start_plate'])+4 }),
         ]
-        msg = 'overlapping plate ranges in %r for  %r should fail' % (value,key)
+        msg = '4 - overlapping plate ranges in %r for  %r should fail' % (value,key)
         logger.info('test %r', msg)
         invalid_input4 = library_screening_input.copy()
         invalid_input4[key] =  value
@@ -3716,7 +3716,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        logger.info('5.b test with cherry_pick_source_plates')
+        logger.info('5. test with cherry_pick_source_plates')
         key = 'library_plates_screened' 
         plate_range1cpp = lps_format.format(**library_copy1_cpp).format(**library1)
         value = [ plate_range1cpp, plate_range2 ]
@@ -7159,7 +7159,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         DBResourceTestCase.tearDown(self)
         
         logger.info('delete resources')
-        UserChecklistItem.objects.all().delete()
+        UserChecklist.objects.all().delete()
         AttachedFile.objects.all().delete()
         ServiceActivity.objects.all().delete()
         logger.info('delete users, including: %r', self.username)
@@ -7196,6 +7196,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         logger.info('test0_create_user...')
         self.user1 = self.create_screensaveruser({ 'username': 'st1'})
+        self.user2 = self.create_screensaveruser({ 'username': 'st2'})
         self.screening_user = self.create_screensaveruser(
             { 'username': 'screening1'})
         
@@ -7204,13 +7205,19 @@ class ScreensaverUserResource(DBResourceTestCase):
         # FIXME: test more specific admin user permissions
         self.test_admin_user = self.create_screensaveruser(
             { 'username': 'adminuser'})
+        self.test_admin_user2 = self.create_screensaveruser(
+            { 'username': 'adminuser2'})
         # create an admin
         patch_obj = { 'objects': [
             {
                 'username': 'adminuser',
                 'is_superuser': True
-            }]
-        }
+            },
+            {
+                'username': 'adminuser2',
+                'is_superuser': True
+            },
+        ]}
         resource_uri = BASE_URI_DB + '/screensaveruser'
 
         resp = self.api_client.patch(
@@ -7292,63 +7299,70 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.exception('on group_patch: %r', group_patch)
             raise
 
-        userpatch = { 'objects': [   
+        userpatch = [   
             {
                 'username': self.user1['username'],
-                'usergroups': ['usergroup1']
+                'usergroups': ['usergroup1',]
             },
             {
                 'username': self.screening_user['username'],
-                'usergroups': ['usergroup2']
+                'usergroups': ['usergroup2',]
             },
             {
                 'username': self.test_admin_user['username'],
-                'usergroups': ['usergroup3']
+                'usergroups': ['usergroup3',]
             },
-        ]};
+        ]
         resource_uri = BASE_URI_DB + '/screensaveruser'
         resp = self.api_client.patch(resource_uri, 
-            format='json', data=userpatch, 
+            format='json', data={ 'objects': userpatch }, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
 
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
-        resp = self.api_client.get(resource_uri, format='json', 
-            authentication=self.get_credentials(), data=data_for_get )
-        new_obj = self.deserialize(resp)
-
-        extant_user_count = 4 # 3 created in this test + testsuper (setupModule)
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        self.assertEqual(
-            len(new_obj[API_RESULT_DATA]), extant_user_count, (new_obj))
-        
-        for i,item in enumerate(userpatch[API_RESULT_DATA]):
-            result, obj = find_obj_in_list(item, new_obj[API_RESULT_DATA])
+        for patchobj in userpatch:
+            logger.info('test patchobj: %r', patchobj)
+            groupname = patchobj['usergroups'][0]
+            username = patchobj['username']
+            data_for_get = { 
+                'limit': 0, 
+                'includes': ['*'],
+                'usergroups__eq': groupname
+            }
+            resp = self.api_client.get(resource_uri, format='json', 
+                authentication=self.get_credentials(), data=data_for_get )
             self.assertTrue(
-                result, 
-                ('bootstrap item not found', item, new_obj[API_RESULT_DATA]))
-            logger.debug('item found: %r', obj)        
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
+            result = self.deserialize(resp)
+            new_objs = result[API_RESULT_DATA]
+            self.assertEqual(
+                len(new_objs), 1,
+                'wrong number of users found for group: %r, %r: %r'
+                % (len(new_objs), groupname, [x['username'] for x in new_objs] ))
+            self.assertEqual(username, new_objs[0]['username'])
 
-    def test2_user_checklist_items(self):
+    def test2_user_checklist(self):
         
-        logger.info('test2_user_checklist_items...')
+        logger.info('test2_user_checklist...')
         self.test0_create_user();
         
+        # Note "get_credentials" returns the superuser
+        admin_performing_operation = self.username
         test_username = self.user1['username']
         
         # FIXME: create a "ChecklistAdmin" usergroup
+        # Note admin assigned to the checklist operation
         checklist_admin = self.test_admin_user
-        
-        checklist_item_patch = {
+        checklist_admin2 = self.test_admin_user2
+
+        # 1. Create a UserChecklist item        
+        checklist_patch = {
             'admin_username': checklist_admin['username'], 
-            'item_group': "mailing_lists_wikis",
-            'item_name': "added_to_iccb_l_nsrb_email_list",
-            'status': "activated",
-            'status_date': "2015-09-02",
+            'name': "added_to_iccb_l_users_email_list",
+            'is_checked': True,
+            'date_effective': "2015-09-02",
             'username': test_username
         }
         
@@ -7356,11 +7370,73 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         header_data = { HEADER_APILOG_COMMENT: test_comment}
         
-        resource_uri = BASE_URI_DB + '/userchecklistitem/%s' % test_username
+        patch_uri = '/'.join([BASE_URI_DB,'userchecklist',test_username])
         resp = self.api_client.patch(
-            resource_uri, 
+            patch_uri, 
             format = 'json', 
-            data = { API_RESULT_DATA: checklist_item_patch}, 
+            data = { API_RESULT_DATA: checklist_patch}, 
+            authentication=self.get_credentials(),
+            **header_data)
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        checklist_uri = '/'.join([
+            BASE_URI_DB,'userchecklist',test_username, checklist_patch['name']])
+        resp = self.api_client.get(
+            checklist_uri,
+            format='json', 
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('UserChecklist created: %r', new_obj)
+        result,msgs = assert_obj1_to_obj2(
+            checklist_patch, new_obj)
+        self.assertTrue(result,msgs)
+        self.assertEqual(new_obj['status'],'activated')
+        
+        # 1.A checklistitem logs
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'userchecklist', 
+            'key__contains': test_username + '/' + new_obj['name']
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.info('log: %r', apilog)
+        self.assertTrue(apilog['comment']==test_comment,
+            'comment %r should be: %r' % (apilog['comment'], test_comment))
+        self.assertTrue('status' in apilog['diff_keys'])
+        diffs = json.loads(apilog['diffs'])
+        self.assertTrue('status' in diffs)
+        self.assertTrue('activated' in diffs['status'])
+        self.assertEqual(admin_performing_operation, apilog['username'],
+            'wrong admin username recorded: %r'% apilog)
+        
+        # 2. Deactivate
+        checklist_patch2 = {
+            'admin_username': checklist_admin2['username'], 
+            'name': "added_to_iccb_l_users_email_list",
+            'is_checked': False,
+            'date_effective': "2016-09-02",
+            'username': test_username
+        }
+        
+        test_comment = 'Some test comment 123 xyz'
+        
+        header_data = { HEADER_APILOG_COMMENT: test_comment}
+        
+        resp = self.api_client.patch(
+            patch_uri, 
+            format = 'json', 
+            data = { API_RESULT_DATA: checklist_patch2}, 
             authentication=self.get_credentials(),
             **header_data)
         self.assertTrue(
@@ -7369,36 +7445,42 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         resp = self.api_client.get(
-            resource_uri + '/mailing_lists_wikis/added_to_iccb_l_nsrb_email_list',
+            checklist_uri,
             format='json', 
             authentication=self.get_credentials(), data=data_for_get )
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('UCI created: %r', new_obj)
+        logger.info('UserChecklist created: %r', new_obj)
         result,msgs = assert_obj1_to_obj2(
-            checklist_item_patch, new_obj)
+            checklist_patch2, new_obj)
         self.assertTrue(result,msgs)
+        self.assertEqual(new_obj['status'],'deactivated')
         
-        # TODO: checklistitem logs
+        # 2.A check for deactivate log
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'userchecklistitem', 
-            'key__contains': test_username + '/' + new_obj['item_group']
+            'ref_resource_name': 'userchecklist', 
+            'key__contains': test_username + '/' + new_obj['name']
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
-        logger.info('logs: %r', apilogs)
         self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
-        apilog = apilogs[0]
+            len(apilogs) == 2, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[1]
+        logger.info('log: %r', apilog)
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
         self.assertTrue('status' in apilog['diff_keys'])
-        self.assertTrue(checklist_item_patch['status'] in apilog['diffs'])
+        diffs = json.loads(apilog['diffs'])
+        self.assertTrue('status' in diffs)
+        self.assertTrue('deactivated' in diffs['status'])
+        self.assertEqual(admin_performing_operation, apilog['username'],
+            'wrong admin username recorded: %r'% apilog)
         
+        # 3. modify date only
         
     def test3_attached_files(self):
         
@@ -7653,14 +7735,14 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # - check that a checklist item has been created for the user agreement
         
-        resource_uri = BASE_URI_DB + '/userchecklistitem'
+        resource_uri = BASE_URI_DB + '/userchecklist'
         resource_uri = '/'.join([resource_uri,self.user1['username']])
         checklist_items = self.get_list_resource(
-            resource_uri, {'status__eq': 'completed'})
+            resource_uri, {'status__eq': 'activated'})
         logger.info('checklist_items: %r', checklist_items)
         self.assertTrue(len(checklist_items)==1)
         val = 'current_small_molecule_user_agreement_active'
-        self.assertTrue(checklist_items[0]['item_name'] == val,
+        self.assertTrue(checklist_items[0]['name'] == val,
             'wrong checklist item - expected name: %r, %r'
             %(val, checklist_items[0]))
         
@@ -7775,15 +7857,15 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # TEST 2 - check that checklist item has been created for user agreement
         
-        resource_uri = BASE_URI_DB + '/userchecklistitem'
+        resource_uri = BASE_URI_DB + '/userchecklist'
         resource_uri = '/'.join([resource_uri,self.user1['username']])
         checklist_items = self.get_list_resource(resource_uri, 
-            {'status__eq': 'completed',
-             'item_name__eq': u'current_rnai_user_agreement_active'})
+            {'status__eq': 'activated',
+             'name__eq': u'current_rnai_user_agreement_active'})
         logger.info('checklist_items: %r', checklist_items)
         self.assertTrue(len(checklist_items)==1)
         val = 'current_rnai_user_agreement_active'
-        self.assertTrue(checklist_items[0]['item_name'] == val,
+        self.assertTrue(checklist_items[0]['name'] == val,
             'wrong checklist item - expected name: %r, %r'
             %(val, checklist_items[0]))
         

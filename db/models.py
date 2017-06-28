@@ -2,19 +2,19 @@ from __future__ import unicode_literals
 
 import datetime
 import logging
+import re
 
 from django.conf import settings
 from django.db import connection
 from django.db import models
+from django.db.models.deletion import SET_NULL
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
-from reports.utils.gray_codes import create_substance_id
-from reports import ValidationError
-from db.support import lims_utils
 from db import WELL_NAME_PATTERN
-import re
-from django.db.models.deletion import SET_NULL
+from db.support import lims_utils
+from reports import ValidationError
+from reports.utils.gray_codes import create_substance_id
 
 
 logger = logging.getLogger(__name__)
@@ -320,108 +320,26 @@ class AttachedFile(models.Model):
             % ( self.attached_file_id, self.filename, self.type, 
                 self.date_created) )
 
-class UserChecklistItem(models.Model):
-    ''' Replaces ChecklistItem '''
+class UserChecklist(models.Model):
     
     screensaver_user = models.ForeignKey('ScreensaverUser', null=False)
     admin_user = models.ForeignKey('ScreensaverUser', null=False, 
         related_name='userchecklistitems_created')
-    item_group = models.TextField()
-    item_name = models.TextField()
-    status = models.TextField()
-    status_date = models.DateField()
-    
-    #added 20151104
-    status_notified_date = models.DateField(null=True)
-    previous_status = models.TextField(null=True)
+    name = models.TextField()
+    is_checked = models.BooleanField()
+    date_effective = models.DateField()
+    date_notified = models.DateField(null=True)
     
     class Meta:
-        db_table = 'user_checklist_item'
-        unique_together=(('screensaver_user','item_group','item_name'))
+        db_table = 'user_checklist'
+        unique_together=(('screensaver_user','name'))
         
     def __repr__(self):
         return (
-            'UserChecklistItem(screensaver_user=%r, item_group=%r, '
-            'item_name=%r, status=%r)>' 
-            % (self.screensaver_user, self.item_group,self.item_name,
-               self.status)) 
-
-# ##### NEW CHERRY PICK #####
-# 
-# 
-# class CherryPickRequest2(models.Model):
-# 
-#     screen = models.ForeignKey('Screen')
-#     requested_by = models.ForeignKey('ScreensaverUser', 
-#         related_name='requested_cherry_pick2')
-#     volume_approved_by = models.ForeignKey('ScreensaverUser', 
-#         null=True, related_name='approved_cherry_pick2')
-#     transfer_volume_per_well_requested = \
-#         models.DecimalField(null=True, max_digits=10, decimal_places=9)
-#     transfer_volume_per_well_approved = \
-#         models.DecimalField(null=True, max_digits=10, decimal_places=9)
-#     date_requested = models.DateField()
-#     date_volume_approved = models.DateField(null=True)
-# 
-#     comments = models.TextField()
-#     assay_plate_type = models.TextField()
-#     assay_protocol_comments = models.TextField()
-#     cherry_pick_assay_protocols_followed = models.TextField()
-#     cherry_pick_followup_results_status = models.TextField()
-#     
-#     # True when screener requested a random layout for the cherry pick plates
-#     is_randomized_assay_plate_layout = models.BooleanField(default=False)
-#     
-#     # True when cherry picks from the same source plate should always be 
-#     # mapped to the same cherry pick plate
-#     keep_source_plate_cherry_picks_together = models.BooleanField(default=True)
-#     
-#     # Not used
-#     max_skipped_wells_per_plate = models.IntegerField(null=True)
-#     
-#     class Meta:
-#         db_table = 'cherry_pick_request2'
-#         
-#     def __repr__(self):
-#         return (
-#             '<CherryPickRequest2(id=%r, screen=%r, requested_by=%r)>' 
-#             % (self.id, self.screen.facility_id. self.requested_by)) 
-# 
-# class CherryPickWell(models.Model):
-# 
-#     cherry_pick_request = models.ForeignKey(
-#         'CherryPickRequest2', related_name='wells')
-# 
-#     # This is the well entered by the screener:
-#     # Could be a "pool" well that is mapped to the "duplex" well (if SiRNA)    
-#     screener_source_well = models.ForeignKey('Well')
-#     
-#     # This is the well that is actually picked:
-#     # Could be the "duplex" well for the "pool" well (if SiRNA)
-#     source_well = models.ForeignKey('Well')
-#     
-#     # If set, pick is "Reserved"
-#     copy = models.ForeignKey('Copy', null=True)
-#     
-#     # [Unfulfilled, Reserved, Mapped, Plated, Screened, Canceled, (Failed)]
-#     status = models.TextField(null=True)
-# 
-#     # Purpose: row/col for the CherryPickAssayPlate    
-#     destination_well = models.TextField(null=True)
-# 
-#     # TODO: remove
-#     # attempts = models.IntegerField(null=True)
-# 
-#     class Meta:
-#         db_table = 'cherry_pick_well'
-#         
-#     def __repr__(self):
-#         return (
-#             '<CherryPickWell(source_well=%r, copy=%r, screen=%r )>' 
-#             % (self.source_well, self.copy, self.cpr.screen.facility_id)) 
-
-##### END NEW CHERRY PICK #####
-
+            'UserChecklist(screensaver_user=%r, name=%r, '
+            'is_checked=%r, date_effective=%r, admin_user=%r )>' 
+            % (self.screensaver_user, self.name, self.is_checked, 
+                self.date_effective, self.admin_user )) 
 
 
 class CherryPickRequest(models.Model):

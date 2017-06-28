@@ -1,4 +1,5 @@
 key,scope,table,field,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,required
+activity_id,fields.activity,,,/reports/api/v1/field/fields.activity/activity_id/,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#{activity_class}/{activity_id}' }",,,,
 date_of_activity,fields.activity,,,/reports/api/v1/field/fields.activity/date_of_activity/,1,,TRUE,"The date the activity was performed","Date Performed",TRUE,,,[l;d],[c;u],date,link,"{ 'hrefTemplate': '#{activity_class}/{activity_id}' }",,,,TRUE
 activity_class,fields.activity,custom,,/reports/api/v1/field/fields.activity/activity_class/,2,,TRUE,"The class of the activity","Activity Class",TRUE,,activity.class,[l;d],,string,,,select,,,
 type,fields.activity,custom,,/reports/api/v1/field/fields.activity/type/,3,,TRUE,"The type of the activity",Type,TRUE,,activity.type,[l;d],,string,link,"{ 'hrefTemplate': '#vocabulary/activity.type/{type}' }",select,,,
@@ -9,7 +10,6 @@ performed_by_username,fields.activity,custom,,/reports/api/v1/field/fields.activ
 performed_by_name,fields.activity,custom,,/reports/api/v1/field/fields.activity/performed_by_name/,8,,TRUE,"The person that performed the activity","Performed By",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{performed_by_username}' }",,,,
 funding_support,fields.activity,custom,,/reports/api/v1/field/fields.activity/funding_support/,9,,TRUE,"Funding Support","Funding Support",TRUE,,funding_support,[l;d],,string,,,select,,,
 comments,fields.activity,,,/reports/api/v1/field/fields.activity/comments/,10,,TRUE,Comments,Comments,TRUE,,,[l;d],,string,,,,,,
-activity_id,fields.activity,,,/reports/api/v1/field/fields.activity/activity_id/,20,,TRUE,"Activity ID","Activity ID",TRUE,,,[d],,integer,link,"{ 'hrefTemplate': '#{activity_class}/{activity_id}' }",,,,
 created_by_username,fields.activity,custom,,/reports/api/v1/field/fields.activity/created_by_username/,21,,TRUE,"The admin who created the activity","Created By Username",TRUE,,,,,string,link,"{ 'hrefTemplate': '#screensaveruser/{created_by_username}' }",,,,
 created_by_name,fields.activity,custom,,/reports/api/v1/field/fields.activity/created_by_name/,22,,TRUE,"The admin who created the activity","Created By",TRUE,,,[d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{created_by_username}' }",,,,
 date_created,fields.activity,,,/reports/api/v1/field/fields.activity/date_created/,13,,TRUE,"The date the activity was recorded","Date Recorded",TRUE,,,[d],,date,,,,,,

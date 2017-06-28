@@ -24,7 +24,7 @@ patch,field,metahash_fields_naturalproductreagent.csv
 patch,field,metahash_fields_copywell.csv
 patch,field,metahash_fields_cherrypickrequest.csv
 patch,field,metahash_fields_cherrypickassayplate.csv
-patch,field,metahash_fields_userchecklistitem.csv
+patch,field,metahash_fields_userchecklist.csv
 patch,field,metahash_fields_attachedfile.csv
 patch,field,metahash_fields_activity.csv
 patch,field,metahash_fields_serviceactivity.csv

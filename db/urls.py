@@ -10,11 +10,10 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     LibraryCopyResource, LibraryCopyPlateResource, \
     WellResource, ActivityResource, ReagentResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
-    CopyWellResource, UserChecklistItemResource, \
+    CopyWellResource, UserChecklistResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
     UserAgreementResource, PublicationResource,PlateLocationResource
-#     CherryPickLiquidTransferResource, CherryPickScreeningResource, \
 
 import db.api
 
@@ -33,19 +32,15 @@ v1_api.register(WellResource())
 v1_api.register(ActivityResource())
 v1_api.register(ServiceActivityResource())
 v1_api.register(ReagentResource())
-# v1_api.register(CherryPickRequest2Resource())
 v1_api.register(CherryPickRequestResource())
-# v1_api.register(CherryPickWellResource())
 v1_api.register(CherryPickPlateResource())
-v1_api.register(UserChecklistItemResource())
+v1_api.register(UserChecklistResource())
 v1_api.register(AttachedFileResource())
 v1_api.register(SmallMoleculeReagentResource())
 v1_api.register(SilencingReagentResource())
 v1_api.register(NaturalProductReagentResource())
 v1_api.register(CopyWellResource())
 v1_api.register(LibraryScreeningResource())
-# v1_api.register(CherryPickLiquidTransferResource())
-# v1_api.register(CherryPickScreeningResource())
 v1_api.register(UserAgreementResource())
 v1_api.register(PublicationResource())
 v1_api.register(db.api.ResourceResource())

@@ -159,7 +159,7 @@ class ApiLog(models.Model):
         null=False, max_length=128, db_index=True)
 
     # Full public key of the resource instance being logged (may be composite, 
-    # separted by '/')
+    # separated by '/')
     key = models.CharField(null=False, max_length=128, db_index=True)
     
     # Full uri of the resource instance being logged, 
@@ -189,9 +189,9 @@ class ApiLog(models.Model):
     def __repr__(self):
         return (
             '<ApiLog(id=%r, api_action=%r, ref_resource_name=%r, '
-            'key=%r, uri=%r, date_time=%s)>'
+            'key=%r, uri=%r, date_time=%s, username=%s)>'
             % (self.id, self.api_action, self.ref_resource_name, self.key,
-               self.uri, strftime_log(self.date_time)))
+               self.uri, strftime_log(self.date_time), self.username))
 
     @property
     def log_uri(self):

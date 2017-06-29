@@ -193,7 +193,7 @@ def migrate_screen_project_phase(apps,schema_editor):
 #             [x.facility_id for x in query.all()])
 # 
     # 3. Set the "study_type" to null for all non-study screens
-    query = ( Screen.objects.all().exclude(project_phase__exact='annotation'))
+    query = ( Screen.objects.all().exclude(project_phase__icontains='annotation'))
     count = query.update(study_type=None)
     logger.info('study_type set to null for screens (count): %d', count)
 

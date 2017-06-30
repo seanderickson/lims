@@ -23,28 +23,33 @@ logger = logging.getLogger(__name__)
 # * see migration.sh
 #####
 
+vocab_replace_map = {
+    'ICCB-L/NSRB staff': 'ICCB-L staff'}
+
 def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
-    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
+#     resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
     for ordinal, attr_value in (
             enumerate(query.values_list(attr, flat=True)
                 .distinct(attr).order_by(attr))):
         if not attr_value: continue
-        key = default_converter(attr_value)
+        
         title = attr_value
-        _resource_uri = resource_uri % (scope, key)
-        vocabs.append([_resource_uri, key, scope, ordinal, title])
+        if attr_value in vocab_replace_map:
+            title = vocab_replace_map[attr_value]
+        key = default_converter(title)
+
+        query.filter(**{ '%s__exact' % attr: attr_value }).update(**{ attr: key })
+        
+        vocabs.append([key, scope, ordinal, title])
+
     for row in vocabs:
-        title = row[4]
-        key = row[1]
-        query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
         if write_to_file is True:
             vocab_writer.writerow(row)
         logger.info('updated vocab: %r' % row)
 
 def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
-    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
     for ordinal, attr_value in (enumerate(
@@ -53,12 +58,12 @@ def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
         if not attr_value: continue
         key = default_converter(attr_value)
         title = attr_value
-        _resource_uri = resource_uri % (scope, key)
-        vocabs.append([_resource_uri, key, scope, ordinal, title])
+        vocabs.append([key, scope, ordinal, title])
     for row in vocabs:
         title = row[4]
         key = row[1]
-#         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
+        # NOTE: do not run update; this is the second run of the service activity
+        #         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
         vocab_writer.writerow(row)
         logger.info('updated vocab: %r' % row)
 
@@ -75,7 +80,7 @@ def create_simple_vocabularies(apps):
     
     with open(vocab_file, 'w') as _file:
         vocab_writer = csv.writer(_file)
-        header = ['resource_uri', 'key', 'scope', 'ordinal', 'title'] 
+        header = ['key', 'scope', 'ordinal', 'title'] 
         vocab_writer.writerow(header)
         # Run it twice for service activities, so that they can be separated
         # from the vanilla activities; 
@@ -185,10 +190,10 @@ def create_lab_affiliation_vocab(apps):
         lims.settings.PROJECT_ROOT, '..',
         'db', 'static', 'api_init', 'vocabulary_lab_affiliations_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
-    resource_uri = 'vocabulary/%s/%s/'
+#     resource_uri = 'vocabulary/%s/%s/'
     with open(vocab_file, 'a+') as _file:
          
-        header = ['resource_uri', 'key', 'scope', 'ordinal', 'title', 'comment'] 
+        header = ['key', 'scope', 'ordinal', 'title', 'comment'] 
         reader = csv.reader(_file)
         vocab_writer = csv.writer(_file)
         defined_vocabs = {}
@@ -214,8 +219,7 @@ def create_lab_affiliation_vocab(apps):
                 else:
                     ordinal = i + len(default_order)
                 title = la.affiliation_category
-                row = [resource_uri % (scope, key), key, scope, ordinal, title, 
-                    la.affiliation_category ]
+                row = [key, scope, ordinal, title, la.affiliation_category ]
                 vocab_writer.writerow(row)
                 defined_vocabs[la.affiliation_category] = dict(zip(header,row))
                 logger.debug('created %s', row)
@@ -231,7 +235,9 @@ def create_lab_affiliation_vocab(apps):
             if la.affiliation_name not in defined_vocabs:
                 name = la.affiliation_name.lower()
                 for replacer,replacement in replace_phrases:
-                    logger.info('replacer: %s, replacement: %s, name: %s', str(replacer),replacement,name)
+                    logger.info(
+                        'replacer: %s, replacement: %s, name: %s', 
+                        str(replacer),replacement,name)
                     name = replacer.sub(replacement.lower(),name)
                     logger.info('new name: %s', name)    
                  
@@ -239,8 +245,7 @@ def create_lab_affiliation_vocab(apps):
                 key = default_converter(name)
                 scope = _scope % default_converter(la.affiliation_category)
                 ordinal = len(defined_vocabs) + 1
-                row = [resource_uri % (scope, key), key, scope, ordinal, title, 
-                    la.affiliation_category ]
+                row = [key, scope, ordinal, title, la.affiliation_category ]
                 defined_vocabs[la.affiliation_name] = dict(zip(header,row))
                 vocab_writer.writerow(row)
                 logger.debug('created row: %s', row)
@@ -252,9 +257,12 @@ def create_lab_affiliation_vocab(apps):
             ScreensaverUser = apps.get_model('db','ScreensaverUser')
             if la.labhead_set.exists():
                 for lh in la.labhead_set.all():
-                    su = ScreensaverUser.objects.get(screensaver_user_id=lh.screensaver_user_id)
+                    su = ScreensaverUser.objects.get(
+                        screensaver_user_id=lh.screensaver_user_id)
                     new_value = defined_vocabs[la.affiliation_name]['key']
-                    logger.debug('updating user %s, lab_affiliation: %s', su.username,new_value )
+                    logger.debug(
+                        'updating user %s, lab_affiliation: %s', 
+                        su.username,new_value )
                     su.lab_head_affiliation = new_value;
                     su.save()
                     count_updated += 1
@@ -269,25 +277,46 @@ def create_attached_file_type_vocab(apps):
         lims.settings.PROJECT_ROOT, '..',
         'db', 'static', 'api_init', 'vocabulary_attachedfiletype_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
-    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
+
+    replace_map = {
+        'ICCB-L/NSRB RNAi User Agreement': 'ICCB-L RNAi User Agreement',
+        '2009 ICCB-L/NSRB Small Molecule User Agreement': 
+            '2009 ICCB-L Small Molecule User Agreement',
+        '2010 ICCB-L/NSRB Small Molecule User Agreement': 
+            'ICCB-L Small Molecule User Agreement',
+        'ICCB-L/NSRB Application (user)': 'ICCB-L Application (user)'
+    }
+    
     with open(vocab_file, 'w') as _file:
         vocab_writer = csv.writer(_file)
-        header = ['resource_uri', 'key', 'scope', 'ordinal', 'title', 'is_retired'] 
+        header = ['key', 'scope', 'ordinal', 'title', 'is_retired'] 
         vocab_writer.writerow(header)
 
         _scope = 'attachedfiletype.%s'
+        _ordinal = 1
+        for_entity_type = None
         for i, obj in enumerate(apps.get_model('db', 'AttachedFileType')
-                .objects.all().order_by('value')):
-            key = obj.value.lower()
-            key = key.replace('nsrb','') # For Jen Smith
-            key = default_converter(obj.value)
+                .objects.all().order_by('for_entity_type','value')):
+            
+            if for_entity_type != obj.for_entity_type:
+                for_entity_type = obj.for_entity_type
+                _ordinal = 1
+            
+            value = obj.value
+            
+            if value in replace_map:
+                value = replace_map[value]
+            key = default_converter(value.lower())
             scope = _scope % obj.for_entity_type
-            title = obj.value
-            ordinal = i
+            title = value
+            ordinal = _ordinal
+            _ordinal += 1
             is_retired = key in [
+                'iccb_l_nsrb_application',
+                '2009_iccb_l_small_molecule_user_agreement',
                 'marcus_application','miare_document',
                 'nerce_screener_supplies_list']
-            row = [resource_uri % (scope, key), key, scope, ordinal, title, is_retired] 
+            row = [key, scope, ordinal, title, is_retired] 
             vocab_writer.writerow(row)
             logger.info('created: %r', row)
             
@@ -420,7 +449,7 @@ class Migration(migrations.Migration):
             from transfection_agent ta 
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
-         
+           
         migrations.RemoveField(
             model_name='screen',
             name='transfection_agent',
@@ -430,6 +459,6 @@ class Migration(migrations.Migration):
             old_name='transfection_agent_text', 
             new_name='transfection_agent'
         ),
-         
+           
         migrations.RunPython(update_facility_usage_roles),
     ]

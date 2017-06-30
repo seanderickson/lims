@@ -1,22 +1,22 @@
-resource_uri,key,scope,ordinal,title,is_retired
-/reports/api/v1/vocabulary/attachedfiletype.user/2009_iccb_l_nsrb_small_molecule_user_agreement/,2009_iccb_l_nsrb_small_molecule_user_agreement,attachedfiletype.user,0,2009 ICCB-L/NSRB Small Molecule User Agreement,False
-/reports/api/v1/vocabulary/attachedfiletype.user/2010_iccb_l_nsrb_small_molecule_user_agreement/,2010_iccb_l_nsrb_small_molecule_user_agreement,attachedfiletype.user,1,2010 ICCB-L/NSRB Small Molecule User Agreement,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/data_qc_report/,data_qc_report,attachedfiletype.screen,2,Data QC Report,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/iccb_l_application/,iccb_l_application,attachedfiletype.screen,3,ICCB-L Application,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/iccb_l_nsrb_application/,iccb_l_nsrb_application,attachedfiletype.screen,4,ICCB-L/NSRB Application,False
-/reports/api/v1/vocabulary/attachedfiletype.user/iccb_l_nsrb_application_user/,iccb_l_nsrb_application_user,attachedfiletype.user,5,ICCB-L/NSRB Application (user),False
-/reports/api/v1/vocabulary/attachedfiletype.user/iccb_l_nsrb_rnai_user_agreement/,iccb_l_nsrb_rnai_user_agreement,attachedfiletype.user,6,ICCB-L/NSRB RNAi User Agreement,False
-/reports/api/v1/vocabulary/attachedfiletype.user/iccb_l_training_checklist/,iccb_l_training_checklist,attachedfiletype.user,7,ICCB-L Training Checklist,False
-/reports/api/v1/vocabulary/attachedfiletype.user/letter_of_support_other/,letter_of_support_other,attachedfiletype.user,8,Letter of Support - Other,False
-/reports/api/v1/vocabulary/attachedfiletype.user/letter_of_support_rnai/,letter_of_support_rnai,attachedfiletype.user,9,Letter of Support - RNAi,False
-/reports/api/v1/vocabulary/attachedfiletype.user/letter_of_support_rnai_small_molecule/,letter_of_support_rnai_small_molecule,attachedfiletype.user,10,Letter of Support - RNAi & Small Molecule,False
-/reports/api/v1/vocabulary/attachedfiletype.user/letter_of_support_small_molecule/,letter_of_support_small_molecule,attachedfiletype.user,11,Letter of Support - Small Molecule,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/marcus_application/,marcus_application,attachedfiletype.screen,12,Marcus Application,True
-/reports/api/v1/vocabulary/attachedfiletype.screen/miare_document/,miare_document,attachedfiletype.screen,13,MIARE Document,True
-/reports/api/v1/vocabulary/attachedfiletype.screen/nerce_screener_supplies_list/,nerce_screener_supplies_list,attachedfiletype.screen,14,NERCE screener supplies list,True
-/reports/api/v1/vocabulary/attachedfiletype.user/other/,other,attachedfiletype.user,15,Other,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/primary_screen_report/,primary_screen_report,attachedfiletype.screen,16,Primary Screen Report,False
-/reports/api/v1/vocabulary/attachedfiletype.user/publication/,publication,attachedfiletype.user,17,Publication,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/publication/,publication,attachedfiletype.screen,18,Publication,False
-/reports/api/v1/vocabulary/attachedfiletype.screen/screener_correspondence/,screener_correspondence,attachedfiletype.screen,19,Screener Correspondence,False
-/reports/api/v1/vocabulary/attachedfiletype.user/user_correspondence/,user_correspondence,attachedfiletype.user,20,User Correspondence,False
+key,scope,ordinal,title,is_retired
+data_qc_report,attachedfiletype.screen,1,Data QC Report,False
+iccb_l_application,attachedfiletype.screen,2,ICCB-L Application,False
+iccb_l_nsrb_application,attachedfiletype.screen,3,ICCB-L/NSRB Application,True
+marcus_application,attachedfiletype.screen,4,Marcus Application,True
+miare_document,attachedfiletype.screen,5,MIARE Document,True
+nerce_screener_supplies_list,attachedfiletype.screen,6,NERCE screener supplies list,True
+primary_screen_report,attachedfiletype.screen,7,Primary Screen Report,False
+publication,attachedfiletype.screen,8,Publication,False
+screener_correspondence,attachedfiletype.screen,9,Screener Correspondence,False
+2009_iccb_l_small_molecule_user_agreement,attachedfiletype.user,1,2009 ICCB-L Small Molecule User Agreement,True
+iccb_l_small_molecule_user_agreement,attachedfiletype.user,2,ICCB-L Small Molecule User Agreement,False
+iccb_l_application_user,attachedfiletype.user,3,ICCB-L Application (user),False
+iccb_l_rnai_user_agreement,attachedfiletype.user,4,ICCB-L RNAi User Agreement,False
+iccb_l_training_checklist,attachedfiletype.user,5,ICCB-L Training Checklist,False
+letter_of_support_other,attachedfiletype.user,6,Letter of Support - Other,False
+letter_of_support_rnai,attachedfiletype.user,7,Letter of Support - RNAi,False
+letter_of_support_rnai_small_molecule,attachedfiletype.user,8,Letter of Support - RNAi & Small Molecule,False
+letter_of_support_small_molecule,attachedfiletype.user,9,Letter of Support - Small Molecule,False
+other,attachedfiletype.user,10,Other,False
+publication,attachedfiletype.user,11,Publication,False
+user_correspondence,attachedfiletype.user,12,User Correspondence,False

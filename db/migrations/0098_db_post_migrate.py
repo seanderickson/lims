@@ -25,8 +25,9 @@ class Migration(migrations.Migration):
             model_name='attachedfile',
             name='attached_file_type',
         ),
-        migrations.DeleteModel(
-            name='AttachedFileType'),
+# TODO: reinstate this 20170630
+#         migrations.DeleteModel(
+#             name='AttachedFileType'),
         
         migrations.RemoveField(
             model_name='screenfundingsupportlink',

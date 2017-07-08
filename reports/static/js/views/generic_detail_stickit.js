@@ -302,7 +302,6 @@ define([
           var output = [];
           _.each(modelValues, function(value){
             var text = _.result(vocabulary, value, value);
-            console.log('text: "'+text+'"');
             if(value && !_.isNull(value) && value != '-' ){
               var interpolatedVal = Iccbl.formatString(
                 _options.hrefTemplate,self.model, value);

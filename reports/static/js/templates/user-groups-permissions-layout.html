@@ -1,21 +1,21 @@
 <div id='detail_content' >
+  <form id='generic-form' class="form-horizontal" >
+      <div class="controls">
+          <% 
+          if (buttons) {
+            buttons.each(function(key) {
+          %>
+            <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ><%=key %></button>
+         <% 
+            }); 
+          }  
+          %>
+      </div>
+  </form>
   <div id='permission_content' class=''></div>
   <h4 id='groups_title'>User Groups</h4>
   <div class="row-fluid no-space">
       <div id="group_content" class='table-striped table-condensed table-hover' ></div>
   </div>
-<form id='generic-form' class="form-horizontal" >
-    <div class="controls">
-        <% 
-        if (buttons) {
-          buttons.each(function(key) {
-        %>
-          <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ><%=key %></button>
-       <% 
-          }); 
-        }  
-        %>
-    </div>
-</form>
 </div>
 <div id='edit_content' class='well'/>

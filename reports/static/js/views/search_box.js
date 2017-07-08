@@ -297,8 +297,8 @@ define([
         allow_single_deselect: true,
         search_contains: true
         });
-
-      appModel.on('change:userOptions', function(){
+      self.stopListening(appModel,'change:users');
+      self.listenTo(appModel,'change:users', function(){
         console.log('user options changed');
         appModel.getUserOptions(function(options){
           self.buildDynamicForms();
@@ -306,7 +306,8 @@ define([
         });
       });
       
-      appModel.on('change:screenOptions', function(){
+      self.stopListening(appModel,'change:screens');
+      self.listenTo(appModel,'change:screens', function(){
         console.log('screen options changed');
         appModel.getScreenOptions(function(options){
           self.buildDynamicForms();
@@ -314,7 +315,8 @@ define([
         });
       });
       
-      appModel.on('change:libraryOptions', function(){
+      self.stopListening(appModel,'change:libraries');
+      self.listenTo(appModel,'change:libraries', function(){
         console.log('library options changed');
         appModel.getLibraryOptions(function(options){
           self.buildDynamicForms();
@@ -323,16 +325,34 @@ define([
       });
     },
     
-    
     afterRender: function() {
       var self=this;
-      
       // Pre-fetch options for the search_box
       $(this).queue([
-         appModel.getScreenOptions,
-         appModel.getUserOptions,
-         appModel.getLibraryOptions,
-         self.buildDynamicForms]);
+        appModel.getScreenOptions,
+        appModel.getUserOptions,
+        appModel.getLibraryOptions,
+        self.buildDynamicForms
+       ]);
+      
+      // TODO: lazy load the forms
+      //var lchosen = this.form1.$el.find('[key="library_short_name"]').find('.chosen-container');
+      //lchosen.click(function(e){
+      //  var lchosenselect = self.form1.$el.find('[key="library_short_name"]').find('.chosen-select');
+      //  if (lchosenselect.find('option').length==0){
+      //    e.preventDefault();
+      //    appModel.getLibraryOptions(function(options){
+      //      _.each(options, function(new_vocab_item){
+      //        lchosenselect.append($('<option>',{
+      //          value: new_vocab_item['key']
+      //        }).text(new_vocab_item['title']));
+      //      });
+      //      self.form1.$el.find('[key="library_short_name"]').find('.chosen-select').trigger("chosen:updated");
+      //      
+      //    });
+      //    
+      //  }
+      //});
       
       ///// CopyPlate search 2 - perform search on server
       var form2 = this.form2;
@@ -613,14 +633,6 @@ define([
       this.form3.setValue('well', null);
       this.form4.setValue('cpr', null);
       this.form5.setValue('screening_inquiry', null)
-//      console.log('cleanup:', this.objects_to_destroy.length);
-//    
-//      this.off(); //this.unbind(); 
-//      _.each(this.objects_to_destroy, function(obj){
-//        obj.remove();
-//        obj.off();
-//      });
-//      this.objects_to_destroy = [];
     },
     
   });

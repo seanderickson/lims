@@ -455,6 +455,9 @@
         "rpp": 200
       }
     },
+    "labaffiliation": {
+      "detailView": "DetailView"
+    },
     "detail_test": {
       "header_message": "Detail Test View",
       "title": "Detail Test View",

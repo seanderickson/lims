@@ -6,11 +6,12 @@ define([
     'layoutmanager',
     'models/app_state',
     'views/user/user_group_permissions',
+    'views/generic_edit',
     'views/generic_detail_layout',
     'views/list2',
     'utils/tabbedController'
 ], function($, _, Backbone, Iccbl, layoutmanager, 
-            appModel, UserGroupPermissionView, DetailLayout, 
+            appModel, UserGroupPermissionView, EditView, DetailLayout, 
             ListView, TabbedController) {
 
   var UserView = TabbedController.extend({
@@ -55,12 +56,8 @@ define([
         uriStack: delegateStack
       });
       view.showEdit = function(){
+        var self = this;
         appModel.initializeAdminMode(function(){
-          
-          self.model.resource.fields['permissions']['choices'] = 
-            appModel.getPermissionsOptions();
-          self.model.resource.fields['usergroups']['choices'] = 
-            appModel.getUserGroupOptions();
           DetailLayout.prototype.showEdit.call(view,arguments);
         });
       };
@@ -79,8 +76,6 @@ define([
       var pUserModel = this.model.clone();
       pUserModel.key = this.model.key;
       var resource = appModel.getResource(this.model.resource.key);
-//      var resource = _.extend({},this.model.resource);
-//      resource = _.extend({}, this.model.resource );
       resource.fields = _.pick(
         this.model.resource.fields,
         ['username','first_name','last_name','usergroups','permissions']);
@@ -88,18 +83,40 @@ define([
       resource.fields['last_name']['visibility'] = [];
       resource.fields['usergroups']['visibility'] = [];
       resource.fields['usergroups']['editability'] = ['u'];
+      resource.fields['permissions']['visibility'] = ['d'];
       resource.fields['permissions']['editability'] = ['u'];
       resource.fields['first_name']['editability'] = [];
       resource.fields['last_name']['editability'] = [];
       pUserModel.resource = resource;
-      pUserModel.resource.fields['permissions']['choices'] = (
-          appModel.get('permissionOptions'));
       
-      var view = new DetailLayout({ 
+      var UsergroupEditView = EditView.extend({
+        save_success: function(data, textStatus, jqXHR){
+          appModel.unset('usergroups');
+          appModel.getUsers();
+          this.remove();
+          appModel.router.back();
+        },
+      });
+      
+      var UsergroupDetailLayout = DetailLayout.extend({
+        showEdit: function() {
+          var self = this;
+          appModel.initializeAdminMode(function(){
+            self.model.resource.fields['permissions']['choices'] = 
+              appModel.getPermissionsOptions();
+            self.model.resource.fields['usergroups']['choices'] = 
+              appModel.getUserGroupOptions();
+            UsergroupDetailLayout.__super__.showEdit.apply(self,arguments);
+          });
+        }
+      })
+      
+      var view = new UsergroupDetailLayout({ 
         model: pUserModel, 
         buttons: ['history'],
         uriStack: delegateStack,
-        DetailView: UserGroupPermissionView
+        DetailView: UserGroupPermissionView,
+        EditView: UsergroupEditView
       });
       
       Backbone.Layout.setupView(view);

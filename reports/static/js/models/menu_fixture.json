@@ -104,6 +104,9 @@
         "reagent":{
           "view": "list"
         },
+        "labaffiliation": {
+          "view": "list"
+        },
         "activity":{
           "view": "",
           "expanded": false,

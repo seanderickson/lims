@@ -140,11 +140,15 @@ define([
 
     initialize : function() {
       var self = this;
+      self.userProps = {};
       this.on('change:users', function(){
-        self.unset('adminUsers');
-        self.unset('principal_investigators');
-        self.unset('userOptions');
-        self.unset('adminUserOptions');
+        _.each(_.keys(self.userProps), function(prop){
+          self.unset(prop);
+        });
+        //self.unset('adminUsers');
+        //self.unset('principal_investigators');
+        //self.unset('userOptions');
+        //self.unset('adminUserOptions');
       });
       this.on('change:screens', function(){
         self.unset('screenOptions');
@@ -196,7 +200,7 @@ define([
      */
     initializeAdminMode: function(callback) {
       var self = this;
-      console.log('start app_state.js');
+      console.log('initializeAdminMode...', callback);
       // Pre-fetch options for the search_box
       $(this).queue([
          self.getAdminUserOptions,
@@ -243,6 +247,29 @@ define([
       if(obj) obj = JSON.parse(obj);
       console.log('getSearch', searchId, obj);
       return obj;
+    },
+    
+    getLabAffiliationOptions: function(callBack){
+      console.log('getLabAffiliationOptions...', callBack);
+      var self = this;
+      var prop = 'labAffiliationOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getLabAffiliations(function(affiliations){
+          options = [];
+          affiliations.each(function(affiliation){
+            var id = affiliation.get('lab_affiliation_id');
+            var name = affiliation.get('name');
+            var category = affiliation.get('category')
+            options.push({ val: id, label: category + ' - ' + name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+        else return options;
+      }
     },
 
     getLibraryOptions: function(callBack){
@@ -406,6 +433,7 @@ define([
             var name = user.get('name');
             options.push({ val: username, label: name + ': ' + username });
           }, resource);
+          self.userProps[prop] = new Date();
           self.set(prop,options);
           if (callBack) callBack(options);
         }, resource);
@@ -429,6 +457,7 @@ define([
             options.unshift({ val: username, label: name + ':' + username });
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
@@ -451,6 +480,7 @@ define([
             options.push({ val: username, label: lab_name });
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
@@ -473,6 +503,7 @@ define([
             options.push({ val: username, label: name });
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
@@ -482,8 +513,10 @@ define([
     },
     
     getUsersInGroup: function(usergroup, callBack) {
+      var prop = usergroup + '_users';
+      this.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        usergroup + '_users', 
+        prop, 
         this.dbApiUri + '/screensaveruser', 
         { 
           usergroups__eq: usergroup,
@@ -505,6 +538,7 @@ define([
             options.unshift({ val: name, label: name });
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
@@ -516,6 +550,17 @@ define([
 
     getPermissionsOptions: function(){
       return this.get('permissionOptions');
+    },
+    
+    getLabAffiliations: function(callback){
+      data_for_get = { 
+        exact_fields: [
+           'lab_affiliation_id','name', 'category'],
+        use_vocabularies: true,
+        order_by: ['category','name']
+      };
+      return this.getCachedResourceCollection(
+        'labAffiliations', this.dbApiUri + '/labaffiliation', data_for_get, callback );
     },
     
     getLibraries: function(callback){
@@ -590,11 +635,13 @@ define([
     },
     
     getPrincipalInvestigators: function(callback) {
+      var prop = 'principal_investigators';
+      this.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        'principal_investigators', 
+        prop, 
         this.dbApiUri + '/screensaveruser', 
         { 
-          lab_head_affiliation__is_blank: false,
+          lab_affiliation_id__is_blank: false,
           classification__eq: 'principal_investigator',
           exact_fields: ['username','lab_name','name','email'], 
           order_by: ['name']
@@ -632,9 +679,10 @@ define([
           callback(users);
         }
       };
-      
+      var prop = 'adminUsers';
+      self.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        'adminUsers', 
+        prop, 
         this.dbApiUri + '/screensaveruser', 
         { 
           is_staff__eq: true,
@@ -646,8 +694,10 @@ define([
     },
 
     getUserGroups: function(callback) {
+      var prop = 'usergroups';
+      this.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        'usergroups', 
+        prop, 
         this.reportsApiUri + '/usergroup', 
         { 
           order_by: ['name']
@@ -888,10 +938,8 @@ define([
     createNewModel: function(resourceId, defaults) {
 
       console.log('create new model for: ',resourceId, defaults );
-      
       var self = this;
       var resource = self.getResource(resourceId);
-      
       return this.newModelFromResource(resource,defaults);
     },
     

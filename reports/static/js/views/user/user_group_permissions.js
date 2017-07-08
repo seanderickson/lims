@@ -23,8 +23,7 @@ define([
       this.consumedStack = [];
       this.subviews = {};
 
-      // NOTE: edit of groups/permissions is handled on the main user page
-      var buttons = this.buttons = ['download','history','back'];
+      var buttons = this.buttons = ['edit','download','history','back'];
     },
 
     afterRender: function(){

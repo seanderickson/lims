@@ -985,19 +985,19 @@ class Migration(migrations.Migration):
                 'db_table': 'transfection_agent',
             },
         ),
-#         migrations.CreateModel(
-#             name='UserChecklistItem',
-#             fields=[
-#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-#                 ('item_group', models.TextField()),
-#                 ('item_name', models.TextField()),
-#                 ('status', models.TextField()),
-#                 ('status_date', models.DateField()),
-#             ],
-#             options={
-#                 'db_table': 'user_checklist_item',
-#             },
-#         ),
+        migrations.CreateModel(
+            name='UserChecklistItem',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('item_group', models.TextField()),
+                ('item_name', models.TextField()),
+                ('status', models.TextField()),
+                ('status_date', models.DateField()),
+            ],
+            options={
+                'db_table': 'user_checklist_item',
+            },
+        ),
         migrations.CreateModel(
             name='Well',
             fields=[

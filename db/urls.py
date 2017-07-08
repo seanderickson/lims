@@ -13,7 +13,8 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CopyWellResource, UserChecklistResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
-    UserAgreementResource, PublicationResource,PlateLocationResource
+    UserAgreementResource, PublicationResource,PlateLocationResource,\
+    LabAffiliationResource
 
 import db.api
 
@@ -43,6 +44,7 @@ v1_api.register(CopyWellResource())
 v1_api.register(LibraryScreeningResource())
 v1_api.register(UserAgreementResource())
 v1_api.register(PublicationResource())
+v1_api.register(LabAffiliationResource())
 v1_api.register(db.api.ResourceResource())
 
 urlpatterns = patterns('',

@@ -57,7 +57,8 @@ from db.models import ScreensaverUser, Screen, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
     ScreenKeyword, ResultValue, AssayWell, Publication, ScreenerCherryPick,\
-    LabCherryPick, CherryPickRequestEmptyWell, CherryPickScreening
+    LabCherryPick, CherryPickRequestEmptyWell, CherryPickScreening, \
+    LabAffiliation
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
@@ -560,82 +561,81 @@ class PlateLocationResource(DbApiResource):
 #         schema = kwargs['schema']
         id_kwargs = self.get_id(deserialized, validate=True, **kwargs)
 
-        with transaction.atomic():
-            create = False
-            try:
-                plate_location = PlateLocation.objects.get(**id_kwargs)
-            except ObjectDoesNotExist:
-                logger.info('plate location does not exist, creating: %r',
-                    id_kwargs)
-                create=True
-                plate_location = PlateLocation.objects.create(**id_kwargs)
+        create = False
+        try:
+            plate_location = PlateLocation.objects.get(**id_kwargs)
+        except ObjectDoesNotExist:
+            logger.info('plate location does not exist, creating: %r',
+                id_kwargs)
+            create=True
+            plate_location = PlateLocation.objects.create(**id_kwargs)
 
-            initializer_dict = self.parse(deserialized, create=create)
-            errors = self.validate(initializer_dict, patch=not create)
-            if errors:
-                raise ValidationError(errors)
-            
-            copy_plate_ranges = deserialized.get(
-                'copy_plate_ranges', [])
-            all_plates = self._find_plates(
-                schema['fields']['copy_plate_ranges']['regex'], copy_plate_ranges)
-            
-            # get the old plate locations, for logging
-            plate_log_hash = {}
-            lookup = ['room','freezer','shelf','bin']
-            # combine all_plates (new) with plate_set.all() (previous)
-            for plate in set(all_plates) | set(plate_location.plate_set.all()):
-                plate_dict = {
-                    'library_short_name': plate.copy.library.short_name,
-                    'copy_name': plate.copy.name,
-                    'plate_number': str(plate.plate_number)
+        initializer_dict = self.parse(deserialized, create=create)
+        errors = self.validate(initializer_dict, patch=not create)
+        if errors:
+            raise ValidationError(errors)
+        
+        copy_plate_ranges = deserialized.get(
+            'copy_plate_ranges', [])
+        all_plates = self._find_plates(
+            schema['fields']['copy_plate_ranges']['regex'], copy_plate_ranges)
+        
+        # get the old plate locations, for logging
+        plate_log_hash = {}
+        lookup = ['room','freezer','shelf','bin']
+        # combine all_plates (new) with plate_set.all() (previous)
+        for plate in set(all_plates) | set(plate_location.plate_set.all()):
+            plate_dict = {
+                'library_short_name': plate.copy.library.short_name,
+                'copy_name': plate.copy.name,
+                'plate_number': str(plate.plate_number)
 #                     'plate_number': str(plate.plate_number).zfill(5)
-                }
-                plate_log_hash[plate.plate_id] = [plate_dict, plate_dict.copy()]
-                
-                if plate.plate_location:
-                    plate_dict.update({
-                        k:getattr(plate.plate_location,k, None)
-                            for k in lookup })
+            }
+            plate_log_hash[plate.plate_id] = [plate_dict, plate_dict.copy()]
             
-            plate_location.plate_set = all_plates
-            plate_location.save()
-            
-            for plate in set(all_plates) | set(plate_location.plate_set.all()):
-                plate_dict = {
-                    'library_short_name': plate.copy.library.short_name,
-                    'copy_name': plate.copy.name,
-                    'plate_number': str(plate.plate_number)
+            if plate.plate_location:
+                plate_dict.update({
+                    k:getattr(plate.plate_location,k, None)
+                        for k in lookup })
+        
+        plate_location.plate_set = all_plates
+        plate_location.save()
+        
+        for plate in set(all_plates) | set(plate_location.plate_set.all()):
+            plate_dict = {
+                'library_short_name': plate.copy.library.short_name,
+                'copy_name': plate.copy.name,
+                'plate_number': str(plate.plate_number)
 #                     'plate_number': str(plate.plate_number).zfill(5)
-                }
-                if plate.plate_location:
-                    plate_dict.update({
-                        k:getattr(plate.plate_location,k, None)
-                            for k in lookup })
-                plate_log_hash[plate.plate_id] = \
-                    [plate_log_hash[plate.plate_id][0],plate_dict]
+            }
+            if plate.plate_location:
+                plate_dict.update({
+                    k:getattr(plate.plate_location,k, None)
+                        for k in lookup })
+            plate_log_hash[plate.plate_id] = \
+                [plate_log_hash[plate.plate_id][0],plate_dict]
 
-            logger.info(
-                'log copyplate patches for platelocation, '
-                'len: %d...', len(plate_log_hash.items()))
-            
-            plate_logs = []
-            lcp_id_attribute = \
-                self.get_librarycopyplate_resource().build_schema()['id_attribute']
-            for prev_dict,new_dict in plate_log_hash.values():
-                log = self.get_librarycopyplate_resource().log_patch( 
-                    request,prev_dict,new_dict,
-                    **{ 'parent_log': kwargs.get('parent_log', None),
-                        'full': True,
-                        'id_attribute': lcp_id_attribute } )
-                if log: 
-                    plate_logs.append(log)
-            logger.info('logs created, saving...')
+        logger.info(
+            'log copyplate patches for platelocation, '
+            'len: %d...', len(plate_log_hash.items()))
+        
+        plate_logs = []
+        lcp_id_attribute = \
+            self.get_librarycopyplate_resource().build_schema()['id_attribute']
+        for prev_dict,new_dict in plate_log_hash.values():
+            log = self.get_librarycopyplate_resource().log_patch( 
+                request,prev_dict,new_dict,
+                **{ 'parent_log': kwargs.get('parent_log', None),
+                    'full': True,
+                    'id_attribute': lcp_id_attribute } )
+            if log: 
+                plate_logs.append(log)
+        logger.info('logs created, saving...')
 #             ApiLog.objects.bulk_create(plate_logs)
-            ApiLog.bulk_create(plate_logs)
-            logger.info('logs saved %r', plate_logs)
-            
-            return { API_RESULT_OBJ: plate_logs }
+        ApiLog.bulk_create(plate_logs)
+        logger.info('logs saved %r', plate_logs)
+        
+        return { API_RESULT_OBJ: plate_logs }
             
     # FIXME: replace with LibraryCopyPlateResource.find_plates (21070505)
     def _find_plates(self, regex_string, copy_plate_ranges):
@@ -5702,7 +5702,7 @@ class CherryPickRequestResource(DbApiResource):
                 raise Http404(
                     'Cherry Pick Request does not exist for: %r', id_kwargs)
         
-        if not patch:
+        if patch is not True:
             _key = 'screen_facility_id'
             _val = deserialized.get(_key, None)
             if _val is None:
@@ -13584,9 +13584,6 @@ class ScreenResource(DbApiResource):
                 _screen.c.facility_id == facility_id)
         new_screen_result = new_screen_result.cte('screen_result')
             
-#         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-#         affiliation_table = affiliation_table.cte('la')
-
         lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
 
 
@@ -14705,11 +14702,214 @@ class ScreensaverUserAuthorization(UserGroupAuthorization):
         return authorized
 
 
+class LabAffiliationResource(DbApiResource):
+
+    class Meta:
+
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             IccblSessionAuthentication())
+        authorization = UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        resource_name = 'labaffiliation'
+        max_limit = 10000
+        always_return_data = True
+
+    def __init__(self, **kwargs):
+        
+        super(LabAffiliationResource, self).__init__(**kwargs)
+        self.su_resource = None
+        
+    def get_screensaver_resource(self):
+        if self.su_resource is None:
+            self.su_resource = ScreensaverUserResource()
+        return self.su_resource
+
+    def prepend_urls(self):
+        
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<lab_affiliation_id>([\d]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+
+    @read_authorization
+    def get_detail(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail'] = True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+    def build_list_response(self, request, **kwargs):
+
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        try:
+            
+            # general setup
+            
+            manual_field_includes = set(param_hash.get('includes', []))
+            exact_fields = set(param_hash.get('exact_fields', []))
+        
+            (filter_expression, filter_hash, readable_filter_hash) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(
+                    schema, param_hash=param_hash)
+            filename = self._get_filename(readable_filter_hash)
+                  
+            order_params = param_hash.get('order_by', [])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_hash.keys(), manual_field_includes,
+                param_hash.get('visibilities'),
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            rowproxy_generator = None
+            if use_vocab is True:
+                rowproxy_generator = \
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup
+            _la = self.bridge['lab_affiliation']
+            _lab_su = self.bridge['screensaver_user']
+            
+            _lab_head_cte = self.get_screensaver_resource().get_user_cte().cte('la_lab_heads')
+            
+            custom_columns = {
+                'lab_head_usernames': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_lab_head_cte.c.username),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(_lab_su.join(
+                        _lab_head_cte, 
+                        _lab_su.c.screensaver_user_id
+                            ==_lab_head_cte.c.screensaver_user_id))
+                    .where(_lab_su.c.lab_affiliation_id 
+                        == literal_column('lab_affiliation.lab_affiliation_id'))),
+                'lab_head_names': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_lab_head_cte.c.name),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(_lab_su.join(
+                        _lab_head_cte, 
+                        _lab_su.c.screensaver_user_id
+                            ==_lab_head_cte.c.screensaver_user_id))
+                    .where(_lab_su.c.lab_affiliation_id
+                        == literal_column('lab_affiliation.lab_affiliation_id'))),
+                }
+
+            # delegate to the user resource
+            base_query_tables = [
+                'lab_affiliation'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns)
+
+            # build the query statement
+            
+            j = _la
+            
+            stmt = select(columns.values()).select_from(j)
+            # natural ordering
+            stmt = stmt.order_by(_la.c.category, _la.c.name)
+            
+            # general setup
+             
+            (stmt, count_stmt) = self.wrap_statement(
+                stmt, order_clauses, filter_expression)
+            logger.info(
+                'stmt: %s',
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
+                    return field_hash[key]['title']
+            if is_data_interchange:
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename,
+                field_hash=field_hash,
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function, meta=kwargs.get('meta', None),
+                use_caching=True)
+             
+        except Exception, e:
+            logger.exception('on get_list')
+            raise e  
+        
+    @write_authorization
+    @transaction.atomic()
+    def patch_obj(self, request, deserialized, **kwargs):
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        fields = schema['fields']
+        logger.info('patch lab affiliation: %r, %r', deserialized, kwargs)
+        
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
+
+        patch = bool(id_kwargs)
+        initializer_dict = self.parse(deserialized, create=not patch)
+        errors = self.validate(initializer_dict, patch=patch)
+        if errors:
+            raise ValidationError(errors)
+
+        lab_affiliation = None
+        if patch is True:
+            try:
+                lab_affiliation = LabAffiliation.objects.get(**id_kwargs)
+            except ObjectDoesNotExist:
+                raise Http404(
+                    'Lab Affiliation does not exist for: %r', id_kwargs)
+        else:
+            lab_affiliation = LabAffiliation.objects.create(**id_kwargs)
+
+        for key, val in initializer_dict.items():
+            if hasattr(lab_affiliation, key):
+                setattr(lab_affiliation, key, val)
+        
+        lab_affiliation.save()
+        logger.info('LabAffiliation %r patch: %r', lab_affiliation, patch)
+        return { API_RESULT_OBJ: lab_affiliation }
+        
+
 class ScreensaverUserResource(DbApiResource):    
 
     class Meta:
 
-        queryset = ScreensaverUser.objects.all()
+        # queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
                                              IccblSessionAuthentication())
         authorization = UserGroupAuthorization()
@@ -14824,33 +15024,6 @@ class ScreensaverUserResource(DbApiResource):
         return schema
     
     @classmethod
-    def get_lab_affiliation_cte(cls):
-        
-        _vocab = get_tables()['reports_vocabulary']
-        affiliation_category_table = (
-            select([
-                _vocab.c.ordinal,
-                _vocab.c.key.label('category_key'),
-                _vocab.c.title.label('category'),
-                func.array_to_string(array(['labaffiliation.category',
-                    _vocab.c.key]), '.').label('scope')])
-            .select_from(_vocab)
-            .where(_vocab.c.scope == 'labaffiliation.category'))
-        affiliation_category_table = Alias(affiliation_category_table)
-        affiliation_table = (
-            select([
-                _vocab.c.ordinal,
-                affiliation_category_table.c.scope,
-                affiliation_category_table.c.category,
-                _vocab.c.key.label('affiliation_name'),
-                _vocab.c.title])
-            .select_from(
-                _vocab.join(affiliation_category_table,
-                    _vocab.c.scope == affiliation_category_table.c.scope))
-            ).order_by(affiliation_category_table.c.ordinal, _vocab.c.ordinal)
-        return affiliation_table
-    
-    @classmethod
     def get_user_cte(cls):
         
         bridge = get_tables()
@@ -14867,39 +15040,49 @@ class ScreensaverUserResource(DbApiResource):
                 _au.c.username,
                 _concat(_au.c.first_name, ' ', _au.c.last_name).label('name'),
                 _concat(_au.c.last_name, ', ', _au.c.first_name).label('last_first'),
-                _au.c.email
+                _au.c.email,
+                _su.c.lab_head_id
                 ])
             .select_from(j))
         return user_table
         
     @classmethod
     def get_lab_head_cte(cls, alias_qualifier=''):
-        
-        affiliation_table = \
-            ScreensaverUserResource.get_lab_affiliation_cte().cte('lab_affil_%s' %alias_qualifier)
-        _user = ScreensaverUserResource.get_user_cte().cte('lab_head_users_%s'%alias_qualifier)
         bridge = get_tables()
         _su = bridge['screensaver_user']
+        _user = ScreensaverUserResource.get_user_cte().cte('lab_head_users_%s'%alias_qualifier)
+        affiliation_table = bridge['lab_affiliation']
+        _vocab = bridge['reports_vocabulary']
+        la_categories = (
+            select([_vocab.c.key, _vocab.c.scope, _vocab.c.title ])
+                .select_from(_vocab)
+                .where(_vocab.c.scope=='labaffiliation.category')).cte('labaffiliation_category')
+        
         
         lab_head_table = (
             select([
                 _user.c.screensaver_user_id,
                 _user.c.name,
                 _user.c.username,
+                affiliation_table.c.name.label('lab_affiliation_name'),
+                affiliation_table.c.category.label('lab_affiliation_category'),
                 _concat(
-                    affiliation_table.c.title, ' (',
-                    affiliation_table.c.category, ')').label('lab_affiliation'),
+                    affiliation_table.c.name, ' (',
+                    la_categories.c.title, ')').label('lab_affiliation'),
                 func.array_to_string(
                     array([
                         _user.c.last_first,
-                        ' - ', affiliation_table.c.title,
-                        ' (', affiliation_table.c.category, ')']), '').label('lab_name_full'),
+                        ' - ', affiliation_table.c.name,
+                        ' (', la_categories.c.title, ')']), '').label('lab_name_full'),
                 ])
             .select_from(
                 _user.join(
                     _su, _user.c.screensaver_user_id==_su.c.screensaver_user_id)
                 .join(affiliation_table, 
-                    _su.c.lab_head_affiliation==affiliation_table.c.affiliation_name ))
+                    _su.c.lab_affiliation_id==affiliation_table.c.lab_affiliation_id,
+                    isouter=True )
+                .join(la_categories, affiliation_table.c.category==la_categories.c.key))
+            .where(_su.c.classification=='principal_investigator')
             )
         return lab_head_table
         
@@ -14983,6 +15166,7 @@ class ScreensaverUserResource(DbApiResource):
             _lhsu = _su.alias('lhsu')
 
             lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
+            lab_member = ScreensaverUserResource.get_user_cte().cte('users_labmember')
             
             custom_columns = {
                 'name': literal_column(
@@ -15014,6 +15198,36 @@ class ScreensaverUserResource(DbApiResource):
                         == _su.c.screensaver_user_id)),
                 'lab_name': lab_head_table.c.lab_name_full,
                 'lab_head_username': lab_head_table.c.username,
+                'lab_member_usernames': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(literal_column('username')),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([lab_member.c.username])
+                        .select_from(lab_member)
+                        .order_by(lab_member.c.username)
+                        .where(lab_member.c.lab_head_id
+                            ==literal_column('screensaver_user.screensaver_user_id'))
+                        .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
+                        .alias('inner'))        
+                    ),
+                'lab_member_names': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(literal_column('name')),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([lab_member.c.name])
+                        .select_from(lab_member)
+                        .order_by(lab_member.c.name)
+                        .where(lab_member.c.lab_head_id
+                            ==literal_column('screensaver_user.screensaver_user_id'))
+                        .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
+                        .alias('inner'))        
+                    ),
+                'lab_affiliation_name': lab_head_table.c.lab_affiliation_name,
+                'lab_affiliation_category': lab_head_table.c.lab_affiliation_category,
                 'facility_usage_roles': (
                     select([
                         func.array_to_string(
@@ -15181,7 +15395,7 @@ class ScreensaverUserResource(DbApiResource):
             logger.debug(
                 'fields.screensaveruser fields: %s', screensaveruser_fields.keys())
             initializer_dict = self.parse(
-                deserialized, create=not is_patch, fields=screensaveruser_fields.values())
+                deserialized, create=not is_patch, fields=screensaveruser_fields)
             if initializer_dict:
                 for key, val in initializer_dict.items():
                     if hasattr(screensaver_user, key):
@@ -15207,23 +15421,83 @@ class ScreensaverUserResource(DbApiResource):
             
             screensaver_user.save()
             
-            if initializer_dict.get('lab_head_username', None):
-                lh_username = initializer_dict['lab_head_username']
+            vocab_pi_classification = 'principal_investigator'
+            
+            if initializer_dict.get('classification', None):
+                classification = initializer_dict['classification']
+
+                if classification != vocab_pi_classification:
+                    if initializer_dict.get('lab_affiliation_id', None):
+                        raise ValidationError(
+                            key='classification',
+                            msg='must be %r to assign a lab_affiliation_id' 
+                                % vocab_pi_classification)
+                    else:
+                        screensaver_user.lab_affiliation = None
+                        screensaver_user.lab_members.remove()
+                else:
+                    if screensaver_user.lab_affiliation is None:
+                        # should already be set
+                        raise ValidationError(
+                            key='lab_affiliation_id',
+                            msg='Must be set if classification is %r'
+                                % vocab_pi_classification)
+                    
+                    screensaver_user.lab_head = screensaver_user
+                    
+            screensaver_user.save()
+            
+            _key = 'lab_head_username'            
+            if initializer_dict.get(_key, None):
+                lh_username = initializer_dict[_key]
                 if lh_username:
-                    try:
-                        lab_head = ScreensaverUser.objects.get(
-                            username=lh_username)
-                        screensaver_user.lab_head = lab_head
-                        screensaver_user.save()
-                    except ObjectDoesNotExist, e:
-                        logger.info(
-                            'Lab Head Screensaver User %s does not exist',
-                            lh_username)
-                        raise BadRequest(
-                            'lab_head_username not found %s' % lh_username)
+                    if screensaver_user.classification == vocab_pi_classification:
+                        if lh_username != screensaver_user.username:
+                            raise ValidationError(
+                                key=_key,
+                                msg='User classification is %r' % vocab_pi_classification)
+                        else:
+                            screensaver_user.lab_head = screensaver_user
+                    else:            
+                        try:
+                            lab_head = ScreensaverUser.objects.get(
+                                username=lh_username)
+                            if lab_head.classification != vocab_pi_classification:
+                                raise ValidationError(
+                                    'Chosen lab head "user.classification must be %r '
+                                    % vocab_pi_classification)
+                            screensaver_user.lab_head = lab_head
+                        except ObjectDoesNotExist, e:
+                            logger.info(
+                                'Lab Head Screensaver User %s does not exist',
+                                lh_username)
+                            raise ValidationError(
+                                key=_key,
+                                msg='lab_head_username not found %s' % lh_username)
                 else:
                     screensaver_user.lab_head = None
-                    screensaver_user.save();
+            screensaver_user.save()
+            
+            _key = 'lab_member_usernames'
+            if initializer_dict.get(_key, None) is not None:
+                lab_member_usernames = initializer_dict[_key]
+                lab_members = []
+                # may empty
+                if lab_member_usernames:
+                    if screensaver_user.classification != vocab_pi_classification:
+                        raise ValidationError(
+                            key='lab_member_usernames',
+                            msg='User classification must be %r' % vocab_pi_classification)
+                for lab_member_username in lab_member_usernames:
+                    try:
+                        lab_members.append(ScreensaverUser.objects.get(
+                            username=lab_member_username))
+                    except ObjectDoesNotExist:
+                        raise ValidationError(
+                            key=_key,
+                            msg='No such username: %r' % lab_member_username)
+                screensaver_user.lab_members = lab_members
+            screensaver_user.save()
                     
             if initializer_dict.get('facility_usage_roles', None):
                 current_roles = set([r.facility_usage_role 
@@ -15289,12 +15563,10 @@ class NaturalProductReagentResource(DbApiResource):
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
             is_patch = False
-            fields = schema['create_fields']
             if not well.reagents.exists():
                 reagent = NaturalProductReagent(well=well)
             else:
                 is_patch = True
-                fields = schema['update_fields']
                 # TODO: only works for a single reagent
                 # can search for the reagent using id_kwargs
                 # reagent = well.reagents.all().filter(**id_kwargs)
@@ -15302,6 +15574,12 @@ class NaturalProductReagentResource(DbApiResource):
                 reagent = well.reagents.all()[0]
                 reagent = reagent.naturalproductreagent
                 logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+
+            field_type = 'create_fields'
+            if is_patch == True:
+                field_type = 'update_fields'
+            fields = { key:field for key,field in schema['fields'].items()
+                if key in schema[field_type] }
                 
             initializer_dict = self.parse(well_data, fields=fields)
             errors = self.validate(initializer_dict, patch=is_patch, schema=schema)
@@ -15564,7 +15842,6 @@ class SilencingReagentResource(DbApiResource):
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
             is_patch = False
-            fields = schema['create_fields']
             if not well.reagents.exists():
                 reagent = SilencingReagent(well=well)
                 
@@ -15574,7 +15851,6 @@ class SilencingReagentResource(DbApiResource):
                     reagent.duplex_wells = well_data['duplex_wells']
             else:
                 is_patch = True
-                fields = schema['update_fields']
                 # TODO: only works for a single reagent
                 # can search for the reagent using id_kwargs
                 # reagent = well.reagents.all().filter(**id_kwargs)
@@ -15582,6 +15858,12 @@ class SilencingReagentResource(DbApiResource):
                 reagent = well.reagents.all()[0]
                 reagent = reagent.silencingreagent
                 logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+
+            field_type = 'create_fields'
+            if is_patch == True:
+                field_type = 'update_fields'
+            fields = { key:field for key,field in schema['fields'].items()
+                if key in schema[field_type] }
                 
             self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
 
@@ -15729,13 +16011,11 @@ class SmallMoleculeReagentResource(DbApiResource):
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
             is_patch = False
-            fields = schema['create_fields']
             if not well.reagents.exists():
                 reagent = SmallMoleculeReagent(well=well)
                 reagent.save()
             else:
                 is_patch = True
-                fields = schema['update_fields']
                 # TODO: only works for a single reagent
                 # can search for the reagent using id_kwargs
                 # reagent = well.reagents.all().filter(**id_kwargs)
@@ -15743,6 +16023,12 @@ class SmallMoleculeReagentResource(DbApiResource):
                 reagent = well.reagents.all()[0]
                 reagent = reagent.smallmoleculereagent
                 logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
+            
+            field_type = 'create_fields'
+            if is_patch == True:
+                field_type = 'update_fields'
+            fields = { key:field for key,field in schema['fields'].items()
+                if key in schema[field_type] }
                 
             self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
             
@@ -16634,7 +16920,8 @@ class WellResource(DbApiResource):
          
         logger.info('patch wells, count: %d', len(deserialized))
         # Note: wells can only be created on library creation
-        fields = schema['update_fields']
+        fields = { key:field for key,field in schema['fields'].items()
+            if key in schema['update_fields'] }
         for i,well_data in enumerate(deserialized):
             well_data['library_short_name'] = kwargs['library_short_name']
              
@@ -16661,7 +16948,7 @@ class WellResource(DbApiResource):
                 )
             well_data['well_id'] = well_id
             well_data['well'] = well
-
+            
             initializer_dict = self.parse(well_data, fields=fields)
             for key, val in initializer_dict.items():
                 if hasattr(well, key):

@@ -311,7 +311,9 @@ def cursor_generator(cursor, visible_fields, list_fields=[], value_templates=[])
                      
             if value and key in list_fields:
                 if isinstance(value, six.string_types):
-                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                    # NOTE: filter empty strings; func.array_to_string inserts 
+                    # a separator before every element, even if list has one value
+                    value = list(filter(None,value.split(LIST_DELIMITER_SQL_ARRAY)))
             if key in value_templates:
                 value_template = value_templates[key]
                 if DEBUG_STREAMING: 

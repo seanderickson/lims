@@ -984,11 +984,13 @@ class ScreensaverUser(models.Model):
 
     # screening_room_user fields
     classification = models.TextField(null=True)
-    lab_head = models.ForeignKey('ScreensaverUser', null=True, 
-        related_name='lab_member')
+    lab_head = models.ForeignKey(
+        'ScreensaverUser', null=True, related_name='lab_members')
     
     # If this field, if set, designates user as a "Lab Head"
-    lab_head_affiliation = models.TextField(null=True)
+#     lab_head_affiliation = models.TextField(null=True)
+    lab_affiliation = models.ForeignKey(
+        'LabAffiliation', null=True, related_name='lab_heads')
 
     class Meta:
         db_table = 'screensaver_user'
@@ -1001,7 +1003,15 @@ class ScreensaverUser(models.Model):
     def __str__(self):
         return self.__repr__()
 
-# TODO: remove, see migration 0004
+class LabAffiliation(models.Model):
+
+    name = models.TextField(unique=True)
+    category = models.TextField()
+    lab_affiliation_id = models.AutoField(primary_key=True)
+    class Meta:
+        db_table = 'lab_affiliation'
+
+# TODO: remove, see migrations 0004, 0007
 class ScreeningRoomUser(models.Model):
     
     screensaver_user = \
@@ -1036,8 +1046,8 @@ class AdministratorUser(models.Model):
     class Meta:
         db_table = 'administrator_user'
     
-       
-# TODO: Removed, see migration 0004
+
+# TODO: remove after all migrations completed; screensaver_user.lab_head_id replaces       
 class LabHead(models.Model):
     
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
@@ -1048,21 +1058,9 @@ class LabHead(models.Model):
 
     def __repr__(self):
         return (
-            '<LabHead(screensaver_user_id: %r, username: %r, '
-            'lab_affiliation: %r)>' 
-            % (self.screensaver_user.screensaver_user_id, 
-               self.screensaver_user.username, self.lab_affiliation.title ))
-
-# TODO: remove, see migration 0004 - labaffiliation is now a vocabulary
-# Deprecated
-class LabAffiliation(models.Model):
-
-    affiliation_name = models.TextField(unique=True)
-    title = models.TextField(null=True)
-    affiliation_category = models.TextField()
-    lab_affiliation_id = models.AutoField(primary_key=True)
-    class Meta:
-        db_table = 'lab_affiliation'
+            '<LabHead(lab_head_username: %r, '
+            'affiliation: %r)>' 
+            % (self.screensaver_user.username, self.lab_affiliation.name ))
 
 # New
 class UserFacilityUsageRole(models.Model):

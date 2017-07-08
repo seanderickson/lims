@@ -26,3 +26,4 @@ userchecklist,resource,user_checklist,[username;name],[username;':';name],/repor
 attachedfile,resource,attached_file,[attached_file_id],[filename],/reports/api/v1/resource/attachedfile/,0,,"An Attached File","Attached File",[l;d],,,db,,,[xls],
 useragreement,resource,attached_file,[attached_file_id],[filename],/reports/api/v1/resource/useragreement/,0,,"A user agreement document and data","User Agreement",[l;d],,,db,,attachedfile,[xls],
 publication,resource,publication,[publication_id],[title],/reports/api/v1/resource/publication/,0,,"A publication",Publication,[l;d],,,db,,,[xls],
+labaffiliation,resource,lab_affiliation,[lab_affiliation_id],"[name;' (';category;')']",/reports/api/v1/resource/labaffiliation/,0,,"Lab Affiliation","Lab Affiliation",[l;d;e],,,db,,,[xls],

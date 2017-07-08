@@ -1,0 +1,6 @@
+key,scope,table,field,ordinal,comment,data_type,filtering,description,title,ordering,vocabulary_scope_ref,visibility,editability,edit_type,display_type,display_options
+lab_affiliation_id,fields.labaffiliation,,,0,,integer,TRUE,"Lab Affiliation ID","Lab Affiliation ID",TRUE,,[l;d],,,,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}' }"
+name,fields.labaffiliation,,,1,,string,TRUE,"Lab Affilation Name",Name,TRUE,,[l;d],[c;u],,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}' }"
+category,fields.labaffiliation,,,2,,string,TRUE,"Lab Affiliation Category",Category,TRUE,labaffiliation.category,[l;d],[c;u],select,link,"{ 'hrefTemplate': '#labaffiliation/search/category={category}' }"
+lab_head_usernames,fields.labaffiliation,custom,,3,,list,TRUE,"Lab Head Usernames","Lab Heads",TRUE,,[l;d],[c;u],multiselect3,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }"
+lab_head_names,fields.labaffiliation,custom,,4,,list,TRUE,"Lab Head Names","Lab Head Names",TRUE,,,,,,

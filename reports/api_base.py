@@ -574,7 +574,7 @@ class IccblSessionAuthentication(Authentication):
             csrf_token = _sanitize_token(
                     request.COOKIES[settings.CSRF_COOKIE_NAME])
         except KeyError:
-            logger.error('reject: NO CSRF cookie')
+            logger.error('reject: NO CSRF cookie: %r', settings.CSRF_COOKIE_NAME)
             return False
 
         if request.method in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):

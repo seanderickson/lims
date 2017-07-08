@@ -98,8 +98,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(
                 related_name='lab_member', to='db.ScreensaverUser', null=True),
         ),
-
-        
+       
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='volume_approved_by',
@@ -112,13 +111,6 @@ class Migration(migrations.Migration):
             name='requested_by',
             field=models.ForeignKey(
                 related_name='requested_cherry_pick', to='db.ScreensaverUser'),
-        ),
-        migrations.AlterField(
-            model_name='screensaveruser',
-            name='lab_head',
-            field=models.ForeignKey(
-                related_name='lab_member', blank=True, to='db.ScreensaverUser', 
-                null=True),
         ),
         migrations.RemoveField(
             model_name='well',

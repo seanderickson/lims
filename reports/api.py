@@ -473,18 +473,17 @@ class ApiResource(SqlAlchemyResource):
             if schema is None:
                 schema = self.build_schema()
             fields = schema['fields']
-            mutable_fields = []
-            for field in fields.values():
+            mutable_fields = {}
+            for key,field in fields.items():
                 editability = field.get('editability', None)
                 if editability and (
                     'u' in editability or (create and 'c' in editability )):
-                    mutable_fields.append(field)
+                    mutable_fields[key] = field
         if DEBUG_PARSE:
             logger.info('r: %r, mutable fields: %r', self._meta.resource_name, 
-            [field['key'] for field in mutable_fields])
+            mutable_fields.keys() )
         initializer_dict = {}
-        for field in mutable_fields:
-            key = field['key']
+        for key,field in mutable_fields.items():
             _val = None
             if key in deserialized:
                 _val = parse_val(
@@ -2618,18 +2617,18 @@ class ResourceResource(ApiResource):
                             'supertype: %r, not found in resources: %r', 
                             supertype, resources.keys())
                 
-                update_fields = []
-                create_fields = []
-                for field in resource['fields'].values():
+                update_fields = set()
+                create_fields = set()
+                for key,field in resource['fields'].items():
                     editability = field.get('editability', None)
                     if editability:
                         if 'u' in editability:
-                            update_fields.append(field)
-                            create_fields.append(field)
+                            update_fields.add(key)
+                            create_fields.add(key)
                         if 'c' in editability:
-                            create_fields.append(field)
-                resource['update_fields'] = update_fields
-                resource['create_fields'] = create_fields
+                            create_fields.add(key)
+                resource['update_fields'] = list(update_fields)
+                resource['create_fields'] = list(create_fields)
                 
                 resource.get('content_types',[]).append('csv')
                 

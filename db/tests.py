@@ -42,7 +42,7 @@ from db.api import VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
-    PlateLocation, LibraryScreening
+    PlateLocation, LibraryScreening, LabAffiliation
 import db.models
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.test.factories import LibraryFactory, ScreenFactory, \
@@ -248,7 +248,8 @@ class DBResourceTestCase(IResourceTestCase):
         
         user_patch_data = {
             'username': lab_head['username'],
-            'lab_head_affiliation': lab_affiliation['key']
+            'classification': 'principal_investigator',
+            'lab_affiliation_id': lab_affiliation['lab_affiliation_id']
             }
         
         resource_uri = BASE_URI_DB + '/screensaveruser/'
@@ -261,21 +262,20 @@ class DBResourceTestCase(IResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        new_obj = _data[API_RESULT_DATA]
-        logger.info('the new lab affiliation has been set: %r', new_obj)
+        new_lab_head = _data[API_RESULT_DATA]
+        logger.info('the new lab affiliation has been set: %r', new_lab_head)
         
         self.assertEqual(
-            user_patch_data['lab_head_affiliation'], 
-            new_obj['lab_head_affiliation'])
+            lab_affiliation['name'], 
+            new_lab_head['lab_affiliation_name'])
         
-        return new_obj
+        return new_lab_head
     
-    def create_lab_affiliation(self, data=None ):
-        
+    def create_lab_affiliation(self, data=None):
         attributes = LabAffiliationFactory.attributes()
         if data is not None:
             attributes.update(data)
-        
+            
         resource_uri = BASE_REPORTS_URI + '/vocabulary/'        
         # create a lab_affiliation category (vocabulary)
         lab_affiliation_category = {
@@ -301,17 +301,12 @@ class DBResourceTestCase(IResourceTestCase):
             self.assertEqual(
                 lab_affiliation_category[key],new_affiliation_category[key])
         
-        # create a lab_affiliation (vocabulary)
-        
+        # create a lab_affiliation
+        resource_uri = BASE_URI_DB + '/labaffiliation/'        
         lab_affiliation = {
-            'scope': 'labaffiliation.category.%s' 
-                % lab_affiliation_category['key'],
-            'key': attributes['key'],
-            'ordinal': attributes['ordinal'],
-            'description': attributes['description'],
-            'title': attributes['title']
+            'category': lab_affiliation_category['key'],
+            'name': attributes['name'],
         }
-        
         resp = self.api_client.post(
             resource_uri, 
             format='json', 
@@ -323,10 +318,15 @@ class DBResourceTestCase(IResourceTestCase):
         _data = self.deserialize(resp)
         new_lab_affiliation =_data[API_RESULT_DATA]
         logger.info('created lab: %r', new_lab_affiliation)
+        
+        self.assertTrue('lab_affiliation_id' in new_lab_affiliation, 
+            'no id created for lab_affiliation: %r' % new_lab_affiliation)
+        
         for key,val in lab_affiliation.items():
             self.assertEqual(lab_affiliation[key],new_lab_affiliation[key])
 
         return new_lab_affiliation
+    
 
 def setUpModule():
 
@@ -391,6 +391,7 @@ def tearDownModule():
 
     logger.info('=== teardown Module')
     Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
+    LabAffiliation.objects.all().delete()
 
     # remove the admin user
     # ScreensaverUser.objects.all().delete() 
@@ -7228,8 +7229,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
 
-        
-
     
     def test02_change_username(self):
         
@@ -7238,21 +7237,184 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         pass;
         
+    def test03_update_lab_affiliation_name(self): 
+
+        lab_affiliation = self.create_lab_affiliation()
         
+        lab_affiliation['name'] = 'Test new Lab Affiliation Name'
+        resource_uri = BASE_URI_DB + '/labaffiliation/'        
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=lab_affiliation, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        new_lab_affiliation =_data[API_RESULT_DATA]
+        logger.info('created lab: %r', new_lab_affiliation)
+        
+        for key,val in lab_affiliation.items():
+            self.assertEqual(lab_affiliation[key],new_lab_affiliation[key])
         
     def test01_create_lab_head(self):
 
-        # 20161205 - Lab Affiliation has been implemented as a vocabulary:
-        # TODO: review requirements and possibly convert to a managed entity
-        
         logger.info('test01_create_lab_head...')
         
+        logger.info('1. Create the lab head...')
         lab_head = self.create_lab_head()
-        
         self.assertTrue(
-            'lab_head_affiliation' in lab_head, 
-            'Lab head does not contain "lab_head_affiliation": %r' % lab_head)
-                
+            'lab_affiliation_id' in lab_head, 
+            'Lab head does not contain "lab_affiliation_id": %r' % lab_head)
+        self.assertTrue(
+            'lab_head_username' in lab_head, 
+            'Lab head does not contain "lab_head_username": %r' % lab_head)
+        self.assertEqual(lab_head['username'], lab_head['lab_head_username'])
+        self.assertEqual(lab_head['classification'], 'principal_investigator')
+        
+        logger.info('2. Assign a user to the Lab Head...')
+        
+        user = self.create_screensaveruser({ 'username': 'st1'})
+        user_data = {
+            'username': user['username'],
+            'lab_head_username': lab_head['username']
+            }
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user_data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        updated_user = _data[API_RESULT_DATA]
+
+        logger.info('User: %r (with lab head set)', updated_user)
+        
+        self.assertEqual(
+            updated_user['lab_head_username'], lab_head['username'])
+        self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_name'], 
+            lab_head['lab_affiliation_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+        
+        logger.info('3. Change the Lab Head classification to "unassigned"...') 
+        # - removes the lab members
+        
+        lab_head_update = {
+            'username': lab_head['username'],
+            'classification': 'unassigned'
+        }
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=lab_head_update, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        updated_lab_head = _data[API_RESULT_DATA]
+
+        logger.info(
+            'updated user; no longer lab_head: %r (classification unset)', 
+            updated_lab_head)
+        
+        self.assertEqual(
+            updated_lab_head['lab_affiliation_id'],None, 
+            'updated_lab_head should not contain "lab_affiliation_id": %r' 
+                % updated_lab_head)
+        self.assertEqual(
+            updated_lab_head['lab_head_username'],None, 
+            'updated_lab_head should not contain "lab_head_username": %r' 
+                % updated_lab_head)
+        self.assertEqual(updated_lab_head['lab_name'], None)
+        self.assertEqual(
+            updated_lab_head['lab_affiliation_name'], None)
+        self.assertEqual(
+            updated_lab_head['lab_affiliation_category'], None)
+        self.assertEqual(updated_lab_head['classification'], 'unassigned')
+        
+        logger.info('3.A check that the user no longer has the lab head...')
+        
+        updated_user = self.get_single_resource(
+            resource_uri, {'username': user['username']})
+        
+        self.assertEqual(updated_user['lab_head_username'], None)
+        self.assertEqual(updated_user['lab_name'], None)
+        self.assertEqual(
+            updated_user['lab_affiliation_name'], None)
+        self.assertEqual(
+            updated_user['lab_affiliation_category'], None)
+        
+        logger.info('4. Update the lab members directly on the lab head...')
+        
+        logger.info('4a. reset the user to a lab_head...')
+        lab_head_update2 = {
+            'username': lab_head['username'],
+            'classification': 'principal_investigator',
+            'lab_affiliation_id': lab_head['lab_affiliation_id']
+        }
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=lab_head_update2, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        updated_lab_head2 = _data[API_RESULT_DATA]
+        logger.info(
+            'updated_lab_head: %r (classification reset to pi)', 
+            updated_lab_head2)
+        self.assertEqual(
+            updated_lab_head2['classification'], 'principal_investigator')
+        
+        logger.info('4.b set lab member...')
+        
+        lab_head_update3 = {
+            'username': lab_head['username'],
+            'lab_member_usernames': [user['username'],]
+        }
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=lab_head_update3, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        updated_lab_head3 = _data[API_RESULT_DATA]
+        logger.info('updated_lab_head3: %r (add member)', updated_lab_head3)
+        self.assertEqual(
+            updated_lab_head3['lab_member_usernames'], 
+            lab_head_update3['lab_member_usernames'])
+        
+        user_after_update3 = self.get_single_resource(
+            resource_uri, {'username': user['username']})
+        
+        updated_user3 = _data[API_RESULT_DATA]
+        logger.info('User: %r (lab head set)', updated_user3)
+        
+        self.assertEqual(
+            updated_user3['lab_head_username'], lab_head['username'])
+        self.assertEqual(updated_user3['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            updated_user3['lab_affiliation_name'], 
+            lab_head['lab_affiliation_name'])
+        self.assertEqual(
+            updated_user3['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+        
+        
     def test1_patch_usergroups(self):
         
         logger.info('test1_patch_usergroups...')
@@ -8050,12 +8212,5 @@ class ScreensaverUserResource(DBResourceTestCase):
             apilog['uri'], 
             'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
                 .format(**new_obj))
-
-    def test_7_lab_head_members(self):
-        
-        # TODO: 20170605
-        
-        pass
-
 
         

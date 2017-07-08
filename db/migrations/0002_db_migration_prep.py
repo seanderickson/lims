@@ -372,45 +372,43 @@ class Migration(migrations.Migration):
             ' set classification=user_classification '
             ' from  screening_room_user sru '
             ' where sru.screensaver_user_id=su.screensaver_user_id'),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head',
-            field=models.ForeignKey(
-                related_name='lab_member', to='db.ScreensaverUser', null=True),
-        ),
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_id=sru.lab_head_id '
-            ' from  screening_room_user sru '
-            ' where sru.screensaver_user_id=su.screensaver_user_id'),
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_id=lh.screensaver_user_id '
-            ' from  lab_head lh '
-            ' where lh.screensaver_user_id=su.screensaver_user_id'),
 
-        # migrations.AddField(
-        #     model_name='screensaveruser',
-        #     name='lab_head_affiliation_link', 
-        #     field=models.ForeignKey('LabAffiliation',null=True)),
-        # migrations.RunSQL(
-        #     'UPDATE screensaver_user su '
-        #     ' set lab_head_affiliation_link_id=lh.lab_affiliation_id '
-        #     ' from lab_head lh '
-        #     ' where su.screensaver_user_id=lh.screensaver_user_id'),
-         
         migrations.RunPython(alter_table_references),
         migrations.RunPython(add_timezone_to_timestamp_fields),
         
-        # move the lab_head->screening_room_user explicitly, because there are dependent fk's
-        migrations.RunSQL(
-            'ALTER TABLE lab_head '
-            'DROP CONSTRAINT fk_lab_head_to_screening_room_user'),
-        migrations.RunSQL(
-            'ALTER TABLE lab_head '
-            'ADD CONSTRAINT fk_lab_head_to_screensaver_user '
-            'FOREIGN KEY (screensaver_user_id) '
-            'REFERENCES screensaver_user(screensaver_user_id)'),
+# Moved to 0007        
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='lab_head',
+#             field=models.ForeignKey(
+#                 related_name='lab_member', to='db.ScreensaverUser', null=True),
+#         ),
+#         migrations.RunSQL(
+#             'UPDATE screensaver_user su '
+#             ' set lab_head_id=sru.lab_head_id '
+#             ' from  screening_room_user sru '
+#             ' where sru.screensaver_user_id=su.screensaver_user_id'),
+#         migrations.RunSQL(
+#             'UPDATE screensaver_user su '
+#             ' set lab_head_id=lh.screensaver_user_id '
+#             ' from  lab_head lh '
+#             ' where lh.screensaver_user_id=su.screensaver_user_id'),
+#         # move the lab_head->screening_room_user explicitly, because there are dependent fk's
+#         migrations.RunSQL(
+#             'ALTER TABLE lab_head '
+#             'DROP CONSTRAINT fk_lab_head_to_screening_room_user'),
+#         migrations.RunSQL(
+#             'ALTER TABLE screening_room_user '
+#             'DROP CONSTRAINT fk_screening_room_user_to_lab_head'),
+#         migrations.RunSQL(
+#             'ALTER TABLE lab_head '
+#             'ADD CONSTRAINT fk_lab_head_to_screensaver_user '
+#             'FOREIGN KEY (screensaver_user_id) '
+#             'REFERENCES screensaver_user(screensaver_user_id)'),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='lab_head_affiliation', 
+#             field=models.TextField(null=True)),
 
         migrations.RunPython(alter_table_parents),
         migrations.RunSQL(("ALTER TABLE {table} DROP COLUMN {column} ").format(
@@ -573,7 +571,7 @@ class Migration(migrations.Migration):
                 ('date_effective', models.DateField()),
                 ('date_notified', models.DateField(null=True)),
                 ('admin_user', models.ForeignKey(
-                    related_name='userchecklist_entered', 
+                    related_name='userchecklistitems_created', 
                     to='db.ScreensaverUser')),
                 ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
             ],
@@ -668,10 +666,6 @@ class Migration(migrations.Migration):
             name='userfacilityusagerole',
             unique_together=set([('screensaver_user', 'facility_usage_role')]),
         ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head_affiliation', 
-            field=models.TextField(null=True)),
         migrations.RunSQL('alter table reagent alter column library_contents_version_id drop not null'),
 
         #  Update assay_well with the plate_number to expedite plate data loading stats 
@@ -696,11 +690,11 @@ class Migration(migrations.Migration):
             name='email',
             field=models.TextField(null=True),
         ),
-        migrations.AddField(
-            model_name='labaffiliation',
-            name='title',
-            field=models.TextField(null=True),
-        ),
+#         migrations.AddField(
+#             model_name='labaffiliation',
+#             name='title',
+#             field=models.TextField(null=True),
+#         ),
         migrations.AlterField(
             model_name='screenresult',
             name='experimental_well_count',

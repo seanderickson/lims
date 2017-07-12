@@ -402,6 +402,10 @@ function bootstrap {
     kill $server_pid
     error "bootstrap db failed: $?"
   fi
+
+  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
+    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/labaffiliation \
+    --data-binary @db/static/api_init/labaffiliation_updates.csv >>"$LOGFILE" 2>&1
   
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
   echo "kill $final_server_pid"
@@ -791,7 +795,7 @@ function main {
   # wget https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental
 
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    PYTHONPATH=. reports/utils/django_requests.py -u sde  \
+    PYTHONPATH=. python reports/utils/django_requests.py -u sde  \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
   fi
 

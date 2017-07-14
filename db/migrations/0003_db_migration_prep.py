@@ -60,8 +60,8 @@ def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
         title = attr_value
         vocabs.append([key, scope, ordinal, title])
     for row in vocabs:
-        title = row[4]
-        key = row[1]
+        title = row[3]
+        key = row[0]
         # NOTE: do not run update; this is the second run of the service activity
         #         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
         vocab_writer.writerow(row)

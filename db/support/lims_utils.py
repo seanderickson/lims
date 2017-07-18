@@ -161,7 +161,7 @@ def plate_size_from_plate_type(plate_type):
     if len(parts) != 2:
         raise ValidationError(
             key='plate_type', 
-            msg='not a recognized type: %r' % assay_plate_type)
+            msg='not a recognized type: %r' % plate_type)
     plate_size = int(parts[1])
     if plate_size not in ALLOWED_PLATE_SIZES:
         raise ValidationError(

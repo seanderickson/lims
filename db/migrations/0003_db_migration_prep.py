@@ -352,6 +352,32 @@ class Migration(migrations.Migration):
             old_name='transfection_agent_text', 
             new_name='transfection_agent'
         ),
+        
+        # Lab affiliation migration prep: data migration in 0007
+        migrations.RenameField(
+            model_name='labaffiliation',
+            old_name='affiliation_category',
+            new_name='category',
+        ),
+        migrations.RenameField(
+            model_name='labaffiliation',
+            old_name='affiliation_name',
+            new_name='name',
+        ),
+
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head',
+            field=models.ForeignKey(
+                related_name='lab_members', to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_affiliation',
+            field=models.ForeignKey(related_name='lab_heads', 
+                to='db.LabAffiliation', null=True),
+        ),
+           
            
         migrations.RunPython(update_facility_usage_roles),
     ]

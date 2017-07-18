@@ -120,39 +120,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        
-# #         migrations.RenameModel('labhead','lab'),
-#         migrations.RenameField(
-#             model_name='labhead',
-#             old_name='screensaver_user',
-#             new_name='lab_head'),
-#         migrations.RenameField(
-#             model_name='labhead',
-#             old_name='lab_affiliation',
-#             new_name='affiliation'),
-#         migrations.AlterField(
-#             model_name='labhead',
-#             name='lab_head',
-#             field=models.OneToOneField(
-#                 primary_key=True, serialize=False, to='db.ScreensaverUser'),
-#         ),
-        migrations.RenameField(
-            model_name='labaffiliation',
-            old_name='affiliation_category',
-            new_name='category',
-        ),
-        migrations.RenameField(
-            model_name='labaffiliation',
-            old_name='affiliation_name',
-            new_name='name',
-        ),
 
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head',
-            field=models.ForeignKey(
-                related_name='lab_members', to='db.ScreensaverUser', null=True),
-        ),
+        # NOTE: see 0003 for schema field migrations for lab head
+        # - because of transactions, schema migration must be elsewhere        
         migrations.RunSQL(
             'UPDATE screensaver_user su '
             ' set lab_head_id=sru.lab_head_id '
@@ -163,18 +133,13 @@ class Migration(migrations.Migration):
             ' set lab_head_id=lh.screensaver_user_id '
             ' from  lab_head lh '
             ' where lh.screensaver_user_id=su.screensaver_user_id'),
-        
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_affiliation',
-            field=models.ForeignKey(related_name='lab_heads', to='db.LabAffiliation', null=True),
-        ),
+         
         migrations.RunSQL(
             'UPDATE screensaver_user su '
             ' set lab_affiliation_id=lh.lab_affiliation_id '
             ' from  lab_head lh '
             ' where lh.screensaver_user_id=su.screensaver_user_id'),
-        
+         
         # TODO: drop the LabHead and ScreeningRoomUser models - 20170705
         migrations.RunSQL(
             'ALTER TABLE lab_head '

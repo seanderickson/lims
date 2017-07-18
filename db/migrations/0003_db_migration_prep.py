@@ -122,11 +122,12 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'Library').objects.all()],
                 ['solvent', 'library.solvent',
                     apps.get_model('db', 'Library').objects.all()],
+                # NOTE: library.screen_type is the same as screen.type
                 ['screen_type', 'library.screen_type',
                     apps.get_model('db', 'Library').objects.all(),False],
 
                 ['affiliation_category', 'labaffiliation.category',
-                    apps.get_model('db', 'LabAffiliation').objects.all(),False],
+                    apps.get_model('db', 'LabAffiliation').objects.all()],
 
                 # NOTE: plate.type vocabulary is being handled in the manual migration
                 # ['plate_type', 'plate.type', 

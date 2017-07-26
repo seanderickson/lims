@@ -14,7 +14,11 @@ except ImportError:
 # NOTE: the parent settings file defines the PROJECT_ROOT
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
     
-DEBUG = True
+# NOTE THAT DEBUG SHOULD NEVER BE True FOR A PUBLIC FACING INSTALLATION
+# - If debugging is required on the Orchestra server, first disable non-HMS
+# access through the docroot/.htaccess file.
+# (LEAKS environment variables, i.e. database password)
+DEBUG = False
 TEMPLATE_DEBUG = DEBUG
 
 ADMINS = (
@@ -50,7 +54,11 @@ if 'SCREENSAVER_PGSQL_SERVER' in environ:
 
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = []
+# NOTE that 'dev.screensaver2.med.harvard.edu' is an alias for
+# 'dev.orchestraweb.med.harvard.edu'
+ALLOWED_HOSTS = [
+    'dev.orchestraweb.med.harvard.edu', 
+    'dev.screensaver2.med.harvard.edu']
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name

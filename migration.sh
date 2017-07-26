@@ -750,12 +750,15 @@ function main {
   
   pip install -r requirements.txt >>"$LOGFILE" 2>&1
 
-  if [[ -n "$SETTINGS_FILE" ]]; then
-    cp $SETTINGS_FILE lims/settings.py
-  else
-    echo "no SETTINGS_FILE migration.properties setting"
-    # cp lims/settings-dist.py lims/settings.py
-  fi
+# NOTE: 20170726 - removed from the migration;
+# - a data exposure ocurred due to the settings "DEBUG" flag being reset by 
+# this action. The settings file should be manually updated in the future.
+#  if [[ -n "$SETTINGS_FILE" ]]; then
+#    cp $SETTINGS_FILE lims/settings.py
+#  else
+#    echo "no SETTINGS_FILE migration.properties setting"
+#    # cp lims/settings-dist.py lims/settings.py
+#  fi
   
   mkdir logs
   

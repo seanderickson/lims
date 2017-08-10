@@ -20,8 +20,8 @@ require('bootstrap-chosen/bootstrap-chosen.css');
 //require('tree-multiselect/dist/jquery.tree-multiselect.min.css');
 //require('css/jquery.tree-multiselect.overrides.css')
 //require('css/bootstrap_treeview.overrides.css')
-require('jquery-bonsai/jquery.bonsai.css')
-require('css/jquery.bonsai.overrides.css')
+require('jquery-bonsai/jquery.bonsai.css');
+require('css/jquery.bonsai.overrides.css');
 require('css/hmsiccbl.css');
 
 require([ // now load application code

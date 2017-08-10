@@ -90,7 +90,7 @@ def convert_studies(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0007_lab_affiliation'),
+        ('db', '0008_data_sharing'),
     ]
 
     operations = [

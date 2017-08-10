@@ -170,6 +170,7 @@ def write_xls_image(worksheet, filerow, col, val, request):
 
 def read_string(cell):
     value = cell.value
+    logger.debug('read string: %r: %r', cell, value)
     if value is None:
         return None
     elif cell.ctype == xlrd.XL_CELL_NUMBER:
@@ -186,6 +187,9 @@ def read_string(cell):
 def sheet_rows(workbook_sheet):
     def read_row(row):
         for col in range(workbook_sheet.ncols):
+            logger.debug(
+                'read cell: %r:%r, %r', row, col, 
+                read_string(workbook_sheet.cell(row,col)))
             yield read_string(workbook_sheet.cell(row,col))
     for row in range(workbook_sheet.nrows):
         yield read_row(row)
@@ -200,6 +204,9 @@ def sheet_rows_dicts(sheet):
 def sheet_cols(workbook_sheet):
     def read_col(col):
         for row in range(workbook_sheet.nrows):
+            logger.debug(
+                'read cell: %r:%r, %r', row, col, 
+                read_string(workbook_sheet.cell(row,col)))
             yield read_string(workbook_sheet.cell(row,col))
     for col in range(workbook_sheet.ncols):
         yield read_col(col)

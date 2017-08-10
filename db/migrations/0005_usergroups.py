@@ -70,13 +70,26 @@ def create_roles(apps, schema_editor):
         logger.debug('user: %r, roles: %r', su.username, roles)
         if 'rnaiDsl1MutualScreens' in roles:
             roles = roles - set(('rnaiDsl3SharedScreens','rnaiDsl2MutualPositives'))
-        if 'rnaiDsl2MutualPositives' in roles:
+            su.rnai_data_sharing_level = 1
+        elif 'rnaiDsl2MutualPositives' in roles:
             roles = roles - set(('rnaiDsl3SharedScreens',))
+            su.rnai_data_sharing_level = 2
+        elif 'rnaiDsl3SharedScreens' in roles:
+            su.rnai_data_sharing_level = 3
         if 'smDsl1MutualScreens' in roles:
             roles = roles - set(('smDsl3SharedScreens','smDsl2MutualPositives'))
-        if 'smDsl2MutualPositives' in roles:
+            su.sm_data_sharing_level = 1
+        elif 'smDsl2MutualPositives' in roles:
             roles = roles - set(('smDsl3SharedScreens',))
-            
+            su.sm_data_sharing_level = 2
+        elif 'smDsl3SharedScreens' in roles:
+            su.sm_data_sharing_level = 3
+        
+        if 'screensaverUser' in roles:
+            roles.remove('screensaverUser')
+            if IS_PRODUCTION_READY:
+                su.is_active = True
+        
         for ssrole in roles:
             role = user_group_new_names.get(ssrole,ssrole)
             if role in role_group_map:
@@ -86,8 +99,8 @@ def create_roles(apps, schema_editor):
                     ug.save()
                 else:
                     logger.info(
-                        'role: %r, not assigned, setting '
-                        'IS_PRODUCTION_READY is False', role)
+                        'role: %r, not assigned, to assign, set the '
+                        'IS_PRODUCTION_READY to True', role)
                 roles_assigned += 1
             else:
                 logger.error('unknown group: %s',role)
@@ -103,5 +116,31 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # NOTE: placing these schema migrations here for convenience (so that
+        # they do not conflict with data migrations in 0003, 0004, 0007)
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head',
+            field=models.ForeignKey(
+                related_name='lab_members', to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_affiliation',
+            field=models.ForeignKey(related_name='lab_heads', 
+                to='db.LabAffiliation', null=True),
+        ),
+        
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='rnai_data_sharing_level',
+            field=models.IntegerField(null=True),
+        ),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='sm_data_sharing_level',
+            field=models.IntegerField(null=True),
+        ),
+        
         migrations.RunPython(create_roles),
     ]

@@ -122,11 +122,12 @@ def is_boolean(field):
     return False
     
 
-def numerical_equivalency(val, val2):
+def numerical_equivalency(val1, val2):
     try:
         if DEBUG:
-            logger.info('numerical equivalency: %r to %r', val1, val2)
-        if Decimal(val) == Decimal(val2):
+            logger.info('numerical equivalency: %r to %r, %r to %r', 
+                val1, val2, Decimal(val1), Decimal(val2))
+        if Decimal(val1) == Decimal(val2):
             return True
     except:
         pass
@@ -1196,6 +1197,10 @@ class IResourceTestCase(SimpleTestCase):
         return new_obj
     
     def get_single_resource(self, resource_uri, data_for_get=None):
+        '''
+        Retrieve a single item from the resource_uri
+        -- assertion failure if the unsuccessful
+        '''
         _data_for_get = { 
             'limit': 0,
             'includes': '*'
@@ -1206,6 +1211,8 @@ class IResourceTestCase(SimpleTestCase):
         resp = self.api_client.get(
             resource_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)
+        if resp.status_code == 404:
+            return None
         self.assertTrue(
             resp.status_code in [200,201], 
             (resp.status_code,self.get_content(resp)))
@@ -1220,7 +1227,7 @@ class IResourceTestCase(SimpleTestCase):
     
     def get_resource_from_server(self, resource_name):
         '''
-        Utility to get a resource description from the server
+        Utility to get a resource description (schema) from the server
         '''
         resource_uri = BASE_URI + '/resource/' + resource_name
         logger.info('Get the resource schema: %r', resource_uri )
@@ -1260,7 +1267,7 @@ class IResourceTestCase(SimpleTestCase):
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
-            logger.debug('Submitting patch... %r', filename)
+            logger.info('Submitting patch... %r', filename)
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
@@ -2118,8 +2125,7 @@ class UserUsergroupSharedTest(object):
             data_for_get=data_for_get)
         
         # Test the logs
-        # FIXME: create separate tests for the apilogs (cannot ensure state, 
-        # as there are multiple callers here )
+        # FIXME: create separate tests for the apilogs
         if test_log:
             resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
             logger.info('get: %r, %r', resource_uri, data_for_get)
@@ -2242,7 +2248,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
 
         # Try to do some unauthorized actions
 
-        resource_uri = BASE_URI + '/vocabulary'
+        resource_uri = BASE_URI + '/user'
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
@@ -2254,7 +2260,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         
         user_patch = {
             'resource_uri': 'user/' + username,
-            'permissions': ['resource/vocabulary/read'] };
+            'permissions': ['resource/user/read'] };
 
         uri = BASE_URI + '/user/' + username
         logger.debug('add permission to user: %r: %r', user_patch, uri)

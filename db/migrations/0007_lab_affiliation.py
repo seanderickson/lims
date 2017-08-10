@@ -121,7 +121,7 @@ class Migration(migrations.Migration):
 
     operations = [
 
-        # NOTE: see 0003 for schema field migrations for lab head
+        # NOTE: see 0005 for schema field migrations for lab head
         # - because of transactions, schema migration must be elsewhere        
         migrations.RunSQL(
             'UPDATE screensaver_user su '

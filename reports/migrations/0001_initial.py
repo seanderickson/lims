@@ -69,6 +69,7 @@ class Migration(migrations.Migration):
                 ('title', models.TextField(unique=True, null=True)),
                 ('permissions', models.ManyToManyField(to='reports.Permission')),
                 ('super_groups', models.ManyToManyField(related_name='sub_groups', to='reports.UserGroup')),
+                ('description', models.TextField(null=True)),
             ],
         ),
         migrations.CreateModel(

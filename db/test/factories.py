@@ -11,6 +11,7 @@ class ScreenFactory(factory.django.DjangoModelFactory):
     screen_type = "small_molecule"
     title = factory.Sequence(lambda n: 'Screen Title_'+ str(n) )
     summary = factory.Sequence(lambda n: 'Screen summary No_'+ str(n) )
+    publishable_protocol = factory.Sequence(lambda n: 'Screen protocol No_'+ str(n) )
 
 class ScreensaverUserFactory(factory.django.DjangoModelFactory):
     class Meta:

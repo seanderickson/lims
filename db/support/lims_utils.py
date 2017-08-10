@@ -68,7 +68,11 @@ def well_name_from_index(index, platesize):
     ''' 
     rows = get_rows(platesize)
     cols = get_cols(platesize)
-    name = well_name((index%rows),int(index/rows))
+    # Fill by cols just like the Screening lab does: col then row
+    name = well_name(int(index/cols),(index%cols))
+    logger.debug('index: %d, platesize: %d, name: %r', index, platesize, name)
+    # Fill in cols by row then col
+    #     name = well_name((index%rows),int(index/rows))
     return name
 
 def index_from_well_name(well_name, platesize):
@@ -89,7 +93,11 @@ def index_from_well_name(well_name, platesize):
             msg='%r, col index: %d, is > cols: %d, for platesize: %d' 
                 % (well_name, col_index, cols, platesize))
     
-    index = col_index * rows + row_index
+    # Fill in cols by row then col
+    # index = col_index * rows + row_index
+
+    # Fill by cols just like the Screening lab does: col then row
+    index = row_index * cols + col_index
     
     if index > platesize:
         raise ValidationError(

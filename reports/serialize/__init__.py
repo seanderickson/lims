@@ -76,10 +76,11 @@ def parse_val(value, key, data_type, options=None):
     TODO: validation
     """
     try:
+        # FIXME: None should be returned for String
         if ( value is None 
             or value == '' 
-            or value == 'None' 
-            or value == u'None' 
+#             or value == 'None' 
+#             or value == u'None' 
             or value == 'null'
             or value == u'n/a'):
             if data_type == 'string': 

@@ -35,7 +35,7 @@ import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
-from tastypie.exceptions import ImmediateHttpResponse
+from tastypie.exceptions import ImmediateHttpResponse, BadRequest
 
 
 logger = logging.getLogger(__name__)
@@ -123,7 +123,9 @@ def interpolate_value_template(value_template, row):
             logger.info('val from value template: %r, %r, %r',
                 val,row.has_key(val), row[val])
         if row.has_key(val):
-            return encode_utf8(row[val])
+            return row[val]
+            # FIXME: 20170731 review utf encoding here
+            # return encode_utf8(row[val])
         else:
             logger.error(
                 'field %r needed for value template %r is not available: %r', 
@@ -302,6 +304,7 @@ def cursor_generator(cursor, visible_fields, list_fields=[], value_templates=[])
     '''
     Generate dicts from cursor rows and visible fields 
     '''
+    logger.debug('visible: %r, list: %r', visible_fields, list_fields)
     for row in cursor:
         output_row = []
         for key in visible_fields:
@@ -357,7 +360,6 @@ def get_xls_response(
         workbook = xlsxwriter.Workbook(temp_file, {'constant_memory': True})
         
         for key, sheet_rows in data.items():
-            logger.info('type sheet_rows: %r', type(sheet_rows))
             if isinstance(sheet_rows, (dict, OrderedDict)):
                 sheet_name = default_converter(key)
                 logger.info('writing sheet %r...', sheet_name)
@@ -407,7 +409,7 @@ def get_xls_response(
                             else:
                                 sheet.write_string(filerow,i,val)
                     filerow += 1
-                    if row % 10000 == 0:
+                    if row % 10001 == 0:
                         logger.info('wrote %d rows to temp file', row)
                 
                     if filerow > max_rows_per_sheet:
@@ -421,9 +423,9 @@ def get_xls_response(
                         sheet = workbook.add_worksheet(sheet_name)
                         file_names_to_zip.append(temp_file)
                         filerow = 0
+                logger.info('wrote rows: %d, filerows: %d file: %r',row, filerow, temp_file)
                               
         workbook.close()
-        logger.info('wrote file: %r', temp_file)
   
         content_type = '%s; charset=utf-8' % XLSX_MIMETYPE
         if len(file_names_to_zip) >1:

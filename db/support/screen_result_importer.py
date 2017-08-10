@@ -63,8 +63,8 @@ DATA_COLUMN_FIELD_MAP = OrderedDict((
     ('screen_facility_id', 'screen_facility_id'),
 ))
 DATA_TYPES = [
-    'text', 'numeric', 'partition_positive_indicator',
-    'boolean_positive_indicator', 
+    'text', 'string', 'numeric','decimal','integer',
+    'partition_positive_indicator','boolean_positive_indicator', 
     'confirmed_positive_indicator']
 RESULT_VALUE_FIELD_MAP = OrderedDict((
     ('plate', 'plate_number'),
@@ -73,6 +73,11 @@ RESULT_VALUE_FIELD_MAP = OrderedDict((
     ('exclude', 'exclude'),
 ))
 
+# Extra columns that may appear in the exported report from the API
+REPORTING_NON_RV_COLUMNS = [
+    'well_id', 'plate_number','well_name','screen_facility_id', 
+    'assay_well_control_type'
+]
 
 def data_column_field_mapper(fields):
     mapped_keys = []
@@ -135,6 +140,8 @@ def parse_columns(columns_sheet):
         logger.debug('parsed_col: %r', parsed_col)
     if errors:
         raise ValidationError(errors={'Data Columns': errors})
+    
+    logger.debug('parsed cols: %r', parsed_cols)
     return parsed_cols
         
 def result_value_field_mapper(header_row, parsed_columns):
@@ -147,8 +154,6 @@ def result_value_field_mapper(header_row, parsed_columns):
         else:
             colname = xlrd.book.colname(i)
             mapped_row.append(colname)
-#             if colname in parsed_columns.keys():
-#                 mapped_row.append(colname)
     logger.info('mapped header row: %r to %r', header_row, mapped_row)
     unmapped = [key for key,value in RESULT_VALUE_FIELD_MAP.items() 
         if value not in mapped_row]
@@ -161,7 +166,7 @@ def result_value_field_mapper(header_row, parsed_columns):
     return mapped_row
         
 def parse_result_values(parsed_columns, sheets):
-    logger.info('parse result values...')
+    logger.info('parse_result_values...')
     well_ids = set()
     parse_error = None
     for sheet in sheets:
@@ -178,7 +183,7 @@ def parse_result_values(parsed_columns, sheets):
                 parse_error.errors[str(sheet.name)] = {}
             parse_error.errors[sheet.name] = e.errors
             continue
-        logger.info('output result values')
+        logger.info('output result values...')
         for i,row in enumerate(rows):
             try:
                 result = parse_result_row(
@@ -188,140 +193,22 @@ def parse_result_values(parsed_columns, sheets):
                         key=result['well_id'],
                         msg='duplicate')
                 well_ids.add(result['well_id'])
+                logger.debug('parsed row: %d: %r',i,  result)
                 yield result
             except ValidationError,e:
-                logger.exception('error: %r', e)
+                logger.exception('parse error: %r', e)
                 if not parse_error:
                     parse_error = ParseError(errors={})
                 if not sheet.name in parse_error.errors:
                     parse_error.errors[sheet.name] = {}
                 parse_error.errors[sheet.name].update(e.errors)
-#                 yield []
     if parse_error:
         raise parse_error
     
 def parse_result_row(i,parsed_columns,result_row):    
     
-    logger.debug('parse result row: %r', result_row)
-    
-    meta_columns = RESULT_VALUE_FIELD_MAP.values()
-    parsed_row = {}
-    excluded_cols = []
-    
-    meta_key = 'plate_number'
-    val = result_row[meta_key]
-    logger.debug('plate value to parse: %r', val)
-    plate_number = parse_val(val, meta_key, 'integer')
-    meta_key = 'well_name'
-    val = result_row[meta_key]
-    if WELL_NAME_PATTERN.match(val):
-        wellname = val
-    else:
-        raise ParseError(
-            key=i, 
-            msg=('well_name val %r does not follow the pattern: %r'
-            % (val, WELL_NAME_PATTERN.pattern))) 
-    parsed_row['well_id'] = \
-        '%s:%s' % (str(plate_number).zfill(5), wellname)
-    
-    meta_key = 'assay_well_control_type'
-    val = result_row.get(meta_key, None)
-    parsed_row[meta_key] = None
-    if val:
-        if val.lower() in ASSAY_WELL_CONTROL_TYPES:
-            parsed_row[meta_key] = \
-                ASSAY_WELL_CONTROL_TYPES[val.lower()]
-        else:
-            msg = ('%s: val %r is not one of the choices: %r'
-                % (meta_key, val, ASSAY_WELL_CONTROL_TYPES))
-            logger.error(msg)
-            raise ValidationError(key=parsed_row['well_id'], msg=msg)
-
-    meta_key = 'exclude'
-    val = result_row.get(meta_key, None)
-    if val:
-        if val.lower() == 'all':
-            excluded_cols = parsed_columns.keys()
-        else:
-            excluded_cols = [
-                x.strip().upper() for x in val.split(',')]
-            unknown_excluded_cols = (
-                set(excluded_cols) - set(parsed_columns.keys()))
-            if unknown_excluded_cols:
-                raise ValidationError(
-                    key = parsed_row['well_id'],
-                    msg = 'unknown excluded cols: %r' % unknown_excluded_cols )
-    
-    for colname, raw_val in result_row.items():
-        if colname in meta_columns:
-            continue
-        if colname not in parsed_columns:
-            # NOTE: this is no longer an error, as the result value sheet may
-            # contain extra columns (selected by user on output)
-            logger.info(
-                'result value column %r is not in recognized columns: %r', 
-                colname, parsed_columns.keys())
-            continue
-        column = parsed_columns[colname]
-        if ( column['data_type'] == 'partition_positive_indicator'
-            and not raw_val):
-            raw_val = 'NP' 
-        if ( column['data_type'] == 'confirmed_positive_indicator'
-            and not raw_val):
-            raw_val = 'NT' 
-        if raw_val is None:
-            continue
-        
-        key = '%s-%s' % (parsed_row['well_id'],colname)
-        rv_initializer = {}
-        parsed_row[colname] = rv_initializer
-        
-        if column['data_type'] == 'numeric':
-            # decimal_places = parse_val(
-            #     column['decimal_places'],'decimal_places','integer')
-            if  column['decimal_places'] > 0:
-                # parse, to validate
-                parse_val(raw_val, key, 'float')
-                # record the raw val, to save all digits (precision)
-                rv_initializer['numeric_value'] = raw_val
-            else:
-                rv_initializer['numeric_value'] = \
-                    parse_val(raw_val, key, 'integer')
-        elif column['data_type'] == 'partition_positive_indicator':
-            val = raw_val.upper()
-            if val not in PARTITION_POSITIVE_MAPPING:
-                raise ValidationError(
-                    key=key, 
-                    msg='val: %r must be one of %r'
-                        % (raw_val, PARTITION_POSITIVE_MAPPING.keys()))
-            rv_initializer['value'] = val
-        elif column['data_type'] == 'confirmed_positive_indicator':
-            val = raw_val.upper()
-            if val not in CONFIRMED_POSITIVE_MAPPING:
-                raise ValidationError(
-                    key=key, 
-                    msg='val: %r must be one of %r'
-                        % (raw_val, CONFIRMED_POSITIVE_MAPPING.keys()))
-            rv_initializer['value'] = val
-        elif column['data_type'] == 'boolean_positive_indicator':
-            val = parse_val(raw_val,key,'boolean')
-            rv_initializer['value'] = val
-        else:
-            rv_initializer['value'] = raw_val
-        
-        if colname in excluded_cols:
-            rv_initializer['is_exclude'] = True
-        else:
-            rv_initializer['is_exclude'] = False
-        
-        logger.debug('rv_initializer: %r', rv_initializer)
-            
-    return parsed_row
-    
-    
-def parse_result_row(i,parsed_columns,result_row):    
-    
-    logger.debug('parse result row: %r', result_row)
+    logger.debug(
+        'parse result row: %d, %r:  %r', i, parsed_columns.keys(), result_row)
     
     meta_columns = RESULT_VALUE_FIELD_MAP.values()
     parsed_row = {}
@@ -372,6 +259,7 @@ def parse_result_row(i,parsed_columns,result_row):
             parsed_row[meta_key] = excluded_cols
             
     for colname, raw_val in result_row.items():
+        logger.debug('colname: %r, raw_val: %r', colname, raw_val)
         if colname in meta_columns:
             continue
         if colname not in parsed_columns:
@@ -383,21 +271,22 @@ def parse_result_row(i,parsed_columns,result_row):
             parsed_row[colname] = raw_val
             continue
         column = parsed_columns[colname]
-        if ( column['data_type'] == 'partition_positive_indicator'
-            and not raw_val):
-            raw_val = 'NP' 
-        if ( column['data_type'] == 'confirmed_positive_indicator'
-            and not raw_val):
-            raw_val = 'NT' 
+        # NOTE: 20170724 - no longer interpret null values as NP
+        # if ( column['data_type'] == 'partition_positive_indicator'
+        #     and not raw_val):
+        #     raw_val = 'NP' 
+        # if ( column['data_type'] == 'confirmed_positive_indicator'
+        #     and not raw_val):
+        #     raw_val = 'NT' 
         if raw_val is None:
             continue
         
         key = '%s-%s' % (parsed_row['well_id'],colname)
         parsed_row[colname] = raw_val
         
-        if column['data_type'] == 'numeric':
+        if column['data_type']  in ['numeric','decimal','integer']:
             if  column['decimal_places'] > 0:
-                # parse, to validate
+                # parse, to validate only; use decimal for final parsing
                 parse_val(raw_val, key, 'float')
             else:
                 parsed_row[colname] = parse_val(raw_val, key, 'integer')
@@ -420,7 +309,7 @@ def parse_result_row(i,parsed_columns,result_row):
         elif column['data_type'] == 'boolean_positive_indicator':
             val = parse_val(raw_val,key,'boolean')
             parsed_row[colname] = val
-            
+        logger.debug('parsed_row: %r', parsed_row)
     return parsed_row
 
 def data_column_generator(data_columns):
@@ -472,63 +361,83 @@ def create_output_data(screen_facility_id, fields, result_values ):
         field information dicts for the non-result value columns
     @param result_values an iterable containing result_value dicts
     '''
-    logger.info('create screen result data structure for %r', screen_facility_id)
-    control_type_mapping = {v:k for k,v in ASSAY_WELL_CONTROL_TYPES.items()}
+    logger.info('create screen result output data %r', screen_facility_id)
 
     data = OrderedDict()
     
+    # 1. Meta sheet
     data['Screen Info'] = { 'Screen Number': screen_facility_id }
     
-    data_column_structure = []
-    data['Data Columns'] = data_column_structure
+    # 2. Data Columns
     
-    datacolumn_labels = DATA_COLUMN_FIELD_MAP.keys()
-    data_columns = []
-    data_column_names = []
-    other_columns = []
-    for key,field in fields.items(): 
+    data_column_structure = []
+    data_column_keys = []
+    non_data_column_keys = []
+    keys = sorted(fields.keys())
+    for i,key in enumerate(keys):
+        field = fields[key]
+        if 'ordinal' not in field:
+            field['ordinal'] = i
         if ( field.get('is_datacolumn',False) 
             or field.get('data_worksheet_column', None)):
-            data_columns.append(key)
-            data_column_names.append(field['name'])
-        elif ( key not in ['well_id', 'plate_number','well_name',
-                           'screen_facility_id', 'assay_well_control_type']
-               and key not in RESULT_VALUE_FIELD_MAP.keys() ):
-            other_columns.append(key)
-    data_columns = sorted(data_columns, key=lambda x: fields[x]['ordinal'])
-    other_columns = sorted(other_columns, key=lambda x: fields[x]['ordinal'])
-    data_column_names_to_col_letter = { 
-        dc:xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
-            for (i,dc) in enumerate(data_column_names) }
-    logger.info('data columns: %r, other_columns: %r', data_columns, other_columns)
-    
-    # Transpose the field definitions into the output data_column sheet:
+            data_column_keys.append(key)
+        elif ( key not in RESULT_VALUE_FIELD_MAP.keys()
+            and key not in REPORTING_NON_RV_COLUMNS ):
+            non_data_column_keys.append(key)
+    data_column_keys = sorted(data_column_keys, key=lambda x: fields[x]['ordinal'])
+    non_data_column_keys = sorted(non_data_column_keys, key=lambda x: fields[x]['ordinal'])
+    data_column_names_to_col_letter = {}
+    for i, key in enumerate(data_column_keys):
+        data_column_names_to_col_letter[fields[key]['name']] = \
+            xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
+    logger.info('data columns: %r, non_data_column_keys: %r', data_column_keys, non_data_column_keys)
+    logger.info('data_column_names_to_col_letter: %r', data_column_names_to_col_letter)
+
+    # Transpose/Pivot the field definitions into the output data_column sheet:
     # Row 0 - "Data" Worksheet Column
     # Row 1 - name
     # Row 2 - data_type
-    # Row N - other data column fields
+    # Row N - non data column fields
     # Column 0 - data column field label
     # Column 1-N data column values
+    datacolumn_labels = DATA_COLUMN_FIELD_MAP.keys()
     header_row = [datacolumn_labels[0]]
-    header_row.extend([xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
-        for i in range(len(data_columns))])
-    logger.debug('header_row: %r', header_row)
-    for i,(sheet_label,sheet_key) in enumerate(
+    header_row.extend([
+        xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
+            for i in range(len(data_column_keys))])
+    logger.info('Data Columns - header_row: %r', header_row)
+    for i,(output_label,field_key) in enumerate(
             DATA_COLUMN_FIELD_MAP.items()[1:]):
-        row = [sheet_label]
-        for j,key in enumerate(data_columns):
-            val = fields[key].get(sheet_key, None)
-            if sheet_key == 'data_type':
-                val = fields[key].get(
-                    'assay_data_type',fields[key].get('data_type',None))
+        row = [output_label]
+        for j,key in enumerate(data_column_keys):
+            field = fields[key]
+            val = field.get(field_key, None)
+            if field_key == 'data_type':
+                # TODO: 20170731: migrate the screenresult datacolumn format to use 
+                # "vocabulary_scope_ref" for the "positive" column types
+                # This is a hack to preserve symmetry for read/write for now
+                newval = None
+                if val == 'string':
+                    vocab_scope_ref = field.get('vocabulary_scope_ref', None)
+                    if vocab_scope_ref == 'resultvalue.partitioned_positive':
+                        newval = 'partition_positive_indicator'
+                    elif vocab_scope_ref == 'resultvalue.confirmed_positive_indicator':
+                        newval = 'confirmed_positive_indicator'
+                elif val == 'boolean':
+                    newval = 'boolean_positive_indicator'
+                if newval:
+                    logger.info(
+                        'converted: %r:%r to %r: %r', key, field_key, val, newval)
+                    val = newval
             if val:
-                if sheet_key == 'is_follow_up_data':
+                if field_key == 'is_follow_up_data':
                     if val == True:
                         val = 'Follow up'
                     elif val == False:
                         val = 'Primary'
-                elif sheet_key == 'derived_from_columns':
-                    if fields[key].get('screen_facility_id', None) == screen_facility_id:
+                elif field_key == 'derived_from_columns':
+                    logger.info('derived_from_columns: %r', val)
+                    if field.get('screen_facility_id', None) == screen_facility_id:
                         logger.info('Translate derived_from_columns: %r', val)
                         if not set(data_column_names_to_col_letter.keys()).issuperset(set(val)):
                             raise ValidationError(
@@ -537,27 +446,33 @@ def create_output_data(screen_facility_id, fields, result_values ):
                                     %(key,val,data_column_names_to_col_letter.keys())))
                         val = ', '.join(
                             [data_column_names_to_col_letter[dc_name] for dc_name in val])
+                        logger.info('Translated derived_from_columns: %r', val)
                     else:
-                        # Manually serialize using commas
+                        # Derived column for another screen
                         val = ', '.join(val)
                 row.append(val)
             else:
                 row.append(None)
                 logger.debug(
-                    'Note: sheet key not found in schema field: %r, %r', 
-                    sheet_key, fields[key])
+                    'Note: datacolumn schema key %r is null in result value: %r', 
+                    field_key, field)
         logger.debug('data column row: %r', row)
         data_column_structure.append(OrderedDict(zip(header_row,row)))
-        
+
+    data['Data Columns'] = data_column_structure
+
+    # 3. Result Values sheet 
+            
     def result_value_generator(result_values):
         
         logger.info('Write the result values sheet')
         header_row = []
         header_row.extend(RESULT_VALUE_FIELD_MAP.keys())
-        # TODO: allow column titles to be optional
-        header_row.extend([fields[key].get('title', key) for key in data_columns])
-        header_row.extend(other_columns)
+        header_row.extend([fields[key].get('title', key) for key in data_column_keys])
+        header_row.extend(non_data_column_keys)
+        logger.info('Result Values Header row: %r', header_row)
 
+        control_type_mapping = {v:k for k,v in ASSAY_WELL_CONTROL_TYPES.items()}
         row_count = 0
         for result_value in result_values:
             row_count += 1
@@ -581,57 +496,32 @@ def create_output_data(screen_facility_id, fields, result_values ):
                 temp = result_value['exclude']
                 if hasattr(temp, 'split'):
                     temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
-                logger.debug('excluded data_columns: find %r, in %r', temp, data_columns)    
+                logger.debug('excluded data_column_keys: find %r, in %r', temp, data_column_keys)    
                 for data_column_name in temp:
                     excluded_cols.append(get_column_letter(
                         len(RESULT_VALUE_FIELD_MAP)+1
-                            +data_columns.index(data_column_name)))
+                            +data_column_keys.index(data_column_name)))
                     excluded_cols = sorted(excluded_cols)
             row.append(','.join(excluded_cols))
             
-            for j,key in enumerate(data_columns):
+            for j,key in enumerate(data_column_keys):
                 if result_value.has_key(key):
                     row.append(result_value[key])
                 else:
                     row.append(None)
             # append the non-result value columns to the end of the row
-            for j,key in enumerate(other_columns):
+            for j,key in enumerate(non_data_column_keys):
                 if result_value.has_key(key):
                     row.append(result_value[key])
             
             if row_count % 10000 == 0:
-                logger.info('wrote %d rows', row_count)
+                logger.info('generated %d rows', row_count)
+            logger.debug('generate row %d: %r',row_count, row)
             yield OrderedDict(zip(header_row,row))
     
     data['Data'] = result_value_generator(result_values)
 
     return data
-
-   
-# def read_file(input_file):
-#     '''Read a serialized (xlsx) screen result:
-#     - sheets:
-#        "Screen Info" - two columns: A - attribute, B - value
-#        "Data Columns 
-#            - A - data column attribute name
-#            - [B-n] - data columns 
-#        "Data Sheets: old format ["PL_0001", "PL_0002, etc ]
-#        - new format: one sheet with a plate number column
-#     '''
-#     # FIXME: use openpyxl for memory optimization
-#     # from openpyxl import load_workbook
-#     # wb = load_workbook(filename='large_file.xlsx', read_only=True)
-#     # ws = wb['big_data'] # ws is now an IterableWorksheet
-#     # 
-#     # for row in ws.rows:
-#     #     for cell in row:
-#     #         print(cell.value)    
-#     
-#     
-#     logger.info('open screen result file for loading...')
-#     wb = xlrd.open_workbook(file_contents=input_file.read())
-#     return read_workbook(wb)
-
         
 def json_printer(data):
     

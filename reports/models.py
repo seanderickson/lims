@@ -428,7 +428,7 @@ class UserGroup(models.Model):
     title = models.TextField(unique=True, null=True)
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
-    
+    description = models.TextField(null=True)
     # Super Groups: 
     # - inherit permissions from super_groups, this group is a sub_group to them
     # - inherit users from sub_groups, this group is a super_group to them

@@ -109,6 +109,8 @@ class DBResourceTestCase(IResourceTestCase):
         input_data = LibraryFactory.attributes()
         if data:
             input_data.update(data)
+            
+        logger.info('create library: %r', input_data)
         resource_uri = '/'.join([BASE_URI_DB, 'library'])
         test_uri = '/'.join([resource_uri,input_data['short_name']])
         return self._create_resource(input_data,resource_uri,test_uri)
@@ -173,20 +175,22 @@ class DBResourceTestCase(IResourceTestCase):
         ''' Create a test Screen through the API'''
         
         
-        lab_head = self.create_lab_head()
-        lead_screener = self.create_screensaveruser()
-        collaborator1 = self.create_screensaveruser()
-        collaborator2 = self.create_screensaveruser()
         input_data = ScreenFactory.attributes()
         logger.info('input_data: %r', input_data)
         if data:
             input_data.update(data)
         if 'lab_head_username' not in input_data:
+            lab_head = self.create_lab_head()
             input_data['lab_head_username'] = lab_head['username']
         if 'lead_screener_username' not in input_data:
+            lead_screener = self.create_screensaveruser()
             input_data['lead_screener_username'] = lead_screener['username']
-        input_data['collaborator_usernames'] = [
-            collaborator1['username'], collaborator2['username']]
+        if 'collaborator_usernames' not in input_data:
+            collaborator1 = self.create_screensaveruser()
+            collaborator2 = self.create_screensaveruser()
+            input_data['collaborator_usernames'] = [
+                collaborator1['username'], collaborator2['username']]
+
         if resource_uri is None:
             resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         
@@ -207,10 +211,10 @@ class DBResourceTestCase(IResourceTestCase):
     
         new_obj = self.deserialize(resp)
         new_obj = new_obj[API_RESULT_DATA]
-        new_obj = self.get_screen(new_obj['facility_id'])    
+        new_obj = self.get_screen(new_obj['facility_id'])  
+        logger.debug('screen created: %r', new_obj)
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
         self.assertTrue(result, msg)
-        logger.info('item created: %r', new_obj)
         return new_obj
     
     def create_copy(self, copy_input_data ):   
@@ -229,6 +233,24 @@ class DBResourceTestCase(IResourceTestCase):
         resource_uri = '/'.join([BASE_URI_DB, 'screen', facility_id])
         return self.get_single_resource(resource_uri, data_for_get)
 
+    def get_schema(self, resource_name, authentication=None, data=None):
+        
+        data_for_get = { 'includes': '*' }
+        if data is not None:
+            data_for_get.update(data)
+        
+        if authentication is None:
+            authentication=self.get_credentials()
+        
+        resource_uri = '/'.join([BASE_URI_DB, resource_name, 'schema'])
+
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=authentication,
+            data=data_for_get)
+        self.assertTrue(resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        return self.deserialize(resp)
+
     def create_screensaveruser(self, data=None):
         ''' Create a test ScreensaverUser through the API'''
         
@@ -237,7 +259,7 @@ class DBResourceTestCase(IResourceTestCase):
             input_data.update(data)
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         test_uri = '/'.join([resource_uri,input_data['username']])
-        
+        logger.info('create user: %r', input_data)
         return self._create_resource(input_data,resource_uri,test_uri)
     
     def create_lab_head(self, data=None):
@@ -275,31 +297,33 @@ class DBResourceTestCase(IResourceTestCase):
         attributes = LabAffiliationFactory.attributes()
         if data is not None:
             attributes.update(data)
+        
+        resource_uri = '/'.join([
+            BASE_REPORTS_URI, 'vocabulary','labaffiliation.category',attributes['category']])
+        lab_affiliation_category = self.get_single_resource(resource_uri)
+        if lab_affiliation_category is None:
+            lab_affiliation_category = {
+                'scope': 'labaffiliation.category',
+                'key': attributes['category'],
+                'ordinal': attributes['ordinal'],
+                'title': 'Lab Affiliation Category ' + attributes['category'],
+                'description': 'Lab Affiliation Category desc: ' + attributes['category']}
             
-        resource_uri = BASE_REPORTS_URI + '/vocabulary/'        
-        # create a lab_affiliation category (vocabulary)
-        lab_affiliation_category = {
-            'scope': 'labaffiliation.category',
-            'key': attributes['category'],
-            'ordinal': attributes['ordinal'],
-            'title': 'Lab Affiliation Category ' + attributes['category'],
-            'description': 'Lab Affiliation Category desc: ' + attributes['category']}
+            resp = self.api_client.post(
+                resource_uri, 
+                format='json', 
+                data=lab_affiliation_category, 
+                authentication=self.get_credentials())
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
+            _data = self.deserialize(resp)
+            new_affiliation_category = _data[API_RESULT_DATA]
         
-        resp = self.api_client.post(
-            resource_uri, 
-            format='json', 
-            data=lab_affiliation_category, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        new_affiliation_category = _data[API_RESULT_DATA]
-        
-        logger.info('created category: %r', new_affiliation_category)
-        for key,val in lab_affiliation_category.items():
-            self.assertEqual(
-                lab_affiliation_category[key],new_affiliation_category[key])
+            logger.info('created category: %r', new_affiliation_category)
+            for key,val in lab_affiliation_category.items():
+                self.assertEqual(
+                    lab_affiliation_category[key],new_affiliation_category[key])
         
         # create a lab_affiliation
         resource_uri = BASE_URI_DB + '/labaffiliation/'        
@@ -390,8 +414,8 @@ def setUpModule():
 def tearDownModule():
 
     logger.info('=== teardown Module')
-    Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
-    LabAffiliation.objects.all().delete()
+#     Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
+#     LabAffiliation.objects.all().delete()
 
     # remove the admin user
     # ScreensaverUser.objects.all().delete() 
@@ -1717,6 +1741,7 @@ class LibraryResource(DBResourceTestCase):
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['HTTP_ACCEPT'] = SDF_MIMETYPE
 
+        logger.info('Open and PUT file: %r', filename)
         with open(filename) as input_file:
             
             input_data = self.serializer.from_sdf(input_file.read())
@@ -1772,6 +1797,7 @@ class LibraryResource(DBResourceTestCase):
         data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
         data_for_get['HTTP_ACCEPT'] = SDF_MIMETYPE
 
+        logger.info('Open and PATCH file: %r', filename)
         with open(filename) as input_file:
             
             input_data = self.serializer.from_sdf(input_file.read())
@@ -1971,6 +1997,7 @@ class LibraryResource(DBResourceTestCase):
         data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
         xls_serializer = XLSSerializer()
         
+        logger.info('Open and PUT file: %r', filename)
         with open(filename) as input_file:
             ### NOTE: submit the data as an object, because the test framework
             ### will convert it to the target format.
@@ -2051,6 +2078,7 @@ class ScreenResultSerializerTest(TestCase):
         filename_out = (
             '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
         
+        logger.info('read test file: %r', filename)
         with open(filename, 'rb') as input_file:
             wb = xlrd.open_workbook(file_contents=input_file.read())
             input_data = screen_result_importer.read_workbook(wb)
@@ -2069,7 +2097,8 @@ class ScreenResultSerializerTest(TestCase):
         self.assertTrue(lookup_key in input_data, 
             '%r not in input_data: %r' % (lookup_key, input_data.keys()))
         data_columns = input_data[lookup_key]
-        logger.info('data colums: %r', data_columns.keys())
+        logger.info('data columns: %r', data_columns.keys())
+        # TODO: spot check
         
         lookup_key = API_RESULT_DATA
         self.assertTrue(lookup_key in input_data, 
@@ -2101,6 +2130,7 @@ class ScreenResultSerializerTest(TestCase):
         filename_out = (
             '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
         logger.info('check file: %r ', os.path.exists(filename))
+        logger.info('Open and validate file: %r', filename)
         with open(filename, 'rb') as input_file:
             try:
                 input_data = serializer.from_xlsx(input_file.read())
@@ -2113,7 +2143,7 @@ class ScreenResultSerializerTest(TestCase):
                         'error workbook should generate errors exception: %r'
                         % filename)
             except ValidationError, e:
-                logger.info('errors reported: %r', e.errors)
+                logger.info('(Expected) errors reported: %r', e.errors)
                 self.assertTrue(
                     len(e.errors.keys())==3, 
                     'should be 3 errors, one for each plate sheet without '
@@ -2155,12 +2185,40 @@ class ScreenResultSerializerTest(TestCase):
                 if val and column_field == 'derived_from_columns':
                     val = set([x.upper() for x in re.split(r'[,\s]+', val)])
                     val2 = set([x.upper() for x in re.split(r'[,\s]+', val2)])
-                    
-                result,msg = equivocal(val, val2)
-                testinstance.assertTrue(
-                    result,
-                    'column not equal: column %r:%r, input: %r, output: %r, %r'
-                    % (colname,column_field, val, val2, msg))
+                
+                if column_field == 'data_type' and val == 'numeric':
+                    if input_field.get('decimal_places', 0) > 0:
+                        testinstance.assertTrue(val2 in ['numeric', 'decimal'],
+                            'unrecognized type conversion: %r to %r for %r'
+                            % (val, val2, colname))
+                        if val2 != 'decimal':
+                            logger.warn(
+                            'col: %r: data_type: "numeric" with decimal_places > 0 '
+                            'should be migrated to '
+                            '"decimal": val2: %r',colname, val2)
+                    else:
+                        
+                        testinstance.assertTrue(val2 in ['numeric', 'integer'],
+                            'unrecognized type conversion: %r to %r for %r'
+                            % (val, val2, colname))
+                        if val2 != 'integer':
+                            # Note 201707: "numeric" type is migrated to 
+                            # "decimal" and "integer" by the api; some tests
+                            # do not roundtrip the data to the api
+                            logger.warn(
+                            'col: %r: data_type: "numeric" with decimal_places not > 0 '
+                            'should be migrated to '
+                            '"integer": val2: %r', colname, val2)
+                elif column_field == 'data_type' and val == 'text':
+                    testinstance.assertTrue(val2 in ['text','string'],
+                        'unrecognized type conversion: %r to %r for %r'
+                        % (val, val2, colname))
+                else:
+                    result,msg = equivocal(val, val2)
+                    testinstance.assertTrue(
+                        result,
+                        'column not equal: column %r:%r, input: %r, output: %r, %r'
+                        % (colname,column_field, val, val2, msg))
         
         # test ResultValues
         items_to_test = 1000
@@ -2170,41 +2228,51 @@ class ScreenResultSerializerTest(TestCase):
         except Exception, e:
             logger.exception('%r', e)
             raise
-        for i,result_value in enumerate(input_data['objects']):
-            found = None
-            for result_value_out in output_list:
-                logger.debug('try: %r - %r', result_value,result_value_out)
-                if result_value['well_id'] == result_value_out['well_id']:
-                    found = result_value_out
+        for i,input_rv in enumerate(input_data['objects']):
+            found_row = None
+            for output_rv in output_list:
+                logger.debug('try: %r - %r', input_rv,output_rv)
+                if input_rv['well_id'] == output_rv['well_id']:
+                    found_row = output_rv
                     break;
                 logger.debug('not matched')
-            if not found:
+            if not found_row:
                 testinstance.fail(
                     'result value well_id not found: %r in %r' 
-                    % (result_value['well_id'], [x for x in output_list]))
-            for key,val in result_value.items():
-                testinstance.assertTrue(
-                    key in found, 
-                    ('key: %r, from input: %r,'
-                        ' not found in output result_value: %r') 
-                    % (key, result_value, found) )
-
-                val2 = found[key]
-                if val2 == 'NP':
-                    testinstance.assertTrue(val=='NP' or val==None,
-                        ('partition positive val: %r, key: %r, %r - %r'
-                            % (val, key, result_value, found)))
-                elif val2 == 'NT':
-                    testinstance.assertTrue(val=='NT' or val==None,
-                        ('confirmed positive val: %r, key: %r, %r - %r'
-                            % (val, key, result_value, found)))
-                else:
-                    result,msg = equivocal(val, val2)
+                    % (input_rv['well_id'], [x for x in output_list]))
+            
+            logger.debug('input_row: %r', input_rv)
+            logger.debug('found_row: %r', found_row)
+            for key,val in input_rv.items():
+                if val is not None:
+                    # NOTE: 20170724 - if input values are null, ResultValues are not created
                     testinstance.assertTrue(
-                        result,
-                        ('meta field not equal: %r %r != %r, %r'
-                             'input: %r, output: %r')
-                        % (key, val, val2, msg, result_value, found))
+                        key in found_row, 
+                        ('key: %r, from input: %r,'
+                            ' not found in output input_rv: %r') 
+                        % (key, input_rv, found_row) )
+                else:
+                    if key not in found_row:
+                        logger.info(
+                            'FYI: Null input %r:%r not found in ouput row: %r',
+                            key, val, found_row)
+                        continue
+                val2 = found_row[key]
+#                 if val2 == 'NP':
+#                     testinstance.assertTrue(val=='NP' or val==None,
+#                         ('partition positive val: %r, key: %r, %r - %r'
+#                             % (val, key, input_rv, found_row)))
+#                 elif val2 == 'NT':
+#                     testinstance.assertTrue(val=='NT' or val==None,
+#                         ('confirmed positive val: %r, key: %r, %r - %r'
+#                             % (val, key, input_rv, found_row)))
+#                 else:
+                result,msg = equivocal(val, val2)
+                testinstance.assertTrue(
+                    result,
+                    ('meta field not equal: %r %r != %r, %r'
+                         'input: %r, output: %r')
+                    % (key, val, val2, msg, input_rv, found_row))
             if i == items_to_test:
                 break
                 
@@ -2239,6 +2307,7 @@ class ScreenResultResource(DBResourceTestCase):
                 logger.exception('on delete cached_query')
         Screen.objects.all().delete()
         Library.objects.all().delete()
+        LabAffiliation.objects.all().delete()
         ApiLog.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username='testsuper').delete()
 
@@ -2256,15 +2325,23 @@ class ScreenResultResource(DBResourceTestCase):
 
         logger.info('create and load well data...')
         plate = 1
+        exp_well_count = 20
         input_data = [
             self.create_small_molecule_test_well(
                 plate,i,library_well_type='experimental') 
-            for i in range(0,20)]
-        # setup one control well: i:20 - E02
+            for i in range(0,exp_well_count-1)]
+        
+        logger.info('library plate_size: %r', library1)
+        control_well_index = exp_well_count
+        self.control_well1 = \
+            lims_utils.well_name_from_index(
+                control_well_index, int(library1['plate_size']))
+        logger.info('control well 1: %r', self.control_well1)
         input_data.append(
             self.create_small_molecule_test_well(
-                plate,20,library_well_type='empty') 
+                plate,control_well_index,library_well_type='empty') 
             )
+        logger.debug('input_data: %r', input_data)
         resource_name = 'well'
         resource_uri = '/'.join([
             BASE_URI_DB,'library', library1['short_name'],resource_name])
@@ -2279,6 +2356,7 @@ class ScreenResultResource(DBResourceTestCase):
     def test1_load_example_file(self):
         
         logger.info('test1_load_example_file...')
+        
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
@@ -2295,7 +2373,8 @@ class ScreenResultResource(DBResourceTestCase):
         input_data = []
         for plate in range(1,4):
             for i in range(0,384):
-                if i in [320,336,352]: # A20, 21, 22
+                
+                if plate == 1 and i in [20,21,22]: # A21, 22, 23
                     # setup control wells
                     input_data.append(self.create_small_molecule_test_well(
                         plate,i,library_well_type='empty'))
@@ -2321,13 +2400,14 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
         
+        logger.info('load the screen result file...')
         file = 'ScreenResultTest_1_valid.xlsx'
         filename = '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file)
+        logger.info('Open and POST file: %r', filename)
         with open(filename) as input_file:
-
             resource_uri = '/'.join([
                 BASE_URI_DB,'screenresult',screen['facility_id']])
-            logger.info('PUT screen result to the server...')
+            logger.info('POST screen result to the server...')
             # NOTE: content_type arg is req'd with django.test.Client.post
             resp = self.django_client.post(
                 resource_uri, content_type=XLSX_MIMETYPE,
@@ -2424,11 +2504,11 @@ class ScreenResultResource(DBResourceTestCase):
                 'E': 'test value 1',
                 'F': 91.19 ,
                 'G': .0011 ,
-                'H': None ,  # should be interpreted as 'NT'
-                'I': None , # should be interpreted as 'NP'
+                'H': None ,  # should (*NOT 20170724) be interpreted as 'NT' 
+                'I': None , # should (*NOT 20170724) be interpreted as 'NP'
             },
             { 
-                'well_id': '00001:B01', 
+                'well_id': '00001:A02', 
                 'E': 'test value 2',
                 'F': 0.99 ,
                 'G': 1.0331 ,
@@ -2436,7 +2516,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'W' ,
             },
             { 
-                'well_id': '00001:C01', 
+                'well_id': '00001:A03', 
                 'E': 'test value 2',
                 'F': 1.99 ,
                 'G': 1.032 ,
@@ -2444,7 +2524,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' ,
             },
             { 
-                'well_id': '00001:D01', 
+                'well_id': '00001:A04', 
                 'E': 'test value 2',
                 'F': 1.99 ,
                 'G': 1.032 ,
@@ -2452,7 +2532,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'S' ,
             },
             { 
-                'well_id': '00001:E01', 
+                'well_id': '00001:A05', 
                 'E': 'test value 2',
                 'F': 1.1 ,
                 'G': 1.1 ,
@@ -2460,7 +2540,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' ,
             },
             { 
-                'well_id': '00001:F01', 
+                'well_id': '00001:A06', 
                 'E': 'test value 2',
                 'F': 1.1 ,
                 'G': 1.1 ,
@@ -2468,22 +2548,23 @@ class ScreenResultResource(DBResourceTestCase):
                 'I': 'M' ,
             },
             { 
-                'well_id': '00001:E02', # should be E02
-                'assay_well_control_type': 'assay_control', 
-                'E': 'test value 2',
-                'F': 1.1 ,
-                'G': 1.1 ,
-                'H': 'FP', # non experimental well should be ignored
-                'I': 'M' , # non experimental well should be ignored
-            },
-            { 
-                'well_id': '00001:G01',
+                'well_id': '00001:A07',
                 'exclude': ['E','F','G','H','I'], 
                 'E': 'test value 2',
                 'F': 1.1 ,
                 'G': 1.1 ,
                 'H': 'FP',
                 'I': 'M' ,
+            },
+            { 
+                'well_id': '00001:%s' % self.control_well1,
+                'assay_well_control_type': 'assay_control', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                # NOTE: 20170724 - changed importer to raise a ValidationError here
+                # 'H': 'FP', # non experimental well should be ignored
+                # 'I': 'M' , # non experimental well should be ignored
             },
         ]
         input_data = OrderedDict((
@@ -2500,11 +2581,15 @@ class ScreenResultResource(DBResourceTestCase):
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
         self._setup_test_config()
+        
         logger.info('create screen...')        
         screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        self.screen1 = screen
+        
         screen_facility_id = screen['facility_id']
         logger.info('created screen %r', screen_facility_id)        
         
+        logger.info('create test screen result...')
         input_data = self._create_valid_input(screen_facility_id)
 
         # The ScreenResultSerializer only recognizes the XLSX format:
@@ -2519,12 +2604,12 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
-        logger.info('PUT screen result to the server...')
         screen_facility_id = screen['facility_id']
         resource_name = 'screenresult'
         resource_uri = '/'.join([
             BASE_URI_DB,resource_name,screen_facility_id])
         
+        logger.info('PUT screen result to the server...')
         resp = self.django_client.put(
             resource_uri, data=input_data_put, **data_for_get )
         if resp.status_code not in [200, 204]:
@@ -2591,7 +2676,7 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get = {
             'screen_facility_id__eq': screen_facility_id,
             'includes': '*',
-            'data_type__in': [
+            'assay_data_type__in': [
               'partition_positive_indicator','boolean_positive_indicator',
               'confirmed_positive_indicator'],
             'order_by': ['ordinal']
@@ -2610,11 +2695,14 @@ class ScreenResultResource(DBResourceTestCase):
 
         confirmed_positive_col = None
         partion_positive_col = None
+        self.screen1_positive_columns = []
         for col in output_data['objects']:
-            if col['data_type'] == 'confirmed_positive_indicator':
+            if col['assay_data_type'] == 'confirmed_positive_indicator':
                 confirmed_positive_col = col
-            if col['data_type'] == 'partition_positive_indicator':
+                self.screen1_positive_columns.append(col['key'])
+            if col['assay_data_type'] == 'partition_positive_indicator':
                 partion_positive_col = col
+                self.screen1_positive_columns.append(col['key'])
         self.assertTrue(confirmed_positive_col is not None, 
             ('confirmed_positive_col not found in %r',output_data))
         self.assertTrue(partion_positive_col is not None, 
@@ -2657,11 +2745,15 @@ class ScreenResultResource(DBResourceTestCase):
         
         self.test2_load_valid_input()
          
-        # create another screen with the same input
+        logger.info(
+            'Mutual positives: Create another an overlapping screen result...')
         logger.info('create screen...')        
         screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        self.screen2 = screen
         screen_facility_id = screen['facility_id']
         logger.info('created screen %r', screen_facility_id)        
+        
+        logger.info('create second screen result...')
         input_data = self._create_valid_input(screen_facility_id)
 
         # The ScreenResultSerializer only recognizes the XLSX format:
@@ -2681,6 +2773,7 @@ class ScreenResultResource(DBResourceTestCase):
         resource_name = 'screenresult'
         resource_uri = '/'.join([
             BASE_URI_DB,resource_name,screen_facility_id])
+        logger.info('PUT the second screen result to the server...')
         resp = self.django_client.put(
             resource_uri, data=input_data_put, **data_for_get )
         if resp.status_code not in [200, 204]:
@@ -2705,7 +2798,21 @@ class ScreenResultResource(DBResourceTestCase):
             self.get_content(resp), XLSX_MIMETYPE)
         ScreenResultSerializerTest.validate(self, input_data, output_data)
         
-        # verify that the screen1 mutual columns = screen 2 mutual columns
+        # Verify the "screen.overlapping_positive_screens" field
+        self.screen1 = self.get_screen(
+            self.screen1['facility_id'], { 'includes': '*' })
+        self.screen2 = self.get_screen(
+            self.screen2['facility_id'], { 'includes': '*' })
+        overlapping1 = self.screen1.get('overlapping_positive_screens', None)
+        overlapping2 = self.screen2.get('overlapping_positive_screens', None)
+        self.assertTrue(
+            self.screen2['facility_id'] in overlapping1,
+            '%r not found in %r' % (self.screen2['facility_id'], overlapping1) )
+        self.assertTrue(
+            self.screen1['facility_id'] in overlapping2,
+            '%r not found in %r' % (self.screen1['facility_id'], overlapping2) )
+        
+        # Verify that the screen1 mutual columns = screen 2 mutual columns
         screen_facility_id = screen['facility_id']
         resource_name = 'screenresult'
         resource_uri = '/'.join([
@@ -2744,27 +2851,39 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info((
             'verify that mutual positive columns are in the result value '
             'fields: %r'), output_list[0] )
-        mutual_positive_cols_screen_1 = ['dc_1_field4', 'dc_1_field5']
+
+        mutual_positive_types = ['confirmed_positive_indicator','partition_positive_indicator']
+        resource_name = 'screenresult/' + self.screen1['facility_id']
+        screen1_schema = self.get_schema(resource_name)
+        logger.info('screen 1 schema: %r', screen1_schema)
+        resource_name = 'screenresult/' + self.screen2['facility_id']
+        screen2_schema = self.get_schema(resource_name)
+        mutual_positive_cols_screen_1 = [field['key'] 
+            for field in screen1_schema['fields'].values()
+                if field.get('assay_data_type',None) in mutual_positive_types ]
+        mutual_positive_cols_screen_2 = [field['key'] 
+            for field in screen2_schema['fields'].values()
+                if field.get('assay_data_type',None) in mutual_positive_types ]
         for col in mutual_positive_cols_screen_1:
             self.assertTrue(col in output_list[0].keys(), 
                 ('mutual positive column %r is missing in output cols: %r' 
                  % (col, output_list[0].keys())))
         # if a col is positive, check that the mutual pos cols have data as well
+        
         for row in output_list:
             if row['is_positive']:
-                for col in mutual_positive_cols_screen_1:
-                    base_colname = col.split('_')[2]
-                    this_screen_colname = 'dc_2_%s' % base_colname
-                    self.assertTrue(this_screen_colname in row, 
-                        'could not find %r in row: %r' 
-                            % (this_screen_colname, row))
-                    if row[this_screen_colname] is not None:
-                        self.assertTrue(
-                            row[col] is not None,
-                            ('mutual positive column %r is missing data in row: %r' 
-                             % (col, row)))
+                for col1 in mutual_positive_cols_screen_1:
+                    for col2 in mutual_positive_cols_screen_2:
+                        self.assertTrue(col2 in row,
+                            'could not find %r in row: %r'
+                            % (col2, row))
+                        if row[col2] is not None:
+                            self.assertTrue(row[col1] is not None,
+                                ('mutual positive column %r is missing data in row: %r' 
+                                    % (col, row)))
             
-        # TODO: test mutual column filtering 
+        # NOTE: Further testing of mutual column field visibilty in the 
+        # DataSharingLevel tests
         
     def test4_result_value_errors_from_file(self):
         
@@ -2798,7 +2917,6 @@ class ScreenResultResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
 
-        
         logger.info('create screen...')        
         screen = self.create_screen({ 'screen_type': 'small_molecule' })
         
@@ -2812,7 +2930,7 @@ class ScreenResultResource(DBResourceTestCase):
         filename = '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file)
         filename_out = (
             '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
-        logger.info('check file: %r ', os.path.exists(filename))
+        logger.info('Open and POST file: %r', filename)
         with open(filename, 'rb') as input_file:
 
             # NOTE: now posting as xls, so that the parse errors will be 
@@ -2938,7 +3056,6 @@ class ScreenResultResource(DBResourceTestCase):
             ('fields', fields),
             ('objects', result_values),
         ))
-
         
         # NOTE: now posting directly, w/out the tp client,
         # so that the parse errors will be 
@@ -2999,6 +3116,7 @@ class ScreenResource(DBResourceTestCase):
         LibraryScreening.objects.all().delete()
         ApiLog.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username='testsuper').delete()
+        LabAffiliation.objects.all().delete()
         
     def test1_create_screen(self):
 
@@ -4223,6 +4341,7 @@ class ScreenResource(DBResourceTestCase):
         base_filename = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = ('%s/db/static/test_data/useragreement/%s' 
             %(APP_ROOT_DIR,base_filename))
+        logger.info('Open and POST file: %r', filename)
         with open(filename) as input_file:
 
             logger.info('POST publication with attached_file to the server...')
@@ -4509,6 +4628,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         Screen.objects.all().delete()
         Library.objects.all().delete()
         LibraryScreening.objects.all().delete()
+        LabAffiliation.objects.all().delete()
         ApiLog.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username='testsuper').delete()
 
@@ -5798,6 +5918,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         # - for all copies:
         # Modify copy1:A01 volume so that it will not be chosen
         # (well will be unfulfilled instead) for both copies
+#         self._modify_copy_well_volume(
+#             self.library1_copy1, '0.000000010', '01000:A01')
+#         self._modify_copy_well_volume(
+#             self.library1_copy1a, '0.000000010', '01000:A01')
         self._modify_copy_well_volume(
             self.library1_copy1, '0.000010', '01000:A01')
         self._modify_copy_well_volume(
@@ -7171,6 +7295,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         User.objects.all().exclude(username=self.username).delete()
         ApiLog.objects.all().delete()
         
+        # removed: should not be nec
+#         Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
+        LabAffiliation.objects.all().delete()
+        
     def test01_create_user_iccbl(self):
 
         logger.info('test01_create_user_iccbl...')
@@ -7735,6 +7863,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         file = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = \
             '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        logger.info('Open and POST file: %r', filename)
         with open(filename) as input_file:
 
             logger.info('POST with attached_file to the server')
@@ -7833,9 +7962,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         file = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = \
             '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        logger.info('Open and POST file: %r', filename)
         with open(filename) as input_file:
 
-            logger.info('PUT user agreement to the server...')
+            logger.info('POST user agreement to the server...')
             useragreement_item_post['attached_file'] = input_file
             
 #             django_test_client = self.api_client.client
@@ -7949,6 +8079,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         file = 'iccbl_rnai_ua_march2015.pdf'
         filename = \
             '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        logger.info('Open and POST file: %r', filename)
         with open(filename) as input_file:
 
             logger.info('PUT user agreement to the server...')
@@ -8213,4 +8344,1150 @@ class ScreensaverUserResource(DBResourceTestCase):
             'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
                 .format(**new_obj))
 
+
+class DataSharingLevel(DBResourceTestCase):
+    
+    def __init__(self, *args, **kwargs):
+        DBResourceTestCase.__init__(self, *args, **kwargs)
+        self.sr_serializer = ScreenResultSerializer()
+        self.general_user_password = 'testpass1'
+
+    def tearDown(self):
+        DBResourceTestCase.tearDown(self)
+        # NOTE: tearDown may be eliminated for iterative testing:
+        # the setup_data method will check for existence of data before creating
+        
+        logger.info('tearDown...')
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute('delete from well_query_index;')
+            except Exception as e:
+                logger.exception('on delete well_query_index')
+            try:
+                cursor.execute('delete from well_data_column_positive_index;')
+            except Exception as e:
+                logger.exception('on delete well_data_column_positive_index')
+            try:
+                cursor.execute('delete from cached_query;')
+            except Exception as e:
+                logger.exception('on delete cached_query')
+        Screen.objects.all().delete()
+        ScreensaverUser.objects.all().exclude(username=self.username).delete()
+        LabAffiliation.objects.all().delete()
+        Library.objects.all().delete()
+        ApiLog.objects.all().delete()
+
+    
+    def setup_data(self):
+        # NOTE: tearDown may be eliminated for iterative testing:
+        # the setup_data method will check for existence of data before creating
+        self.setup_library()
+        # Create 2 labs for each level
+        def set_user_password(user):
+            # assign password to the test user
+            # NOTE: may only be done through the Django Model, for now
+            # TODO: superuser should be able to assign password through secure connection
+            userObj = User.objects.get(username=user['username'])
+            userObj.set_password(self.general_user_password)
+            userObj.save()
+            return user
+
+        reference_users = self.get_list_resource(BASE_URI + '/screensaveruser') 
+        reference_users = { 
+            user['username']: user 
+                for user in reference_users}
+        logger.info('starting reference users: %r', reference_users.keys())
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        logger.info('starting reference screens: %r', reference_screens.keys())
+        user_data = {
+            'facility_usage_roles': ['small_molecule_screener',]
+        }
+        for dsl in range(1,4):
+            for lab in ['a','b']:
+                _data = dict(
+                    user_data,
+                    sm_data_sharing_level=dsl)
+                lab_head_username = 'lab_head%d%s' % (dsl,lab)
+                if lab_head_username not in reference_users:
+                    _data = dict(_data,username=lab_head_username)
+                    logger.info('setup: user not found; creating %r...', _data)
+                    user = set_user_password(self.create_lab_head(_data))
+                
+                _data = dict(_data,lab_head_username=lab_head_username)
+                lead_screener_username = 'lead_screener%d%s' % (dsl,lab)
+                if lead_screener_username not in reference_users:
+                    _data = dict(_data, username=lead_screener_username)
+                    logger.info('setup: user not found; creating %r...', _data)
+                    user = set_user_password(self.create_screensaveruser(_data))
+                    
+                collaborator_username = 'collaborator%d%s' % (dsl,lab)
+                if collaborator_username not in reference_users:
+                    _data = dict(_data, username=collaborator_username)
+                    logger.info('setup: user not found; creating %r...', _data)
+                    user = set_user_password(self.create_screensaveruser(_data))
+                
+                # Create a screens for each lab, by level
+                screen_data = {
+                    'screen_type': 'small_molecule',
+                    'lab_head_username': lab_head_username,
+                    'lead_screener_username': lead_screener_username,
+                    'collaborator_usernames': [collaborator_username,],
+                }
+                
+                for screen_dsl in range(0,4):
+                    facility_id = '%d%s%d' % (dsl,lab,screen_dsl)
+                    if facility_id not in reference_screens:
+                        _data = dict(screen_data,
+                            facility_id = '%d%s%d' % (dsl,lab,screen_dsl),
+                            title = '%d%s%d' % (dsl,lab,screen_dsl),
+                            data_sharing_level = screen_dsl )
+                        logger.info('setup: screen not found; creating %r...', _data)
+                        screen = self.create_screen(
+                            data=_data, uri_params=['override=true',])
+
+        reference_users = self.get_list_resource(BASE_URI + '/screensaveruser') 
+        reference_users = { 
+            user['username']: user 
+                for user in reference_users}
+        self.reference_users = reference_users
+        logger.info('reference_users: %r', reference_users.keys())
+        self.users_by_level = defaultdict(set)
+        for username,user in reference_users.items():
+            self.users_by_level[user['sm_data_sharing_level']].add(username)
+        logger.info('users_by_level: %r', self.users_by_level)
+        
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        self.reference_screens = reference_screens
+        logger.info('reference_screens: %r', reference_screens.keys())
+        screens_by_lead = defaultdict(set)
+        for facility_id,screen in reference_screens.items():
+            screens_by_lead[screen['lead_screener_username']].add(facility_id)
+        # organize by level
+        self.screens_by_lead = {}
+        for username, screens in screens_by_lead.items():
+            self.screens_by_lead[username] = sorted(
+                screens, key=lambda facility_id: reference_screens[facility_id]['data_sharing_level'])
+        logger.info('screens_by_lead: %r', self.screens_by_lead)
+        self.screens_by_level = defaultdict(set)
+        for facility_id,screen in reference_screens.items():
+            self.screens_by_level[screen['data_sharing_level']].add(facility_id)
+        logger.info('screens_by_level: %r', self.screens_by_level)
+        
+        # IF setup data were preserved; delete the screen results
+        self.clear_out_screenresults()
+        
+    def clear_out_screenresults(self):        
+        logger.info(
+            'remove all screen results before tests')
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        for screen_facility_id,screen in reference_screens.items():
+            if screen['has_screen_result'] in [1,2]:
+                logger.info('delete screen result: %r', screen_facility_id)
+                delete_url = '/'.join([
+                    BASE_URI, 'screenresult',screen_facility_id])
+                self.api_client.delete(delete_url, authentication=self.get_credentials())
+        
+    def get_entity(self, resource_uri, as_username=None, data_for_get=None):
+        
+        _data_for_get = { 'limit': 0, 'includes': ['*'] }
+        if data_for_get is not None:
+            _data_for_get.update(data_for_get)
+        
+        if as_username is not None:
+            authentication = self.create_basic(
+                as_username, self.general_user_password)
+        else:
+            authentication = self.get_credentials()
+            
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=authentication, 
+            data=_data_for_get)
+        if resp.status_code == 200:
+            new_obj = self.deserialize(resp)
+            if API_RESULT_DATA in new_obj:
+                self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
+                    'more than one object returned for: %r, returns: %r'
+                    % (resource_uri,new_obj))
+                new_obj = new_obj[API_RESULT_DATA][0]
+            logger.debug('obj: %r', new_obj)
+            return new_obj
+        elif resp.status_code == 404:
+            return None
+        else:
+            self.fail((resp.status_code,self.get_content(resp)))
+    
+    def get_user(self, username, as_username=None, data_for_get=None):
+        
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser', username])
+        return self.get_entity(resource_uri, as_username, data_for_get)
+    
+    def get_screen(self, facility_id, as_username=None, data_for_get=None):
+        
+        resource_uri = '/'.join([BASE_URI_DB, 'screen', facility_id])
+        return self.get_entity(resource_uri, as_username, data_for_get)
+    
+    def setup_library(self):
+        
+        short_name = 'library1'
+        resource_uri = '/'.join([BASE_URI_DB, 'library',short_name])
+        self.library1 = self.get_entity(resource_uri)
+        if self.library1 is None:
+            logger.info('library not found, creating: %s', short_name)
+            self.library1 = self.create_library({
+                'short_name': short_name,
+                'start_plate': 1, 
+                'end_plate': 20,
+                'screen_type': 'small_molecule' })
+    
+            logger.info('create wells...')
+            plate = 1
+            input_data = [
+                self.create_small_molecule_test_well(
+                    plate,i,library_well_type='experimental') 
+                for i in range(0,20)]
+            # setup one control well: i:20 - E02
+            input_data.append(
+                self.create_small_molecule_test_well(
+                    plate,20,library_well_type='empty') 
+                )
+            resource_name = 'well'
+            resource_uri = '/'.join([
+                BASE_URI_DB,'library', self.library1['short_name'],resource_name])
+            resp = self.api_client.put(
+                resource_uri, format='sdf', data={ 'objects': input_data } , 
+                authentication=self.get_credentials(), 
+                **{ 'limit': 0, 'includes': '*'} )
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
+
+    @staticmethod
+    def _create_screen_result_test_data(
+        screen_facility_id, well_ids, 
+        confirmed_positive_wells=None, partition_positive_wells=None):
+        
+        confirmed_positive_wells = confirmed_positive_wells or []
+        partition_positive_wells = partition_positive_wells or []   
+        
+        fields = {
+            'E': {
+#                 'ordinal': 1,
+                'name': 'Field1_non_positive_indicator',
+                'data_worksheet_column': 'E',
+                'data_type': 'numeric',
+                'decimal_places': 4, 
+                'description': 'Non-positive field',
+                'replicate_ordinal': 2,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'flourescence_intensity',
+            },
+            'F': {
+#                 'ordinal': 2,
+                'name': 'Field2_positive_indicator',
+                'data_worksheet_column': 'F',
+                'data_type': 'confirmed_positive_indicator',
+                'description': 'positive indicator field',
+                'how_derived': 'z-score > 1 for Field3'
+            },
+            'G': {
+#                 'ordinal': 3,
+                'name': 'Field3_partitioned_positive',
+                'data_worksheet_column': 'G',
+                'data_type': 'partition_positive_indicator',
+                'description': 'partition positive indicator',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+        }
+        
+        result_values = []
+        for i, well_id in enumerate(well_ids):
+            
+            result_value = {
+                'well_id': well_id,
+                'E': i+1
+            }
+            if well_id in confirmed_positive_wells:
+                result_value['F'] = 'CP'
+            if well_id in partition_positive_wells:
+                result_value['G'] = 'W'
+            result_values.append(result_value)
+        
+        input_data = OrderedDict((
+            ('meta', {'screen_facility_id': screen_facility_id } ),
+            ('fields', fields),
+            ('objects', result_values),
+        ))
+        return input_data
+
+
+    def create_screen_result_for_test(
+            self, screen_facility_id,well_ids, 
+            confirmed_positive_wells=None, partition_positive_wells=None):
+        
+        input_data = self._create_screen_result_test_data(
+            screen_facility_id,
+            well_ids, confirmed_positive_wells, partition_positive_wells)
+
+        # The ScreenResultSerializer only recognizes the XLSX format:
+        # So serialize the input data into an XLSX file
+        input_data_put = screen_result_importer.create_output_data(
+            screen_facility_id, 
+            input_data['fields'], 
+            input_data['objects'] )
+        input_data_put = self.sr_serializer.serialize(
+            input_data_put, XLSX_MIMETYPE)
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        logger.info('PUT screen result to the server...')
+
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        resp = self.django_client.put(
+            resource_uri, data=input_data_put, **data_for_get )
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(
+            resp.status_code in [200, 204], resp.status_code)
+
+        
+        output_data = self.get_screenresult(screen_facility_id)
+        
+        ScreenResultSerializerTest.validate(self, input_data, output_data)
+
+    def get_screenresult_json(self, screen_facility_id, username=None, data=None):
+        data_for_get = { 'includes': '*' }
+        if data is not None:
+            data_for_get.update(data)
+
+        if username:
+            authentication=self.create_basic(username, self.general_user_password)
+        else:
+            authentication=self.get_credentials()
+
+        resource_uri = BASE_URI + '/screenresult/' + screen_facility_id
+        resp = self.api_client.get(
+            resource_uri, format='json', data=data_for_get, 
+            authentication=authentication )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        new_data = new_obj[API_RESULT_DATA]
+        return new_data
+
+    def get_screenresult(self,screen_facility_id, username=None, data=None):
+        
+        if username:
+            authentication=self.create_basic(username, self.general_user_password)
+        else:
+            authentication=self.get_credentials()
+        
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get['HTTP_AUTHORIZATION'] = authentication
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+#         if data is not None:
+#             data_for_get.update(data)
+
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        
+        logger.info('GET screen result %r from the server, %r', 
+            screen_facility_id, data_for_get)
+        resp = self.django_client.get(resource_uri, data=data, **data_for_get)
+        if resp.status_code not in [200, 204]:
+            if resp.status_code == 403:
+                logger.info('resp: %r',self.get_content(resp))
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
+        output_data = self.sr_serializer.deserialize(
+            self.get_content(resp), XLSX_MIMETYPE)
+        return output_data
+
+    def get_screens(self, username, data=None):
+        
+        data_for_get = { 'includes': '*' }
+        if data is not None:
+            data_for_get.update(data)
+        
+        # Get a general screen listing
+        resource_uri = BASE_URI + '/screen'
+        resp = self.api_client.get(
+            resource_uri, format='json', data=data_for_get, 
+            authentication=self.create_basic(username, self.general_user_password) )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        new_data = new_obj[API_RESULT_DATA]
+        return new_data
+        
+    def get_datacolumns(self, username=None, data=None):
+        
+        data_for_get = { 'includes': '*' }
+        if data is not None:
+            data_for_get.update(data)
+        
+        if username:
+            authentication=self.create_basic(username, self.general_user_password)
+        else:
+            authentication=self.get_credentials()
+        
+        resource_uri = BASE_URI + '/datacolumn'
+        resp = self.api_client.get(
+            resource_uri, format='json', data=data_for_get, 
+            authentication=authentication )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        new_data = new_obj[API_RESULT_DATA]
+        return new_data
+        
+    def get_schema(self, resource_name, username=None, data=None):
+        
+        data_for_get = { 'includes': '*' }
+        if data is not None:
+            data_for_get.update(data)
+        
+        if username:
+            authentication=self.create_basic(username, self.general_user_password)
+        else:
+            authentication=self.get_credentials()
+        
+        resource_uri = '/'.join([BASE_URI_DB, resource_name, 'schema'])
+
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=authentication,
+            data=data_for_get)
+        self.assertTrue(resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        return self.deserialize(resp)
+        
+#     def test1_schema(self):
+#         
+#         self.setup_users()
+# 
+#         # Get the Screen schema for the user
+#         screen_schema = self.get_schema(
+#             'screen', authentication=self.create_basic(
+#                 self.lab_head1['username'], self.general_user_password))
+#         logger.debug('screen schema: %r', screen_schema)
+#         self.assertIsNotNone(screen_schema)
+#         
+#         fields = screen_schema['fields']
+#         
+#         # Verify ordering/filtering turned off for level1, 2, 3 fields
+#         restricted_fields = set()
+#         fields_by_level = defaultdict(set)
+#         for key,field in screen_schema['fields'].items():
+#             for level in range(0,4):
+#                 if field['data_access_level'] == level:
+#                     fields_by_level[level].add(key)
+#                     if level > 0:
+#                         restricted_fields.add(key)
+#                 elif field['data_access_level'] == 0 and field['viewGroups'] is None:
+#                     fields_by_level[0].add(key)
+#         logger.info('fields by level: %r', fields_by_level)
+#         
+#         # Test some fields (not comprehensive)
+#         self.assertTrue(set(['summary','publishable_protocol']) & set(fields_by_level[1]))
+#         self.assertTrue(set(['positives_summary','assay_readout_types']) & set(fields_by_level[2]))
+#         self.assertTrue(set(['activity_count','cherry_pick_screenings']) & set(fields_by_level[3]))
+#         
+#         for key in restricted_fields:
+#             self.assertTrue(
+#                 fields[key]['filtering'] is not True, 
+#                 'field filtering: %r: %r' % (key, fields[key]))
+#             self.assertTrue(
+#                 fields[key]['ordering'] is not True, 
+#                 'field ordering: %r: %r' % (key, fields[key]))
+        
+    def test2_overlapping_screens_property(self):
+         
+        self.setup_data()
+        facility1 = self.screens_by_lead['lead_screener2a'][2]
+        facility2 = self.screens_by_lead['lead_screener2b'][2]
+        screen1_2 = self.get_screen(facility1)
+        screen2_2 = self.get_screen(facility2)
+ 
+        # 1.A before data upload, no overlapping of result values
+        self.assertIsNone(
+            screen1_2['overlapping_positive_screens'],
+            screen1_2['overlapping_positive_screens'])
+        self.assertIsNone(
+            screen2_2['overlapping_positive_screens'],
+            screen2_2['overlapping_positive_screens'])
+         
+        # 2. create overlapping data
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        self.create_screen_result_for_test(
+            facility1, well_ids_to_create,
+            confirmed_positive_wells=['00001:A02'])
+        self.create_screen_result_for_test(
+            facility2, well_ids_to_create,
+            confirmed_positive_wells=['00001:A02'])
+ 
+        screen1_2 = self.get_screen(facility1)
+        screen2_2 = self.get_screen(facility2)
+         
+        self.assertTrue(
+            screen2_2['facility_id'] in screen1_2['overlapping_positive_screens'],
+            '%r not found in %r' 
+                % (screen2_2['facility_id'],screen1_2['overlapping_positive_screens']))
+        self.assertTrue(
+            screen1_2['facility_id'] in screen2_2['overlapping_positive_screens'],
+            '%r not found in %r' 
+                % (screen1_2['facility_id'],screen2_2['overlapping_positive_screens']))
+        # 3. Remove screen results
+        delete_url = '/'.join([BASE_URI, 'screenresult/%s'])
+        self.api_client.delete(delete_url % facility1, authentication=self.get_credentials())
+        self.api_client.delete(delete_url % facility2, authentication=self.get_credentials())
+        
+        screen1_2 = self.get_screen(facility1)
+        screen2_2 = self.get_screen(facility2)
+
+        self.assertIsNone(
+            screen1_2['overlapping_positive_screens'],
+            screen1_2['overlapping_positive_screens'])
+        self.assertIsNone(
+            screen2_2['overlapping_positive_screens'],
+            screen2_2['overlapping_positive_screens'])
+        
+    def test3_visibility(self):
+        '''
+        Test User data visibility (access level) as per the ICCBL User Agreements:
+        
+        General Screen visibility Rules:
+        
+        before deposit: Own Screens and Level 0 Screens
+        after deposit: Own Screens and Levels 0,1,2 Screens
+        (level 3 users may only ever see Own Screens and Level 0 Screens)
+        
+        Field Access Level Rules:
+        
+        User-Screen Access Level 0:
+        - for any Screen the User is authorized to see
+        User-Screen Access Level 1:
+        - Level 1 or 2 Users viewing Level 0 Screens
+        - Level 1 Users viewing Level 1 Screens
+        - Level 1 Users viewing overlapping level 2 Screens
+        - Level 2 Users viewing overlapping level 1 or 2 Screens
+        User-Screen Access Level 2 :
+        - Level 1 or 2 Users viewing Level 0 Screens
+        - Level 1 Users viewing Level 1 Screens
+        User-Screen Access Level 3:
+        - When viewing own screens
+        
+        '''
+        self.setup_data()
+        self.do_level_1_visibility()
+#         self.do_level_2_visibility()
+        
+    def do_visibility_test(
+            self, fields, user, expected_screens_access_levels):
+
+        logger.info('do_visibility_test for: %r', user['username'])
+
+        # Retrieve the screens as superuser for reference
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        reference_screens = { screen['facility_id']: screen 
+            for screen in reference_screens}
+
+        # Retrieve screens as the user        
+        reported_screens = self.get_screens(user['username'])
+        reported_screens = { screen['facility_id']:screen 
+            for screen in reported_screens}
+
+        reported_screens_access_levels = defaultdict(set)
+        for facility_id, screen in reported_screens.items():
+            reported_level = screen['user_access_level_granted']
+            reported_screens_access_levels[reported_level].add(facility_id)
+        logger.info('expected_screens_access_levels: %r', 
+            expected_screens_access_levels)
+        logger.info('reported_screens_access_levels: %r', 
+            reported_screens_access_levels)
+        # Note filter default values added to the defaultdict inadvertantly
+        self.assertEqual(
+            set([key for key,value in expected_screens_access_levels.items() if value ]),
+            set(reported_screens_access_levels.keys()))
+
+        for access_level_expected, ids_expected in expected_screens_access_levels.items():
+            self.assertEqual(
+                ids_expected, 
+                reported_screens_access_levels[access_level_expected])
+            for facility_id in ids_expected:
+                logger.info('do visibility test, screen: %r', facility_id)
+                logger.info(
+                    'test screen: %r, access level: %r', 
+                    facility_id, access_level_expected)
+                reported_screen = reported_screens[facility_id]
+                reference_screen = reference_screens[facility_id]
+                self.assertEqual(
+                    access_level_expected, 
+                    reported_screen['user_access_level_granted'])
+                
+                for key, value in reported_screen.items():
+                    if key == 'user_access_level_granted':
+                        continue
+                    field = fields[key]
+                    reference_value = reference_screen[key]
+                    if reference_value is None:
+                        # skip null fields for now
+                        continue
+                    logger.debug('screen: %r, test value: %r: %r', 
+                        facility_id, key, reference_value)
+                    if field['data_access_level'] > access_level_expected:
+                        self.assertIsNone(
+                            value, '%r - %r:%r' % (facility_id, key,value))
+                        continue
+                    
+                    if key == 'has_screen_result':
+                        if reference_value == 1:
+                            if access_level_expected in [2,3]:
+                                self.assertEqual(value, 1)
+                            else:
+                                self.assertEqual(value, 2) # "not shared"
+                        else:
+                            self.assertEqual(value, 3) # "none"
+                    elif key == 'overlapping_positive_screens':
+                        if access_level_expected == 2:
+                            expected_overlapping = set(reference_value)
+                            expected_overlapping &= (
+                                expected_screens_access_levels[2]
+                                | expected_screens_access_levels[3])
+                            self.assertEqual(expected_overlapping, set(value))
+                        elif access_level_expected == 3:
+                            expected_overlapping = set(reference_value)
+                            expected_overlapping &= (
+                                expected_screens_access_levels[1]
+                                | expected_screens_access_levels[2]
+                                | expected_screens_access_levels[3])
+                            self.assertEqual(expected_overlapping, set(value))
+                        else:
+                            self.assertIsNone(value)
+                    else:
+                        self.assertEqual(reference_value, value,
+                            '%r:%r: %r != %r' % (
+                                facility_id,key,reference_value,value))
+
+    def do_screen_result_visible_test(self, user, screen_facility_id):
+        reference_screen_result = self.get_screenresult(screen_facility_id)
+        reported_screen_results = self.get_screenresult(
+            screen_facility_id, user['username'])
+        
+        ScreenResultSerializerTest.validate(
+            self, reference_screen_result, reported_screen_results)
+    
+    def do_data_columns_test(self, user, expected_screens_access_levels,
+        expected_positive_count_by_col_title=None):
+        
+        # Retrieve the screens as superuser for reference
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        reference_screens = { screen['facility_id']: screen 
+            for screen in reference_screens}
+
+        reference_data_columns = self.get_datacolumns()
+        logger.info('reference datacolumns: %r', 
+            [(dc['screen_facility_id'],dc['name'],dc['user_access_level_granted'])
+                for dc in reference_data_columns])
+        reference_data_columns_by_title = { dc['title']:dc for dc in reference_data_columns }
+        if expected_positive_count_by_col_title:
+            for title, count in expected_positive_count_by_col_title.items():
+                logger.info('test pos count for: %r, %r, %r',
+                    title, dc['key'], dc['positives_count'])
+                dc = reference_data_columns_by_title[title]
+                self.assertEqual(dc['positives_count'], count)
+        
+        # 1. Collate the datacolumns reported by expected access level
+
+        dc_by_screen = defaultdict(list)
+        for dc in reference_data_columns:
+            dc_by_screen[dc['screen_facility_id']].append(dc)
+        if not dc_by_screen:
+            self.fail('no reference datacolumns found')
+        for facility_id,dcs in dc_by_screen.items():
+            logger.info('dcs reported: %r: %r', facility_id,
+                [dc['name'] for dc in dcs])
+            
+        expected_cols_access_levels = defaultdict(set)
+        for access_level,facility_ids in expected_screens_access_levels.items():
+            if access_level == 0:
+                continue
+            for facility_id in facility_ids:
+                screen = reference_screens.get(facility_id) 
+                if screen['has_screen_result'] == 3:
+                    continue
+                dcs = dc_by_screen.get(facility_id,None)
+                if not dcs:
+                    self.fail('no datacolumns found: %r' % facility_id)
+                for dc in dcs:
+                    logger.debug(
+                        'access_level: %r, dc: %r', 
+                        access_level, dc['data_column_id'])
+                    if access_level > 1:
+                        expected_cols_access_levels[access_level].add(
+                            dc['data_column_id'])
+                    elif access_level == 1:
+                        # must be a positives column with positive values
+                        if dc.get('positives_count',0) > 0:
+                            logger.info('level 1 pos column: %r, %r, %r', 
+                                dc['key'],dc['title'], dc['positives_count'])
+                            expected_cols_access_levels[access_level].add(
+                                dc['data_column_id'])
+                        else:
+                            logger.info(
+                                'level 1 column not allowed, no positives: %r, %r',
+                                dc['key'], dc['title'])
+                    else:
+                        logger.info(
+                            'data column not allowed: %r:%r:%r',
+                            dc['screen_facility_id'], dc['data_column_id'],
+                            dc['name'])
+
+        # 2. compare expected datacolumns by level to reported
+        
+        reported_datacolumns = self.get_datacolumns(username=user['username'])
+        
+        dc_by_screen = defaultdict(list)
+        for dc in reported_datacolumns:
+            dc_by_screen[dc['screen_facility_id']].append(dc['name'])
+        logger.info('reported dc_by_screen: %r', dc_by_screen)
+        
+        reported_dc_by_access_level = defaultdict(set)
+        for dc in reported_datacolumns:
+            reported_dc_by_access_level[dc['user_access_level_granted']]\
+                .add(dc['data_column_id'])
+        logger.info('reported_dc_by_access_level: %r', reported_dc_by_access_level) 
+
+        for access_level,col_ids in expected_cols_access_levels.items():
+            logger.info('access level: %r, expected: %r', access_level, col_ids)
+            reported_col_ids = reported_dc_by_access_level.get(access_level, None)
+            self.assertEqual(col_ids, reported_col_ids)        
+
+    def do_screenresult_test(self, user, screen_facility_id, 
+        expected_access_level, mutual_wells=None):
+        '''
+        Test the screen results; after the do_data_columns_test has been run to 
+        verify visibility of columns
+        '''
+        logger.info('do_screenresult_test: %r, %r', user, screen_facility_id)
+        
+        
+        reference_screen = self.get_screen(screen_facility_id)
+        
+        reported_screen = self.get_screen(screen_facility_id, user['username'])
+        
+        user_access_level_granted = reported_screen['user_access_level_granted']
+        logger.info('screen: %r, user accessing: %r, access_level: %r',
+            screen_facility_id, user['username'], user_access_level_granted )
+        self.assertEqual(user_access_level_granted, expected_access_level)
+        
+        key = 'has_screen_result'
+        reference_value = reference_screen[key]
+        if reference_value == 3:
+            self.fail('do_screenresult_test: screen: %r reports no screen result: %r'
+                % (screen_facility_id, reference_screen))
+        self.assertEqual(1, reference_value, 
+            'admin user should never see has_screen_result other than (1,2): %r'
+            % reference_value)
+        if user_access_level_granted < 2:
+            self.assertEqual(2, reported_screen[key])
+            
+            # TODO: verify that the screen result can not be directly accessed
+        else:
+            self.assertEqual(1, reported_screen[key])
+            
+            data = { 'screen_type': reference_screen['screen_type'] }
+            reference_datacolumns = self.get_datacolumns(data=data)
+            reference_datacolumns_by_key = {
+                dc['key']: dc for dc in reference_datacolumns }
+            reference_datacolumns = { dc['data_column_id']:dc 
+                for dc in reference_datacolumns}
+            reported_datacolumns = self.get_datacolumns(
+                username=user['username'], data=data)
+            reported_datacolumns_by_key = {
+                dc['key']: dc for dc in reported_datacolumns }
+            reported_datacolumns = { dc['data_column_id']:dc 
+                for dc in reported_datacolumns }
+            dc_by_screen = defaultdict(list)
+            for dc_id, dc in reported_datacolumns.items():
+                dc_by_screen[dc['screen_facility_id']].append(dc_id)
+            logger.info('reported dc_by_screen: %r', dc_by_screen)
+            
+            reported_dc_by_access_level = defaultdict(set)
+            for dc_id,dc in reported_datacolumns.items():
+                reported_dc_by_access_level[dc['user_access_level_granted']]\
+                    .add(dc_id)
+            logger.info('reported_dc_by_access_level: %r', reported_dc_by_access_level) 
+            
+            # Must check the schema first, and build the expected fields from that
+            
+            sr_schema_resource = '/'.join(['screenresult',screen_facility_id])
+            
+#             reference_screen_result_schema = self.get_schema(sr_schema_resource)
+#             reported_screen_result_schema = self.get_schema(
+#                 sr_schema_resource, user['username'] )
+#             # TODO: check that these are the same....
+            
+            # grab the "maximal" screen result: all available columns from all screens added
+            dc_ids = reference_datacolumns.keys()
+            
+            reference_expected_dc_keys = set([reference_datacolumns[dc_id]['key'] 
+                for dc_id in dc_ids ])
+            reference_screen_result_schema = self.get_schema(
+                sr_schema_resource, data={ 'dc_ids':dc_ids })
+            logger.info('verify that all of the datacolumns are present in the reference')
+            logger.info('reported reference fields: %r', 
+                reference_screen_result_schema['fields'].keys())
+            reference_dc_keys = set([field['key'] 
+                for field in reference_screen_result_schema['fields'].values()
+                    if field.get('is_datacolumn',False)])
+            self.assertEqual(reference_expected_dc_keys, reference_dc_keys)
+            
+            reported_screen_result_schema = self.get_schema(
+                sr_schema_resource, username=user['username'], data={ 'dc_ids':dc_ids })
+            self.assertIsNotNone(reported_screen_result_schema)
+             
+            expected_dc_keys = set()
+            for dc_id, dc in reported_datacolumns.items():
+                # Note: positives_count is a level 2 field, so must use ref col
+                reference_dc = reference_datacolumns[dc_id]
+                if dc_id in reported_dc_by_access_level[3]:
+                    expected_dc_keys.add(dc['key'])
+                elif dc_id in reported_dc_by_access_level[2]:
+                    expected_dc_keys.add(dc['key'])
+                elif dc_id in reported_dc_by_access_level[1]:
+                    logger.info('level 1 column: %r, %r, %r, %r, %r', 
+                        dc['key'],dc['title'], reference_dc['positives_count'], 
+                        dc['screen_facility_id'],
+                        reported_screen['overlapping_positive_screens'])
+                    if ( dc['screen_facility_id'] 
+                            in reported_screen['overlapping_positive_screens']):
+                        if reference_dc['positives_count'] > 0:
+                            logger.info('allowed')
+                            expected_dc_keys.add(dc['key'])    
+            reported_dc_keys = set([field['key'] 
+                for field in reported_screen_result_schema['fields'].values()
+                    if field.get('is_datacolumn',False)])
+            self.assertEqual(expected_dc_keys, reported_dc_keys)
+                        
+            # Test the results
+            
+            reference_screenresult = self.get_screenresult_json(
+                screen_facility_id, data={ 'dc_ids': dc_ids} )
+            
+            for rv in reference_screenresult:
+                self.assertTrue(reference_expected_dc_keys <= set(rv.keys()),
+                    'keys not found %r' 
+                        % (reference_expected_dc_keys-set(rv.keys())))
+            reference_result_values = {
+                rv['well_id']:rv for rv in reference_screenresult }
+            
+            reported_screenresult = self.get_screenresult_json(
+                screen_facility_id, username=user['username'], 
+                data={ 'dc_ids': dc_ids} )
+            for rv in reported_screenresult:
+                well_id = rv['well_id']
+                self.assertTrue(expected_dc_keys <= set(rv.keys()),
+                    '%r, keys not found %r' 
+                        % (well_id, expected_dc_keys-set(rv.keys())))
+                disallowed_keys = reference_expected_dc_keys - reported_dc_keys
+                logger.info('disallowed dc keys: %r', disallowed_keys)
+                self.assertTrue(disallowed_keys.isdisjoint(set(rv.keys())),
+                    '%r, disallowed keys found %r' 
+                        % (well_id, disallowed_keys & set(rv.keys())))
+                
+                reference_rv = reference_result_values[well_id]
+                
+                for key,value in rv.items():
+                    reference_value = reference_rv[key]
+                    dc = reported_datacolumns_by_key.get(key,None)
+                    if dc is None:
+                        # non-datacolumn fields should be equal
+                        self.assertEqual(
+                            reference_value, value,
+                            '%r, key: %r, %r != %r' 
+                                % (well_id, key, reference_value, value))
+                    else:
+                        access_level = dc['user_access_level_granted']
+                        logger.info('test: %r, %r:%r, %r, %r', 
+                            well_id, key, reference_value, value, rv['is_positive'])
+                        if access_level > 1:
+                            self.assertEqual(
+                                reference_value, value,
+                                '%r, key: %r, %r != %r' 
+                                    % (well_id, key, reference_value, value))
+                        else:
+                            if reference_value is not None:
+                                if rv['is_positive'] is True:
+                                    self.assertEqual(
+                                        reference_value, value,
+                                        '%r: %r, %r != %r' 
+                                        % (well_id, key, reference_value, value))
+                                else:
+                                    logger.info('non overlapping: %r: %r: %r', 
+                                        rv['well_id'], key, value)
+                                    self.assertIsNone(value,
+                                        '%r: %r, non-overlapping should be none: %r: %r' 
+                                        % (well_id, key, reference_value, value))
+                            else:
+                                logger.info('reference value is none: %r, %r:%r,%r',
+                                    well_id, key, reference_value, value)
+    
+    def do_level_1_visibility(self):
+        ''' Test level 1 user data visibility '''
+
+        user = self.reference_users['lead_screener1a']
+        own_screens = self.screens_by_lead[user['username']]
+        logger.info('screens by lead: %r', self.screens_by_lead)
+
+        logger.info('user: %r, own screens: %r', user['username'], own_screens)
+        
+        # Get the Screen schema for the user
+        screen_schema = self.get_schema('screen', user['username'])
+        self.assertIsNotNone(screen_schema)
+        
+        # Get level1, 2, 3 fields
+        fields_by_level = defaultdict(set)
+        for key,field in screen_schema['fields'].items():
+            for level in range(0,4):
+                if field['data_access_level'] == level:
+                    fields_by_level[level].add(key)
+                elif not field['data_access_level']:
+                    fields_by_level[0].add(key)
+                else:
+                    logger.debug('restricted field: %r', key)
+        logger.info('fields by level: %r', fields_by_level)
+        
+        logger.info(
+            '1. Visibility before data deposit (own & level 0 screens only)')
+        
+        expected_screens_access_levels = defaultdict(set)
+        expected_screens_access_levels[2] = \
+            set(self.screens_by_level[0]) - set(own_screens)
+        expected_screens_access_levels[3] = set(own_screens)
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+
+        logger.info(
+            '2. After data deposit')
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+         
+        logger.info('2.a non-qualifying deposit (level 2 screen for level 1 user)')
+        # - Screen visibility should be unchanged
+        screen_facility_id = own_screens[2]
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create,
+            confirmed_positive_wells=['00001:A02'])
+        expected_positive_count_by_col_title = {
+            '%s [%s]' % ('Field2_positive_indicator',screen_facility_id): 1 }
+        # test that user can get own screen result
+        
+        screen_result = self.get_screenresult(
+            screen_facility_id, user['username'])
+ 
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+        
+        logger.info(
+            '2.b qualifying deposit, can now see data for level 1,2 screens')
+        screen_facility_id = own_screens[1]
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create,
+            confirmed_positive_wells=['00001:A01','00001:A02'])
+        expected_positive_count_by_col_title[
+            '%s [%s]' % ('Field2_positive_indicator',screen_facility_id)] = 2
+
+        expected_screens_access_levels = defaultdict(set)
+        expected_screens_access_levels[0] = \
+            set(self.screens_by_level[2]) - set(own_screens)
+        expected_screens_access_levels[2] = set(self.screens_by_level[0])
+        expected_screens_access_levels[2].update(self.screens_by_level[1])
+        expected_screens_access_levels[2] -= set(own_screens)
+        expected_screens_access_levels[3] = set(own_screens)
+        expected_screens_access_levels_after_deposit_no_overlap = \
+            expected_screens_access_levels
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+        self.do_data_columns_test(
+            user, expected_screens_access_levels,
+            expected_positive_count_by_col_title=expected_positive_count_by_col_title)
+        
+        logger.info(
+            '2.c Create overlapping data in a level 2 Screen')
+        screen_facility_id = self.screens_by_lead['lead_screener2a'][2]
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create,
+            confirmed_positive_wells=['00001:A02','00001:A03'])
+        expected_positive_count_by_col_title[
+            '%s [%s]' % ('Field2_positive_indicator',screen_facility_id)] = 2
+
+        expected_screens_access_levels = defaultdict(set)
+        expected_screens_access_levels[0] = \
+            set(self.screens_by_level[2]) - set(own_screens)
+        expected_screens_access_levels[0].remove(screen_facility_id)
+        expected_screens_access_levels[1] = set([screen_facility_id])
+        expected_screens_access_levels[2] = set(self.screens_by_level[0])
+        expected_screens_access_levels[2].update(self.screens_by_level[1])
+        expected_screens_access_levels[2] -= set(own_screens)
+        expected_screens_access_levels[3] = set(own_screens)
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+
+        self.do_data_columns_test(
+            user, expected_screens_access_levels,
+            expected_positive_count_by_col_title=expected_positive_count_by_col_title)
+        self.do_screenresult_test(user, screen_facility_id, 1) # should be level 1 access
+        logger.info('do level 1 user viewing level 2 mutual wells test')
+        self.do_screenresult_test(user, own_screens[1], 3,
+            mutual_wells=['00001:A02'])
+#         self.do_screen_result_overlapping_test(
+#             user, self.screens1[1]['facility_id'])
+
+        logger.info(
+            '3 remove screen result')
+        delete_url = '/'.join([
+            BASE_URI, 'screenresult',screen_facility_id])
+        self.api_client.delete(delete_url, authentication=self.get_credentials())
+
+#         expected_screens_access_levels = defaultdict(set)
+#         expected_screens_access_levels[0] = \
+#             set(self.screens_by_level[2]) - set(own_screens)
+#         expected_screens_access_levels[2] = set(self.screens_by_level[0])
+#         expected_screens_access_levels[2].update(self.screens_by_level[1])
+#         expected_screens_access_levels[2] -= set(own_screens)
+#         expected_screens_access_levels[3] = set(own_screens)
+        self.do_visibility_test(
+            screen_schema['fields'], user, 
+            expected_screens_access_levels_after_deposit_no_overlap)
+        self.do_data_columns_test(user, expected_screens_access_levels_after_deposit_no_overlap)
+
+        self.clear_out_screenresults()
+        
+    def do_level_2_visibility(self):
+        ''' Test level 2 user data visibility '''
+
+        user = self.reference_users['lead_screener2a']
+        own_screens = self.screens_by_lead[user['username']]
+        logger.info('screens by lead: %r', self.screens_by_lead)
+        logger.info('user: %r, own screens: %r', user['username'], own_screens)
+        
+        # Get the Screen schema for the user
+        screen_schema = self.get_schema('screen', user['username'])
+        self.assertIsNotNone(screen_schema)
+        # Get level1, 2, 3 fields
+        fields_by_level = defaultdict(set)
+        for key,field in screen_schema['fields'].items():
+            for level in range(0,4):
+                if field['data_access_level'] == level:
+                    fields_by_level[level].add(key)
+                elif not field['data_access_level']:
+                    fields_by_level[0].add(key)
+                else:
+                    logger.info('restricted field: %r', key)
+        logger.info('fields by level: %r', fields_by_level)
+        
+        logger.info(
+            '1. Visibility before data deposit (own & level 0 screens only)')
+        
+        expected_screens_access_levels = defaultdict(set)
+        expected_screens_access_levels[2] = \
+            set(self.screens_by_level[0]) - set(own_screens)
+        expected_screens_access_levels[3] = set(own_screens)
+        logger.info('expected_screens_access_levels: %r',
+            expected_screens_access_levels)
+
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+
+        logger.info('2. After data deposit')
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+         
+        logger.info(
+            '2.a non-qualifying deposit (level 1 screen for level 2 user)')
+        # - Screen visibility should be unchanged
+        screen_facility_id = own_screens[1]
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create,
+            confirmed_positive_wells=['00001:A03'])
+
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+        
+        logger.info(
+            '2.b qualifying deposit')
+        # - can now see data for level 1,2 screens
+        screen_facility_id = own_screens[2]
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create,
+            confirmed_positive_wells=['00001:A03'])
+        
+        expected_screens_access_levels = defaultdict(set)
+        expected_screens_access_levels[0] = set(self.screens_by_level[2]) 
+        expected_screens_access_levels[0].update(self.screens_by_level[1])
+        expected_screens_access_levels[0] -= set(own_screens)
+        expected_screens_access_levels[2] = set(self.screens_by_level[0])
+        expected_screens_access_levels[2] -= set(own_screens)
+        expected_screens_access_levels[3] = set(own_screens)
+        expected_screens_access_levels_after_deposit_no_overlap = \
+            expected_screens_access_levels
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+        
+        logger.info(
+            '2.c Create overlapping data in a level 2 Screen')
+        screen_facility_id = self.screens_by_lead['lead_screener2b'][2]
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create,
+            confirmed_positive_wells=['00001:A03'])
+
+        expected_screens_access_levels = defaultdict(set)
+        expected_screens_access_levels[0] = set(self.screens_by_level[2]) 
+        expected_screens_access_levels[0].update(self.screens_by_level[1])
+        expected_screens_access_levels[0] -= set(own_screens)
+        expected_screens_access_levels[0].remove(screen_facility_id)
+        expected_screens_access_levels[1] = set([screen_facility_id])
+        expected_screens_access_levels[2] = set(self.screens_by_level[0])
+        expected_screens_access_levels[2] -= set(own_screens)
+        expected_screens_access_levels[3] = set(own_screens)
+        self.do_visibility_test(
+            screen_schema['fields'], user, expected_screens_access_levels)
+
+        self.do_data_columns_test(user, expected_screens_access_levels)
+
+        logger.info(
+            '3 remove screen result')
+        delete_url = '/'.join([
+            BASE_URI, 'screenresult',screen_facility_id])
+        self.api_client.delete(
+            delete_url, authentication=self.get_credentials())
+        self.do_visibility_test(
+            screen_schema['fields'], user, 
+            expected_screens_access_levels_after_deposit_no_overlap)
+    
+        self.clear_out_screenresults()
         

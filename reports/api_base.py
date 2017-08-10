@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
 from functools import wraps
@@ -7,11 +8,11 @@ import re
 from django.conf import settings
 from django.conf.urls import url, patterns
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 import django.core.exceptions
 from django.core.signals import got_request_exception
 from django.http.response import HttpResponseBase, HttpResponse, \
-    HttpResponseNotFound, Http404
+    HttpResponseNotFound, Http404, HttpResponseForbidden
 from django.middleware.csrf import _sanitize_token, REASON_NO_REFERER,\
     REASON_BAD_REFERER, REASON_BAD_TOKEN
 from django.utils import six
@@ -57,7 +58,9 @@ def un_cache(_func):
 
 class Authorization(object):
 
-    def _is_resource_authorized(self, resource_name, user, permission_type):
+    def _is_resource_authorized(
+        self, request, resource_name, user, permission_type, *args, **kwargs):
+        
         raise NotImplementedError(
             '_is_resource_authorized must be implemented for %s, %s, %s',
             resource_name, user, permission_type)
@@ -251,8 +254,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                         msg = [ (key,str(kwargs[key])[:100]) 
                             for key in kwargs.keys() ]
                     logger.info(
-                        'wrap_view: %r, method: %r, request: %r, kwargs: %r', 
-                        view, request.method, request, msg)
+                        'wrap_view: %r, method: %r, user: %r, request: %r, kwargs: %r', 
+                        view, request.method, request.user, request, msg)
                 else:
                     logger.info('wrap_view: %r, %r', view, request)
                 
@@ -305,6 +308,13 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+            except PermissionDenied as e:
+                logger.info('PermissionDenied ex: %r', e)
+                data = {
+                    'Permission Denied: ': '%r'%e }
+                response = self.build_error_response(
+                    request, data, response_class=HttpResponseForbidden, **kwargs)
+            
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):
@@ -392,9 +402,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         logger.info('use deserializer: %r', content_type)
         
         if content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
-            # NOTE: must inject information about the list fields, so that they
+            # NOTE: Injecting information about the list fields, so that they
             # can be properly parsed (this is a custom serialization format)
-            schema = self.build_schema()
+            schema = self.build_schema(user=request.user)
             list_keys = [x for x,y in schema['fields'].items() 
                 if y.get('data_type') == 'list']
             return self.get_serializer().deserialize(

@@ -110,7 +110,8 @@ class SqlAlchemyResource(IccblBaseResource):
         Transfer all values from GET, then POST to a dict
         Note: uses 'getlist' to retrieve all values:
         - if a value is single valued, then unwrap from the list
-        - downstream methods expecting a list value must deal with non-list single values
+        - downstream methods expecting a list value must deal with non-list 
+        single values
         '''
         DEBUG = False or logger.isEnabledFor(logging.DEBUG)
         
@@ -119,7 +120,7 @@ class SqlAlchemyResource(IccblBaseResource):
             val = request.GET.getlist(key)
             if DEBUG:
                 logger.info('get key: %r, val: %r', key, val)
-            # Jquery Ajax will send array list params with a "[]" suffix - 20151015
+            # Jquery Ajax will send array list params with a "[]" suffix
             if '[]' in key and key[-2:] == '[]':
                 key = key[:-2]
             if len(val) == 1:
@@ -131,7 +132,7 @@ class SqlAlchemyResource(IccblBaseResource):
             val = request.POST.getlist(key)
             if DEBUG:
                 logger.info('post key: %r, val: %r', key, val)
-            # Jquery Ajax will post array list params with a "[]" suffix - 20151015
+            # Jquery Ajax will post array list params with a "[]" suffix
             key = key.replace('[]','')
             if len(val) == 1:
                 _dict[key] = val[0]
@@ -139,11 +140,11 @@ class SqlAlchemyResource(IccblBaseResource):
                 _dict[key] = val
         
         # check for single-valued known list values
-        # Note: Jquery Ajax will post array list params with a "[]" suffix - 20151015
+        # Note: Jquery Ajax will post array list params with a "[]" suffix
         known_list_values = [
-            'includes','exact_fields', 'order_by', 'visibilities','other_screens',  
-            'includes[]', 'order_by[]','exact_fields[]', 'visibilities[]',
-            'other_screens[]']
+            'includes','exact_fields', 'order_by', 'visibilities',
+            'other_screens', 'includes[]', 'order_by[]','exact_fields[]',
+            'visibilities[]','other_screens[]']
         for key in known_list_values:
             val = _dict.get(key,[])
             if isinstance(val, basestring):
@@ -176,10 +177,15 @@ class SqlAlchemyResource(IccblBaseResource):
         DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
         visibilities = set(visibilities)
         if DEBUG_VISIBILITY:
-            logger.info('get_visible_fields: field_hash initial: %r, manual: %r, exact: %r', 
+            logger.info(
+                'visibilities: %r, order_params: %r',
+                visibilities, order_params)
+            logger.info(
+                'field_hash initial: %r, manual: %r, exact: %r', 
                 schema_fields.keys(),manual_field_includes, exact_fields )
             logger.info('field visibility settings: %r', 
-                [ str((key,field['visibility'])) for key,field in schema_fields.items()])
+                [ str((key,field['visibility'])) 
+                    for key,field in schema_fields.items()])
         try:
             if exact_fields:
                 temp = { key:field for key,field in schema_fields.items()
@@ -201,23 +207,28 @@ class SqlAlchemyResource(IccblBaseResource):
         
                 if field.get('value_template', None):
                     dependency_fields.update(
-                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['value_template']))
+                        re.findall(
+                            r'{([a-zA-Z0-9_-]+)}', field['value_template']))
                 if field.get('display_options', None):
                     dependency_fields.update(
-                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['display_options']))
+                        re.findall(
+                            r'{([a-zA-Z0-9_-]+)}', field['display_options']))
                 if field.get('dependencies',None):
                     dependency_fields.update(field.get('dependencies'))
-                logger.debug('field: %s, dependencies: %s', field['key'],field.get('dependencies',[]))
+                logger.debug('field: %s, dependencies: %s', field['key'],
+                    field.get('dependencies',[]))
             if DEBUG_VISIBILITY:
                 logger.info('dependency_fields %s', dependency_fields)
             if dependency_fields:
                 temp.update({ key:field 
-                    for key,field in schema_fields.items() if key in dependency_fields })
+                    for key,field in schema_fields.items() 
+                        if key in dependency_fields })
             
             # filter_fields
             if filter_fields:
                 temp.update({ key:field 
-                    for key,field in schema_fields.items() if key in filter_fields })
+                    for key,field in schema_fields.items() 
+                        if key in filter_fields })
             # order params
             if order_params:
                 temp.update({ key:field 
@@ -231,7 +242,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info('field_hash final: %s', field_hash.keys())
         
             if not field_hash:
-                logger.info('no fields found: %r, %r', field_hash.keys(), manual_field_includes)
+                logger.info('no fields found: %r, %r', field_hash.keys(), 
+                    manual_field_includes)
                 response = HttpResponse('no fields specified')
                 response.status_code = 400
                 raise ImmediateHttpResponse(
@@ -249,8 +261,8 @@ class SqlAlchemyResource(IccblBaseResource):
     def build_sqlalchemy_columns(
             self, fields, base_query_tables=None, custom_columns=None):
         '''
-        Returns an ordered dict of sqlalchemy.sql.schema.Column objects, associated 
-        with the sqlalchemy.sql.schema.Table definitions, which are bound to 
+        Returns an ordered dict of sqlalchemy.sql.schema.Column objects, 
+        associated with the sqlalchemy.sql.schema.Table definitions, bound to 
         the sqlalchemy.engine.Engine: 
         "Connects a Pool and Dialect together to provide a source of database 
         connectivity and behavior."
@@ -293,7 +305,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     continue
                 if DEBUG_BUILD_COLUMNS: 
                     logger.info(
-                        'field: %r, field_table: %r', field['key'], field_table )
+                        'field: %r, field_table: %r', field['key'], field_table)
                 
                 if field_table in base_query_tables:
                     # simple case: table.fields already selected in the base query:
@@ -340,7 +352,7 @@ class SqlAlchemyResource(IccblBaseResource):
                                     '{parent_table}.{link_field}'.format(**join_args)))
     
                         if field.get('linked_field_meta_field', None):
-                            # TODO: test - the linked meta field is the "datacolumn type"
+                            # the linked meta field is the "datacolumn type"
                             linked_field_meta_field = field['linked_field_meta_field']
                             meta_field_obj = MetaHash.objects.get(
                                 key=field['key'], scope=field['scope'])
@@ -351,7 +363,8 @@ class SqlAlchemyResource(IccblBaseResource):
                         
                         ordinal_field = field.get('ordinal_field', None)
                         if ordinal_field:
-                            join_stmt = join_stmt.order_by(link_table_def.c[ordinal_field])
+                            join_stmt = join_stmt.order_by(
+                                link_table_def.c[ordinal_field])
                         join_stmt = join_stmt.alias('a')
                         stmt2 = select([func.array_to_string(
                                         func.array_agg(column(field_name)),
@@ -418,37 +431,15 @@ class SqlAlchemyResource(IccblBaseResource):
         return order_clauses
     
     @staticmethod
-    def filter_value_to_python(value, filter_type):
-        """
-        Turn the string ``value`` into a python object.
-        """
-        original_value = value
+    def parse_filter_value(value, filter_type):
         if isinstance(value, six.string_types):
             value = urllib.unquote(value).decode('utf-8')
-        # Simple values
-        if value is 1:
-            value = 1
-        elif value in ['true', 'True', True]:
-            value = True
-        elif value in ['false', 'False', False]:
-            value = False
-        elif value in ('nil', 'none', 'None', None):
-            value = None
-
         if filter_type in ('in', 'range') and len(value):
             if value and hasattr(value, '__iter__'):
                 # value is already a list
                 pass
-            # Removed 20161108
-            # elif hasattr(param_hash, 'getlist'):
-            #     value = []
-            #     for part in param_hash.getlist(filter_expr):
-            #         value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
-        if DEBUG_FILTERS:
-            logger.info('filter_value_to_python: %r: %r, %r', 
-                original_value, value, filter_type)
         return value
 
     @staticmethod
@@ -476,16 +467,17 @@ class SqlAlchemyResource(IccblBaseResource):
         combined_filter_hash = filter_hash
         filter_expression = and_(*filter_hash.values())
 
-        # 20170511 - nested search_data not used (for well, plate, or screening inquiry)
-        # Treat the nested "nested_search_data" as sets of params to be OR'd together,
-        # then AND'd with the regular filters (if any)
+        # 20170511 - nested search_data not used 
+        # (for well, plate, or screening inquiry)
+        # Treat the nested "nested_search_data" as sets of params to be
+        # OR'd together,  then AND'd with the regular filters (if any)
         nested_search_data = param_hash.get('nested_search_data', None)
         if nested_search_data:
             logger.info('nested_search_data: %r', nested_search_data)
             if isinstance(nested_search_data, basestring):
                 nested_search_data = json.loads(nested_search_data)
             if isinstance(nested_search_data, dict):
-                # a standard dict of filters, to be OR'd with the current filter expression
+                # a standard dict of filters, to be OR'd with the current filter
                 nested_search_data = [nested_search_data]
             if not isinstance(nested_search_data, (list,tuple)):
                 raise Exception('nested_search_data must be a list of dicts')
@@ -529,9 +521,9 @@ class SqlAlchemyResource(IccblBaseResource):
         return (filter_expression,combined_filter_hash, readable_filter_hash)
     
     @staticmethod
-    def parse_filter(filter_expr, value):
+    def parse_filter(filter_expr):
         if DEBUG_FILTERS:
-            logger.info('parse filter: %r, %r', filter_expr, value)
+            logger.info('parse filter: %r', filter_expr)
         
         lookup_sep = django.db.models.constants.LOOKUP_SEP
         if lookup_sep not in filter_expr:
@@ -539,8 +531,8 @@ class SqlAlchemyResource(IccblBaseResource):
             field_name = filter_expr
             filter_type = 'exact'
             if DEBUG_FILTERS:
-                logger.info('interpret: %r as %r for %r:%r', 
-                    filter_expr, filter_type,field_name, value)
+                logger.info('interpret: %r as %r for %r', 
+                    filter_expr, filter_type,field_name)
         else:
             filter_bits = filter_expr.split(lookup_sep)
             if len(filter_bits) != 2:
@@ -555,17 +547,10 @@ class SqlAlchemyResource(IccblBaseResource):
             field_name = field_name[1:]
         if DEBUG_FILTERS:
             logger.info('build filter expr: field_name, %r, '
-                'filter_type: %r value: %r', 
-                field_name, filter_type, value)
+                'filter_type: %r', 
+                field_name, filter_type)
 
-        # 20161108: "param_hash" is sent to filter_value_to_python for obsoleted reason:
-        # - it was the GET.param hash, and was checking if value was a list...
-        #         value = SqlAlchemyResource.filter_value_to_python(
-        #             value, param_hash, filter_expr, filter_type)
-        value = SqlAlchemyResource.filter_value_to_python(
-            value, filter_type)
-            
-        return (field_name, value, filter_type, inverted)
+        return (field_name, filter_type, inverted)
     
     @staticmethod
     def build_filter( 
@@ -581,7 +566,8 @@ class SqlAlchemyResource(IccblBaseResource):
             col = cast(col, sqlalchemy.sql.sqltypes.Numeric)
         elif data_type == 'boolean':
             if filter_type != 'is_null':
-                col = cast(func.coalesce(col,False), sqlalchemy.sql.sqltypes.Boolean)
+                col = cast(
+                    func.coalesce(col,False), sqlalchemy.sql.sqltypes.Boolean)
         if data_type == 'string':
             col = cast(col, sqlalchemy.sql.sqltypes.Text)
         if filter_type in ['exact', 'eq']:
@@ -614,35 +600,38 @@ class SqlAlchemyResource(IccblBaseResource):
         elif filter_type == 'lte':
             expression = col <= value
         elif filter_type == 'gt':
+            logger.info('create gt operator for %r, %r', col, value)
             expression = col > value
         elif filter_type == 'gte':
             expression = col >= value
         elif filter_type == 'is_blank':
             if data_type == 'string':
                 col = func.trim(col)
-            if value and str(value).lower() == 'true':
-                expression = col == None
-                if data_type == 'string':
-                    expression = col == ''
-            else:
+            if value is False or str(value).lower() == 'false':
                 expression = col != None
                 if data_type == 'string':
                     col = func.trim(col)
                 if (data_type == 'string' or 
                     data_type == 'list'):
                     expression = col != ''
-        elif filter_type == 'is_null':
-            if value and str(value).lower() == 'true':
-                expression = col == None
             else:
+                expression = col == None
+                if data_type == 'string':
+                    expression = col == ''
+        elif filter_type == 'is_null':
+            if value is False or str(value).lower() == 'false':
                 expression = col != None
+            else:
+                expression = col == None
             # TODO: test that col <> '' expression is created
         elif filter_type == 'in':
-            if data_type == 'list': # NOTE: for the list type, interpret "in" as any of the
+            if data_type == 'list': 
+                # NOTE: for the list type, interpret "in" as any of the
                 # given values are in the field
                 temp_expressions = []
                 for _val in value:
-                    temp_expressions.append(col.ilike('%{value}%'.format(value=_val)))
+                    temp_expressions.append(
+                        col.ilike('%{value}%'.format(value=_val)))
                 
                 expression = or_(*temp_expressions)
             else:
@@ -687,11 +676,12 @@ class SqlAlchemyResource(IccblBaseResource):
         try:
             for filter_expr, value in param_hash.items():
                 
-                (field_name, value, filter_type, inverted) = \
-                    SqlAlchemyResource.parse_filter(filter_expr, value)
-                
+                (field_name, filter_type, inverted) = \
+                    SqlAlchemyResource.parse_filter(filter_expr)
+                value = SqlAlchemyResource.parse_filter_value(value, filter_type)
                 if not field_name in schema['fields']:
-                    logger.debug('unknown filter field: %r, %r', field_name, filter_expr)
+                    logger.debug('unknown filter field: %r, %r', 
+                        field_name, filter_expr)
                     continue
                 
                 field = schema['fields'][field_name]
@@ -724,7 +714,8 @@ class SqlAlchemyResource(IccblBaseResource):
         Return a deserialized list of dicts
         '''
         logger.debug('_get_list_response: %r, %r', 
-            self._meta.resource_name, {k:v for k,v in kwargs.items() if k !='schema'})
+            self._meta.resource_name, 
+            {k:v for k,v in kwargs.items() if k !='schema'})
         includes = kwargs.pop('includes', '*')
         try:
             kwargs.setdefault('limit', 0)
@@ -750,7 +741,8 @@ class SqlAlchemyResource(IccblBaseResource):
         Return the detail response as a dict
         '''
         logger.info('_get_detail_response: %r, %r', 
-            self._meta.resource_name, {k:v for k,v in kwargs.items() if k !='schema'})
+            self._meta.resource_name, 
+            {k:v for k,v in kwargs.items() if k !='schema'})
         includes = kwargs.pop('includes', '*')
         try:
             response = self.get_detail(
@@ -771,30 +763,34 @@ class SqlAlchemyResource(IccblBaseResource):
             return {}
         
     #@un_cache
-    def _get_detail_response_internal(self, **kwargs):
+    def _get_detail_response_internal(self, user=None, **kwargs):
         request = self.request_factory.generic('GET', '.', 
             data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
-        class User:
-            is_superuser = True
-            # @staticmethod
-            # def is_superuser():
-            #     return true
-        request.user = User
+        if user is None:
+            class User:
+                is_superuser = True
+            request.user = User
+        else:
+            request.user = user
         result = self._get_detail_response(request, **kwargs)
         return result
 
     # @un_cache
-    def _get_list_response_internal(self, **kwargs):
+    def _get_list_response_internal(self, user=None, **kwargs):
         
         request = self.request_factory.generic('GET', '.', 
             data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
         content_type = self.get_serializer().get_accept_content_type(request)
         logger.info('_get_list_response_internal: %r', content_type)
-        class User:
-            is_superuser = True
-        request.user = User
+        
+        if user is None:
+            class User:
+                is_superuser = True
+            request.user = User
+        else:
+            request.user = user
         result = self._get_list_response(request, **kwargs)
         return result
     
@@ -823,11 +819,13 @@ class SqlAlchemyResource(IccblBaseResource):
             # for the memcache
             m = hashlib.md5()
             compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+                dialect=postgresql.dialect(), 
+                compile_kwargs={"literal_binds": True}))
             logger.debug('compiled_stmt %s',compiled_stmt)
             if 'limit' in compiled_stmt.lower():
                 # remove limit and offset; will calculate
-                compiled_stmt = compiled_stmt[:compiled_stmt.lower().rfind('limit')]
+                compiled_stmt = \
+                    compiled_stmt[:compiled_stmt.lower().rfind('limit')]
             logger.debug('compiled_stmt for hash key: %s', compiled_stmt)
             key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
             logger.debug('key_digest: %r', key_digest)
@@ -855,7 +853,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 if new_limit > 0:
                     stmt = stmt.limit(new_limit)
                 resultset = conn.execute(stmt)
-                prefetched_result = [dict(row) for row in resultset] if resultset else []
+                prefetched_result = [
+                    dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt %d', len(prefetched_result))
                 
                 if len(prefetched_result) < limit & offset == 0:
@@ -891,7 +890,8 @@ class SqlAlchemyResource(IccblBaseResource):
                         logger.info('new_offset: %d, start: %d, len: %d', 
                             new_offset, _start, len(prefetched_result))
                     if _start < len(prefetched_result):
-                        key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(new_offset))
+                        key_digest = '%s_%s_%s' %(
+                            compiled_stmt, str(limit), str(new_offset))
                         m = hashlib.md5()
                         m.update(key_digest)
                         key = m.hexdigest()
@@ -905,13 +905,16 @@ class SqlAlchemyResource(IccblBaseResource):
                             'count': count,
                             'key': key }
                         if DEBUG_CACHE:
-                            logger.info('add to cache, key: %s, limit: %s, offset: %s',
+                            logger.info(
+                                'add to cache, key: %s, limit: %s, offset: %s',
                                 key, limit, new_offset)
                         cache.set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
                     else:
-                        logger.info('not caching: prefetched length: %s, start: %s, end: %s',
+                        logger.info(
+                            'not caching: prefetched length: '
+                            '%s, start: %s, end: %s',
                             len(prefetched_result), _start, 'end')
                         break
                 logger.info('store cached iterations: %s', y+1)
@@ -939,7 +942,8 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
-        logger.info('stream_response_from_statement: %r %r', self._meta.resource_name, format )
+        logger.info('stream_response_from_statement: %r %r',
+            self._meta.resource_name, format )
         temp_param_hash = param_hash.copy()
         if 'schema' in temp_param_hash:
             del temp_param_hash['schema']
@@ -988,14 +992,17 @@ class SqlAlchemyResource(IccblBaseResource):
            
             logger.info('format: %r', format) 
             if format is not None:
-                content_type = self.get_serializer().get_content_type_for_format(format)
+                content_type = \
+                self.get_serializer().get_content_type_for_format(format)
             else:
-                content_type = self.get_serializer().get_accept_content_type(request)
+                content_type = \
+                self.get_serializer().get_accept_content_type(request)
 
             result = None
             if content_type == JSON_MIMETYPE:
                 logger.info(
-                    'streaming json, use_caching: %r, self.use_cache: %r, limit: %d, %r', 
+                    'streaming json, use_caching: %r, self.use_cache: %r, '
+                    'limit: %d, %r', 
                     use_caching, self.use_cache, limit, is_for_detail)
                 if ((self.use_cache is True and use_caching is not False)
                         and ( use_caching is True or limit > 0)):
@@ -1061,7 +1068,8 @@ class SqlAlchemyResource(IccblBaseResource):
                     # FIXME: test this for generators other than json generator        
             
             result = closing_iterator_wrapper(result, conn.close)
-            return self.stream_response_from_cursor(request, result, output_filename, 
+            return self.stream_response_from_cursor(
+                request, result, output_filename, 
                 field_hash=field_hash, 
                 param_hash=param_hash, 
                 is_for_detail=is_for_detail, 
@@ -1101,11 +1109,12 @@ class SqlAlchemyResource(IccblBaseResource):
                     or field.get('linked_field_type',None) == 'fields.ListField'
                     or field.get('data_type', None) == 'list' ) ]
             value_templates = {key:field['value_template'] 
-                for key,field in field_hash.items() if field.get('value_template', None)}
+                for key,field in field_hash.items() 
+                    if field.get('value_template', None)}
+            logger.debug('list fields: %r', list_fields)
             data = cursor_generator(
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
-                
             response = None
             if content_type == JSON_MIMETYPE:
                 response = StreamingHttpResponse(

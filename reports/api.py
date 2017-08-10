@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
 from copy import deepcopy
@@ -19,7 +20,7 @@ from django.conf.urls import url
 from django.contrib.auth.models import User as DjangoUser
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 import django.core.exceptions
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
@@ -98,8 +99,8 @@ class UserGroupAuthorization(Authorization):
                     scope='resource', type__in=permission_types)]
         return set(resources_user) | set(resources_group)
     
-    @classmethod
-    def _is_resource_authorized(self, resource_name, user, permission_type):
+    def _is_resource_authorized(
+        self, resource_name, user, permission_type, **kwargs):
         
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
@@ -120,8 +121,6 @@ class UserGroupAuthorization(Authorization):
                     % (resource_name,permission_type,user))
             return True
         
-        # FIXME: 20150708 - rewrite this using the UserResource 
-        # interrogating the groups therein (post refactor of TP methods)
         userprofile = user.userprofile
         permission_types = [permission_type]
         if permission_type == 'read':
@@ -163,12 +162,17 @@ class UserGroupAuthorization(Authorization):
 class AllAuthenticatedReadAuthorization(UserGroupAuthorization):
     ''' Allow read for all authenticated users'''
 
-    def _is_resource_authorized(self, resource_name, user, permission_type):
+    def _is_resource_authorized(
+        self, resource_name, user, permission_type, **kwargs):
+        
+        # Note: authentication already completed
+        
         if permission_type == 'read':
             if user is None:
                 return False
             return True
-        return super(AllAuthenticatedReadAuthorization,self)._is_resource_authorized(resource_name, user, permission_type)
+        return super(AllAuthenticatedReadAuthorization,self)\
+            ._is_resource_authorized(resource_name, user, permission_type)
 
     
 def write_authorization(_func):
@@ -178,17 +182,20 @@ def write_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
-        
+        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if not self._meta.authorization._is_resource_authorized(
-                self._meta.resource_name,request.user,'write'):
+            resource_name, request.user,'write', **kwargs):
             logger.info('write auth failed for: %r, %r', 
-                request.user,self._meta.resource_name)
-            raise ImmediateHttpResponse(
-                response=HttpForbidden(
-                    'user: %s, permission: %s/%s not found' 
-                    % (request.user,self._meta.resource_name,'write')))
-
-        kwargs['schema'] = self.build_schema()
+                request.user, resource_name)
+            msg = 'write auth failed for: %r, %r' % (request.user, resource_name)
+            logger.warn(msg)
+            raise PermissionDenied(msg)
+#             raise ImmediateHttpResponse(
+#                 response=HttpForbidden(
+#                     'user: %s, permission: %s/%s not found' 
+#                     % (request.user,resource_name,'write')))
+        if resource_name != 'screenresult':
+            kwargs['schema'] = self.build_schema(user=request.user)
 
         return _func(self, *args, **kwargs)
 
@@ -202,19 +209,24 @@ def read_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
+        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if DEBUG_AUTHORIZATION:
-            logger.info('read auth for: %r', self._meta.resource_name)
+            logger.info('read auth for: %r', resource_name)
         if not self._meta.authorization._is_resource_authorized(
-                self._meta.resource_name,request.user,'read'):
-            logger.info('read auth failed for: %r, %r', 
-                request.user,self._meta.resource_name)
-            raise ImmediateHttpResponse(
-                response=HttpForbidden(
-                    'user: %s, permission: %s/%s not found' 
-                    % (request.user,self._meta.resource_name,'read')))
+                resource_name, request.user,'read', **kwargs):
+            msg = 'read auth failed for: %r, %r' % (request.user, resource_name)
+            logger.warn(msg)
+            raise PermissionDenied(msg)
+            
+#             # FIXME: raise a PermissionDenied instead
+#             raise ImmediateHttpResponse(
+#                 response=HttpForbidden(
+#                     'user: %s, permission: %s/%s not found' 
+#                     % (request.user,resource_name,'read')))
 
         # Use the user specific settings to build the schema
-        kwargs['schema'] = self.build_schema(user=request.user)
+        if resource_name != 'screenresult':
+            kwargs['schema'] = self.build_schema(user=request.user)
         
         return _func(self, *args, **kwargs)
 
@@ -223,7 +235,9 @@ def read_authorization(_func):
 
 class SuperUserAuthorization(Authorization):
 
-    def _is_resource_authorized(self, resource_name, user, permission_type):
+    def _is_resource_authorized(
+        self, resource_name, user, permission_type, **kwargs):
+
         if DEBUG_AUTHORIZATION:
             logger.info('Super User Authorization for: %r, %r', 
                 user, user.is_superuser)
@@ -362,7 +376,7 @@ class ApiResource(SqlAlchemyResource):
     
     def get_schema(self, request, **kwargs):
     
-        return self.build_response(request, self.build_schema(), **kwargs)
+        return self.build_response(request, self.build_schema(user=request.user), **kwargs)
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -397,10 +411,10 @@ class ApiResource(SqlAlchemyResource):
         
         return schema
     
-    def get_resource_uri(self, deserialized, **kwargs):
-        ids = [self._meta.resource_name]
-        ids.extend(self.get_id(deserialized,**kwargs).values())
-        return '/'.join(ids)
+#     def get_resource_uri(self, deserialized, **kwargs):
+#         ids = [self._meta.resource_name]
+#         ids.extend(self.get_id(deserialized,**kwargs).values())
+#         return '/'.join(ids)
         
     def get_id(self,deserialized, validate=False, schema=None, **kwargs):
         ''' 
@@ -408,8 +422,8 @@ class ApiResource(SqlAlchemyResource):
         - if validate=True, raises ValidationError if some or all keys are missing
         - otherwise, returns keys that can be found
         '''
-        if schema is None:
-            schema = self.build_schema()
+#         if schema is None:
+#             schema = self.build_schema()
         id_attribute = schema['id_attribute']
         fields = schema['fields']
 
@@ -629,7 +643,7 @@ class ApiResource(SqlAlchemyResource):
             logger.exception('Validation error: %r', e)
             raise e
             
-        logger.info('Get new state, for logging: %r...',
+        logger.debug('Get new state, for logging: %r...',
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
@@ -919,7 +933,7 @@ class ApiResource(SqlAlchemyResource):
             raise Exception('schema not initialized')
 #         schema = kwargs['schema']
         # Note, find kwargs that are available, validate=False, for if they DNE
-        kwargs_for_log = self.get_id(deserialized,validate=False,**kwargs)
+        kwargs_for_log = self.get_id(deserialized,validate=False,schema=schema,**kwargs)
         
         id_attribute = schema['id_attribute']
         
@@ -1003,9 +1017,9 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
-        kwargs_for_log = self.get_id(deserialized,validate=True,**kwargs)
+        kwargs_for_log = self.get_id(
+            deserialized, validate=True, schema=schema, **kwargs)
 
         # NOTE: creating a log, even if no data have changed (may be comment only)
         log = self.make_log(request)
@@ -1083,7 +1097,8 @@ class ApiResource(SqlAlchemyResource):
         # Note: this version of PUT cannot be used if the resource must create
         # the ID keys on create (use POST/PATCH)
         
-        kwargs_for_log = self.get_id(deserialized, validate=True, **kwargs)
+        kwargs_for_log = self.get_id(
+            deserialized, validate=True, schema=schema, **kwargs)
         id_attribute = schema['id_attribute']
         # kwargs_for_log = {}
         # for id_field in id_attribute:
@@ -1411,7 +1426,7 @@ class ApiResource(SqlAlchemyResource):
         return siunit_rowproxy_generator
     
     @staticmethod    
-    def create_vocabulary_rowproxy_generator(field_hash):
+    def create_vocabulary_rowproxy_generator(field_hash, extant_generator=None):
         '''
         Create cursor row generator:
         - generator wraps a sqlalchemy.engine.ResultProxy (cursor)
@@ -1421,37 +1436,33 @@ class ApiResource(SqlAlchemyResource):
         - returns the regular row[key] value for other columns
         '''
         vocabularies = ApiResource.get_vocabularies(field_hash)
-#         for key, field in field_hash.iteritems():
-#             if field.get('vocabulary_scope_ref', None):
-#                 scope = field.get('vocabulary_scope_ref')
-#                 vocabularies[key] = \
-#                     VocabularyResource()._get_vocabularies_by_scope(scope)
-#                 if not vocabularies[key]:
-#                     logger.warn('no vocabulary found for scope: %r, field: %r', 
-#                         scope, key)
-        def vocabulary_rowproxy_generator(cursor):
-            class Row:
-                def __init__(self, row):
-                    self.row = row
-                def has_key(self, key):
-                    return self.row.has_key(key)
-                def keys(self):
-                    return self.row.keys();
-                def __getitem__(self, key):
-                    if not row[key]:
-                        return None
-                    if key in vocabularies:
-                        if row[key] not in vocabularies[key]:
-                            logger.error(
-                                ('Unknown vocabulary:'
-                                 ' scope:%s key:%s val:%r, keys defined: %r'),
-                                field_hash[key]['vocabulary_scope_ref'], key, 
-                                row[key],vocabularies[key].keys() )
-                            return self.row[key] 
-                        else:
-                            return vocabularies[key][row[key]]['title']
+
+        class Row:
+            def __init__(self, row):
+                self.row = row
+            def has_key(self, key):
+                return self.row.has_key(key)
+            def keys(self):
+                return self.row.keys();
+            def __getitem__(self, key):
+                if not self.row[key]:
+                    return None
+                if key in vocabularies:
+                    if self.row[key] not in vocabularies[key]:
+                        logger.error(
+                            ('Unknown vocabulary:'
+                             ' scope:%s key:%s val:%r, keys defined: %r'),
+                            field_hash[key]['vocabulary_scope_ref'], key, 
+                            self.row[key],vocabularies[key].keys() )
+                        return self.row[key] 
                     else:
-                        return self.row[key]
+                        return vocabularies[key][self.row[key]]['title']
+                else:
+                    return self.row[key]
+        
+        def vocabulary_rowproxy_generator(cursor):
+            if extant_generator is not None:
+                cursor = extant_generator(cursor)
             for row in cursor:
                 yield Row(row)
         return vocabulary_rowproxy_generator
@@ -1881,8 +1892,9 @@ class ApiLogResource(ApiResource):
                 # FIXME: "search_data" not supported
                 expression = None
                 for filter_expr,value in param_hash.items():
-                    (field_name, value, filter_type, inverted) = \
-                        SqlAlchemyResource.parse_filter(filter_expr, value)
+                    (field_name, filter_type, inverted) = \
+                        SqlAlchemyResource.parse_filter(filter_expr)
+                    value = SqlAlchemyResource.parse_filter_value(value, filter_type)
                     if field_name == 'diff_keys':
                         expression = SqlAlchemyResource.build_filter(
                             'field_key', 'string', filter_type, inverted, value)
@@ -2292,7 +2304,10 @@ class FieldResource(ApiResource):
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.info('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
@@ -2313,7 +2328,7 @@ class FieldResource(ApiResource):
                     deserialized.get(
                         key,None), key,fields[key].get('data_type','string')) 
         
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         
         try:
             field = None
@@ -2660,7 +2675,10 @@ class ResourceResource(ApiResource):
     @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
         
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         if DEBUG_RESOURCES:
             logger.info('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
@@ -2682,7 +2700,7 @@ class ResourceResource(ApiResource):
                     deserialized.get(key,None), key,
                     fields[key].get('data_type','string')) 
         
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized,schema=schema, **kwargs)
         logger.debug('id_kwargs: %r', id_kwargs)
         try:
             field = None
@@ -2730,6 +2748,14 @@ class ResourceResource(ApiResource):
 class VocabularyResource(ApiResource):
     '''
     '''
+    class Meta:
+        
+        authentication = MultiAuthentication(
+            BasicAuthentication(), IccblSessionAuthentication())
+        authorization= AllAuthenticatedReadAuthorization()
+        serializer = LimsSerializer()
+        resource_name = 'vocabulary'
+
     def __init__(self, **kwargs):
         super(VocabularyResource,self).__init__(**kwargs)
         # for debugging
@@ -3077,8 +3103,11 @@ class VocabularyResource(ApiResource):
     @un_cache 
     @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
         
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.debug('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
@@ -3116,7 +3145,7 @@ class VocabularyResource(ApiResource):
                     deserialized.get(key,None), key,
                     fields[key].get('data_type','string')) 
         logger.debug('initializer: %r', initializer_dict)
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         self.patch_elapsedtime1 += (time.time() - start_time)
         start_time = time.time()
         
@@ -3504,7 +3533,10 @@ class UserResource(ApiResource):
     @un_cache 
     @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         UserProfile.objects.get(**id_kwargs).delete()
     
     @write_authorization
@@ -3516,7 +3548,7 @@ class UserResource(ApiResource):
         fields = schema['fields']
 
         logger.info('patch_obj for user: %r, %r', deserialized, kwargs )
-        id_kwargs = self.get_id(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.info('patch user: %r', id_kwargs)
         
 

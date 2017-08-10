@@ -978,7 +978,6 @@ class ScreensaverUser(models.Model):
     login_id = models.TextField(unique=True, null=True)
     digested_password = models.TextField(null=True)
     
-    
     user = models.OneToOneField(
         'reports.UserProfile', null=True,on_delete=models.SET_NULL)
 
@@ -988,9 +987,11 @@ class ScreensaverUser(models.Model):
         'ScreensaverUser', null=True, related_name='lab_members')
     
     # If this field, if set, designates user as a "Lab Head"
-#     lab_head_affiliation = models.TextField(null=True)
     lab_affiliation = models.ForeignKey(
         'LabAffiliation', null=True, related_name='lab_heads')
+
+    sm_data_sharing_level = models.IntegerField(null=True)
+    rnai_data_sharing_level = models.IntegerField(null=True)
 
     class Meta:
         db_table = 'screensaver_user'

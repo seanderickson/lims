@@ -30,6 +30,9 @@ define([
       }
     },
     
+    /**
+     * appModel.LIST_ARGS values may be sent as initial values in the args hash
+     */
     initialize : function(args) {
       
       var self = this;
@@ -41,7 +44,6 @@ define([
       }
       self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
-      var listInitial = {};
       var uriStack = args.uriStack || [];
 
       var ListModel = Backbone.Model.extend({
@@ -53,72 +55,7 @@ define([
             includes: [] }
         });
 
-//      var preset_searches = {};
-//      if(!_.isUndefined(resource.options)
-//          && ! _.isUndefined(resource.options.search)){
-//        _.each(_.keys(resource.options.search), function(key){
-//          preset_searches[key] = resource.options.search[key];
-//        });
-//      }
-
-      // Presets
-      
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.rpp)){
-        listInitial['rpp'] = resource.options.rpp;
-      }
-      if(resource.options && !_.isEmpty(resource.options.order)){
-        listInitial['order'] = _.clone(resource.options.order);
-      }
-      if(resource.options && !_.isEmpty(resource.options.includes)){
-        listInitial['includes'] = _.clone(resource.options.includes);
-      }
-      if(resource.options && !_.isEmpty(resource.options.search)){
-        listInitial['search'] = _.clone(resource.options.search);
-      }
-      
-      // Update with the uriStack values
-      for (var i=0; i<uriStack.length; i++){
-        var key = uriStack[i];
-        i = i+1;
-        if (i==uriStack.length) continue;
-        var value = uriStack[i];
-        if (!value || _.isEmpty(value) ){
-          continue;
-        }
-        
-        if(key == 'log'){
-          self.urlSuffix = key + '/' + value;
-          continue;
-        }
-        
-        if(_.contains(this.LIST_MODEL_ROUTE_KEYS, key)){
-          
-          if(key === 'search') {
-            var searchHash = self.searchHash = {};
-            var searches = value.split(this.SEARCH_DELIMITER);
-            _.each(searches, function(search){
-              var parts = search.split('=');
-              if (!parts || parts.length!=2) {
-                var msg = 'invalid search parts: ' + search;
-                console.log(msg);
-                appModel.error(msg);
-              } else if (_.isEmpty(parts[1])) {
-                // pass, TODO: prevent empty searches from notifying
-              } else {
-                searchHash[parts[0]] = decodeURIComponent(parts[1]);
-              }
-            });
-            listInitial[key] = searchHash;
-          } else if (key === 'order') {
-            listInitial[key] = value.split(',');        
-          } else if (key === 'includes') {
-            listInitial[key] = value.split(',');        
-          }else {
-            listInitial[key] = value;
-          }
-        }
-      }
+      var listInitial = this.parseUriStack(uriStack, _options);
       var listModel = this.listModel = new ListModel(listInitial);
 
       this.objects_to_destroy = _([]);
@@ -128,8 +65,6 @@ define([
         pageSize: parseInt(self.listModel.get('rpp'))
       };
 
-      var orderStack = self.listModel.get('order') || [];
-      
       if (!_.has(self._options, 'url')) {
         self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
       }
@@ -158,8 +93,8 @@ define([
       if(!_options.columns){
         columns = Iccbl.createBackgridColModel(
             this._options.schemaResult.fields, 
-            orderStack,
-            searchHash,
+            listModel.get('order'),
+            listModel.get('search'),
             listModel.get('includes'));
       }else{
         columns = _options.columns;
@@ -167,6 +102,57 @@ define([
       
       this.listenTo(this.listModel, 'change', this.reportState );
       this.buildGrid( columns, self._options.schemaResult );
+    },
+    
+    parseUriStack: function(uriStack, initialOptions ){
+      var self = this;
+      var listInitial = initialOptions || {};
+      listInitial = _.extend({},_.pick(listInitial,self.LIST_MODEL_ROUTE_KEYS));
+      console.log('listInitial');
+      // Update with the uriStack values
+      for (var i=0; i<uriStack.length; i++){
+        var key = uriStack[i];
+        i = i+1;
+        if (i==uriStack.length) continue;
+        var value = uriStack[i];
+        if (!value || _.isEmpty(value) ){
+          continue;
+        }
+        
+        if(key == 'log'){
+          self.urlSuffix = key + '/' + value;
+          continue;
+        }
+        
+        if(_.contains(self.LIST_MODEL_ROUTE_KEYS, key)){
+          
+          if(key === 'search') {
+            var searchHash = {};
+            var searches = value.split(self.SEARCH_DELIMITER);
+            _.each(searches, function(search){
+              var parts = search.split('=');
+              if (!parts || parts.length!=2) {
+                var msg = 'invalid search parts: ' + search;
+                console.log(msg);
+                appModel.error(msg);
+              } else if (_.isEmpty(parts[1])) {
+                // pass, TODO: prevent empty searches from notifying
+              } else {
+                searchHash[parts[0]] = decodeURIComponent(parts[1]);
+              }
+            });
+            listInitial[key] = searchHash;
+          } else if (key === 'order') {
+            listInitial[key] = value.split(',');        
+          } else if (key === 'includes') {
+            listInitial[key] = value.split(',');        
+          }else {
+            listInitial[key] = value;
+          }
+        }
+      }
+      
+      return listInitial;
     },
     
     getCollectionUrl: function(limit) {
@@ -283,7 +269,7 @@ define([
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
                 // NOTE: 201705 support for the raw search data
-                kv[1] = encodeURIComponent(kv[1]);
+//                kv[1] = encodeURIComponent(kv[1]);
                 return kv.join('=');
               }).join(self.SEARCH_DELIMITER));
           }else if (routeKey === 'order') {
@@ -322,16 +308,10 @@ define([
         }
       }
       
-      // search: set in Iccbl Collection
-      
-      // FIXME: test 20170525
-      var options = {silent: true};
-      /////
-      
       self.listModel.set({ 
         'rpp': state.pageSize, 
         'page': currentPage,
-      }, options);
+      }, {silent: true});
       
     },
 
@@ -772,27 +752,27 @@ define([
       self.objects_to_destroy.push(finalGrid);
       self.$("#table-div").append(finalGrid.el);
       
-//      Aborted attempt to follow:
-//      https://github.com/santomegonzalo/backgrid.fixedheader
-//      var container = self.container = self.$("#table-div");
-//      
-//      $(window).bind('resize', self._resize);
-//      container.append('<div class="backgrid-fixed-header"></div>');
-//      container.append('<div class="backgrid-fixed-content"></div>');      
-//      container.find('.backgrid-fixed-content').bind('scroll', self._scrollingContainer);      
-//      
-//      this.grid.collection.bind("add", function(){
-//        self._resize();
-//      });      
-//      
-//      self.grid.render();
-//      self.gridHeader.render();
-//
-//      container.find('.backgrid-fixed-header').append(self.gridHeader.$el);
-//      container.find('.backgrid-fixed-content').append(self.grid.$el);
-//      
-////      self.gridHeader.$el.find('tbody').hide(); //addClass('remove_body');
-////      self.grid.$el.find('thead').hide(); // addClass('remove_header');
+      //Aborted attempt to follow:
+      //https://github.com/santomegonzalo/backgrid.fixedheader
+      //var container = self.container = self.$("#table-div");
+      //
+      //$(window).bind('resize', self._resize);
+      //container.append('<div class="backgrid-fixed-header"></div>');
+      //container.append('<div class="backgrid-fixed-content"></div>');      
+      //container.find('.backgrid-fixed-content').bind('scroll', self._scrollingContainer);      
+      //
+      //this.grid.collection.bind("add", function(){
+      //  self._resize();
+      //});      
+      //
+      //self.grid.render();
+      //self.gridHeader.render();
+      //
+      //container.find('.backgrid-fixed-header').append(self.gridHeader.$el);
+      //container.find('.backgrid-fixed-content').append(self.grid.$el);
+      //
+      ////      self.gridHeader.$el.find('tbody').hide(); //addClass('remove_body');
+      ////      self.grid.$el.find('thead').hide(); // addClass('remove_header');
       
       if(self.collection instanceof Backbone.PageableCollection){
         self.$("#paginator-div").append(self.paginator.render().$el);
@@ -843,10 +823,6 @@ define([
         self.$('#pagination_message').html(msg);
       });
       
-//      if (self._options.title){
-//        self.$("list-title").html(self._options.title);
-//      }
-//      
       if ( !fetched ) {
         //{ reset: false } (default) - uses set to (intelligently) merge the fetched 
         //models ("add" events are fired),
@@ -932,6 +908,7 @@ define([
     },
     
     /** Build the select columns dialog **/
+    /** FIXME: 20170809 - replace with the TreeSelector **/
     select_columns: function(event){
 
       console.log('select_columns...');
@@ -1056,6 +1033,7 @@ define([
             }
           }
         }
+        
         _optGroups[optGroup].keys.push(key);
 
         var _visible = (_.has(prop, 'visibility') && 
@@ -1064,6 +1042,8 @@ define([
         _visible = _visible || _.contains(includes, key);
         _visible = _visible && !_.contains(includes, '-'+key);
         already_visible[key] = _visible;
+
+        console.log('col: ', key, optGroup, _visible);
         
         if(_visible){
           _optgroups_shown[optGroup] = true;

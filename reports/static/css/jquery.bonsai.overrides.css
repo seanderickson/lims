@@ -1,0 +1,8 @@
+.bonsai input[type="checkbox"] {
+    margin-top: 1px;
+}
+
+.bonsai label {
+    margin-bottom: 0px;
+    font-weight: normal;
+}

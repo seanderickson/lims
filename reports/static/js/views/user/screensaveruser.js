@@ -288,7 +288,11 @@ define([
       try{
         vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice){
-            choiceHash[choice] = vocabulary[choice].title;
+            if (vocabulary[choice].is_retired) {
+              console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+            } else {
+              choiceHash[choice] = vocabulary[choice].title;
+            }
           });
         currentAffiliationNames = Iccbl.appModel.getVocabulary('labaffiliation.category.*');
       }catch(e){

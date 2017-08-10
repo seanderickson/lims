@@ -57,7 +57,8 @@ module.exports = {
       backgrid_select_all: 'backgrid-select-all',
       chosen: 'jquery-chosen/chosen.jquery.min',
       quicksearch: 'jquery.quicksearch/dist/jquery.quicksearch.min.js',
-      layoutmanager: 'layoutmanager/backbone.layoutmanager'
+      layoutmanager: 'layoutmanager/backbone.layoutmanager',
+      jquery_bonsai: 'jquery-bonsai/jquery.bonsai.js'
     },
     extensions: ['', '.js', '.json'] 
   },

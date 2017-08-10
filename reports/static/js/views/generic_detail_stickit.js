@@ -8,10 +8,9 @@ define([
     'layoutmanager',
     'models/app_state',
     'views/generic_detail_stickit',
-    'views/simple-list',
     'templates/generic-detail-stickit.html'
 ], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
-      appModel, DetailView, SimpleListView, detailTemplate) {
+      appModel, DetailView, detailTemplate) {
 	
 	var DetailView = Backbone.Layout.extend({
 	  

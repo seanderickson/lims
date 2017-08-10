@@ -66,7 +66,6 @@ define([
         this.$('li').removeClass('active');
         if(_.isEmpty(uriStack)) return; // Home, for now
 
-//        var menus = appModel.get('menu');
         var menus = appModel.getMenu();
         var found_menus = this.find_submenu_path(menus, ui_resource_id);
         if(_.isUndefined(found_menus)){
@@ -131,7 +130,6 @@ define([
         var self = this;
         event.preventDefault();
 
-//        appModel.unset('messages');
         var ui_resource_id = event.currentTarget.id;
         console.log('menu click: ' + ui_resource_id);
         

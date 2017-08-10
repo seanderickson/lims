@@ -335,7 +335,9 @@ define([
         self.buildDynamicForms
        ]);
       
-      // TODO: lazy load the forms
+      // TODO: 20170809 - lazy load the forms
+      // 20170809 - see Select2 for ajax loading (instead of Chosen)
+      
       //var lchosen = this.form1.$el.find('[key="library_short_name"]').find('.chosen-container');
       //lchosen.click(function(e){
       //  var lchosenselect = self.form1.$el.find('[key="library_short_name"]').find('.chosen-select');

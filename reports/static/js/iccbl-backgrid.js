@@ -755,34 +755,6 @@ var formatResponseError = Iccbl.formatResponseError = function(response){
   return msg;
 }
 
-var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
-
-  defaults: {
-    // current app uri
-    path: '',
-    // current app uri, as array
-    actualStack: [],
-    // unprocessed uri elements
-    currentStack: [],
-    
-    level: 0,
-    // resources pop'd, one per level
-    resources: [],
-    // keys pop'd, one per level
-    keys: []  
-  },
-  
-  initialize: function(options) {
-    this.path = options.path;
-    this.actualStack = options.path.split('/');
-    
-  },
-  
-  pop: function() {
-  },
-  
-});
-
 var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
 
   /**
@@ -790,15 +762,10 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
    */
   parse : function(resp) {
     console.log('Collection on client, parse called');
-    if (Iccbl.appModel.API_RESULT_DATA){
+    if (_.has(resp,Iccbl.appModel.API_RESULT_DATA)){
       return resp[Iccbl.appModel.API_RESULT_DATA];
-    } else {
-      return resp.objects;
-    }
-//    if(_.has(response,'objects') && _.isArray(response.objects) ){
-//      return response.objects;
-//    }
-//    return response;
+    } 
+    return resp.objects;
   },
   
   setSearch: function(){
@@ -893,8 +860,11 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
   },
   
   isEdited: function() {
-    var val = this.model.get(this.column.get('name'));
-    return val !== this.initialValue;
+    if (this.isEditable()){
+      var val = this.model.get(this.column.get('name'));
+      return val !== this.initialValue;
+    }
+    return false;
   },
   
   isEditable: function(){
@@ -932,9 +902,12 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
   },
   
   isEdited: function() {
-    var val = this.model.get(this.column.get('name'));
-    console.log('isEdited:', this.initialValue, val, val !== this.initialValue);
-    return val !== this.initialValue;
+    if (this.isEditable()){
+      var val = this.model.get(this.column.get('name'));
+      console.log('isEdited:', this.initialValue, val, val !== this.initialValue);
+      return val !== this.initialValue;
+    }
+    return false;
   },
   
   // Set up to toggle the checkbox whenever the TD is clicked
@@ -1128,7 +1101,7 @@ var DateLinkCell = Iccbl.DateLinkCell = Iccbl.LinkCell.extend({
 
 var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
   
-  className : "uri-list-cell",
+  className : "text-wrap-cell",
 
   /**
    * @property {string} ["string with {model_key} values to interpolate"]
@@ -1663,7 +1636,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
 
     if (_.isArray(optionValues) &&  !_.isEmpty(optionValues)){
       for (var k = 0; k < rawData.length; k++) {
-        var rawDatum = rawData[k];
+        var rawDatum = '' + rawData[k];
         for (var i = 0; i < optionValues.length; i++) {
           var optionValue = optionValues[i];
           if (_.isArray(optionValue)) {
@@ -4373,6 +4346,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
  */
 var createBackgridColumn = Iccbl.createBackgridColumn = 
   function(key, prop, _orderStack, optionalHeaderCell ){
+  
   var orderStack = _orderStack || [];
   var column = {};
   var visible = _.has(prop, 'visibility') && 

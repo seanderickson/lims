@@ -7,9 +7,10 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/list2',
+  'utils/treeSelector',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            ListView, TabbedController) {
+            ListView, TreeSelector, TabbedController) {
   
   var ScreenDataView = TabbedController.extend({
     
@@ -50,6 +51,7 @@ define([
       'click ul.nav-tabs >li': 'click_tab',
       'click button#loadScreenResults': 'loadScreenResults',
       'click button#deleteScreenResults': 'deleteScreenResults',
+//      'click button#showOtherScreenColumns': 'showOtherScreenColumnsDialog',
     },
     
     /**
@@ -119,6 +121,19 @@ define([
       var _id = self.model.key;
       var screen_facility_id = self.model.get('facility_id');
       
+//      if search in delegateStack
+      var listOptions = ListView.prototype.parseUriStack(delegateStack);
+      console.log('parsed listOptions', listOptions);
+      var dc_ids = [];
+      if (_.has(listOptions, 'search')){
+        if (_.has(listOptions.search,'dc_ids')){
+          dc_ids = listOptions.search.dc_ids;
+          if (dc_ids.length > 0 && _.isString(dc_ids)){
+            dc_ids = dc_ids.split(',');
+          }
+        }
+      }
+      
       var createResults = function(schemaResult) {
         var extraControls = [];
         var show_positives_control = $([
@@ -131,11 +146,18 @@ define([
            '  <input type="checkbox">mutual positives',
            '</label>'
            ].join(''));
+        var show_other_screen_columns_control = $([
+          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          'id="showOtherScreenColumns" title="Show other screen columns" >',
+          'Other screen columns',
+          '</button>'
+          ].join(''))
         if (self.model.get('project_phase') != 'annotation') {
           extraControls = extraControls.concat(
             show_positives_control, show_mutual_positives_control);
           extraControls.push($('<span>&nbsp;</span>'));
         }
+//        extraControls.push(show_other_screen_columns_control)
         if (appModel.hasPermission('screenresult','write')) {
           extraControls = extraControls.concat(
             $deleteScreenResultsButton,$loadScreenResultsButton);
@@ -155,17 +177,38 @@ define([
           console.log('custom exclude options', options);
         }
         var initialSearchHash;
-        view = new ListView({ 
+        var SRListView = ListView.extend({
+          afterRender: function(){
+            ListView.prototype.afterRender.apply(this,arguments);
+            this.$('#list_controls').append(show_other_screen_columns_control);
+            return this;
+          }
+        });
+        
+//        var Collection = Iccbl.MyCollection.extend({
+//          initialize: function(){
+//            
+//          },
+//          
+//          modelId: function(attrs) {
+//            return Iccbl.getIdFromIdAttribute( attrs, resource);
+//          },
+//          url: url
+//        });
+//        self.collection = new Collection();
+        view = new SRListView({ 
           uriStack: _.clone(delegateStack),
           schemaResult: schemaResult,
           resource: screenResultResource,
           url: url,
+//          collection: collection,
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
 //        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
+        
         initialSearchHash = view.listModel.get('search');
         
         if (_.has(initialSearchHash, 'is_positive__eq')
@@ -180,6 +223,9 @@ define([
         if (_.has(initialSearchHash, 'other_screens')) {
           view.show_other_screens(initialSearchHash['other_screens']);
         }
+        show_other_screen_columns_control.click(function(e){
+          self.showOtherScreenColumnsDialog(view,dc_ids);
+        });
         show_positives_control.click(function(e) {
           if (e.target.checked) {
             var searchHash = _.clone(view.listModel.get('search'));
@@ -209,7 +255,11 @@ define([
       };
       
       if (self.model.get('has_screen_result')) {
-        appModel.getResourceFromUrl(schemaUrl, createResults);
+        var options = {};
+        if (!_.isEmpty(dc_ids)){
+          options['dc_ids'] = dc_ids;
+        }
+        appModel.getResourceFromUrl(schemaUrl, createResults, options);
       } else {
         if (appModel.hasPermission('screenresult','write')) {
           this.$('#tab_container').append("No data loaded ");
@@ -218,6 +268,334 @@ define([
         }
       }
     },
+    
+    showOtherScreenColumnsDialog: function(resultView, dc_ids){
+      var self = this;
+      console.log('showOtherScreenColumnsDialog', dc_ids);
+      
+      var resource = appModel.getResource('datacolumn');
+      var url = [resource.apiUri, 
+                 'for_screen', self.model.get('facility_id')].join('/');
+      var data_for_get = { 
+        limit: 0,
+        includes: [
+          'screen_facility_id','screen_title','name','description',
+          'assay_data_type','ordinal'],
+        order_by: ['screen_facility_id', 'ordinal'],
+        use_vocabularies: true
+      };
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url,
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, resource);
+        }
+      });
+      var collection = new CollectionClass();
+      collection.fetch({
+        data: data_for_get,
+        success: function(collection, response) {
+          showTreeSelector(collection);
+        },
+        always: function(){
+          console.log('done: ');
+        }
+      }).fail(function(){ 
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+      });        
+
+      function showColumns(dcs_selected) {
+        var resource = self.model.resource;
+        var fields = resource.fields;
+        
+        console.log('show columns', dcs_selected);
+        
+        var dc_ids = [];
+        _.each(dcs_selected, function(dc){
+          var key = dc.get('key');
+          var name = dc.get('title');
+          var dc_id = dc.get('data_column_id');
+          var field = dc.attributes;
+          var grid = resultView.grid;
+          
+          if (dc.get('user_access_level_granted') > 1){
+            field['filtering'] = true;
+            field['ordering'] = true;
+          }
+          
+          if (!_.has(resource.fields, key)){
+            resource.fields[key] = field;
+          }
+
+          var column = grid.columns.findWhere({ name: key });
+          if (!column){
+            var index = grid.columns.size();
+            grid.insertColumn(
+              Iccbl.createBackgridColumn(
+                  key,field,
+                  resultView.listModel.get('order')),
+                  { at: index});
+          } else {
+            console.log('column already included', key)
+          }
+        
+        });
+        
+        var dc_ids = _.map(dcs_selected, function(dcmodel){
+          return dcmodel.get('data_column_id');
+        });
+        
+        var searchHash = _.clone(
+          resultView.collection.listModel.get('search'));
+        searchHash['dc_ids'] = dc_ids;
+        resultView.collection.listModel.set('search', searchHash);
+//        resultView.collection.queryParams['dc_ids'] = dc_ids;
+//        
+//        var newStack = ['search', 'dc_ids=' + dc_ids.join(',')];
+//        console.log('newStack:', newStack);
+//        self.reportUriStack(newStack);
+//        
+//        resultView.collection.fetch();
+        
+      };
+      
+      
+      function showTreeSelector(collection){
+        console.log('showTreeSelector', dc_ids);
+        collection.each(function(model){
+          var dc_id = model.get('data_column_id');
+          if (_.contains(dc_ids, '' + dc_id)){
+            model.set('checked', true);
+          }
+          model.set('screen_info',
+            model.get('screen_facility_id') + ' - ' + model.get('screen_title'));
+        });
+        
+        var show_positives_control = $([
+          '<label class="checkbox-inline">',
+          '  <input type="checkbox">positives',
+          '</label>'
+          ].join(''));
+        
+        var dcView = new TreeSelector({
+          collection: collection,
+          treeAttributes: ['screen_info', 'title'],
+          extraControls: [show_positives_control]
+        });
+        
+        // TODO: 20170809 - refactor TreeSelector.search to add this functionality
+        show_positives_control.click(function(e) {
+          var $treeControl = dcView.getTreeControl();
+          var bonsai = $treeControl.data('bonsai');
+          if (e.target.checked) {
+            var items = $treeControl.find('li');
+            for (i=0; i<items.length; i++){
+              var obj = $(items[i]);
+              var id = obj.attr('id');
+              var model = collection.get(id);
+              if (model && model.get('positives_count')>0){
+                obj.show();
+                obj.parents().show();
+                bonsai.expandTo(obj);
+              } else {
+                obj.hide();
+              }
+            }
+          } else {
+            // TODO: integrate with search so works both ways
+            // implements $treeControl.clearSearch(initialSearches);
+            $treeControl.find('li').show();
+            bonsai.collapseAll();
+          }
+        });
+        Backbone.Layout.setupView(dcView);
+  
+        var el = dcView.render().el;
+        var dialog = appModel.showModal({
+            buttons_on_top: true,
+            css: { 
+                display: 'table',
+                height: '500px',
+                width: '80%'
+              },
+            css_modal_content: {
+              overflow: 'hidden'
+            },
+            ok: function(){
+              showColumns(dcView.getSelected());
+            },
+            view: el,
+            title: 'Select Other Screen Columns to display'
+        });
+      }
+      
+      
+    },
+
+//    showOtherScreenColumnsDialogTester: function(resultView){
+//      
+//      var TestCollection = Backbone.Collection.extend({
+//        modelId: function(attrs) {
+//          return attrs.id;
+//        }
+//      });
+//      
+//      var testCollection = new TestCollection([
+//        {
+//          id: 1,
+//          category: 'category1',
+//          type: 'type1',
+//          nameb: 'name1b',
+//          checked: true
+//        },
+//        {
+//          id: 11,
+//          category: 'category1',
+//          type: 'type1',
+//          nameb: 'name11b'
+//        },
+//        {
+//          id: 2,
+//          category: 'category2',
+//          type: 'type2',
+//          nameb: 'name2b'
+//        },
+//        {
+//          id: 3,
+//          category: 'category3',
+//          type: 'type3',
+//          nameb: 'name3b'
+//        },
+//        {
+//          id: 31,
+//          category: 'category3',
+//          type: 'type2',
+//          nameb: 'name31b',
+//          checked: true
+//        },
+//        {
+//          id: 4,
+//          category: 'category4',
+//          type: 'type2',
+//          nameb: 'name4b'
+//        },
+//        {
+//          id: 5,
+//          category: 'category5',
+//          type: 'type5',
+//          nameb: 'name5b'
+//        }
+//      ]);
+//      
+//      var dcView = new TreeSelector({
+//        collection: testCollection,
+//        treeAttributes: ['category', 'type', 'nameb']
+//      });
+//      
+//      Backbone.Layout.setupView(dcView);
+//
+//      function showColumns() {
+//        console.log('todo...');
+//      };
+//      var el = dcView.render().el;
+//      var dialog = appModel.showModal({
+//          buttons_on_top: true,
+//          css: { 
+//              display: 'table',
+//              height: '500px',
+//              width: '80%'
+//            },
+//          css_modal_content: {
+//            overflow: 'hidden'
+//          },
+//          ok: showColumns,
+//          view: el,
+//          title: 'Select Other Screen Columns to display'
+//      });
+//      
+//    },
+    
+//    showOtherScreenColumnsDialogOld: function(resultView){
+//      var self = this;
+//
+//      var dcView = new DataColumnSelector({
+//        screen: self.model,
+//        screen_facility_id: self.model.get('facility_id')
+//      });
+//      
+//      Backbone.Layout.setupView(dcView);
+//      
+//      var el = dcView.render().el;
+//      
+//      function showColumns() {
+//        var resource = self.model.resource;
+//        var fields = resource.fields;
+//        
+//        var dcs_selected = dcView.getSelected();
+//        console.log('show columns', dcs_selected);
+//        
+//        var dc_ids = [];
+//        _.each(dcs_selected, function(dc){
+//          var key = dc.get('key');
+//          var name = dc.get('name');
+//          var dc_id = dc.get('data_column_id');
+//          var field = dc;
+//          
+//          self.model.resource.fields[key] = field;
+//          dc_ids.push(dc_id);
+//          
+//          var grid = resultView.grid;
+//          var column = grid.columns.findWhere({ name: key });
+//          if (!column){
+//            var index = grid.columns.size();
+//            // find out where it goes
+////            var ordinal = field['ordinal'];
+////            var index = 0;
+////            grid.columns.find(function(column){
+////              var colKey = column.get('name');
+////              if (_.has(fields,colKey)){
+////                var colField = fields[colKey];
+////                var colOrdinal = colField['ordinal'];
+////                if(colOrdinal>ordinal){
+////                  console.log('add col', key, ordinal, 'before col', colKey,colOrdinal)
+////                  return true;
+////                }
+////                index += 1;
+////              }
+////            });
+//            
+//            grid.insertColumn(
+//              Iccbl.createBackgridColumn(
+//                  key,field,
+//                  resultView.listModel.get('order')),
+//                  { at: index});
+//          } else {
+//            console.log('column already included', key)
+//          }
+//        
+//        });
+//        
+//        resultView.collection.queryParams['dc_ids'] = dc_ids;
+//        resultView.collection.fetch();
+//        
+//      };
+//      
+//      var dialog = appModel.showModal({
+//          buttons_on_top: true,
+//          css: { 
+//              display: 'table',
+//              height: '500px',
+//              width: '80%'
+//            },
+//          css_modal_content: {
+//            overflow: 'hidden'
+//          },
+//          ok: showColumns,
+//          view: el,
+//          title: 'Select Other Screen Columns to display'
+//      });
+//      
+//      
+//    },
     
     /**
      * Loads the screen results using ajax to post the file.

@@ -7,7 +7,11 @@ define([
   'templates/genericResource.html'
 ], 
 function($, _, Backgrid, Iccbl, appModel, genericLayout) {
-  
+  /**
+   * WellSelector is a UI Grid Viewer that uses plate mapping row and column
+   * assignment.
+   * - If editable, grid squares (wells) may be selected by the user.
+   */
   /** Clicking this cell toggles the entire grid **/
   var ToggleColumnHeader = Backgrid.HeaderCell.extend({
     

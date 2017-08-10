@@ -272,7 +272,6 @@ define([
              ].join(''));   
            showAddButton.click(function(e){
              e.preventDefault();
-
              self.showAddCopy(collection);
            });
            extraControls.push(showAddButton);

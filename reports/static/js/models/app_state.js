@@ -593,6 +593,21 @@ define([
         'screens', this.dbApiUri + '/screen', data_for_get, callback );
     },
 
+    getScreensOptions: function(options, callback){
+      options = options || {};
+      data_for_get = { 
+        exact_fields: ['title','facility_id'], 
+        project_phase__ne: 'annotation',
+      };
+      var cachekey = _.map(_.pairs(data_for_get),function(pair){
+        return pair.join(':');
+      }).join('-')
+      
+      data_for_get = _.extend(data_for_get, options);
+      return this.getCachedResourceCollection(
+        'screens-'+cachekey, this.dbApiUri + '/screen', data_for_get, callback );
+    },
+
     getCachedResourceCollection: function(
         prop,
         url,
@@ -2135,7 +2150,7 @@ define([
       if(!_.isUndefined(options.view)){
         modalDialog.$el.find('.modal-body').append(options.view);
       }
-      
+      modalDialog.$el.find('.modal-body').css('padding-top','0px');
       if (options.ok_only == true){
         modalDialog.$el.find('#modal-cancel').hide();
       } else {

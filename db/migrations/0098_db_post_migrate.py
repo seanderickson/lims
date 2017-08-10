@@ -76,6 +76,23 @@ class Migration(migrations.Migration):
             model_name='ScreeningRoomUser',
             name='last_notified_rnaiua_checklist_item_event'),
 
+# TODO: remove: UserChecklistItem replaced by UserChecklist
+#         migrations.AlterUniqueTogether(
+#             name='userchecklistitem',
+#             unique_together=set([]),
+#         ),
+#         migrations.RemoveField(
+#             model_name='userchecklistitem',
+#             name='admin_user',
+#         ),
+#         migrations.RemoveField(
+#             model_name='userchecklistitem',
+#             name='screensaver_user',
+#         ),
+#         migrations.DeleteModel(
+#             name='UserChecklistItem',
+#         ),
+
         # TODO: service_activity depends on funding support
 #         migrations.RunSQL('DROP TABLE funding_support; '),
         
@@ -92,12 +109,6 @@ class Migration(migrations.Migration):
         ),
 
         # Operations already handled in migration 0002
-        migrations.AlterField(
-            model_name='screensaveruser',
-            name='lab_head',
-            field=models.ForeignKey(
-                related_name='lab_member', to='db.ScreensaverUser', null=True),
-        ),
        
         migrations.AlterField(
             model_name='cherrypickrequest',

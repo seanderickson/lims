@@ -27,6 +27,20 @@ define([
         var data = { message: '' };
         var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
         
+        var ListModel = Backbone.Model.extend({
+          defaults: {
+              rpp: 25,
+              page: 1,
+              order: {},
+              search: {},
+              includes: [] }
+          });
+        
+        var listModel = this.listModel = new ListModel();
+      
+        collection.listModel = listModel;
+
+        
         this.model = collection.listModel;
         
         if(!args.columns){

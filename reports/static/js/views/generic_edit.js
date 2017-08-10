@@ -553,7 +553,6 @@ define([
     }
   });
   
-  
   var EditView = Backbone.Form.extend({
     initialize: function(args) {
 

@@ -22,14 +22,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='rnai_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='sm_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='rnai_data_sharing_level',
+#             field=models.IntegerField(null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='sm_data_sharing_level',
+#             field=models.IntegerField(null=True),
+#         ),
     ]

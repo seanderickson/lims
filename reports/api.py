@@ -4270,7 +4270,7 @@ class UserGroupResource(ApiResource):
             stmt = select(columns.values()).select_from(j)
             # NOTE: for orchestra/pgsql 8.4 compatability, the all_subgroups 
             # requires the use of group/agg here, see notes above for this
-            stmt = stmt.group_by(_ug.c.id, _ug.c.name)
+            stmt = stmt.group_by(_ug.c.id, _ug.c.name, _ug.c.description)
             stmt = stmt.order_by('name')
             # general setup
              

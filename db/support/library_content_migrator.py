@@ -158,9 +158,11 @@ where r.library_contents_version_id=%s order by well_id;
                         'library_contents_version.activity_id': activity.activity_id,
                     }
                 }
-                log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
-                log.key = '/'.join([str(x) for x in (
-                    self.libraryResource.get_id(model_to_dict(library)).values()) ])
+                log.key = library.short_name
+                log.uri = '/'.join(['library',log.key])
+#                 log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
+#                 log.key = '/'.join([str(x) for x in (
+#                     self.libraryResource.get_id(model_to_dict(library)).values()) ])
                 log.diffs = {
                     'version_number': [
                         prev_version.version_number if prev_version else 0, 

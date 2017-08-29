@@ -57,6 +57,8 @@ if 'SCREENSAVER_PGSQL_SERVER' in environ:
 # NOTE that 'dev.screensaver2.med.harvard.edu' is an alias for
 # 'dev.orchestraweb.med.harvard.edu'
 ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
     'dev.orchestraweb.med.harvard.edu', 
     'dev.screensaver2.med.harvard.edu']
 

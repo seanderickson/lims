@@ -3,6 +3,8 @@ python:
   - "2.7"
 addons:
   postgresql: "9.1"
+services:
+  - postgresql
 virtualenv:
   system_site_packages: true
 before_install:

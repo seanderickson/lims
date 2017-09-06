@@ -6,12 +6,13 @@ define([
   'iccbl_backgrid',
   'models/app_state',
   'views/generic_selector',
+  'utils/treeSelector',
   'templates/rows-per-page.html',
   'templates/list2.html',
   'templates/modal_ok_cancel.html'
 ], function(
       $, _, Backbone, Backgrid,  
-      Iccbl, appModel, genericSelector,
+      Iccbl, appModel, genericSelector, TreeSelector,
       rowsPerPageTemplate, listTemplate, modalTemplate) {
 
   
@@ -907,50 +908,15 @@ define([
       }
     },
     
-    /** Build the select columns dialog **/
-    /** FIXME: 20170809 - replace with the TreeSelector **/
+    /**
+     * Select columns to display
+     * - using TreeSelector widget
+     */
     select_columns: function(event){
-
       console.log('select_columns...');
-      
       var self = this;
-      var form_template = [
-        "<form  class='form-horizontal container' >",
-        "<div class='btn btn-default btn-sm ' id='select-all' >Select All</div>",
-        "<div class='btn btn-default btn-sm ' id='clear-all' >Clear All</div>",
-        "<button class='btn btn-default btn-sm ' id='modal-cancel'>Cancel</button>",
-        "<button class='btn btn-default btn-sm ' id='modal-ok'>Ok</button>"
-      ];
-      var field_template = '<div data-fields="<%= name %>" ></div>';
-      var optgroupSelectionTemplate = [
-        '<div class="form-group" >',
-        '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
-        '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
-        '</div>'
-        ].join('');
-      var fieldCheckboxTemplate =  _.template('\
-          <div class="form-group" style="margin-bottom: 0px;" > \
-            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-            </div>\
-          </div>\
-        ');      
-      var optgroupFieldCheckboxTemplate =  _.template('\
-          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
-            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-            <label for="<%= editorId %>" > - </label>\
-              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-            </div>\
-          </div>\
-        ');
-      var optgroupFieldCheckboxTemplate1 =  _.template('\
-          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
-            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-            </div>\
-          </div>\
-        ');
       
+      // 1. build a columns collection
       var includes = self.listModel.get('includes') || [];
       var _fields = this._options.schemaResult.fields;
       
@@ -958,466 +924,621 @@ define([
         return _.contains(value.visibility, 'api');
       });
       
-      // Create the (two level) tree of fields:
-      // - fields for the current resource are shown as normal
-      // - if the field information specifies an optgroup
-      // - or if the field scope is not the current resource scope, create an optGroup entry,
-      // these items are indented and nested in an optgroup form-group.
-      var _optGroups = {};
-      var already_visible = {};
-      var default_visible = {};
-      var _optgroups_shown = [];
-      var defaultScope = 'fields.' + self._options.resource.key;
-      console.log('defaultScope: ' , defaultScope);
-      var orderedKeys = _.sortBy(_.keys(_fields), function(key){
-        return _fields[key]['ordinal'];
+      var screenModel = _.result(self._options,'screen');
+      if (screenModel){
+        // Special case "datacolumn" screen result fields: 
+        // - only select data columns for this screen; other screen data
+        // data columns are selected through the special "other screen columns"
+        // selector.
+        _fields = _.omit(_fields, function(value, key, object) {
+          if (value.is_datacolumn === true){
+            if (screenModel.get('facility_id') 
+                == value.screen_facility_id ){
+              return false;
+            } else {
+              return true;
+            }
+          } else {
+            return false;
+          }
+        });
+      }      
+      var ColumnCollection = Backbone.Collection.extend({
+        modelId: function(attrs){
+          var id = Iccbl.getIdKeys(attrs,{ id_attribute: ['scope','key']}).join('-');
+          id = id.replace('.','_');
+          return id;
+        }
       });
-      _optGroups[defaultScope] = {
-        title: defaultScope,
-        keys: []
-      }
       
-      _.each(orderedKeys, function(key){
-
-        var prop = _fields[key];
-        var optGroup = defaultScope;
-        var title, fieldType, fieldResource, subResource;
-        
-        if (prop.display_options && prop.display_options.optgroup ){
-          optGroup = prop.display_options.optgroup;
-          title = optGroup.charAt(0).toUpperCase() + optGroup.slice(1);
-          if(!_.has(_optGroups, optGroup)){
-            _optGroups[optGroup] = 
-              {
-                title: title,
-                help: title,
-                keys: []
-              };
-          }
-        }
-        else if (prop['scope'] == 'otherscreen.datacolumns'){
-          optGroup = 'otherscreen';
-          if(!_.has(_optGroups, optGroup)){
-            _optGroups[optGroup] = 
-              {
-                title: 'Other Screen',
-                help: 'Other screen data column fields',
-                keys: []
-              }
-          }
+      var columnCollection = new ColumnCollection();
+      _.each(_fields, function(field){
+        var key = field['key'];
+        var model = new Backbone.Model(field);
+        if (model.has('scope')){
+          var scope = model.get('scope');
+          var fieldType = scope.split('.')[0]
+          var fieldResource = scope.split('.')[1];
+          fieldResource = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
           
+          model.set('resource', fieldResource);
         }
-        else if (prop['scope'] != defaultScope ){
-          optGroup = prop['scope'];
-          fieldType = optGroup.split('.')[0]
-          fieldResource = optGroup.split('.')[1];
-          if(fieldType == 'datacolumn'){
-            title = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
-            if(!_.has(_optGroups, optGroup)){
-              _optGroups[optGroup] = 
-                {
-                  title: title,
-                  help: 'Screen result data column field',
-                  keys: []
-                }
-            }
-          }else{
-            if(!_.has(_optGroups, optGroup)){
-              subResource = appModel.getResource(fieldResource);
-              _optGroups[optGroup] = 
-                {
-                  title: subResource.title,
-                  help: subResource.description,
-                  keys: []
-                }
-            }
-          }
-        }
-        
-        _optGroups[optGroup].keys.push(key);
 
-        var _visible = (_.has(prop, 'visibility') && 
-            _.contains(prop['visibility'], 'l'));
-        default_visible[key] = _visible;
+        var _visible = (_.has(field, 'visibility') && 
+            _.contains(field['visibility'], 'l'));
         _visible = _visible || _.contains(includes, key);
-        _visible = _visible && !_.contains(includes, '-'+key);
-        already_visible[key] = _visible;
-
-        console.log('col: ', key, optGroup, _visible);
         
-        if(_visible){
-          _optgroups_shown[optGroup] = true;
+        if (_.contains(includes, '-'+key)){
+          _visible = false;
         }
-      });
-
-      // Build the form model
-      // Build the form template; manually lay out the fields/optgroups
-      var formSchema= {};
-      var FormFields = Backbone.Model.extend({
-        schema: formSchema
-      });
-      var formFields = new FormFields();
-      
-      // first, the fields not in an optGroup
-      _.each(_optGroups[defaultScope].keys,function(key){
-        formSchema[key] = formFieldSchema = { 
-          title: _fields[key]['title'], 
-          key:  key, 
-          type: 'Checkbox',
-          help: _fields[key]['description'],
-          template: fieldCheckboxTemplate 
-        };
-
-        form_template.push( 
-          _.template(field_template)({ 
-              editorId: key+'-id', 
-              title: _fields[key]['title'],
-              name: key 
-            })
-        );
-        if(already_visible[key]){
-          formFields.set( key, true);
+        
+        if (_visible == true){
+          model.set('checked', true);
         }
+        columnCollection.add(model);
       });
-      _.each(_.keys(_optGroups),function(optGroup){
-        if (optGroup == defaultScope ) return;
-        
-        form_template.push(
-          _.template(optgroupSelectionTemplate)( 
-            {
-              id: optGroup,
-              name: _optGroups[optGroup].title,
-              help: _optGroups[optGroup].description
-            })
-        );
-        _.each(_optGroups[optGroup].keys,function(key){
-          formSchema[key] = formFieldSchema = { 
-            title: _fields[key]['title'], 
-            key:  key, 
-            type: 'Checkbox',
-            help: _fields[key]['description'],
-            template: optgroupFieldCheckboxTemplate 
-          };
-          if (optGroup == 'otherscreen'){
-            formSchema[key]['template'] = optgroupFieldCheckboxTemplate1;
-          }
-          
-          form_template.push( 
-            _.template(field_template)({ name: key }) );
-          if(already_visible[key]){
-            _optgroups_shown.push(optGroup);
-            formFields.set( key, true);
-          }
-        });
-      });
-        
-      form_template.push('</form>');
+      console.log('columnCollection', columnCollection);
 
-      var form = new Backbone.Form({
-        model: formFields,
-        template: _.template(form_template.join(''))
-      });
-
-      form.events = {
-        'click .btn#select-all': function(){
-          $("form input:checkbox").each(function(){
-            $(this).prop("checked",true);
-          });
-        },
-        'click .btn#clear-all': function(){
-          $("form input:checkbox").each(function(){
-            $(this).prop("checked",false);
-          });
-        },
-        // click on the optgroup text expands
-        'click label.selection-group': function(e){
-          _.each(_optGroups[e.target.id].keys, function(key){
-            form.$el.find('[name='+key+']').closest('.form-group').toggle();
-          });
-        },
-        // click on the optgroup checkbox checks all sub boxes
-        'click input.selection-group': function(e){
-          var optGroup = e.target.id.split('-')[0];
-          console.log('id: ' + e.target.id + ', ' + optGroup + ', ' + e.target.checked );
-          _.each(_optGroups[optGroup].keys, function(key){
-            form.$el.find('[name='+key+']').closest('.form-group').show();
-            form.setValue(key, e.target.checked );
-          });
-        },
-      };
-      
-      var _form_el = form.render().el;
-      
-      // if any fields in the optGroup are shown, toggle the optGroup
-      _.each(_optgroups_shown,function(optGroup){
-        _.each(_optGroups[optGroup].keys,function(key){
-          form.$el.find('[name='+key+']').closest('.form-group').toggle();
-        });
-      });
-      
-      // if all fields in the optGroup are shown, check the optGroup
-      _.each(_optgroups_shown, function(optGroup){
-        if(_.every(_optGroups[optGroup].keys, function(sub_key){
-          return formFields.get(sub_key);
-        })){
-          $(_form_el).find(
-              '#' + optGroup + '-checkbox').prop("checked", true);
-        }
-      });
-      
-      appModel.showModal({
-        cancelText: 'Cancel',
-        okText: 'Ok',
-        ok: function(){
-
-          var new_includes = [];
-          var other_screens =[];
-        
-          form.commit();
-          if(_.isUndefined(
-              _.find(formFields.values(),function(val){ return val==true; }))){
-            // TODO: display "nothing selected" error
-            console.log('error: nothing selected');
-            self.select_columns();
-            return;
-          }
-          
-          _.each(formFields.keys(), function(key){
-            var value = formFields.get(key);
-            var max_ordinal = _.max(_fields, function(field){
-              return field['ordinal'];
-            });
-            var field = _fields[key];
-            if(value && !already_visible[key] ){
-              if (_.result(field, 'is_screen_column')===true){
-                new_includes.unshift(key); 
-                other_screens.push(field['screen_facility_id']);
-                value = false; // stop processing this value
-              }else{
-                // 20161213 - Moved to listModel listener
-//                self.grid.insertColumn(
-//                    Iccbl.createBackgridColumn(
-//                        key,field,
-//                        self.collection.state.orderStack));
-              }
-            }
-            if(!value && default_visible[key]){
-              new_includes.unshift('-' + key);
-              
-              // 20161213 - Moved to listModel listener
-//              column =  self.grid.columns.find(function(column){
-//                if(column.get('name') == key){
-//                  self.grid.removeColumn(column);
-//                  return true;
-//                }
-//              });
-            }else if(!value){
-              // 20161213 - Moved to listModel listener
-//              column =  self.grid.columns.find(function(column){
-//                if(column.get('name') == key){
-//                  self.grid.removeColumn(column);
-//                  return true;
-//                }
-//              });
-            }
-            if(value && !default_visible[key]){
+      function showColumns(collection){
+        var new_includes = [];
+        collection.each(function(model){
+          var key = model.get('key');
+          var isDefaultVisible = _.contains(model.get('visibility'),'l');
+          if (model.get('checked') == true){
+            if (isDefaultVisible !== true){
               new_includes.unshift(key);
             }
-          });
-          
-          if (!_.isEmpty(other_screens)){
-            self.show_other_screens(other_screens);
-          }else{
-            self.listModel.set({'includes': new_includes });
-            // New 20161213 - use listmodel event listener instead            
-            //self.collection.fetch();
-            //
-            //// trigger an event to notify new header forms to self-display
-            //self.collection.trigger("MyServerSideFilter:search", 
-            //  self.listModel.get('search'), self.collection);
-          }
-        },
-        view: _form_el,
-        title: 'Select columns'  
-      });
-      
-    },
-    
-    show_other_screens: function(other_screens){
-      console.log('show_other_screens', other_screens);
-      var self = this;
-      var schemaUrl = [self._options.url,'schema'].join('/');
-      var orderStack = self.listModel.get('order') || [];
-      appModel.getResourceFromUrl(schemaUrl, function(newSchema){
-        var count = 0;
-        _.each(_.values(newSchema['fields']),function(newField){
-          if (_.result(newField,'is_datacolumn')===true){
-            if (other_screens === newField['screen_facility_id']
-                || _.contains(other_screens, newField['screen_facility_id'])){
-              self.grid.insertColumn(
-                  Iccbl.createBackgridColumn(
-                      newField['key'],newField,
-                      orderStack));
+          } else {
+            if (isDefaultVisible === true){
+              new_includes.unshift('-'+key);
             }
           }
         });
-
-        self._options.schemaResult = newSchema;                
-        var searchHash = _.clone(self.listModel.get('search'));
-        searchHash['other_screens'] = other_screens;
-        self.listModel.set('search',searchHash);
-        // New 20161213 see listmodel change listener
-        //self.collection.fetch();
-        //
-        //// trigger an event to notify new header forms to self-display
-        //self.collection.trigger("MyServerSideFilter:search", 
-        //  self.listModel.get('search'), self.collection);
-        
-      },
-      { other_screens: other_screens });
-    },
-
-    /**
-     * Special function for screen result lists
-     */
-    show_mutual_positives: function(screen_facility_id, show_mutual_positives){
-      var self = this;
-      var _fields = this._options.schemaResult.fields;
-      var orderStack = self.listModel.get('order') || [];
-
-      if (show_mutual_positives){
-
-        var schemaUrl = [self._options.url,
-                         'schema'].join('/');
-        appModel.getResourceFromUrl(schemaUrl, function(newSchema){
-          var count = 0;
-          _.each(_.values(newSchema['fields']),function(newField){
-            if (_.result(newField,'is_datacolumn')===true){
-              if (screen_facility_id != newField['screen_facility_id']){
-                console.log('insert: ', newField);
-                self.grid.insertColumn(
-                    Iccbl.createBackgridColumn(
-                        newField['key'],newField,
-                        orderStack));
-              }
-            }
-          });
+        console.log('new includes', new_includes);
+        self.listModel.set({'includes': new_includes });
+      };
+      
+      // 2. initialize the tree selector
+       var dcView = new TreeSelector({
+        collection: columnCollection,
+        treeAttributes: ['resource', 'title'],
+        extraControls: [],
+        startExpanded: true
+       });
+       Backbone.Layout.setupView(dcView);
   
-          self._options.schemaResult = newSchema;                
-          var searchHash = _.clone(self.listModel.get('search'));
-          searchHash['show_mutual_positives'] = 'true';
-          self.listModel.set('search',searchHash);
-
-          // New 20161213 - use listmodel event listener instead            
-          //self.collection.fetch();
-          //
-          //// trigger an event to notify new header forms to self-display
-          //self.collection.trigger("MyServerSideFilter:search", 
-          //  self.listModel.get('search'), self.collection);
-          
-        },
-        { show_mutual_positives: true});
-      
-      
-      
-      }else{
-        var searchHash = _.clone(self.listModel.get('search'));
-        _.each(_.pairs(_fields), function(pair){
-          var key = pair[1]['key'];
-          var prop = pair[1];
-          var fieldType = prop['scope'].split('.')[0]
-          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
-          // Note: if filtering/ordering on one of the mutual positive columns, 
-          // do not remove it here.
-          if(fieldType == 'datacolumn'
-              && field_screen_facility_id != screen_facility_id 
-              && ! _.findKey(searchHash, function(val,hashkey){
-                return hashkey.indexOf(key) > -1
-              })
-              && ! _.find(orderStack, function(orderkey){
-                return orderkey.indexOf(key) > -1
-              })
-            ){
-            console.log('remove: ', key);
-            prop['visibility'] = _.without(prop['visibility'], 'l');
-            var currentColumn = self.grid.columns.findWhere({ name: key });
-            if(currentColumn){
-              self.grid.removeColumn(currentColumn);
-            }
-          }
+        var el = dcView.render().el;
+        var dialog = appModel.showModal({
+          buttons_on_top: true,
+          css: { 
+              display: 'table',
+              height: '500px',
+              width: '80%'
+            },
+          css_modal_content: {
+            overflow: 'hidden'
+          },
+          ok: function(){
+            showColumns(columnCollection);
+          },
+          view: el,
+          title: 'Select Columns to display'
         });
-        if(_.has(searchHash,'show_mutual_positives')){
-          delete searchHash['show_mutual_positives'];
-          self.listModel.set('search',searchHash);
-        }        
-        
-      }    
     },
     
-    /**
-     * Special function for screen result lists
-     */
-    show_mutual_positives_bak: function(screen_facility_id, show_mutual_positives){
-      var self = this;
-      var _fields = this._options.schemaResult.fields;
-      var orderStack = self.listModel.get('order') || [];
+//    /** Build the select columns dialog **/
+//    /** FIXME: 20170809 - replace with the TreeSelector **/
+//    select_columns1: function(event){
+//
+//      console.log('select_columns...');
+//      
+//      var self = this;
+//      var form_template = [
+//        "<form  class='form-horizontal container' >",
+//        "<div class='btn btn-default btn-sm ' id='select-all' >Select All</div>",
+//        "<div class='btn btn-default btn-sm ' id='clear-all' >Clear All</div>",
+//        "<button class='btn btn-default btn-sm ' id='modal-cancel'>Cancel</button>",
+//        "<button class='btn btn-default btn-sm ' id='modal-ok'>Ok</button>"
+//      ];
+//      var field_template = '<div data-fields="<%= name %>" ></div>';
+//      var optgroupSelectionTemplate = [
+//        '<div class="form-group" >',
+//        '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
+//        '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
+//        '</div>'
+//        ].join('');
+//      var fieldCheckboxTemplate =  _.template('\
+//          <div class="form-group" style="margin-bottom: 0px;" > \
+//            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+//              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+//            </div>\
+//          </div>\
+//        ');      
+//      var optgroupFieldCheckboxTemplate =  _.template('\
+//          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
+//            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+//            <label for="<%= editorId %>" > - </label>\
+//              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+//            </div>\
+//          </div>\
+//        ');
+//      var optgroupFieldCheckboxTemplate1 =  _.template('\
+//          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
+//            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+//              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+//            </div>\
+//          </div>\
+//        ');
+//      
+//      var includes = self.listModel.get('includes') || [];
+//      var _fields = this._options.schemaResult.fields;
+//      
+//      _fields = _.omit(_fields, function(value, key, object) {
+//        return _.contains(value.visibility, 'api');
+//      });
+//      
+//      // Create the (two level) tree of fields:
+//      // - fields for the current resource are shown as normal
+//      // - if the field information specifies an optgroup
+//      // - or if the field scope is not the current resource scope, create an optGroup entry,
+//      // these items are indented and nested in an optgroup form-group.
+//      var _optGroups = {};
+//      var already_visible = {};
+//      var default_visible = {};
+//      var _optgroups_shown = [];
+//      var defaultScope = 'fields.' + self._options.resource.key;
+//      console.log('defaultScope: ' , defaultScope);
+//      var orderedKeys = _.sortBy(_.keys(_fields), function(key){
+//        return _fields[key]['ordinal'];
+//      });
+//      _optGroups[defaultScope] = {
+//        title: defaultScope,
+//        keys: []
+//      }
+//      
+//      _.each(orderedKeys, function(key){
+//
+//        var prop = _fields[key];
+//        var optGroup = defaultScope;
+//        var title, fieldType, fieldResource, subResource;
+//        
+//        if (prop.display_options && prop.display_options.optgroup ){
+//          optGroup = prop.display_options.optgroup;
+//          title = optGroup.charAt(0).toUpperCase() + optGroup.slice(1);
+//          if(!_.has(_optGroups, optGroup)){
+//            _optGroups[optGroup] = 
+//              {
+//                title: title,
+//                help: title,
+//                keys: []
+//              };
+//          }
+//        }
+//        else if (prop['scope'] == 'otherscreen.datacolumns'){
+//          optGroup = 'otherscreen';
+//          if(!_.has(_optGroups, optGroup)){
+//            _optGroups[optGroup] = 
+//              {
+//                title: 'Other Screen',
+//                help: 'Other screen data column fields',
+//                keys: []
+//              }
+//          }
+//          
+//        }
+//        else if (prop['scope'] != defaultScope ){
+//          optGroup = prop['scope'];
+//          fieldType = optGroup.split('.')[0]
+//          fieldResource = optGroup.split('.')[1];
+//          if(fieldType == 'datacolumn'){
+//            title = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
+//            if(!_.has(_optGroups, optGroup)){
+//              _optGroups[optGroup] = 
+//                {
+//                  title: title,
+//                  help: 'Screen result data column field',
+//                  keys: []
+//                }
+//            }
+//          }else{
+//            if(!_.has(_optGroups, optGroup)){
+//              subResource = appModel.getResource(fieldResource);
+//              _optGroups[optGroup] = 
+//                {
+//                  title: subResource.title,
+//                  help: subResource.description,
+//                  keys: []
+//                }
+//            }
+//          }
+//        }
+//        
+//        _optGroups[optGroup].keys.push(key);
+//
+//        var _visible = (_.has(prop, 'visibility') && 
+//            _.contains(prop['visibility'], 'l'));
+//        default_visible[key] = _visible;
+//        _visible = _visible || _.contains(includes, key);
+//        _visible = _visible && !_.contains(includes, '-'+key);
+//        already_visible[key] = _visible;
+//
+//        console.log('col: ', key, optGroup, _visible);
+//        
+//        if(_visible){
+//          _optgroups_shown[optGroup] = true;
+//        }
+//      });
+//
+//      // Build the form model
+//      // Build the form template; manually lay out the fields/optgroups
+//      var formSchema= {};
+//      var FormFields = Backbone.Model.extend({
+//        schema: formSchema
+//      });
+//      var formFields = new FormFields();
+//      
+//      // first, the fields not in an optGroup
+//      _.each(_optGroups[defaultScope].keys,function(key){
+//        formSchema[key] = formFieldSchema = { 
+//          title: _fields[key]['title'], 
+//          key:  key, 
+//          type: 'Checkbox',
+//          help: _fields[key]['description'],
+//          template: fieldCheckboxTemplate 
+//        };
+//
+//        form_template.push( 
+//          _.template(field_template)({ 
+//              editorId: key+'-id', 
+//              title: _fields[key]['title'],
+//              name: key 
+//            })
+//        );
+//        if(already_visible[key]){
+//          formFields.set( key, true);
+//        }
+//      });
+//      _.each(_.keys(_optGroups),function(optGroup){
+//        if (optGroup == defaultScope ) return;
+//        
+//        form_template.push(
+//          _.template(optgroupSelectionTemplate)( 
+//            {
+//              id: optGroup,
+//              name: _optGroups[optGroup].title,
+//              help: _optGroups[optGroup].description
+//            })
+//        );
+//        _.each(_optGroups[optGroup].keys,function(key){
+//          formSchema[key] = formFieldSchema = { 
+//            title: _fields[key]['title'], 
+//            key:  key, 
+//            type: 'Checkbox',
+//            help: _fields[key]['description'],
+//            template: optgroupFieldCheckboxTemplate 
+//          };
+//          if (optGroup == 'otherscreen'){
+//            formSchema[key]['template'] = optgroupFieldCheckboxTemplate1;
+//          }
+//          
+//          form_template.push( 
+//            _.template(field_template)({ name: key }) );
+//          if(already_visible[key]){
+//            _optgroups_shown.push(optGroup);
+//            formFields.set( key, true);
+//          }
+//        });
+//      });
+//        
+//      form_template.push('</form>');
+//
+//      var form = new Backbone.Form({
+//        model: formFields,
+//        template: _.template(form_template.join(''))
+//      });
+//
+//      form.events = {
+//        'click .btn#select-all': function(){
+//          $("form input:checkbox").each(function(){
+//            $(this).prop("checked",true);
+//          });
+//        },
+//        'click .btn#clear-all': function(){
+//          $("form input:checkbox").each(function(){
+//            $(this).prop("checked",false);
+//          });
+//        },
+//        // click on the optgroup text expands
+//        'click label.selection-group': function(e){
+//          _.each(_optGroups[e.target.id].keys, function(key){
+//            form.$el.find('[name='+key+']').closest('.form-group').toggle();
+//          });
+//        },
+//        // click on the optgroup checkbox checks all sub boxes
+//        'click input.selection-group': function(e){
+//          var optGroup = e.target.id.split('-')[0];
+//          console.log('id: ' + e.target.id + ', ' + optGroup + ', ' + e.target.checked );
+//          _.each(_optGroups[optGroup].keys, function(key){
+//            form.$el.find('[name='+key+']').closest('.form-group').show();
+//            form.setValue(key, e.target.checked );
+//          });
+//        },
+//      };
+//      
+//      var _form_el = form.render().el;
+//      
+//      // if any fields in the optGroup are shown, toggle the optGroup
+//      _.each(_optgroups_shown,function(optGroup){
+//        _.each(_optGroups[optGroup].keys,function(key){
+//          form.$el.find('[name='+key+']').closest('.form-group').toggle();
+//        });
+//      });
+//      
+//      // if all fields in the optGroup are shown, check the optGroup
+//      _.each(_optgroups_shown, function(optGroup){
+//        if(_.every(_optGroups[optGroup].keys, function(sub_key){
+//          return formFields.get(sub_key);
+//        })){
+//          $(_form_el).find(
+//              '#' + optGroup + '-checkbox').prop("checked", true);
+//        }
+//      });
+//      
+//      appModel.showModal({
+//        cancelText: 'Cancel',
+//        okText: 'Ok',
+//        ok: function(){
+//
+//          var new_includes = [];
+//          var other_screens =[];
+//        
+//          form.commit();
+//          if(_.isUndefined(
+//              _.find(formFields.values(),function(val){ return val==true; }))){
+//            // TODO: display "nothing selected" error
+//            console.log('error: nothing selected');
+//            self.select_columns();
+//            return;
+//          }
+//          
+//          _.each(formFields.keys(), function(key){
+//            var value = formFields.get(key);
+//            var max_ordinal = _.max(_fields, function(field){
+//              return field['ordinal'];
+//            });
+//            var field = _fields[key];
+//            if(value && !already_visible[key] ){
+//              if (_.result(field, 'is_screen_column')===true){
+//                new_includes.unshift(key); 
+//                other_screens.push(field['screen_facility_id']);
+//                value = false; // stop processing this value
+//              }else{
+//                // 20161213 - Moved to listModel listener
+////                self.grid.insertColumn(
+////                    Iccbl.createBackgridColumn(
+////                        key,field,
+////                        self.collection.state.orderStack));
+//              }
+//            }
+//            if(!value && default_visible[key]){
+//              new_includes.unshift('-' + key);
+//              
+//              // 20161213 - Moved to listModel listener
+////              column =  self.grid.columns.find(function(column){
+////                if(column.get('name') == key){
+////                  self.grid.removeColumn(column);
+////                  return true;
+////                }
+////              });
+//            }else if(!value){
+//              // 20161213 - Moved to listModel listener
+////              column =  self.grid.columns.find(function(column){
+////                if(column.get('name') == key){
+////                  self.grid.removeColumn(column);
+////                  return true;
+////                }
+////              });
+//            }
+//            if(value && !default_visible[key]){
+//              new_includes.unshift(key);
+//            }
+//          });
+//          
+//          if (!_.isEmpty(other_screens)){
+//            self.show_other_screens(other_screens);
+//          }else{
+//            self.listModel.set({'includes': new_includes });
+//            // New 20161213 - use listmodel event listener instead            
+//            //self.collection.fetch();
+//            //
+//            //// trigger an event to notify new header forms to self-display
+//            //self.collection.trigger("MyServerSideFilter:search", 
+//            //  self.listModel.get('search'), self.collection);
+//          }
+//        },
+//        view: _form_el,
+//        title: 'Select columns'  
+//      });
+//      
+//    },
+    
+//    show_other_screens: function(other_screens){
+//      console.log('show_other_screens', other_screens);
+//      var self = this;
+//      var schemaUrl = [self._options.url,'schema'].join('/');
+//      var orderStack = self.listModel.get('order') || [];
+//      appModel.getResourceFromUrl(schemaUrl, function(newSchema){
+//        var count = 0;
+//        _.each(_.values(newSchema['fields']),function(newField){
+//          if (_.result(newField,'is_datacolumn')===true){
+//            if (other_screens === newField['screen_facility_id']
+//                || _.contains(other_screens, newField['screen_facility_id'])){
+//              self.grid.insertColumn(
+//                  Iccbl.createBackgridColumn(
+//                      newField['key'],newField,
+//                      orderStack));
+//            }
+//          }
+//        });
+//
+//        self._options.schemaResult = newSchema;                
+//        var searchHash = _.clone(self.listModel.get('search'));
+//        searchHash['other_screens'] = other_screens;
+//        self.listModel.set('search',searchHash);
+//        // New 20161213 see listmodel change listener
+//        //self.collection.fetch();
+//        //
+//        //// trigger an event to notify new header forms to self-display
+//        //self.collection.trigger("MyServerSideFilter:search", 
+//        //  self.listModel.get('search'), self.collection);
+//        
+//      },
+//      { other_screens: other_screens });
+//    },
 
-      if (show_mutual_positives){
-        
-        _.each(_.pairs(_fields), function(pair){
-          var key = pair[1]['key'];
-          var prop = pair[1];
-          var fieldType = prop['scope'].split('.')[0];
-          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
-          
-          if(fieldType == 'datacolumn' 
-            && field_screen_facility_id != screen_facility_id ){
-            prop['visibility'].push('l');
-            var currentColumn = self.grid.columns.findWhere({ name: key });
-            if(! currentColumn){
-              self.grid.insertColumn(
-                Iccbl.createBackgridColumn(
-                    key,prop,
-                    orderStack));
-            }
-          }
-        });
-        
-        var searchHash = _.clone(self.listModel.get('search'));
-        searchHash['show_mutual_positives'] = 'true';
-        self.listModel.set('search',searchHash);
-      }else{
-        var searchHash = _.clone(self.listModel.get('search'));
-        _.each(_.pairs(_fields), function(pair){
-          var key = pair[1]['key'];
-          var prop = pair[1];
-          var fieldType = prop['scope'].split('.')[0]
-          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
-          // Note: if filtering/ordering on one of the mutual positive columns, 
-          // do not remove it here.
-          if(fieldType == 'datacolumn'
-              && field_screen_facility_id != screen_facility_id 
-              && ! _.findKey(searchHash, function(val,hashkey){
-                return hashkey.indexOf(key) > -1
-              })
-              && ! _.find(orderStack, function(orderkey){
-                return orderkey.indexOf(key) > -1
-              })
-            ){
-            console.log('remove: ', key);
-            prop['visibility'] = _.without(prop['visibility'], 'l');
-            var currentColumn = self.grid.columns.findWhere({ name: key });
-            if(currentColumn){
-              self.grid.removeColumn(currentColumn);
-            }
-          }
-        });
-        if(_.has(searchHash,'show_mutual_positives')){
-          delete searchHash['show_mutual_positives'];
-          self.listModel.set('search',searchHash);
-        }        
-      }
-    },
+//    /**
+//     * Special function for screen result lists
+//     * 20170905 - Deprecated: other screen result columns are now selected using
+//     * the treeSelector
+//     */
+//    show_mutual_positives: function(screen_facility_id, show_mutual_positives){
+//      var self = this;
+//      var _fields = this._options.schemaResult.fields;
+//      var orderStack = self.listModel.get('order') || [];
+//
+//      if (show_mutual_positives){
+//
+//        var schemaUrl = [self._options.url,
+//                         'schema'].join('/');
+//        appModel.getResourceFromUrl(schemaUrl, function(newSchema){
+//          var count = 0;
+//          _.each(_.values(newSchema['fields']),function(newField){
+//            if (_.result(newField,'is_datacolumn')===true){
+//              if (screen_facility_id != newField['screen_facility_id']){
+//                console.log('insert: ', newField);
+//                self.grid.insertColumn(
+//                    Iccbl.createBackgridColumn(
+//                        newField['key'],newField,
+//                        orderStack));
+//              }
+//            }
+//          });
+//  
+//          self._options.schemaResult = newSchema;                
+//          var searchHash = _.clone(self.listModel.get('search'));
+//          searchHash['show_mutual_positives'] = 'true';
+//          self.listModel.set('search',searchHash);
+//
+//          // New 20161213 - use listmodel event listener instead            
+//          //self.collection.fetch();
+//          //
+//          //// trigger an event to notify new header forms to self-display
+//          //self.collection.trigger("MyServerSideFilter:search", 
+//          //  self.listModel.get('search'), self.collection);
+//          
+//        },
+//        { show_mutual_positives: true});
+//      
+//      
+//      
+//      }else{
+//        var searchHash = _.clone(self.listModel.get('search'));
+//        _.each(_.pairs(_fields), function(pair){
+//          var key = pair[1]['key'];
+//          var prop = pair[1];
+//          var fieldType = prop['scope'].split('.')[0]
+//          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
+//          // Note: if filtering/ordering on one of the mutual positive columns, 
+//          // do not remove it here.
+//          if(fieldType == 'datacolumn'
+//              && field_screen_facility_id != screen_facility_id 
+//              && ! _.findKey(searchHash, function(val,hashkey){
+//                return hashkey.indexOf(key) > -1
+//              })
+//              && ! _.find(orderStack, function(orderkey){
+//                return orderkey.indexOf(key) > -1
+//              })
+//            ){
+//            console.log('remove: ', key);
+//            prop['visibility'] = _.without(prop['visibility'], 'l');
+//            var currentColumn = self.grid.columns.findWhere({ name: key });
+//            if(currentColumn){
+//              self.grid.removeColumn(currentColumn);
+//            }
+//          }
+//        });
+//        if(_.has(searchHash,'show_mutual_positives')){
+//          delete searchHash['show_mutual_positives'];
+//          self.listModel.set('search',searchHash);
+//        }        
+//        
+//      }    
+//    },
+    
+//    /**
+//     * Special function for screen result lists
+//     */
+//    show_mutual_positives_bak: function(screen_facility_id, show_mutual_positives){
+//      var self = this;
+//      var _fields = this._options.schemaResult.fields;
+//      var orderStack = self.listModel.get('order') || [];
+//
+//      if (show_mutual_positives){
+//        
+//        _.each(_.pairs(_fields), function(pair){
+//          var key = pair[1]['key'];
+//          var prop = pair[1];
+//          var fieldType = prop['scope'].split('.')[0];
+//          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
+//          
+//          if(fieldType == 'datacolumn' 
+//            && field_screen_facility_id != screen_facility_id ){
+//            prop['visibility'].push('l');
+//            var currentColumn = self.grid.columns.findWhere({ name: key });
+//            if(! currentColumn){
+//              self.grid.insertColumn(
+//                Iccbl.createBackgridColumn(
+//                    key,prop,
+//                    orderStack));
+//            }
+//          }
+//        });
+//        
+//        var searchHash = _.clone(self.listModel.get('search'));
+//        searchHash['show_mutual_positives'] = 'true';
+//        self.listModel.set('search',searchHash);
+//      }else{
+//        var searchHash = _.clone(self.listModel.get('search'));
+//        _.each(_.pairs(_fields), function(pair){
+//          var key = pair[1]['key'];
+//          var prop = pair[1];
+//          var fieldType = prop['scope'].split('.')[0]
+//          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
+//          // Note: if filtering/ordering on one of the mutual positive columns, 
+//          // do not remove it here.
+//          if(fieldType == 'datacolumn'
+//              && field_screen_facility_id != screen_facility_id 
+//              && ! _.findKey(searchHash, function(val,hashkey){
+//                return hashkey.indexOf(key) > -1
+//              })
+//              && ! _.find(orderStack, function(orderkey){
+//                return orderkey.indexOf(key) > -1
+//              })
+//            ){
+//            console.log('remove: ', key);
+//            prop['visibility'] = _.without(prop['visibility'], 'l');
+//            var currentColumn = self.grid.columns.findWhere({ name: key });
+//            if(currentColumn){
+//              self.grid.removeColumn(currentColumn);
+//            }
+//          }
+//        });
+//        if(_.has(searchHash,'show_mutual_positives')){
+//          delete searchHash['show_mutual_positives'];
+//          self.listModel.set('search',searchHash);
+//        }        
+//      }
+//    },
     
   });
   

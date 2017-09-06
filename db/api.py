@@ -3480,6 +3480,8 @@ class ScreenResultResource(DbApiResource):
         screenresult = ScreenResult.objects.get(
             screen__facility_id=screen_facility_id)              
 
+        # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
+        # are added explicitly
         show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
         if show_mutual_positives is True:
             extra_params['mutual_positive'] = None
@@ -3863,6 +3865,10 @@ class ScreenResultResource(DbApiResource):
     def build_schema(
             self, screenresult=None, show_mutual_positives=False,
             user=None, extra_dc_ids=None):
+        '''
+        Note: 20170905 - show_mutual_positives is deprecated: all extra columns
+        are added explicitly
+        '''
 
         if user is None:
             raise NotImplementedError(
@@ -3940,6 +3946,8 @@ class ScreenResultResource(DbApiResource):
                     
                     newfields.update(datacolumn_fields)
                     
+                    # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
+                    # are added explicitly
                     if show_mutual_positives is True or extra_dc_ids is not None:
                         
                         visible_screens = self.get_screen_resource()._get_list_response_internal(
@@ -3958,6 +3966,8 @@ class ScreenResultResource(DbApiResource):
                             for dc in reference_datacolumns }
 
                         other_datacolumns = []
+                        # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
+                        # are added explicitly
                         if show_mutual_positives:
                             temp_datacolumns = self.get_datacolumn_resource()\
                                 ._get_list_response_internal(

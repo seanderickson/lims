@@ -11,17 +11,15 @@ function($, _, Backgrid, Iccbl, appModel,
     selector_tree_layout) {
 
   /**
-   * FIXME: 20170809 - THIS FILE IS IN DEVELOPMENT:
-   * TODO: refactor form controls into the template
-   * TODO: refactor search method so that external clients may override search
-   * (Screen - other columns view: filter mutual positive screens, filter
-   * positive columns, filter study columns)
-   */
-  
-  /**
-   * Constructs a tree component for selecting objects from a collection
+   * Constructs a tree component for selecting objects from a collection.
+   * @see https://github.com/aexmachina/jquery-bonsai
+   * 
    * @param treeAttributes: object attributes to use for constructing the tree
    *   hierarchy.
+   */
+  /**
+   * TODO: (performance enhancement) consider rebuilding tree on each action
+   * to contain only visible (searched, selected) nodes.
    */
   var TreeSelector = Backbone.Layout.extend({
     
@@ -41,70 +39,14 @@ function($, _, Backgrid, Iccbl, appModel,
       self.treeAttributes = options.treeAttributes;
       self.extraControls = options.extraControls;
       if(_.has(options,'checked_key')){
-        this.PROP_CHECK_KEY = options.checked_key;
-      }
-      console.log('initialized TreeSelector');
-    },
-    
-    afterRender: function(){
-      var self = this;
-      var chKey = this.PROP_CHECK_KEY;
-
-      
-//      var $searchBlock = $([
-//        '<div class="input-group input-group-sm">',
-//        ' <input id="treeSearch" class="form-control" placeholder="Search...">',
-//        '<div class="input-group-btn">',
-//        ' <button type="button" class="btn btn-default btn-sm" ',
-//        '   id="treeSearchButton" title="Search">',
-//        '   <span class="glyphicon glyphicon-search"></span></button>',
-//        ' <button type="button" class="btn btn-default btn-sm" ',
-//        '   id="clearSearchButton" label="Clear" title="Clear Search">',
-//        '   Clear</button>',
-//        '</div>',
-//        '</div>'].join(''));
-      var $search = $('#treeSearch');
-      var $searchButton = $('#treeSearchButton');
-      var $clearSearchButton = $('#clearSearchButton');
-      var $selectSearchHitsButton = $('#selectSearchHits');
-//      var $selectSearchHitsButton = $(
-//        '<button class="btn btn-default btn-sm" role="button" \
-//         style="display: none; " title="select the searched items" \
-//         id="selectSearchHits" >Select</button>');
-      var $unselectSearchHitsButton = $('#unselectSearchHits');
-//      var $unselectSearchHitsButton = $(
-//        '<button class="btn btn-default btn-sm" role="button" \
-//         style="display: none;" title="unselect the searched items" \
-//         id="unselectSearchHits" >Unselect</button>');
-      var $toggleExpanded = $('#toggleExpanded');
-//      var $toggleExpanded = $(
-//        '<button class="btn btn-default btn-sm" data-toggle="button" \
-//          aria-pressed="false" autocomplete="off" \
-//          title="expand (collapse) the entire tree" >Expand</button>');
-      
-//      $("#left_title").append($searchBlock);
-//      $('#left_panel').append($selectSearchHitsButton);
-//      $('#left_panel').append($unselectSearchHitsButton);
-//      $('#left_panel').append($toggleExpanded);
-      
-      if(self.extraControls && !_.isEmpty(self.extraControls)){
-        _.each(self.extraControls, function(control){
-          $('#left_panel_controls').append(control);
-        });
+        self.PROP_CHECK_KEY = options.checked_key;
       }
       
-      var $unselectSelectedButton = $(
-        '<button class="btn btn-default btn-sm" role="button" \
-         id="unselectSelected" title="unselect the selected items" >Unselect</button>');
-      $('#right_title').append($unselectSelectedButton);
-      
-      var $treeControl = this.$treeControl = $('<ol id="tree"></ol>');
-      var $selectedTreeControl = $('<ol id="selectedTree"></ol>');
-      
-      var treeAttributes = self.treeAttributes;
-      var startChecked = [];
-      
-      function buildTree(collection) {
+      /**
+       * Build a data tree and an HTML list from the collection and the given
+       * attributes.
+       */
+      function buildTree(collection, treeAttributes, chKey) {
         var dataTree = {}
         
         function makeNodes(dataTree, attrs, i, model){
@@ -123,10 +65,11 @@ function($, _, Backgrid, Iccbl, appModel,
             node.id = collection.modelId(model);
             if (model.get(chKey) === true){
               node.checked = true;
-              startChecked.push(node.id);
+            }
+            if (model.has('description')){
+              node.description = model.get('description');
             }
           } else {
-            //attrs = attrs.slice(1);
             makeNodes(node.nodes, attrs, i+1, model)
           }
           dataTree[attr] = node;
@@ -134,6 +77,7 @@ function($, _, Backgrid, Iccbl, appModel,
         collection.each(function(model){
           makeNodes(dataTree, treeAttributes, 0, model);
         });
+        console.log('dataTree created', dataTree);
         
         function makeList(nodes){
           var html = ''
@@ -141,6 +85,9 @@ function($, _, Backgrid, Iccbl, appModel,
             html += '<li data-name="' + node.data_name + '" ';
             if (node.id){
               html += ' id="' + node.id + '" ';
+            }
+            if (node.description){
+              html += ' title="' + node.description +'" ';
             }
             if (node.checked===true){
               html += ' data-checked=true ';
@@ -159,17 +106,62 @@ function($, _, Backgrid, Iccbl, appModel,
         html = makeList(dataTree);
         // console.log('html', html);
         return { dataTree: dataTree, html: html };
-      }//
+      }; // buildTree
+      self.treeData = buildTree(
+        self.collection, self.treeAttributes, self.PROP_CHECK_KEY);
       
-      var treeData = buildTree(self.collection);
-      $treeControl.html(treeData.html);
+      console.log('initialized TreeSelector');
+    },
+    
+    afterRender: function(){
+      var self = this;
+      var chKey = this.PROP_CHECK_KEY;
+
+      var $treeControl = this.$treeControl = $('<ol id="tree"></ol>');
+      var $selectedTreeControl = $('<ol id="selectedTree"></ol>');
+      var $search = $('#treeSearch');
+      var $searchButton = $('#treeSearchButton');
+      var $clearSearchButton = $('#clearSearchButton');
+      var $selectSearchHitsButton = $('#selectSearchHits');
+      var $unselectSearchHitsButton = $('#unselectSearchHits');
+      var $toggleExpanded = $('#toggleExpanded');
+      var treeAttributes = self.treeAttributes;
+      
+      if(self.extraControls && !_.isEmpty(self.extraControls)){
+        _.each(self.extraControls, function(control){
+          $('#left_panel_controls').prepend(control);
+        });
+      }
+      
+      var $unselectSelectedButton = $(
+        '<button class="btn btn-default btn-sm" role="button" \
+         id="unselectSelected" title="unselect the selected items" >Unselect</button>');
+      $('#right_title').append($unselectSelectedButton);
+      
+      $treeControl.html(self.treeData.html);
       $("#left_panel").append($treeControl);
       
-      $selectedTreeControl.html(treeData.html);
+      $selectedTreeControl.html(self.treeData.html);
       $("#right_panel").append($selectedTreeControl);
+
+      // TODO: allow customization of typeahead keys: currently only the top
+      // level keys are used
+      var typeAheadKeys = {};
+      self.collection.each(function(model){
+        var attributes = self.treeAttributes;
+        if (self.options.treeAttributesForTypeAhead){
+          attributes = self.options.treeAttributesForTypeAhead;
+        }
+        _.each(attributes, function(attr){
+          typeAheadKeys[model.get(attr)] = attr;
+        });
+      });
+//      $search.typeahead({
+//        source: _.keys(self.treeData.dataTree)
+//      });
       $search.typeahead({
-        source: _.keys(treeData.dataTree)
-      })
+        source: _.keys(typeAheadKeys)
+      });
       
       $treeControl.bonsai({ 
         expandAll: false,
@@ -186,26 +178,21 @@ function($, _, Backgrid, Iccbl, appModel,
       });
       var bonsaiSelected = $selectedTreeControl.data('bonsai');
 
-      _.each(startChecked, function(id){
-        bonsai.expandTo(id);
-      });
-      $toggleExpanded.click(function(){
+      function toggleExpanded(){
         var state = $toggleExpanded.attr('aria-pressed');
         $toggleExpanded.attr('aria-pressed',!state);
         console.log('state', state);
         if (state == 'true'){
           bonsai.collapseAll();
           $toggleExpanded.empty();
-          $toggleExpanded.append('Expand');
+          $toggleExpanded.append('Expand all');
         } else {
           bonsai.expandAll();
           $toggleExpanded.empty();
           $toggleExpanded.append('Collapse')
         }
-      });
-
+      };
       function showChecked($bonsaiTree){
-        var bonsaiCtrl = $bonsaiTree.data('bonsai');
         var items = $bonsaiTree.find('li');
         for (i=0; i<items.length; i++){
           var obj = $(items[i]);
@@ -218,101 +205,122 @@ function($, _, Backgrid, Iccbl, appModel,
             obj.hide();
           }
         }
+      };
+
+      $toggleExpanded.click(toggleExpanded);
+      if (self.options.startExpanded === true){
+        toggleExpanded();
       }
-      showChecked($selectedTreeControl);
       
-      var searchedModels = [];
-      function searchNodes($bonsaiTree){
-        searchedModels.length = 0;
-        var pattern = $search.val().trim();
-        
-        if (_.isEmpty(pattern)){
-          return;
-        }
-        
-        console.log('search for "' + pattern + '"');
-        var reSearch = new RegExp('.*' + pattern + '.*', "i");
-        var items = $bonsaiTree.find('li');
-        for (i=0; i<items.length; i++){
-          var obj = $(items[i]);
-          var data_name = obj.attr('data-name');
-          if (data_name){
-            if (reSearch.exec(data_name)){
-              obj.show();
-              obj.parents().show();
-              bonsai.expandTo(obj);
-              var id = obj.attr('id');
-              var model = self.collection.get(id);
-              if (model){
-                searchedModels.push(model);
-              }
-            }else{
-              obj.hide();
-            }
-          }
-        }
-        if (!_.isEmpty(searchedModels)){
-          $selectSearchHitsButton.show();
-          $unselectSearchHitsButton.show();
-        } else {
-          $selectSearchHitsButton.hide();
-          $unselectSearchHitsButton.hide();
-        }
-        console.log('search:"' + pattern + '", models:', searchedModels.length);
-      }
+      showChecked($selectedTreeControl);
+
       $search.on('keyup', function (e) {
         if (e.keyCode == 13) {
-          searchNodes($treeControl);
+          var searchedModels = self.search();
+          self.collection.trigger('searchChange', searchedModels);
         }
       });      
       $searchButton.click(function(){
-        searchNodes($treeControl);
+        var searchedModels = self.search();
+        self.collection.trigger('searchChange', searchedModels);
       });
-      
+
       $selectSearchHitsButton.click(function(){
+        var searchedModels = self.getSearched();
         _.each(searchedModels, function(model){
           model.set(chKey,true, {silent: true});
         });
         if (!_.isEmpty(searchedModels)){
-          self.collection.trigger('bulkchange',searchedModels);
+          // "block" does not work in modal
+          // set loading before firing event; single thread blocks dom updates
+          $('#treeloading').css( "display", "table" ); 
+          window.setTimeout(function(){
+            self.collection.trigger('bulkCheck',searchedModels);
+          }, 100);
         }
+        return false;
       });
+
       $unselectSearchHitsButton.click(function(){
+        var searchedModels = self.getSearched();
         _.each(searchedModels, function(model){
           model.set(chKey,false, {silent: true});
         });
         if (!_.isEmpty(searchedModels)){
-          self.collection.trigger('bulkchange', searchedModels);
+          // "block" does not work in modal
+          // set loading before firing event; single thread blocks dom updates
+          $('#treeloading').css( "display", "table" ); 
+          window.setTimeout(function(){
+            self.collection.trigger('bulkCheck',searchedModels);
+          }, 100);
         }
       });
-
-      function treeChanged(e){
-        var id = $(e.target).parent().attr('id');
-        var model = self.collection.get(id);
-        if (model){
-          if ($(e.target).prop(chKey) === true){
-            model.set(chKey,true);
-          } else {
-            model.set(chKey, false);
-          }
-        }
-      }
-      $treeControl.on('change', treeChanged);
-      $selectedTreeControl.on('change', treeChanged);
 
       $unselectSelectedButton.click(function(){
         var changedModels = self.collection.where({checked: true});
         _.each(changedModels, function(model){
           model.set(chKey, false, { silent: true });
         });
-        self.collection.trigger('bulkchange', changedModels);
+        // "block" does not work in modal
+        // set loading before firing event; single thread blocks dom updates
+        $('#treeloading').css( "display", "table" ); 
+        window.setTimeout(function(){
+          self.collection.trigger('bulkCheck',chanagedModels);
+        }, 100);
       });
+
+      $clearSearchButton.click(function(){
+        $search.val('');
+        // check if searchedModels is empty (sub class may override search)
+        var searchedModels = self.search();
+        if (_.isEmpty(searchedModels)){
+          self.clearSearch();
+        } else {
+          self.collection.trigger('searchChange', searchedModels);
+        }
+      });
+
+      // Store checked keys on treeChanged for batch update
+      var bulkCheck = [];
+      function treeChanged(e){
+        console.log('treeChanged event...');
+        var id = $(e.target).parent().attr('id');
+        var model = self.collection.get(id);
+        if (model){
+          var prop = {};
+          var selectedLi = $selectedTreeControl.find('#'+ id);
+          if ($(e.target).prop(chKey) === true){
+            prop[chKey] = true;
+            model.set(prop, {silent: true});
+            // set UI elements instead of triggering a change on the collection or elements
+            // TODO: does this help?
+            selectedLi.show();
+            selectedLi.parents().show();
+            // defer select notifications
+            bulkCheck.unshift(model);
+            //selectedLi.find('input').prop(chKey, true); //.trigger('change');
+          } else {
+            prop[chKey] = false;
+            model.set(prop, {silent: true});
+            // defer select notifications
+            bulkCheck.unshift(model);
+            //selectedLi.find('input').prop(chKey, false); //.trigger('change');
+          }
+          // defer notification for performance
+          window.setTimeout(function(){
+            self.collection.trigger('bulkCheck', bulkCheck.slice());
+            bulkCheck.length = 0;
+          },100);
+        }
+      };
+      $treeControl.on('change', treeChanged);
+      $selectedTreeControl.on('change', treeChanged);
       
-      self.collection.on('change:checked', function(model){
+      self.collection.on('change:'+chKey, function(model){
         var id = self.collection.modelId(model)
         var li = $treeControl.find('#'+ id)
         var selectedLi = $selectedTreeControl.find('#'+ id)
-        console.log('collection change', id, li, model);
+        console.log('collection change:'+chKey, id, li, model);
         if (li){
           if (model.get(chKey)===true){
             li.find('input').prop(chKey, true).trigger('change');
@@ -322,6 +330,7 @@ function($, _, Backgrid, Iccbl, appModel,
           }
         }
         if (selectedLi){
+          console.log('found selected li', selectedLi);
           if (model.get(chKey)===true){
             selectedLi.show();
             selectedLi.parents().show();
@@ -330,11 +339,16 @@ function($, _, Backgrid, Iccbl, appModel,
             selectedLi.find('input').prop(chKey, false).trigger('change');
           }
         }
-        showChecked($selectedTreeControl);
+        //showChecked($selectedTreeControl);
       });
       
-      self.collection.on('bulkchange', function(changedModels){
-        console.log('collection change', changedModels);
+      self.collection.on('bulkCheck', function(changedModels){
+        console.log('collection bulkCheck', changedModels);
+        if (_.isEmpty(changedModels)) return;
+        // NOTE: setting display to "block" does not work in modal
+        // NOTE2: event processing is single threaded, so "loading" will not 
+        // display if set here; must be set in the event handler parent
+        //$('#treeloading').css( "display", "table" ); 
         var storedParents1 = {};
         var storedParents2 = {};
         _.each(changedModels, function(model){
@@ -343,21 +357,21 @@ function($, _, Backgrid, Iccbl, appModel,
           var selectedLi = $selectedTreeControl.find('#'+ id)
           if (li){
             if (model.get(chKey)===true){
-              li.find('input').prop(chKey, true);
+              li.find('input').prop('checked', true);
               // NOTE: defer notification for performance
               //li.find('input').prop(chKey, true).trigger('change');
             } else {
-              li.find('input').prop(chKey, false);
+              li.find('input').prop('checked', false);
             }
-            storedParents1[li.parent().parent().attr('data-name')] = li;
+            storedParents1[model.get(self.treeAttributes[0])] = li;
           }
           if (selectedLi){
             if (model.get(chKey)===true){
-              selectedLi.find('input').prop(chKey, true);
+              selectedLi.find('input').prop('checked', true);
             } else {
-              selectedLi.find('input').prop(chKey, false);
+              selectedLi.find('input').prop('checked', false);
             }
-            storedParents2[selectedLi.parent().parent().attr('data-name')] = selectedLi;
+            storedParents2[model.get(self.treeAttributes[0])] = selectedLi;
           }
         });
         $treeControl.bonsai('update');
@@ -372,22 +386,106 @@ function($, _, Backgrid, Iccbl, appModel,
         _.each(_.values(storedParents2), function(li){
           li.find('input').trigger('change');
         });
+        $('#treeloading').css( "display", "none" );
       });
       
-      $clearSearchButton.click(function(){
-        $search.val('');
-        $treeControl.find('li').show();
-        bonsai.collapseAll();
-        _.each(self.collection.where({checked: true}), function(model){
-          var id = self.collection.modelId(model);
-          bonsai.expandTo(id);
+      self.collection.on('searchChange', function(searchedModels){
+
+        $toggleExpanded.attr('aria-pressed',true);
+        $toggleExpanded.empty();
+        $toggleExpanded.append('Collapse');
+
+        if (!_.isEmpty(searchedModels)){
+          $selectSearchHitsButton.show();
+          $unselectSearchHitsButton.show();
+        } else {
+          $selectSearchHitsButton.hide();
+          $unselectSearchHitsButton.hide();
+        }
+        self.collection.each(function(model){
+          model.unset('searchHit', {silent: true})
         });
-        searchedModels.length = 0;
-        $selectSearchHitsButton.hide();
-        $unselectSearchHitsButton.hide();
+
+        var ids = _.map(searchedModels, function(model){
+          model.set({'searchHit': true}, {silent: true});
+          return self.collection.modelId(model);
+        });
+        var items = $treeControl.find('li');
+        for (i=0; i<items.length; i++){
+          var obj = $(items[i]);
+          
+          if (_.contains(ids, obj.attr('id'))){
+            obj.show();
+            obj.parents().show();
+            bonsai.expandTo(obj);
+          } else {
+            obj.hide();
+          }
+        }        
       });
 
     },
+    
+    getSearchVal: function(){
+      return $('#treeSearch').val().trim()
+    },
+
+    clearSearch: function(){
+      var self = this;
+      var $search = $('#treeSearch');
+      var $selectSearchHitsButton = $('#selectSearchHits');
+      var $unselectSearchHitsButton = $('#unselectSearchHits');
+      var $toggleExpanded = $('#toggleExpanded');
+      var $treeControl = this.$treeControl;
+      var bonsai = $treeControl.data('bonsai');
+      
+      $search.val('');
+      this.collection.each(function(model){
+        model.unset('searchHit', {silent: true})
+      });
+      $treeControl.find('li').show();
+      bonsai.collapseAll();
+      _.each(this.collection.where({checked: true}), function(model){
+        var id = self.collection.modelId(model);
+        bonsai.expandTo(id);
+      });
+      
+      $selectSearchHitsButton.hide();
+      $unselectSearchHitsButton.hide();
+      
+      $toggleExpanded.attr('aria-pressed',false);
+      $toggleExpanded.empty();
+      $toggleExpanded.append('Expand all');
+    },
+    
+    /**
+     * Search the designated "treeAttributes" of the collection's models.
+     */
+    search: function(){
+      var self = this;
+      var pattern = self.getSearchVal();
+      var collection = self.collection;
+      var treeAttributes = self.treeAttributes;
+      searchedModels = [];
+      if (_.isEmpty(pattern)){
+        return [];
+      }
+      pattern = pattern.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      console.log('search for "' + pattern + '"');
+      var reSearch = new RegExp('.*' + pattern + '.*', "i");
+      
+      searchedModels = collection.filter(
+        function(model){
+          return _.find(treeAttributes, function(attr){
+            return reSearch.exec(model.get(attr));
+          });
+        });
+      return searchedModels;
+    },
+    
+    getSearched: function(){
+      return this.collection.where({searchHit: true});
+    }, 
     
     getSelected: function(){
       return this.collection.where({checked: true});

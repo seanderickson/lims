@@ -1,3 +1,4 @@
+<div id="treeloading" style="display: none;" ></div>
 <div class='row '>
   <div id='left_title' class='col-sm-6' >
     <h4>Available Columns</h4>
@@ -20,20 +21,19 @@
 <div class='row '>
   <div id='left_panel' class='panel panel-default col-sm-6' style='margin-bottom: 0px;'>
     <div id='left_panel_controls' class='btn-toolbar'>
-      <div class='btn-group'>
+      <div class='btn-group pull-right'>
         <button class="btn btn-default btn-sm" role="button"
          style="display: none; " title="select the searched items"
          id="selectSearchHits" >Select</button>
         <button class="btn btn-default btn-sm" role="button"
          style="display: none;" title="unselect the searched items"
          id="unselectSearchHits" >Unselect</button>
+        <button id="toggleExpanded" class="btn btn-default btn-sm" 
+          data-toggle="button"
+          aria-pressed="false" autocomplete="off"
+          title="expand (collapse) the entire tree" >Expand all</button>
       </div>
-      <button id="toggleExpanded" class="btn btn-default btn-sm" data-toggle="button"
-        aria-pressed="false" autocomplete="off"
-        title="expand (collapse) the entire tree" >Expand</button>
     </div>
-
-
   </div>
   <div id='right_panel' class='panel panel-default col-sm-6' style='margin-bottom: 0px;'>
   </div>

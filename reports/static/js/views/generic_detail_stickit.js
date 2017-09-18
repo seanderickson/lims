@@ -140,7 +140,7 @@ define([
       }
       
       function getTitle(vocabulary,value){
-        if (_.isEmpty(value)) return value;
+        if(_.isUndefined(value) || _.isNull(value)) return value;
         if (!_.isEmpty(vocabulary[value])){
           if(vocabulary[value].title){
             return vocabulary[value].title;
@@ -215,6 +215,10 @@ define([
         }
       }
       function integerGetter(value){
+        var vocabulary = getVocabulary();
+        if(!_.isUndefined(value) && !_.isNull(value) && vocabulary){
+          value = getTitle(vocabulary,value);
+        }
         return value;
         // TODO: use the NumberFormatter to show numbers with thousands separator:
         // --- on hold --- rework using options so only values (not IDs) are formatted

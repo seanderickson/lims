@@ -985,6 +985,9 @@ define([
                 ordinal: vocabulary[choice].ordinal });
             }
           });
+          choiceHash = _.sortBy(choiceHash, function(choice){
+            return choice.ordinal;
+          });
           if (fi.edit_type == 'select' && !fi.required ) {
             choiceHash.unshift({ val: '', label: ''});
           }
@@ -995,9 +998,6 @@ define([
           appModel.error(msg);
         }
       }
-      choiceHash = _.sortBy(choiceHash, function(choice){
-        return choice.ordinal;
-      });
 
       return choiceHash;
     },

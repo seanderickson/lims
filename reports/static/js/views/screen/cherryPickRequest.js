@@ -472,6 +472,21 @@ define([
       var resource = appModel.getResource('cherrypickassayplate');
       var selectionCollection = null;
 
+      var ListCollectionClass = Iccbl.MyCollection.extend({
+        /** explicitly define the id so that collection compare & equals work **/
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, resource);
+        },
+        url: url,
+        /** Override parse to set selected default value **/
+        parseRecords: function(resp,options){
+          var modelArray = ListCollectionClass.__super__.parseRecords.apply(this, arguments);
+          _.each(modelArray, function(model){
+            model['selected'] = false;
+          });
+          return modelArray;
+        }
+      });
       if (appModel.hasPermission('cherrypickrequest', 'write')){
 
         // Set up the UI to select for plating and screening
@@ -502,21 +517,6 @@ define([
           })
         };
       
-        var ListCollectionClass = Iccbl.MyCollection.extend({
-          /** explicitly define the id so that collection compare & equals work **/
-          modelId: function(attrs) {
-            return Iccbl.getIdFromIdAttribute( attrs, resource);
-          },
-          url: url,
-          /** Override parse to set selected default value **/
-          parseRecords: function(resp,options){
-            var modelArray = ListCollectionClass.__super__.parseRecords.apply(this, arguments);
-            _.each(modelArray, function(model){
-              model['selected'] = false;
-            });
-            return modelArray;
-          }
-        });
         var SelectionCollectionClass = Iccbl.CollectionOnClient.extend({
           /** explicitly define the id so that collection compare & equals work **/
           modelId: function(attrs) {
@@ -1071,6 +1071,7 @@ define([
           '     type="checkbox">Available and Retired',
           '</label>'
         ].join(''));
+      
       var showUnfulfilledWellsControl = $([
           '<label class="checkbox-inline" ',
           ' title="Show rows for unfulfilled picks only" >',
@@ -1091,7 +1092,9 @@ define([
         ].join(''));
       checkboxDiv.append(showCopyWellsControl);
       checkboxDiv.append(showAllCopyWellsControl);
-      checkboxDiv.append(showUnfulfilledWellsControl);
+      if (self.model.get('number_unfulfilled_lab_cherry_picks') > 0){
+        checkboxDiv.append(showUnfulfilledWellsControl);
+      }
       checkboxDiv.append(showInsufficientWellsControl);
       checkboxDiv.append(showManuallySelectedWellsControl);
       checkboxDiv.prepend('<label for="show_input_group">show</label>');
@@ -1124,29 +1127,36 @@ define([
           'role="button" id="reserve_map_selected_button" href="#">',
           'Reserve Selections and Map to Plates</a>'
         ].join(''));
-      extraControls.push(reserveAndMapSelectedButton);
+      if(appModel.hasPermission('labcherrypick','write')){
+        extraControls.push(reserveAndMapSelectedButton);
+      }
       var deleteLcpsButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
           'style="display: none; " ',
           'role="button" id="deleteLcpsButton" href="#">',
           'Delete Lab Cherry Picks</a>'
         ].join(''));
-      extraControls.push(deleteLcpsButton);
+      if(appModel.hasPermission('labcherrypick','write')){
+        extraControls.push(deleteLcpsButton);
+      }
       var cancelReservation = $([
           '<a class="btn btn-default btn-sm pull-down" ',
           'style="display: none; " ',
           'role="button" id="cancel_reservation" href="#">',
           'Cancel Reservation and Delete Plating assignments</a>'
         ].join(''));
-      extraControls.push(cancelReservation);
-
-      if (self.model.get('number_plates') == 0){
-        deleteLcpsButton.show();
-        reserveAndMapSelectedButton.show();
-      } else {
-        cancelReservation.show();
+      if(appModel.hasPermission('labcherrypick','write')){
+        extraControls.push(cancelReservation);
       }
 
+      if(appModel.hasPermission('labcherrypick','write')){
+        if (self.model.get('number_plates') == 0){
+          deleteLcpsButton.show();
+          reserveAndMapSelectedButton.show();
+        } else {
+          cancelReservation.show();
+        }
+      }
       ///// Library and Plate comments /////
       
       resource.fields['library_plate']['backgridCellType'] = 
@@ -1286,9 +1296,9 @@ define([
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
         view.$el.find('#extra_controls').removeClass('col-sm-5');
-        view.$el.find('#extra_controls').addClass('col-sm-8');
-        view.$el.find('#list_controls').removeClass('col-sm-7');
-        view.$el.find('#list_controls').addClass('col-sm-4');
+        view.$el.find('#extra_controls').addClass('col-sm-6');
+        view.$el.find('#list_controls_div').removeClass('col-sm-7');
+        view.$el.find('#list_controls_div').addClass('col-sm-6');
       });
     
       var initialSearchHash = view.listModel.get('search');

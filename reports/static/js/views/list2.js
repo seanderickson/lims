@@ -51,12 +51,12 @@ define([
         defaults: {
             rpp: 25,
             page: 1,
-            order: {},
+            order: [],
             search: {},
             includes: [] }
         });
 
-      var listInitial = this.parseUriStack(uriStack, _options);
+      var listInitial = this.parseUriStack(uriStack, _options.schemaResult.options);
       var listModel = this.listModel = new ListModel(listInitial);
 
       this.objects_to_destroy = _([]);
@@ -106,10 +106,11 @@ define([
     },
     
     parseUriStack: function(uriStack, initialOptions ){
+      console.log('parseUriStack', uriStack, initialOptions);
       var self = this;
       var listInitial = initialOptions || {};
       listInitial = _.extend({},_.pick(listInitial,self.LIST_MODEL_ROUTE_KEYS));
-      console.log('listInitial');
+      console.log('parseUriStack', uriStack, initialOptions);
       // Update with the uriStack values
       for (var i=0; i<uriStack.length; i++){
         var key = uriStack[i];
@@ -142,6 +143,8 @@ define([
                 searchHash[parts[0]] = decodeURIComponent(parts[1]);
               }
             });
+            console.log('searchHash', searchHash);
+            
             listInitial[key] = searchHash;
           } else if (key === 'order') {
             listInitial[key] = value.split(',');        

@@ -17,10 +17,24 @@ define([
     initialize: function(args) {
       var self = this;
       this._classname = 'ScreenDataView';
+      
+      this.tabbed_resources = this.screen_tabbed_resources;
+      if (! _.isEmpty(this.model.get('study_type'))) {
+        this.tabbed_resources = this.study_tabbed_resources;
+      } 
+      
       TabbedController.prototype.initialize.apply(this,arguments);
+      
+      if (this.model.get('user_access_level_granted') > 1){
+        if (! _.isEmpty(this.model.get('study_type'))) {
+          this.tabbed_resources['data_columns'] = this.study_tabbed_resources['datacolumns']
+        } else {
+          this.tabbed_resources['data_columns'] = this.screen_tabbed_resources['datacolumns']
+        }
+      }
     },
 
-    tabbed_resources: {
+    screen_tabbed_resources: {
       detail: { 
         description: 'Result Data', 
         title: 'Screen Results', 
@@ -51,7 +65,6 @@ define([
       'click ul.nav-tabs >li': 'click_tab',
       'click button#loadScreenResults': 'loadScreenResults',
       'click button#deleteScreenResults': 'deleteScreenResults',
-//      'click button#showOtherScreenColumns': 'showOtherScreenColumnsDialog',
     },
     
     /**
@@ -59,16 +72,9 @@ define([
      */
     serialize: function() {
       var self = this;
-      var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
-      if (self.model.get('project_phase') == 'annotation') {
-        var displayed_tabbed_resources = _.extend({},this.study_tabbed_resources);
-      }
-      if (! self.model.get('has_screen_result')) {
-        delete displayed_tabbed_resources['datacolumns'];
-      }
       return {
         'base_url': self.model.resource.key + '/' + self.model.key + '/data',
-        'tab_resources': displayed_tabbed_resources
+        'tab_resources': self.tabbed_resources
       }      
     }, 
     
@@ -121,20 +127,6 @@ define([
       var _id = self.model.key;
       var screen_facility_id = self.model.get('facility_id');
       
-////      if search in delegateStack
-//      var listOptions = ListView.prototype.parseUriStack(delegateStack);
-//      console.log('parsed listOptions', listOptions);
-//      var dc_ids = [];
-//      if (_.has(listOptions, 'search')){
-//        if (_.has(listOptions.search,'dc_ids')){
-//          dc_ids = listOptions.search.dc_ids;
-//          if (dc_ids.length > 0 && _.isString(dc_ids)){
-//            dc_ids = dc_ids.split(',');
-//          }
-//        }
-//      }
-//      console.log('dc_ids', dc_ids);
-      
       var createResults = function(schemaResult) {
         var extraControls = [];
         var show_positives_control = $([
@@ -159,12 +151,11 @@ define([
           'Other screen columns',
           '</button>'
           ].join(''))
-        if (self.model.get('project_phase') != 'annotation') {
+        if (_.isEmpty(self.model.get('study_type'))) {
           extraControls = extraControls.concat(
             show_positives_control, show_mutual_positives_control);
           extraControls.push($('<span>&nbsp;</span>'));
         }
-//        extraControls.push(show_other_screen_columns_control)
         if (appModel.hasPermission('screenresult','write')) {
           extraControls = extraControls.concat(
             $deleteScreenResultsButton,$loadScreenResultsButton);
@@ -385,7 +376,7 @@ define([
         limit: 0,
         includes: [
           'screen_facility_id','screen_title','name','description',
-          'assay_data_type','ordinal'],
+          'assay_data_type','ordinal','study_type'],
         order_by: ['screen_facility_id', 'ordinal'],
         use_vocabularies: true
       };
@@ -481,16 +472,25 @@ define([
           '</label>'
           ].join(''));
         
+        var show_studies_control = $([
+          '<label class="checkbox-inline pull-left" ',
+          '   title="Show study annotations" >',
+          '  <input type="checkbox">show studies',
+          '</label>'
+          ].join(''));
+        
         var OtherColumnsTreeSelector = TreeSelector.extend({
           search: function(){
             var show_pos_only = 
               show_positives_control.find('input[type="checkbox"]').prop('checked');
             var show_mutual_only = 
               show_mutual_screens_control.find('input[type="checkbox"]').prop('checked');
+            var show_studies = 
+              show_studies_control.find('input[type="checkbox"]').prop('checked');
             var searchedModels;
             if (!_.isEmpty(this.getSearchVal())){
               searchedModels = OtherColumnsTreeSelector.__super__.search.apply(this,arguments);
-            } else if (show_pos_only || show_mutual_only) {
+            } else if (show_pos_only || show_mutual_only || show_studies ) {
               searchedModels = this.collection.models;
             } else{
               this.clearSearch();
@@ -506,6 +506,9 @@ define([
                   self.model.get('overlapping_positive_screens'),
                   model.get('screen_facility_id'));
               }
+              if (shown && show_studies){
+                shown = !_.isEmpty(model.get('study_type'));
+              }
               return shown;
             });
             return searchedModels;
@@ -516,7 +519,8 @@ define([
           collection: collection,
           treeAttributes: ['screen_info', 'title'],
           treeAttributesForTypeAhead: ['screen_info'],
-          extraControls: [show_positives_control, show_mutual_screens_control]
+          extraControls: [show_positives_control, show_mutual_screens_control, 
+                          show_studies_control]
         });
 
         show_positives_control.click(function(e) {
@@ -526,6 +530,12 @@ define([
           }
         });
         show_mutual_screens_control.click(function(e){
+          var searchedModels = dcView.search();
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
+            collection.trigger('searchChange', searchedModels);
+          }
+        });
+        show_studies_control.click(function(e){
           var searchedModels = dcView.search();
           if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);

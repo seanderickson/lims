@@ -27,7 +27,14 @@ define([
       var self = this;
       this._classname = 'LibraryView';
       _.bindAll(this, 'upload');
+      var tabbed_resources = this.tabbed_resources;
       TabbedController.prototype.initialize.apply(this,arguments);
+      
+      // add back in resources viewable for screeners
+      if (appModel.getCurrentUser().is_staff !== true){
+        this.tabbed_resources['well'] = tabbed_resources['well'];
+      }
+      
     },
     
     tabbed_resources: {

@@ -27,7 +27,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
           if (_.isUndefined(permission)) {
             permission = displayed_tabbed_resources[key].resource;
           }
-          if (!appModel.hasPermission(permission)) {
+          if (!appModel.hasPermission(permission, 'read')) {
             delete displayed_tabbed_resources[key];
           }
         }

@@ -45,6 +45,18 @@
         "options": { 
           "search": {"is_staff__exact": "False"} }
     },
+    "my_associates": {
+        "header_message": "My Associates",
+        "title": "My Associates",
+        "route": "list/screeners",
+        "listView": "ListView",
+        "detailView": "UserView",
+        "api_resource": "screensaveruser",
+        "url_root": "/db/api/v1",
+        "description": "Browse my associates (lab members, collaborators, etc.)",
+        "options": { 
+          "search": {"is_staff__exact": "False"} }
+    },
 
     "staff": {
         "header_message": "Staff",
@@ -66,6 +78,7 @@
     },
     "cherrypickrequest": {
       "detailView": "CherryPickRequestView",
+      "title": "Cherry Pick Requests",
       "listView": "ListView",
       "api_resource": "cherrypickrequest"
     },
@@ -110,9 +123,22 @@
           "search": { "study_type__is_null": true }
         }
     },
+    "my_screens": {
+        "header_message": "My Screens",
+        "title": "My Screens",
+        "route": "list/screen",
+        "listView": "ListView",
+        "detailView": "ScreenView",
+        "api_resource": "screen",
+        "url_root": "/db/api/v1",
+        "description": "Browse screens that you lead, head, or collaborate on",
+        "options": { 
+          "search": { "study_type__is_null": true }
+        }
+    },
     "small_molecule_screens": {
         "header_message": "Small Molecule Screens",
-        "title": "Small Molecule Screen",
+        "title": "Small Molecule Screens",
         "route": "list/small_molecule_screens",
         "listView": "ListView",
         "detailView": "DetailView",
@@ -127,7 +153,7 @@
     },
     "rnai_screens": {
         "header_message": "All screens (Small Molecule and RNAi)",
-        "title": "RNAi Screen",
+        "title": "RNAi Screens",
         "route": "list/rnai_screens",
         "listView": "ListView",
         "detailView": "DetailView",
@@ -149,7 +175,8 @@
         "url_root": "/db/api/v1",
         "description": "View Studies",
         "options": { 
-          "search": { "study_type__is_null": false }
+          "search": { "study_type__is_null": false },
+          "order": ["facility_id"]
         }
     },
     "screenresult": {
@@ -409,7 +436,7 @@
         "order": []  }
     },
     "activity": {
-      "title": "Activity",
+      "title": "Activities",
       "detailView": "ActivityView",
       "listView": "ActivityListView",
       "api_resource": "activity",

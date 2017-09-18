@@ -372,7 +372,7 @@ define([
         e.preventDefault();
         var errors = form2.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          console.log('form5 errors, abort submit: ' + JSON.stringify(errors));
+          console.log('form2 errors, abort submit: ' + JSON.stringify(errors));
           $form2.find('[name="copyplate"]').addClass(self.errorClass);
           return;
         }else{
@@ -454,68 +454,72 @@ define([
       });      
       
       ///// Screening Inquiry
-      var form5 = this.form5;
-      var $form5 = this.form5.render().$el;
-      if (this.form5_data){
-        this.form5.setValue('screening_inquiry', this.form5_data);
-      }
-      $('#search-box-5').html($form5);
-      $form5.append([
-          '<button type="submit" ',
-          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-          ].join(''));
-
-      $form5.find('[ type="submit" ]').click(function(e){
-        e.preventDefault();
-        var errors = form5.commit({ validate: true }); 
-        if(!_.isEmpty(errors)){
-          console.log('form5 errors, abort submit: ' + JSON.stringify(errors));
-          $form5.find('[name="screening_inquiry"]').addClass(self.errorClass);
-          return;
-        }else{
-          $form5.find('[name="screening_inquiry"]').removeClass(self.errorClass);
+      if (appModel.hasPermission('libraryscreening', 'read')){
+        var form5 = this.form5;
+        var $form5 = this.form5.render().$el;
+        if (this.form5_data){
+          this.form5.setValue('screening_inquiry', this.form5_data);
         }
+        $('#search-box-5').html($form5);
+        $form5.append([
+            '<button type="submit" ',
+            'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+            ].join(''));
+  
+        $form5.find('[ type="submit" ]').click(function(e){
+          e.preventDefault();
+          var errors = form5.commit({ validate: true }); 
+          if(!_.isEmpty(errors)){
+            console.log('form5 errors, abort submit: ' + JSON.stringify(errors));
+            $form5.find('[name="screening_inquiry"]').addClass(self.errorClass);
+            return;
+          }else{
+            $form5.find('[name="screening_inquiry"]').removeClass(self.errorClass);
+          }
+  
+          var searchValue = form5.getValue('screening_inquiry');
+          var errorArray = [];
+          var parsedSearch = Iccbl.parseRawScreeningInquiry(searchValue,errorArray);
+          if (!_.isEmpty(errorArray)){
+            throw Exception('Unexpected errors after submit:', errorArray);
+          }
+          var urlSearchParts = 
+            PlateRangeSearchView.prototype.encodeFormData.call(this,parsedSearch);
+          var uriStack = ['screen', parsedSearch.screen_facility_id,
+                          'summary','plateranges','search',
+                          urlSearchParts.join(appModel.SEARCH_DELIMITER)]
+          console.log('route: ', uriStack);
+          appModel.router.navigate(uriStack.join('/'), {trigger:true});
+        });      
+      }      
 
-        var searchValue = form5.getValue('screening_inquiry');
-        var errorArray = [];
-        var parsedSearch = Iccbl.parseRawScreeningInquiry(searchValue,errorArray);
-        if (!_.isEmpty(errorArray)){
-          throw Exception('Unexpected errors after submit:', errorArray);
-        }
-        var urlSearchParts = 
-          PlateRangeSearchView.prototype.encodeFormData.call(this,parsedSearch);
-        var uriStack = ['screen', parsedSearch.screen_facility_id,
-                        'summary','plateranges','search',
-                        urlSearchParts.join(appModel.SEARCH_DELIMITER)]
-        console.log('route: ', uriStack);
-        appModel.router.navigate(uriStack.join('/'), {trigger:true});
-      });      
-      
       ///// CPR
-      var form4 = this.form4;
-      var $form4 = this.form4.render().$el;
-      $('#search-box-4').html($form4);
-      $form4.append([
-          '<button type="submit" ',
-          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-          ].join(''));
-
-      $form4.find('[ type="submit" ]').click(function(e){
-        e.preventDefault();
-        var errors = form4.commit({ validate: true }); 
-        if(!_.isEmpty(errors)){
-          console.log('form4 errors, abort submit: ' + JSON.stringify(errors));
-          $form4.find('#cpr').addClass(self.errorClass);
-          return;
-        }else{
-          $form4.find('#cpr').removeClass(self.errorClass);
-        }
-        var cpr_id = self.form4.getValue()['cpr'];
-        var resource = appModel.getResource('cherrypickrequest');
-        var _route = ['#', resource.key,cpr_id].join('/');
-        appModel.set('routing_options', {replace: false});  
-        appModel.router.navigate(_route, {trigger:true});
-      });      
+      if (appModel.hasPermission('cherrypickrequest', 'read')){
+        var form4 = this.form4;
+        var $form4 = this.form4.render().$el;
+        $('#search-box-4').html($form4);
+        $form4.append([
+            '<button type="submit" ',
+            'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+            ].join(''));
+  
+        $form4.find('[ type="submit" ]').click(function(e){
+          e.preventDefault();
+          var errors = form4.commit({ validate: true }); 
+          if(!_.isEmpty(errors)){
+            console.log('form4 errors, abort submit: ' + JSON.stringify(errors));
+            $form4.find('#cpr').addClass(self.errorClass);
+            return;
+          }else{
+            $form4.find('#cpr').removeClass(self.errorClass);
+          }
+          var cpr_id = self.form4.getValue()['cpr'];
+          var resource = appModel.getResource('cherrypickrequest');
+          var _route = ['#', resource.key,cpr_id].join('/');
+          appModel.set('routing_options', {replace: false});  
+          appModel.router.navigate(_route, {trigger:true});
+        });      
+      }
 
       this.uriStackChange();
     },
@@ -564,7 +568,7 @@ define([
           return;
         }
         
-        if (uiResourceId == 'screen') {
+        if (self.form5 && uiResourceId == 'screen') {
           var screenId = uriStack.shift();
           if (_.contains(uriStack, 'plateranges')){
             if (_.contains(uriStack,'search')){

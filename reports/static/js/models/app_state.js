@@ -200,7 +200,7 @@ define([
      */
     initializeAdminMode: function(callback) {
       var self = this;
-      console.log('initializeAdminMode...', callback);
+      console.log('initializeAdminMode...');
       // Pre-fetch options for the search_box
       $(this).queue([
          self.getAdminUserOptions,
@@ -213,7 +213,9 @@ define([
     setCurrentUser: function(callBack) {
       console.log('set the current user', window.user);
       var self = this;
-      this.getModel('user', window.user, 
+      // NOTE: can be replaced with "user" from the reports app
+      // 'screensaveruser' is needed for the database app
+      this.getModel('screensaveruser', window.user, 
         function(model){
           console.log('user model:', model);
           // NOTE that Backbone.Model.toJSON returns a shallow copy as a object,
@@ -587,7 +589,7 @@ define([
     getScreens: function(callback){
       data_for_get = { 
         exact_fields: ['title','facility_id'], 
-        project_phase__ne: 'annotation'
+        study_type__is_null: true
       };
       return this.getCachedResourceCollection(
         'screens', this.dbApiUri + '/screen', data_for_get, callback );
@@ -597,7 +599,7 @@ define([
       options = options || {};
       data_for_get = { 
         exact_fields: ['title','facility_id'], 
-        project_phase__ne: 'annotation',
+        study_type__is_null: true,
       };
       var cachekey = _.map(_.pairs(data_for_get),function(pair){
         return pair.join(':');
@@ -856,7 +858,9 @@ define([
         }
         throw "Unknown vocabulary: " + scope;
       }
-      console.log('vocabulary: ' + scope, vocabularies[scope]);
+      if (DEBUG){
+        console.log('vocabulary: ' + scope, vocabularies[scope]);
+      }
       return vocabularies[scope];
     },
     
@@ -1108,7 +1112,11 @@ define([
       var currentUser = this.getCurrentUser();
       var menu = this.get('menu');
       
-      if(!currentUser.is_superuser) { 
+      if(!currentUser.is_staff && !currentUser.is_superuser ){
+        menu = this.get('screener_menu');
+      }
+      
+      else if(!currentUser.is_superuser) { 
         
         // Use permissions to show only allowed menus for the user
         var new_submenus = {}
@@ -1119,7 +1127,7 @@ define([
 
             new_submenus[key] = menu.submenus[key];
           }else{
-            if(self.hasPermission(key)){
+            if(self.hasPermission(key,'read')){
               new_submenus[key] = menu.submenus[key];
             }else{
               console.log('user: ' + currentUser.username 
@@ -1242,11 +1250,20 @@ define([
      *    
      */
     getResource: function(resourceId){
+      var self = this;
       var uiResources = this.get('ui_resources');
       if(!_.has(uiResources, resourceId)) {
         throw "Unknown resource: " + resourceId;
       }
-      return this.cloneResource(uiResources[resourceId]);
+      var resource = this.cloneResource(uiResources[resourceId]);
+      
+      if (resourceId == 'my_screens'){
+        var suResource = uiResources['screensaveruser'];
+        var currentUser = self.getCurrentUser();
+        resource.apiUri = [suResource.apiUri, currentUser.username, 'screens'].join('/');
+      }
+      
+      return resource;
     },
     
     /**

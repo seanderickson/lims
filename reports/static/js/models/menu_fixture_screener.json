@@ -1,0 +1,48 @@
+{
+  "view": "home",
+  "submenus": {
+    "library": {
+      "expanded": false,
+      "view": "list",
+      "submenus": {
+        "smallmoleculelibrary":{
+          "view": "list"
+        },
+        "rnalibrary":{
+          "view": "list"
+        },
+        "all_libraries":{
+          "view": "list"
+        }
+      }
+    },
+    "screen": {
+      "view": "list",
+      "expanded": false,
+      "submenus": {
+        "small_molecule_screens":{
+            "view": "list"
+        },
+        "rnai_screens":{
+            "view": "list"
+        }
+      }
+    },
+    "my_screens": {
+      "view": "list"
+    },
+    "study": {
+      "view": "list"
+    },
+    "cherrypickrequest": {
+      "view": "list"
+    },
+    "activity":{
+      "view": "list"
+    },
+    "my_associates": {
+      "view": "list"
+    }
+  }
+}
+      

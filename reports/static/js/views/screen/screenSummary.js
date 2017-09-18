@@ -23,7 +23,16 @@ define([
     initialize: function(args) {
       var self = this;
       this._classname = 'ScreenSummary';
+      var tabbed_resources = this.tabbed_resources;
       TabbedController.prototype.initialize.apply(this,arguments);
+      if (this.model.get('user_access_level_granted') > 1){
+        // NOTE: if user_access_level_granted == 1, should not be able to see
+        this.tabbed_resources['plates'] = tabbed_resources['plates'];
+        this.tabbed_resources['library'] = tabbed_resources['library'];
+      }
+      if (this.model.get('user_access_level_granted') == 3){
+        this.tabbed_resources['libraryscreening'] = tabbed_resources['libraryscreening'];
+      }
     },
 
     tabbed_resources: {
@@ -501,19 +510,22 @@ define([
           }
         });
       
-      resource.fields['screening_count'].backgridCellType = 
-        Iccbl.LinkCell.extend(_.extend({},
-          resource.fields['screening_count'].display_options,
-          {
-            linkCallback: function(e){
-              e.preventDefault();
-              var search_entry = Iccbl.formatString(
-                'library_plates_screened__contains={copy_name}/{plate_number}',
-                this.model);
-              self.uriStack = ['search', search_entry];
-              self.change_to_tab('libraryscreening');
-            }
-          }));
+      if(_.has(resource.fields,'screening_count')){
+        // Note: screening_count may be restricted
+        resource.fields['screening_count'].backgridCellType = 
+          Iccbl.LinkCell.extend(_.extend({},
+            resource.fields['screening_count'].display_options,
+            {
+              linkCallback: function(e){
+                e.preventDefault();
+                var search_entry = Iccbl.formatString(
+                  'library_plates_screened__contains={copy_name}/{plate_number}',
+                  this.model);
+                self.uriStack = ['search', search_entry];
+                self.change_to_tab('libraryscreening');
+              }
+            }));
+      }
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),

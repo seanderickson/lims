@@ -1661,8 +1661,8 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
         }
       }
     }
-    var isEmpty = ( _.isEmpty(rawData) 
-        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])))
+    var isEmpty = _.isEmpty(rawData);
+//        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])))
     if( !isEmpty && _.isEmpty(selectedText)){
       selectedText = rawData;
 
@@ -3182,7 +3182,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
         self.setValue('lower_criteria', criteriaKey);
         if(criteria == 'is_blank'){
           self.$el.find('[data-fields="form_textarea"]').hide();
-          if(searchVal == 'false'){
+          if(searchVal == false || searchVal == 'false'){
             self.setValue('lower_criteria', 'not blank');
           }
         }else{
@@ -3443,7 +3443,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
             self.$el.find('[data-fields="form_textarea"]').show();
             self.setValue('form_textarea', searchVal);
           }else if(criteria == 'is_null'){
-            if(searchVal == 'false'){
+            if(searchVal == false || searchVal == 'false'){
               self.setValue('lower_criteria', 'not blank');
             }
           }else{
@@ -4021,7 +4021,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
           self.$el.find('[data-fields="form_textarea"]').show();
           self.setValue('form_textarea', searchVal);
         }else if(criteria == 'is_null'){
-          if(searchVal == 'false'){
+          if(searchVal == false || searchVal == 'false'){
             self.setValue('lower_criteria', 'not blank');
           }
         }else{

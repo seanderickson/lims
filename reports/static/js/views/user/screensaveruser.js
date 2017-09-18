@@ -56,7 +56,9 @@ define([
       var self = this;
       // Merge the parent user.js tabs and modify the tab order
       var keyOrder = ['detail'].concat(_.keys(this.screensaver_tabbed_resources));
-      keyOrder.push('usergrouppermissions');
+      if (_.has(this.tabbed_resources, 'usergrouppermissions')){
+        keyOrder.push('usergrouppermissions');
+      }
       var tempTabs = _.extend({},
         this.tabbed_resources, this.screensaver_tabbed_resources);
       var orderedTabs = {};
@@ -64,13 +66,15 @@ define([
         orderedTabs[key] = tempTabs[key];
       });
       this.tabbed_resources = orderedTabs;
-
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(
-            self.tabbed_resources[key].resource,'read')){
-          delete self.tabbed_resources[key];
-        }
-      });
+      
+      if (appModel.getCurrentUser().username != this.model.get('username')){
+        _.each(_.keys(this.tabbed_resources), function(key){
+          if(key !== 'detail' && !appModel.hasPermission(
+              self.tabbed_resources[key].resource,'read')){
+            delete self.tabbed_resources[key];
+          }
+        });
+      }
     },
 
     setDetail: function(delegateStack){
@@ -82,11 +86,13 @@ define([
       outerSelf = self = this;
       var resource = self.model.resource;
       
-      resource.fields['permissions']['editability'] = [];
-      // TODO: usergroupview permission fields are being altered; should not 
-      // affect the resource here.
-      resource.fields['permissions']['visibility'] = [];
-      resource.fields['usergroups']['editability'] = [];
+      if (_.has(resource.fields,'permissions')){
+        resource.fields['permissions']['editability'] = [];
+        // TODO: usergroupview permission fields are being altered; should not 
+        // affect the resource here.
+        resource.fields['permissions']['visibility'] = [];
+        resource.fields['usergroups']['editability'] = [];
+      }
       
       // Manage classification changes
       var originalClassification = self.model.get('classification');

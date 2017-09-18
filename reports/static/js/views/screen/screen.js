@@ -45,6 +45,18 @@ define([
       } 
       
       TabbedController.prototype.initialize.apply(this,arguments);
+      
+      var access_level = this.model.get('user_access_level_granted');
+      if (access_level > 1) {
+        this.tabbed_resources['summary'] = this.screen_tabbed_resources['summary'];
+        this.tabbed_resources['data'] = this.screen_tabbed_resources['data'];
+        this.tabbed_resources['protocol'] = this.screen_tabbed_resources['protocol'];
+      } 
+      if (access_level > 2 && _.isEmpty(self.model.get('study_type'))){
+        this.tabbed_resources['cherrypickrequest'] = this.screen_tabbed_resources['cherrypickrequest'];
+        this.tabbed_resources['activities'] = this.screen_tabbed_resources['activities'];
+      }
+      
     },
 
     study_tabbed_resources: {
@@ -326,9 +338,11 @@ define([
           if (!_.isEmpty(model.get('study_type'))) {
             // do nothing for studies here
           } else {
-            self.createStatusHistoryTable($('#detail_extra_information'));
-            self.createActivitySummary($('#detail_extra_information'));
-            self.createCprTable($('#detail_extra_information'));
+            if(self.model.get('user_access_level_granted') == 3 ){
+              self.createStatusHistoryTable($('#detail_extra_information'));
+              self.createActivitySummary($('#detail_extra_information'));
+              self.createCprTable($('#detail_extra_information'));
+            }
             if (appModel.hasGroup('readEverythingAdmin')) {
               self.createAttachedFileTable(this.$el.find('#attached_files'));
             }
@@ -344,7 +358,9 @@ define([
                 'role="button" id="reconfirmationScreenButton" href="#">',
                 'Add a Reconfirmation Screen</a>'
               ].join(''));
-            $('#generic-detail-buttonpanel').append(addReconfirmationScreenControl);
+            if (appModel.hasPermission('screen','write')) {
+              $('#generic-detail-buttonpanel').append(addReconfirmationScreenControl);
+            }
             addReconfirmationScreenControl.click(function(e){
               e.preventDefault();
               
@@ -455,7 +471,6 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-//      $target_el.empty();
       
       function build_table(collection) {
           if (collection.isEmpty()) {
@@ -1043,11 +1058,14 @@ define([
     createStatusHistoryTable: function($target_el) {
       var self = this;
       console.log('createStatusHistoryTable, ', self.model.key, self.model);
+      if (!appModel.hasPermission('apilog')){
+        console.log('user does not have permission to query "apilog"');
+        return;
+      }
       var apilogResource = appModel.getResource('apilog');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: apilogResource.apiUri 
       });
-//      $target_el.empty();
       
       function build_table(collection) {
         console.log('build status history table', collection);

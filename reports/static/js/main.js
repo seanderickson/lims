@@ -36,10 +36,12 @@ require([ // now load application code
     'models/reports_menu_fixture.json', 
     'models/ui_resources_fixture.json', 
     'models/menu_fixture.json', 
+    'models/menu_fixture_screener.json', 
     'bootstrap'
   ],
 function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, 
-  reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw ) {
+  reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw,
+  screener_menu_raw ) {
   
   console.log('init screensaver/reports...')
   
@@ -113,6 +115,9 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   var menu_resource = JSON.parse(menu_raw);
   _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
   appModel.set('menu', menu_resource);
+
+  var screener_menu_resource = JSON.parse(screener_menu_raw);
+  appModel.set('screener_menu', screener_menu_resource);
 
   var loadCount = 0
   $(document).bind("ajaxSend", function(){

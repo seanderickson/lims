@@ -33,17 +33,18 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         {}, _.mapObject(this.tabbed_resources_template, function(val,key){
           return _.clone(val);
         }));
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail'){
-          var permission = self.tabbed_resources[key].permission;
-          if (_.isUndefined(permission)){
-            permission = self.tabbed_resources[key].resource;
-          }
-          if (!appModel.hasPermission(permission)){
-            delete self.tabbed_resources[key];
-          }
-        }
-      });
+      // Allow all tabs if allowed Well
+      //_.each(_.keys(this.tabbed_resources), function(key){
+      //  if(key !== 'detail'){
+      //    var permission = self.tabbed_resources[key].permission;
+      //    if (_.isUndefined(permission)){
+      //      permission = self.tabbed_resources[key].resource;
+      //    }
+      //    if (!appModel.hasPermission(permission)){
+      //      delete self.tabbed_resources[key];
+      //    }
+      //  }
+      //});
       if (! self.model.has('duplex_wells')){
         delete self.tabbed_resources['duplex_wells'];
       }

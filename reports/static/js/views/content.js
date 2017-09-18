@@ -170,7 +170,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     // Show a listing of a resource, get the parameters from the uriStack
     showList: function(resource, uriStack) {
       
-      console.log('showList: uriStack', resource, uriStack);
+      console.log('showList: resource:', resource, 'uriStack', uriStack);
 
       var self = this;
       var uriStack = _.clone(uriStack);

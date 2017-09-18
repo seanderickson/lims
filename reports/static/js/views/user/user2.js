@@ -29,11 +29,14 @@ define([
         detail: { 
           description: 'User Details', 
           title: 'User Details', 
-          invoke: 'setDetail' },
+          invoke: 'setDetail',
+          resource: 'user' 
+        },
         usergrouppermissions: { 
           description: 'User Groups and Permissions', 
           title: 'User Groups and Permissions', 
-          invoke: 'setGroupsPermissions'
+          invoke: 'setGroupsPermissions',
+          resource: 'usergroup'
         },
     },
     

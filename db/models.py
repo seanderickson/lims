@@ -688,8 +688,9 @@ class Screen(models.Model):
     parent_screen = models.ForeignKey(
         'Screen', null=True, related_name='follow_up_screen')
     
-    # REMOVE for SS2
+    # REMOVE for SS2 - study_type replaces this as a marker
     project_phase = models.TextField(null=True)
+    # REMOVE for SS2 - use parent_screen instead
     project_id = models.TextField(null=True)
     
     
@@ -986,9 +987,13 @@ class ScreensaverUser(models.Model):
     lab_head = models.ForeignKey(
         'ScreensaverUser', null=True, related_name='lab_members')
     
+    # lab_head fields
     # If this field, if set, designates user as a "Lab Head"
     lab_affiliation = models.ForeignKey(
         'LabAffiliation', null=True, related_name='lab_heads')
+    lab_head_appointment_category = models.TextField(null=True)
+    lab_head_appointment_department = models.TextField(null=True)
+    lab_head_appointment_update_date = models.DateField(null=True)
 
     sm_data_sharing_level = models.IntegerField(null=True)
     rnai_data_sharing_level = models.IntegerField(null=True)
@@ -1053,6 +1058,9 @@ class LabHead(models.Model):
     
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
     lab_affiliation = models.ForeignKey('LabAffiliation', null=True)
+    lab_head_appointment_category = models.TextField(null=True)
+    lab_head_appointment_department = models.TextField(null=True)
+    lab_head_appointment_update_date = models.DateField(null=True)
     
     class Meta:
         db_table = 'lab_head'

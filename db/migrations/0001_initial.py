@@ -1507,9 +1507,13 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='LabHead',
             fields=[
-                ('screensaver_user', models.OneToOneField(primary_key=True, serialize=False, to='db.ScreeningRoomUser')),
+                ('screensaver_user', models.OneToOneField(
+                    primary_key=True, serialize=False, to='db.ScreeningRoomUser')),
                 ('lab_affiliation', models.ForeignKey(
                     to='db.LabAffiliation', null=True)),
+                ('lab_head_appointment_category', models.TextField(null=True)),
+                ('lab_head_appointment_department', models.TextField(null=True)),
+                ('lab_head_appointment_update_date', models.DateField(null=True)),
             ],
             options={
                 'db_table': 'lab_head',

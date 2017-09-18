@@ -186,6 +186,9 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.info('field visibility settings: %r', 
                 [ str((key,field['visibility'])) 
                     for key,field in schema_fields.items()])
+            logger.info('field access levels: %r', 
+                [ str((key,field['data_access_level'])) 
+                    for key,field in schema_fields.items()])
         try:
             if exact_fields:
                 temp = { key:field for key,field in schema_fields.items()
@@ -783,7 +786,8 @@ class SqlAlchemyResource(IccblBaseResource):
             data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
         content_type = self.get_serializer().get_accept_content_type(request)
-        logger.info('_get_list_response_internal: %r', content_type)
+        logger.info('_get_list_response_internal: %r: %r', 
+            self._meta.resource_name,content_type)
         
         if user is None:
             class User:
@@ -942,8 +946,6 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
-        logger.info('stream_response_from_statement: %r %r',
-            self._meta.resource_name, format )
         temp_param_hash = param_hash.copy()
         if 'schema' in temp_param_hash:
             del temp_param_hash['schema']
@@ -990,7 +992,6 @@ class SqlAlchemyResource(IccblBaseResource):
                         dialect=postgresql.dialect(), 
                         compile_kwargs={"literal_binds": True})))
            
-            logger.info('format: %r', format) 
             if format is not None:
                 content_type = \
                 self.get_serializer().get_content_type_for_format(format)
@@ -1048,7 +1049,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     
-                logger.info('is for detail: %r, count: %r', is_for_detail, count)
+                logger.debug('is for detail: %r, count: %r', is_for_detail, count)
                 if is_for_detail and count == 0:
                     logger.info('detail not found')
                     conn.close()

@@ -17,11 +17,8 @@ from django.shortcuts import render
 
 from db import WELL_ID_PATTERN
 from db.models import ScreensaverUser, Reagent, AttachedFile, Publication
-from reports.api import UserGroupAuthorization
-from db.api import ScreenAuthorization
+from db.api import AttachedFileAuthorization,PublicationAuthorization
 from django.core.exceptions import ObjectDoesNotExist
-from tastypie.exceptions import ImmediateHttpResponse
-from tastypie.http import HttpForbidden
 
 
 logger = logging.getLogger(__name__)
@@ -33,21 +30,23 @@ def main(request):
     return render(request, 'db/index.html', {'search': search})
 
 def well_image(request, well_id):
-    if not hasattr(request, 'user'):
-        raise ImmediateHttpResponse(response=HttpForbidden(
-            'Request object must be initialized with a "User" object: %r' 
-            % request.user))
-    user = request.user
-    if hasattr(user,'is_superuser') and user.is_superuser is not True:
-        if not hasattr(user,'is_authenticated'):
-            # TODO: replace tastypie error classes
-            raise ImmediateHttpResponse(response=HttpForbidden(
-                'Request.user object is invalid: %r, %r, user object can not be authenticated' 
-                % (user, type(user))))
-        if not user.is_authenticated():
-            raise ImmediateHttpResponse(response=HttpForbidden(
-                'user %r is not authorized for well_image view' % user ))
-        # TODO: use group authorization
+    if(not request.user.is_authenticated()):
+        return HttpResponse('Log in required.', status=401)
+#     if not hasattr(request, 'user'):
+#         raise ImmediateHttpResponse(response=HttpForbidden(
+#             'Request object must be initialized with a "User" object: %r' 
+#             % request.user))
+#     user = request.user
+#     if hasattr(user,'is_superuser') and user.is_superuser is not True:
+#         if not hasattr(user,'is_authenticated'):
+#             # TODO: replace tastypie error classes
+#             raise ImmediateHttpResponse(response=HttpForbidden(
+#                 'Request.user object is invalid: %r, %r, user object can not be authenticated' 
+#                 % (user, type(user))))
+#         if not user.is_authenticated():
+#             raise ImmediateHttpResponse(response=HttpForbidden(
+#                 'user %r is not authorized for well_image view' % user ))
+#         # TODO: use group authorization
         
     match = WELL_ID_PATTERN.match(well_id)
     if not match:
@@ -79,10 +78,9 @@ def well_image(request, well_id):
 
 
 def smiles_image(request, well_id):
+    if(not request.user.is_authenticated()):
+        return HttpResponse('Log in required.', status=401)
     # TODO: not tested
-    if not request.user.is_authenticated():
-        raise ImmediateHttpResponse(response=HttpForbidden(
-            'user: %r not authorized for smiles_image view' % request.user))
         
     import rdkit.Chem
     import rdkit.Chem.AllChem
@@ -100,82 +98,34 @@ def smiles_image(request, well_id):
 
 def publication_attached_file(request, publication_id):
     if(not request.user.is_authenticated()):
-        logger.warn('access to restricted: user: %r, publication: %r',
-            request.user,publication_id) 
         return HttpResponse('Log in required.', status=401)
 
     try:
         publication = Publication.objects.get(publication_id=publication_id)
-
-        if (not hasattr(publication, 'attachedfile')
-            or publication.attachedfile is None):
-            msg = 'publication found, but has no attached_file for id: %r' % publication_id
-            logger.exception(msg)
-            raise Http404(msg)
-
-        authorization = ScreenAuthorization()
-        authorized = authorization._is_resource_authorized(
-            'screen',request.user,'read')
-        if not authorized:
-            userprofile = request.user.userprofile
-            screensaver_user = None
-            if hasattr(userprofile,'screensaveruser'):
-                screensaver_user = userprofile.screensaveruser
-            if ( screensaver_user is not None
-                    and hasattr(publication,'screen') 
-                    and publication.screen is not None):
-                authorized = authorization._is_screen_authorized(
-                    publication.screen, screensaver_user, 'read')
-        if not authorized:
-            msg = ('%s permission needed for user: %s'
-                       % ('screen/read',request.user))
-            logger.warn(msg)
-            return HttpResponse(msg, status=403)
+        auth = PublicationAuthorization('publication')
+        if auth.has_publication_read_authorization(
+            request.user, publication_id) is not True:
+            return HttpResponse(status=403)
         else:
-            logger.info(
-                'User allowed to file %s',
-                request.user)
             return _download_file(request,publication.attachedfile)
     except ObjectDoesNotExist,e:
         msg = 'could not find publication object for id: %r' % publication_id
         logger.exception(msg)
         return HttpResponse(status=404)
-    
+
 def attached_file(request, attached_file_id):
     if(not request.user.is_authenticated()):
         logger.warn('access to restricted: user: %r, file: %r',
             request.user,attached_file) 
         return HttpResponse('Log in required.', status=401)
 
-    af = None
     try:
         af = AttachedFile.objects.get(attached_file_id=attached_file_id)
-        authorization = ScreenAuthorization()
-        authorized = authorization._is_resource_authorized(
-            'screen',request.user,'read')
-        if not authorized:
-            userprofile = request.user.userprofile
-            screensaver_user = None
-            if hasattr(userprofile,'screensaveruser'):
-                screensaver_user = userprofile.screensaveruser
-            if ( hasattr(attached_file,'screensaver_user') 
-                and attached_file.screensaver_user is not None):
-                if attached_file.screensaver_user.user == userprofile:
-                    authorized = True
-            if ( screensaver_user is not None
-                    and hasattr(publication,'screen') 
-                    and publication.screen is not None):
-                authorized = authorization._is_screen_authorized(
-                    publication.screen, screensaver_user, 'read')
-        if not authorized:
-            msg = ('%s permission needed for user: %s'
-                       % ('attachedfiles/read',request.user))
-            logger.warn(msg)
-            return HttpResponse(msg, status=403)
+        auth = AttachedFileAuthorization('attachedfile')
+        if auth.has_file_read_authorization(
+                request.user, attached_file_id) is not True:
+            return HttpResponse(status=403)
         else:
-            logger.info(
-                'User allowed attached file access to own files %s',
-                request.user)
             return _download_file(request,af)
     except ObjectDoesNotExist,e:
         msg = 'could not find attached file object for id: %r' % attached_file_id

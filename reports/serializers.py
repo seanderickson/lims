@@ -2,11 +2,9 @@
 # see reports.serialize.streaming_serializers for the Streaming alternatives.
 from __future__ import unicode_literals
 
-import cStringIO
 import StringIO
+import cStringIO
 from collections import OrderedDict
-# import csv
-import unicodecsv
 import json
 import logging
 
@@ -17,6 +15,7 @@ from django.utils.encoding import smart_text, force_text
 import mimeparse
 import six
 from tastypie.exceptions import BadRequest
+import unicodecsv
 import xlrd
 
 from db.support import screen_result_importer
@@ -156,7 +155,8 @@ class BaseSerializer(object):
                         request.META['HTTP_ACCEPT'])
             elif request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
                 content_type = request.META.get('CONTENT_TYPE', '*/*')
-                logger.info('fallback to "CONTENT_TYPE": %r', content_type)
+                if DEBUG_ACCEPT_CONTENT_TYPE:
+                    logger.info('fallback to "CONTENT_TYPE": %r', content_type)
             else:
                 logger.error('get_accept_content_type: request.META: %r',
                     request.META)
@@ -167,20 +167,12 @@ class BaseSerializer(object):
             logger.info('content type: %r', content_type)
         return content_type
         
-#     def get_content_type(self, request, format=None):    
     def get_content_type(self, request):    
 
         logger.debug('get_content_type: %r, %r', request, format)
 
         content_type = None
         
-#         if format is None:
-#             if request.GET and request.GET.get('format',None):
-#                 format = request.GET.get('format')
-#         if format is not None:
-#             content_type = self.get_content_type_for_format(format)
-#         
-#         if content_type is None and request is not None:
         if request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
             content_type = request.META.get('CONTENT_TYPE', '*/*')
             logger.debug('"CONTENT_TYPE": %r', content_type)
@@ -243,7 +235,7 @@ class BaseSerializer(object):
         if not content:
             return {}
     
-        logger.info('deserializing for %r', desired_format)
+        logger.debug('deserializing for %r', desired_format)
 
         deserialized = getattr(self, "from_%s" % desired_format)(content,**kwargs)
         return deserialized

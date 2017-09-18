@@ -25,7 +25,7 @@ from tastypie.authentication import Authentication
 from tastypie.cache import NoCache
 from tastypie.exceptions import ImmediateHttpResponse, BadRequest, NotFound
 from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent, \
-    HttpApplicationError, HttpUnauthorized
+    HttpApplicationError
 from tastypie.resources import Resource, convert_post_to_put, sanitize
 from tastypie.utils.urls import trailing_slash
 
@@ -38,6 +38,7 @@ from reports.serializers import BaseSerializer
 
 logger = logging.getLogger(__name__)
 
+DEBUG = False
 
 def un_cache(_func):
     '''
@@ -57,13 +58,16 @@ def un_cache(_func):
     return _inner
 
 class Authorization(object):
+    pass
 
-    def _is_resource_authorized(
-        self, request, resource_name, user, permission_type, *args, **kwargs):
-        
-        raise NotImplementedError(
-            '_is_resource_authorized must be implemented for %s, %s, %s',
-            resource_name, user, permission_type)
+#     def _is_resource_authorized(
+#         self, request, resource_name, user, permission_type, *args, **kwargs):
+#         
+#         raise NotImplementedError(
+#             '_is_resource_authorized must be implemented for %s, %s, %s',
+#             resource_name, user, permission_type)
+
+
 
 class ResourceOptions(object):
     """
@@ -187,7 +191,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             raise ImmediateHttpResponse(response=auth_result)
 
         if not auth_result is True:
-            raise ImmediateHttpResponse(response=HttpUnauthorized())
+            raise ImmediateHttpResponse(response=HttpResponse(status=401))
 
     def dispatch_list(self, request, **kwargs):
         """
@@ -364,9 +368,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                                .get_content_type_for_format(format)
         else:
             content_type = self.get_serializer().get_content_type(request)
-        logger.info('content_type: %r', content_type)
+        logger.debug('deserialize for content_type: %r', content_type)
         if content_type.startswith('multipart'):
-            logger.info('request.Files.keys: %r', request.FILES.keys())
+            logger.debug('request.Files.keys: %r', request.FILES.keys())
             # process *only* one attached file
             if len(request.FILES.keys()) != 1:
                 raise BadRequest({ 
@@ -399,7 +403,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
         
-        logger.info('use deserializer: %r', content_type)
+        logger.debug('use deserializer: %r', content_type)
         
         if content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
             # NOTE: Injecting information about the list fields, so that they
@@ -414,7 +418,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             return self.get_serializer().deserialize(request.body,content_type)
             
     def serialize(self, data, content_type):
-        logger.info('serialize to: %r', content_type)
+        logger.debug('serialize to: %r', content_type)
         return self.get_serializer().serialize(data, content_type)
 
     def _get_filename(self, readable_filter_hash, filename=None, **extra):
@@ -445,29 +449,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         filename = filename[:128]
         return filename
     
-    def _get_filename_old(self, schema, kwargs,filename=''):
-        logger.info('filename: %r, kwargs: %r', filename, kwargs )
-        filekeys = [filename]
-        if 'id_attribute' in schema:
-            filekeys.extend([ str(kwargs[key]) for 
-                key in schema['id_attribute'] if key in kwargs ])
-        else:
-            _dict = {key:val for key,val in kwargs.items() 
-                if key not in [
-                    'visibilities','exact_fields','api_name','resource_name',
-                    'includes','order_by']}
-            for i,(x,y) in enumerate(_dict.items()):
-                filekeys.append(str(x))
-                filekeys.append(str(y))
-                if i == 10:
-                    break
-        filekeys = [x for x in filekeys if x.strip() ]
-        filekeys.insert(0,self._meta.resource_name)
-        filename = '_'.join(filekeys)
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.debug('get_filename: %r, %r' % (filename, kwargs))
-        return filename
-    
     def get_serializer(self):
         return self._meta.serializer
         
@@ -479,9 +460,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         else:
             content_type = self.get_serializer().get_accept_content_type(request)
             
-        logger.info('build_response: %r, serializing...', content_type)
+        logger.debug('build_response: %r, serializing...', content_type)
         serialized = self.serialize(data, content_type)
-        logger.info('serialized: %d', len(data))
+        logger.debug('serialized: %d', len(data))
         response = response_class(
             content=serialized, 
             content_type=content_type)
@@ -517,7 +498,10 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             return HttpBadRequest(content=data, content_type='text/plain')
 
     def _handle_500(self, request, exception):
-        ''' Override Tastypie for serialization'''
+        ''' 
+        Override Tastypie for serialization
+        FIXME: copied from Tastypie, needs cleanup to simplify
+        '''
         import traceback
         import sys
         the_trace = '\n'.join(traceback.format_exception(*(sys.exc_info())))

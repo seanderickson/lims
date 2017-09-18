@@ -265,20 +265,20 @@ def equivocal(val1, val2):
     
 def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
     '''
-    For testing equality of the (CSV) input to the response of what is 
-    created and deserialized from the DB
-    - NOTE only works for String comparisons
+    For testing equality of the (CSV) input to API returned values
     @param obj1 input
     @param obj2 output 
     '''
     original_keys = set(obj1.keys())
     original_keys = original_keys.difference(excludes)
     updated_keys = set(obj2.keys())
-    
     intersect_keys = original_keys.intersection(updated_keys)
     if intersect_keys != original_keys:
+        logger.info('missing: %r', sorted(original_keys-intersect_keys))
         return False, ('keys missing:', 
-            original_keys-intersect_keys, sorted(original_keys), sorted(updated_keys))
+            original_keys-intersect_keys, 
+            'original_keys', sorted(original_keys), 
+            'updated_keys', sorted(updated_keys))
     for key in keys:
         if key not in obj1:
             continue
@@ -1138,12 +1138,8 @@ class IResourceTestCase(SimpleTestCase):
         if data_for_get:
             _data_for_get.update(data_for_get)
             
-        logger.info('input_data to create: %r', input_data)
-        logger.info('data_for_get: %r', data_for_get)
         logger.info('resource: %r, resource_test_uri: %r', 
             resource_uri, resource_test_uri)
-
-        logger.info('post to %r...', resource_uri)
         resp = self.api_client.post(
             resource_uri, format='json', data=input_data, 
             authentication=self.get_credentials(), **_data_for_get)
@@ -1255,6 +1251,7 @@ class IResourceTestCase(SimpleTestCase):
         @param data_for_get - dict of extra header information to send with the 
         GET request
         '''
+        logger.info('_patch test: %r, %r', resource_name, filename)
         data_for_get.setdefault('limit', 999 )
         data_for_get.setdefault('includes', '*' )
         data_for_get.setdefault( 
@@ -1267,7 +1264,7 @@ class IResourceTestCase(SimpleTestCase):
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
-            logger.info('Submitting patch... %r', filename)
+            logger.info('Submitting patch... %r: %r', filename, resource_uri)
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
@@ -2248,9 +2245,9 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
 
         # Try to do some unauthorized actions
 
-        resource_uri = BASE_URI + '/user'
+        test_resource_uri = '/'.join([BASE_URI, 'apilog'])
         resp = self.api_client.get(
-            resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(
             resp.status_code in [403], 
@@ -2260,7 +2257,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         
         user_patch = {
             'resource_uri': 'user/' + username,
-            'permissions': ['resource/user/read'] };
+            'permissions': ['resource/apilog/read'] };
 
         uri = BASE_URI + '/user/' + username
         logger.debug('add permission to user: %r: %r', user_patch, uri)
@@ -2274,7 +2271,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         # now try again as the updated user:
         
         resp = self.api_client.get(
-            resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(
             resp.status_code in [200], 
@@ -2383,7 +2380,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         
         self.test2_create_usergroup_with_permissions()
                         
-        # assign password to the test user
+        # Manually assign password to the test user: API does not support 
+        # passwords at this time
         username = 'sde4'
         password = 'testpass1'
         user = User.objects.get(username=username)
@@ -2391,9 +2389,9 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         user.save()
 
         # 1 read test - should have permission through group 3
-        resource_uri = BASE_URI + '/user'
+        test_resource_uri = '/'.join([BASE_URI, 'apilog'])
         resp = self.api_client.get(
-            resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(
             resp.status_code in [200], 
@@ -2429,10 +2427,11 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             ('wrong usergroups', new_obj))
         
         # now try again as the updated user:
+        test_resource_uri = '/'.join([BASE_URI, 'apilog'])
         logger.info('test user: %r, resource: %r',
-            username, resource_uri)
+            username, test_resource_uri)
         resp = self.api_client.get(
-            resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(
             resp.status_code in [403], 
@@ -2460,15 +2459,17 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
 
         # 1 read test - user, user's group don't have the permission
         resource_uri = BASE_URI + '/vocabulary'
+        test_resource_uri = '/'.join([BASE_URI, 'apilog'])
+        logger.info('get: %r', test_resource_uri)
         resp = self.api_client.get(
-            resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(
             resp.status_code in [403], 
             (resp.status_code, self.get_content(resp)))
         
         # now create a new group, with previous user's group as a member,
-        # then add permissions to this new group to read (user)
+        # then add permissions to this new group to read (apilogs)
         # note: double nest the groups also as a test
         usergroup_patch = { API_RESULT_DATA: [
             {
@@ -2519,9 +2520,9 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
                      testGroup6['all_permissions']))
         
         # 2 read test - user has permissions through inherited permissions,
-        resource_uri = BASE_URI + '/user'
+#         resource_uri = BASE_URI + '/user'
         resp = self.api_client.get(
-            resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(
             resp.status_code in [200], 

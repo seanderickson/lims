@@ -502,6 +502,7 @@ class UserProfile(models.Model):
     # TODO: make this unique
     ecommons_id = models.TextField(null=True)
 
+    # TODO: fields also found on ScreensaverUser
     harvard_id = models.TextField(null=True)
     harvard_id_expiration_date = models.DateField(null=True)
     harvard_id_requested_expiration_date = models.DateField(null=True)
@@ -513,39 +514,11 @@ class UserProfile(models.Model):
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
 
-    # # required if the field is a JSON field; choices are from the TastyPie 
-    # # field types
-    # json_field_type = models.CharField(
-    #     max_length=128, null=True); 
-    # 
-    # # This is the "meta" field, it contains "virtual" json fields
-    # json_field = models.TextField(null=True)     
-
     def __repr__(self):
         return (
             '<UserProfile(username=%r, id=%d, auth_user=%d)>'
             % (self.username, self.id, self.user.id))
     
-    # def get_field_hash(self):
-    #     if self.json_field:
-    #         return json.loads(self.json_field)
-    #     else:
-    #         return {}
-    # 
-    # def get_field(self, field):
-    #     temp = self.get_field_hash()
-    #     if(field in temp):
-    #         return temp[field]
-    #     else:
-    #         # Note, json_field is sparse, not padded with empty attributes
-    #         logger.debug(str((self,'field not found: ',field))) 
-    #         return None
-    #         
-    # def set_field(self, field, value):
-    #     temp = self.get_field_hash()
-    #     temp[field] = value;
-    #     self.json_field = json.dumps(temp)
-
     def get_all_groups(self):
 
         groups = set()

@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 from copy import deepcopy
+from collections import defaultdict
 from decimal import Decimal
 import decimal
 from functools import wraps
@@ -84,6 +85,10 @@ DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
 
 class UserGroupAuthorization(Authorization):
     
+    def __init__(self, resource_name, *args, **kwargs):
+        Authorization.__init__(self, *args, **kwargs)
+        self.resource_name = resource_name
+        
     @staticmethod
     def get_authorized_resources(user, permission_type):
         userprofile = user.userprofile
@@ -100,16 +105,16 @@ class UserGroupAuthorization(Authorization):
         return set(resources_user) | set(resources_group)
     
     def _is_resource_authorized(
-        self, resource_name, user, permission_type, **kwargs):
+        self, user, permission_type, **kwargs):
         
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
-                resource_name, user, permission_type)
+                self.resource_name, user, permission_type)
         scope = 'resource'
         prefix = 'permission'
         uri_separator = '/'
         permission_str =  uri_separator.join([
-            prefix,scope,resource_name,permission_type])       
+            prefix,scope,self.resource_name,permission_type])       
 
         if DEBUG_AUTHORIZATION:
             logger.info('authorization query: %s, user %s, %s' 
@@ -118,7 +123,7 @@ class UserGroupAuthorization(Authorization):
         if user.is_superuser:
             if DEBUG_AUTHORIZATION:
                 logger.info('%s:%s access allowed for super user: %s' 
-                    % (resource_name,permission_type,user))
+                    % (self.resource_name,permission_type,user))
             return True
         
         userprofile = user.userprofile
@@ -126,14 +131,14 @@ class UserGroupAuthorization(Authorization):
         if permission_type == 'read':
             permission_types.append('write')
         query = userprofile.permissions.all().filter(
-            scope=scope, key=resource_name, type__in=permission_types)
+            scope=scope, key=self.resource_name, type__in=permission_types)
         if query.exists():
             if DEBUG_AUTHORIZATION:
                 logger.info(
                     'user %s, auth query: %s, found matching user permissions %s'
                     % (user,permission_str,[str(x) for x in query]))
             logger.info('%s:%s user explicit permission for: %s' 
-                % (resource_name,permission_type,user))
+                % (self.resource_name,permission_type,user))
             return True
         
         if DEBUG_AUTHORIZATION:
@@ -144,35 +149,166 @@ class UserGroupAuthorization(Authorization):
         permissions_group = [ permission 
                 for group in userprofile.usergroup_set.all() 
                 for permission in group.get_all_permissions(
-                    scope=scope, key=resource_name, type__in=permission_types)]
+                    scope=scope, key=self.resource_name, type__in=permission_types)]
         if permissions_group:
             if DEBUG_AUTHORIZATION:
                 logger.info(
                     'user: %r, auth query: %r, found usergroup permissions: %r'
                     ,user, permission_str, permissions_group)
             logger.info('%s:%s usergroup permission for: %s' 
-                % (resource_name,permission_type,user))
+                % (self.resource_name,permission_type,user))
             return True
         
         logger.info(
-            'user: %r, auth query: %r, not found in usergroup permissions: %r'
-            ,user, permission_str, permissions_group)
+            'user: %r, auth query: %r, not authorized'
+            ,user.username, permission_str)
         return False
+
+    def is_restricted_view(self, user):
+        '''
+        True if the user does not have full "read" privilege on the resource
+        '''
+        authorized = UserGroupAuthorization._is_resource_authorized(self, user, 'read')
+        if DEBUG_AUTHORIZATION:
+            logger.info('is restricted: %r:%r, %r', 
+                self.resource_name, user, not authorized)
+        return not authorized 
+    
+    def get_fields_by_level(self, fields):
+        '''
+        Group the field keys by the data_access_level assigned in the schema:
+        - if a data_access_level has not been assigned, the default value is
+        used ( level 3 - visible only for own screens)
+        '''
+        
+        # If the data_access_level is not set, use the default value
+        default_field_data_access_level = 3
+        
+        restricted_fields = set()
+        fields_by_level = defaultdict(set)
+        for key,field in fields.items():
+            if field['view_groups']: # these fields should already be elided
+                logger.warn('field %r is only visible to groups: %r',
+                    key, field['view_groups'])
+                continue
+            field_data_access_level = field.get('data_access_level', None)
+            if field_data_access_level is None:
+                field_data_access_level = default_field_data_access_level
+            fields_by_level[field_data_access_level].add(key)
+            if field_data_access_level > 0:
+                restricted_fields.add(key)
+        if DEBUG_AUTHORIZATION:
+            logger.info('fields by level: %r', fields_by_level)
+            logger.info('property restricted_fields: %r', restricted_fields)
+            
+        return fields_by_level
+
+    def get_effective_access_level(self, user, row):
+        logger.warn('%r - get_effective_access_level must be implemented'
+            'if implementing the access level property generator',
+            self.resource_name)
+        return None
+
+    def filter(self, user, filter_expression):
+        '''
+        Filter the result rows returned
+        @param filter_expression: a SqlAlchemy query filter
+        TODO: override per resource if restricted access is granted for the 
+        resource.
+        '''
+        return filter_expression
+
+    def get_row_property_generator(self, user, fields, extant_generator):
+        '''
+        Filter result properties based on authorization rules
+        '''
+        return extant_generator
+        # Must be implemented
+        # e.g.
+        # return self.get_access_level_property_generator(
+        #    user, fields, extant_generator)
+        
+    def get_access_level_property_generator(self, user, fields, extant_generator):
+        '''
+        Filter results based on the access level granted for the user for each
+        row
+        '''
+
+        if self.is_restricted_view(user) is False:
+            return extant_generator
+        else:
+            logger.info('get_access_level_property_generator: %r user: %r', 
+                self.resource_name, user)
+    
+            fields_by_level = self.get_fields_by_level(fields)
+            if DEBUG_AUTHORIZATION:
+                logger.info('fields by level: %r', fields_by_level)
+            outer_self = self
+            
+            class Row:
+                def __init__(self, row):
+                    logger.debug(
+                        'filter row: %r', 
+                        [(key, row[key]) for key in row.keys()])
+                    self.row = row
+                    self.effective_access_level = outer_self.get_effective_access_level(user, row)
+
+                    self.allowed_fields = set()
+                    if self.effective_access_level is not None:
+                        for level in range(0,self.effective_access_level+1):
+                            self.allowed_fields.update(fields_by_level[level])
+                            if DEBUG_AUTHORIZATION:
+                                logger.info(
+                                    'allow level: %r: %r, %r', 
+                                    level, fields_by_level[level], 
+                                    self.allowed_fields)
+                    if DEBUG_AUTHORIZATION:
+                        logger.info('allowed fields: %r', self.allowed_fields)
+                def has_key(self, key):
+                    if key == 'user_access_level_granted':
+                        return True
+                    return self.row.has_key(key)
+                def keys(self):
+                    return self.row.keys();
+                def __getitem__(self, key):
+                    logger.debug(
+                        'key: %r, allowed: %r', key, key in self.allowed_fields)
+                    if key == 'user_access_level_granted':
+                        return self.effective_access_level
+                    if self.row[key] is None:
+                        return None
+                    else:
+                        if key in self.allowed_fields:
+                            logger.debug('allow %r: %r', key, self.row[key])
+                            return self.row[key]
+                        else:
+                            logger.debug(
+                                'row: %r filter field: %r for restricted user: %r',
+                                self.row, key, user.username)
+                            return None
+
+            def access_level_property_generator(cursor):
+                if extant_generator is not None:
+                    cursor = extant_generator(cursor)
+                for row in cursor:
+                    yield Row(row)
+            
+            return access_level_property_generator
+        
     
 class AllAuthenticatedReadAuthorization(UserGroupAuthorization):
     ''' Allow read for all authenticated users'''
 
     def _is_resource_authorized(
-        self, resource_name, user, permission_type, **kwargs):
-        
-        # Note: authentication already completed
-        
+        self, user, permission_type, **kwargs):
+        logger.debug('user: %r, %r, p: %r', user, self.resource_name, permission_type)
         if permission_type == 'read':
             if user is None:
                 return False
+            logger.info('grant read access: %r: %r', user, self.resource_name)
             return True
         return super(AllAuthenticatedReadAuthorization,self)\
-            ._is_resource_authorized(resource_name, user, permission_type)
+            ._is_resource_authorized(user, permission_type)
 
     
 def write_authorization(_func):
@@ -184,16 +320,12 @@ def write_authorization(_func):
         request = args[0]
         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if not self._meta.authorization._is_resource_authorized(
-            resource_name, request.user,'write', **kwargs):
+            request.user,'write', **kwargs):
             logger.info('write auth failed for: %r, %r', 
                 request.user, resource_name)
             msg = 'write auth failed for: %r, %r' % (request.user, resource_name)
             logger.warn(msg)
             raise PermissionDenied(msg)
-#             raise ImmediateHttpResponse(
-#                 response=HttpForbidden(
-#                     'user: %s, permission: %s/%s not found' 
-#                     % (request.user,resource_name,'write')))
         if resource_name != 'screenresult':
             kwargs['schema'] = self.build_schema(user=request.user)
 
@@ -211,18 +343,12 @@ def read_authorization(_func):
         request = args[0]
         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if DEBUG_AUTHORIZATION:
-            logger.info('read auth for: %r', resource_name)
+            logger.info('read auth for: %r using: %r', resource_name, self._meta.authorization)
         if not self._meta.authorization._is_resource_authorized(
-                resource_name, request.user,'read', **kwargs):
+                request.user,'read', **kwargs):
             msg = 'read auth failed for: %r, %r' % (request.user, resource_name)
             logger.warn(msg)
             raise PermissionDenied(msg)
-            
-#             # FIXME: raise a PermissionDenied instead
-#             raise ImmediateHttpResponse(
-#                 response=HttpForbidden(
-#                     'user: %s, permission: %s/%s not found' 
-#                     % (request.user,resource_name,'read')))
 
         # Use the user specific settings to build the schema
         if resource_name != 'screenresult':
@@ -236,7 +362,7 @@ def read_authorization(_func):
 class SuperUserAuthorization(Authorization):
 
     def _is_resource_authorized(
-        self, resource_name, user, permission_type, **kwargs):
+        self, user, permission_type, **kwargs):
 
         if DEBUG_AUTHORIZATION:
             logger.info('Super User Authorization for: %r, %r', 
@@ -342,7 +468,22 @@ class ApiLogAuthorization(UserGroupAuthorization):
     Specialized authorization, allows users to read logs for resources they are 
     authorized for.
     '''
-    pass
+    def filter(self, user, filter_expression):
+        # authorization filter
+        if not user.is_superuser:
+            # FIXME: "read" is too open
+            # - grant read level access on a case-by-case basis
+            # i.e. for screen.status updates
+            resources = UserGroupAuthorization.get_authorized_resources(
+                user, 'read')
+            auth_filter = column('ref_resource_name').in_(resources)
+            if filter_expression is not None:
+                filter_expression = and_(filter_expression, auth_filter)
+            else:
+                filter_expression = auth_filter
+        return filter_expression
+
+
 #     def read_list(self, object_list, bundle, ref_resource_name=None, **kwargs):
 #         if not ref_resource_name:
 #             ref_resource_name = self.resource_meta.resource_name;
@@ -405,25 +546,21 @@ class ApiResource(SqlAlchemyResource):
 
     def build_schema(self, user=None):
         
-        logger.debug('build schema for: %r', self._meta.resource_name)
+        logger.debug('build schema for: %r: %r', self._meta.resource_name, user)
         schema = self.get_resource_resource()._get_resource_schema(
             self._meta.resource_name, user=user)
         
         return schema
     
-#     def get_resource_uri(self, deserialized, **kwargs):
-#         ids = [self._meta.resource_name]
-#         ids.extend(self.get_id(deserialized,**kwargs).values())
-#         return '/'.join(ids)
-        
     def get_id(self,deserialized, validate=False, schema=None, **kwargs):
         ''' 
         return the full ID for the resource, as defined by the "id_attribute"
         - if validate=True, raises ValidationError if some or all keys are missing
         - otherwise, returns keys that can be found
         '''
-#         if schema is None:
-#             schema = self.build_schema()
+        if schema is None:
+            raise ProgrammingError
+        
         id_attribute = schema['id_attribute']
         fields = schema['fields']
 
@@ -455,8 +592,9 @@ class ApiResource(SqlAlchemyResource):
         return kwargs_for_id
 
     def find_key_from_resource_uri(self,resource_uri, schema=None):
-        
+        logger.debug('find_key_from_resource_uri: %r', resource_uri)
         if schema is None:
+            logger.debug('create schema for find_key_from_resource_uri')
             schema = self.build_schema()
         id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
@@ -479,12 +617,13 @@ class ApiResource(SqlAlchemyResource):
     def parse(self,deserialized, create=False, fields=None, schema=None):
         ''' parse schema fields from the deserialized dict '''
         DEBUG_PARSE = False or logger.isEnabledFor(logging.DEBUG)
-
         if DEBUG_PARSE:
+            logger.info('parse: %r:%r', self._meta.resource_name, schema is None)
             logger.info('parse: %r', deserialized)
         mutable_fields = fields        
         if fields is None:
             if schema is None:
+                logger.info('build raw schema for parse')
                 schema = self.build_schema()
             fields = schema['fields']
             mutable_fields = {}
@@ -577,7 +716,6 @@ class ApiResource(SqlAlchemyResource):
 
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
-        logger.info('deserialized: %d', len(deserialized))
         
         if len(deserialized) == 0:
             meta = { 
@@ -605,11 +743,11 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         
         kwargs_for_log = kwargs.copy()
-        if 'schema' in kwargs_for_log:
-            del kwargs_for_log['schema']
+        kwargs_for_log['schema'] = schema
+#         if 'schema' in kwargs_for_log:
+#             del kwargs_for_log['schema']
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
@@ -631,7 +769,7 @@ class ApiResource(SqlAlchemyResource):
             # FIXME: move transaction to method decorator
             with transaction.atomic():
                 if 'parent_log' not in kwargs:
-                    parent_log = self.make_log(request)
+                    parent_log = self.make_log(request, schema=schema)
                     parent_log.key = self._meta.resource_name
                     parent_log.uri = self._meta.resource_name
                     parent_log.save()
@@ -681,11 +819,9 @@ class ApiResource(SqlAlchemyResource):
 
         # TODO: enforce a policy that either objects are patched or deleted
         # and then posted/patched
-        # raise NotImplementedError('put_detail must be implemented')
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
             
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
@@ -700,18 +836,10 @@ class ApiResource(SqlAlchemyResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
         
-        # TODO: put_detail not implemented
-        # if len(deserialized) == 1 or isinstance(deserialized, dict):
-        #     # send to put detail to bypass parent log creation
-        #     if not isinstance(deserialized,dict):
-        #         kwargs['data'] = deserialized[0]
-        #     else:
-        #         kwargs['data'] = deserialized
-        #     return self.put_detail(request, **kwargs)
-        
         # Limit the potential candidates for logging to found id_kwargs
         id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
+        kwargs_for_log['schema'] = schema
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
@@ -735,7 +863,7 @@ class ApiResource(SqlAlchemyResource):
         # PUT deletes the endpoint
 
         if 'parent_log' not in kwargs:
-            parent_log = self.make_log(request)
+            parent_log = self.make_log(request, schema=schema)
             parent_log.key = self._meta.resource_name
             parent_log.uri = self._meta.resource_name
             parent_log.save()
@@ -823,16 +951,13 @@ class ApiResource(SqlAlchemyResource):
                 kwargs['data'] = deserialized
             return self.post_detail(request, **kwargs)
 
-        # Limit the potential candidates for logging to found id_kwargs
-#         schema = kwargs['schema']
-
         if schema is None:
             raise Exception('schema not initialized')
         id_attribute = schema['id_attribute']
         
         # Limit the potential candidates for logging to found id_kwargs
-#         schema = self.build_schema()
         kwargs_for_log = kwargs.copy()
+        kwargs_for_log['schema'] = schema
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
@@ -851,7 +976,7 @@ class ApiResource(SqlAlchemyResource):
             original_data = []
 
         if 'parent_log' not in kwargs:
-            parent_log = self.make_log(request)
+            parent_log = self.make_log(request, schema=schema)
             parent_log.key = self._meta.resource_name
             parent_log.uri = self._meta.resource_name
             parent_log.save()
@@ -931,8 +1056,6 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
-        # Note, find kwargs that are available, validate=False, for if they DNE
         kwargs_for_log = self.get_id(deserialized,validate=False,schema=schema,**kwargs)
         
         id_attribute = schema['id_attribute']
@@ -941,7 +1064,8 @@ class ApiResource(SqlAlchemyResource):
             self._meta.resource_name, kwargs_for_log, id_attribute)
 
         # NOTE: create a log if possible, with id_attribute, for downstream
-        log = self.make_log(request, kwargs_for_log, id_attribute=id_attribute)
+        log = self.make_log(
+            request, kwargs_for_log, id_attribute=id_attribute, schema=schema)
         original_data = None
         if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
             # A full id exists, query for the existing state
@@ -1022,13 +1146,14 @@ class ApiResource(SqlAlchemyResource):
             deserialized, validate=True, schema=schema, **kwargs)
 
         # NOTE: creating a log, even if no data have changed (may be comment only)
-        log = self.make_log(request)
+        log = self.make_log(request, schema=schema)
         original_data = None
         if kwargs_for_log:
             try:
                 original_data = self._get_detail_response_internal(**kwargs_for_log)
                 if not log.key:
-                    self.make_log_key(log, original_data, id_attribute=id_attribute)
+                    self.make_log_key(log, original_data, id_attribute=id_attribute,
+                        **kwargs)
                 logger.debug('original data: %r', original_data)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
@@ -1054,7 +1179,6 @@ class ApiResource(SqlAlchemyResource):
             request, original_data,new_data,log=log, 
             id_attribute=id_attribute, **kwargs)
         log.save()
-        logger.info('log saved: %r', log)
         
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: new_data, }
@@ -1081,7 +1205,6 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
 
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -1159,7 +1282,6 @@ class ApiResource(SqlAlchemyResource):
         # Look for id's kwargs, to limit the potential candidates for logging
         if schema is None:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         id_attribute = schema['id_attribute']
         kwargs_for_log = {}
         for id_field in id_attribute:
@@ -1170,7 +1292,7 @@ class ApiResource(SqlAlchemyResource):
             raise Exception('required id keys %s' % id_attribute)
         original_data = self._get_detail_response_internal(**kwargs_for_log)
         log = self.make_log(
-            request, attributes=original_data, id_attribute=id_attribute)
+            request, attributes=original_data, id_attribute=id_attribute, schema=schema)
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
         log.api_action = API_ACTION_DELETE
@@ -1227,8 +1349,10 @@ class ApiResource(SqlAlchemyResource):
         fields are not updated
         '''
         DEBUG_VALIDATION = False or logger.isEnabledFor(logging.DEBUG)
-
+        if DEBUG_VALIDATION:
+            logger.info('validate: %r, %r', patch, schema is not None)
         if schema is None:
+            logger.info('build raw schema for validate')
             schema = self.build_schema()
         fields = schema['fields']
         id_attribute = schema['id_attribute']
@@ -1523,10 +1647,11 @@ class ApiResource(SqlAlchemyResource):
     def make_log_key(
             self, log, attributes, id_attribute=None, schema=None, **kwargs):
         
-        logger.debug('make_log_key: %r, %r, %r', log, attributes, id_attribute)
+        logger.debug('make_log_key: %r, %r', id_attribute, schema is not None)
         
         if id_attribute is None:
             if schema is None:
+                logger.info('build raw schema for make_log_key')
                 schema = self.build_schema()
             id_attribute = schema['id_attribute']
         log.key = '/'.join([
@@ -1554,9 +1679,10 @@ class ApiResource(SqlAlchemyResource):
 
         if log is None:
             log = self.make_log(
-                request, attributes=new_dict, id_attribute=id_attribute)
+                request, attributes=new_dict, id_attribute=id_attribute, **kwargs)
         if not log.key:
-            self.make_log_key(log, new_dict, id_attribute=id_attribute)
+            self.make_log_key(log, new_dict, id_attribute=id_attribute,
+                **kwargs)
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
@@ -1578,14 +1704,6 @@ class ApiResource(SqlAlchemyResource):
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %r', log)
     
-#         for k,v in kwargs.items():
-#             if isinstance(k,basestring):
-#                 if hasattr(log,k):
-#                     if DEBUG_PATCH_LOG:
-#                         logger.info('setattr: %r: %r', k, v)
-#                     setattr(log, k, v)
-#             else:
-#                 logger.info('non-string kwarg: %r, %r', k, v)
         if DEBUG_PATCH_LOG:
             logger.info('log patch done: %r', log)
         return log
@@ -1611,7 +1729,8 @@ class ApiResource(SqlAlchemyResource):
                 original_data,new_data)
         
         if schema is None:
-            schema = self.build_schema()
+            logger.info('log patches-build_schema: %r', self._meta.resource_name)
+            schema = self.build_schema(user=request.user)
         id_attribute = schema['id_attribute']
         
         deleted_items = list(original_data)        
@@ -1636,7 +1755,8 @@ class ApiResource(SqlAlchemyResource):
                 deleted_items.remove(prev_dict)
                 
             log = self.log_patch(
-                request, prev_dict, new_dict, id_attribute=id_attribute, **kwargs)  
+                request, prev_dict, new_dict, id_attribute=id_attribute, 
+                schema=schema, **kwargs)  
             if DEBUG_PATCH_LOG:
                 logger.info('patch log: %r', log)          
             if log:
@@ -1645,7 +1765,8 @@ class ApiResource(SqlAlchemyResource):
         for deleted_dict in deleted_items:
             
             log = self.make_log(
-                request, attributes=deleted_dict, id_attribute=id_attribute)
+                request, attributes=deleted_dict, id_attribute=id_attribute,
+                schema=schema)
 
             # user can specify any valid, escaped json for this field
             # if 'apilog_json_field' in bundle.data:
@@ -1673,12 +1794,12 @@ class ApiLogResource(ApiResource):
             'ref_resource_name', 'username','date_time')
         authentication = MultiAuthentication(
             BasicAuthentication(), IccblSessionAuthentication())
-        authorization= ApiLogAuthorization() #Authorization()        
+        resource_name='apilog' 
+        authorization= ApiLogAuthorization(resource_name) #Authorization()        
         ordering = []
         serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
-        resource_name='apilog' 
         max_limit = 100000
     
     def __init__(self, **kwargs):
@@ -1782,7 +1903,6 @@ class ApiLogResource(ApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#             schema = super(ApiLogResource,self).build_schema()
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -1801,7 +1921,6 @@ class ApiLogResource(ApiResource):
 
         if is_for_detail:
             param_hash['offset'] = 0
-             
 
         try:
             
@@ -1815,6 +1934,8 @@ class ApiLogResource(ApiResource):
                 raise InformationError(
                     key='Filter Data',
                     msg='Please enter a filter expression to begin')
+            filter_expression = \
+                self._meta.authorization.filter(request.user,filter_expression)
                                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
@@ -1829,6 +1950,9 @@ class ApiLogResource(ApiResource):
             if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            rowproxy_generator = \
+                self._meta.authorization.get_row_property_generator(
+                    request.user, field_hash, rowproxy_generator)
  
             # specific setup 
             _log = self.bridge['reports_apilog']
@@ -1911,15 +2035,6 @@ class ApiLogResource(ApiResource):
              
             (stmt,count_stmt) = self.wrap_statement(
                 stmt,order_clauses,filter_expression )
-            
-            # authorization filter
-            if not request.user.is_superuser:
-                # FIXME: "read" is too open
-                # - grant read level access on a case-by-case basis
-                # i.e. for screen.status updates
-                resources = UserGroupAuthorization.get_authorized_resources(
-                    request.user, 'read')
-                stmt = stmt.where(column('ref_resource_name').in_(resources))
             
             title_function = None
             if use_titles is True:
@@ -2020,13 +2135,13 @@ class FieldResource(ApiResource):
             scope__startswith="fields.").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
             BasicAuthentication(), IccblSessionAuthentication())
-        authorization= AllAuthenticatedReadAuthorization()
+        resource_name = 'field'
+        authorization= AllAuthenticatedReadAuthorization(resource_name)
         ordering = []
         filtering = {} 
         serializer = LimsSerializer()
         excludes = [] 
         always_return_data = True 
-        resource_name = 'field'
 
     def __init__(self, **kwargs):
         super(FieldResource,self).__init__(**kwargs)
@@ -2315,11 +2430,11 @@ class FieldResource(ApiResource):
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         
+        logger.debug('patch_obj: %r: %r', request.user, self._meta.resource_name)
         logger.debug('deserialized: %r', deserialized)
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -2334,14 +2449,14 @@ class FieldResource(ApiResource):
             field = None
             try:
                 field = MetaHash.objects.get(**id_kwargs)
-                errors = self.validate(deserialized, patch=True)
+                errors = self.validate(deserialized, patch=True, schema=schema)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
                 logger.debug(
                     'Metahash field %s does not exist, creating', id_kwargs)
                 field = MetaHash(**id_kwargs)
-                errors = self.validate(deserialized, patch=False)
+                errors = self.validate(deserialized, patch=False, schema=schema)
                 if errors:
                     raise ValidationError(errors)
 
@@ -2380,13 +2495,13 @@ class ResourceResource(ApiResource):
             scope="resource").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
             BasicAuthentication(), IccblSessionAuthentication())
-        authorization= AllAuthenticatedReadAuthorization()
+        resource_name = 'resource'
+        authorization= AllAuthenticatedReadAuthorization(resource_name)
         ordering = []
         filtering = {} 
         serializer = LimsSerializer()
         excludes = [] 
         always_return_data = True 
-        resource_name = 'resource'
 
     def __init__(self, **kwargs):
         super(ResourceResource,self).__init__(**kwargs)
@@ -2412,17 +2527,17 @@ class ResourceResource(ApiResource):
         pass
     
     def get_schema(self, request, **kwargs):
-        return self.build_response(request, self.build_schema(), **kwargs)
+        return self.build_response(
+            request, self.build_schema(user=request.user), **kwargs)
 
     def clear_cache(self):
         ApiResource.clear_cache(self)
         cache.delete('resources');
-#         cache.delete('resource_listing')
         
     def _get_resource_schema(self,resource_key, user=None):
         ''' For internal callers
         '''
-        resources = self._build_resources()
+        resources = self._build_resources(user=user)
         
         if resource_key not in resources:
             raise BadRequest('Resource is not initialized: %r', resource_key)
@@ -2431,39 +2546,39 @@ class ResourceResource(ApiResource):
         logger.debug('schema fields: %r',
             [(field['key'],field['scope']) for field in schema['fields'].values()])
         
-        if user is not None:
-            if not user.is_superuser:
-                # Filter fields with "view_groups" set
-                schema = deepcopy(schema)
-                usergroups = set([x.name for x in user.userprofile.get_all_groups()])
-                if DEBUG_AUTHORIZATION:
-                    logger.info(
-                        'filter fields for %r, user: %r, groups: %r', 
-                        resource_key, user, usergroups)
-                fields = deepcopy(schema['fields'])
-                filtered_fields = {}
-                for key, field in fields.items():
-                    include = True
-                    if key not in schema['id_attribute']:
-                        view_groups = field.get('view_groups',[])
-                        if view_groups:
-                            if not set(view_groups) & usergroups:
-                                include = False
-                                if DEBUG_AUTHORIZATION:
-                                    logger.info(
-                                        'disallowed field: %r with view_groups: %r', 
-                                        key, view_groups)
-                            else:
-                                if DEBUG_AUTHORIZATION:
-                                    logger.info(
-                                        'allowed field: %r with view_groups: %r', 
-                                        key, view_groups)
-                    if include is True:
-                        filtered_fields[key] = field
-                    else:
-                        if DEBUG_AUTHORIZATION:
-                            logger.info('filtered field: %r', key)
-                schema['fields'] = filtered_fields
+#         if user is not None:
+#             if not user.is_superuser:
+#                 # Filter fields with "view_groups" set
+#                 schema = deepcopy(schema)
+#                 usergroups = set([x.name for x in user.userprofile.get_all_groups()])
+#                 if DEBUG_AUTHORIZATION:
+#                     logger.info(
+#                         'filter fields for %r, user: %r, groups: %r', 
+#                         resource_key, user, usergroups)
+#                 fields = deepcopy(schema['fields'])
+#                 filtered_fields = {}
+#                 for key, field in fields.items():
+#                     include = True
+#                     if key not in schema['id_attribute']:
+#                         view_groups = field.get('view_groups',[])
+#                         if view_groups:
+#                             if not set(view_groups) & usergroups:
+#                                 include = False
+#                                 if DEBUG_AUTHORIZATION:
+#                                     logger.info(
+#                                         'disallowed field: %r with view_groups: %r', 
+#                                         key, view_groups)
+#                             else:
+#                                 if DEBUG_AUTHORIZATION:
+#                                     logger.info(
+#                                         'allowed field: %r with view_groups: %r', 
+#                                         key, view_groups)
+#                     if include is True:
+#                         filtered_fields[key] = field
+#                     else:
+#                         if DEBUG_AUTHORIZATION:
+#                             logger.info('filtered field: %r', key)
+#                 schema['fields'] = filtered_fields
         return schema
     
     @read_authorization
@@ -2525,7 +2640,7 @@ class ResourceResource(ApiResource):
             use_vocab = False
             use_titles = False
         
-        resources = self._build_resources()
+        resources = self._build_resources(user=request.user)
                     
         # TODO: pagination, sort, filter
 
@@ -2553,12 +2668,58 @@ class ResourceResource(ApiResource):
             }
         
         return self.build_response(request, response_hash, **kwargs)
+    
+    def _filter_resource(self, schema, user=None):
+        '''
+        Filter resource based on user authorization
+        '''
+        logger.debug('filter resource %r: %r', schema['key'], user)
+        usergroups = set()
+        is_superuser = user is not None and user.is_superuser
+            
+        if is_superuser:
+            return schema
 
-    def _build_resources(self, use_cache=True):
+        if user is not None:
+            usergroups = set([x.name for x in user.userprofile.get_all_groups()])
+        
+        schema = deepcopy(schema)
+        fields = deepcopy(schema['fields'])
+        filtered_fields = {}
+        disallowed_fields = {}
+        for key, field in fields.items():
+            include = True
+            if key not in schema['id_attribute']:
+                view_groups = field.get('view_groups',[])
+                if view_groups:
+                    if not set(view_groups) & usergroups:
+                        include = False
+                        if DEBUG_AUTHORIZATION:
+                            logger.info(
+                                'disallowed field: %r with view_groups: %r', 
+                                key, view_groups)
+                    else:
+                        if DEBUG_AUTHORIZATION:
+                            logger.info(
+                                'allowed field: %r with view_groups: %r', 
+                                key, view_groups)
+            if include is True:
+                filtered_fields[key] = field
+            else:
+                disallowed_fields[key] = field
+        if disallowed_fields:
+            if DEBUG_AUTHORIZATION:
+                logger.info('user: %r, resource: %r, disallowed fields: %r', 
+                    user, schema['key'], disallowed_fields.keys())
+        schema['fields'] = filtered_fields
+        
+        return schema
+    
+    def _build_resources(self, user=None, use_cache=True):
         '''
         Internal callers - return the resource keyed hash, from cache if possible
         '''
-        
+        logger.debug('_build_resources: %r: %r', user, use_cache)
         resources = None
         if use_cache and self.use_cache:
             resources = cache.get('resources')
@@ -2573,7 +2734,7 @@ class ResourceResource(ApiResource):
                     clear=True))
             if not resources:
                 # If there are no resources, use self to bootstrap
-                resource = self.build_schema()
+                resource = self.build_schema(user=user)
                 resources = { resource['key']: resource }
                 
             # get all of the fields
@@ -2652,8 +2813,13 @@ class ResourceResource(ApiResource):
                 
         if use_cache and self.use_cache:
             cache.set('resources', resources)
-
-        return resources
+        
+        filtered_resources = {}
+        for key, resource in resources.items():
+            
+            filtered_resources[key] = self._filter_resource(resource, user)
+        
+        return filtered_resources
  
     def extend_specific_data(self, resource):
         key = resource['key']
@@ -2686,12 +2852,11 @@ class ResourceResource(ApiResource):
     @write_authorization
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
-        
+        logger.info('patch_obj: %r:%r', request.user, self._meta.resource_name)
         logger.debug('patch_obj: %r', deserialized)
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         fields = schema['fields']
         initializer_dict = {}
         for key in fields.keys():
@@ -2706,7 +2871,7 @@ class ResourceResource(ApiResource):
             field = None
             try:
                 field = MetaHash.objects.get(**id_kwargs)
-                errors = self.validate(deserialized, patch=True)
+                errors = self.validate(deserialized, patch=True, schema=schema)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
@@ -2714,7 +2879,7 @@ class ResourceResource(ApiResource):
                     logger.info('Metahash resource %s does not exist, creating',
                         id_kwargs)
                 field = MetaHash(**id_kwargs)
-                errors = self.validate(deserialized, patch=False)
+                errors = self.validate(deserialized, patch=False, schema=schema)
                 if errors:
                     raise ValidationError(errors)
 
@@ -2748,13 +2913,16 @@ class ResourceResource(ApiResource):
 class VocabularyResource(ApiResource):
     '''
     '''
+
     class Meta:
-        
+        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
+        queryset = Vocabulary.objects.all().order_by(
+            'scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
             BasicAuthentication(), IccblSessionAuthentication())
-        authorization= AllAuthenticatedReadAuthorization()
-        serializer = LimsSerializer()
         resource_name = 'vocabulary'
+        authorization= AllAuthenticatedReadAuthorization(resource_name)
+        serializer = LimsSerializer()
 
     def __init__(self, **kwargs):
         super(VocabularyResource,self).__init__(**kwargs)
@@ -2775,20 +2943,6 @@ class VocabularyResource(ApiResource):
         self.patch_elapsedtime3 = 0
         self.patch_elapsedtime4 = 0
 
-    class Meta:
-        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
-        queryset = Vocabulary.objects.all().order_by(
-            'scope', 'ordinal', 'key')
-        authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
-        authorization= UserGroupAuthorization()        
-        ordering = []
-        serializer = LimsSerializer()
-        excludes = [] #['json_field']
-        always_return_data = True 
-        resource_name = 'vocabulary'
-        max_limit = 10000
-
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
@@ -2804,7 +2958,7 @@ class VocabularyResource(ApiResource):
             ]
 
     def build_schema(self, user=None):
-        schema = super(VocabularyResource,self).build_schema()
+        schema = super(VocabularyResource,self).build_schema(user=user)
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
@@ -3131,6 +3285,7 @@ class VocabularyResource(ApiResource):
     @write_authorization
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
+        logger.debug('patch_obj: %r: %r', request.user, self._meta.resource_name)
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -3156,13 +3311,13 @@ class VocabularyResource(ApiResource):
                 vocab = Vocabulary.objects.get(**id_kwargs)
                 self.patch_elapsedtime2 += (time.time() - start_time)
                 start_time = time.time()
-                errors = self.validate(deserialized, patch=True)
+                errors = self.validate(deserialized, patch=True, schema=schema)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
-                logger.info('Vocab %s does not exist, creating', id_kwargs)
+                logger.debug('Vocab %s does not exist, creating', id_kwargs)
                 vocab = Vocabulary(**id_kwargs)
-                errors = self.validate(deserialized, patch=False)
+                errors = self.validate(deserialized, patch=False, schema=schema)
                 if errors:
                     raise ValidationError(errors)
 
@@ -3197,7 +3352,68 @@ class VocabularyResource(ApiResource):
             logger.exception('on patch detail')
             raise e  
 
+class UserResourceAuthorization(UserGroupAuthorization):
+    
+    def _is_resource_authorized(
+            self, user, permission_type, **kwargs):
+        authorized = super(UserResourceAuthorization, self)._is_resource_authorized(
+            user, permission_type, **kwargs)
+        logger.debug('is UserResource authorized: user: %r: %r', user, authorized)
+        if authorized is True:
+            return True
+        
+        return user.is_active
 
+    def is_restricted_view(self, user):
+        restricted =  super(UserResourceAuthorization, self).is_restricted_view(user)
+        logger.debug('is restricted: %r: %r', user, restricted)
+        return restricted 
+    
+    def get_associated_users(self, user):
+        associated_users =  [user]
+        logger.info('user: %r, associated users: %r', user, associated_users)
+        return associated_users
+    
+    def get_effective_access_level(self, user, row):
+        username = username = row['username']
+        
+        effective_access_level = None
+        
+        associated_users = set([user.username for user in self.get_associated_users(user)])
+        logger.info('assoc: %r', associated_users)
+        if user.username == username:
+            effective_access_level = 3
+        elif username in associated_users:
+            effective_access_level = 1
+        else:
+            effective_access_level = None
+
+        if DEBUG_AUTHORIZATION:
+            logger.info('user: %r, effective_access_level for %r: %r', 
+                user.username, username, effective_access_level)
+        return effective_access_level
+                
+    def filter(self, user, filter_expression):
+        if self.is_restricted_view(user):
+            associated_users = \
+                self.get_associated_users(user)
+            logger.info('create_authorized_user_filter for %r', user.username)
+            logger.info('associated users %r', associated_users)
+            auth_filter = column('username').in_(
+                [user.username for user in associated_users])
+            if filter_expression is not None:
+                filter_expression = and_(filter_expression, auth_filter)
+            else:
+                filter_expression = auth_filter
+        return filter_expression
+
+    def get_row_property_generator(self, user, fields, extant_generator):
+        '''
+        Filter result properties based on authorization rules
+        '''
+        return self.get_access_level_property_generator(
+           user, fields, extant_generator)
+        
 class UserResource(ApiResource):
 
     def __init__(self, **kwargs):
@@ -3213,7 +3429,7 @@ class UserResource(ApiResource):
         
         # TODO: implement field filtering: users can only see other users details
         # if in readEverythingAdmin group
-        authorization = UserGroupAuthorization()
+        authorization = UserResourceAuthorization('user')
         ordering = []
         serializer = LimsSerializer()
         excludes = [] #['json_field']
@@ -3420,10 +3636,11 @@ class UserResource(ApiResource):
             use_vocab = False
             use_titles = False
 
-        schema = super(UserResource,self).build_schema()
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
         username = param_hash.pop('username', None)
         if username:
             param_hash['username__eq'] = username
@@ -3435,7 +3652,7 @@ class UserResource(ApiResource):
             
             # general setup
              
-            manual_field_includes = set(param_hash.get('includes', []))
+            manual_field_includes = set(param_hash.get('includes', ['username']))
             
             if DEBUG_GET_LIST: 
                 logger.info('manual_field_includes: %r', manual_field_includes)
@@ -3444,7 +3661,10 @@ class UserResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             filename = self._get_filename(readable_filter_hash)
-                  
+            
+            filter_expression = self._meta.authorization.filter(
+                request.user, filter_expression)
+            
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_hash.keys(), manual_field_includes, 
@@ -3460,6 +3680,9 @@ class UserResource(ApiResource):
             if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            rowproxy_generator = \
+                self._meta.authorization.get_row_property_generator(
+                    request.user, field_hash, rowproxy_generator)
  
             # specific setup
             custom_columns = {
@@ -3478,6 +3701,13 @@ class UserResource(ApiResource):
             j = j.join(_au,_up.c.user_id==_au.c.id, isouter=True)
             stmt = select(columns.values()).select_from(j)
 
+#             if self._meta.authorization.is_restricted_view(request.user):
+#                 logger.info('create_authorized_user_filter')
+#                 associated_users = \
+#                     self._meta.authorization.get_associated_users(request.user)
+#                 stmt = stmt.where(
+#                     _au.c.username.in_([user.username for user in associated_users]))
+            
             # general setup
              
             (stmt,count_stmt) = \
@@ -3547,10 +3777,9 @@ class UserResource(ApiResource):
             raise Exception('schema not initialized')
         fields = schema['fields']
 
-        logger.info('patch_obj for user: %r, %r', deserialized, kwargs )
+        logger.info('patch_obj UserResource: %r', request.user )
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.info('patch user: %r', id_kwargs)
-        
 
         auth_user_fields = { name:val for name,val in fields.items() 
             if val['table'] and val['table']=='auth_user'}
@@ -3572,24 +3801,23 @@ class UserResource(ApiResource):
             try:
                 user = DjangoUser.objects.get(username=username)
                 is_patch = True
-                errors = self.validate(deserialized, patch=is_patch)
+                errors = self.validate(deserialized, patch=is_patch, schema=schema)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
                 logger.info('User %s does not exist, creating', id_kwargs)
-                errors = self.validate(deserialized, patch=is_patch)
+                errors = self.validate(deserialized, patch=is_patch, schema=schema)
                 if errors:
                     raise ValidationError(errors)
                 user = DjangoUser.objects.create_user(username=username)
                 user.is_active = True
                 logger.info('created Auth.User: %s', user)
 
-            initializer_dict = self.parse(deserialized, create=not is_patch)
+            initializer_dict = self.parse(deserialized, schema=schema, create=not is_patch)
             logger.info('initializer_dict: %r', initializer_dict)
 
             auth_initializer_dict = {
                 k:v for k,v in initializer_dict.items() if k in auth_user_fields}
-            logger.info('auth user initializer: %r', auth_initializer_dict)
             if auth_initializer_dict:
                 for key,val in auth_initializer_dict.items():
                     if hasattr(user,key):
@@ -3597,7 +3825,7 @@ class UserResource(ApiResource):
                 user.save()
                 logger.info('== created/updated auth user: %r', user.username)
             else:
-                logger.info('no auth_user fields to update %s', deserialized)
+                logger.debug('no auth_user fields to update %s', deserialized)
                 
             userprofile = None
             try:
@@ -3619,7 +3847,7 @@ class UserResource(ApiResource):
             if userprofile_initializer_dict:
                 logger.info('initializer dict: %r', initializer_dict)
                 for key,val in userprofile_initializer_dict.items():
-                    logger.info('set: %s to %r, %s',key,val,hasattr(userprofile, key))
+                    logger.debug('set: %s to %r, %s',key,val,hasattr(userprofile, key))
                     
                     if key == 'permissions':
                         # FIXME: first check if permissions have changed
@@ -3687,7 +3915,7 @@ class UserGroupResource(ApiResource):
         
         authentication = MultiAuthentication(
             BasicAuthentication(), IccblSessionAuthentication())
-        authorization = UserGroupAuthorization() #SuperUserAuthorization()        
+        authorization = UserGroupAuthorization('usergroup') #SuperUserAuthorization()        
 
         ordering = []
         filtering = {}
@@ -4068,6 +4296,8 @@ class UserGroupResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             filename = self._get_filename(readable_filter_hash)
+            filter_expression = \
+                self._meta.authorization.filter(request.user,filter_expression)
               
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
@@ -4082,6 +4312,9 @@ class UserGroupResource(ApiResource):
             if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            rowproxy_generator = \
+                self._meta.authorization.get_row_property_generator(
+                    request.user, field_hash, rowproxy_generator)
             
             # specific setup
             _up = self.bridge['reports_userprofile']
@@ -4356,7 +4589,7 @@ class PermissionResource(ApiResource):
         queryset = Permission.objects.all().order_by('scope', 'key')
         authentication = MultiAuthentication(
             BasicAuthentication(), IccblSessionAuthentication())
-        authorization= UserGroupAuthorization()         
+        authorization= UserGroupAuthorization('permission')         
         object_class = object
         
         ordering = []
@@ -4428,7 +4661,6 @@ class PermissionResource(ApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-#         schema = kwargs['schema']
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -4455,6 +4687,8 @@ class PermissionResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             filename = self._get_filename(readable_filter_hash)
+            filter_expression = \
+                self._meta.authorization.filter(request.user,filter_expression)
                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
@@ -4469,6 +4703,9 @@ class PermissionResource(ApiResource):
             if use_vocab is True:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            rowproxy_generator = \
+                self._meta.authorization.get_row_property_generator(
+                    request.user, field_hash, rowproxy_generator)
  
             # specific setup
             _p = self.bridge['reports_permission']

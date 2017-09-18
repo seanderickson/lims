@@ -8392,6 +8392,8 @@ class DataSharingLevel(DBResourceTestCase):
             userObj.save()
             return user
 
+        # Store extant users so that they will not have to be recreated if 
+        # already created
         reference_users = self.get_list_resource(BASE_URI + '/screensaveruser') 
         reference_users = { 
             user['username']: user 
@@ -8581,7 +8583,6 @@ class DataSharingLevel(DBResourceTestCase):
         
         fields = {
             'E': {
-#                 'ordinal': 1,
                 'name': 'Field1_non_positive_indicator',
                 'data_worksheet_column': 'E',
                 'data_type': 'numeric',
@@ -8592,7 +8593,6 @@ class DataSharingLevel(DBResourceTestCase):
                 'assay_readout_type': 'flourescence_intensity',
             },
             'F': {
-#                 'ordinal': 2,
                 'name': 'Field2_positive_indicator',
                 'data_worksheet_column': 'F',
                 'data_type': 'confirmed_positive_indicator',
@@ -8600,7 +8600,6 @@ class DataSharingLevel(DBResourceTestCase):
                 'how_derived': 'z-score > 1 for Field3'
             },
             'G': {
-#                 'ordinal': 3,
                 'name': 'Field3_partitioned_positive',
                 'data_worksheet_column': 'G',
                 'data_type': 'partition_positive_indicator',
@@ -8704,9 +8703,6 @@ class DataSharingLevel(DBResourceTestCase):
         data_for_get['HTTP_AUTHORIZATION'] = authentication
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
-#         if data is not None:
-#             data_for_get.update(data)
-
         resource_name = 'screenresult'
         resource_uri = '/'.join([
             BASE_URI_DB,resource_name,screen_facility_id])
@@ -8905,7 +8901,7 @@ class DataSharingLevel(DBResourceTestCase):
         '''
         self.setup_data()
         self.do_level_1_visibility()
-#         self.do_level_2_visibility()
+        self.do_level_2_visibility()
         
     def do_visibility_test(
             self, fields, user, expected_screens_access_levels):
@@ -8953,6 +8949,12 @@ class DataSharingLevel(DBResourceTestCase):
                 for key, value in reported_screen.items():
                     if key == 'user_access_level_granted':
                         continue
+                    if key not in fields:
+                        if value is None:
+                            continue
+                        logger.warn('fields missing key: %r, reported: %r',
+                            key, value)
+                    
                     field = fields[key]
                     reference_value = reference_screen[key]
                     if reference_value is None:
@@ -8964,7 +8966,18 @@ class DataSharingLevel(DBResourceTestCase):
                         self.assertIsNone(
                             value, '%r - %r:%r' % (facility_id, key,value))
                         continue
-                    
+                    if field.get('view_groups', None):
+                        usergroups = user.get('usergroups')
+                        
+                        if ( not usergroups
+                             or not set(field['view_groups']) & set(usergroups)):
+                            logger.info('view group restricted field: %r: %r', 
+                                key, user['username'])
+                            logger.debug(
+                                'view group restricted field: '
+                                '%r, user %r, usergroups: %r, view_groups: %r', 
+                                key, user, user.get('usergroups'), field['view_groups'])
+                            continue
                     if key == 'has_screen_result':
                         if reference_value == 1:
                             if access_level_expected in [2,3]:
@@ -9258,6 +9271,26 @@ class DataSharingLevel(DBResourceTestCase):
                                 logger.info('reference value is none: %r, %r:%r,%r',
                                     well_id, key, reference_value, value)
     
+    def get_fields_by_level(self, fields):
+        fields_by_level = defaultdict(set)
+        restricted_fields = set()
+        view_group_restricted_fields = set()
+        for key,field in fields.items():
+            if field.get('view_groups'):
+               view_group_restricted_fields.add(key)
+               continue 
+            for level in range(0,4):
+                if field['data_access_level'] == level:
+                    fields_by_level[level].add(key)
+                elif not field['data_access_level']:
+                    fields_by_level[0].add(key)
+                else:
+                    restricted_fields.add(key)
+        logger.info('view group restricted fields: %r', view_group_restricted_fields)
+        logger.info('restricted fields: %r', restricted_fields)
+        logger.info('fields by level: %r', fields_by_level)
+        return fields_by_level
+    
     def do_level_1_visibility(self):
         ''' Test level 1 user data visibility '''
 
@@ -9271,17 +9304,7 @@ class DataSharingLevel(DBResourceTestCase):
         screen_schema = self.get_schema('screen', user['username'])
         self.assertIsNotNone(screen_schema)
         
-        # Get level1, 2, 3 fields
-        fields_by_level = defaultdict(set)
-        for key,field in screen_schema['fields'].items():
-            for level in range(0,4):
-                if field['data_access_level'] == level:
-                    fields_by_level[level].add(key)
-                elif not field['data_access_level']:
-                    fields_by_level[0].add(key)
-                else:
-                    logger.debug('restricted field: %r', key)
-        logger.info('fields by level: %r', fields_by_level)
+        fields_by_level = self.get_fields_by_level(screen_schema['fields'])
         
         logger.info(
             '1. Visibility before data deposit (own & level 0 screens only)')
@@ -9374,13 +9397,6 @@ class DataSharingLevel(DBResourceTestCase):
             BASE_URI, 'screenresult',screen_facility_id])
         self.api_client.delete(delete_url, authentication=self.get_credentials())
 
-#         expected_screens_access_levels = defaultdict(set)
-#         expected_screens_access_levels[0] = \
-#             set(self.screens_by_level[2]) - set(own_screens)
-#         expected_screens_access_levels[2] = set(self.screens_by_level[0])
-#         expected_screens_access_levels[2].update(self.screens_by_level[1])
-#         expected_screens_access_levels[2] -= set(own_screens)
-#         expected_screens_access_levels[3] = set(own_screens)
         self.do_visibility_test(
             screen_schema['fields'], user, 
             expected_screens_access_levels_after_deposit_no_overlap)
@@ -9399,17 +9415,8 @@ class DataSharingLevel(DBResourceTestCase):
         # Get the Screen schema for the user
         screen_schema = self.get_schema('screen', user['username'])
         self.assertIsNotNone(screen_schema)
-        # Get level1, 2, 3 fields
-        fields_by_level = defaultdict(set)
-        for key,field in screen_schema['fields'].items():
-            for level in range(0,4):
-                if field['data_access_level'] == level:
-                    fields_by_level[level].add(key)
-                elif not field['data_access_level']:
-                    fields_by_level[0].add(key)
-                else:
-                    logger.info('restricted field: %r', key)
-        logger.info('fields by level: %r', fields_by_level)
+
+        fields_by_level = self.get_fields_by_level(screen_schema['fields'])
         
         logger.info(
             '1. Visibility before data deposit (own & level 0 screens only)')

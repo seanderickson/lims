@@ -7,8 +7,6 @@ from __future__ import unicode_literals
 
 import cStringIO
 from collections import OrderedDict
-# import csv
-import unicodecsv
 import json
 import logging
 import os.path
@@ -23,6 +21,8 @@ from django.conf import settings
 from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse, Http404
 import six
+from tastypie.exceptions import ImmediateHttpResponse, BadRequest
+import unicodecsv
 import xlsxwriter
 
 from db.support.data_converter import default_converter
@@ -35,7 +35,6 @@ import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
-from tastypie.exceptions import ImmediateHttpResponse, BadRequest
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +49,7 @@ def closing_iterator_wrapper(iterable, close):
         for item in iterable:
             yield item
     finally:
-        logger.info('close connection...')
+        logger.debug('close connection...')
         close()
 
 

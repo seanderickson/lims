@@ -2150,6 +2150,12 @@ class UserUsergroupSharedTest(object):
         
 
 class UserResource(IResourceTestCase, UserUsergroupSharedTest):
+    '''
+    NOTE: User/Group permissions are set declaritively, granting blanket
+    "read" or "write" permissions for a resource to administrative users.
+    See the "DataSharingLevel" tests in the "db" module for LIMS (Screensaver
+    Screening User) read permissions testing.
+    '''
 
     def setUp(self):
         super(UserResource, self).setUp()
@@ -2158,7 +2164,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         
         logger.info('test0_create_user...')
         
-        # the simplest of tests, create some simple users
+        # create some simple users
         self.bootstrap_items = { API_RESULT_DATA: [   
             {
                 'username': 'st1',
@@ -2192,7 +2198,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
             logger.exception('on creating: %r', self.bootstrap_items)
             raise
 
-        logger.debug('created items, now get them')
+        logger.debug('created users, now GET them')
         resp = self.api_client.get(uri, format='json', 
             authentication=self.get_credentials(), data={ 'limit': 0 })
         new_obj = self.deserialize(resp)
@@ -2399,7 +2405,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         
         # now patch this user's usergroups, 
         # removing the user from the group 'testgroup3,2'
-        # which will remove the permissions for the "user" resource as well 
+        # which will remove the permissions for the "apilog" resource as well 
         user_patch = {
             'usergroups': ['testGroup1'] };
 

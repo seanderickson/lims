@@ -19,6 +19,7 @@ from db import WELL_ID_PATTERN
 from db.models import ScreensaverUser, Reagent, AttachedFile, Publication
 from db.api import AttachedFileAuthorization,PublicationAuthorization
 from django.core.exceptions import ObjectDoesNotExist
+from reports.api import UserGroupAuthorization
 
 
 logger = logging.getLogger(__name__)
@@ -32,22 +33,13 @@ def main(request):
 def well_image(request, well_id):
     if(not request.user.is_authenticated()):
         return HttpResponse('Log in required.', status=401)
-#     if not hasattr(request, 'user'):
-#         raise ImmediateHttpResponse(response=HttpForbidden(
-#             'Request object must be initialized with a "User" object: %r' 
-#             % request.user))
-#     user = request.user
-#     if hasattr(user,'is_superuser') and user.is_superuser is not True:
-#         if not hasattr(user,'is_authenticated'):
-#             # TODO: replace tastypie error classes
-#             raise ImmediateHttpResponse(response=HttpForbidden(
-#                 'Request.user object is invalid: %r, %r, user object can not be authenticated' 
-#                 % (user, type(user))))
-#         if not user.is_authenticated():
-#             raise ImmediateHttpResponse(response=HttpForbidden(
-#                 'user %r is not authorized for well_image view' % user ))
-#         # TODO: use group authorization
-        
+
+    # TODO: use group authorization - not required at ICCBL
+    # auth = UserGroupAuthorization('well')
+    # if auth.has_read_authorization(
+    #     request.user, well_id) is not True:
+    #     return HttpResponse(status=403)
+    
     match = WELL_ID_PATTERN.match(well_id)
     if not match:
         logger.warn('invalid well_id format: %d, pattern: %s' 

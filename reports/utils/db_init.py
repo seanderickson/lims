@@ -34,14 +34,14 @@ class ApiError(Exception):
                 err_msg = str(result.content)
         except ValueError,e:
             logger.warn('There is no json in the response')
-            logger.warn(str(('-----raw response text-------', result.text)) )
+            logger.warn('-----raw response text------- %r', result.text)
             err_msg = str(result.content)
 
         self.message = str((
             url,'action',action, result.reason, result.status_code, err_msg )) \
             .replace('\\n','') \
             .replace('\\','')
-        if(logger.isEnabledFor(logging.DEBUG)):
+        if logger.isEnabledFor(logging.DEBUG):
             self.message = str((url,'action',action, result.reason, 
                                 result.status_code, result.content )).replace('\\','')
 
@@ -56,13 +56,13 @@ def delete(obj_url, headers, session=None, authentication=None):
         elif authentication:
             r = requests.delete(obj_url, auth=authentication, headers=headers,verify=False)
         
-        if(r.status_code != 204):
+        if  r.status_code != 204:
             print "DELETE ERROR", r, r.text
             raise ApiError(obj_url,'DELETE',r)
         print 'DELETE: ', obj_url, ' ,response:', r.status_code
-        logger.info(str(('DELETE', obj_url)))
+        logger.info('DELETE: %r', obj_url)
     except Exception, e:
-        logger.error(str(('delete', obj_url, 'exception recorded while contacting server', e)))
+        logger.exception('on delete: %s', obj_url)
         raise e
 
 def put(input_file, obj_url,headers, session=None, authentication=None):
@@ -79,20 +79,16 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
                 raise ApiError(obj_url,'PUT',r)
             print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
                    r.status_code, ', count: ',len(r.json()['objects']))
-            if(logger.isEnabledFor(logging.DEBUG)):
+            if logger.isEnabledFor(logging.DEBUG):
                 logger.debug('--- PUT objects:')
                 try:
                     for obj in r.json()['objects']:
-                        logger.debug(str((obj)))
+                        logger.debug('object: %r', obj)
                 except ValueError,e:
                     logger.debug('----no json object to report')
-                    logger.debug(str(('text response', r.text)))
+                    logger.debug('text response: %r', r.text)
     except Exception, e:
-        extype, ex, tb = sys.exc_info()
-        logger.warn(str((
-            'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-            tb.tb_lineno, extype, ex)))
-        logger.error(str(('put', obj_url, 'exception recorded while contacting server', e)))
+        logger.exception('on put: %s', obj_url)
         raise e
     
 def patch(patch_file, obj_url,headers, session=None, authentication=None):
@@ -105,20 +101,20 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
             elif authentication:
                 r = requests.patch(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if(r.status_code not in [200,201,202,204]):
+            if r.status_code not in [200,201,202,204]:
                 # TODO: only 200
                 raise ApiError(obj_url,'PATCH',r)
             # TODO: show "Result" section of meta
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
                     r.status_code,', result: ',r.json()['meta']['Result'])
-            if(logger.isEnabledFor(logging.DEBUG)):
+            if logger.isEnabledFor(logging.DEBUG):
                 logger.debug('--- PATCHED objects:')
                 try:
                     for obj in r.json()['objects']:
-                        logger.debug(str((obj)))
+                        logger.debug('object: %r', obj)
                 except ValueError,e:
                     logger.debug('----no json object to report')
-                    logger.debug(str(('text response', r.text)))
+                    logger.debug('text response: %r', r.text)
     except Exception, e:
         logger.exception('on patch: %s', obj_url)
         raise e

@@ -808,6 +808,7 @@ class SqlAlchemyResource(IccblBaseResource):
         does not support printing of them with the select.compile() function.
         
         TODO: cache clearing on database writes
+        TODO: using locmemcache; cache service should be configurable
         '''
         DEBUG_CACHE = False or logger.isEnabledFor(logging.DEBUG)
         # Limit check removed with the use of "use_caching" flag

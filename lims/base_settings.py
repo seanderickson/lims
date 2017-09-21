@@ -157,21 +157,27 @@ TEMP_FILE_DIR='/tmp'
 # base path for profiling
 PROFILE_LOG_BASE='/tmp'
 
-# if structure image cache directory is available.  see db.api for details.
+# if structure image cache directory is available.  see db.views for details.
 WELL_STRUCTURE_IMAGE_DIR=''
 
 # maximum rows to cache in the database table well_query_index
 # see db/api.ScreenResultResource
 MAX_WELL_INDEXES_TO_CACHE=3e+08
 
+# maximum rows to cache for the locmemcache of result rowsets
+# see reports/sqlalchemy_resource
 MAX_ROWS_FOR_CACHE_RESULTPROXY=10e+4
+
+# If not True, then only staff may log in to the system
+# see reports/auth.py
+IS_PRODUCTION_READY = False
+
+
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
 # environments, so that the test database can be destroyed
 # import sqlalchemy.pool
 # SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
-
-
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

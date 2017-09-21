@@ -14,6 +14,18 @@ class Migration(migrations.Migration):
 
         # TODO: 20170918 ======
         # - to be tested with the orchestra migrations
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='lab_head',
+#             field=models.ForeignKey(
+#                 related_name='lab_members', to='db.ScreensaverUser', null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='lab_affiliation',
+#             field=models.ForeignKey(related_name='lab_heads', 
+#                 to='db.LabAffiliation', null=True),
+#         ),
         migrations.AddField(
             model_name='screensaveruser',
             name='lab_head_appointment_category', 

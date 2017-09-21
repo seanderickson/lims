@@ -308,8 +308,10 @@ def update_facility_usage_roles(apps, schema_editor):
             .filter(facility_usage_role=ru[0])
             .update(facility_usage_role=ru[1]))
 
-    UserFacilityUsageRole.objects.all().delete(facility_usage_role='smallMoleculeScreener')
-    UserFacilityUsageRole.objects.all().delete(facility_usage_role='rnaiScreener')
+    UserFacilityUsageRole.objects.all()\
+        .filter(facility_usage_role='smallMoleculeScreener').delete()
+    UserFacilityUsageRole.objects.all()\
+        .filter(facility_usage_role='rnaiScreener').delete()
 
 class Migration(migrations.Migration):
 
@@ -380,16 +382,16 @@ class Migration(migrations.Migration):
             new_name='name',
         ),
         
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='rnai_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='sm_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='rnai_data_sharing_level',
+#             field=models.IntegerField(null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='sm_data_sharing_level',
+#             field=models.IntegerField(null=True),
+#         ),
 
 
         migrations.RunPython(update_facility_usage_roles),

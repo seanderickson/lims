@@ -443,6 +443,18 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='rnai_data_sharing_level',
+            field=models.IntegerField(null=True),
+        ),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='sm_data_sharing_level',
+            field=models.IntegerField(null=True),
+        ),
+        
+        
         # Note: for users migration;
         # - the fields last_notified_smua_checklist_item_event, (also rnai)
         # will be moved to the userchecklistitem status_notified_date;

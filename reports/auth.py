@@ -1,14 +1,17 @@
 from __future__ import unicode_literals
 import logging
 import re
+from django.conf import settings
 from django.contrib.auth.models import User
 from reports.hms.auth import authenticate
 from django.core.exceptions import PermissionDenied
 
 logger = logging.getLogger(__name__)
 
+IS_PRODUCTION_READY = settings.IS_PRODUCTION_READY or False
+
 USER_PROXY_LOGIN_PATTERN = re.compile(r'(\w+)\:(\w+)')
-USER_PROXY_ADMIN_GROUP = 'usersAdmin'
+USER_PROXY_ADMIN_GROUP = 'screensaverUserAdmin'
 
 class CustomAuthenticationBackend():
     """
@@ -56,7 +59,14 @@ class CustomAuthenticationBackend():
                     raise PermissionDenied(msg)
             return None
         else:
-            return self._inner_authenticate(username, password)
+            user = self._inner_authenticate(username, password)
+            if IS_PRODUCTION_READY is not True:
+                if user.is_staff is not True:
+                    logger.warn('login not allowed for non-staff users when '
+                        '"settings.IS_PRODUCTION_READY" is set True; user: %r', 
+                        user)
+                    raise PermissionDenied
+            return user
 
     def _inner_authenticate(self, username=None, password=None):
         if username is None:

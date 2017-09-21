@@ -157,5 +157,25 @@ class Migration(migrations.Migration):
             name='screensaver_user',
             field=models.OneToOneField(primary_key=True, serialize=False, to='db.ScreensaverUser'),
         ),
+#         migrations.RemoveField(
+#             model_name='screen',
+#             name='transfection_agent',
+#         ),
+#         migrations.RenameField(
+#             model_name='screen', 
+#             old_name='transfection_agent_text', 
+#             new_name='transfection_agent'
+#         ),
+        
+        # TODO: reinstate for final migration; leaving fields in the db for 
+        # now - 20170607
+        # migrations.RemoveField(
+        #     model_name='screen',
+        #     name='project_id',
+        # ),
+        # migrations.RemoveField(
+        #     model_name='screen',
+        #     name='project_phase',
+        # ),
         
     ]

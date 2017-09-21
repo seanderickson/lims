@@ -26,8 +26,13 @@ logger = logging.getLogger(__name__)
 vocab_replace_map = {
     'ICCB-L/NSRB staff': 'ICCB-L staff'}
 
+vocab_key_replace_map = {
+    'iccb_l_staff': 'staff'
+    }
+vocab_ignore_map = {
+    'user.classification': ['unassigned']}
+
 def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
-#     resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
     for ordinal, attr_value in (
@@ -39,6 +44,13 @@ def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
         if attr_value in vocab_replace_map:
             title = vocab_replace_map[attr_value]
         key = default_converter(title)
+        
+        if scope in vocab_ignore_map:
+            if key in vocab_ignore_map[scope]:
+                continue
+            
+        if key in vocab_key_replace_map:
+            key = vocab_key_replace_map[key]
 
         query.filter(**{ '%s__exact' % attr: attr_value }).update(**{ attr: key })
         
@@ -281,8 +293,8 @@ def update_facility_usage_roles(apps, schema_editor):
     UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')
     
     role_updates = (
-        ('smallMoleculeScreener', 'small_molecule_screener'),
-        ('rnaiScreener', 'rnai_screener'),
+#         ('smallMoleculeScreener', 'small_molecule_screener'),
+#         ('rnaiScreener', 'rnai_screener'),
         ('iccblProjectUser', 'iccbl_project_user'),
         ('analyticalChemistryUser', 'analytical_chemistry_user'),
         ('nonScreeningUser', 'non_screening_user'),
@@ -296,6 +308,8 @@ def update_facility_usage_roles(apps, schema_editor):
             .filter(facility_usage_role=ru[0])
             .update(facility_usage_role=ru[1]))
 
+    UserFacilityUsageRole.objects.all().delete(facility_usage_role='smallMoleculeScreener')
+    UserFacilityUsageRole.objects.all().delete(facility_usage_role='rnaiScreener')
 
 class Migration(migrations.Migration):
 
@@ -344,15 +358,15 @@ class Migration(migrations.Migration):
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
            
-        migrations.RemoveField(
-            model_name='screen',
-            name='transfection_agent',
-        ),
-        migrations.RenameField(
-            model_name='screen', 
-            old_name='transfection_agent_text', 
-            new_name='transfection_agent'
-        ),
+#         migrations.RemoveField(
+#             model_name='screen',
+#             name='transfection_agent',
+#         ),
+#         migrations.RenameField(
+#             model_name='screen', 
+#             old_name='transfection_agent_text', 
+#             new_name='transfection_agent'
+#         ),
         
         # Lab affiliation migration prep: data migration in 0007
         migrations.RenameField(
@@ -365,6 +379,18 @@ class Migration(migrations.Migration):
             old_name='affiliation_name',
             new_name='name',
         ),
+        
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='rnai_data_sharing_level',
+            field=models.IntegerField(null=True),
+        ),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='sm_data_sharing_level',
+            field=models.IntegerField(null=True),
+        ),
+
 
         migrations.RunPython(update_facility_usage_roles),
     ]

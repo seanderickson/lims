@@ -73,5 +73,24 @@ class Migration(migrations.Migration):
             'ALTER TABLE screening_room_user '
             'DROP CONSTRAINT fk_screening_room_user_to_lab_head'),
         
+        # 20170918; stashing here, to avoid sql pending trigger error in 0003
+        migrations.RemoveField(
+            model_name='screen',
+            name='transfection_agent',
+        ),
+        migrations.RenameField(
+            model_name='screen', 
+            old_name='transfection_agent_text', 
+            new_name='transfection_agent'
+        ),
+        migrations.AlterField(
+            model_name='screen', name='project_phase', 
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='screen',
+            name='project_id',
+            field=models.TextField(null=True),
+        ),
         
     ]

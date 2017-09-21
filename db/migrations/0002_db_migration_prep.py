@@ -294,23 +294,18 @@ class Migration(migrations.Migration):
             name='status',
             field=models.TextField(null=True),
         ),
-
-#         migrations.AddField(
-#             model_name='screen',
-#             name='pin_transfer_date_approved',
-#             field=models.DateField(null=True),
-#         ),
-#         migrations.AddField(
-#             model_name='screen',
-#             name='pin_transfer_approved_by',
-#             field=models.ForeignKey('ScreensaverUser', null=True, 
-#                 related_name='pin_transfer_approved_screen')
-#         ),
-#         migrations.AddField(
-#             model_name='screen',
-#             name='pin_transfer_approval_comment',
-#             field=models.TextField(null=True),
-#         ),
+        
+        migrations.AddField(
+            model_name='screen',
+            name='parent_screen',
+            field=models.ForeignKey(
+                related_name='follow_up_screen', to='db.Screen', null=True),
+        ),
+        migrations.AlterField(
+            model_name='screen',
+            name='study_type',
+            field=models.TextField(null=True),
+        ),
         
         migrations.AddField(
             model_name='silencingreagent',
@@ -376,40 +371,6 @@ class Migration(migrations.Migration):
         migrations.RunPython(alter_table_references),
         migrations.RunPython(add_timezone_to_timestamp_fields),
         
-# Moved to 0007        
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='lab_head',
-#             field=models.ForeignKey(
-#                 related_name='lab_member', to='db.ScreensaverUser', null=True),
-#         ),
-#         migrations.RunSQL(
-#             'UPDATE screensaver_user su '
-#             ' set lab_head_id=sru.lab_head_id '
-#             ' from  screening_room_user sru '
-#             ' where sru.screensaver_user_id=su.screensaver_user_id'),
-#         migrations.RunSQL(
-#             'UPDATE screensaver_user su '
-#             ' set lab_head_id=lh.screensaver_user_id '
-#             ' from  lab_head lh '
-#             ' where lh.screensaver_user_id=su.screensaver_user_id'),
-#         # move the lab_head->screening_room_user explicitly, because there are dependent fk's
-#         migrations.RunSQL(
-#             'ALTER TABLE lab_head '
-#             'DROP CONSTRAINT fk_lab_head_to_screening_room_user'),
-#         migrations.RunSQL(
-#             'ALTER TABLE screening_room_user '
-#             'DROP CONSTRAINT fk_screening_room_user_to_lab_head'),
-#         migrations.RunSQL(
-#             'ALTER TABLE lab_head '
-#             'ADD CONSTRAINT fk_lab_head_to_screensaver_user '
-#             'FOREIGN KEY (screensaver_user_id) '
-#             'REFERENCES screensaver_user(screensaver_user_id)'),
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='lab_head_affiliation', 
-#             field=models.TextField(null=True)),
-
         migrations.RunPython(alter_table_parents),
         migrations.RunSQL(("ALTER TABLE {table} DROP COLUMN {column} ").format(
                   table='molfile', column='ordinal')),
@@ -690,11 +651,6 @@ class Migration(migrations.Migration):
             name='email',
             field=models.TextField(null=True),
         ),
-#         migrations.AddField(
-#             model_name='labaffiliation',
-#             name='title',
-#             field=models.TextField(null=True),
-#         ),
         migrations.AlterField(
             model_name='screenresult',
             name='experimental_well_count',
@@ -776,38 +732,5 @@ class Migration(migrations.Migration):
             name='apilog_uri',
             field=models.TextField(null=True),
         ),
-        
-        
-#         migrations.AddField(
-#             model_name='cherrypickassayplate',
-#             name='plating_activity_date',
-#             field=models.DateField(null=True),
-#         ),
-#         
-#         migrations.AddField(
-#             model_name='screenercherrypick',
-#             name='selected',
-#             field=models.NullBooleanField(),
-#         ),
-#         migrations.AddField(
-#             model_name='screenercherrypick',
-#             name='searched_well',
-#             field=models.ForeignKey(
-#                 related_name='searched_screener_cherry_pick', 
-#                 to='db.Well', null=True),
-#         ),
-#         
-#         migrations.AddField(
-#             model_name='labcherrypick',
-#             name='copy',
-#             field=models.ForeignKey(related_name='copy_lab_cherry_picks', 
-#                 to='db.Copy', null=True),
-#         ),
-#         migrations.AddField(
-#             model_name='labcherrypick',
-#             name='reserved',
-#             field=models.NullBooleanField(),
-#         ),
-
         
     ]

@@ -206,17 +206,20 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(migrate_screen_status),
         migrations.RunPython(migrate_pin_transfer_approval),
-        migrations.AddField(
-            model_name='screen',
-            name='parent_screen',
-            field=models.ForeignKey(
-                related_name='follow_up_screen', to='db.Screen', null=True),
-        ),
-        migrations.AlterField(
-            model_name='screen',
-            name='study_type',
-            field=models.TextField(null=True),
-        ),
+        
+        # moved to 0002:
+        # migrations.AddField(
+        #     model_name='screen',
+        #     name='parent_screen',
+        #     field=models.ForeignKey(
+        #         related_name='follow_up_screen', to='db.Screen', null=True),
+        # ),
+        # migrations.AlterField(
+        #     model_name='screen',
+        #     name='study_type',
+        #     field=models.TextField(null=True),
+        # ),
+        
         migrations.RunPython(migrate_screen_project_phase),
         
         # TODO: reinstate for final migration; leaving fields in the db for 
@@ -229,16 +232,25 @@ class Migration(migrations.Migration):
         #     model_name='screen',
         #     name='project_phase',
         # ),
+#         migrations.RemoveField(
+#             model_name='screen',
+#             name='transfection_agent',
+#         ),
+#         migrations.RenameField(
+#             model_name='screen', 
+#             old_name='transfection_agent_text', 
+#             new_name='transfection_agent'
+#         ),
         
-        migrations.AlterField(
-            model_name='screen', name='project_phase', 
-            field=models.TextField(null=True),
-        ),
-        migrations.AlterField(
-            model_name='screen',
-            name='project_id',
-            field=models.TextField(null=True),
-        ),
+#         migrations.AlterField(
+#             model_name='screen', name='project_phase', 
+#             field=models.TextField(null=True),
+#         ),
+#         migrations.AlterField(
+#             model_name='screen',
+#             name='project_id',
+#             field=models.TextField(null=True),
+#         ),
         
 
     ]

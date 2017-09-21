@@ -20,11 +20,6 @@ from db.api import _now
 
 logger = logging.getLogger(__name__)
 
-def create_user_comments_logs(apps, schema_editor):
-    
-    #TODO convert screen.comments to apilogs
-    
-    pass
     
 def create_screensaver_users(apps, schema_editor):
     '''
@@ -33,145 +28,158 @@ def create_screensaver_users(apps, schema_editor):
     - 'valid' entries have [ecommons_id or login_id] and email addresses.
     - Duplicated ecommons/and/or/login ID's are invalid; the second
     (duplicate) entry will be ignored.
+    Not idempotent - can be re-run by deleting the reports -
+    Usergroup_Users, and UserProfile tables, and also the Auth_User
+    entries - (make sure not to delete the superuser).
     '''
     
-    i=0
-    skip_count = 0
+    count=0
     
     AuthUserClass = apps.get_model('auth','User')
     UserProfileClass = apps.get_model('reports','UserProfile')
     ScreensaverUser = apps.get_model('db', 'ScreensaverUser')
-    auth_user_username_limit = 30
+    auth_user_username_limit = 30 # field size limit for auth_user
     
-    # delete this inconsistent user:
-    #  866 |      14 | 2007-05-24 00:00:00-04 | Ernebjerg  | Morten    | morten_ernebjerg@hms.harvard.edu | 617-432-6392 |                 | using wellmate                           |          |                   | me44        | 70572885   |                            |                                      |               |             |                         |        |         | me44
-    ssuid = 866
-    try:
-        obj = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        obj.delete()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
+#     # delete this inconsistent user:
+#     #  866 |      14 | 2007-05-24 00:00:00-04 | Ernebjerg  | Morten    | morten_ernebjerg@hms.harvard.edu | 617-432-6392 |                 | using wellmate                           |          |                   | me44        | 70572885   |                            |                                      |               |             |                         |        |         | me44
+#     ssuid = 866
+#     try:
+#         obj = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
+#         obj.delete()
+#     except Exception,e:
+#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
-    # remove the second jgq10 erroneous account
-    ssuid = 3166
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
+#     # remove the second jgq10 erroneous account
+#     ssuid = 3166
+#     try:
+#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
+#         username = '%s_%s' % (su.first_name, su.last_name)
+#         username = default_converter(username)[:auth_user_username_limit]
+#         su.username = username
+#         su.save()
+#     except Exception,e:
+#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
 
     ssuid = 830
     # for ruchir shahs old acct
     try:
         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s' % (su.first_name, su.last_name)
+        username = '%s_%s_old' % (su.first_name, su.last_name)
         username = default_converter(username)[:auth_user_username_limit]
         su.username = username
         su.save()
     except Exception,e:
         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
-    ssuid = 3945
-    # for min-joon han dupl
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
+#     ssuid = 3945
+#     # for min-joon han dupl
+#     try:
+#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
+#         username = '%s_%s' % (su.first_name, su.last_name)
+#         username = default_converter(username)[:auth_user_username_limit]
+#         su.username = username
+#         su.save()
+#     except Exception,e:
+#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
-    ssuid = 129
-    # for maria chmura
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        su.delete()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
+#     ssuid = 129
+#     # for maria chmura
+#     try:
+#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
+#         su.delete()
+#     except Exception,e:
+#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     # sean johnston second account
     ssuid = 3758 
     try:
         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s_2' % (su.first_name, su.last_name)
+        username = '%s_%s_old' % (su.first_name, su.last_name)
         username = default_converter(username)[:auth_user_username_limit]
         su.username = username
         su.save()
     except Exception,e:
         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
-    # to be deleted, duplicate account for Zecai      | Liang     | zl59 
-    ssuid = 4505
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s_to_be_deleted' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
+#     # to be deleted, duplicate account for Zecai      | Liang     | zl59 
+#     ssuid = 4505
+#     try:
+#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
+#         username = '%s_%s_to_be_deleted' % (su.first_name, su.last_name)
+#         username = default_converter(username)[:auth_user_username_limit]
+#         su.username = username
+#         su.save()
+#     except Exception,e:
+#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     for su in ScreensaverUser.objects.all():
-        logger.debug("processing ecommons: %r, login_id: %r, email: %r, %s,%s"
-            % (su.ecommons_id, su.login_id, su.email, su.first_name, su.last_name))
+        if su.screensaver_user_id == 4712:
+            logger.info('skip erroneous user account: %r', su)
+            continue
+        
+        logger.info("processing %r, ecommons: %r, login_id: %r, email: %r, %s,%s",
+            su.screensaver_user_id, su.ecommons_id, su.login_id, su.email, 
+            su.first_name, su.last_name)
         au = None
         up = None
-        if not su.username:
+        if su.username is None:
             username = None
             if su.ecommons_id: 
-                username = default_converter(str(su.ecommons_id)) # convert in case it has an error
+                # convert in case it has an error
+                username = default_converter(str(su.ecommons_id)) 
+                logger.info('username: converted ecommons: %r to %r', 
+                    su.ecommons_id, username)
             elif su.login_id:
                 username = default_converter(str(su.login_id))
+                logger.info('username: converted login_id: %r to %r', 
+                    su.login_id, username)
             elif su.first_name is not None and su.last_name is not None:
                 username = '%s_%s' % (su.first_name, su.last_name)
                 username = default_converter(username)[:auth_user_username_limit]
-            elif su.email:
-                username = default_converter(su.email)[:auth_user_username_limit]
+                logger.info('username: converted first,last: %r,%r to %r', 
+                    su.first_name, su.last_name, username)
+#             elif su.email:
+#                 username = default_converter(su.email)[:auth_user_username_limit]
+#                 logger.info('username: converted email: %r to %r', 
+#                     su.email, username)
             else:
-                msg = (str((
-                     'Cannot create a login account, does not have id information', 
-                    su.screensaver_user_id, ',e', su.ecommons_id, ',l', 
-                    su.login_id, ',', su.email, su.first_name, su.last_name)) )
-                raise Exception(msg)
+                # Not an active user account:
+                # An account may be created later 
+                logger.info(
+                     'Cannot create a login account, does not have id information: %r', 
+                    su.screensaver_user_id)
+                continue
         
             su.username = username
-
+        logger.info('save new su.username: %r, %r', su.screensaver_user_id, su.username)
+        su.save()
+        
         username = su.username
         # find or create the auth_user
         try:
             au = AuthUserClass.objects.get(username=username)
-            logger.debug('found auth_user: %s', username)
+            logger.info('found auth_user: %s', username)
         except Exception, e:
-            pass;
-            
-        if not au:
-            try:
-                au = AuthUserClass(
-                    username = username, 
-                    email = su.email if su.email else 'none', 
-                    first_name = su.first_name, 
-                    last_name = su.last_name,
-                    date_joined = datetime.datetime.now().replace(
-                        tzinfo=pytz.timezone('US/Eastern')),
-                    is_active=False,
-                    is_staff=False)
+            au = AuthUserClass(
+                username = username, 
+                email = su.email if su.email else 'none', 
+                first_name = su.first_name, 
+                last_name = su.last_name,
+                date_joined = datetime.datetime.now().replace(
+                    tzinfo=pytz.timezone('US/Eastern')),
+                is_active=False,
+                is_staff=False)
 
-                au.save()
-                logger.debug('created user from ecommons: %s, %r' 
-                    % (su.ecommons_id, au))
-            except Exception, e:
-                logger.error(str(('cannot create user ',username,e)))
-                raise
+        if hasattr(su, 'administratoruser'):
+            au.is_staff = True
+
+        au.save()
+        
         # find or create the userprofile
         try:
             up = UserProfileClass.objects.get(username=username)
-            logger.debug('found userprofile: %s', username)
+            logger.info('found userprofile: %s', username)
         except Exception, e:
-            logger.info(str(('no userprofile', username)))
             if su.created_by: 
                 created_by_username = su.created_by.username
             else:
@@ -180,7 +188,6 @@ def create_screensaver_users(apps, schema_editor):
             up = UserProfileClass()
             
             up.username = username 
-#             up.email = su.email
             up.phone = su.phone
             up.mailing_address = su.mailing_address
             up.comments = su.comments
@@ -193,21 +200,17 @@ def create_screensaver_users(apps, schema_editor):
             up.created_by_username = created_by_username            
             
             up.user = au
-            try:
-                up.save()
-            except Exception, e:
-                logger.exception('on userprofile save: %r', username)
-                raise    
+            up.save()
+
         su.user = up
-        try:
-            logger.info('save %r, %s' % (up,up.username))
-            su.save()
-            logger.debug('saved %r, %s' % (up,up.username))
-            i += 1
-        except Exception, e:
-            logger.exception('unable to save the converted user: %r', su.username )
-            skip_count += 1
-    logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
+        logger.info('su: (%r, %r, %r, %r, %r, %r), up: %r, au: %r, username: %r',
+            su.screensaver_user_id, su.ecommons_id, su.login_id, su.email, 
+            su.first_name,su.last_name, up.id, au.id, au.username)
+        su.save()
+        
+        logger.info('user created: %r', au.username)
+        count += 1
+    logger.info('Converted %d users', count)
     
 def create_user_checklists(apps, schema_editor):
     '''
@@ -351,7 +354,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
             while full_key in unique_log_keys:
                 # add a second to make it unique; because date performed is a date,
-                logger.info(str(('time collision for: ',full_key)))
+                logger.info('time collision for: %r',full_key)
                 log.date_time = log.date_time  + datetime.timedelta(milliseconds=1)
                 logger.info('new log time: %r', log.date_time)
                 full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
@@ -393,8 +396,8 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 ucl_hash[key] = _dict
                 if _dict['is_notified']:
                     notified_ucl_hash[key] = _dict
-                logger.debug(str(('create user checklist item', _dict, 
-                    _dict['date_performed'].isoformat())))
+                logger.debug('create user checklist item: %r, %r', _dict, 
+                    _dict['date_performed'].isoformat())
 
                 is_checked = False
                 if _dict['status'] in ['activated', 'completed']:

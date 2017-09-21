@@ -1661,20 +1661,21 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
         }
       }
     }
-    var isEmpty = _.isEmpty(rawData);
-//        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])))
+    var isEmpty = (
+        _.isEmpty(rawData)
+        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])));
     if( !isEmpty && _.isEmpty(selectedText)){
       selectedText = rawData;
 
       Iccbl.appModel.error(Iccbl.formatString(
-        'column: {column}, vocabulary: {vocabulary} is misconfigured: rawData: {rawData}',
+        'column: {column}, vocabulary: {vocabulary} is misconfigured: rawData: "{rawData}"',
         { column: this.column.get("name"),
           vocabulary: _.result(this, "vocabulary_scope_ref"),
           rawData: rawData 
         }));
       console.log(Iccbl.formatString(
         'column: {column}, vocabulary: {vocabulary} is misconfigured,' 
-          + 'rawData: {rawData}, optionValues: {optionValues}',
+          + 'rawData: "{rawData}", optionValues: {optionValues}',
         { column: this.column.get("name"),
           vocabulary: _.result(this, "vocabulary_scope_ref"),
           rawData: rawData,

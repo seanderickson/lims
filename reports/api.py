@@ -900,6 +900,7 @@ class ApiResource(SqlAlchemyResource):
         
         logger.info('put_list done.')
         if not self._meta.always_return_data:
+            logger.info('put success, no data')
             return HttpResponse(status=202)
         else:
             response = self.get_list(request, **kwargs)             
@@ -1257,6 +1258,7 @@ class ApiResource(SqlAlchemyResource):
         # TODO: add "Result" data to meta section, see patch_list
         
         if not self._meta.always_return_data:
+            logger.info('put success, no response data')
             return HttpResponse(status=200)
         else:
             response.status_code = 200
@@ -2537,7 +2539,8 @@ class ResourceResource(ApiResource):
     def _get_resource_schema(self,resource_key, user=None):
         ''' For internal callers
         '''
-        resources = self._build_resources(user=user)
+        logger.info('_get_resource_schema: %r %r...', resource_key, user)
+        resources = self._build_resources_internal(user=user)
         
         if resource_key not in resources:
             raise BadRequest('Resource is not initialized: %r', resource_key)
@@ -2630,7 +2633,7 @@ class ResourceResource(ApiResource):
         return resource_schema
     
     def build_list_response(self,request, **kwargs):
-
+        logger.info('build_list_response: %r', request.user)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -2639,8 +2642,9 @@ class ResourceResource(ApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        
-        resources = self._build_resources(user=request.user)
+        logger.info('calling _build_resources...')
+        resources = self._build_resources_internal(user=request.user)
+        logger.info('done calling _build_resources...')
                     
         # TODO: pagination, sort, filter
 
@@ -2673,7 +2677,7 @@ class ResourceResource(ApiResource):
         '''
         Filter resource based on user authorization
         '''
-        logger.debug('filter resource %r: %r', schema['key'], user)
+        logger.info('filter resource %r: %r', schema['key'], user)
         usergroups = set()
         is_superuser = user is not None and user.is_superuser
             
@@ -2715,11 +2719,11 @@ class ResourceResource(ApiResource):
         
         return schema
     
-    def _build_resources(self, user=None, use_cache=True):
+    def _build_resources_internal(self, user=None, use_cache=True):
         '''
         Internal callers - return the resource keyed hash, from cache if possible
         '''
-        logger.debug('_build_resources: %r: %r', user, use_cache)
+        logger.info('_build_resources: %r: %r', user, use_cache)
         resources = None
         if use_cache and self.use_cache:
             resources = cache.get('resources')
@@ -2923,6 +2927,7 @@ class VocabularyResource(ApiResource):
         resource_name = 'vocabulary'
         authorization= AllAuthenticatedReadAuthorization(resource_name)
         serializer = LimsSerializer()
+        always_return_data = True
 
     def __init__(self, **kwargs):
         super(VocabularyResource,self).__init__(**kwargs)

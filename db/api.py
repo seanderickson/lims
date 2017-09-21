@@ -106,7 +106,7 @@ from reports.sqlalchemy_resource import _concat, _concat_with_sep
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
-MAX_SPOOLFILE_SIZE = 100*1024
+MAX_SPOOLFILE_SIZE = 1024*1024
 
 ##### API CONSTANTS
 # TODO: move to an API-accessible properties file
@@ -7038,7 +7038,8 @@ class CherryPickRequestResource(DbApiResource):
                     if wrong_screen_type:
                         wrong_screen_type = sorted(wrong_screen_type)
                         raise ValidationError(
-                            key='screen_type must be %s' % cpr.screen.screen_type,
+                            key='Wrong Well screen_type, must be %s' 
+                                % cpr.screen.screen_type,
                             msg=wrong_screen_type)
                     if discarded_libraries:
                         discarded_libraries = sorted([
@@ -7090,7 +7091,7 @@ class CherryPickRequestResource(DbApiResource):
     
     @classmethod
     def find_wells(cls, cherry_pick_well_patterns ):
-        logger.info('find wells for patterns: %r', cherry_pick_well_patterns)
+        logger.debug('find wells for patterns: %r', cherry_pick_well_patterns)
         if not isinstance(cherry_pick_well_patterns, (list,tuple)):
             cherry_pick_well_patterns = (cherry_pick_well_patterns,)
 
@@ -7110,7 +7111,7 @@ class CherryPickRequestResource(DbApiResource):
                 key='Can not screen non-experimental wells',
                 msg=', '.join([well.well_id for well in non_experimental_wells]))
             
-        logger.info('found wells: %r', wells)
+        logger.debug('found wells: %r', wells)
         return wells
 
     def validate_cpr_for_plating(self, cpr):
@@ -16671,7 +16672,7 @@ class ScreensaverUserResource(DbApiResource):
 
     def get_id(self, deserialized, schema=None, **kwargs):
 
-        # FIXME: this mirrors UserResource.get_id
+        # FIXME: this overrides UserResource.get_id
         # - update the inheritance so that 
         # ScreensaveruserResource extends UserResource
         id_kwargs = DbApiResource.get_id(self, deserialized, schema=schema, **kwargs)
@@ -16782,8 +16783,8 @@ class ScreensaverUserResource(DbApiResource):
             screensaver_user.save()
             
             vocab_pi_classification = 'principal_investigator'
-            
-            if initializer_dict.get('classification', None):
+            # check classification, but don't set, already set, above
+            if 'classification' in initializer_dict:
                 classification = initializer_dict['classification']
 
                 if classification != vocab_pi_classification:
@@ -16808,7 +16809,7 @@ class ScreensaverUserResource(DbApiResource):
             screensaver_user.save()
             
             _key = 'lab_head_username'            
-            if initializer_dict.get(_key, None):
+            if _key in initializer_dict:
                 lh_username = initializer_dict[_key]
                 if lh_username:
                     if screensaver_user.classification == vocab_pi_classification:
@@ -16864,7 +16865,7 @@ class ScreensaverUserResource(DbApiResource):
             screensaver_user.save()
             
             _key = 'lab_member_usernames'
-            if initializer_dict.get(_key, None) is not None:
+            if _key in initializer_dict:
                 lab_member_usernames = initializer_dict[_key]
                 lab_members = []
                 # may empty
@@ -16895,10 +16896,13 @@ class ScreensaverUserResource(DbApiResource):
                 screensaver_user.lab_members = lab_members
             screensaver_user.save()
                     
-            if initializer_dict.get('facility_usage_roles', None):
+            if 'facility_usage_roles' in initializer_dict:
                 current_roles = set([r.facility_usage_role 
                     for r in screensaver_user.userfacilityusagerole_set.all()])
-                new_roles = set(initializer_dict['facility_usage_roles'])
+                new_roles = initializer_dict['facility_usage_roles']
+                if new_roles is None:
+                    new_roles = []
+                new_roles = set(new_roles)
                 logger.info('roles to delete: %s', current_roles - new_roles)
                 (screensaver_user.userfacilityusagerole_set
                     .filter(facility_usage_role__in=current_roles - new_roles)

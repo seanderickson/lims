@@ -2520,6 +2520,9 @@ class ResourceResource(ApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/app_data%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_app_data'), name="api_get_app_data"),
             url(r"^(?P<resource_name>%s)/(?P<key>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -2531,6 +2534,15 @@ class ResourceResource(ApiResource):
     def get_schema(self, request, **kwargs):
         return self.build_response(
             request, self.build_schema(user=request.user), **kwargs)
+
+    def get_app_data(self, request, **kwargs):
+        
+        app_data = {attr:value for
+            attr, value in settings.APP_PUBLIC_DATA.__dict__.iteritems()
+                if '__' not in attr }
+        
+        return self.build_response(
+            request, app_data, **kwargs)
 
     def clear_cache(self):
         ApiResource.clear_cache(self)
@@ -2677,7 +2689,7 @@ class ResourceResource(ApiResource):
         '''
         Filter resource based on user authorization
         '''
-        logger.info('filter resource %r: %r', schema['key'], user)
+        logger.debug('filter resource %r: %r', schema['key'], user)
         usergroups = set()
         is_superuser = user is not None and user.is_superuser
             

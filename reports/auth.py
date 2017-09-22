@@ -62,10 +62,11 @@ class CustomAuthenticationBackend():
             user = self._inner_authenticate(username, password)
             if IS_PRODUCTION_READY is not True:
                 if user.is_staff is not True:
-                    logger.warn('login not allowed for non-staff users when '
-                        '"settings.IS_PRODUCTION_READY" is set True; user: %r', 
-                        user)
-                    raise PermissionDenied
+                    msg = ('login not allowed for non-staff users when '
+                        '"settings.IS_PRODUCTION_READY" is not set; user: %r'
+                        % user)
+                    logger.warn(msg)
+                    raise PermissionDenied(msg)
             return user
 
     def _inner_authenticate(self, username=None, password=None):

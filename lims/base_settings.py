@@ -4,6 +4,12 @@ import sys
 import os
 import django.template
 
+try:
+    from app_data import APP_PUBLIC_DATA
+except ImportError:
+    print >>sys.stderr, '''app_data.py file not found.'''
+
+
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 DEBUG = True

@@ -24,6 +24,7 @@ define([
   'utils/wellSelector',
   'templates/content.html',
   'templates/welcome.html',
+  'templates/welcome-screener.html',
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
@@ -32,7 +33,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          PlateLocationView, UserAdminView, 
          UserView, UserGroupAdminView, ActivityListView, UploadDataForm, DetailTestView, 
          WellSelectorView, layout, 
-         welcomeLayout, aboutLayout) {
+         welcomeLayout, welcomeScreenerLayout, aboutLayout) {
   
   var VIEWS = {
     'ListView': ListView, 
@@ -494,15 +495,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       resource = appModel.getResource(uiResourceId);
       
       if (uiResourceId == 'home'){
+        
+        var currentUser = appModel.getCurrentUser();
+        var template = welcomeLayout;
+        if(!currentUser.is_staff && !currentUser.is_superuser ){
+          template = welcomeScreenerLayout;
+        }
+        
         var WelcomeView = Backbone.Layout.extend({
-          template: _.template(welcomeLayout)
+          template: _.template(template), 
+          serialize: function(){
+            var appData = appModel.getAppData();
+            return {
+              user_fullname: currentUser.first_name + ' ' + currentUser.last_name,
+              app_data: appData.toJSON()
+            };
+          }
         });
         $('#navbar').children().removeClass('active');
         $('#navbar').children('#home').addClass('active');
         var view = new WelcomeView();
         self.setView('#content', view).render();
-        this.$('#content_title').html(resource.title);
-        this.$('#content_title_row').show();
         return;
       }
       
@@ -514,8 +527,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         $('#navbar').children('#about').addClass('active');
         var view = new WelcomeView();
         self.setView('#content', view).render();
-        this.$('#content_title').html(resource.title);
-        this.$('#content_title_row').show();
         return;
       }
       

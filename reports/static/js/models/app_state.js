@@ -176,10 +176,14 @@ define([
     start: function(callBack) {
       var self = this;
       console.log('start app_state.js');
-      this.getResources(function(){
-        self.getVocabularies(function(vocabularies){
-          self.set('vocabularies', vocabularies);
-          self.setCurrentUser(callBack);
+      self.getAppDataFromServer(function(){
+        self.getResources(function(){
+          self.setCurrentUser(function(){
+            self.getVocabularies(function(vocabularies){
+              self.set('vocabularies', vocabularies);
+              callBack();
+            });
+          });
         });
       });
     },
@@ -945,8 +949,13 @@ define([
           }
         });
         
+        var app_data = self.getAppData();
+        ui_resources['home']['title'] = app_data.get('app_name');
+        
         // set up permissions for all the resources
         self.setPermissionsOptions(self.get('ui_resources'));
+        
+        
         
         if(callBack) callBack();                
       });
@@ -1281,7 +1290,25 @@ define([
       });
       return resource;
     },
-        
+
+    getAppData: function(){
+      return this.get('app_data');
+    },
+    
+    getAppDataFromServer: function(callback){
+      var self = this;
+      var ModelClass = Backbone.Model.extend({
+        url : [REPORTS_API_URI,'resource','app_data'].join('/')
+      });
+      var instance = new ModelClass();
+      instance.fetch({
+        success: function(model){
+          self.set('app_data', model);
+          callback(model);
+        }
+      });
+    },
+    
     getResourceFromUrl: function(schemaUrl, callback, options){
       var self = this;
       var options = options || {};

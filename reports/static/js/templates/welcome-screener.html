@@ -1,0 +1,44 @@
+<div id='content' class='col-sm-12'>
+
+<div class='row' >
+  <h1 class='welcome-title'>
+  Welcome to <%=app_data.app_name%>, <%=user_fullname %>!
+  </h1>
+</div>
+<div class='row welcome-message' >
+  <ul>
+    <li>Use <a href='#library'>Libraries</a> to view the set of small
+      molecule and RNAi libraries available for use at the 
+      <a href="<%= app_data.facility_url %>" target="_blank"><%= app_data.facility_name %></a> 
+      Screening Facility. For each library, you can view descriptive
+      information on the Library Viewer page. From that page, you
+      can navigate to the Wellspage, to browse the contents
+      of each library well and reagent information including
+      structures, SMILES strings, and links to PubChem, ChemBank,
+      and GenBank.</li>
+    <li>Use &quot;Search for Wells&quot; to search for information on library reagents,
+      using library plate/well designations or vendor-assigned reagent identifiers.</li>
+    <li>Use <a href='#my_screens'>My Screens</a> to view your own screens and result
+    data, and <a href='#screen'>Screens</a> to view basic information about other screens 
+    performed at ICCB-L. For your own screens, you can browse, filter, sort, 
+    and export your result data, and compare it to other shared screen results 
+    and studies.  You can also export the screen result data as a spreadsheet (xls, csv, or sdf).
+    <ul>
+        <li style="font-size: small">If your screen result data
+          is not shown, please contact <a href="<%= app_data.contact_informatics_url %>">
+            <%= app_data.contact_informatics_name %></a> and we will make it a priority to import your
+          data.</li>
+        <li style="font-size: small">The amount of screen results visible 
+          from any screens other than your own is dependent upon your 
+          small molecule and/or RNAi data sharing level. Please contact 
+          <a href="<%= app_data.contact_facility_director_url %>">
+            <%= app_data.contact_facility_director_name %></a> if you have any questions.</li>
+      </ul></li>
+    <li>Use <a href='#study'>Studies</a> to view the studies that have been
+      added to Screensaver. Studies associate annotations with library reagents.</li>
+    <li>Use <a href='#activity'>Activities</a> to view the activities you
+      have performed at <a href="<%= app_data.facility_url %>" target="_blank"><%= app_data.facility_name %></a>.</li>
+  </ul>  
+</div>  
+</div>
+

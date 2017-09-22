@@ -4,7 +4,7 @@
     "route": "/",
     "view": "HomeView",
     "content_header": "Welcome",
-    "description": "Menu starting point"
+    "description": "home"
   },
   "about": {
     "title": "ICCB-L Screensaver LIMS",
@@ -45,19 +45,6 @@
         "options": { 
           "search": {"is_staff__exact": "False"} }
     },
-    "my_associates": {
-        "header_message": "My Associates",
-        "title": "My Associates",
-        "route": "list/screeners",
-        "listView": "ListView",
-        "detailView": "UserView",
-        "api_resource": "screensaveruser",
-        "url_root": "/db/api/v1",
-        "description": "Browse my associates (lab members, collaborators, etc.)",
-        "options": { 
-          "search": {"is_staff__exact": "False"} }
-    },
-
     "staff": {
         "header_message": "Staff",
         "title": "Staff Users",

@@ -39,9 +39,6 @@
     },
     "activity":{
       "view": "list"
-    },
-    "my_associates": {
-      "view": "list"
     }
   }
 }

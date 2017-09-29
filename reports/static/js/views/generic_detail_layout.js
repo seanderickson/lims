@@ -15,6 +15,9 @@ define([
 
   var DetailLayout = Backbone.Layout.extend({
 
+    /**
+     * @param resource - the API resource schema
+     */
     initialize: function(args) {
       console.log('---- initialize detail layout', args);
       this.uriStack = args.uriStack;
@@ -23,9 +26,10 @@ define([
       this.args = args;
       this.DetailView = args.DetailView || DetailView;
       this.EditView = args.EditView || EditView;
-      this.modelSchema = args.modelSchema || this.model.resource;
-      this.modelFields = args.modelFields || this.modelSchema.fields;
+      this.resource = args.resource || this.model.resource;
+      this.modelFields = args.modelFields || this.resource.fields;
       this.title = args.title;
+      
       _.bindAll(this, 'showDetail', 'showEdit');
     },
 

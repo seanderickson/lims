@@ -27,9 +27,9 @@ define([
       
       if (this.model.get('user_access_level_granted') > 1){
         if (! _.isEmpty(this.model.get('study_type'))) {
-          this.tabbed_resources['data_columns'] = this.study_tabbed_resources['datacolumns']
+          this.tabbed_resources['datacolumns'] = this.study_tabbed_resources['datacolumns']
         } else {
-          this.tabbed_resources['data_columns'] = this.screen_tabbed_resources['datacolumns']
+          this.tabbed_resources['datacolumns'] = this.screen_tabbed_resources['datacolumns']
         }
       }
     },

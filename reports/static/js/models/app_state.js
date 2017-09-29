@@ -458,9 +458,13 @@ define([
         self.getUsers(function(users){
           var options = [];
           users.each(function(user){
+            var user_id = user.get('screensaver_user_id');
             var username = user.get('username');
             var name = user.get('name');
-            options.unshift({ val: username, label: name + ':' + username });
+            var _label = name;
+            if(!_.isEmpty(username)) _label += ': ' + username;
+            _label += ' (' + user_id + ')';
+            options.unshift({ val: user_id, label: _label});
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();
@@ -470,9 +474,37 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
     
+    getUsernameOptions: function(callBack){
+      var self = this;
+      var prop = 'usernameOptions';
+      var options = this.get(prop);
+      if(!options){
+        self.getUsers(function(users){
+          var options = [];
+          users.each(function(user){
+            var user_id = user.get('screensaver_user_id');
+            var username = user.get('username');
+            if (_.isEmpty(username)){
+              return;
+            }
+            var name = user.get('name');
+            var _label = name;
+            if(!_.isEmpty(username)) _label += ': ' + username;
+            _label += '(' + user_id + ')';
+            options.unshift({ val: username, label: _label });
+          });
+          self.set(prop,options);
+          self.userProps[prop] = new Date();
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+        else return options;
+      }
+    },
+
     getPrincipalInvestigatorOptions: function(callBack){
       var self = this;
       var prop = 'piOptions';
@@ -481,9 +513,9 @@ define([
         this.getPrincipalInvestigators(function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            var username = user.get('username');
+            var user_id = user.get('screensaver_user_id');
             var lab_name = user.get('lab_name');
-            options.push({ val: username, label: lab_name });
+            options.push({ val: user_id, label: lab_name });
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();
@@ -984,10 +1016,13 @@ define([
           // nop always exclude the id field to signal create case to the server
         } else {
           if(! _.has(defaults, key)){
-            if(field.default && !_.isNull(field.default)){
+            if( (!_.isUndefined(field.default) && !_.isNull(field.default))
+                && ( _.isNumber(field.default) || _.isBoolean(field.default)
+                    || !_.isEmpty(field.default)))
+            {
               try {
                 if (field.data_type == 'string'){
-                  defaults[key] = field.default;
+                    defaults[key] = field.default;
                 }else if (field.data_type == 'boolean'){
                   defaults[key] = JSON.parse(field.default.toLowerCase());
                 }else{
@@ -1001,7 +1036,7 @@ define([
                 }else{
                   self.error('Warning, unparseable default for field: ' 
                     + field.key + ', value: ' + field.default );
-                  defaults[key] = '';
+                  defaults[key] = null;
                 }
               }
             }else{
@@ -1048,18 +1083,18 @@ define([
           return _.contains(userScreens, option['val']);
         });
         console.log('found user screens: ' + 
-          userModel.get('username'), options);
+          userModel.get('screensaver_user_id'), options);
         return options;
     },
     
     _get_screen_member_choices: function(screenModel) {
       // FIXME: should extend the Model for Screen
       var members = _.object(
-        screenModel.get('collaborator_usernames'),
+        screenModel.get('collaborator_ids'),
         screenModel.get('collaborator_names'));
-      members[screenModel.get('lead_screener_username')] = 
+      members[screenModel.get('lead_screener_id')] = 
         screenModel.get('lead_screener_name');
-      members[screenModel.get('lab_head_username')] = 
+      members[screenModel.get('lab_head_id')] = 
         screenModel.get('lab_head_name');
       members = _.map(_.pairs(members), function(pair){
         return { 'val': pair[0], 'label': pair[1] + ': ' + pair[0] };

@@ -97,14 +97,14 @@ define([
       // Manage classification changes
       var originalClassification = self.model.get('classification');
       if ( originalClassification == 'principal_investigator'){
-        resource.fields['lab_member_usernames']['visibility'] = ['d'];
+        resource.fields['lab_member_ids']['visibility'] = ['d'];
         // set up a custom vocabulary that joins username to name; will be 
         // used as the text of the linklist
-        resource.fields['lab_member_usernames'].vocabulary = (
-            _.object(self.model.get('lab_member_usernames'),
+        resource.fields['lab_member_ids'].vocabulary = (
+            _.object(self.model.get('lab_member_ids'),
               self.model.get('lab_member_names')));
       } else {
-        resource.fields['lab_member_usernames']['editability'] = [];
+        resource.fields['lab_member_ids']['editability'] = [];
       }
 
       // Create model validation rules based on classification
@@ -116,7 +116,9 @@ define([
           errs.lab_affiliation_id = 'Required if PI';
         }
         if (!attrs.username && !attrs.ecommons_id){
-          errs.username = errs.ecommons_id = 'Either Ecommons or Username must be entered'
+          if (attrs.is_active == true){
+            errs.username = errs.ecommons_id = 'Either Ecommons or Username must be entered'
+          }
         }
         if (!_.isEmpty(errs)) return errs;
       };
@@ -157,7 +159,7 @@ define([
           if(self.getValue('classification') != 'principal_investigator'){
               self.$el.find('[key="form-group-lab_affiliation_id"]').hide();
           }else{
-              self.$el.find('[key="form-group-lab_head_username"]').hide();
+              self.$el.find('[key="form-group-lab_head_id"]').hide();
           }
           // attach classification change listener
           self.listenTo(this, "classification:change", function(e){
@@ -165,21 +167,21 @@ define([
             console.log('classification:' + classification)
             if(classification == 'principal_investigator'){
               self.$el.find('[key="form-group-lab_affiliation_id"]').show();
-              self.$el.find('[key="form-group-lab_member_usernames"]').show();
-              self.$el.find('[key="form-group-lab_head_username"]').hide();
-              self.setValue('lab_head_username', '');
+              self.$el.find('[key="form-group-lab_member_ids"]').show();
+              self.$el.find('[key="form-group-lab_head_id"]').hide();
+              self.setValue('lab_head_id', '');
             } else {
               self.setValue('lab_affiliation_id','');
-              self.setValue('lab_member_usernames','');
+              self.setValue('lab_member_ids','');
               if (originalClassification == 'principal_investigator'){
-                console.log('unset lab head username')
-                self.setValue('lab_head_username','');
-                self.$el.find('[key="lab_head_username"]')
+                console.log('unset lab head id')
+                self.setValue('lab_head_id','');
+                self.$el.find('[key="lab_head_id"]')
                   .find('.chosen-select').trigger("chosen:updated");
               }
               self.$el.find('[key="form-group-lab_affiliation_id"]').hide();
-              self.$el.find('[key="form-group-lab_member_usernames"]').hide();
-              self.$el.find('[key="form-group-lab_head_username"]').show();
+              self.$el.find('[key="form-group-lab_member_ids"]').hide();
+              self.$el.find('[key="form-group-lab_head_id"]').show();
             }
           });
         
@@ -229,6 +231,21 @@ define([
             });
             this.$el.find('#generic-detail-buttonpanel').append([
                addSMScreenButton,addRnaiScreenButton,updateRNAUAButton,updateSMUAButton]);
+            
+            var addLabMemberButton = $([
+              '<div class="pull-right pull-down">',
+              '<a class="btn btn-default btn-sm" ',
+                'title="Create a new user as a member of this lab" ',
+                'role="button" id="add_lab_member_button" href="#">',
+                'Add Lab Member</a>',
+                '</div>'
+              ].join(''));
+            this.$el.find('#lab_member_ids').append(addLabMemberButton);
+            addLabMemberButton.click(function(e){
+              e.preventDefault();
+              self.addLabMember();
+            });
+           
           }
         }
       });
@@ -246,11 +263,11 @@ define([
           function internalShowEdit(){
             var fields = self.model.resource.fields;
 
-            fields['lab_head_username']['choices'] = 
+            fields['lab_head_id']['choices'] = 
               appModel.getPrincipalInvestigatorOptions();
-            fields['lab_member_usernames']['choices'] = 
+            fields['lab_member_ids']['choices'] = 
               appModel.getUserOptions();
-            fields['lab_member_usernames']['title'] = 'Lab Members';
+            fields['lab_member_ids']['title'] = 'Lab Members';
             fields['lab_affiliation_id']['choices'] = 
               appModel.getLabAffiliationOptions();
   
@@ -406,10 +423,10 @@ define([
     
     addScreen: function(extra_defaults){
       var self = this;
-      console.log('add screen for ls: ', self.model.get('username'));
+      console.log('add screen for ls: ', self.model.get('screensaver_user_id'));
       var defaults = _.extend({
-        lead_screener_username: self.model.get('username'),
-        lab_head_username: self.model.get('lab_head_username')
+        lead_screener_id: self.model.get('screensaver_user_id'),
+        lab_head_id: self.model.get('lab_head_id')
       }, extra_defaults);
       var newModel = appModel.createNewModel('screen', defaults);
 
@@ -422,6 +439,49 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       this.consumedStack = ['screen','+add'];
+      self.reportUriStack([]);
+    },
+        
+    addLabMember: function(extra_defaults){
+      var self = this;
+      console.log('add lab member for lab head: ', self.model.get('screensaver_user_id'));
+      var defaults = _.extend({
+        lab_head_id: self.model.get('lab_head_id'),
+        lab_name: self.model.get('lab_name')
+      }, extra_defaults);
+      var newModel = appModel.createNewModel('screensaveruser', defaults);
+      var resource = appModel.getResource('screensaveruser');
+      resource.fields['lab_name']['visibility'] = ['e'];
+      var hideForLabMember = [
+        'lab_head_id','lab_affiliation_id','lab_member_ids',
+        'lab_head_appointment_category','lab_head_appointment_department',
+        'lab_head_appointment_update_date','permissions','usergroups',
+        'is_staff', 'is_superuser','is_active'];
+      _.each(_.pick(resource.fields,hideForLabMember), function(field){
+        field['editability'] = [];
+      });
+      
+      var NewLabUserEditView = EditView.extend({
+        save_success: function(data, textStatus, jqXHR){
+          appModel.getModel('screensaveruser', self.model.key, 
+            function(model){
+              self.model = model;
+              self.change_to_tab('detail');
+            });
+          //urlPath = [self.model.resource.key,self.model.key];
+          //appModel.router.navigate(urlPath.join('/'),{trigger:true});
+        }
+      });
+      var view = new NewLabUserEditView({ 
+        model: newModel,
+        resource: resource,
+        uriStack: ['+add'],
+      });
+      this.$el.find('#tab_container-title').append('Add Lab Member...');
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      this.consumedStack = ['add_labmember'];
       self.reportUriStack([]);
     },
         
@@ -475,7 +535,7 @@ define([
       var title = [
          '<H4 id="title">',
          '<a href="#' + self.model.resource.key,
-         '/{username}" >{first_name} {last_name} ({username})</a>'];
+         '/{screensaver_user_id}" >{first_name} {last_name} ({screensaver_user_id})</a>'];
       title.push('</H4>');
       var titleDiv = $(Iccbl.formatString(title.join(''), this.model));
       if (appModel.hasGroup('readEverythingAdmin')){
@@ -490,7 +550,7 @@ define([
     setServiceActivities: function(delegateStack) {
       var self = this;
       var saResource = appModel.getResource('serviceactivity');
-      saResource.fields['serviced_username']['editability'] = [];
+      saResource.fields['serviced_user_id']['editability'] = [];
       saResource.fields['activity_class']['visibility'] = [];
       
       if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
@@ -551,7 +611,7 @@ define([
             var newUriStack = ['apilog','order','-date_time', 'search'];
             var search = {};
             search['ref_resource_name'] = 'serviceactivity';
-            search['uri__contains'] = 'screensaveruser/' + self.model.get('username');
+            search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
             newUriStack.push(appModel.createSearchString(search));
             var route = newUriStack.join('/');
             console.log('history route: ' + route);
@@ -596,10 +656,10 @@ define([
       var self = this;
       
       var saResource = Iccbl.appModel.getResource('serviceactivity');
-      saResource.fields['serviced_username']['editability'] = [];
+      saResource.fields['serviced_user_id']['editability'] = [];
       
       var defaults = {
-        serviced_username: self.model.get('username'),
+        serviced_user_id: self.model.get('screensaver_user_id'),
         serviced_user: self.model.get('name'),
         performed_by_username: appModel.getCurrentUser().username
       };
@@ -873,12 +933,12 @@ define([
           title: 'Update User Agreement'  });
       };
       
-      var lab_head_username = self.model.get('lab_head_username');
-      if (lab_head_username == self.model.get('username')){
+      var lab_head_id = self.model.get('lab_head_id');
+      if (lab_head_id == self.model.get('screensaver_user_id')){
         formFields.set('lab_head_dsl', '&lt;user is lab head&gt;');
         buildForm();
       }else{
-        appModel.getModel('screensaveruser',lab_head_username,
+        appModel.getModel('screensaveruser',lab_head_id,
           function(model){
             console.log('got model: ', model);
             if (type == 'sm'){
@@ -915,7 +975,7 @@ define([
         var newUriStack = ['apilog','order','-date_time', 'search'];
         var search = {};
         search['ref_resource_name'] = 'userchecklist';
-        search['key__contains'] = self.model.get('username') + '/';
+        search['key__contains'] = self.model.get('screensaver_user_id') + '/';
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
         console.log('history route: ' + route);

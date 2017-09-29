@@ -162,8 +162,8 @@ define([
       
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      fields['collaborator_usernames'].vocabulary = (
-          _.object(model.get('collaborator_usernames'),
+      fields['collaborator_ids'].vocabulary = (
+          _.object(model.get('collaborator_ids'),
             model.get('collaborator_names')));
 
       if (!_.isEmpty(model.get('primary_screen'))){
@@ -282,10 +282,10 @@ define([
           // until loaded
           
           var userOptions = appModel.getUserOptions();
-          fields['collaborator_usernames']['choices'] = userOptions;
-          fields['lead_screener_username']['choices'] = (
+          fields['collaborator_ids']['choices'] = userOptions;
+          fields['lead_screener_id']['choices'] = (
               [{ val: '', label: ''}].concat(userOptions));
-          fields['lab_head_username']['choices'] = (
+          fields['lab_head_id']['choices'] = (
               appModel.getPrincipalInvestigatorOptions() );
           fields['publishable_protocol_entered_by']['choices'] = (
               appModel.getAdminUserOptions() );
@@ -373,9 +373,9 @@ define([
               }
               
               var defaults = self.model.pick([
-                'screen_type', 'lab_head_username', 'lead_screener_username', 
+                'screen_type', 'lab_head_id', 'lead_screener_id', 
                 'data_sharing_level',
-                'collaborator_usernames', 'title', 'summary', 'species', 
+                'collaborator_ids', 'title', 'summary', 'species', 
                 'cell_lines', 'transfection_agent', 
                 'perturbagen_molar_concentration','perturbagen_ug_ml_concentration'
               ]);
@@ -1278,13 +1278,13 @@ define([
         {}, 
         _.pick(
           self.model.attributes, 
-          ['screen_type','project_id', 'project_phase', 'lab_head_username', 
-           'lab_name', 'lead_screener_username', 'lead_screener_name']),
+          ['screen_type','project_id', 'project_phase', 'lab_head_id', 
+           'lab_name', 'lead_screener_id', 'lead_screener_name']),
         {
           screen_facility_id: self.model.get('facility_id'),
           screen_title: self.model.get('title'),
           date_requested: Iccbl.getISODateString(new Date()),
-          requested_by_username: self.model.get('lead_screener_username')
+          requested_by_id: self.model.get('lead_screener_id')
       });
       
       if (self.model.get('screen_type') == 'small_molecule'){
@@ -1294,7 +1294,7 @@ define([
       
       var newModel = appModel.createNewModel('cherrypickrequest', defaults);
 
-      newModel.resource.fields['requested_by_username'].choices = 
+      newModel.resource.fields['requested_by_id'].choices = 
         appModel._get_screen_member_choices(self.model);
       newModel.resource.fields['volume_approved_by_username'].choices = 
         appModel.getAdminUserOptions();

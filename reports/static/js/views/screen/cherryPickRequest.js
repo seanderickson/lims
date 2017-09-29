@@ -228,7 +228,7 @@ define([
         var innerself = this;
         appModel.initializeAdminMode(function(){
           var fields = self.model.resource.fields;
-          fields['requested_by_username'].choices = 
+          fields['requested_by_id'].choices = 
             appModel._get_screen_member_choices(self.screen);
           // TODO: resource/cherrypickrequest/write
           appModel.getAdminUserOptions(function(options){
@@ -751,9 +751,9 @@ define([
                 validators: ['required'], 
                 template: appModel._field_template
               },
-              screened_by_username: {
+              screened_by_id: {
                 title: 'Screened By',
-                key: 'screened_by_username',
+                key: 'screened_by_id',
                 type: EditView.ChosenSelect,
                 editorClass: 'chosen-select',
                 options: appModel._get_screen_member_choices(self.screen),
@@ -815,7 +815,7 @@ define([
               var submitCollection = new SubmitCollection(selectedEntries);
               submitCollection.each(function(model){
                  model.set('screening_date', values['screening_date']);
-                 model.set('screened_by_username', values['screened_by_username']);
+                 model.set('screened_by_id', values['screened_by_id']);
               });
   
               var headers = {};

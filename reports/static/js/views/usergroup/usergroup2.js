@@ -166,7 +166,7 @@ define([
             var options = appModel.getUserGroupOptions();
             fields['super_groups']['choices'] = options;
             fields['sub_groups']['choices'] = options;
-            fields['users']['choices'] = appModel.getUserOptions();
+            fields['users']['choices'] = appModel.getUsernameOptions();
             fields['permissions']['choices'] = appModel.getPermissionsOptions();
             DetailLayout.prototype.showEdit.call(view,arguments);
           });  

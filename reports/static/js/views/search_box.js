@@ -213,9 +213,9 @@ define([
       var self = this;
       
       var schema1 = {};
-      schema1['username'] = {
+      schema1['user_id'] = {
         title: '',
-        key: 'username',
+        key: 'user_id',
         type: EditView.ChosenSelect,
         editorClass: 'chosen-select',
         placeholder: 'Find a User...',
@@ -261,13 +261,13 @@ define([
 
         appModel.requestPageChange({
           ok: function(){
-            var username = self.form1.getValue('username');
+            var user_id = self.form1.getValue('user_id');
             var screen_facility_id = self.form1.getValue('screen_facility_id');
             var library_short_name = self.form1.getValue('library_short_name');
-            if(username){
-              var route = 'screensaveruser/' + username;
-              self.form1.setValue('username',null);
-              self.form1.$el.find('[key="username"]')
+            if(user_id){
+              var route = 'screensaveruser/' + user_id;
+              self.form1.setValue('user_id',null);
+              self.form1.$el.find('[key="user_id"]')
                   .find('.chosen-select').trigger("chosen:updated");
               appModel.router.navigate(route, {trigger: true});
             }

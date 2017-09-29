@@ -88,9 +88,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var self = this;
 
       function getUser(callback){
-        if (!self.user && !_.isEmpty(self.model.get('serviced_username'))){
+        if (!self.user && !_.isEmpty(self.model.get('serviced_user_id'))){
           appModel.getModel(
-            'screensaveruser', self.model.get('serviced_username'), 
+            'screensaveruser', self.model.get('serviced_user_id'), 
             function(servicedUserModel){
               self.user = servicedUserModel;
               callback();
@@ -115,9 +115,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           }
           if (self.screen){
             
-            var serviced_username_field = resource.fields['serviced_username'];
-            serviced_username_field['edit_type'] = 'select';
-            serviced_username_field['choices'] = 
+            var serviced_user_field = resource.fields['serviced_user_id'];
+            serviced_user_field['edit_type'] = 'select';
+            serviced_user_field['choices'] = 
               appModel._get_screen_member_choices(self.screen);
           }
           view = DetailLayout.prototype.showEdit.apply(self,arguments);

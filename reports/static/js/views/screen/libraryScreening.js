@@ -707,7 +707,7 @@ define([
           var self = this;
           appModel.initializeAdminMode(function(){
             var fields = self.model.resource.fields;
-            fields['performed_by_username']['choices'] = 
+            fields['performed_by_user_id']['choices'] = 
               appModel._get_screen_member_choices(self.screen);
             
             fields['screen_facility_id']['editability'] = [];

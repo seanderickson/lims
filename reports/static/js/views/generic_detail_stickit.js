@@ -16,27 +16,26 @@ define([
 	  
 	  attributes: { id: 'generic-detail-stickit-container' },
 	  /**
-	   * args:
 	   * this.model - implicit as the first argument the constructor
-	   * schema - resource schema hash/object
-	   * schema.detailKeys() returns the metahash field keys 'detail' in 'visibility'
+     * @param resource - the API resource schema
+	   *   resource.detailKeys() returns the metahash field keys 'detail' in 'visibility'
 	   */
 	  initialize: function(args) {
 	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
-	    var schema = this.schema = args.schema || this.model.resource;
-      var detailKeys = this.detailKeys = args.detailKeys || schema.detailKeys(); 
+	    var resource = this.resource = args.resource || this.model.resource;
+      var detailKeys = this.detailKeys = args.detailKeys || resource.detailKeys(); 
       var adminKeys = this.adminKeys = self.model.resource.adminKeys();
       if (! appModel.hasGroup('readEverythingAdmin')) {
         detailKeys = this.detailKeys = _.difference(detailKeys, adminKeys);
       }
-      var groupedKeys = this.groupedKeys = schema.groupedKeys(this.detailKeys);
+      var groupedKeys = this.groupedKeys = resource.groupedKeys(this.detailKeys);
       
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       var buttons = this.buttons = args.buttons || ['download','history','back','edit'];
       if (! appModel.isEditable(self.model.resource.key)
-          || !appModel.hasPermission(schema.key, 'write')){
+          || !appModel.hasPermission(resource.key, 'write')){
         
           this.buttons = _.without(this.buttons,'edit');
           this.buttons = _.without(this.buttons,'delete');
@@ -50,8 +49,8 @@ define([
       
       // If "hideIfEmpty" then remove null attributes
       _.each(self.model.keys(), function(key){
-        if(! self.model.has(key) && _.has(schema.fields,key)){
-          var fi = schema.fields[key];
+        if(! self.model.has(key) && _.has(resource.fields,key)){
+          var fi = resource.fields[key];
           if (fi.display_options && fi.display_options.hideIfEmpty === true){
             self.detailKeys = _.without(detailKeys, key);
             _.each(self.groupedKeys, function(groupedKey){
@@ -73,12 +72,12 @@ define([
 	  createBindings: function() {
 	    var self = this;
 	    var keys = this.detailKeys;
-	    var schema = this.schema;
+	    var resource = this.resource;
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};
       
       _.each(keys, function(key) {
-        bindings['#'+key] = self.createBinding(key,schema.fields[key]);
+        bindings['#'+key] = self.createBinding(key,resource.fields[key]);
         schemaBindings['#title-'+key] = {
           observe: key,
           onGet: function(value) {
@@ -145,7 +144,8 @@ define([
           if(vocabulary[value].title){
             return vocabulary[value].title;
           }else if(_.isString(vocabulary[value])){
-            return _.escape(vocabulary[value]);//.replace(/</g,'&lt;');//.replace(/>/g,'&gt').replace(/&/g,'&amp');
+            return _.escape(vocabulary[value]);
+            //.replace(/</g,'&lt;');//.replace(/>/g,'&gt').replace(/&/g,'&amp');
           }else{
             console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key, fi);
             appModel.error('vocabulary misconfigured for: ' + 
@@ -192,9 +192,8 @@ define([
         if(_.isArray(value)){
           var vocabulary = getVocabulary();
           if(vocabulary){
-            finalValue = Iccbl.sortOnOrdinal(value,vocabulary);
-            finalValue = _.map(finalValue,function(value){ 
-              return getTitle(vocabulary,value);
+            finalValue = _.map(value,function(v){ 
+              return getTitle(vocabulary,v);
             });
           }
           finalValue = finalValue.join(', ');
@@ -299,9 +298,6 @@ define([
             _options.target = '_self';
           } 
           var vocabulary = getVocabulary();
-          if(vocabulary){
-            modelValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
-          }
           var output = [];
           _.each(modelValues, function(value){
             var text = _.result(vocabulary, value, value);
@@ -448,7 +444,7 @@ define([
 
     serialize: function() {
       return {
-        'buttons': _.chain(this.buttons), // TODO: buttons from the schema
+        'buttons': _.chain(this.buttons), // TODO: buttons from the resource
         'groupedKeys': _.chain(this.groupedKeys),
         'keys': _.chain(this.detailKeys), // TODO: groupedKeys replaces detailKeys
         'adminKeys': this.adminKeys

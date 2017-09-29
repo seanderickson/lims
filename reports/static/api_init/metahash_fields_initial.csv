@@ -24,3 +24,4 @@ regex,fields.field,22,fields.CharField
 id,fields.field,99,
 resource_uri,fields.field,99,
 alias,fields.field,99,
+field,fields.field,40,fields.CharField

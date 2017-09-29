@@ -1,6 +1,7 @@
 key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,required
 attached_file_id,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/attached_file_id/,,,0,,integer,link,"{ 'hrefTemplate': '#attachedfile/{attached_file_id}' }",,TRUE,"Internal attached file ID","Attached File ID",TRUE,,,[d],,
-username,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/username/,screensaver_user,,1,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}', 'hideIfEmpty': true }",,TRUE,Username,Username,TRUE,,,[d],,
+screensaver_user_id,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/screensaver_user_id/,screensaver_user,,1,,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}', 'hideIfEmpty': true }",,TRUE,"Screensaver User ID attached to","Screensaver User ID",TRUE,,,[d],,
+username,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/username/,screensaver_user,,1,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}', 'hideIfEmpty': true }",,TRUE,Username,Username,TRUE,,,,,
 user_fullname,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/user_fullname/,custom,,2,,string,,"{ 'hideIfEmpty': true }",,TRUE,"The full name of the user (last, first)",Name,TRUE,,,[d],,
 filename,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/filename/,,,3,,string,link,"{ 'hrefTemplate': '/db/attachedfile/{attached_file_id}/content' }",,TRUE,"File Name","File Name",TRUE,,,[l;d],,TRUE
 type,fields.attachedfile,/reports/api/v1/field/fields.attachedfile/type/,,,4,,string,,,select,TRUE,Type,Type,TRUE,,attachedfiletype.*,[l;d],,TRUE

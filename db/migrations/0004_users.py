@@ -38,83 +38,35 @@ def create_screensaver_users(apps, schema_editor):
     AuthUserClass = apps.get_model('auth','User')
     UserProfileClass = apps.get_model('reports','UserProfile')
     ScreensaverUser = apps.get_model('db', 'ScreensaverUser')
+    ScreensaverUserRole = apps.get_model('db', 'ScreensaverUserRole')
     auth_user_username_limit = 30 # field size limit for auth_user
     
-#     # delete this inconsistent user:
-#     #  866 |      14 | 2007-05-24 00:00:00-04 | Ernebjerg  | Morten    | morten_ernebjerg@hms.harvard.edu | 617-432-6392 |                 | using wellmate                           |          |                   | me44        | 70572885   |                            |                                      |               |             |                         |        |         | me44
-#     ssuid = 866
-#     try:
-#         obj = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         obj.delete()
-#     except Exception,e:
-#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-    
-#     # remove the second jgq10 erroneous account
-#     ssuid = 3166
+#     ssuid = 830
+#     # for ruchir shahs old acct
 #     try:
 #         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         username = '%s_%s' % (su.first_name, su.last_name)
+#         username = '%s_%s_old' % (su.first_name, su.last_name)
 #         username = default_converter(username)[:auth_user_username_limit]
 #         su.username = username
 #         su.save()
 #     except Exception,e:
 #         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-
-    ssuid = 830
-    # for ruchir shahs old acct
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s_old' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-    
-#     ssuid = 3945
-#     # for min-joon han dupl
+#     
+#     # sean johnston second account
+#     ssuid = 3758 
 #     try:
 #         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         username = '%s_%s' % (su.first_name, su.last_name)
+#         username = '%s_%s_old' % (su.first_name, su.last_name)
 #         username = default_converter(username)[:auth_user_username_limit]
 #         su.username = username
 #         su.save()
 #     except Exception,e:
 #         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
-#     ssuid = 129
-#     # for maria chmura
-#     try:
-#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         su.delete()
-#     except Exception,e:
-#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-    
-    # sean johnston second account
-    ssuid = 3758 
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s_old' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-    
-#     # to be deleted, duplicate account for Zecai      | Liang     | zl59 
-#     ssuid = 4505
-#     try:
-#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         username = '%s_%s_to_be_deleted' % (su.first_name, su.last_name)
-#         username = default_converter(username)[:auth_user_username_limit]
-#         su.username = username
-#         su.save()
-#     except Exception,e:
-#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
     
     for su in ScreensaverUser.objects.all():
         if su.screensaver_user_id == 4712:
-            logger.info('skip erroneous user account: %r', su)
+            logger.info('skip erroneous duplicate user account: %r', su)
             continue
         
         logger.info("processing %r, ecommons: %r, login_id: %r, email: %r, %s,%s",
@@ -122,40 +74,30 @@ def create_screensaver_users(apps, schema_editor):
             su.first_name, su.last_name)
         au = None
         up = None
-        if su.username is None:
-            username = None
-            if su.ecommons_id: 
-                # convert in case it has an error
-                username = default_converter(str(su.ecommons_id)) 
-                logger.info('username: converted ecommons: %r to %r', 
-                    su.ecommons_id, username)
-            elif su.login_id:
-                username = default_converter(str(su.login_id))
-                logger.info('username: converted login_id: %r to %r', 
-                    su.login_id, username)
-            elif su.first_name is not None and su.last_name is not None:
-                username = '%s_%s' % (su.first_name, su.last_name)
-                username = default_converter(username)[:auth_user_username_limit]
-                logger.info('username: converted first,last: %r,%r to %r', 
-                    su.first_name, su.last_name, username)
-#             elif su.email:
-#                 username = default_converter(su.email)[:auth_user_username_limit]
-#                 logger.info('username: converted email: %r to %r', 
-#                     su.email, username)
-            else:
-                # Not an active user account:
-                # An account may be created later 
-                logger.info(
-                     'Cannot create a login account, does not have id information: %r', 
-                    su.screensaver_user_id)
-                continue
+        username = None
+        if su.ecommons_id: 
+            # convert in case it has an error
+            username = default_converter(str(su.ecommons_id)) 
+            logger.info('username: converted ecommons: %r to %r', 
+                su.ecommons_id, username)
+        elif su.login_id:
+            username = default_converter(str(su.login_id))
+            logger.info('username: converted login_id: %r to %r', 
+                su.login_id, username)
+        else:
+            continue
         
-            su.username = username
+        su.username = username
         logger.info('save new su.username: %r, %r', su.screensaver_user_id, su.username)
         su.save()
         
-        username = su.username
-        # find or create the auth_user
+        has_login = ScreensaverUserRole.objects.all()\
+            .filter(screensaver_user_id=su.screensaver_user_id)\
+            .filter(screensaver_user_role='screensaverUser').exists()
+        
+        if has_login is not True:
+            continue
+        
         try:
             au = AuthUserClass.objects.get(username=username)
             logger.info('found auth_user: %s', username)
@@ -175,7 +117,6 @@ def create_screensaver_users(apps, schema_editor):
 
         au.save()
         
-        # find or create the userprofile
         try:
             up = UserProfileClass.objects.get(username=username)
             logger.info('found userprofile: %s', username)
@@ -203,14 +144,14 @@ def create_screensaver_users(apps, schema_editor):
             up.save()
 
         su.user = up
-        logger.info('su: (%r, %r, %r, %r, %r, %r), up: %r, au: %r, username: %r',
+        logger.debug('su: (%r, %r, %r, %r, %r, %r), up: %r, au: %r, username: %r',
             su.screensaver_user_id, su.ecommons_id, su.login_id, su.email, 
             su.first_name,su.last_name, up.id, au.id, au.username)
         su.save()
         
         logger.info('user created: %r', au.username)
         count += 1
-    logger.info('Converted %d users', count)
+    logger.info('Converted %d users with login access', count)
     
 def create_user_checklists(apps, schema_editor):
     '''
@@ -306,7 +247,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             _dict = dict(zip(sql_keys,row))
             ucl = None
             checklist_name = uc_name_map[_dict['ciname']]
-            key = '/'.join([_dict['su_username'],checklist_name])
+            key = '/'.join([_dict['suid'],checklist_name])
             previous_dict = ucl_hash.get(key, None)
             notified_previous_dict = notified_ucl_hash.get(key, None)
             logger.debug('previous_dict: %s:%s' % (key,previous_dict))

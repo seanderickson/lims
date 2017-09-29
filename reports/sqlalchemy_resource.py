@@ -786,7 +786,7 @@ class SqlAlchemyResource(IccblBaseResource):
             data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
         content_type = self.get_serializer().get_accept_content_type(request)
-        logger.info('_get_list_response_internal: %r: %r', 
+        logger.debug('_get_list_response_internal: %r: %r', 
             self._meta.resource_name,content_type)
         
         if user is None:

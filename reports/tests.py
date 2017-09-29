@@ -61,6 +61,7 @@ from unittest.util import safe_repr
 import urlparse
 
 import dateutil.parser
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.utils import ProgrammingError
@@ -88,6 +89,9 @@ import reports.utils.log_utils
 logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
+
+# Required for non-staff users to log in
+settings.IS_PRODUCTION_READY = True
 
 import reports; 
 try:
@@ -1127,8 +1131,7 @@ class IResourceTestCase(SimpleTestCase):
         
     def _create_resource(
             self,input_data,resource_uri,resource_test_uri, 
-            data_for_get= None, expect_fail=False, excludes=[]
-            ):
+            data_for_get= None, expect_fail=False, excludes=[]):
         
         _data_for_get = { 
             'limit': 0,
@@ -1254,8 +1257,7 @@ class IResourceTestCase(SimpleTestCase):
         logger.info('_patch test: %r, %r', resource_name, filename)
         data_for_get.setdefault('limit', 999 )
         data_for_get.setdefault('includes', '*' )
-        data_for_get.setdefault( 
-            HEADER_APILOG_COMMENT, 'patch_test: %s' % filename )
+        data_for_get[HEADER_APILOG_COMMENT] =  'patch_test: %s' % filename
         resource_uri = BASE_URI + '/' + resource_name
         
         logger.debug('===resource_uri: %r', resource_uri)
@@ -2457,15 +2459,15 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         self.test2_create_usergroup_with_permissions()
                         
         # assign password to the test user
-        username = 'sde4'
+        username = 'tester4'
         password = 'testpass1'
         user = User.objects.get(username=username)
         user.set_password(password)
         user.save()
 
         # 1 read test - user, user's group don't have the permission
-        resource_uri = BASE_URI + '/vocabulary'
-        test_resource_uri = '/'.join([BASE_URI, 'apilog'])
+        resource_uri = BASE_URI + '/usergroup'
+        test_resource_uri = '/'.join([BASE_URI, 'usergroup'])
         logger.info('get: %r', test_resource_uri)
         resp = self.api_client.get(
             test_resource_uri, format='json', data={}, 
@@ -2483,7 +2485,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             'super_groups': ['testGroup3'] },
             {
             'name': 'testGroup6',
-            'users': ['sde4'],
+            'users': [username],
             'super_groups': ['testGroup5'] },
         ]}
         
@@ -2544,6 +2546,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         '''
         logger.info('test6_usergroup_can_contain_group_users...')
         
+        username = 'sde4'
         self.test2_create_usergroup_with_permissions()
                         
         # now create a new group, with a previous group as a sub_group
@@ -2581,8 +2584,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         
         self.assertTrue(new_obj['all_users'])
         self.assertTrue(
-            'sde4' in new_obj['all_users'],
-            ('could not find user', 'sde4', new_obj['all_users']))
+            username in new_obj['all_users'],
+            ('could not find user', username, new_obj['all_users']))
         
         # TODO: could also test that testGroup2 now has super_group=testGroup5
         

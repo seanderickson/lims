@@ -869,7 +869,8 @@ class Migration(migrations.Migration):
                 ('date_publicly_available', models.DateTimeField(null=True)),
                 ('login_id', models.TextField(null=True)),
                 ('digested_password', models.TextField(null=True)),
-                ('comments', models.TextField()),
+                ('comments', models.TextField(null=True)),
+                ('gender', models.TextField(null=True)),
 #                 ('username', models.TextField(unique=True, null=True)),
             ],
             options={

@@ -954,7 +954,7 @@ class ScreensaverUser(models.Model):
         related_name='created_user')
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
-    comments = models.TextField()
+    comments = models.TextField(null=True)
 
     # FIXME - moved to reports.UserProfile
     phone = models.TextField()
@@ -966,13 +966,14 @@ class ScreensaverUser(models.Model):
     # TODO: make this unique
     ecommons_id = models.TextField(null=True)
 
-    # FIXME - moved to auth.User
+    # Note: mirrored in auth.User
     first_name = models.TextField()
     last_name = models.TextField()
     email = models.TextField(null=True)
+    gender = models.CharField(null=True, max_length=15)    
 
     # mirror the userprofile, auth_user username
-    # FIXME: user migration should convert this field to null=False
+    # FIXME: 20170926: not needed
     username = models.TextField(null=True, unique=True)
 
     # FIXME: legacy fields

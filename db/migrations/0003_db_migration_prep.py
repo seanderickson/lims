@@ -24,13 +24,14 @@ logger = logging.getLogger(__name__)
 #####
 
 vocab_replace_map = {
-    'ICCB-L/NSRB staff': 'ICCB-L staff'}
+    'ICCB-L/NSRB staff': 'ICCB-L staff',
+    }
 
 vocab_key_replace_map = {
     'iccb_l_staff': 'staff'
     }
 vocab_ignore_map = {
-    'user.classification': ['unassigned']}
+    'user.classification': ['unassigned',]}
 
 def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
     logger.info('create simple vocab: %s, %s', attr,scope)
@@ -115,6 +116,10 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'ServiceActivity').objects.all()],
                 # dep: 0020(provisional) -> moves to 0002: move classification column
                 ['classification', 'user.classification',
+                    apps.get_model('db', 'ScreensaverUser').objects.all()],
+                ['lab_head_appointment_category', 'lab_head.appointment_category',
+                    apps.get_model('db', 'ScreensaverUser').objects.all()],
+                ['lab_head_appointment_department', 'lab_head.appointment_department',
                     apps.get_model('db', 'ScreensaverUser').objects.all()],
                 ['value', 'cell_line',
                     apps.get_model('db', 'CellLine').objects.all()],
@@ -229,12 +234,6 @@ def create_attached_file_type_vocab(apps):
             
             (apps.get_model('db', 'AttachedFile').objects
                 .filter(attached_file_type=obj).update(type=key))
-        # For Jen Smith - 20160720
-        # /reports/api/v1/vocabulary/attachedfiletype.screen/material_transfer_agreement    material_transfer_agreement    attachedfiletype.screen    21    Material Transfer Agreement
-        # /reports/api/v1/vocabulary/attachedfiletype.screen/other    other    attachedfiletype.screen    22    Other
-        # /reports/api/v1/vocabulary/attachedfiletype.user/other    other    attachedfiletype.user    22    Other
-        # row = [resource_uri % (scope, key), key, scope, ordinal, title, is_retired] 
-        # vocab_writer.writerow(row)
 
     api_init_actions_file = os.path.join(
         lims.settings.PROJECT_ROOT, '..',

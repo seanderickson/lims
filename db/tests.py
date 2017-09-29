@@ -179,18 +179,19 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('input_data: %r', input_data)
         if data:
             input_data.update(data)
-        if 'lab_head_username' not in input_data:
+        if 'lab_head_id' not in input_data:
             lab_head = self.create_lab_head()
-            input_data['lab_head_username'] = lab_head['username']
-        if 'lead_screener_username' not in input_data:
+            input_data['lab_head_id'] = str(lab_head['screensaver_user_id'])
+        if 'lead_screener_id' not in input_data:
             lead_screener = self.create_screensaveruser()
-            input_data['lead_screener_username'] = lead_screener['username']
-        if 'collaborator_usernames' not in input_data:
+            input_data['lead_screener_id'] = str(lead_screener['screensaver_user_id'])
+        if 'collaborator_ids' not in input_data:
             collaborator1 = self.create_screensaveruser()
             collaborator2 = self.create_screensaveruser()
-            input_data['collaborator_usernames'] = [
-                collaborator1['username'], collaborator2['username']]
-
+            input_data['collaborator_ids'] = [
+                collaborator1['screensaver_user_id'], collaborator2['screensaver_user_id']]
+        input_data['collaborator_ids'] = [ 
+            str(x) for x in input_data['collaborator_ids']]
         if resource_uri is None:
             resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         
@@ -210,7 +211,9 @@ class DBResourceTestCase(IResourceTestCase):
             (resp.status_code, self.get_content(resp)))
     
         new_obj = self.deserialize(resp)
-        new_obj = new_obj[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]), 1)        
+        new_obj = new_obj[API_RESULT_DATA][0]
         new_obj = self.get_screen(new_obj['facility_id'])  
         logger.debug('screen created: %r', new_obj)
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
@@ -264,12 +267,15 @@ class DBResourceTestCase(IResourceTestCase):
     
     def create_lab_head(self, data=None):
 
-        lab_head = self.create_screensaveruser(data=data)
-
+        lab_head_data = self.create_screensaveruser(data=data)
+        logger.info('lab_head_data: %r', lab_head_data)
+        return self.update_user_to_lab_head(lab_head_data)
+    
+    def update_user_to_lab_head(self, lab_head_data):
         lab_affiliation = self.create_lab_affiliation()
         
         user_patch_data = {
-            'username': lab_head['username'],
+            'screensaver_user_id': lab_head_data['screensaver_user_id'],
             'classification': 'principal_investigator',
             'lab_affiliation_id': lab_affiliation['lab_affiliation_id']
             }
@@ -284,7 +290,9 @@ class DBResourceTestCase(IResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        new_lab_head = _data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        new_lab_head = _data[API_RESULT_DATA][0]
         logger.info('the new lab affiliation has been set: %r', new_lab_head)
         
         self.assertEqual(
@@ -318,7 +326,9 @@ class DBResourceTestCase(IResourceTestCase):
                 resp.status_code in [200,201,202], 
                 (resp.status_code, self.get_content(resp)))
             _data = self.deserialize(resp)
-            new_affiliation_category = _data[API_RESULT_DATA]
+            self.assertTrue(API_RESULT_DATA in _data)
+            self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+            new_affiliation_category = _data[API_RESULT_DATA][0]
         
             logger.info('created category: %r', new_affiliation_category)
             for key,val in lab_affiliation_category.items():
@@ -340,7 +350,9 @@ class DBResourceTestCase(IResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        new_lab_affiliation =_data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        new_lab_affiliation =_data[API_RESULT_DATA][0]
         logger.info('created lab: %r', new_lab_affiliation)
         
         self.assertTrue('lab_affiliation_id' in new_lab_affiliation, 
@@ -386,7 +398,6 @@ def setUpModule():
     if reinit_metahash or not keepdb:
         testContext = DBResourceTestCase(methodName='_bootstrap_init_files')
         testContext.setUp()
-#         testContext._bootstrap_init_files()
         testContext._bootstrap_init_files(reinit_pattern=reinit_pattern)
     else:
         print 'skip database metahash initialization when using keepdb'
@@ -401,7 +412,7 @@ def setUpModule():
             temp_test_case.get_from_server(resource_uri)
         logger.info('got admin user: %r', DBResourceTestCase.admin_user)
     except Exception:
-        logger.info('create an admin screensaveruser...')
+        logger.exception('create an admin screensaveruser...')
         temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
         DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
             'username': temp_test_case.username,
@@ -583,7 +594,9 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
-        patch_response = patch_response[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in patch_response)
+        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
+        patch_response = patch_response[API_RESULT_DATA][0]
         self.assertTrue('comment_array' in patch_response, 
             'patch_response: %r' % patch_response)
         comment_array = patch_response['comment_array']
@@ -603,7 +616,9 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
-        patch_response = patch_response[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in patch_response)
+        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
+        patch_response = patch_response[API_RESULT_DATA][0]
         self.assertTrue('comment_array' in patch_response, 
             'patch_response: %r' % patch_response)
         comment_array = patch_response['comment_array']
@@ -990,7 +1005,9 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         
-        new_copywell = patch_response[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in patch_response)
+        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
+        new_copywell = patch_response[API_RESULT_DATA][0]
         self.assertEqual(
             volume_adjustment, Decimal(new_copywell['consumed_volume']))
         self.assertEqual(
@@ -2855,7 +2872,6 @@ class ScreenResultResource(DBResourceTestCase):
         mutual_positive_types = ['confirmed_positive_indicator','partition_positive_indicator']
         resource_name = 'screenresult/' + self.screen1['facility_id']
         screen1_schema = self.get_schema(resource_name)
-        logger.info('screen 1 schema: %r', screen1_schema)
         resource_name = 'screenresult/' + self.screen2['facility_id']
         screen2_schema = self.get_schema(resource_name)
         mutual_positive_cols_screen_1 = [field['key'] 
@@ -3182,9 +3198,9 @@ class ScreenResource(DBResourceTestCase):
             'primary_screen': screen_item['facility_id'], 
             'title': screen_item['title']+'-follow up',
             'summary': screen_item['summary'],
-            'lead_screener_username': screen_item['lead_screener_username'],
-            'lab_head_username': screen_item['lab_head_username'],
-            'collaborator_usernames': screen_item['collaborator_usernames'],
+            'lead_screener_id': screen_item['lead_screener_id'],
+            'lab_head_id': screen_item['lab_head_id'],
+            'collaborator_ids': screen_item['collaborator_ids'],
             'data_sharing_level': screen_item['data_sharing_level'],
             'screen_type': screen_item['screen_type']
         }
@@ -3220,10 +3236,11 @@ class ScreenResource(DBResourceTestCase):
             'screen_type': 'small_molecule',
             'study_type': 'in_silico',
             'data_sharing_level': None,
-            'lab_head_username': lab_head['username'],
-            'lead_screener_username': lead_screener['username'],
-            'collaborator_usernames': [
-                collaborator1['username'], collaborator2['username']]
+            'lab_head_id': lab_head['screensaver_user_id'],
+            'lead_screener_id': lead_screener['screensaver_user_id'],
+            'collaborator_ids': [
+                str(collaborator1['screensaver_user_id']), 
+                str(collaborator2['screensaver_user_id']) ]
             
         }
         input_data.update(data)
@@ -3238,7 +3255,9 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
     
         new_obj = self.deserialize(resp)
-        new_obj = new_obj[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]), 1)        
+        new_obj = new_obj[API_RESULT_DATA][0]
         logger.info('created %r', new_obj)
 
         data_for_get = { 
@@ -3382,7 +3401,9 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         
-        new_copywell = patch_response[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in patch_response)
+        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
+        new_copywell = patch_response[API_RESULT_DATA][0]
         self.assertEqual(
             volume_adjustment, Decimal(new_copywell['consumed_volume']))
         self.assertEqual(
@@ -3407,15 +3428,12 @@ class ScreenResource(DBResourceTestCase):
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 2,
-            'performed_by_username': performed_by['username'],
+            'performed_by_user_id': performed_by['screensaver_user_id'],
             'volume_transferred_per_well_from_library_plates': volume_to_transfer,
             'volume_transferred_per_well_to_assay_plates': "0.000000300"
         }
         resource_uri = BASE_URI_DB + '/libraryscreening'
         resource_test_uri = BASE_URI_DB + '/libraryscreening'
-#         data_for_get = {
-#             'screen_facility_id__eq': screen['facility_id']
-#         }
 
         resp = self.api_client.post(
             resource_uri,format='json', 
@@ -3454,7 +3472,6 @@ class ScreenResource(DBResourceTestCase):
             v2 = library_screening_output[k]
             self.assertTrue(equivocal(v,v2),
                 'test key: %r:%r != %r' % (k, v, v2))
-#             self.assertEqual(v, library_screening_output[k])
         
         # 1.c check the copywell separately
         cw_resource_uri = '/'.join([
@@ -3473,11 +3490,9 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
         
-        new_copywell_data = new_obj[API_RESULT_DATA]
-        
-        self.assertEqual(len(new_copywell_data),1,
-            'copywell_data: %r' % new_copywell_data)
-        new_copywell_data = new_copywell_data[0]
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]), 1)        
+        new_copywell_data = new_obj[API_RESULT_DATA][0]
         expected_volume = (
             Decimal(copywell_input['volume']) - Decimal(volume_to_transfer))
         self.assertEqual(
@@ -3588,11 +3603,9 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
         
-        copywell_data = new_obj[API_RESULT_DATA]
-        
-        self.assertEqual(len(copywell_data),1,
-            'copywell_data: %r' % copywell_data)
-        deallocated_copywell_data = copywell_data[0]
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]), 1)        
+        deallocated_copywell_data = new_obj[API_RESULT_DATA][0]
         expected_volume = (
             Decimal(new_copywell_data['volume']) + Decimal(volume_to_transfer))
         self.assertEqual(
@@ -3758,7 +3771,7 @@ class ScreenResource(DBResourceTestCase):
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 2,
-            'performed_by_username': performed_by_user['username'],
+            'performed_by_user_id': performed_by_user['screensaver_user_id'],
             'volume_transferred_per_well_from_library_plates': 
                 '{0:.9f}'.format(valid_test_volume*2),
             'volume_transferred_per_well_to_assay_plates': 
@@ -4573,7 +4586,7 @@ class ScreenResource(DBResourceTestCase):
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
-            'performed_by_username': performed_by_user['username'],
+            'performed_by_user_id': performed_by_user['screensaver_user_id'],
         }
         
         resource_uri = BASE_URI_DB + '/serviceactivity'
@@ -4929,7 +4942,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         new_cpr_data = {
             'screen_facility_id': screen['facility_id'],
             # TODO: use a "CherryPickRequestAdmin"
-            'requested_by_username': screen['collaborator_usernames'][0], 
+            'requested_by_id': str(screen['collaborator_ids'][0]), 
             'date_requested': '2016-12-05',
             'transfer_volume_per_well_requested': '0.000000002', 
             'transfer_volume_per_well_approved': '0.000000002',
@@ -4955,7 +4968,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         
         _data = self.deserialize(resp)
-        new_cpr = _data[API_RESULT_DATA]
+        new_cpr = _data[API_RESULT_DATA][0]
         logger.info('new cpr: %r', new_cpr)
         
         self.assertTrue('cherry_pick_request_id' in new_cpr, 
@@ -4965,11 +4978,11 @@ class CherryPickRequestResource(DBResourceTestCase):
                 'transfer_volume_per_well_approved' ]:
                 self.assertEqual(
                     Decimal(new_cpr_data[key]), 
-                    Decimal(new_cpr[key]),
-                    'key not equal: %s' % key)
+                    Decimal(new_cpr[key]))
             else:
                 self.assertEqual(
-                    new_cpr_data[key], new_cpr[key], 'key not equal: %s' % key)
+                    str(new_cpr_data[key]), str(new_cpr[key]),
+                    '%s %r!=%r' % (key, new_cpr_data[key], new_cpr[key]))
         
         return new_cpr
         
@@ -5261,7 +5274,9 @@ class CherryPickRequestResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         
-        new_copywell = patch_response[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in patch_response)
+        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
+        new_copywell = patch_response[API_RESULT_DATA][0]
         logger.info('adjusted copywell: %r', new_copywell)
         self.assertEqual(
             Decimal(volume_adjustment), 
@@ -5395,7 +5410,6 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('cpr patch result: %r', _data)
         cpr_data = self.get_single_resource(resource_uri)
-#         cpr_data = _data[API_RESULT_DATA][0]
         logger.info('new cpr: %r', cpr_data)
         self.assertTrue(
             cpr_data['keep_source_plate_cherry_picks_together']==False)
@@ -6897,12 +6911,12 @@ class CherryPickRequestResource(DBResourceTestCase):
         cpaps = self._get_cpaps(cpr_id)
 
         # 1. Patch the plating_date        
-        collaborators = self.screen['collaborator_usernames']
-        collaborators.append(self.screen['lead_screener_username'])
+        collaborators = self.screen['collaborator_ids']
+        collaborators.append(self.screen['lead_screener_id'])
         plates = [cpap['plate_ordinal'] for cpap in cpaps]
         plating_data = {
             'plating_date': '2017-02-10',
-            'plated_by_username': collaborators[0],
+            'plated_by_id': collaborators[0],
             'comments': 'test comment for plating...' }
         logger.info('plating data: %r', plating_data)
         
@@ -6973,7 +6987,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         #2. Patch the screening date
         screening_data = {
             'screening_date': '2017-02-14',
-            'screened_by_username': collaborators[1],
+            'screened_by_id': collaborators[1],
             'comments': 'test comment for screening...' }
         logger.info('screening data: %r', screening_data)
         
@@ -7324,10 +7338,16 @@ class ScreensaverUserResource(DBResourceTestCase):
     def test0_create_user(self):
         
         logger.info('test0_create_user...')
-        self.user1 = self.create_screensaveruser({ 'username': 'st1'})
-        self.user2 = self.create_screensaveruser({ 'username': 'st2'})
+        self.user1 = self.create_screensaveruser({ 
+            'username': 'st1',
+            'is_active': False
+        })
+        self.user2 = self.create_screensaveruser({ 
+            'username': 'st2',
+            'is_active': False
+            })
         self.screening_user = self.create_screensaveruser(
-            { 'username': 'screening1'})
+            { 'username': 'screening1', 'is_active': True })
         
         self.assertTrue(self.screening_user['is_active'])
         
@@ -7340,11 +7360,13 @@ class ScreensaverUserResource(DBResourceTestCase):
         patch_obj = { 'objects': [
             {
                 'username': 'adminuser',
-                'is_superuser': True
+                'is_superuser': True,
+                'is_active': True
             },
             {
                 'username': 'adminuser2',
-                'is_superuser': True
+                'is_superuser': True,
+                'is_active': True
             },
         ]}
         resource_uri = BASE_URI_DB + '/screensaveruser'
@@ -7357,16 +7379,137 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
 
+    def test02_create_user_without_username(self):
     
-    def test02_change_username(self):
+        # 1. create a user with no username (first, last must be unique)
+        logger.info('test02_create_user_without_username...')
+        # create a non-login user with no username
+        user1_input_data = { 
+            'first_name': 'FirstNameUniq1',
+            'last_name': 'LastNameUniq1',    
+        }
+        resource_uri = BASE_URI_DB + '/screensaveruser'
         
-        # 20170601 - changing usernames is not allowed, must create a new user
-        # and migrate data to the new user
+        _data_for_get = { 
+            'limit': 0,
+            'includes': '*',
+            'HTTP_ACCEPT': 'application/json'
+        }
+        resp = self.api_client.post(
+            resource_uri, format='json', data=user1_input_data, 
+            authentication=self.get_credentials(), **_data_for_get)
+        logger.info('resp: %r', resp)
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
+            'more than one object returned for: %r, returns: %r'
+            % (resource_uri,new_obj))
+        user1_output_data = new_obj[API_RESULT_DATA][0]
+        logger.info('post create user (no username): %r', user1_output_data)
+        # 1.a verify that a user with no username has been created
+        self.assertIsNone(user1_output_data.get('username'))
+        self.assertFalse(user1_output_data.get('is_active'))
         
-        pass;
+        # 1.b verify that a second attempt fails with the same first/last name
+        resp = self.api_client.post(
+            resource_uri, format='json', data=user1_input_data, 
+            authentication=self.get_credentials(), **_data_for_get)
         
-    def test03_update_lab_affiliation_name(self): 
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(API_RESULT_ERROR in new_obj)
+        # NOTE: should be an error for a non-unique user
+        errors = new_obj[API_RESULT_ERROR]
+        self.assertTrue('first_name' in errors)
+        self.assertTrue('last_name' in errors)
+        logger.info('second attempt (expected) errors reported: %r', errors)
+        
+        # 1.c create another
+        user2_input_data = { 
+            'first_name': 'FirstNameUniq2',
+            'last_name': 'LastNameUniq2',    
+        }
+        resp = self.api_client.post(
+            resource_uri, format='json', data=user2_input_data, 
+            authentication=self.get_credentials(), **_data_for_get)
+        
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
+            'more than one object returned for: %r, returns: %r'
+            % (resource_uri,new_obj))
+        user2_output_data = new_obj[API_RESULT_DATA][0]
+        logger.info('post create user (no username): %r', user2_output_data)
 
+        # 2. set the user as a lab_head for users and screens
+        # 2.a convert the user to a lab head
+        
+        user1_data_as_lab_head = self.update_user_to_lab_head(user1_output_data)
+        self.assertEqual(
+            user1_data_as_lab_head['screensaver_user_id'], 
+            user1_output_data['screensaver_user_id'])
+        self.assertEqual(
+            user1_data_as_lab_head['classification'], 'principal_investigator')
+        
+        user2_data_patch2 = {
+            'screensaver_user_id': user2_output_data['screensaver_user_id'],
+            'lab_head_id': user1_data_as_lab_head['screensaver_user_id'] }
+        
+        resource_uri = BASE_URI_DB + '/screensaveruser/'
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user2_data_patch2, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        user2_output_data2 = _data[API_RESULT_DATA][0]
+        
+        self.assertTrue(
+            user2_output_data2['lab_head_id'], 
+            user1_data_as_lab_head['screensaver_user_id'])
+        
+        # 3. Set the username for user1
+        # - this creates a reports_userprofile for the user
+        user1_input_data2 = {
+            'username': 'usr1',
+        }
+        resource_uri = '/'.join([
+            BASE_URI_DB,'screensaveruser', str(user1_output_data['screensaver_user_id'])])
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user1_input_data2, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        user1_output_data2 = _data[API_RESULT_DATA][0]
+        
+        # 3.a Verify username is set
+        self.assertEqual(
+            user1_input_data2['username'], user1_output_data2['username'])
+
+    def test03_update_lab_affiliation_name(self): 
+        ''' 
+        Simple test for the updating the name of a Lab Affiliation
+        '''
+        
         lab_affiliation = self.create_lab_affiliation()
         
         lab_affiliation['name'] = 'Test new Lab Affiliation Name'
@@ -7380,7 +7523,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        new_lab_affiliation =_data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        new_lab_affiliation =_data[API_RESULT_DATA][0]
         logger.info('created lab: %r', new_lab_affiliation)
         
         for key,val in lab_affiliation.items():
@@ -7392,13 +7537,14 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         logger.info('1. Create the lab head...')
         lab_head = self.create_lab_head()
+        logger.info('lab_head created: %r', lab_head)
         self.assertTrue(
             'lab_affiliation_id' in lab_head, 
             'Lab head does not contain "lab_affiliation_id": %r' % lab_head)
         self.assertTrue(
-            'lab_head_username' in lab_head, 
-            'Lab head does not contain "lab_head_username": %r' % lab_head)
-        self.assertEqual(lab_head['username'], lab_head['lab_head_username'])
+            'lab_head_id' in lab_head, 
+            'Lab head does not contain "lab_head_id": %r' % lab_head)
+        self.assertEqual(lab_head['screensaver_user_id'], lab_head['lab_head_id'])
         self.assertEqual(lab_head['classification'], 'principal_investigator')
         
         logger.info('2. Assign a user to the Lab Head...')
@@ -7406,7 +7552,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         user = self.create_screensaveruser({ 'username': 'st1'})
         user_data = {
             'username': user['username'],
-            'lab_head_username': lab_head['username']
+            'lab_head_id': lab_head['screensaver_user_id']
             }
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         resp = self.api_client.patch(
@@ -7418,12 +7564,14 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        updated_user = _data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        updated_user = _data[API_RESULT_DATA][0]
 
         logger.info('User: %r (with lab head set)', updated_user)
         
         self.assertEqual(
-            updated_user['lab_head_username'], lab_head['username'])
+            updated_user['lab_head_id'], lab_head['screensaver_user_id'])
         self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
         self.assertEqual(
             updated_user['lab_affiliation_name'], 
@@ -7439,6 +7587,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'username': lab_head['username'],
             'classification': 'unassigned'
         }
+        logger.info('lab_head update: %r', lab_head_update)
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -7448,7 +7597,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        updated_lab_head = _data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        updated_lab_head = _data[API_RESULT_DATA][0]
 
         logger.info(
             'updated user; no longer lab_head: %r (classification unset)', 
@@ -7459,8 +7610,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             'updated_lab_head should not contain "lab_affiliation_id": %r' 
                 % updated_lab_head)
         self.assertEqual(
-            updated_lab_head['lab_head_username'],None, 
-            'updated_lab_head should not contain "lab_head_username": %r' 
+            updated_lab_head['lab_head_id'],None, 
+            'updated_lab_head should not contain "lab_head_id": %r' 
                 % updated_lab_head)
         self.assertEqual(updated_lab_head['lab_name'], None)
         self.assertEqual(
@@ -7474,7 +7625,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         updated_user = self.get_single_resource(
             resource_uri, {'username': user['username']})
         
-        self.assertEqual(updated_user['lab_head_username'], None)
+        self.assertEqual(updated_user['lab_head_id'], None)
         self.assertEqual(updated_user['lab_name'], None)
         self.assertEqual(
             updated_user['lab_affiliation_name'], None)
@@ -7498,7 +7649,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        updated_lab_head2 = _data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        updated_lab_head2 = _data[API_RESULT_DATA][0]
         logger.info(
             'updated_lab_head: %r (classification reset to pi)', 
             updated_lab_head2)
@@ -7509,7 +7662,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         lab_head_update3 = {
             'username': lab_head['username'],
-            'lab_member_usernames': [user['username'],]
+            'lab_member_ids': [str(user['screensaver_user_id']),]
         }
         resp = self.api_client.patch(
             resource_uri, 
@@ -7520,30 +7673,34 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         _data = self.deserialize(resp)
-        updated_lab_head3 = _data[API_RESULT_DATA]
+        self.assertTrue(API_RESULT_DATA in _data)
+        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
+        updated_lab_head3 = _data[API_RESULT_DATA][0]
         logger.info('updated_lab_head3: %r (add member)', updated_lab_head3)
         self.assertEqual(
-            updated_lab_head3['lab_member_usernames'], 
-            lab_head_update3['lab_member_usernames'])
+            updated_lab_head3['lab_member_ids'], 
+            lab_head_update3['lab_member_ids'])
         
         user_after_update3 = self.get_single_resource(
             resource_uri, {'username': user['username']})
-        
-        updated_user3 = _data[API_RESULT_DATA]
-        logger.info('User: %r (lab head set)', updated_user3)
+        logger.info('User: %r (lab head set)', user_after_update3)
         
         self.assertEqual(
-            updated_user3['lab_head_username'], lab_head['username'])
-        self.assertEqual(updated_user3['lab_name'], lab_head['lab_name'])
+            user_after_update3['lab_head_id'], lab_head['screensaver_user_id'])
+        self.assertEqual(user_after_update3['lab_name'], lab_head['lab_name'])
         self.assertEqual(
-            updated_user3['lab_affiliation_name'], 
+            user_after_update3['lab_affiliation_name'], 
             lab_head['lab_affiliation_name'])
         self.assertEqual(
-            updated_user3['lab_affiliation_category'], 
+            user_after_update3['lab_affiliation_category'], 
             lab_head['lab_affiliation_category'])
         
         
     def test1_patch_usergroups(self):
+        ''' 
+        Verify the reports.UserResource usergroup functionality from the 
+        ScreensaverUserResource
+        '''
         
         logger.info('test1_patch_usergroups...')
         self.test0_create_user();
@@ -7640,7 +7797,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # Note "get_credentials" returns the superuser
         admin_performing_operation = self.username
-        test_username = self.user1['username']
+        test_su_id = str(self.user1['screensaver_user_id'])
         
         # FIXME: create a "ChecklistAdmin" usergroup
         # Note admin assigned to the checklist operation
@@ -7653,14 +7810,14 @@ class ScreensaverUserResource(DBResourceTestCase):
             'name': "added_to_iccb_l_users_email_list",
             'is_checked': True,
             'date_effective': "2015-09-02",
-            'username': test_username
+            'screensaver_user_id': test_su_id
         }
         
         test_comment = 'Some test comment 123 xyz'
         
         header_data = { HEADER_APILOG_COMMENT: test_comment}
         
-        patch_uri = '/'.join([BASE_URI_DB,'userchecklist',test_username])
+        patch_uri = '/'.join([BASE_URI_DB,'userchecklist',test_su_id])
         resp = self.api_client.patch(
             patch_uri, 
             format = 'json', 
@@ -7673,7 +7830,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         checklist_uri = '/'.join([
-            BASE_URI_DB,'userchecklist',test_username, checklist_patch['name']])
+            BASE_URI_DB,'userchecklist',test_su_id, checklist_patch['name']])
         resp = self.api_client.get(
             checklist_uri,
             format='json', 
@@ -7693,12 +7850,12 @@ class ScreensaverUserResource(DBResourceTestCase):
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'userchecklist', 
-            'key__contains': test_username + '/' + new_obj['name']
+            'key__contains': test_su_id + '/' + new_obj['name']
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
-        self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        self.assertEqual(
+            len(apilogs),1, 'wrong number of apilogs found: %r' % apilogs)
         apilog = apilogs[0]
         logger.info('log: %r', apilog)
         self.assertTrue(apilog['comment']==test_comment,
@@ -7716,7 +7873,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'name': "added_to_iccb_l_users_email_list",
             'is_checked': False,
             'date_effective': "2016-09-02",
-            'username': test_username
+            'screensaver_user_id': test_su_id
         }
         
         test_comment = 'Some test comment 123 xyz'
@@ -7753,7 +7910,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'userchecklist', 
-            'key__contains': test_username + '/' + new_obj['name']
+            'key__contains': test_su_id + '/' + new_obj['name']
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
@@ -7778,7 +7935,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.test0_create_user();
 
         # Test using embedded "contents" field               
-        test_username = self.user1['username']
+        test_su_id = str(self.user1['screensaver_user_id'])
         # FIXME: create an admin with ScreensaverUser/write permission
         attached_file_admin = self.test_admin_user
         
@@ -7792,7 +7949,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         content_type = MULTIPART_CONTENT
         resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
+            BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_su_id
         
         authentication=self.get_credentials()
         kwargs = {}
@@ -7846,7 +8003,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.test0_create_user();
 
         # Test using embedded "contents" field               
-        test_username = self.user1['username']
+        test_su_id = str(self.user1['screensaver_user_id'])
         admin_username = self.test_admin_user['username']
         attachedfile_item_post = {
             'created_by_username': admin_username, 
@@ -7855,7 +8012,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         content_type = MULTIPART_CONTENT
         resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
+            BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_su_id
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
@@ -7920,39 +8077,22 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         logger.info('test4_user_agreement_updator...')
         self.test0_create_user();
-        group_patch = { 'objects': [
-            { 'name': 'smDsl1MutualScreens' },
-            { 'name': 'smDsl2MutualPositives' },
-            { 'name': 'smDsl3SharedScreens' },
-            { 'name': 'rnaiDsl1MutualScreens' },
-            { 'name': 'rnaiDsl2MutualPositives' },
-            { 'name': 'rnaiDsl3SharedScreens' },
-        ]}
-        resource_uri = BASE_REPORTS_URI + '/usergroup/'
-        resp = self.api_client.put(
-            resource_uri, 
-            format='json', data=group_patch, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        
-        test_username = self.user1['username']
+        test_su_id = str(self.user1['screensaver_user_id'])
         # FIXME: create an admin with ScreensaverUser/write priv
         admin_username = self.test_admin_user['username']
-        first_usergroup_to_add = 'smDsl2MutualPositives'
-        # TEST 1 - Try adding a SM dsl
+        
+        # 1. small molecule data sharing
         
         useragreement_item_post = {
             'admin_user': admin_username,
             'created_by_username': admin_username, 
-            'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
-            'usergroup': first_usergroup_to_add
+            'type': 'sm',
+            'data_sharing_level': 2 
             }
         test_comment = 'test update comment for user agreement'
         content_type = MULTIPART_CONTENT
         resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         
         authentication=self.get_credentials()
         kwargs = { 'limit': 0, 'includes': ['*'] }
@@ -7968,7 +8108,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('POST user agreement to the server...')
             useragreement_item_post['attached_file'] = input_file
             
-#             django_test_client = self.api_client.client
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
@@ -7981,11 +8120,11 @@ class ScreensaverUserResource(DBResourceTestCase):
                 (resp.status_code))
         
         # Tests: 
-        # - check that the user agreement is an attached file to the user
-        
+        # 1.a check that the user agreement is an attached file to the user
+        attached_type = '2010_iccb_l_nsrb_small_molecule_user_agreement'
         data_for_get = { 
             'limit': 0, 'includes': ['*'],
-            'type__eq': useragreement_item_post['type']
+            'type__eq': attached_type
         }
         resp = self.api_client.get(
             resource_uri,
@@ -7995,6 +8134,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         logger.info('new obj: %s ' % new_obj)
+        self.assertTrue(API_RESULT_DATA in new_obj)
         af = new_obj[API_RESULT_DATA][0]
         uri = '/db/attachedfile/%s/content' % af['attached_file_id']
         try:
@@ -8014,21 +8154,22 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.exception('no file found at: %r', uri)
             raise
         
-        # - check that the data sharing level group is assigned to the user
+        # 1.b check that the data sharing level for the type is assigned
         
         resource_uri = BASE_URI_DB + '/screensaveruser'
         resource_uri = '/'.join([resource_uri,self.user1['username']])
         user_data = self.get_single_resource(resource_uri)
-        logger.info('new user: %r', user_data)
-        self.assertTrue('usergroups' in user_data)
-        self.assertTrue(first_usergroup_to_add in user_data['usergroups'], 
-            'usergroups returned: %r does not contain %r' 
-            % (user_data['usergroups'], first_usergroup_to_add))
+        
+        self.assertEqual(
+            user_data['sm_data_sharing_level'],
+            useragreement_item_post['data_sharing_level'])
+        self.assertEqual(
+            user_data['is_active'], True)
 
-        # - check that a checklist item has been created for the user agreement
+        # 1.c check that a checklist item has been created for the user agreement
         
         resource_uri = BASE_URI_DB + '/userchecklist'
-        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        resource_uri = '/'.join([resource_uri,test_su_id])
         checklist_items = self.get_list_resource(
             resource_uri, {'status__eq': 'activated'})
         logger.info('checklist_items: %r', checklist_items)
@@ -8038,38 +8179,37 @@ class ScreensaverUserResource(DBResourceTestCase):
             'wrong checklist item - expected name: %r, %r'
             %(val, checklist_items[0]))
         
-        # - check logs
+        # 1.d check logs
         
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'screensaveruser', 
-            'key': self.user1['username'],
-            'diff_keys__contains': 'data_sharing_level' 
+            'key': test_su_id,
+            'diff_keys__contains': 'sm_data_sharing_level' 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
-        self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        self.assertEqual(
+            len(apilogs),1, 'wrong apilog count: %r' % apilogs)
         apilog = apilogs[0]
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
-        self.assertTrue('data_sharing_level' in apilog['diff_keys'])
-        self.assertTrue(first_usergroup_to_add in apilog['diffs'])
+        self.assertTrue('sm_data_sharing_level' in apilog['diff_keys'])
 
-        # TEST 2 - Try adding an RNAi dsl
-        second_usergroup_to_add = 'rnaiDsl1MutualScreens'
+        # 2 rnai data sharing
+        
         useragreement_item_post = {
             'admin_user': admin_username,
             'created_by_username': admin_username, 
-            'type': 'iccb_l_nsrb_rnai_user_agreement', 
-            'usergroup': second_usergroup_to_add
+            'type': 'rna',
+            'data_sharing_level': 1 
             }
         test_comment = 'test update rna comment for user agreement'
         content_type = MULTIPART_CONTENT
         resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         
         authentication=self.get_credentials()
         kwargs = { 'limit': 0, 'includes': ['*'] }
@@ -8085,7 +8225,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('PUT user agreement to the server...')
             useragreement_item_post['attached_file'] = input_file
             
-#             django_test_client = self.api_client.client
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
@@ -8097,11 +8236,12 @@ class ScreensaverUserResource(DBResourceTestCase):
                 resp.status_code in [201], 
                 (resp.status_code))
         
-        # TEST 2 - check that the user agreement is an attached file to the user
-        
+        # 2.a check that the user agreement is an attached file to the user
+        attached_type = 'iccb_l_nsrb_rnai_user_agreement'
         data_for_get = { 
             'limit': 0, 'includes': ['*'], 
-            'type__eq': useragreement_item_post['type']}
+            'type__eq': attached_type 
+        }
         resp = self.api_client.get(
             resource_uri,
             authentication=self.get_credentials(), data=data_for_get )
@@ -8109,10 +8249,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('new obj: %s ' % new_obj)
-        self.assertTrue(
-            len(new_obj[API_RESULT_DATA])==1, 
-            'too many UAs returned: %r' % new_obj)
+        self.assertEqual(
+            len(new_obj[API_RESULT_DATA]), 1, 
+            'wrong count of user agreements returned: %r' % new_obj)
         
         af = new_obj[API_RESULT_DATA][0]
         uri = '/db/attachedfile/%s/content' % af['attached_file_id']
@@ -8133,80 +8272,74 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.exception('no file found at: %r', uri)
             raise
 
-        # TEST 2 - check that the data sharing level group is assigned to user
+        # 2.b check that the data sharing level for the type is assigned
         
         resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        resource_uri = '/'.join([resource_uri,test_su_id])
         user_data = self.get_single_resource(resource_uri)
-        logger.info('user: %r', user_data)
-        self.assertTrue('usergroups' in user_data)
-        self.assertTrue(first_usergroup_to_add in user_data['usergroups'], 
-            'usergroups returned: %r does not contain %r' 
-            % (user_data['usergroups'], first_usergroup_to_add))
+        
+        self.assertEqual(
+            user_data['rnai_data_sharing_level'],
+            useragreement_item_post['data_sharing_level'])
+        self.assertEqual(
+            user_data['is_active'], True)
 
-        self.assertTrue(second_usergroup_to_add in user_data['usergroups'], 
-            'usergroups returned: %r does not contain %r' 
-            % (user_data['usergroups'], second_usergroup_to_add))
-
-        # TEST 2 - check that checklist item has been created for user agreement
+        # 2.c check that checklist item has been created for user agreement
         
         resource_uri = BASE_URI_DB + '/userchecklist'
-        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        resource_uri = '/'.join([resource_uri,test_su_id])
         checklist_items = self.get_list_resource(resource_uri, 
             {'status__eq': 'activated',
              'name__eq': u'current_rnai_user_agreement_active'})
-        logger.info('checklist_items: %r', checklist_items)
-        self.assertTrue(len(checklist_items)==1)
+        self.assertEqual(len(checklist_items),1)
         val = 'current_rnai_user_agreement_active'
         self.assertTrue(checklist_items[0]['name'] == val,
             'wrong checklist item - expected name: %r, %r'
             %(val, checklist_items[0]))
         
-        # TEST 2 - check logs
+        # 2.d check logs
         
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'screensaveruser', 
-            'key': self.user1['username'],
-            'diff_keys__contains': 'data_sharing_level',
+            'key': test_su_id,
+            'diff_keys__contains': 'rnai_data_sharing_level',
             'order_by': 'date_created' 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
-        self.assertTrue(
-            len(apilogs) == 2, 'too many apilogs found: %r' % apilogs)
-        apilog = apilogs[1]
+        self.assertEqual(
+            len(apilogs),1, 'wrong apilogs count: %r' % apilogs)
+        apilog = apilogs[0]
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
-        self.assertTrue('data_sharing_level' in apilog['diff_keys'])
-        self.assertTrue(first_usergroup_to_add in apilog['diffs'])
-        self.assertTrue(second_usergroup_to_add in apilog['diffs'])
+        self.assertTrue('rnai_data_sharing_level' in apilog['diff_keys'])
     
-    # TODO: test remove dsl: create a "UserAgreementResource.delete_detail"
-    
-    
+    # TODO: test expire dsl: create a "UserAgreementResource.expire"
+        
     def test5_service_activity(self):
         
         logger.info('test5_service_activity...')
         self.test0_create_user();
         
-        test_username = self.user1['username']
+        serviced_user = self.user1
         
-        # FIXME: performed_by_username belongs to ServiceActivityPerformers group
+        # FIXME: make sure performed_by_username belongs to 
+        # ServiceActivityPerformers group
         performed_by_user = self.create_screensaveruser(
             { 'username': 'service_activity_performer'})
         performed_by_user2 = self.create_screensaveruser(
             { 'username': 'service_activity_performer2'})
 
         service_activity_post = {
-            'serviced_username': test_username,
+            'serviced_user_id': serviced_user['screensaver_user_id'],
             'type': "image_analysis",
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
-            'performed_by_username': performed_by_user['username'],
+            'performed_by_user_id': performed_by_user['screensaver_user_id'],
         }
 
         # 1. Create        
@@ -8251,16 +8384,15 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['api_action'] == 'CREATE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
+            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
                 .format(**new_obj))
         
         # TODO: test with a serviced screen
         
-        
         # 2. patch
         service_activity_post = {
             'activity_id': new_obj['activity_id'],
-            'performed_by_username': performed_by_user2['username']}
+            'performed_by_user_id': performed_by_user2['screensaver_user_id']}
 
         resource_uri = BASE_URI_DB + '/serviceactivity'
         resp = self.api_client.patch(
@@ -8294,18 +8426,18 @@ class ScreensaverUserResource(DBResourceTestCase):
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'serviceactivity',
-            'diff_keys': 'performed_by_username' 
+            'diff_keys': 'performed_by_user_id' 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
-        self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        self.assertEqual(len(apilogs),1, 
+            'wrong number of apilogs found: %r' % apilogs)
         apilog = apilogs[0]
         logger.info('serviceactivity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'PATCH')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
+            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
                 .format(**new_obj))
         
         # 3 delete serviceactivity
@@ -8341,7 +8473,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['api_action'] == 'DELETE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_username}/serviceactivity/{activity_id}'
+            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
                 .format(**new_obj))
 
 
@@ -8405,7 +8537,6 @@ class DataSharingLevel(DBResourceTestCase):
                 for screen in reference_screens}
         logger.info('starting reference screens: %r', reference_screens.keys())
         user_data = {
-            'facility_usage_roles': ['small_molecule_screener',]
         }
         for dsl in range(1,4):
             for lab in ['a','b']:
@@ -8413,30 +8544,33 @@ class DataSharingLevel(DBResourceTestCase):
                     user_data,
                     sm_data_sharing_level=dsl)
                 lab_head_username = 'lab_head%d%s' % (dsl,lab)
-                if lab_head_username not in reference_users:
+                lab_head = reference_users.get(lab_head_username, None)
+                if lab_head is None:
                     _data = dict(_data,username=lab_head_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    user = set_user_password(self.create_lab_head(_data))
+                    lab_head = set_user_password(self.create_lab_head(_data))
                 
-                _data = dict(_data,lab_head_username=lab_head_username)
+                _data = dict(_data,lab_head_id=lab_head['screensaver_user_id'])
                 lead_screener_username = 'lead_screener%d%s' % (dsl,lab)
-                if lead_screener_username not in reference_users:
+                lead_screener = reference_users.get(lead_screener_username, None)
+                if lead_screener is None:
                     _data = dict(_data, username=lead_screener_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    user = set_user_password(self.create_screensaveruser(_data))
+                    lead_screener = set_user_password(self.create_screensaveruser(_data))
                     
                 collaborator_username = 'collaborator%d%s' % (dsl,lab)
-                if collaborator_username not in reference_users:
+                collaborator = reference_users.get(collaborator_username, None)
+                if collaborator is None:
                     _data = dict(_data, username=collaborator_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    user = set_user_password(self.create_screensaveruser(_data))
+                    collaborator = set_user_password(self.create_screensaveruser(_data))
                 
-                # Create a screens for each lab, by level
+                # Create screens for each lab, by level
                 screen_data = {
                     'screen_type': 'small_molecule',
-                    'lab_head_username': lab_head_username,
-                    'lead_screener_username': lead_screener_username,
-                    'collaborator_usernames': [collaborator_username,],
+                    'lab_head_id': lab_head['screensaver_user_id'],
+                    'lead_screener_id': lead_screener['screensaver_user_id'],
+                    'collaborator_ids': [collaborator['screensaver_user_id'],],
                 }
                 
                 for screen_dsl in range(0,4):
@@ -8451,9 +8585,10 @@ class DataSharingLevel(DBResourceTestCase):
                             data=_data, uri_params=['override=true',])
 
         reference_users = self.get_list_resource(BASE_URI + '/screensaveruser') 
+        reference_users_by_id = {
+            user['screensaver_user_id']: user for user in reference_users}
         reference_users = { 
-            user['username']: user 
-                for user in reference_users}
+            user['username']: user for user in reference_users}
         self.reference_users = reference_users
         logger.info('reference_users: %r', reference_users.keys())
         self.users_by_level = defaultdict(set)
@@ -8469,7 +8604,8 @@ class DataSharingLevel(DBResourceTestCase):
         logger.info('reference_screens: %r', reference_screens.keys())
         screens_by_lead = defaultdict(set)
         for facility_id,screen in reference_screens.items():
-            screens_by_lead[screen['lead_screener_username']].add(facility_id)
+            lead_screener = reference_users_by_id[screen['lead_screener_id']]
+            screens_by_lead[lead_screener['username']].add(facility_id)
         # organize by level
         self.screens_by_lead = {}
         for username, screens in screens_by_lead.items():
@@ -8666,7 +8802,6 @@ class DataSharingLevel(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200, 204], resp.status_code)
 
-        
         output_data = self.get_screenresult(screen_facility_id)
         
         ScreenResultSerializerTest.validate(self, input_data, output_data)
@@ -9160,11 +9295,6 @@ class DataSharingLevel(DBResourceTestCase):
             # Must check the schema first, and build the expected fields from that
             
             sr_schema_resource = '/'.join(['screenresult',screen_facility_id])
-            
-#             reference_screen_result_schema = self.get_schema(sr_schema_resource)
-#             reported_screen_result_schema = self.get_schema(
-#                 sr_schema_resource, user['username'] )
-#             # TODO: check that these are the same....
             
             # grab the "maximal" screen result: all available columns from all screens added
             dc_ids = reference_datacolumns.keys()

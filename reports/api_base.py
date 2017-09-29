@@ -454,12 +454,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         
     def build_response(self, request, data, response_class=HttpResponse, 
                        format=None, **kwargs):
-        
         if format is not None:
             content_type = self.get_serializer().get_content_type_for_format(format)
         else:
             content_type = self.get_serializer().get_accept_content_type(request)
             
+        logger.debug('build response for data: %r, content type: %r', data, content_type)
         logger.debug('build_response: %r, serializing...', content_type)
         serialized = self.serialize(data, content_type)
         logger.debug('serialized: %d', len(data))
@@ -484,6 +484,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 'attachment; filename=%s' % filename
         if 'status_code' in kwargs:
             response.status_code = kwargs['status_code']
+            
+        logger.debug('response: %r: %r', response, response.status_code)
         return response 
     
     def build_error_response(
@@ -568,6 +570,9 @@ class IccblSessionAuthentication(Authentication):
             csrf_token = _sanitize_token(
                     request.COOKIES[settings.CSRF_COOKIE_NAME])
         except KeyError:
+            logger.error('Check that basic auth is working; '
+                'requires user.is_active flag be set')
+            logger.error('cookies: %r', request.COOKIES)
             logger.error('reject: NO CSRF cookie: %r', settings.CSRF_COOKIE_NAME)
             return False
 

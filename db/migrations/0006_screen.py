@@ -39,7 +39,7 @@ def create_log_time(key,input_date):
 
 def make_log(
     apps, input_date, ref_resource_name, key, 
-    diffs=None, comment=None, username=None):
+    diffs=None, comment=None, user_id=None, username=None):
 
     apilog_model = apps.get_model('reports','apilog')
     collision_counter=0
@@ -49,7 +49,7 @@ def make_log(
     
     log = ApiLog()
     log.date_time = create_log_time(key,input_date) 
-    log.user_id = 1
+    log.user_id = user_id or 1
     log.username = username
     log.ref_resource_name = ref_resource_name
     log.key = key
@@ -109,6 +109,7 @@ def migrate_pin_transfer_approval(apps, schema_editor):
             activity.date_of_activity, 'screen', 
             s.facility_id, 
             diffs=diffs, comment=activity.comments,
+            user_id=activity.created_by.screensaver_user_id,
             username=activity.created_by.username)
         count = count + 1
     

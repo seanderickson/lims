@@ -1,5 +1,5 @@
 key,scope,table,field,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource
-activity_id,fields.cherrypickscreening,activity,,/reports/api/v1/field/fields.cherrypickscreening/activity_id/,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}/serviceactivity/{activity_id}' }",,,
+activity_id,fields.cherrypickscreening,activity,,/reports/api/v1/field/fields.cherrypickscreening/activity_id/,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}' }",,,
 assay_protocol,fields.cherrypickscreening,screening,,/reports/api/v1/field/fields.cherrypickscreening/assay_protocol/,3,,TRUE,"Assay protocol",Protocol,TRUE,,,[d],[c;u],string,,,textarea,,
 number_of_replicates,fields.cherrypickscreening,screening,,/reports/api/v1/field/fields.cherrypickscreening/number_of_replicates/,4,,TRUE,"Number of replicates",replicates,TRUE,,,[d],[c],integer,,,,,
 assay_protocol_type,fields.cherrypickscreening,screening,,/reports/api/v1/field/fields.cherrypickscreening/assay_protocol_type/,5,,TRUE,"Protocol type","Protocol Type",TRUE,,assayprotocol.type,[l;d],[c;u],string,,,,,

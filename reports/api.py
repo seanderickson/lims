@@ -305,7 +305,8 @@ class AllAuthenticatedReadAuthorization(UserGroupAuthorization):
         if permission_type == 'read':
             if user is None:
                 return False
-            logger.info('grant read access: %r: %r', user, self.resource_name)
+            if DEBUG_AUTHORIZATION:
+                logger.info('grant read access: %r: %r', user, self.resource_name)
             return True
         return super(AllAuthenticatedReadAuthorization,self)\
             ._is_resource_authorized(user, permission_type)
@@ -563,18 +564,19 @@ class ApiResource(SqlAlchemyResource):
         
         id_attribute = schema['id_attribute']
         fields = schema['fields']
-
+        logger.debug('get_id: %r, %r', self._meta.resource_name, id_attribute)
         kwargs_for_id = {}
         not_found = []
         for id_field in id_attribute:
-            logger.debug('id_field: %r', id_field)
-            if deserialized and deserialized.get(id_field,None):
-                kwargs_for_id[id_field] = parse_val(
-                    deserialized.get(
-                        id_field,None), id_field,fields[id_field]['data_type']) 
-            elif kwargs and kwargs.get(id_field,None):
+            # NOTE: order of priority is kwargs, deserialized[resource_uri], deserialized
+            # kwargs are checked first in case deserialized data represents a PATCH
+            if kwargs and kwargs.get(id_field,None):
                 kwargs_for_id[id_field] = parse_val(
                     kwargs.get(
+                        id_field,None), id_field,fields[id_field]['data_type']) 
+            elif deserialized and deserialized.get(id_field,None):
+                kwargs_for_id[id_field] = parse_val(
+                    deserialized.get(
                         id_field,None), id_field,fields[id_field]['data_type']) 
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(
@@ -592,14 +594,16 @@ class ApiResource(SqlAlchemyResource):
         return kwargs_for_id
 
     def find_key_from_resource_uri(self,resource_uri, schema=None):
-        logger.debug('find_key_from_resource_uri: %r', resource_uri)
         if schema is None:
-            logger.debug('create schema for find_key_from_resource_uri')
+            logger.info('create schema for find_key_from_resource_uri: %r', resource_uri)
             schema = self.build_schema()
         id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
+        logger.debug(
+            'find_key_from_resource_uri: %r, resource_name: %r, id_attribute: %r', 
+            resource_uri, resource_name, id_attribute)
          
-        index = resource_uri.rfind(resource_name)
+        index = resource_uri.find(resource_name)
         if index > -1:
             index = index + len(resource_name)
             keystring = resource_uri[index:]
@@ -822,7 +826,7 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-            
+        logger.info('resource: %r, schema.key: %r', self._meta.resource_name, schema['key'])
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
 
@@ -1050,7 +1054,7 @@ class ApiResource(SqlAlchemyResource):
         
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
-        
+    
     def build_post_detail(self, request, deserialized, log=None, **kwargs):
         ''' Inner post detail method, returns native dict '''
 
@@ -1082,7 +1086,7 @@ class ApiResource(SqlAlchemyResource):
             original_data = None
         log.save()
         
-        logger.debug('patch_obj: %r, %r', deserialized, log)
+        logger.info('patch_obj: %r, %r', deserialized, log)
         logger.debug('patch_obj: %r', kwargs)
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         if API_RESULT_OBJ in patch_result:
@@ -1101,7 +1105,9 @@ class ApiResource(SqlAlchemyResource):
                     logger.warn('id field: %r not found in new obj: %r', id_field, obj)
 
         # get new state, for logging
+        logger.debug('get new state, for logging, kwargs: %r', kwargs_for_log)
         new_data = self._get_detail_response_internal(**kwargs_for_log)
+        logger.debug('new post data: %r', new_data)
         if not new_data:
             raise BadRequest(
                 'no data found for the new obj created by post: %r', obj)
@@ -1111,10 +1117,9 @@ class ApiResource(SqlAlchemyResource):
         log.save()
         
         # 20170109 - return complex data
-        new_data = { API_RESULT_DATA: new_data, }
+        new_data = { API_RESULT_DATA: [new_data,] }
         if API_RESULT_META in patch_result:
             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
-        logger.debug('new_data: %r', new_data)
         return new_data
     
     @write_authorization
@@ -1176,15 +1181,18 @@ class ApiResource(SqlAlchemyResource):
                 if val is not None:
                     kwargs_for_log['%s' % id_field] = val
         new_data = self._get_detail_response_internal(**kwargs_for_log)
+        logger.debug('new_data: %r', new_data)
         self.log_patch(
             request, original_data,new_data,log=log, 
             id_attribute=id_attribute, **kwargs)
+        logger.debug('log created: %r', log)
         log.save()
         
         # 20170109 - return complex data
-        new_data = { API_RESULT_DATA: new_data, }
+        new_data = { API_RESULT_DATA: [new_data,], }
         if API_RESULT_META in patch_result:
             new_data[API_RESULT_META] = patch_result[API_RESULT_META]
+            
         return new_data
 
 
@@ -1203,66 +1211,67 @@ class ApiResource(SqlAlchemyResource):
         
         # TODO: if put_detail is used: rework based on post_detail
         raise NotImplementedError('put_detail must be implemented')
-        schema = kwargs.pop('schema', None)
-        if not schema:
-            raise Exception('schema not initialized')
-
-        if kwargs.get('data', None):
-            # allow for internal data to be passed
-            deserialized = kwargs['data']
-        else:
-            deserialized = self.deserialize(
-                request, format=kwargs.get('format', None))
-
-        logger.debug('put detail: %r, %r' % (deserialized,kwargs))
-        
-        # cache state, for logging
-        # Look for id's kwargs, to limit the potential candidates for logging
-        # Note: this version of PUT cannot be used if the resource must create
-        # the ID keys on create (use POST/PATCH)
-        
-        kwargs_for_log = self.get_id(
-            deserialized, validate=True, schema=schema, **kwargs)
-        id_attribute = schema['id_attribute']
-        # kwargs_for_log = {}
-        # for id_field in id_attribute:
-        # if deserialized.get(id_field,None):
-        #     kwargs_for_log[id_field] = deserialized[id_field]
-        # elif kwargs.get(id_field,None):
-        #     kwargs_for_log[id_field] = kwargs[id_field]
-        logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
-        try:
-            logger.info('get original state, for logging...')
-            logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response_internal(**kwargs_for_log)
-        except Exception as e:
-            logger.exception('original state not obtained')
-            original_data = []
-        
-        try:
-            logger.debug('call put_obj')
-            obj = self.put_obj(request, deserialized, **kwargs)
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
-                
-        if not kwargs_for_log:
-            for id_field in id_attribute:
-                val = getattr(obj, id_field,None)
-                kwargs_for_log['%s' % id_field] = val
-
-        # get new state, for logging
-        new_data = self._get_list_response_internal(**kwargs_for_log)
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
-        # TODO: add "Result" data to meta section, see patch_list
-        
-        if not self._meta.always_return_data:
-            logger.info('put success, no response data')
-            return HttpResponse(status=200)
-        else:
-            response.status_code = 200
-            return response
+    
+#         schema = kwargs.pop('schema', None)
+#         if not schema:
+#             raise Exception('schema not initialized')
+# 
+#         if kwargs.get('data', None):
+#             # allow for internal data to be passed
+#             deserialized = kwargs['data']
+#         else:
+#             deserialized = self.deserialize(
+#                 request, format=kwargs.get('format', None))
+# 
+#         logger.debug('put detail: %r, %r' % (deserialized,kwargs))
+#         
+#         # cache state, for logging
+#         # Look for id's kwargs, to limit the potential candidates for logging
+#         # Note: this version of PUT cannot be used if the resource must create
+#         # the ID keys on create (use POST/PATCH)
+#         
+#         kwargs_for_log = self.get_id(
+#             deserialized, validate=True, schema=schema, **kwargs)
+#         id_attribute = schema['id_attribute']
+#         # kwargs_for_log = {}
+#         # for id_field in id_attribute:
+#         # if deserialized.get(id_field,None):
+#         #     kwargs_for_log[id_field] = deserialized[id_field]
+#         # elif kwargs.get(id_field,None):
+#         #     kwargs_for_log[id_field] = kwargs[id_field]
+#         logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
+#         try:
+#             logger.info('get original state, for logging...')
+#             logger.debug('kwargs_for_log: %r', kwargs_for_log)
+#             original_data = self._get_list_response_internal(**kwargs_for_log)
+#         except Exception as e:
+#             logger.exception('original state not obtained')
+#             original_data = []
+#         
+#         try:
+#             logger.debug('call put_obj')
+#             obj = self.put_obj(request, deserialized, **kwargs)
+#         except ValidationError as e:
+#             logger.exception('Validation error: %r', e)
+#             raise e
+#                 
+#         if not kwargs_for_log:
+#             for id_field in id_attribute:
+#                 val = getattr(obj, id_field,None)
+#                 kwargs_for_log['%s' % id_field] = val
+# 
+#         # get new state, for logging
+#         new_data = self._get_list_response_internal(**kwargs_for_log)
+#         self.log_patches(request, original_data,new_data,**kwargs)
+#         
+#         # TODO: add "Result" data to meta section, see patch_list
+#         
+#         if not self._meta.always_return_data:
+#             logger.info('put success, no response data')
+#             return HttpResponse(status=200)
+#         else:
+#             response.status_code = 200
+#             return response
 
     @write_authorization
     @un_cache 
@@ -2248,7 +2257,7 @@ class FieldResource(ApiResource):
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
-
+        
         return schema
     
     @read_authorization
@@ -2551,7 +2560,7 @@ class ResourceResource(ApiResource):
     def _get_resource_schema(self,resource_key, user=None):
         ''' For internal callers
         '''
-        logger.info('_get_resource_schema: %r %r...', resource_key, user)
+        logger.debug('_get_resource_schema: %r %r...', resource_key, user)
         resources = self._build_resources_internal(user=user)
         
         if resource_key not in resources:
@@ -2619,7 +2628,7 @@ class ResourceResource(ApiResource):
         '''
         Override resource method - bootstrap the "Resource" resource schema
         '''
-
+        logger.debug('build_schema for %r: %r', self._meta.resource_name, user)
         resource_fields = self.get_field_resource()._get_list_response_internal(
             scope='fields.resource')
         # build a hash out of the fields
@@ -2629,8 +2638,9 @@ class ResourceResource(ApiResource):
         # default schema for bootstrap
         resource_schema = {
             'content_types': ['json'],
-            'description': 'The fields resource',
+            'description': 'The resource resource',
             'id_attribute': ['scope','key'],
+            # 'id_attribute': ['scope','key'], # FIXME: 20170926, should be this
             'key': 'resource',
             'scope': 'resource',
             'table': 'metahash',
@@ -2735,7 +2745,7 @@ class ResourceResource(ApiResource):
         '''
         Internal callers - return the resource keyed hash, from cache if possible
         '''
-        logger.info('_build_resources: %r: %r', user, use_cache)
+        logger.debug('_build_resources: %r: %r', user, use_cache)
         resources = None
         if use_cache and self.use_cache:
             resources = cache.get('resources')
@@ -2868,7 +2878,7 @@ class ResourceResource(ApiResource):
     @write_authorization
     @transaction.atomic       
     def patch_obj(self, request, deserialized, **kwargs):
-        logger.info('patch_obj: %r:%r', request.user, self._meta.resource_name)
+        logger.debug('patch_obj: %r:%r', request.user, self._meta.resource_name)
         logger.debug('patch_obj: %r', deserialized)
         schema = kwargs.pop('schema', None)
         if not schema:
@@ -3771,7 +3781,7 @@ class UserResource(ApiResource):
             elif kwargs and kwargs.get('ecommons_id', None):
                 id_kwargs = { 'ecommons_id': kwargs['ecommons_id']}
             else:
-                raise ( ValueError, 
+                raise ValueError(
                     'neither username nor ecommons_id not specified: %r, %r' 
                         % (deserialized,kwargs) )
         return id_kwargs
@@ -3791,7 +3801,7 @@ class UserResource(ApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
         schema = kwargs.pop('schema', None)
         if not schema:
-            raise Exception('schema not initialized')
+            schema = self.build_schema(request.user)
         fields = schema['fields']
 
         logger.info('patch_obj UserResource: %r', request.user )

@@ -146,7 +146,8 @@ where r.library_contents_version_id=%s order by well_id;
                 if getattr(activity.performed_by, 'ecommons_id', None):
                     log.username = activity.performed_by.ecommons_id
                 if getattr(activity.performed_by, 'user', None):
-                    log.user_id = getattr(activity.performed_by.user, 'id', log.username)
+                    log.user_id = getattr(
+                        activity.performed_by.user, 'id', log.username)
                 if not log.user_id:
                     log.user_id = 1
                 log.date_time = activity.date_created
@@ -155,14 +156,12 @@ where r.library_contents_version_id=%s order by well_id;
                 log.json_field = {
                     'migration': 'Library (contents)',
                     'data': { 
-                        'library_contents_version.activity_id': activity.activity_id,
+                        'library_contents_version.activity_id': 
+                            activity.activity_id,
                     }
                 }
                 log.key = library.short_name
                 log.uri = '/'.join(['library',log.key])
-#                 log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
-#                 log.key = '/'.join([str(x) for x in (
-#                     self.libraryResource.get_id(model_to_dict(library)).values()) ])
                 log.diffs = {
                     'version_number': [
                         prev_version.version_number if prev_version else 0, 
@@ -171,7 +170,8 @@ where r.library_contents_version_id=%s order by well_id;
                 log.comment = activity.comments
                 log.save()
                 if prev_version:
-                    self.diff_library_wells(schema_editor,library, prev_version, version, log)            
+                    self.diff_library_wells(
+                        schema_editor,library, prev_version, version, log)            
 
                 prev_version = version
                 
@@ -189,12 +189,14 @@ where r.library_contents_version_id=%s order by well_id;
     
         print 'processed: ', i, 'libraries'
 
-    def diff_library_wells(self, schema_editor,library, version1, version2, parent_log):
+    def diff_library_wells(
+        self, schema_editor,library, version1, version2, parent_log):
         
         connection = schema_editor.connection
         
         screen_type = library.screen_type;
-        logger.info('processing library: %r, screen type: %r, versions: %r, exp wells: %d ',
+        logger.info(
+            'processing library: %r, screen type: %r, versions: %r, exp wells: %d ',
             library.short_name, library.screen_type, [version1, version2],
             library.experimental_well_count)
         i = 0
@@ -229,13 +231,16 @@ where r.library_contents_version_id=%s order by well_id;
                     if new_row:
                         prev_well = dict(zip(keys,row))
                         new_well = dict(zip(keys,new_row))
-                        log = self.create_well_log(version, prev_well, new_well, parent_log)
+                        log = self.create_well_log(
+                            version, prev_well, new_well, parent_log)
                         if log:
                             if log.diffs:
-                                cumulative_diff_keys.update(set(log.diffs.keys()))
+                                cumulative_diff_keys.update(
+                                    set(log.diffs.keys()))
                             i += 1
                     else:
-                        logger.error('no new well/reagent entry found for %r', key)
+                        logger.error(
+                            'no new well/reagent entry found for %r', key)
                     if i>0 and i % 1000 == 0:
                         logger.info(
                             '===created logs for %s: %r-%r, %d', 
@@ -268,7 +273,6 @@ where r.library_contents_version_id=%s order by well_id;
         # FIXME
         log.user_id = 1
         
-#         log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
         log.date_time = activity.date_created
         log.ref_resource_name = self.wellResource._meta.resource_name
         # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'

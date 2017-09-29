@@ -1,5 +1,5 @@
 key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,alias,is_restricted,regex,default,view_groups,required,data_access_level
-username,fields.user,/reports/api/v1/field/fields.user/username/,,,100,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[l;d],[c],,,,,,TRUE,1
+username,fields.user,/reports/api/v1/field/fields.user/username/,,,100,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[l;d],[c;u],,,,,,TRUE,1
 first_name,fields.user,/reports/api/v1/field/fields.user/first_name/,auth_user,,101,,string,,,,TRUE,"First Name","First Name",TRUE,,,[l;d],[c;u],,,,,,TRUE,1
 last_name,fields.user,/reports/api/v1/field/fields.user/last_name/,auth_user,,102,,string,,,,TRUE,"Last Name","Last Name",TRUE,,,[l;d],[c;u],,,,,,TRUE,1
 ecommons_id,fields.user,/reports/api/v1/field/fields.user/ecommons_id/,,,103,,string,,,,TRUE,Ecommons,Ecommons,TRUE,,,[l;d],[c;u],,,,,[readEverythingAdmin],,3
@@ -9,6 +9,6 @@ usergroups,fields.user,/reports/api/v1/field/fields.user/usergroups/,,,150,,list
 all_permissions,fields.user,/reports/api/v1/field/fields.user/all_permissions/,,,156,,list,link,,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,[d],,,,,,[readEverythingAdmin],,
 gender,fields.user,/reports/api/v1/field/fields.user/gender/,,,115,,string,,,select,TRUE,"The gender of the user",Gender,TRUE,,user.gender,[l;d],[c;u],,,,,,,1
 phone,fields.user,/reports/api/v1/field/fields.user/phone/,,,116,,string,,,,TRUE,"The phone number for this user",Phone,TRUE,,,[l;d],[c;u],,,,,,,3
-is_active,fields.user,/reports/api/v1/field/fields.user/is_active/,auth_user,,200,,boolean,,,,TRUE,"True if the user is currently active and may log in to the system","User Can Log In",TRUE,,,[l;d],[c;u],,,,TRUE,,,3
+is_active,fields.user,/reports/api/v1/field/fields.user/is_active/,auth_user,,200,,boolean,,,,TRUE,"True if the user is currently active and may log in to the system","User Can Log In",TRUE,,,[l;d],[c;u],,,,FALSE,,,3
 is_staff,fields.user,/reports/api/v1/field/fields.user/is_staff/,auth_user,,201,,boolean,,,,TRUE,"For information purposes only - permissions are granted using UserGroups","Is Staff",TRUE,,,[d],[c;u],,,,FALSE,[readEverythingAdmin],,
-is_superuser,fields.user,/reports/api/v1/field/fields.user/is_superuser/,auth_user,,202,,boolean,,,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,,[d],[c;u],,,,FALSE,[readEverythingAdmin],,
+is_superuser,fields.user,/reports/api/v1/field/fields.user/is_superuser/,auth_user,,202,,boolean,,,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,,[d],[c;u],,,,FALSE,[superusers],,

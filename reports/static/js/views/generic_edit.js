@@ -554,6 +554,10 @@ define([
   });
   
   var EditView = Backbone.Form.extend({
+    
+    /**
+     * @param resource - the API resource schema
+     */
     initialize: function(args) {
 
       console.log('Editview initialize: ', args);
@@ -573,22 +577,22 @@ define([
         this.fullSaveOnEdit = false;
       }
       
-      this.modelSchema = args.modelSchema || this.model.resource;
-      this.modelFields = args.modelFields || this.modelSchema.fields;
+      this.resource = args.resource || this.model.resource;
+      this.modelFields = args.modelFields || this.resource.fields;
       
       if (args.editVisibleKeys) {
         this.editVisibleKeys = args.editVisibleKeys;
       } else {
-        this.editVisibleKeys = this.modelSchema.allEditVisibleKeys();
+        this.editVisibleKeys = this.resource.allEditVisibleKeys();
       }
-      this.groupedKeys = this.modelSchema.groupedKeys(this.editVisibleKeys);
+      this.groupedKeys = this.resource.groupedKeys(this.editVisibleKeys);
       
       if (args.editableKeys) {
         this.editableKeys = args.editableKeys;
       } else { 
-        this.editableKeys = this.modelSchema.updateKeys();
+        this.editableKeys = this.resource.updateKeys();
         if (this.isCreate || this.model.isNew()) {
-          this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
+          this.editableKeys = _.union(this.editableKeys,this.resource.createKeys());
         }
       }
       this.finalEditableKeys = [];
@@ -1136,10 +1140,9 @@ define([
             return true;
           }
         }
-        
+        prev = model.previous(key);
         // equate null to empty string, object, or array
         if (_.isNull(value)) {
-          prev = model.previous(key);
           if (_.isNull(prev)) return true;
           if (_.isObject(prev) || _.isString(prev) || _.isArray(prev)) {
             return _.isEmpty(prev);
@@ -1147,7 +1150,6 @@ define([
         }
         if (_.isObject(value) || _.isString(value) || _.isArray(value)) {
           if (_.isEmpty(value)) {
-            prev = model.previous(key);
             if (_.isNull(prev)) return true;
             if (_.isObject(prev) || _.isString(prev) || _.isArray(prev)) {
               return _.isEmpty(prev);
@@ -1224,10 +1226,6 @@ define([
         }
       }
       Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-//      console.log('trigger remove');
-//      self.trigger('remove');
-//      self.remove();
-//      appModel.router.back();
     },
     
     save: function(changedAttributes, options){
@@ -1299,7 +1297,24 @@ define([
       
       if (!  self.model.isNew()) {
         options['patch'] = true;
-      }        
+      }else{
+        // If new, then add any previous attributes that are non-null (defaults)
+        _.each(_.pairs(self.model.previousAttributes()),function(pair){
+          var key = pair[0];
+          var value = pair[1];
+          if (!_.isUndefined(value) && !_.isNull(value)){
+            if (!_.contains(changedAttributes,key)){
+              changedAttributes[key] = value;
+            }
+          }
+        });
+        // Backbone will always send the whole model if it is new,
+        // unfortunately, backbone-forms reports empty text fields as empty strings;
+        // so sending the entire model also sends these empty strings.
+        // To get arouund this, use option.attrs to define the explicit
+        // attrs to send.
+        options.attrs = changedAttributes;
+      }      
       
       var headers = options['headers'] = {};
       
@@ -1309,7 +1324,6 @@ define([
           headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
         });
       }
-      
       self.save(changedAttributes, options);
     },      
       

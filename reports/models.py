@@ -191,9 +191,9 @@ class ApiLog(models.Model):
     def __repr__(self):
         return (
             '<ApiLog(id=%r, api_action=%r, ref_resource_name=%r, '
-            'key=%r, uri=%r, date_time=%s, username=%s)>'
+            'key=%r, uri=%r, date_time=%s, su_id: %r, username=%s)>'
             % (self.id, self.api_action, self.ref_resource_name, self.key,
-               self.uri, strftime_log(self.date_time), self.username))
+               self.uri, strftime_log(self.date_time), self.user_id, self.username))
 
     @property
     def log_uri(self):

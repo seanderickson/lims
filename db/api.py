@@ -16343,6 +16343,10 @@ class ScreensaverUserResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/groups%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_user_groupview'),
+                name="api_dispatch_user_groupview"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/groups%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_groupview'),
@@ -16397,6 +16401,10 @@ class ScreensaverUserResource(DbApiResource):
         ]    
 
     def dispatch_user_groupview(self, request, **kwargs):
+        username = kwargs.pop('username', None)
+        if username:
+            su = ScreensaverUser.objects.get(username=username)
+            kwargs['screensaver_user_id'] = su.screensaver_user_id
         return UserGroupResource().dispatch('list', request, **kwargs)    
     
     def dispatch_user_checklistview(self, request, **kwargs):

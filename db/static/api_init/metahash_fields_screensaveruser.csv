@@ -1,9 +1,9 @@
 key,scope,table,field,ordinal,comment,filtering,description,title,ordering,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,alias,is_restricted,regex,required,view_groups,data_access_level
 screensaver_user_id,fields.screensaveruser,,,0,"Arbitrarily assigned internal user ID for the User",TRUE,"The internal user ID","Screensaver User ID",TRUE,,[l;d],,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,[readEverythingAdmin],
-username,fields.screensaveruser,auth_user,,1,,TRUE,Username,Username,TRUE,,[d],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,1
 name,fields.screensaveruser,custom,,2,,TRUE,"The full name of the user (last, first)",Name,TRUE,,[l;d],,string,,,,,,,,,1
 first_name,fields.screensaveruser,,,3,,TRUE,"First Name","First Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
 last_name,fields.screensaveruser,,,4,,TRUE,"Last Name","Last Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
+classification,fields.screensaveruser,,,5,,TRUE,"The user's classification",Classification,TRUE,user.classification,[l;d],[c;u],string,,,select,,,,,,3
 lab_name,fields.screensaveruser,,,6,,TRUE,"The name of the user's current lab","Lab Name",TRUE,,[d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{lab_head_id}' }",,,,,,,1
 lab_head_id,fields.screensaveruser,,,7,,TRUE,"The Screensaver User ID of the Lab Head","Lab Head",TRUE,,,[c;u],string,,"{ 'widthClass': 'col-sm-8' }",select,,,,,,1
 lab_affiliation_id,fields.screensaveruser,,,8,,TRUE,"Lab Affiliation ID","Principal Investigator Lab Affiliation",TRUE,,,[c;u],integer,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}', 'widthClass': 'col-sm-8' }",select,,,,,,1
@@ -15,20 +15,20 @@ lab_head_appointment_category,fields.screensaveruser,,,13,,TRUE,"Lab Head Appoin
 lab_head_appointment_department,fields.screensaveruser,,,14,,TRUE,"Lab Head Appointment Department","App't Department",TRUE,lab_head.appointment_department,,[c;u],string,,,,,,,,[readEverythingAdmin],
 lab_head_appointment_update_date,fields.screensaveruser,,,15,,TRUE,"The date when Lab Head Appointment was set","Date App't Updated",TRUE,,,[c;u],date,,,,,,,,[readEverythingAdmin],
 email,fields.screensaveruser,,,16,,TRUE,Email,Email,TRUE,,[l;d],[c;u],string,,"{ 'maxlength': '100' }",,,,"^[\w\-]{1,}([\w\-\+.]{1,1}[\w\-]{1,}){0,}[@][\w\-]{1,}([.]([\w\-]{1,})){1,3}$",,,1
-ecommons_id,fields.screensaveruser,,,17,,TRUE,Ecommons,Ecommons,TRUE,,[l;d],[c],string,,,,,,^\w+$,,[readEverythingAdmin],
-harvard_id,fields.screensaveruser,,,18,,TRUE,"The Harvard ID of the user","Harvard ID",TRUE,,[l;d],[c;u],string,,,,,,,,[readEverythingAdmin],
-harvard_id_expiration_date,fields.screensaveruser,,,19,,TRUE,"The date this user's Harvard ID is initially set to expire","Harvard ID Initial Expiration Date",TRUE,,[d],[c;u],date,,,,,,,,[readEverythingAdmin],
-harvard_id_requested_expiration_date,fields.screensaveruser,,,20,,TRUE,"The requested date when the user's Harvard ID will expire","Harvard ID Requested Expiration Date",TRUE,,[d],[c;u],date,,,,,,,,[readEverythingAdmin],
-gender,fields.screensaveruser,,,21,,TRUE,"The gender of the user",Gender,TRUE,user.gender,[l;d],[c;u],string,,,select,,,,,,1
-phone,fields.screensaveruser,,,22,,TRUE,"The phone number for this user",Phone,TRUE,,[l;d],[c;u],string,,,,,,,,,1
-mailing_address,fields.screensaveruser,reports_userprofile,,23,,TRUE,"The mailing address of the user","Mailing Address",TRUE,,[l;d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,,3
-comments,fields.screensaveruser,,,24,,TRUE,"Comments about this user",Comments,TRUE,,[d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,[readEverythingAdmin],
-classification,fields.screensaveruser,,,5,,TRUE,"The user's classification",Classification,TRUE,user.classification,[l;d],[c;u],string,,,select,,,,,,3
-facility_usage_roles,fields.screensaveruser,custom,,25,,TRUE,"Facility Usage Roles","Facility Usage Roles",TRUE,user.facilityusagerole,[d],[c;u],list,,"{ 'placeholder': 'Select roles' }",multiselect3,,,,,,3
-screens_lead,fields.screensaveruser,custom,,26,,TRUE,"Screens for which this user is a lead screener","Screens Led",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
-screens_lab_head,fields.screensaveruser,custom,,27,,TRUE,"Screens for which this user is a lab head","Lab Head for Screens",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
-screens_collaborator,fields.screensaveruser,custom,,28,,TRUE,"Screens for which this user is a collaborator","Screens collaborating",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
-screens,fields.screensaveruser,custom,,29,,TRUE,"Screens for which this user is a member","Own Screens",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
+ecommons_id,fields.screensaveruser,,,17,,TRUE,Ecommons,Ecommons,TRUE,,[l;d],[c;u],string,,,,,,^\w+$,,[readEverythingAdmin],
+username,fields.screensaveruser,auth_user,,18,,TRUE,Username,Username,TRUE,,[d],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,1
+harvard_id,fields.screensaveruser,,,19,,TRUE,"The Harvard ID of the user","Harvard ID",TRUE,,[l;d],[c;u],string,,,,,,,,[readEverythingAdmin],
+harvard_id_expiration_date,fields.screensaveruser,,,20,,TRUE,"The date this user's Harvard ID is initially set to expire","Harvard ID Initial Expiration Date",TRUE,,[d],[c;u],date,,,,,,,,[readEverythingAdmin],
+harvard_id_requested_expiration_date,fields.screensaveruser,,,21,,TRUE,"The requested date when the user's Harvard ID will expire","Harvard ID Requested Expiration Date",TRUE,,[d],[c;u],date,,,,,,,,[readEverythingAdmin],
+gender,fields.screensaveruser,,,22,,TRUE,"The gender of the user",Gender,TRUE,user.gender,[l;d],[c;u],string,,,select,,,,,,1
+phone,fields.screensaveruser,,,23,,TRUE,"The phone number for this user",Phone,TRUE,,[l;d],[c;u],string,,,,,,,,,1
+mailing_address,fields.screensaveruser,reports_userprofile,,24,,TRUE,"The mailing address of the user","Mailing Address",TRUE,,[l;d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,,3
+comments,fields.screensaveruser,,,25,,TRUE,"Comments about this user",Comments,TRUE,,[d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,[readEverythingAdmin],
+facility_usage_roles,fields.screensaveruser,custom,,26,,TRUE,"Facility Usage Roles","Facility Usage Roles",TRUE,user.facilityusagerole,[d],[c;u],list,,"{ 'placeholder': 'Select roles' }",multiselect3,,,,,,3
+screens_lead,fields.screensaveruser,custom,,27,,TRUE,"Screens for which this user is a lead screener","Screens Led",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
+screens_lab_head,fields.screensaveruser,custom,,28,,TRUE,"Screens for which this user is a lab head","Lab Head for Screens",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
+screens_collaborator,fields.screensaveruser,custom,,29,,TRUE,"Screens for which this user is a collaborator","Screens collaborating",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
+screens,fields.screensaveruser,custom,,30,,TRUE,"Screens for which this user is a member","Own Screens",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
 permissions,fields.user,,,155,,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[c;u],list,,,multiselect2,,,,,[readEverythingAdmin],
 usergroups,fields.user,,,150,,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[c;u],list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,,,,,[readEverythingAdmin],
 all_permissions,fields.user,,,156,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,,list,link,,,,,,,[readEverythingAdmin],

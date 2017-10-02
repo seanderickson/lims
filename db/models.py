@@ -1004,8 +1004,10 @@ class ScreensaverUser(models.Model):
         
     def __repr__(self):
         return (
-            '<ScreensaverUser(screensaver_user_id: %r, username: %r)>' 
-            % (self.screensaver_user_id, self.username ))
+            '<ScreensaverUser(screensaver_user_id: %r, '
+            '%r, %r, ecommons_id: %r, username: %r)>' 
+            % (self.screensaver_user_id, self.first_name, self.last_name,
+                self.ecommons_id, self.username ))
 
     def __str__(self):
         return self.__repr__()
@@ -1199,9 +1201,9 @@ class Substance(models.Model):
 class Reagent(models.Model):
 
     reagent_id = models.AutoField(primary_key=True)
-    substance_id = models.CharField(
-        max_length=8, unique=True, 
-        default=create_id)
+#     substance_id = models.CharField(
+#         max_length=8, unique=True, 
+#         default=create_id)
     
     vendor_identifier = models.TextField()
     vendor_name = models.TextField()

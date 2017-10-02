@@ -128,25 +128,11 @@ def create_roles(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0004_users'),
+        ('db', '0007_users'),
         ('auth', '0001_initial')
     ]
 
     operations = [
-        # NOTE: placing these schema migrations here for convenience (so that
-        # they do not conflict with data migrations in 0003, 0004, 0007)
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head',
-            field=models.ForeignKey(
-                related_name='lab_members', to='db.ScreensaverUser', null=True),
-        ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_affiliation',
-            field=models.ForeignKey(related_name='lab_heads', 
-                to='db.LabAffiliation', null=True),
-        ),
 #         
 #         migrations.AddField(
 #             model_name='screensaveruser',

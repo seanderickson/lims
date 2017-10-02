@@ -266,6 +266,10 @@ function premigratedb {
       -f ./db/migrations/manual/0003_controlled_vocabularies.sql \
       >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
   fi
+  migration='0004'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
     
   echo "pre migrations completed: $(ts) " >> "$LOGFILE"
  
@@ -278,33 +282,54 @@ function migratedb {
   completed_migrations=$($DJANGO_CMD migrate db --list | grep '\[X\]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
-  migration='0004'
+  migration='0007'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  migration='0005'
+  migration='0008'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  migration='0006'
+  migration='0009'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  # migration='0008'
-  # if [[ ! $completed_migrations =~ $migration ]]; then
-  #   echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-  #   $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  #   echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-  # fi
+  migration='0010'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0011'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0012'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0013'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
   
   if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
     migration='0014'

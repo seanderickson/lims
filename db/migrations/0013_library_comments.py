@@ -54,6 +54,8 @@ def create_library_comments(apps,schema_editor):
                     'administrative_activity.activity_id': _dict['activity_id']
                 }
             }
+            if log.username is None:
+                log.username = 'sde_EDIT'
             log.save()
             
             i += 1
@@ -68,7 +70,7 @@ def create_library_comments(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0009_convert_studies_to_screenresult'),
+        ('db', '0012_convert_studies_to_screenresult'),
 #         ('reports', '0001_initial')
     ]
 

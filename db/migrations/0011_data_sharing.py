@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0007_lab_affiliation'),
+        ('db', '0010_lab_affiliation'),
     ]
 
     operations = [

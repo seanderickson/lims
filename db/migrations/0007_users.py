@@ -41,16 +41,16 @@ def create_screensaver_users(apps, schema_editor):
     ScreensaverUserRole = apps.get_model('db', 'ScreensaverUserRole')
     auth_user_username_limit = 30 # field size limit for auth_user
     
-#     ssuid = 830
-#     # for ruchir shahs old acct
-#     try:
-#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         username = '%s_%s_old' % (su.first_name, su.last_name)
-#         username = default_converter(username)[:auth_user_username_limit]
-#         su.username = username
-#         su.save()
-#     except Exception,e:
-#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
+    ssuid = 830
+    # for ruchir shahs old acct
+    try:
+        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
+        username = '%s_%s_old' % (su.first_name, su.last_name)
+        username = default_converter(username)[:auth_user_username_limit]
+        su.username = username
+        su.save()
+    except Exception,e:
+        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
 #     
 #     # sean johnston second account
 #     ssuid = 3758 
@@ -65,6 +65,7 @@ def create_screensaver_users(apps, schema_editor):
     
     
     for su in ScreensaverUser.objects.all():
+        logger.info('processing: %r: %r', su, su.screensaver_user_id)
         if su.screensaver_user_id == 4712:
             logger.info('skip erroneous duplicate user account: %r', su)
             continue
@@ -75,15 +76,13 @@ def create_screensaver_users(apps, schema_editor):
         au = None
         up = None
         username = None
-        if su.ecommons_id: 
+        if su.login_id:
+            username = su.login_id
+        elif su.ecommons_id: 
             # convert in case it has an error
             username = default_converter(str(su.ecommons_id)) 
             logger.info('username: converted ecommons: %r to %r', 
                 su.ecommons_id, username)
-        elif su.login_id:
-            username = default_converter(str(su.login_id))
-            logger.info('username: converted login_id: %r to %r', 
-                su.login_id, username)
         else:
             continue
         
@@ -114,7 +113,6 @@ def create_screensaver_users(apps, schema_editor):
 
         if hasattr(su, 'administratoruser'):
             au.is_staff = True
-
         au.save()
         
         try:
@@ -144,7 +142,7 @@ def create_screensaver_users(apps, schema_editor):
             up.save()
 
         su.user = up
-        logger.debug('su: (%r, %r, %r, %r, %r, %r), up: %r, au: %r, username: %r',
+        logger.info('su: (%r, %r, %r, %r, %r, %r), up: %r, au: %r, username: %r',
             su.screensaver_user_id, su.ecommons_id, su.login_id, su.email, 
             su.first_name,su.last_name, up.id, au.id, au.username)
         su.save()
@@ -247,7 +245,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             _dict = dict(zip(sql_keys,row))
             ucl = None
             checklist_name = uc_name_map[_dict['ciname']]
-            key = '/'.join([_dict['suid'],checklist_name])
+            key = '/'.join([str(_dict['suid']),checklist_name])
             previous_dict = ucl_hash.get(key, None)
             notified_previous_dict = notified_ucl_hash.get(key, None)
             logger.debug('previous_dict: %s:%s' % (key,previous_dict))
@@ -281,7 +279,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             log = ApiLog()
             log.ref_resource_name = resource_name
             log.username = _dict['admin_username']
-            log.user_id = _dict['admin_upid']
+            log.user_id = _dict['suid']
             log.date_time = date_time
             log.api_action = 'PATCH'
             log.key = key
@@ -291,6 +289,9 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 'data': { 'checklist_item_event_id': 
                     _dict['checklist_item_event_id'] }          
                 }
+            if log.username is None:
+                log.username = 'sde_EDIT'
+            logger.debug('creating log: %r', log)
             # For logging: is the key (date_time, actually) unique?
             full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
             while full_key in unique_log_keys:
@@ -379,21 +380,11 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0003_db_migration_prep'),
+        ('db', '0004_postprep'),
         ('auth', '0001_initial')
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='rnai_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='sm_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
         
         
         # Note: for users migration;

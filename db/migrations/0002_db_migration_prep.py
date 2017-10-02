@@ -733,4 +733,37 @@ class Migration(migrations.Migration):
             field=models.TextField(null=True),
         ),
         
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_appointment_category', 
+            field=models.TextField(null=True)),
+
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_appointment_department', 
+            field=models.TextField(null=True)),
+
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_appointment_update_date', 
+            field=models.DateField(null=True)),
+
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_appointment_category=lh.lab_head_appointment_category '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_appointment_department=lh.lab_head_appointment_department '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_appointment_update_date=lh.lab_head_appointment_update_date '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+        # end TODO: 20170918 ======
+
+        
     ]

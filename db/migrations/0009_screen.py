@@ -201,7 +201,7 @@ def migrate_screen_project_phase(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0005_usergroups'),
+        ('db', '0008_usergroups'),
     ]
 
     operations = [

@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0006_screen'),
+        ('db', '0009_screen'),
     ]
 
     operations = [
@@ -26,37 +26,6 @@ class Migration(migrations.Migration):
 #             field=models.ForeignKey(related_name='lab_heads', 
 #                 to='db.LabAffiliation', null=True),
 #         ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head_appointment_category', 
-            field=models.TextField(null=True)),
-
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head_appointment_department', 
-            field=models.TextField(null=True)),
-
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head_appointment_update_date', 
-            field=models.DateField(null=True)),
-
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_appointment_category=lh.lab_head_appointment_category '
-            ' from  lab_head lh '
-            ' where lh.screensaver_user_id=su.screensaver_user_id'),
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_appointment_department=lh.lab_head_appointment_department '
-            ' from  lab_head lh '
-            ' where lh.screensaver_user_id=su.screensaver_user_id'),
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_appointment_update_date=lh.lab_head_appointment_update_date '
-            ' from  lab_head lh '
-            ' where lh.screensaver_user_id=su.screensaver_user_id'),
-        # end TODO: 20170918 ======
         
         # NOTE: see 0005 for schema field migrations for lab head
         # - because of transactions, schema migration must be elsewhere        

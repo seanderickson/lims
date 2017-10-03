@@ -1201,9 +1201,9 @@ class Substance(models.Model):
 class Reagent(models.Model):
 
     reagent_id = models.AutoField(primary_key=True)
-#     substance_id = models.CharField(
-#         max_length=8, unique=True, 
-#         default=create_id)
+    substance_id = models.CharField(
+        max_length=8, unique=True, 
+        default=create_id)
     
     vendor_identifier = models.TextField()
     vendor_name = models.TextField()

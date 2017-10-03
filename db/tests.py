@@ -39,6 +39,7 @@ from db.api import API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE
 from db.api import VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
     VOCAB_LCP_STATUS_PLATED
+
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
@@ -8121,7 +8122,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # Tests: 
         # 1.a check that the user agreement is an attached file to the user
-        attached_type = '2010_iccb_l_nsrb_small_molecule_user_agreement'
+        attached_type = db.api.UserAgreementResource.FILE_TYPE_SM_UA
         data_for_get = { 
             'limit': 0, 'includes': ['*'],
             'type__eq': attached_type
@@ -8174,7 +8175,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             resource_uri, {'status__eq': 'activated'})
         logger.info('checklist_items: %r', checklist_items)
         self.assertTrue(len(checklist_items)==1)
-        val = 'current_small_molecule_user_agreement_active'
+        val = db.api.UserAgreementResource.CHK_TYPE_SM_UA_ACTIVE
         self.assertTrue(checklist_items[0]['name'] == val,
             'wrong checklist item - expected name: %r, %r'
             %(val, checklist_items[0]))
@@ -8215,6 +8216,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs = { 'limit': 0, 'includes': ['*'] }
         kwargs['HTTP_AUTHORIZATION'] = authentication
         kwargs[HEADER_APILOG_COMMENT] = test_comment
+        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
         
         file = 'iccbl_rnai_ua_march2015.pdf'
         filename = \
@@ -8237,7 +8239,7 @@ class ScreensaverUserResource(DBResourceTestCase):
                 (resp.status_code))
         
         # 2.a check that the user agreement is an attached file to the user
-        attached_type = 'iccb_l_nsrb_rnai_user_agreement'
+        attached_type = db.api.UserAgreementResource.FILE_TYPE_RNA_UA
         data_for_get = { 
             'limit': 0, 'includes': ['*'], 
             'type__eq': attached_type 
@@ -8292,7 +8294,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             {'status__eq': 'activated',
              'name__eq': u'current_rnai_user_agreement_active'})
         self.assertEqual(len(checklist_items),1)
-        val = 'current_rnai_user_agreement_active'
+        val = db.api.UserAgreementResource.CHK_TYPE_RNA_UA_ACTIVE
         self.assertTrue(checklist_items[0]['name'] == val,
             'wrong checklist item - expected name: %r, %r'
             %(val, checklist_items[0]))

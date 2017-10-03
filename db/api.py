@@ -11476,6 +11476,12 @@ class AttachedFileResource(DbApiResource):
 
 class UserAgreementResource(AttachedFileResource):
 
+    FILE_TYPE_SM_UA = 'iccb_l_nsrb_small_molecule_user_agreement'
+    FILE_TYPE_RNA_UA = 'iccb_l_nsrb_rnai_user_agreement'
+    
+    CHK_TYPE_SM_UA_ACTIVE = 'current_small_molecule_user_agreement_active'
+    CHK_TYPE_RNA_UA_ACTIVE = 'current_rnai_user_agreement_active'
+
     class Meta:
 
         queryset = AttachedFile.objects.all()
@@ -11557,8 +11563,7 @@ class UserAgreementResource(AttachedFileResource):
     @read_authorization
     def get_list(self, request, **kwargs):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        kwargs['file_type__in'] = ['iccb_l_nsrb_rnai_user_agreement',
-            '2010_iccb_l_nsrb_small_molecule_user_agreement']
+        kwargs['file_type__in'] = [self.FILE_TYPE_RNA_UA, self.FILE_TYPE_SM_UA]
         return self.build_list_response(request, **kwargs)
     
     @write_authorization
@@ -11576,11 +11581,11 @@ class UserAgreementResource(AttachedFileResource):
         attached_type = None
         uci_name = None
         if type == 'sm':
-            attached_type = '2010_iccb_l_nsrb_small_molecule_user_agreement'
-            uci_name = 'current_small_molecule_user_agreement_active'
+            attached_type = self.FILE_TYPE_SM_UA
+            uci_name = self.CHK_TYPE_SM_UA_ACTIVE
         elif type == 'rna':
-            attached_type = 'iccb_l_nsrb_rnai_user_agreement'
-            uci_name = 'current_rnai_user_agreement_active'
+            attached_type = self.FILE_TYPE_RNA_UA
+            uci_name = self.CHK_TYPE_RNA_UA_ACTIVE
         else:
             raise ValidataionError(
                 key='type', 
@@ -16405,6 +16410,7 @@ class ScreensaverUserResource(DbApiResource):
         if username:
             su = ScreensaverUser.objects.get(username=username)
             kwargs['screensaver_user_id'] = su.screensaver_user_id
+            
         return UserGroupResource().dispatch('list', request, **kwargs)    
     
     def dispatch_user_checklistview(self, request, **kwargs):

@@ -28,7 +28,8 @@ vocab_replace_map = {
     }
 
 vocab_key_replace_map = {
-    'iccb_l_staff': 'staff'
+    'iccb_l_staff': 'staff',
+    'hms_affiliate_with_hms_quad_appointment': 'hms_affiliate_hms_quad',
     }
 vocab_ignore_map = {
     'user.classification': ['unassigned',]}
@@ -219,6 +220,7 @@ def create_attached_file_type_vocab(apps):
             if value in replace_map:
                 value = replace_map[value]
             key = default_converter(value.lower())
+            
             scope = _scope % obj.for_entity_type
             title = value
             ordinal = _ordinal

@@ -23,7 +23,7 @@ script:
   - python manage.py migrate sessions --settings=lims.travis-settings  
   - python manage.py migrate tastypie --settings=lims.travis-settings
   - python manage.py migrate reports --settings=lims.travis-settings
-  - python manage.py migrate db 0001 --settings=lims.travis-settings
+  - python manage.py migrate db 0004 --settings=lims.travis-settings
 ##  - python manage.py migrate db 0020 --fake --settings=lims.travis-settings
   - python manage.py test db.tests.CherryPickRequestResource --settings=lims.travis-settings --verbosity=2
 

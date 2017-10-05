@@ -603,9 +603,7 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
             if( model.has(item) ){
               var val = model.get(item);
               if (!_.has(fields,item)){
-                throw Exception(
-                  'Title property: ' + item + ', not present on model: ' 
-                  + schema.key );
+                throw 'Title property: ' + item + ', not present on model: '+ schema.key ;
               }
               if (!_.isEmpty(fields[item].vocabulary_scope_ref)){
                 val = Iccbl.appModel.getVocabularyTitle(
@@ -1459,7 +1457,7 @@ _.extend(SIUnitsFormatter.prototype, {
     // TODO: test regex version here
     var match = this.SI_UNIT_PATTERN.exec(formattedValue);
     if (!match){
-      throw Exception('SI Unit value not recognized', formattedValue);
+      throw 'SI Unit value not recognized' + formattedValue;
     }
     var originalNumberPart = match[1];
     rawValue = NumberFormatter.prototype.toRaw.call(this,originalNumberPart);
@@ -2276,12 +2274,12 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       console.log('error no meta: ', response);
       msg = 'error in response: no "' + Iccbl.appModel.API_RESULT_META + '"';
       Iccbl.appModel.error(msg);
-      throw Exception(msg);
+      throw msg;
     }
     if(! _.isNumber(meta.total_count)){
-      console.log('error "total_count" not found in meta: ', meta);
+      msg = 'error "total_count" not found in meta: ', meta;
       Iccbl.appModel.error('error in server response');
-      throw Exception('error in server response');
+      throw msg;
     }
     state.totalRecords = response.meta.total_count;
     
@@ -2745,11 +2743,11 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
     
     this.fieldinformation = options.fieldinformation || this.fieldinformation;
     if (_.isUndefined(this.fieldinformation)){
-      throw Exception('must define a fieldinformation');
+      throw 'must define a fieldinformation for FilterHeaderCell';
     }
     this.serverSideFilter = options.serverSideFilter || this.serverSideFilter;
     if (_.isUndefined(this.serverSideFilter)){
-      throw Exception('must define a serverSideFilter');
+      throw 'must define a serverSideFilter for FilterHeaderCell';
     }
     
     this._serverSideFilter = new this.serverSideFilter(_.extend({
@@ -2898,12 +2896,12 @@ var BackgridFormFilter = Backbone.Form.extend({
 
     this.fieldinformation = options.fieldinformation || this.fieldinformation;
     if (_.isUndefined(this.fieldinformation)){
-      throw Exception('must define a fieldinformation');
+      throw 'must define a fieldinformation for header cell BackgridFormFilter';
     }
     
     this.columnName = options.columnName || this.columnName;
     if (_.isUndefined(this.columnName)){
-      throw Exception('must define a columnName member');
+      throw 'must define a columnName member for header cell BackgridFormFilter';
     }
     
   },
@@ -3662,7 +3660,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     var self = this;
     this.fieldinformation = options.fieldinformation || this.fieldinformation;
     if (_.isUndefined(this.fieldinformation)){
-      throw Exception('must define a fieldinformation');
+      throw 'must define a fieldinformation for SelectorFormFilter';
     }
     
     // Create a form of checkboxes, one for each vocabulary item:
@@ -4129,7 +4127,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
 
     this.fieldinformation = options.fieldinformation || this.fieldinformation;
     if (_.isUndefined(this.fieldinformation)){
-      throw Exception('must define a fieldinformation');
+      throw 'must define a fieldinformation for SIUnitFormFilter';
     }
     
     var options = _.extend({},this.fieldinformation['display_options'],options);

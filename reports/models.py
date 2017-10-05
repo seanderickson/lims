@@ -354,7 +354,7 @@ class MetaHash(models.Model):
     
     def __repr__(self):
         return (
-            '<MetaHash(id=%d, scope=%r, key=%r)>'
+            '<MetaHash(id=%r, scope=%r, key=%r)>'
             % (self.id, self.scope, self.key))
 
 class Vocabulary(models.Model):

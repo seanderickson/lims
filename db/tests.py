@@ -7343,18 +7343,23 @@ class ScreensaverUserResource(DBResourceTestCase):
             'username': 'st1',
             'is_active': False
         })
+
+        logger.info('test0_create_user 2...')
         self.user2 = self.create_screensaveruser({ 
             'username': 'st2',
             'is_active': False
             })
+        logger.info('test0_create_user screening user...')
         self.screening_user = self.create_screensaveruser(
             { 'username': 'screening1', 'is_active': True })
         
         self.assertTrue(self.screening_user['is_active'])
         
         # FIXME: test more specific admin user permissions
+        logger.info('test0_create_user admin user...')
         self.test_admin_user = self.create_screensaveruser(
             { 'username': 'adminuser'})
+        logger.info('test0_create_user admin user 2...')
         self.test_admin_user2 = self.create_screensaveruser(
             { 'username': 'adminuser2'})
         # create an admin
@@ -7372,6 +7377,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         ]}
         resource_uri = BASE_URI_DB + '/screensaveruser'
 
+        logger.info('test0_create_user patch admin users...')
         resp = self.api_client.patch(
             resource_uri, 
             format='json', data=patch_obj, 
@@ -7489,6 +7495,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         }
         resource_uri = '/'.join([
             BASE_URI_DB,'screensaveruser', str(user1_output_data['screensaver_user_id'])])
+        logger.info('patch in the username for the user: %r, %r', 
+            resource_uri, user1_input_data2)
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -7696,6 +7704,15 @@ class ScreensaverUserResource(DBResourceTestCase):
             user_after_update3['lab_affiliation_category'], 
             lab_head['lab_affiliation_category'])
         
+    def test01a_update_lab_head_dsl(self):
+        
+        # Verify that the lab member dsl's are updated on lab head update.
+        
+        
+        
+        
+        pass
+        
         
     def test1_patch_usergroups(self):
         ''' 
@@ -7817,6 +7834,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         test_comment = 'Some test comment 123 xyz'
         
         header_data = { HEADER_APILOG_COMMENT: test_comment}
+        header_data['HTTP_ACCEPT'] = JSON_MIMETYPE
         
         patch_uri = '/'.join([BASE_URI_DB,'userchecklist',test_su_id])
         resp = self.api_client.patch(
@@ -7880,6 +7898,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         test_comment = 'Some test comment 123 xyz'
         
         header_data = { HEADER_APILOG_COMMENT: test_comment}
+        header_data['HTTP_ACCEPT'] = JSON_MIMETYPE
         
         resp = self.api_client.patch(
             patch_uri, 
@@ -8099,6 +8118,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs = { 'limit': 0, 'includes': ['*'] }
         kwargs['HTTP_AUTHORIZATION'] = authentication
         kwargs[HEADER_APILOG_COMMENT] = test_comment
+        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
         
         file = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = \
@@ -8112,12 +8132,12 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
-            if resp.status_code not in [201]:
+            if resp.status_code not in [200]:
                 logger.info(
                     'resp code: %d, resp: %r, content: %r', 
                     resp.status_code, resp, resp.content)
             self.assertTrue(
-                resp.status_code in [201], 
+                resp.status_code in [200], 
                 (resp.status_code))
         
         # Tests: 
@@ -8204,7 +8224,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         useragreement_item_post = {
             'admin_user': admin_username,
             'created_by_username': admin_username, 
-            'type': 'rna',
+            'type': 'rnai',
             'data_sharing_level': 1 
             }
         test_comment = 'test update rna comment for user agreement'
@@ -8230,12 +8250,12 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
-            if resp.status_code not in [201]:
+            if resp.status_code not in [200]:
                 logger.info(
                     'resp code: %d, resp: %r, content: %r', 
                     resp.status_code, resp, resp.content)
             self.assertTrue(
-                resp.status_code in [201], 
+                resp.status_code in [200], 
                 (resp.status_code))
         
         # 2.a check that the user agreement is an attached file to the user

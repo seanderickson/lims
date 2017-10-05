@@ -20,7 +20,7 @@ from django.conf import settings
 from django.conf.urls import url
 from django.contrib.auth.models import User as DjangoUser
 from django.contrib.sessions.models import Session
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 import django.core.exceptions
 from django.core.serializers.json import DjangoJSONEncoder
@@ -155,7 +155,7 @@ class UserGroupAuthorization(Authorization):
                 logger.info(
                     'user: %r, auth query: %r, found usergroup permissions: %r'
                     ,user, permission_str, permissions_group)
-            logger.info('%s:%s usergroup permission for: %s' 
+            logger.debug('%s:%s usergroup permission for: %s' 
                 % (self.resource_name,permission_type,user))
             return True
         
@@ -549,7 +549,7 @@ class ApiResource(SqlAlchemyResource):
         
         logger.debug('build schema for: %r: %r', self._meta.resource_name, user)
         schema = self.get_resource_resource()._get_resource_schema(
-            self._meta.resource_name, user=user)
+            self._meta.resource_name, user)
         
         return schema
     
@@ -570,19 +570,26 @@ class ApiResource(SqlAlchemyResource):
         for id_field in id_attribute:
             # NOTE: order of priority is kwargs, deserialized[resource_uri], deserialized
             # kwargs are checked first in case deserialized data represents a PATCH
+            val = None
             if kwargs and kwargs.get(id_field,None):
-                kwargs_for_id[id_field] = parse_val(
+                val = parse_val(
                     kwargs.get(
                         id_field,None), id_field,fields[id_field]['data_type']) 
             elif deserialized and deserialized.get(id_field,None):
-                kwargs_for_id[id_field] = parse_val(
+                val = parse_val(
                     deserialized.get(
                         id_field,None), id_field,fields[id_field]['data_type']) 
-            elif 'resource_uri' in deserialized:
-                return self.find_key_from_resource_uri(
-                    deserialized['resource_uri'], schema=schema)
+            if val is not None:
+                # ID values must all be non null/non-empty
+                if len(str(val)) > 0:
+                    kwargs_for_id[id_field] = val
             else:
                 not_found.append(id_field)
+            
+        if not_found:
+            if 'resource_uri' in deserialized:
+                return self.find_key_from_resource_uri(
+                    deserialized['resource_uri'], schema=schema)
         if not_found:
             if validate:
                 logger.error(
@@ -789,7 +796,7 @@ class ApiResource(SqlAlchemyResource):
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
-        logs = self.log_patches(request, original_data,new_data,**kwargs)
+        logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
         logger.info('patch logs created.')
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
@@ -900,7 +907,7 @@ class ApiResource(SqlAlchemyResource):
             new_data = []
         
         logger.debug('put list done, new data: %d', len(new_data))
-        self.log_patches(request, original_data,new_data,**kwargs)
+        self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
         
         logger.info('put_list done.')
         if not self._meta.always_return_data:
@@ -1006,7 +1013,7 @@ class ApiResource(SqlAlchemyResource):
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.debug('patch list done, new data: %d', len(new_data))
 
-        logs = self.log_patches(request, original_data,new_data,**kwargs)
+        logs = self.log_patches(request, original_data,new_data,schema=schema, **kwargs)
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
@@ -1084,7 +1091,7 @@ class ApiResource(SqlAlchemyResource):
                 raise ValidationError({ 
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
             original_data = None
-        log.save()
+#         log.save()
         
         logger.info('patch_obj: %r, %r', deserialized, log)
         logger.debug('patch_obj: %r', kwargs)
@@ -1111,10 +1118,12 @@ class ApiResource(SqlAlchemyResource):
         if not new_data:
             raise BadRequest(
                 'no data found for the new obj created by post: %r', obj)
-        self.log_patch(
+        patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
-            id_attribute=id_attribute, **kwargs)
-        log.save()
+            id_attribute=id_attribute, schema=schema, **kwargs)
+        if patched_log:
+            patched_log.save()
+            logger.debug('post log: %r', patched_log)
         
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,] }
@@ -1159,7 +1168,7 @@ class ApiResource(SqlAlchemyResource):
                 original_data = self._get_detail_response_internal(**kwargs_for_log)
                 if not log.key:
                     self.make_log_key(log, original_data, id_attribute=id_attribute,
-                        **kwargs)
+                        schema=schema, **kwargs)
                 logger.debug('original data: %r', original_data)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
@@ -1182,11 +1191,12 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log['%s' % id_field] = val
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('new_data: %r', new_data)
-        self.log_patch(
+        patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
-            id_attribute=id_attribute, **kwargs)
-        logger.debug('log created: %r', log)
-        log.save()
+            id_attribute=id_attribute, schema=schema, **kwargs)
+        if patched_log:
+            patched_log.save()
+            logger.debug('patch log: %r', patched_log)
         
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,], }
@@ -1386,6 +1396,7 @@ class ApiResource(SqlAlchemyResource):
                         continue
                     editability = field.get('editability',None)
                     if not editability or 'u' not in editability:
+                        logger.info('field: %r, %r, %r', name, editability, field)
                         errors[name] = 'cannot be changed'
                         continue
                 
@@ -1662,7 +1673,7 @@ class ApiResource(SqlAlchemyResource):
         
         if id_attribute is None:
             if schema is None:
-                logger.info('build raw schema for make_log_key')
+                logger.debug('build raw schema for make_log_key')
                 schema = self.build_schema()
             id_attribute = schema['id_attribute']
         log.key = '/'.join([
@@ -2186,6 +2197,7 @@ class FieldResource(ApiResource):
                 'ordinal': 1,
                 'json_field_type': '',
                 'data_type': 'string',
+                'editability': ['c'],
             },
             'scope':  {
                 'key': 'scope',
@@ -2193,6 +2205,7 @@ class FieldResource(ApiResource):
                 'ordinal': 2,
                 'json_field_type': '',
                 'data_type': 'string',
+                'editability': ['c'],
                 
             },
             'ordinal':  {
@@ -2201,6 +2214,7 @@ class FieldResource(ApiResource):
                 'ordinal': 3,
                 'json_field_type': '',
                 'data_type': 'integer',
+                'editability': ['c','u'],
                 
             },
             'json_field_type':  {
@@ -2209,6 +2223,7 @@ class FieldResource(ApiResource):
                 'ordinal': 4,
                 'json_field_type': '',
                 'data_type': 'string',
+                'editability': ['c','u'],
                 
             },
         }
@@ -2487,7 +2502,6 @@ class FieldResource(ApiResource):
                         val, key, fieldinformation['json_field_type'])
                     
             field.json_field = json.dumps(json_obj)
-            
             logger.debug('save: %r, as %r', deserialized, field)
             field.save()
                     
@@ -2555,13 +2569,13 @@ class ResourceResource(ApiResource):
 
     def clear_cache(self):
         ApiResource.clear_cache(self)
-        cache.delete('resources');
+        caches['resource_cache'].clear()
         
-    def _get_resource_schema(self,resource_key, user=None):
+    def _get_resource_schema(self,resource_key, user):
         ''' For internal callers
         '''
         logger.debug('_get_resource_schema: %r %r...', resource_key, user)
-        resources = self._build_resources_internal(user=user)
+        resources = self._build_resources_internal(user)
         
         if resource_key not in resources:
             raise BadRequest('Resource is not initialized: %r', resource_key)
@@ -2708,7 +2722,6 @@ class ResourceResource(ApiResource):
 
         if user is not None:
             usergroups = set([x.name for x in user.userprofile.get_all_groups()])
-        
         schema = deepcopy(schema)
         fields = deepcopy(schema['fields'])
         filtered_fields = {}
@@ -2741,111 +2754,134 @@ class ResourceResource(ApiResource):
         
         return schema
     
-    def _build_resources_internal(self, user=None, use_cache=True):
+    def _build_resources_internal(self, user, use_cache=True):
         '''
         Internal callers - return the resource keyed hash, from cache if possible
         '''
         logger.debug('_build_resources: %r: %r', user, use_cache)
         resources = None
-        if use_cache and self.use_cache:
-            resources = cache.get('resources')
-            logger.debug('using cached resources')
-        if not resources:
-            if DEBUG_RESOURCES:
-                logger.info('not using cached resources')
-        
-            resources = deepcopy(
-                MetaHash.objects.get_and_parse(
-                    scope='resource', field_definition_scope='fields.resource', 
-                    clear=True))
-            if not resources:
-                # If there are no resources, use self to bootstrap
-                resource = self.build_schema(user=user)
-                resources = { resource['key']: resource }
-                
-            # get all of the fields
-            all_fields = self.get_field_resource()._build_fields()
-            field_hash = {}
-            # build a hash out of the fields
-            for field in all_fields:
-                _fields = field_hash.get(field['scope'],{})
-                _fields[field['key']]=field
-                field_hash[field['scope']] = _fields
+        user_resources = None
+        resource_cache = caches['resource_cache']
+        if (use_cache and self.use_cache 
+            and user is not None and user.is_superuser is not True):
             
-            # for each resource, pull in the fields of the supertype resource
-            # todo recursion
-            for key,resource in resources.items():
-                logger.debug('resource: %r', key)
-                resource['1'] = resource['key']
-                resource['fields'] = field_hash.get('fields.%s'%key, {})
-                resource['resource_uri'] = '/'.join([
-                    self._meta.resource_name,resource['key']
-                ])
+            user_cache_key = 'resources_%s' % user.username
+            
+            user_resources = resource_cache.get(user_cache_key)
+            
+        if not user_resources:    
+            
+            if use_cache and self.use_cache:
+                resources = resource_cache.get('resources')
                 
-                # set the field['table'] 
-                for field in resource['fields'].values():
-                    if not field.get('table',None):
-                        field['table'] = resource.get('table', None)
-                supertype = resource.get('supertype', None)
-                if supertype:
-                    if supertype in resources:
-                        logger.debug('find the supertype fields: %r for %r', 
-                            supertype, key)
-                        supertype_fields = field_hash.get(
-                            'fields.%s' % supertype, None)
-                        if not supertype_fields:
-                            # ok, if the supertype is not built yet
-                            if DEBUG_RESOURCES:
-                                logger.warning('no fields for supertype: %r, %r', 
-                                    supertype, field_hash.keys())
+            if resources:
+                logger.debug('using cached resources')
+            else:
+                logger.debug('rebuilding resources')
+            
+                resources = deepcopy(
+                    MetaHash.objects.get_and_parse(
+                        scope='resource', field_definition_scope='fields.resource', 
+                        clear=True))
+                if not resources:
+                    # If there are no resources, use self to bootstrap
+                    logger.info('no resources found, using default resource to bootstrap...')
+                    resource = self.build_schema(user=user)
+                    resources = { resource['key']: resource }
+                    
+                # get all of the fields
+                all_fields = self.get_field_resource()._build_fields()
+                field_hash = {}
+                # build a hash out of the fields
+                for field in all_fields:
+                    _fields = field_hash.get(field['scope'],{})
+                    _fields[field['key']]=field
+                    field_hash[field['scope']] = _fields
+                
+                # for each resource, pull in the fields of the supertype resource
+                # todo recursion
+                for key,resource in resources.items():
+                    logger.debug('resource: %r', key)
+                    resource['1'] = resource['key']
+                    resource['fields'] = field_hash.get('fields.%s'%key, {})
+                    resource['resource_uri'] = '/'.join([
+                        self._meta.resource_name,resource['key']
+                    ])
+                    
+                    # set the field['table'] 
+                    for field in resource['fields'].values():
+                        if not field.get('table',None):
+                            field['table'] = resource.get('table', None)
+                    supertype = resource.get('supertype', None)
+                    if supertype:
+                        if supertype in resources:
+                            logger.debug('find the supertype fields: %r for %r', 
+                                supertype, key)
+                            supertype_fields = field_hash.get(
+                                'fields.%s' % supertype, None)
+                            if not supertype_fields:
+                                # ok, if the supertype is not built yet
+                                if DEBUG_RESOURCES:
+                                    logger.warning('no fields for supertype: %r, %r', 
+                                        supertype, field_hash.keys())
+                            else:
+                                # explicitly copy out all supertype fields, then update 
+                                # with fields from the current resource
+                                inherited_fields = {}
+                                for field in supertype_fields.values():
+                                    inherited_field = deepcopy(field)
+                                    inherited_field['scope'] = \
+                                        'fields.%s' % resource['key']
+                                    if not inherited_field.get('table',None):
+                                        inherited_field['table'] = \
+                                            resources[supertype].get('table', None)
+                                    
+                                    inherited_fields[inherited_field['key']] = \
+                                        inherited_field
+                                inherited_fields.update(resource['fields'])
+                                resource['fields'] = inherited_fields
                         else:
-                            # explicitly copy out all supertype fields, then update 
-                            # with fields from the current resource
-                            inherited_fields = {}
-                            for field in supertype_fields.values():
-                                inherited_field = deepcopy(field)
-                                inherited_field['scope'] = \
-                                    'fields.%s' % resource['key']
-                                if not inherited_field.get('table',None):
-                                    inherited_field['table'] = \
-                                        resources[supertype].get('table', None)
-                                
-                                inherited_fields[inherited_field['key']] = \
-                                    inherited_field
-                            inherited_fields.update(resource['fields'])
-                            resource['fields'] = inherited_fields
-                    else:
-                        logger.error(
-                            'supertype: %r, not found in resources: %r', 
-                            supertype, resources.keys())
-                
-                update_fields = set()
-                create_fields = set()
-                for key,field in resource['fields'].items():
-                    editability = field.get('editability', None)
-                    if editability:
-                        if 'u' in editability:
-                            update_fields.add(key)
-                            create_fields.add(key)
-                        if 'c' in editability:
-                            create_fields.add(key)
-                resource['update_fields'] = list(update_fields)
-                resource['create_fields'] = list(create_fields)
-                
-                resource.get('content_types',[]).append('csv')
-                
-                # extend resource specific data
-                self.extend_specific_data(resource)
-                
-        if use_cache and self.use_cache:
-            cache.set('resources', resources)
-        
-        filtered_resources = {}
-        for key, resource in resources.items():
+                            logger.error(
+                                'supertype: %r, not found in resources: %r', 
+                                supertype, resources.keys())
+                    
+                    update_fields = set()
+                    create_fields = set()
+                    for key,field in resource['fields'].items():
+                        editability = field.get('editability', None)
+                        if editability:
+                            if 'u' in editability:
+                                update_fields.add(key)
+                                create_fields.add(key)
+                            if 'c' in editability:
+                                create_fields.add(key)
+                    resource['update_fields'] = list(update_fields)
+                    resource['create_fields'] = list(create_fields)
+                    
+                    resource.get('content_types',[]).append('csv')
+                    
+                    # extend resource specific data
+                    self.extend_specific_data(resource)
+                    
+                if use_cache and self.use_cache:
+                    logger.debug('caching resources')
+                    resource_cache.set('resources', resources)
             
-            filtered_resources[key] = self._filter_resource(resource, user)
-        
-        return filtered_resources
+            if user and user.is_superuser is True:
+                user_resources = resources
+            else:
+                logger.debug('filter resources...')        
+                user_resources = {}
+                for key, resource in resources.items():
+                    
+                    user_resources[key] = self._filter_resource(resource, user)
+                
+                if user:
+                    user_cache_key = 'resources_%s' % user.username
+                    resource_cache.set(user_cache_key, user_resources)
+                
+            logger.debug('return resources')
+        return user_resources
  
     def extend_specific_data(self, resource):
         key = resource['key']
@@ -3258,7 +3294,7 @@ class VocabularyResource(ApiResource):
         if scope in vocabularies:
             return deepcopy(vocabularies[scope])
         else:
-            logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies.keys())
+            logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies)
             return {}
     
     def clear_cache(self):
@@ -3448,7 +3484,7 @@ class UserResource(ApiResource):
         
         self.permission_resource = None
         self.usergroup_resource = None
-
+        
     class Meta:
         queryset = UserProfile.objects.all().order_by('username') 
         authentication = MultiAuthentication(
@@ -3463,6 +3499,10 @@ class UserResource(ApiResource):
         always_return_data = True # this makes Backbone happy
         resource_name = 'user'
     
+    def clear_cache(self):
+        ApiResource.clear_cache(self)
+        self.get_resource_resource().clear_cache()
+        
     def get_permission_resource(self):
         if not self.permission_resource:
             self.permission_resource = PermissionResource()
@@ -3728,22 +3768,15 @@ class UserResource(ApiResource):
             j = j.join(_au,_up.c.user_id==_au.c.id, isouter=True)
             stmt = select(columns.values()).select_from(j)
 
-#             if self._meta.authorization.is_restricted_view(request.user):
-#                 logger.info('create_authorized_user_filter')
-#                 associated_users = \
-#                     self._meta.authorization.get_associated_users(request.user)
-#                 stmt = stmt.where(
-#                     _au.c.username.in_([user.username for user in associated_users]))
-            
             # general setup
              
             (stmt,count_stmt) = \
                 self.wrap_statement(stmt,order_clauses,filter_expression )
             
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if use_titles is True:
@@ -3773,17 +3806,30 @@ class UserResource(ApiResource):
         return super(UserResource,self).build_sqlalchemy_columns(
             fields,base_query_tables=base_query_tables,custom_columns=custom_columns)
         
-    def get_id(self, deserialized, **kwargs):
-        id_kwargs = ApiResource.get_id(self, deserialized, **kwargs)
+    def get_id(self, deserialized, schema=None, **kwargs):
+        
+        id_kwargs = {}
+        username = kwargs.get('username', None)
+        if username is None:
+            username = deserialized.get('username', None)
+        if username:
+            username = username.strip()
+            if len(username) > 0:
+                id_kwargs['username'] = username
+                
         if not id_kwargs:
-            if deserialized and deserialized.get('ecommons_id', None):
-                id_kwargs = { 'ecommons_id': deserialized['ecommons_id']}
-            elif kwargs and kwargs.get('ecommons_id', None):
-                id_kwargs = { 'ecommons_id': kwargs['ecommons_id']}
-            else:
-                raise ValueError(
-                    'neither username nor ecommons_id not specified: %r, %r' 
-                        % (deserialized,kwargs) )
+            ecommons_id = kwargs.get('ecommons_id', None)
+            if ecommons_id is None:
+                ecommons_id = deserialized.get('ecommons_id', None)
+            if ecommons_id:
+                ecommons_id = ecommons_id.strip()
+                if len(ecommons_id) > 0:
+                    id_kwargs['ecommons_id'] = ecommons_id
+        if not id_kwargs:
+            if 'resource_uri' in deserialized:
+                return self.find_key_from_resource_uri(
+                    deserialized['resource_uri'], schema=schema)
+        
         return id_kwargs
     
     @write_authorization
@@ -3804,15 +3850,16 @@ class UserResource(ApiResource):
             schema = self.build_schema(request.user)
         fields = schema['fields']
 
-        logger.info('patch_obj UserResource: %r', request.user )
+        logger.info('patch_obj UserResource: %r', deserialized )
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.info('patch user: %r', id_kwargs)
 
         auth_user_fields = { name:val for name,val in fields.items() 
             if val['table'] and val['table']=='auth_user'}
         userprofile_fields = { name:val for name,val in fields.items() 
-            if val['table'] and val['table']=='reports_userprofile'}
-
+            if (val['table'] and val['table']=='reports_userprofile'
+                or name in ['username', 'ecommons_id'])}
+        logger.info('userprofile_fields: %r', userprofile_fields.keys())
         is_patch = False
         try:
             # create the auth_user
@@ -3823,8 +3870,8 @@ class UserResource(ApiResource):
                     'username not specified, setting username to ecommons_id: %s', 
                     ecommons_id)
                 username = ecommons_id
-                deserialized['username'] = username
-                
+            
+            logger.info('deserialized: %r', deserialized) 
             try:
                 user = DjangoUser.objects.get(username=username)
                 is_patch = True
@@ -3840,7 +3887,8 @@ class UserResource(ApiResource):
                 user.is_active = True
                 logger.info('created Auth.User: %s', user)
 
-            initializer_dict = self.parse(deserialized, schema=schema, create=not is_patch)
+            initializer_dict = self.parse(
+                deserialized, schema=schema, create=not is_patch)
             logger.info('initializer_dict: %r', initializer_dict)
 
             auth_initializer_dict = {
@@ -3850,7 +3898,8 @@ class UserResource(ApiResource):
                     if hasattr(user,key):
                         setattr(user,key,val)
                 user.save()
-                logger.info('== created/updated auth user: %r', user.username)
+                logger.info('== auth user updated, is_patch:%r : %r', 
+                    is_patch, user.username)
             else:
                 logger.debug('no auth_user fields to update %s', deserialized)
                 
@@ -3957,6 +4006,10 @@ class UserGroupResource(ApiResource):
         self.permission_resource = None
         self.user_resource = None
 
+    def clear_cache(self):
+        ApiResource.clear_cache(self)
+        self.get_resource_resource().clear_cache()
+        
     def get_permission_resource(self):
         if not self.permission_resource:
             self.permission_resource = PermissionResource()

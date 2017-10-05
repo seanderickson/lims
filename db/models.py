@@ -1228,9 +1228,9 @@ class SilencingReagent(Reagent):
     
     reagentlink = models.OneToOneField(
         'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
-    sequence = models.TextField()
-    anti_sense_sequence = models.TextField()
-    silencing_reagent_type = models.TextField()
+    sequence = models.TextField(null=True)
+    anti_sense_sequence = models.TextField(null=True)
+    silencing_reagent_type = models.TextField(null=True)
     vendor_gene = models.OneToOneField(
         'Gene', unique=True, null=True, related_name='vendor_reagent')
     facility_gene = models.OneToOneField(
@@ -1286,13 +1286,13 @@ class SmallMoleculeReagent(Reagent):
 
     reagentlink = models.OneToOneField(
         'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
-    inchi = models.TextField()
-    molecular_formula = models.TextField()
+    inchi = models.TextField(null=True)
+    molecular_formula = models.TextField(null=True)
     molecular_mass = \
         models.DecimalField(null=True, max_digits=15, decimal_places=9)
     molecular_weight = \
         models.DecimalField(null=True, max_digits=15, decimal_places=9)
-    smiles = models.TextField()
+    smiles = models.TextField(null=True)
     is_restricted_structure = models.NullBooleanField(default=False)
 
     class Meta:

@@ -22,8 +22,7 @@ from aldjemy.core import get_engine, get_tables
 import aldjemy.core
 from django.conf import settings
 from django.conf.urls import url
-from django.core.cache import cache
-from django.core.cache import caches
+from django.core.cache import cache, caches
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection
@@ -364,13 +363,11 @@ class PlateLocationResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by("room","freezer","shelf","bin")
 
-            if True: 
-                logger.info(
-                    'stmt: %s',
-                    str(stmt.compile(
-                        dialect=postgresql.dialect(),
-                        compile_kwargs={"literal_binds": True})))
-
+            # logger.info(
+            #     'stmt: %s',
+            #     str(stmt.compile(
+            #         dialect=postgresql.dialect(),
+            #         compile_kwargs={"literal_binds": True})))
 
             # create a generator to wrap the cursor and expand copy_plates ranges
             def create_copy_plate_ranges_gen(generator):
@@ -11583,13 +11580,13 @@ class UserAgreementResource(AttachedFileResource):
         if type == 'sm':
             attached_type = self.FILE_TYPE_SM_UA
             uci_name = self.CHK_TYPE_SM_UA_ACTIVE
-        elif type == 'rna':
+        elif type == 'rnai':
             attached_type = self.FILE_TYPE_RNA_UA
             uci_name = self.CHK_TYPE_RNA_UA_ACTIVE
         else:
-            raise ValidataionError(
+            raise ValidationError(
                 key='type', 
-                msg='must be one of %r' % ['sm', 'rna'])
+                msg='must be one of %r' % ['sm', 'rnai'])
         kwargs['type'] = attached_type
         
         username = param_hash.pop('username', None)
@@ -11632,8 +11629,8 @@ class UserAgreementResource(AttachedFileResource):
             request, attributes=user_data)
 
         # - the user agreement is an attached file to the user
-        super(UserAgreementResource,self).post_detail(request, **kwargs)
-        
+        attached_file_result = super(UserAgreementResource,self).post_detail(request, **kwargs)
+        logger.info('UserAgreement attached file result: %r', attached_file_result)
         
         if type == 'sm':
             apilog.diffs = { 'sm_data_sharing_level': 
@@ -11661,8 +11658,21 @@ class UserAgreementResource(AttachedFileResource):
             'date_effective': timezone.now().strftime("%Y%m%d") 
             }
         
-        user_checklist_item_resource.patch_obj(request, checklist_data)
+        chk_patch_result = user_checklist_item_resource.patch_obj(request, checklist_data)
         
+        data = {
+            'screensaver_user_id': screensaver_user_id,
+            'first_name': user_data['first_name'],
+            'last_name': user_data['last_name'],
+            'msg': 'User agreement updated',
+            'actions': {
+                'user_checklist_item': uci_name,
+                'is_active': True,
+                'user_agreement_file_type': attached_type,
+                'file': 'tbd'
+                }
+        }
+        return self.build_response(request, data)
         return HttpResponse(status=201)
 
     # TODO: create a "UserAgreementResource.delete_detail"
@@ -16809,27 +16819,35 @@ class ScreensaverUserResource(DbApiResource):
         screensaver_user_id = kwargs.get('screensaver_user_id', None)
         if screensaver_user_id is None:
             screensaver_user_id = deserialized.get('screensaver_user_id')
-        if screensaver_user_id:
-            id_kwargs['screensaver_user_id'] = screensaver_user_id
+        if screensaver_user_id is not None:
+            screensaver_user_id = parse_val(
+                screensaver_user_id, 'screensaver_user_id', 'integer')
+            if screensaver_user_id is not None:
+                id_kwargs['screensaver_user_id'] = screensaver_user_id
+        if not id_kwargs:
+            username = kwargs.get('username', None)
+            if username is None:
+                username = deserialized.get('username', None)
+            if username:
+                username = username.strip()
+                if len(username) > 0:
+                    id_kwargs['username'] = username
+        if not id_kwargs:
+            ecommons_id = kwargs.get('ecommons_id', None)
+            if ecommons_id is None:
+                ecommons_id = deserialized.get('ecommons_id', None)
+            if ecommons_id:
+                ecommons_id = ecommons_id.strip()
+                if len(ecommons_id) > 0:
+                    id_kwargs['ecommons_id'] = ecommons_id
             
-        username = kwargs.get('username', None)
-        if username is None:
-            username = deserialized.get('username', None)
-        if username:
-            id_kwargs['username'] = username
-                
-        ecommons_id = kwargs.get('ecommons_id', None)
-        if ecommons_id is None:
-            ecommons_id = deserialized.get('ecommons_id', None)
-        if ecommons_id:
-            id_kwargs['ecommons_id'] = ecommons_id
-
         if not id_kwargs:
             if validate is True:
                 raise ValueError, (
-                    'Neither screensaver_user_id, username nor an ecommons_id'
+                    'Neither screensaver_user_id, username nor ecommons_id'
                     ' were specified')
             
+        logger.info('su get_id: result: %r', id_kwargs)
         return id_kwargs
 
     @write_authorization
@@ -16892,82 +16910,61 @@ class ScreensaverUserResource(DbApiResource):
         fields = schema['fields']
 
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
-
         screensaver_user = None
+        is_patch = False
         if 'screensaver_user_id' in id_kwargs:
             screensaver_user = ScreensaverUser.objects.get(
                 screensaver_user_id=id_kwargs['screensaver_user_id'])
-            if 'username' not in id_kwargs:
-                if screensaver_user.user is not None:
-                    id_kwargs['username'] = screensaver_user.user.username
-        user = None
-        logger.info('id_kwargs: %r', id_kwargs)
-        if 'username' in id_kwargs or 'ecommons_id' in id_kwargs:
-            # create/get userprofile
-            # NOTE: reports.user patch data must include first/last names
-            if 'first_name' not in deserialized or 'last_name' not in deserialized:
-                if screensaver_user:
-                    deserialized.update({
-                        'first_name': screensaver_user.first_name,
-                        'last_name': screensaver_user.last_name})
-            
-            patch_response = self.get_user_resource().patch_obj(request, deserialized, **id_kwargs)
-            logger.info('patched userprofile %s', patch_response)
-            user = patch_response[API_RESULT_OBJ]
-        
-        if user:    
-            try:
-                screensaver_user = ScreensaverUser.objects.get(user=user)
-            except ObjectDoesNotExist:
-                logger.info('ScreensaverUser for user: %r dne', user)
-        
-        if screensaver_user:
-            if 'screensaver_user_id' in id_kwargs:
-                if (str(screensaver_user.screensaver_user_id) 
-                    != str(id_kwargs['screensaver_user_id'])):
-                    raise ValidationError(
-                        key='screensaver_user_id',
-                        msg='cannot be changed old: %r, new: %r' % (
-                            screensaver_user.screensaver_user_id, 
-                            id_kwargs['screensaver_user_id']))
-        elif id_kwargs:
-            if 'screensaver_user_id' in id_kwargs:
-                screensaver_user = ScreensaverUser.objects.get(
-                    screensaver_user_id=id_kwargs['screensaver_user_id'])
-            else:
-                try:
-                    if 'username' in id_kwargs:
-                        screensaver_user = ScreensaverUser.objects.get(
-                            username=id_kwargs['username'])
-                    elif 'ecommons_id' in id_kwargs:
-                        screensaver_user = ScreensaverUser.objects.get(
-                            ecommons_id=id_kwargs['ecommons_id'])
-                    else:
-                        raise ProgrammingError('unknown id_kwargs: %r', id_kwargs)
-                except ObjectDoesNotExist:
-                    logger.info('screensaver user does not exist, creating: %r', id_kwargs)
-        if screensaver_user is None:
-            is_patch = False
-            logger.info('creating new screensaver user: %r for reports user: %r',
-                deserialized, user)
-            screensaver_user = ScreensaverUser.objects.create(**id_kwargs)
         else:
-            logger.info('found extant screensaver user: %r for reports user: %r',
-                screensaver_user, user)
+            try:
+                if 'username' in id_kwargs:
+                    screensaver_user = ScreensaverUser.objects.get(
+                        username=id_kwargs['username'])
+                elif 'ecommons_id' in id_kwargs:
+                    screensaver_user = ScreensaverUser.objects.get(
+                        ecommons_id=id_kwargs['ecommons_id'])
+                else:
+                    raise ProgrammingError
+            except ObjectDoesNotExist:
+                is_patch=False
+                
+        if screensaver_user:
             is_patch = True
-
+                    
         errors = self.validate(deserialized, schema=schema,patch=is_patch)
         if errors:
             raise ValidationError(errors)
         
-
         screensaveruser_fields = { name:val for name, val in fields.items() 
             if val['scope'] == 'fields.screensaveruser'}
         logger.debug(
             'fields.screensaveruser fields: %s', screensaveruser_fields.keys())
         initializer_dict = self.parse(
             deserialized, create=not is_patch, fields=screensaveruser_fields)
+        
+        if screensaver_user is None:
+            if id_kwargs:
+                screensaver_user = ScreensaverUser(**id_kwargs)
+            else:
+                screensaver_user = ScreensaverUser(
+                    first_name=initializer_dict['first_name'],
+                    last_name=initializer_dict['last_name'])
+        
         if initializer_dict:
+            
+            if 'username' in initializer_dict:
+                if screensaver_user.username is not None:
+                    if screensaver_user.username != initializer_dict['username']:
+                        raise ValidationError(key='username', msg='immutable')
+            if 'ecommons_id' in initializer_dict:
+                if screensaver_user.ecommons_id is not None:
+                    if screensaver_user.ecommons_id != initializer_dict['ecommons_id']:
+                        raise ValidationError(key='username', msg='immutable')
+                    if screensaver_user.username is not None:
+                        raise ValidationError(
+                            key='username', 
+                            msg='immutable (via ecommons_id)')
+                        
             for key, val in initializer_dict.items():
                 if hasattr(screensaver_user, key):
                     setattr(screensaver_user, key, val)
@@ -16976,8 +16973,42 @@ class ScreensaverUserResource(DbApiResource):
                 'no (basic) screensaver_user fields to update %s',
                 deserialized)
         
-        screensaver_user.user = user
-
+        
+        
+        
+        reports_kwargs = {}
+        if screensaver_user.username is not None:
+            reports_kwargs['username'] = screensaver_user.username
+        # If reports_userprofile exists, or username is set, patch the 
+        # reports_userprofile
+        user = None
+        if reports_kwargs:
+            # create/get userprofile
+            # NOTE: reports.user patch data must include first/last names
+            if 'first_name' not in deserialized or 'last_name' not in deserialized:
+                deserialized.update({
+                    'first_name': screensaver_user.first_name,
+                    'last_name': screensaver_user.last_name})
+            logger.info('patch the reports user: %r, %r',
+                reports_kwargs, deserialized)
+            patch_response = self.get_user_resource().patch_obj(
+                request, deserialized, **reports_kwargs)
+            logger.info('patched userprofile %s', patch_response)
+            user = patch_response[API_RESULT_OBJ]
+        
+        if user:
+            if screensaver_user.user is None:
+                screensaver_user.user = user
+            else:
+                if screensaver_user.user != user:
+                    raise ValidationError(
+                        key='username',
+                        msg='ss user found: %r, not equal to current: %r'\
+                            % (user, screensaver_user.user))    
+            logger.info('set the username: %r: %r, %r', 
+                screensaver_user.screensaver_user_id, 
+                screensaver_user.username, user.username)
+            screensaver_user.username = user.username
         screensaver_user.save()
         
         vocab_pi_classification = 'principal_investigator'
@@ -17028,28 +17059,11 @@ class ScreensaverUserResource(DbApiResource):
                                 % vocab_pi_classification)
                         screensaver_user.lab_head = lab_head
 
-                        dsl_err_msg = '"%r" does not match the lab_head: "%r"'
-                        key = 'sm_data_sharing_level'
-                        if key in initializer_dict:
-                            val = initializer_dict[key]
-                            lab_head_val = lab_head.sm_data_sharing_level
-                            if val != lab_head_val:
-                                raise ValidationError(
-                                    key=key,
-                                    msg=dsl_err_msg % (val, lab_head_val))
-                        key = 'rnai_data_sharing_level'
-                        if key in initializer_dict:
-                            val = initializer_dict[key]
-                            lab_head_val = lab_head.rnai_data_sharing_level
-                            if val != lab_head_val:
-                                raise ValidationError(
-                                    key=key,
-                                    msg=dsl_err_msg % (val, lab_head_val))
-                        
-                        screensaver_user.sm_data_sharing_level = \
-                            lab_head.sm_data_sharing_level
-                        screensaver_user.rnai_data_sharing_level = \
-                            lab_head.rnai_data_sharing_level
+                        # FIXME: should reset user dsls to lab_head values iff they are already set?
+                        # screensaver_user.sm_data_sharing_level = \
+                        #     lab_head.sm_data_sharing_level
+                        # screensaver_user.rnai_data_sharing_level = \
+                        #     lab_head.rnai_data_sharing_level
                             
                     except ObjectDoesNotExist, e:
                         logger.info(
@@ -17060,6 +17074,7 @@ class ScreensaverUserResource(DbApiResource):
                             msg='lab_head_id not found %s' % lh_id)
             else:
                 screensaver_user.lab_head = None
+
         screensaver_user.save()
         
         _key = 'lab_member_ids'
@@ -17094,6 +17109,36 @@ class ScreensaverUserResource(DbApiResource):
             screensaver_user.lab_members = lab_members
         screensaver_user.save()
                 
+        key = 'sm_data_sharing_level'
+        dsl_err_msg = '"%r" does not match the lab_head: "%r"'
+        if key in initializer_dict:
+            val = initializer_dict[key]
+            lab_head = screensaver_user.lab_head
+            if lab_head and lab_head != screensaver_user:
+                lab_head_val = lab_head.sm_data_sharing_level
+                if val != lab_head_val:
+                    raise ValidationError(
+                        key=key,
+                        msg=dsl_err_msg % (val, lab_head_val))
+            else:
+                # Note; has already been set; must set the lab members as well
+                for lab_member in screensaver_user.lab_members.all():
+                    lab_member.sm_data_sharing_level = screensaver_user.sm_data_sharing_level
+        key = 'rnai_data_sharing_level'
+        if key in initializer_dict:
+            val = initializer_dict[key]
+            lab_head = screensaver_user.lab_head
+            if lab_head and lab_head != screensaver_user:
+                lab_head_val = lab_head.rnai_data_sharing_level
+                if val != lab_head_val:
+                    raise ValidationError(
+                        key=key,
+                        msg=dsl_err_msg % (val, lab_head_val))
+            else:
+                # Note; has already been set; must set the lab members as well
+                for lab_member in screensaver_user.lab_members.all():
+                    lab_member.rnai_data_sharing_level = screensaver_user.rnai_data_sharing_level
+        
         if 'facility_usage_roles' in initializer_dict:
             current_roles = set([r.facility_usage_role 
                 for r in screensaver_user.userfacilityusagerole_set.all()])
@@ -17858,7 +17903,7 @@ class ReagentResource(DbApiResource):
             
         well_schema = WellResource().build_schema(user=user)
         schema['fields'].update(well_schema['fields'])
-
+        logger.info('reagent schema built')
         return schema
 
     def get_list(self, request, param_hash={}, **kwargs):
@@ -18371,7 +18416,7 @@ class WellResource(DbApiResource):
     def get_schema(self, request, **kwargs):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.info('param hash: %r', param_hash)
+        logger.debug('param hash: %r', param_hash)
         
         if not 'library_short_name' in param_hash:
             return self.build_response(request, 

@@ -84,12 +84,21 @@ def parse_val(value, key, data_type, options=None):
             or value == 'null'
             or value == u'n/a'):
             if data_type == 'string': 
-                return ''
+                if value == '':
+                    return value
+                else:
+                    return None
             elif data_type == 'list':
                 return []
             else:  
                 return None
         if data_type == 'string':
+#             if value:
+#                 value = str(value).strip()
+            # FIXME: on bootstrap, non-string array values may be sent as strings
+            # (because the default field schema data_type is string)
+            if isinstance(value, six.string_types):
+                value = value.strip()
             return value
         elif data_type == 'integer':
             # todo: this is a kludge, create an integer from values like "5.0"

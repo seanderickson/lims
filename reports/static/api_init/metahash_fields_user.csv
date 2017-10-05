@@ -1,5 +1,5 @@
 key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,alias,is_restricted,regex,default,view_groups,required,data_access_level
-username,fields.user,/reports/api/v1/field/fields.user/username/,,,100,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[l;d],[c;u],,,,,,TRUE,1
+username,fields.user,/reports/api/v1/field/fields.user/username/,,,100,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[l;d],[c],,,,,,TRUE,1
 first_name,fields.user,/reports/api/v1/field/fields.user/first_name/,auth_user,,101,,string,,,,TRUE,"First Name","First Name",TRUE,,,[l;d],[c;u],,,,,,TRUE,1
 last_name,fields.user,/reports/api/v1/field/fields.user/last_name/,auth_user,,102,,string,,,,TRUE,"Last Name","Last Name",TRUE,,,[l;d],[c;u],,,,,,TRUE,1
 ecommons_id,fields.user,/reports/api/v1/field/fields.user/ecommons_id/,,,103,,string,,,,TRUE,Ecommons,Ecommons,TRUE,,,[l;d],[c;u],,,,,[readEverythingAdmin],,3

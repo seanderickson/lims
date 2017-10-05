@@ -70,6 +70,7 @@ def csv_generator(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None):
                         item[key] = [
                             x.strip() 
                             for x in val.strip('"[]').split(list_delimiter)]
+                        logger.debug('%r, val: %r converted to %r', key, val, item[key])
             yield item
         i += 1
     logger.debug('read in data, count: %d', i )   

@@ -83,7 +83,12 @@ def _create_cpr_log(
     if username:
         log.username = username
     else:
-        log.username = email
+        if email:
+            log.username = email
+        else:
+            logger.info(
+                'cpr log w/o username or email: %r: %r', cpr_id,performed_by_id)
+            log.username = performed_by_id
     log.user_id = performed_by_id
     if comments is not None:
         log.comment = comments
@@ -168,6 +173,8 @@ def _create_plate_activity_log(activity_dict):
         log.date_time = create_log_time(log.date_time)
     extant_plate_logs[log.key].add(log.date_time)    
     log.username = activity_dict['username']
+    if log.username is None:
+        log.username = activity_dict['email']
     log.user_id = activity_dict['screensaver_user_id']
     return log
 
@@ -198,6 +205,7 @@ def create_plate_generic_logs(apps, schema_editor):
     cols = OrderedDict({
         'activity_id': 'a.activity_id',
         'username': 'username',
+        'email': 'email',
         'screensaver_user_id': 'screensaver_user_id',
         'date_of_activity': 'date_of_activity',
         'comments': 'a.comments',
@@ -261,6 +269,7 @@ def create_plate_plated_and_retired_logs(apps, schema_editor):
     cols = OrderedDict({
         'activity_id': 'a.activity_id',
         'username': 'username',
+        'email': 'email',
         'screensaver_user_id': 'screensaver_user_id',
         'date_of_activity': 'date_of_activity',
         'comments': 'a.comments',
@@ -1069,7 +1078,7 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
         # the cpap->cps many-to-many link) has not been set up, must join manually
         cursor.execute(cpap_to_cps_sql, [activity.activity_id])
         cpap_ids = [x[0] for x in cursor.fetchall()]
-        logger.info('activity: %r, cpap_ids: %r, cpr_parent_log.log_uri: %r', 
+        logger.debug('activity: %r, cpap_ids: %r, cpr_parent_log.log_uri: %r', 
             activity.activity_id, cpap_ids,cpr_parent_log.log_uri)
         
         for cpap in CherryPickAssayPlate.objects.all().filter(
@@ -1113,13 +1122,14 @@ class Migration(migrations.Migration):
     ]
     
     operations = [
+        migrations.RunPython(create_well_volume_adjustment_logs),
+        migrations.RunPython(create_cherry_pick_plating_logs),
+        migrations.RunPython(create_cherry_pick_screening_logs),
+
         migrations.RunPython(find_extant_plate_logs),
         migrations.RunPython(find_extant_cpr_logs),
         migrations.RunPython(create_library_screening_logs),
         migrations.RunPython(create_plate_plated_and_retired_logs),
         migrations.RunPython(create_plate_generic_logs),
-        migrations.RunPython(create_well_volume_adjustment_logs),
-        migrations.RunPython(create_cherry_pick_plating_logs),
-        migrations.RunPython(create_cherry_pick_screening_logs),
     ]
-    
+

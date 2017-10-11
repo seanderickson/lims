@@ -385,7 +385,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
                 
-                schema = self.build_schema()
+                schema = self.build_schema(user=request.user)
                 list_keys = [x for x,y in schema['fields'].items() 
                     if y.get('data_type') == 'list']
                 return self.get_serializer().deserialize(
@@ -393,7 +393,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
 
-                schema = self.build_schema()
+                schema = self.build_schema(user=request.user)
                 list_keys = [x for x,y in schema['fields'].items() 
                     if y.get('data_type') == 'list']
                 

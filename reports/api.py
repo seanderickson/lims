@@ -547,10 +547,11 @@ class ApiResource(SqlAlchemyResource):
 
     def build_schema(self, user=None):
         
-        logger.debug('build schema for: %r: %r', self._meta.resource_name, user)
+        logger.info('build schema for: %r: %r', self._meta.resource_name, user)
         schema = self.get_resource_resource()._get_resource_schema(
             self._meta.resource_name, user)
-        
+        if DEBUG_RESOURCES:
+            logger.info('schema fields: %r', schema['fields'].keys())
         return schema
     
     def get_id(self,deserialized, validate=False, schema=None, **kwargs):
@@ -750,7 +751,8 @@ class ApiResource(SqlAlchemyResource):
                 kwargs['data'] = deserialized
             return self.patch_detail(request, **kwargs)
         
-        logger.info('Limit the potential candidates for logging to found id_kwargs...')
+        logger.debug(
+            'Limit the potential candidates for logging to found id_kwargs...')
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -797,7 +799,7 @@ class ApiResource(SqlAlchemyResource):
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
         logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
-        logger.info('patch logs created.')
+        logger.info('patch logs created')
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         logger.debug('updates: %r', [x for x in logs if x.diffs ])
@@ -833,10 +835,11 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        logger.info('resource: %r, schema.key: %r', self._meta.resource_name, schema['key'])
+        logger.debug('resource: %r, schema.key: %r', 
+            self._meta.resource_name, schema['key'])
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
-
+        logger.debug('schema field keys: %r', schema['fields'].keys())
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
@@ -2167,7 +2170,17 @@ class FieldResource(ApiResource):
 
     def __init__(self, **kwargs):
         super(FieldResource,self).__init__(**kwargs)
+        self.resource_resource = None
 
+    def clear_cache(self):
+        ApiResource.clear_cache(self)
+        self.get_resource_resource().clear_cache()
+        
+    def get_resource_resource(self):
+        if self.resource_resource is None:
+            self.resource_resource = ResourceResource()
+        return self.resource_resource    
+        
     def prepend_urls(self):
 
         return [
@@ -2574,49 +2587,19 @@ class ResourceResource(ApiResource):
     def _get_resource_schema(self,resource_key, user):
         ''' For internal callers
         '''
-        logger.debug('_get_resource_schema: %r %r...', resource_key, user)
+        if DEBUG_RESOURCES:
+            logger.info('_get_resource_schema: %r %r...', resource_key, user)
         resources = self._build_resources_internal(user)
         
         if resource_key not in resources:
             raise BadRequest('Resource is not initialized: %r', resource_key)
         
         schema =  resources[resource_key]
-        logger.debug('schema fields: %r',
-            [(field['key'],field['scope']) for field in schema['fields'].values()])
+        if DEBUG_RESOURCES:
+            logger.info('schema fields: %r',
+                [(field['key'],field['scope']) 
+                    for field in schema['fields'].values()])
         
-#         if user is not None:
-#             if not user.is_superuser:
-#                 # Filter fields with "view_groups" set
-#                 schema = deepcopy(schema)
-#                 usergroups = set([x.name for x in user.userprofile.get_all_groups()])
-#                 if DEBUG_AUTHORIZATION:
-#                     logger.info(
-#                         'filter fields for %r, user: %r, groups: %r', 
-#                         resource_key, user, usergroups)
-#                 fields = deepcopy(schema['fields'])
-#                 filtered_fields = {}
-#                 for key, field in fields.items():
-#                     include = True
-#                     if key not in schema['id_attribute']:
-#                         view_groups = field.get('view_groups',[])
-#                         if view_groups:
-#                             if not set(view_groups) & usergroups:
-#                                 include = False
-#                                 if DEBUG_AUTHORIZATION:
-#                                     logger.info(
-#                                         'disallowed field: %r with view_groups: %r', 
-#                                         key, view_groups)
-#                             else:
-#                                 if DEBUG_AUTHORIZATION:
-#                                     logger.info(
-#                                         'allowed field: %r with view_groups: %r', 
-#                                         key, view_groups)
-#                     if include is True:
-#                         filtered_fields[key] = field
-#                     else:
-#                         if DEBUG_AUTHORIZATION:
-#                             logger.info('filtered field: %r', key)
-#                 schema['fields'] = filtered_fields
         return schema
     
     @read_authorization
@@ -2669,7 +2652,7 @@ class ResourceResource(ApiResource):
         return resource_schema
     
     def build_list_response(self,request, **kwargs):
-        logger.info('build_list_response: %r', request.user)
+
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -2699,7 +2682,6 @@ class ResourceResource(ApiResource):
                 temp = kwargs['meta']
                 temp.update(meta)
                 meta = temp
-                logger.info('meta: %r', meta)
             logger.debug('meta: %r', meta)
             
             response_hash = { 
@@ -2758,7 +2740,8 @@ class ResourceResource(ApiResource):
         '''
         Internal callers - return the resource keyed hash, from cache if possible
         '''
-        logger.debug('_build_resources: %r: %r', user, use_cache)
+        if DEBUG_RESOURCES:
+            logger.info('_build_resources: %r: %r', user, use_cache)
         resources = None
         user_resources = None
         resource_cache = caches['resource_cache']
@@ -2768,16 +2751,20 @@ class ResourceResource(ApiResource):
             user_cache_key = 'resources_%s' % user.username
             
             user_resources = resource_cache.get(user_cache_key)
-            
+            logger.info('user resource retrieved from cache: %r', user_resources)
         if not user_resources:    
             
             if use_cache and self.use_cache:
                 resources = resource_cache.get('resources')
                 
             if resources:
-                logger.debug('using cached resources')
+                if DEBUG_RESOURCES:
+                    logger.info('using cached resources')
+                    for key,r in resources.items():
+                        logger.info('r: %r, fields: %r', key, r['fields'].keys())
+                
             else:
-                logger.debug('rebuilding resources')
+                logger.info('rebuilding resources')
             
                 resources = deepcopy(
                     MetaHash.objects.get_and_parse(
@@ -2798,8 +2785,7 @@ class ResourceResource(ApiResource):
                     _fields[field['key']]=field
                     field_hash[field['scope']] = _fields
                 
-                # for each resource, pull in the fields of the supertype resource
-                # todo recursion
+                # For each resource, pull in the fields of the supertype resource
                 for key,resource in resources.items():
                     logger.debug('resource: %r', key)
                     resource['1'] = resource['key']
@@ -2866,16 +2852,21 @@ class ResourceResource(ApiResource):
                 if use_cache and self.use_cache:
                     logger.debug('caching resources')
                     resource_cache.set('resources', resources)
-            
+                if DEBUG_RESOURCES:
+                    logger.info('all unfiltered resources: %r', 
+                        resources.keys())
             if user and user.is_superuser is True:
                 user_resources = resources
             else:
-                logger.debug('filter resources...')        
+                if DEBUG_RESOURCES:
+                    logger.info('filter resources...')        
                 user_resources = {}
                 for key, resource in resources.items():
                     
                     user_resources[key] = self._filter_resource(resource, user)
-                
+                    if DEBUG_RESOURCES:
+                        logger.info(
+                            'resource: %r, %r', key, resource['fields'].keys())
                 if user:
                     user_cache_key = 'resources_%s' % user.username
                     resource_cache.set(user_cache_key, user_resources)

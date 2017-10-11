@@ -178,7 +178,25 @@ MAX_ROWS_FOR_CACHE_RESULTPROXY=10e+4
 # see reports/auth.py
 IS_PRODUCTION_READY = False
 
-
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+#         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+        'LOCATION': 'unique-snowflake'
+    },
+    'screen': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake'
+    },
+    'resource_cache': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake'
+    },
+    'default1': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'my_cache_table',
+    }
+}
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
 # environments, so that the test database can be destroyed

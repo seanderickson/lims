@@ -76,13 +76,13 @@ def create_screensaver_users(apps, schema_editor):
         au = None
         up = None
         username = None
-        if su.login_id:
-            username = su.login_id
-        elif su.ecommons_id: 
+        if su.ecommons_id: 
             # convert in case it has an error
             username = default_converter(str(su.ecommons_id)) 
             logger.info('username: converted ecommons: %r to %r', 
                 su.ecommons_id, username)
+        elif su.login_id:
+            username = su.login_id
         else:
             continue
         

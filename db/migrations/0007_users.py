@@ -41,33 +41,13 @@ def create_screensaver_users(apps, schema_editor):
     ScreensaverUserRole = apps.get_model('db', 'ScreensaverUserRole')
     auth_user_username_limit = 30 # field size limit for auth_user
     
-    ssuid = 830
-    # for ruchir shahs old acct
-    try:
-        su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s_old' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
-    except Exception,e:
-        logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-#     
-#     # sean johnston second account
-#     ssuid = 3758 
-#     try:
-#         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-#         username = '%s_%s_old' % (su.first_name, su.last_name)
-#         username = default_converter(username)[:auth_user_username_limit]
-#         su.username = username
-#         su.save()
-#     except Exception,e:
-#         logger.exception('cannot find/delete screensaver_user_id: %r', ssuid)
-    
-    
     for su in ScreensaverUser.objects.all():
         logger.info('processing: %r: %r', su, su.screensaver_user_id)
         if su.screensaver_user_id == 4712:
             logger.info('skip erroneous duplicate user account: %r', su)
+            continue
+        if su.screensaver_user_id == 830:
+            logger.info('skip Ruchir Shah rcs12 old account: %r', su)
             continue
         
         logger.info("processing %r, ecommons: %r, login_id: %r, email: %r, %s,%s",

@@ -24,7 +24,7 @@ class Activity(models.Model):
     
     activity_id = models.AutoField(primary_key=True) 
     date_created = models.DateTimeField(default=timezone.now)
-    comments = models.TextField()
+    comments = models.TextField(null=True)
     performed_by = models.ForeignKey(
         'ScreensaverUser', related_name='activities_performed')
     date_of_activity = models.DateField()
@@ -417,27 +417,6 @@ class CherryPickRequest(models.Model):
         return lims_utils.assay_plate_available_wells(
             self.wells_to_leave_empty, assay_plate_size)
         
-#         available_wells = []
-#         wells_to_leave_empty_list = []
-#         if self.wells_to_leave_empty:
-#             wells_to_leave_empty_list = re.split(
-#                 r'\s*,\s*', self.wells_to_leave_empty)
-#         row_specifier = 'Row:%s'
-#         col_specifier = 'Col:%d'
-#         for i in range(0,assay_plate_size):
-#             well_name = lims_utils.well_name_from_index(i, assay_plate_size)
-#             wellmatch = WELL_NAME_PATTERN.match(well_name)
-#             row = wellmatch.group(1)
-#             col = int(wellmatch.group(2))
-#             if row_specifier % row in wells_to_leave_empty_list:
-#                 continue
-#             if col_specifier % col in wells_to_leave_empty_list:
-#                 continue
-#             if well_name in wells_to_leave_empty_list:
-#                 continue
-#             available_wells.append(well_name)
-#         return available_wells
-    
     def __repr__(self):
         return (
             '<CherryPickRequest(cherry_pick_request_id=%r, screen=%r)>' 
@@ -495,12 +474,6 @@ class LabCherryPick(models.Model):
     
     is_manually_selected = models.NullBooleanField()
     
-    # Deprecated, to remove
-#     reserved = models.NullBooleanField()
-    
-#     # [Unfulfilled, Reserved, Mapped, Plated, Screened, Canceled, (Failed)]
-#     status = models.TextField(null=True)
-
     class Meta:
         db_table = 'lab_cherry_pick'
 
@@ -718,9 +691,9 @@ class Screen(models.Model):
     perturbagen_ug_ml_concentration = models.DecimalField(
         null=True, max_digits=5, decimal_places=3)
     
-    publishable_protocol = models.TextField()
-    publishable_protocol_comments = models.TextField()
-    publishable_protocol_entered_by = models.TextField()
+    publishable_protocol = models.TextField(null=True)
+    publishable_protocol_comments = models.TextField(null=True)
+    publishable_protocol_entered_by = models.TextField(null=True)
     publishable_protocol_date_entered = models.DateField(null=True)
 
     data_sharing_level = models.IntegerField(null=False)
@@ -729,9 +702,9 @@ class Screen(models.Model):
     min_allowed_data_privacy_expiration_date = models.DateField(null=True)
     data_privacy_expiration_notified_date = models.DateField(null=True)
     
-    comments = models.TextField()
+    comments = models.TextField(null=True)
 
-    coms_registration_number = models.TextField()
+    coms_registration_number = models.TextField(null=True)
     coms_approval_date = models.DateField(null=True)
 
     pubchem_deposited_date = models.DateField(null=True)
@@ -743,10 +716,10 @@ class Screen(models.Model):
 #     pin_transfer_approved_by = models.ForeignKey('ScreensaverUser', null=True)
 #     pin_transfer_approval_comment = models.TextField(null=True)
     
-    abase_study_id = models.TextField()
-    abase_protocol_id = models.TextField()
+    abase_study_id = models.TextField(null=True)
+    abase_protocol_id = models.TextField(null=True)
     study_type = models.TextField(null=True)
-    url = models.TextField()
+    url = models.TextField(null=True)
     
     to_be_requested = models.BooleanField(default=False) 
     see_comments = models.BooleanField(default=False)
@@ -757,12 +730,12 @@ class Screen(models.Model):
     facilities_and_administration_charge = \
         models.DecimalField(null=True, max_digits=9, decimal_places=2)
     fee_form_requested_date = models.DateField(null=True)
-    fee_form_requested_initials = models.TextField()
+    fee_form_requested_initials = models.TextField(null=True)
     billing_info_return_date = models.DateField(null=True)
     date_completed5kcompounds = models.DateField(null=True)
     date_faxed_to_billing_department = models.DateField(null=True)
     date_charged = models.DateField(null=True)
-    billing_comments = models.TextField()
+    billing_comments = models.TextField(null=True)
     
     created_by = models.ForeignKey('ScreensaverUser', null=True)
     
@@ -788,9 +761,9 @@ class Screen(models.Model):
     libraries_screened_count = models.IntegerField(null=True)
     ####
     
-    image_url = models.TextField()
+    image_url = models.TextField(null=True)
     well_studied = models.ForeignKey('Well', null=True)
-    species = models.TextField()
+    species = models.TextField(null=True)
 
     transfection_agent = models.TextField(null=True);
     
@@ -957,9 +930,9 @@ class ScreensaverUser(models.Model):
     comments = models.TextField(null=True)
 
     # FIXME - moved to reports.UserProfile
-    phone = models.TextField()
-    mailing_address = models.TextField()
-    harvard_id = models.TextField()
+    phone = models.TextField(null=True)
+    mailing_address = models.TextField(null=True)
+    harvard_id = models.TextField(null=True)
     harvard_id_expiration_date = models.DateField(null=True)
     harvard_id_requested_expiration_date = models.DateField(null=True)
     

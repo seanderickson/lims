@@ -51,5 +51,16 @@ class Migration(migrations.Migration):
             name='sm_data_sharing_level',
             field=models.IntegerField(null=True),
         ),
+        # 20170918; stashing here, to avoid sql pending trigger error in 0003
+        migrations.RemoveField(
+            model_name='screen',
+            name='transfection_agent',
+        ),
+        migrations.RenameField(
+            model_name='screen', 
+            old_name='transfection_agent_text', 
+            new_name='transfection_agent'
+        ),
+        
         
     ]

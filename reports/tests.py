@@ -273,6 +273,11 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
     @param obj1 input
     @param obj2 output 
     '''
+    if obj1 is None:
+        return False, ('obj1 is None')
+    if obj2 is None:
+        return False, ('obj2 is None')
+    
     original_keys = set(obj1.keys())
     original_keys = original_keys.difference(excludes)
     updated_keys = set(obj2.keys())

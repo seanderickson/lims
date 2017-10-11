@@ -16924,7 +16924,7 @@ class ScreensaverUserResource(DbApiResource):
                     screensaver_user = ScreensaverUser.objects.get(
                         ecommons_id=id_kwargs['ecommons_id'])
                 else:
-                    raise ProgrammingError
+                    logger.info('creating non-login user: %r', deserialized)
             except ObjectDoesNotExist:
                 is_patch=False
                 
@@ -16941,26 +16941,52 @@ class ScreensaverUserResource(DbApiResource):
             'fields.screensaveruser fields: %s', screensaveruser_fields.keys())
         initializer_dict = self.parse(
             deserialized, create=not is_patch, fields=screensaveruser_fields)
-        
+        logger.info('deserialized: %r', deserialized)
+        logger.info('initializer_dict: %r', initializer_dict)
         if screensaver_user is None:
+            logger.info('id_kwargs: %r', id_kwargs)
             if id_kwargs:
                 screensaver_user = ScreensaverUser(**id_kwargs)
+                logger.info('1a...%r', screensaver_user.ecommons_id)
             else:
                 screensaver_user = ScreensaverUser(
                     first_name=initializer_dict['first_name'],
                     last_name=initializer_dict['last_name'])
         
         if initializer_dict:
-            
-            if 'username' in initializer_dict:
+            new_username = initializer_dict.pop('username',None)
+            new_ecommons = initializer_dict.pop('ecommons_id',None)
+            logger.info('new_ecommons: %r', new_ecommons)
+            if new_username is not None and new_ecommons is not None:
+                if new_username != new_ecommons:
+                    raise ValidationError({
+                        'username': 'does not match ecommons_id',
+                        'ecommons_id': 'does not match username' })
+            if new_username is not None:
                 if screensaver_user.username is not None:
-                    if screensaver_user.username != initializer_dict['username']:
+                    if screensaver_user.username != new_username:
                         raise ValidationError(key='username', msg='immutable')
-            if 'ecommons_id' in initializer_dict:
+                else:
+                    screensaver_user.username = new_username
+            if new_ecommons is not None:
                 if screensaver_user.ecommons_id is not None:
-                    if screensaver_user.ecommons_id != initializer_dict['ecommons_id']:
+                    if screensaver_user.ecommons_id != new_ecommons:
                         raise ValidationError(key='username', msg='immutable')
                     if screensaver_user.username is not None:
+                        if screensaver_user.username != new_ecommons:
+                            raise ValidationError(
+                                key='username', 
+                                msg='immutable (via ecommons_id)')
+                    else:
+                        screensaver_user.username = new_ecommons
+                else:
+                    
+                    logger.info('screensaver_user: %r, setting ecommons: %r', 
+                        screensaver_user.screensaver_user_id, new_ecommons)
+                    screensaver_user.ecommons_id = new_ecommons
+                    if screensaver_user.username is None:
+                        screensaver_user.username=screensaver_user.ecommons_id
+                    elif screensaver_user.username != new_ecommons:
                         raise ValidationError(
                             key='username', 
                             msg='immutable (via ecommons_id)')
@@ -16972,9 +16998,6 @@ class ScreensaverUserResource(DbApiResource):
             logger.info(
                 'no (basic) screensaver_user fields to update %s',
                 deserialized)
-        
-        
-        
         
         reports_kwargs = {}
         if screensaver_user.username is not None:
@@ -16989,6 +17012,7 @@ class ScreensaverUserResource(DbApiResource):
                 deserialized.update({
                     'first_name': screensaver_user.first_name,
                     'last_name': screensaver_user.last_name})
+            deserialized['username'] = screensaver_user.username
             logger.info('patch the reports user: %r, %r',
                 reports_kwargs, deserialized)
             patch_response = self.get_user_resource().patch_obj(

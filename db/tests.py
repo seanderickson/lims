@@ -7311,7 +7311,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         ApiLog.objects.all().delete()
         
         # removed: should not be nec
-#         Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
+        # Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
         LabAffiliation.objects.all().delete()
         
     def test01_create_user_iccbl(self):
@@ -7335,6 +7335,24 @@ class ScreensaverUserResource(DBResourceTestCase):
             simple_user_input['ecommons_id']==created_user['username'],
             'username should equal the ecommons id if only ecommons is'
             ' provided: %r, %r' % (simple_user_input,created_user))
+        
+        # Verify that the ecommons & username cannot be changed
+        
+        user_update = {'ecommons_id': 'testerxxxx'}
+        resource_uri = '/'.join([
+            BASE_URI_DB,'screensaveruser',simple_user_input['ecommons_id']])
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=user_update, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        resp_data = self.deserialize(resp)
+        logger.info('(expected) error response: %r', resp_data)
+        
+        self.assertTrue(API_RESULT_ERROR in resp_data)
+        self.assertTrue('username' in resp_data[API_RESULT_ERROR])
         
     def test0_create_user(self):
         

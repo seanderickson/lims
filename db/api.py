@@ -16930,7 +16930,10 @@ class ScreensaverUserResource(DbApiResource):
                 
         if screensaver_user:
             is_patch = True
-                    
+        
+        logger.info('patching screensaveruser: %r: %r, %r',
+            deserialized, screensaver_user, is_patch)
+                            
         errors = self.validate(deserialized, schema=schema,patch=is_patch)
         if errors:
             raise ValidationError(errors)
@@ -16955,7 +16958,15 @@ class ScreensaverUserResource(DbApiResource):
         
         if initializer_dict:
             new_username = initializer_dict.pop('username',None)
+            if new_username is not None:
+                new_username = new_username.strip()
+                if len(new_username)==0:
+                    new_username = None
             new_ecommons = initializer_dict.pop('ecommons_id',None)
+            if new_ecommons is not None:
+                new_ecommons = new_ecommons.strip()
+                if len(new_ecommons)==0:
+                    new_ecommons = None
             logger.info('new_ecommons: %r', new_ecommons)
             if new_username is not None and new_ecommons is not None:
                 if new_username != new_ecommons:

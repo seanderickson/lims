@@ -10,6 +10,7 @@ import re
 
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
+from django.db.utils import ProgrammingError
 
 ## PLATE_SEARCH_LINE_SPLITTING_PATTERN:
 # Each plate search range is split
@@ -40,7 +41,8 @@ def well_name(row, col):
     - row is [A-Z]
     - col uses a zero based index to create a 1-based well_name column
     '''
-    name= chr(ord('A')+row) + '{:0>2d}'.format(col+1)
+#     name= chr(ord('A')+row) + '{:0>2d}'.format(col+1)
+    name= row_to_letter(row) + '{:0>2d}'.format(col+1)
     return name
 
 def well_id(plate, well_name):    
@@ -369,3 +371,131 @@ def find_ranges(list_of_numbers):
         else '%s-%s' % (x[0],x[1]), ranges)
     logger.debug('found ranges: %r for %r', ranges, list_of_numbers)
     return ranges
+
+# Transform plate size by "quadrants"
+
+def deconvolute_quadrant(source_ps, dest_ps, row, col):
+    '''Map (1536,384)-well row,col to (384,96)-well output quadrant '''
+
+    factor = source_ps/dest_ps
+    if factor != 4:
+        raise ProgrammingError('Deconvolute may only be used for '
+            'source_ps/dest_ps == 4: %d/%d'
+            % (source_ps, dest_ps))
+        
+    return col%(factor/2) +  (row%(factor/2))*(factor/2);
+
+def deconvolute_row(source_ps, dest_ps,row, col):
+    '''Map (1536,384-)well input row to (384-)well output row '''
+    
+    dest_matrix_number = deconvolute_quadrant(
+            source_ps, dest_ps, row, col)
+    factor = source_ps/dest_ps  
+    if factor != 4:
+        raise ProgrammingError('Deconvolute may only be used for '
+            'source_ps/dest_ps == 4: %d/%d'
+            % (source_ps, dest_ps))
+    return row/(factor/2)+ row%(factor/2)-dest_matrix_number/(factor/2);
+
+def deconvolute_col(source_ps, dest_ps, row, col):
+    '''Map (1536,384)-well input col to (384,96)-well output col'''
+    
+    dest_matrix_number = deconvolute_quadrant(
+            source_ps, dest_ps, row, col);
+    factor = source_ps/dest_ps  
+    if factor != 4:
+        raise ProgrammingError('Deconvolute may only be used for '
+            'source_ps/dest_ps == 4: %d/%d'
+            % (source_ps, dest_ps))
+    return col/(factor/2)+ col%(factor/2)-dest_matrix_number%(factor/2);
+
+def convolute_row(source_ps, dest_ps, source_matrix_quadrant,row):
+    '''Map (96,384)-well input row to (384,1536)-well output row '''
+    
+    factor = dest_ps/source_ps;  
+    if factor != 4:
+        raise ProgrammingError('convolute may only be used for '
+            'dest_ps/source_ps == 4: %d/%d' % (source_ps, dest_ps))
+    if source_matrix_quadrant not in [0,1,2,3]:
+        raise ProgrammingError('source_matrix_quadrant must be 0<=n<4: %r'
+            % source_matrix_quadrant)
+    return row * factor/2 + source_matrix_quadrant/(factor/2)
+
+def convolute_col(source_ps, dest_ps, source_matrix_quadrant, col):
+    ''''Map (96,384)-well input col to (384,1536)-well output col '''
+
+    factor = dest_ps/source_ps;  
+    if factor != 4:
+        raise ProgrammingError('convolute may only be used for '
+            'dest_ps/source_ps == 4: %d/%d'
+            % (source_ps, dest_ps))
+    return col * factor/2 + source_matrix_quadrant%(factor/2)
+
+def create_blank_matrix(ps):
+    matrix = []
+    for rownum in range(0,get_rows(ps)):
+        matrix.append([None]*get_cols(ps))
+    return matrix    
+
+def convolute_matrices(input_matrices, source_ps, dest_ps):
+    '''Map (96,384)-well input matrices to (384,1536)-well output matrices '''
+    
+    factor = dest_ps/source_ps
+    if factor != 4:
+        raise ProgrammingError('convolute may only be used for '
+            'dest_ps/source_ps == 4: %d/%d' % (source_ps, dest_ps))
+    
+    assert len(input_matrices)%4 == 0, 'input_matrices count must be a factor of 4'
+      
+    output_size = len(input_matrices)/4
+    
+    logger.info('convolute_matrices: convert %d input matrices to %d output',
+        len(input_matrices),output_size)
+    
+    output_matrices = []
+    for i in range(0,output_size):
+        output_matrix = create_blank_matrix(dest_ps)
+        output_matrices.append(output_matrix)
+        
+        start = i*4
+        end = start+4
+        quadrant_matrices = input_matrices[start:end]
+        # fill the matrix    
+        for quadrant, matrix in enumerate(quadrant_matrices):
+            for rownum, row in enumerate(matrix):
+                for colnum, val in enumerate(row):
+                    dest_row = convolute_row(
+                        source_ps, dest_ps, quadrant, rownum)
+                    dest_col = convolute_col(
+                        source_ps, dest_ps, quadrant, colnum)
+                    output_matrix[dest_row][dest_col] = val 
+
+    return output_matrices
+
+def deconvolute_matrices(input_matrices, source_ps, dest_ps):
+    '''Map (1536,384)-well input matrices to (384,96)-well output matrices '''
+
+    factor = source_ps/dest_ps
+    if factor != 4:
+        raise ProgrammingError('deconvolute may only be used for '
+            'source_ps/dest_ps == 4: %d/%d' % (source_ps, dest_ps))
+
+    logger.debug('deconvolute_matrices: convert %d input matrices to %d output',
+        len(input_matrices),len(input_matrices)*factor)
+
+    output_matrices = []
+    
+    for input_matrix in input_matrices:
+        new_output_matrices = [ create_blank_matrix(dest_ps) for i in range(0,4)]
+        output_matrices += new_output_matrices
+        for rownum, row in enumerate(input_matrix):
+            for colnum, val in enumerate(row):
+                output_quadrant = deconvolute_quadrant(
+                    source_ps, dest_ps, rownum, colnum)
+                output_row = deconvolute_row(source_ps, dest_ps, rownum, colnum)
+                output_col = deconvolute_col(source_ps, dest_ps, rownum, colnum)
+                
+                new_output_matrices[output_quadrant][output_row][output_col] = val
+
+    return output_matrices
+

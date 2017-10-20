@@ -1,13 +1,21 @@
 from __future__ import unicode_literals
 
+from __builtin__ import False
+import cStringIO
 from collections import OrderedDict, defaultdict
+import csv
 from decimal import Decimal
+import decimal
 import filecmp
+import io
 import json
 import logging
 import os
+import random
 import re
+import string
 import sys
+import unittest
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
@@ -18,7 +26,9 @@ from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from tastypie.test import ResourceTestCase, TestApiClient
 import xlrd
+import xlsxwriter
 
+import db
 from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_SCREENING_ADDED_PLATE_COUNT, API_MSG_SCREENING_DELETED_PLATE_COUNT, \
     API_MSG_SCREENING_EXTANT_PLATE_COUNT, API_MSG_SCREENING_TOTAL_PLATE_COUNT, \
@@ -31,21 +41,23 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_CPR_ASSAY_PLATES_REMOVED, API_MSG_LCPS_REMOVED, \
     API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED, \
     API_MSG_LCPS_MUST_BE_DELETED, API_MSG_CPR_PLATES_PLATED, \
-    API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED,\
-    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED,\
-    API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED,\
-    LibraryCopyPlateResource, LibraryScreeningResource
-from db.api import API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
-    API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE
-from db.api import VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
+    API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED, \
+    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, \
+    API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED, \
+    LibraryCopyPlateResource, LibraryScreeningResource, \
+    API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
+    API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
+    VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
     VOCAB_LCP_STATUS_PLATED
-
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
     PlateLocation, LibraryScreening, LabAffiliation
 import db.models
 from db.support import lims_utils, screen_result_importer, bin_packer
+from db.support.plate_matrix_transformer import Collation, Counter
+import db.support.plate_matrix_transformer
+import db.support.raw_data_reader
 from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory, LabAffiliationFactory
 from reports import ValidationError, HEADER_APILOG_COMMENT, _now, \
@@ -62,9 +74,6 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-import unittest
-from __builtin__ import False
-import decimal
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +81,6 @@ logger = logging.getLogger(__name__)
 
 BASE_URI = '/db/api/v1'
 BASE_REPORTS_URI = '/reports/api/v1'
-import db; 
 try:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(db.__path__[0]))
 except:
@@ -417,6 +425,8 @@ def setUpModule():
         temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
         DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
             'username': temp_test_case.username,
+            'first_name': 'super_user1_first_name',
+            'last_name': 'super_user1_last_name',
             'is_superuser': True
         })
         logger.info('admin screensaveruser created')
@@ -7726,8 +7736,13 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # Verify that the lab member dsl's are updated on lab head update.
         
-        
-        
+        # TODO: Business rules:
+        # 1. User DSL must match Lab Head (PI) DSL
+        # 1.a On updating user's SMUA, should the validation limit the DSL choice to 
+        # match the PI's?
+        # 2. On updating PI's SMUA, should batch operation include updating the
+        # lab member DSL's?
+        # 3. Does PI SMUA expiration affect Lab Member SMUA expiration?
         
         pass
         
@@ -8236,6 +8251,41 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
         self.assertTrue('sm_data_sharing_level' in apilog['diff_keys'])
+
+        # 1.c Verify that the user agreement cannot be set again if it is 
+        # already active
+        useragreement_item_post = {
+            'admin_user': admin_username,
+            'created_by_username': admin_username, 
+            'type': 'sm',
+            'data_sharing_level': 2 
+            }
+        test_comment = 'test update comment for user agreement'
+        content_type = MULTIPART_CONTENT
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+        
+        authentication=self.get_credentials()
+        kwargs = { 'limit': 0, 'includes': ['*'] }
+        kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs[HEADER_APILOG_COMMENT] = test_comment
+        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        
+        file = 'iccbl_sm_user_agreement_march2015.pdf'
+        filename = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        logger.info('Open and POST file: %r', filename)
+        with open(filename) as input_file:
+
+            logger.info('POST user agreement to the server...')
+            useragreement_item_post['attached_file'] = input_file
+            
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=useragreement_item_post, **kwargs)
+            self.assertEqual(resp.status_code, 400)
+        
+        # 1.d User DSL must match Lab Head DSL
 
         # 2 rnai data sharing
         
@@ -9667,4 +9717,796 @@ class DataSharingLevel(DBResourceTestCase):
             expected_screens_access_levels_after_deposit_no_overlap)
     
         self.clear_out_screenresults()
+        
+class RawDataTransformer(DBResourceTestCase):
+    
+    def test1_collation(self):
+        
+        counter2 = Counter(
+            OrderedDict((
+                ('plate',(1,2,3)),
+                ('condition',('c1','c2')),
+                ('replicate',('rep1', 'rep2')),
+                ('readout',('read1','read2'))
+            )))
+        
+        expected_sequences = (
+            (1,'c1','rep1','read1'),
+            (1,'c1','rep1','read2'),
+            (1,'c1','rep2','read1'),
+            (1,'c1','rep2','read2'),
+            (1,'c2','rep1','read1'),
+            (1,'c2','rep1','read2'),
+            (1,'c2','rep2','read1'),
+            (1,'c2','rep2','read2'),
+            (2,'c1','rep1','read1'),
+            (2,'c1','rep1','read2'),
+            (2,'c1','rep2','read1'),
+            (2,'c1','rep2','read2'),
+            (2,'c2','rep1','read1'),
+            (2,'c2','rep1','read2'),
+            (2,'c2','rep2','read1'),
+            (2,'c2','rep2','read2'),
+            (3,'c1','rep1','read1'),
+            (3,'c1','rep1','read2'),
+            (3,'c1','rep2','read1'),
+            (3,'c1','rep2','read2'),
+            (3,'c2','rep1','read1'),
+            (3,'c2','rep1','read2'),
+            (3,'c2','rep2','read1'),
+            (3,'c2','rep2','read2'),
+            )
+
+        for i in range(0,24):
+            reading_hash = OrderedDict(
+                zip(counter.counter_hash.keys(),
+                    expected_sequences[i]))
+            logger.info('i: %d, reading_hash: %r', i,reading_hash)
+            self.assertEqual(reading_hash,counter.get_readout(i))
+            self.assertEqual(i, counter.get_index(reading_hash))
+            
+        try:
+            logger.info('out of range: %d: returns %r', 
+                len(expected_sequences), 
+                counter.get_readout(len(expected_sequences)))
+            self.fail('index out of range, should be an error')
+        except:
+            logger.exception('expected exception')
+
+        counter = Counter(
+            OrderedDict((
+                ('replicate',('rep1', 'rep2')),
+                ('condition',('c1','c2')),
+                ('plate',(1,2,3)),
+                ('readout',('read1','read2'))
+            )))
+        
+        expected_sequences = (
+            ('rep1','c1',1,'read1'),
+            ('rep1','c1',1,'read2'),
+            ('rep1','c1',2,'read1'),
+            ('rep1','c1',2,'read2'),
+            ('rep1','c1',3,'read1'),
+            ('rep1','c1',3,'read2'),
+            ('rep1','c2',1,'read1'),
+            ('rep1','c2',1,'read2'),
+            ('rep1','c2',2,'read1'),
+            ('rep1','c2',2,'read2'),
+            ('rep1','c2',3,'read1'),
+            ('rep1','c2',3,'read2'),
+            ('rep2','c1',1,'read1'),
+            ('rep2','c1',1,'read2'),
+            ('rep2','c1',2,'read1'),
+            ('rep2','c1',2,'read2'),
+            ('rep2','c1',3,'read1'),
+            ('rep2','c1',3,'read2'),
+            ('rep2','c2',1,'read1'),
+            ('rep2','c2',1,'read2'),
+            ('rep2','c2',2,'read1'),
+            ('rep2','c2',2,'read2'),
+            ('rep2','c2',3,'read1'),
+            ('rep2','c2',3,'read2'),
+            )
+        for i in range(0,24):
+            reading_hash = OrderedDict(
+                zip(counter.counter_hash.keys(),
+                    expected_sequences[i]))
+            logger.info('i: %d, reading_hash: %r', i,reading_hash)
+            self.assertEqual(reading_hash,counter.get_readout(i))
+            self.assertEqual(i, counter.get_index(reading_hash))
+
+        # Test all the possible collations
+        plates = [1,2,3,4,5]
+        conditions = ['c1','c2','c3','c4']
+        replicates = ['rep1','rep2','rep3']
+        readouts = ['read1','read2','read3']
+        
+        counter1 = Counter(
+            OrderedDict((
+                ('plate',plates),
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('readout',readouts)
+            )))
+        counter2 = Counter(
+            OrderedDict((
+                ('plate',plates),
+                ('replicate',replicates),
+                ('condition',conditions),
+                ('readout',readouts)
+            )))
+        
+        counter3 = Counter(
+            OrderedDict((
+                ('replicate',replicates),
+                ('plate',plates),
+                ('condition',conditions),
+                ('readout',readouts)
+            )))
+        counter4 = Counter(
+            OrderedDict((
+                ('replicate',replicates),
+                ('condition',conditions),
+                ('plate',plates),
+                ('readout',readouts)
+            )))
+        
+        counter5 = Counter(
+            OrderedDict((
+                ('condition',conditions),
+                ('plate',plates),
+                ('replicate',replicates),
+                ('readout',readouts)
+            )))
+        counter6 = Counter(
+            OrderedDict((
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('plate',plates),
+                ('readout',readouts)
+            )))
+        
+        counters = [counter1,counter2,counter3,counter4,counter5,counter6]
+        for iplate in range(0, len(plates)):
+            for icondition in range(0,len(conditions)):
+                for irep in range(0,len(replicates)):
+                    for iread in range(0,len(readouts)):
+                        readout = dict(zip(
+                            ('plate','condition','replicate','readout'),
+                            (plates[iplate],conditions[icondition],
+                                replicates[irep],readouts[iread])))
+                        for c in range(0,len(counters)):
+                            counter = counters[c]
+                            logger.debug('counter: %r, find readout: %r',
+                                counter.counter_hash, readout)
+                            index = counter.get_index(readout)
+                            logger.debug('testing collation: %r, index %d',
+                                counter.counter_hash.keys(), index)
+                            
+                            counter_readout = counter.get_readout(index)
+                            logger.info('readout: %r, found: %r',
+                                readout, counter_readout)
+                            self.assertFalse(
+                                any(val!=readout[key] 
+                                    for key,val in counter_readout.items()),
+                                '%d: %r != %r' % (c, readout, counter_readout))
+
+    @staticmethod
+    def create_test_matrix(plate_size):
+        rows = lims_utils.get_rows(plate_size)
+        cols = lims_utils.get_cols(plate_size)
+        matrix = []
+        for row in range(0,rows):
+            row = []
+            matrix.append(row)
+            for col in range(0,cols):
+                random_number = str(random.uniform(0,10))
+                #logger.info('random: %r', random_number)
+                row.append(random_number)
+        return matrix
+    
+    def test2_matrix_reader(self):
+        
+        # create test input matrix
+        
+        expected_matrices = []
+        assay_plate_size = 384
+        number_of_matrices = 12
+        sep = '\t'
+        for i in range(0,number_of_matrices):
+            expected_matrices.append(self.create_test_matrix(assay_plate_size))
+        logger.info('row0: %r', expected_matrices[0][0])            
+        logger.info('row1: %r', expected_matrices[0][1])            
+        
+        # write out various file formats
+        text_buffer = cStringIO.StringIO()
+        csv_buffer = cStringIO.StringIO()
+        csv_writer = csv.writer(csv_buffer, lineterminator='\n')
+        
+        excel_buffer = cStringIO.StringIO()
+        excel_workbook = xlsxwriter.Workbook(excel_buffer)
+        excel_sheet = excel_workbook.add_worksheet('test')
+        
+        excel_row = 0
+        for i,matrix in enumerate(expected_matrices):
+            # write some random text
+            logger.info('writing matrix: %d', i)
+            random_text = ''.join(
+                random.choice(string.ascii_uppercase + string.digits) 
+                    for _ in range(24))
+            text_buffer.write(random_text + '\n')
+            text_buffer.write('\n')
+            text_buffer.write(random_text + '\n')
+        
+            # Note: need at least 10 lines to "train" the csv delimiter sniffer
+            for x in range(0,15):
+                csv_writer.writerow([random_text, random_text, random_text])
+            csv_writer.writerow(['','','',''])
+        
+            excel_sheet.write_row(excel_row,0,[random_text, random_text, random_text])
+            excel_row += 1
+            excel_sheet.write_row(excel_row,0,[random_text, random_text, random_text])
+            excel_row += 1
+            excel_sheet.write_row(excel_row,0,['',''])
+            excel_row += 1
+            
+            width = len(matrix[0])
+            hrow = [str(n+1) for n in range(width)]
+            hrow.insert(0,' ')
+            header_row = sep.join(hrow)
+            text_buffer.write(header_row + '\n')
+            
+            csv_writer.writerow(hrow)
+
+            excel_sheet.write_row(excel_row,0,hrow)
+            excel_row += 1
+            
+            for r,row in enumerate(matrix):
+                row_letter = lims_utils.row_to_letter(r)
+                text_buffer.write(sep + row_letter + sep + sep.join(row) + '\n')
+                csv_writer.writerow([row_letter]+row)
+                excel_sheet.write_row(excel_row,0,[row_letter]+row)
+                excel_row += 1
+            text_buffer.write('\n')
+            csv_writer.writerow(['',])
+            excel_sheet.write_row(excel_row,0,['',])
+            excel_row += 1
+        
+        excel_workbook.close()
+        
+        text_buffer.seek(0)
+        filename = 'db/static/test_data/platereader/test2_matrix_reader.txt'
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(csv_buffer.getvalue())
+        fout.close()
+        text_buffer.seek(0)
+
+        
+        csv_buffer.seek(0)
+        filename = 'db/static/test_data/platereader/test2_matrix_reader.csv'
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(csv_buffer.getvalue())
+        fout.close()
+        csv_buffer.seek(0)
+
+        excel_buffer.seek(0)
+        filename = 'db/static/test_data/platereader/test2_matrix_reader.xlsx'
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(excel_buffer.getvalue())
+        fout.close()
+        excel_buffer.seek(0)
+
+        logger.info('text test...')
+        read_matrices = db.support.raw_data_reader.read(text_buffer, 'test.txt')
+        
+        self.assertEqual(len(expected_matrices),len(read_matrices),
+            'wrong # of matrices read: %d != %d - %r' 
+            % (len(expected_matrices),len(read_matrices),read_matrices))
+        
+        for i,matrix in enumerate(read_matrices):
+            expected_matrix = expected_matrices[i]
+            for r,row in enumerate(matrix):
+                expected_row = expected_matrix[r]
+                self.assertEqual(len(row), len(expected_row),
+                    'matrix: %d, row: %d, len: %d != %d, %r - %r'
+                    % (i,r,len(row), len(expected_row), expected_row, row))
+        
+        logger.info('csv test...')
+        read_matrices = db.support.raw_data_reader.read(csv_buffer, 'test.csv')
+        
+        self.assertEqual(len(expected_matrices),len(read_matrices),
+            'csv wrong # of matrices read: %d != %d - %r' 
+            % (len(expected_matrices),len(read_matrices),read_matrices))
+        
+        for i,matrix in enumerate(read_matrices):
+            expected_matrix = expected_matrices[i]
+            for r,row in enumerate(matrix):
+                expected_row = expected_matrix[r]
+                self.assertEqual(len(row), len(expected_row),
+                    'csv matrix: %d, row: %d, len: %d != %d, %r - %r'
+                    % (i,r,len(row), len(expected_row), expected_row, row))
+        
+        logger.info('xlsx test...')
+        read_matrices = db.support.raw_data_reader.read(excel_buffer, 'test.xlsx')
+        
+        self.assertEqual(len(expected_matrices),len(read_matrices),
+            'excel wrong # of matrices read: %d != %d - %r' 
+            % (len(expected_matrices),len(read_matrices),read_matrices))
+        
+        for i,matrix in enumerate(read_matrices):
+            expected_matrix = expected_matrices[i]
+            for r,row in enumerate(matrix):
+                expected_row = expected_matrix[r]
+                self.assertEqual(len(row), len(expected_row),
+                    'excel matrix: %d, row: %d, len: %d != %d, %r - %r'
+                    % (i,r,len(row), len(expected_row), expected_row, row))
+        
+        # TODO: test some error conditions:
+        # - recognized header row has too few columns
+        # - recognized matrix has too few rows
+        # - report on empty matrices
+        
+    def test3_matrix_convolution(self):
+        ''' 
+        Test conversion between matrix sizes:
+        96->384 (convolution)
+        1536->384 (deconvolute)
+        '''
+        
+        source_ps = 96
+        dest_ps = 384
+        
+        input_matrices = [ 
+            self.create_test_matrix(source_ps) for x in range(0,16)]
+        
+        # Create the convoluted matrix
+        output_matrices = lims_utils.convolute_matrices(
+            input_matrices,source_ps, dest_ps)
+        
+        # 1. Test "manually" by converting by quadrant
+        new_sps = dest_ps
+        new_dps = source_ps
+        
+        self.assertEqual(len(output_matrices), len(input_matrices)/4)
+        
+        for count, output_matrix in enumerate(output_matrices):
+            for rownum, row in enumerate(output_matrix):
+                for colnum, val in enumerate(row):
+                    input_quadrant = lims_utils.deconvolute_quadrant(
+                        new_sps, new_dps, rownum, colnum)
+                    input_row = lims_utils.deconvolute_row(
+                        new_sps, new_dps, rownum, colnum)
+                    input_col = lims_utils.deconvolute_col(
+                        new_sps, new_dps, rownum, colnum)
+                    
+                    input_matrix_number = (count * 4) + input_quadrant
+                    input_val = \
+                        input_matrices[input_matrix_number][input_row][input_col]
+                        
+                    logger.debug('test %d,386[%d,%d] (%r) != [%d]96[%d:%d] (%r)'
+                        % (count, rownum,colnum,val, input_matrix_number, input_row, 
+                            input_col, input_val))
+                    
+                    self.assertEqual(input_val, val, 
+                        '%d,386[%d,%d] (%r) != [%d]96[%d:%d] (%r)'
+                        % (count, rownum,colnum,val, input_matrix_number, input_row, 
+                            input_col, input_val))
+
+        # 2. Test by converting output matrices back to input matrices
+        new_input_matrices = lims_utils.deconvolute_matrices(
+            output_matrices, new_sps, new_dps)
+        
+        self.assertEqual(len(input_matrices),len(new_input_matrices))
+        
+        for count, new_input_matrix in enumerate(new_input_matrices):
+            original_matrix = input_matrices[count]
+            self.assertEqual(len(original_matrix),len(new_input_matrix))
+            for rownum, row in enumerate(original_matrix):
+                for colnum, val in enumerate(row):
+                    new_val = new_input_matrix[rownum][colnum]
+                    self.assertEqual(val,new_val,
+                        'matrix: %d, row: %d, col: %d, %r != %r'
+                        % (count, rownum, colnum, val, new_val))
+        
+        # 3. Test 1536
+        source_ps = 1536
+        dest_ps = 384
+        
+        input_matrices = [ 
+            self.create_test_matrix(source_ps) for x in range(0,16)]
+        
+        # Create the deconvoluted matrix
+        output_matrices = lims_utils.deconvolute_matrices(
+            input_matrices, source_ps, dest_ps)
+        
+        self.assertEqual(len(input_matrices)*4, len(output_matrices))
+        
+        new_sps = 384
+        new_dps = 1536
+        new_input_matrices = lims_utils.convolute_matrices(
+            output_matrices,new_sps, new_dps)
+        
+        self.assertEqual(len(input_matrices),len(new_input_matrices))
+        
+        for count, new_input_matrix in enumerate(new_input_matrices):
+            original_matrix = input_matrices[count]
+            self.assertEqual(len(original_matrix),len(new_input_matrix))
+            for rownum, row in enumerate(original_matrix):
+                for colnum, val in enumerate(row):
+                    new_val = new_input_matrix[rownum][colnum]
+                    self.assertEqual(val,new_val,
+                        'matrix: %d, row: %d, col: %d, %r != %r'
+                        % (count, rownum, colnum, val, new_val))
+        
+        
+    def test4_matrix_convolution_and_collation(self):
+        
+        # Collation always defines the ordering of the assay plates read in
+        # (not the output ordering, which may be defined arbitrarily)
+        
+        # These "tests" are more demonstrations of the method
+        
+        # 1. 96 - 384:
+
+        # 1.A Counter setup:
+        # - includes a "quadrant" digit, always directly to the right 
+        #   of the plate digit. (So that the counter is input PQ ordering)
+        assay_plate_size = 96
+        library_plate_size = 384
+        number_of_input_matrices = 96
+        plates = [1,2,3]
+        quadrants = [0,1,2,3]
+        conditions = ['c1','c2']
+        replicates = ['rep1','rep2']
+        readouts = ['read1','read2']
+        counter96 = Counter(
+            OrderedDict((
+                ('plate',plates),
+                ('quadrant',quadrants),
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('readout',readouts)
+            )))
+
+        # 1.B Create input test data:
+        # - number of assay plates read:
+        #   4*plates*2cond*2rep*2read = 4 * 24 = 96 input plates
+        plate_matrices96 = []
+        for i in range(0,number_of_input_matrices):
+            plate_matrices96.append(self.create_test_matrix(assay_plate_size))
+        
+        # 1.C Set up 384 counter; grouping by 4 plates at a time
+        counter384 = Counter(
+            OrderedDict((
+                ('plate',plates),
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('readout',readouts)
+            )))
+
+        # 1.D Convolution 96 -> 384
+
+        plate_matrices384 = db.support.plate_matrix_transformer.transform(
+            plate_matrices96, counter384, assay_plate_size, library_plate_size)
+#         # - Create blank output matrices
+#         plate_matrices384 = [
+#             lims_utils.create_blank_matrix(library_plate_size) 
+#             for x in range(0,len(plate_matrices96)/4)]
+# 
+#         # Iterate through output (384) matrices and find the 96 matrix values
+#         # NOTE: could also start by iterating through input matrices
+#         for index,matrix in enumerate(plate_matrices384):
+#             readout = counter384.get_readout(index)
+#             for rownum, row in enumerate(matrix):
+#                 for colnum in range(0,len(row)):
+#                     input_quadrant = lims_utils.deconvolute_quadrant(
+#                         library_plate_size, assay_plate_size, 
+#                         rownum, colnum)
+#                     readout96 = dict(readout, quadrant=input_quadrant)
+#                     logger.debug('index: %d, 384 readout: %r, quadrant: %d, 96: %r',
+#                         index,readout,input_quadrant,readout96)
+#                     input_index = counter96.get_index(readout96)
+#                     
+#                     input_row = lims_utils.deconvolute_row(
+#                         library_plate_size, assay_plate_size, 
+#                         rownum, colnum)
+#                     input_col = lims_utils.deconvolute_col(
+#                         library_plate_size, assay_plate_size, 
+#                         rownum, colnum)
+#                     logger.debug('find: index: %d, cell: [%d][%d]',
+#                         input_index,input_row,input_col)
+#                     row[colnum] = plate_matrices96[input_index][input_row][input_col]
+                    
+        # 1.E Deconvolute 384 -> 96 for verification
+        new_plate_matrices96 = [
+            lims_utils.create_blank_matrix(assay_plate_size) 
+                for x in range(0,len(plate_matrices96))]
+        for index,matrix in enumerate(new_plate_matrices96):
+            readout = counter96.get_readout(index)
+            quadrant = readout['quadrant']
+            for rownum,row in enumerate(matrix):
+                for colnum in range(0,len(row)):
+                    output_row = lims_utils.convolute_row(
+                        assay_plate_size, library_plate_size,
+                        quadrant,rownum)
+                    output_col = lims_utils.convolute_col(
+                        assay_plate_size, library_plate_size,
+                        quadrant,colnum)
+                    readout384 = dict(readout)
+                    del readout384['quadrant']
+                    index384 = counter384.get_index(readout384)
+                    
+                    val384 = plate_matrices384[index384][output_row][output_col]
+                    
+                    row[colnum] = val384
+        # 1.F Verify
+        for index,matrix in enumerate(plate_matrices96):
+            for rownum, row in enumerate(matrix):
+                for colnum,val in enumerate(row):
+                    wellname = lims_utils.well_name(rownum, colnum)
+                    newval = new_plate_matrices96[index][rownum][colnum]
+                    self.assertEqual(val,newval,
+                        'index: %d, wellname: %r, %r != %r'
+                        % (index, wellname, val, newval))
+        
+        # 1.1.A, different collation
+        
+        counter96 = Counter(
+            OrderedDict((
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('plate',plates),
+                ('quadrant',quadrants),
+                ('readout',readouts)
+            )))
+        counter384 = Counter(
+            OrderedDict((
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('plate',plates),
+                ('readout',readouts)
+            )))
+
+        # 1.1.D Convolution 96 -> 384
+
+        plate_matrices384 = db.support.plate_matrix_transformer.transform(
+            plate_matrices96, counter384, assay_plate_size, library_plate_size)
+        
+        # 1.1.E Deconvolute 384 -> 96 for verification
+        new_plate_matrices96 = [
+            lims_utils.create_blank_matrix(assay_plate_size) 
+                for x in range(0,len(plate_matrices96))]
+        for index,matrix in enumerate(new_plate_matrices96):
+            readout = counter96.get_readout(index)
+            quadrant = readout['quadrant']
+            for rownum,row in enumerate(matrix):
+                for colnum in range(0,len(row)):
+                    output_row = lims_utils.convolute_row(
+                        assay_plate_size, library_plate_size,
+                        quadrant,rownum)
+                    output_col = lims_utils.convolute_col(
+                        assay_plate_size, library_plate_size,
+                        quadrant,colnum)
+                    readout384 = dict(readout)
+                    del readout384['quadrant']
+                    index384 = counter384.get_index(readout384)
+                    
+                    val384 = plate_matrices384[index384][output_row][output_col]
+                    
+                    row[colnum] = val384
+        # 1.1.F Verify
+        for index,matrix in enumerate(plate_matrices96):
+            for rownum, row in enumerate(matrix):
+                for colnum,val in enumerate(row):
+                    wellname = lims_utils.well_name(rownum, colnum)
+                    newval = new_plate_matrices96[index][rownum][colnum]
+                    self.assertEqual(val,newval,
+                        'index: %d, wellname: %r, %r != %r'
+                        % (index, wellname, val, newval))
+        
+        # 2. 1536 - 384
+        
+        assay_plate_size = 1536
+        library_plate_size = 384
+        # Number of assay plates read:
+        # 2 (1536) plates x 2 cond x 2 rep x 2 read
+        number_of_input_matrices = 16 
+
+        # 2.A Counter setup:
+        
+        plates = [1,2,3,4,5,6,7,8]
+        conditions = ['c1','c2']
+        replicates = ['rep1','rep2']
+        readouts = ['read1','read2']
+        # - Divide plates defined into "1536" plates, groups of 4
+        plates_1536 = OrderedDict()
+        for i,plate in enumerate(plates):
+            plate_number_1536 = i/4
+            if plate_number_1536 not in plates_1536:
+                plates_1536[plate_number_1536] = []
+            plates_1536[plate_number_1536].append(plate)
+        logger.info('plates_1536: %r', plates_1536)
+        
+        counter1536 = Counter(
+            OrderedDict((
+                ('plate',plates_1536.keys()),
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('readout',readouts)
+            )))
+
+        # 2.B Create 1536 test data
+        
+        # Create an empty output array        
+        plate_matrices1536 = []
+        for i in range(0,number_of_input_matrices):
+            plate_matrices1536.append(self.create_test_matrix(assay_plate_size))
+        
+        # Write out data for visual verification
+        csv_buffer = cStringIO.StringIO()
+        csv_writer = csv.writer(csv_buffer, lineterminator='\n')
+        for index, matrix in enumerate(plate_matrices1536):
+            width = len(matrix[0])
+            hrow = [str(n+1) for n in range(width)]
+            hrow.insert(0,' ')
+            csv_writer.writerow(['','',''])
+            csv_writer.writerow(['matrix',str(index),''])
+            readout = \
+                'plate: {plate}, cond: {condition}, repl: {replicate}, readout: {readout}'\
+                .format(**counter1536.get_readout(index))
+            csv_writer.writerow(['readout', readout])
+            csv_writer.writerow(['readout', '%r' % counter384.get_readout(index)])
+            csv_writer.writerow(['','',''])
+            csv_writer.writerow(hrow)
+            for rownum, row in enumerate(matrix):
+                row_letter = lims_utils.row_to_letter(rownum)
+                csv_writer.writerow([row_letter]+row)
+        csv_buffer.seek(0)
+        filename = 'db/static/test_data/platereader/test4_convolution1536.csv'
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(csv_buffer.getvalue())
+        fout.close()
+        csv_buffer.seek(0)
+
+        # 2.C Set up 384 counter; using the (384) plates
+        counter384 = Counter(
+            OrderedDict((
+                ('plate',plates),
+                ('condition',conditions),
+                ('replicate',replicates),
+                ('readout',readouts)
+            )))
+        
+        # 2.C Deconvolute
+        
+        plate_matrices384 = db.support.plate_matrix_transformer.transform(
+            plate_matrices1536, counter384, 1536, 384)
+
+#         # 2.D Deconvolute 1536 -> 384
+#         
+#         # Create blank output matrices
+#         plate_matrices384 = [ None for x in range(0,len(plate_matrices1536)*4) ] 
+# #             lims_utils.create_blank_matrix(library_plate_size) 
+# #             for x in range(0,len(plate_matrices1536)*4)]
+# 
+#         # Iterate through input (1536) matrices and find the output 384 matrix value
+#         # NOTE: could also do as before, with the 96 example and iterate through
+#         # the 384 matrices and find the 1536 values
+#         for index, matrix in enumerate(plate_matrices1536):
+#             readout1536 = counter1536.get_readout(index)
+#             plate1536 = readout1536['plate']
+#             
+#             # Convert each 1536 plate separately, and find the output matrix position
+#             output_384_matrices = lims_utils.deconvolute_matrices(
+#                 [matrix], assay_plate_size, library_plate_size)
+#             
+#             for quadrant, matrix384 in enumerate(output_384_matrices):
+#                 plate384 = plates_1536[plate1536][quadrant]
+#                 readout384 = dict(readout1536, plate=plate384)
+#                 index384 = counter384.get_index(readout384)
+#                 
+#                 plate_matrices384[index384] = matrix384    
+#             
+#             # for rownum, row in enumerate(matrix):
+#             #     for colnum, val in enumerate(row):
+#             #         quadrant = lims_utils.deconvolute_quadrant(
+#             #             assay_plate_size, library_plate_size, rownum, colnum)
+#             #         plate384 = plates_1536[plate1536][quadrant]
+#             #         readout384 = dict(readout1536, plate=plate384)
+#             #         index384 = counter384.get_index(readout384)
+#             #         row384 = lims_utils.deconvolute_row(
+#             #             assay_plate_size, library_plate_size, rownum, colnum)
+#             #         col384 = lims_utils.deconvolute_col(
+#             #             assay_plate_size, library_plate_size, rownum, colnum)
+#             #          
+#             #         plate_matrices384[index384][row384][col384] = val
+
+        # Write out data for visual verification
+        csv_buffer = cStringIO.StringIO()
+        csv_writer = csv.writer(csv_buffer, lineterminator='\n')
+        for index, matrix in enumerate(plate_matrices384):
+            width = len(matrix[0])
+            hrow = [str(n+1) for n in range(width)]
+            hrow.insert(0,' ')
+            csv_writer.writerow(['','',''])
+            csv_writer.writerow(['matrix',str(index),''])
+            readout = \
+                'plate: {plate}, cond: {condition}, repl: {replicate}, readout: {readout}'\
+                .format(**counter384.get_readout(index))
+            csv_writer.writerow(['readout', readout])
+            csv_writer.writerow(['readout', '%r' % counter384.get_readout(index)])
+            csv_writer.writerow(['','',''])
+            csv_writer.writerow(hrow)
+            for rownum, row in enumerate(matrix):
+                row_letter = lims_utils.row_to_letter(rownum)
+                csv_writer.writerow([row_letter]+row)
+        csv_buffer.seek(0)
+        filename = 'db/static/test_data/platereader/test4_convolution384.csv'
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(csv_buffer.getvalue())
+        fout.close()
+        csv_buffer.seek(0)
+
+        # 1.E Convolute 384 -> 1536 for verification
+
+        # create a blank output array
+        new_plate_matrices1536 = [
+            lims_utils.create_blank_matrix(assay_plate_size) 
+                for x in range(0,len(plate_matrices1536))]
+        
+        for index, matrix in enumerate(plate_matrices384):
+            readout384 = counter384.get_readout(index)
+            plate384 = readout384['plate']
+            plate1536 = plates.index(plate384)/4
+            quadrant = plates_1536[plate1536].index(plate384)
+            readout1536 = dict(readout384, plate=plate1536)
+            index1536 = counter1536.get_index(readout1536)
+            logger.debug('index: %d, q: %r, readout384: %r, readout1536: %r', 
+                index, quadrant, readout384, readout1536)
+            for rownum, row in enumerate(matrix):
+                for colnum, val in enumerate(row):
+                    row1536 = lims_utils.convolute_row(
+                        library_plate_size, assay_plate_size, quadrant,rownum)
+                    col1536 = lims_utils.convolute_col(
+                        library_plate_size, assay_plate_size, quadrant,colnum)
+                    new_plate_matrices1536[index1536][row1536][col1536] = val
+
+        # Write out data for visual verification
+        csv_buffer = cStringIO.StringIO()
+        csv_writer = csv.writer(csv_buffer, lineterminator='\n')
+        for index, matrix in enumerate(new_plate_matrices1536):
+            width = len(matrix[0])
+            hrow = [str(n+1) for n in range(width)]
+            hrow.insert(0,' ')
+            csv_writer.writerow(['','',''])
+            csv_writer.writerow(['matrix',str(index),''])
+            readout = \
+                'plate: {plate}, cond: {condition}, repl: {replicate}, readout: {readout}'\
+                .format(**counter1536.get_readout(index))
+            csv_writer.writerow(['readout', readout])
+            csv_writer.writerow(['readout', '%r' % counter384.get_readout(index)])
+            csv_writer.writerow(['','',''])
+            csv_writer.writerow(hrow)
+            for rownum, row in enumerate(matrix):
+                row_letter = lims_utils.row_to_letter(rownum)
+                csv_writer.writerow([row_letter]+row)
+        csv_buffer.seek(0)
+        filename = 'db/static/test_data/platereader/test4_convolution1536new.csv'
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(csv_buffer.getvalue())
+        fout.close()
+        csv_buffer.seek(0)
+
+        # 2.F Verify
+        for index,matrix in enumerate(plate_matrices1536):
+            for rownum, row in enumerate(matrix):
+                for colnum,val in enumerate(row):
+                    wellname = lims_utils.well_name(rownum, colnum)
+                    newval = new_plate_matrices1536[index][rownum][colnum]                    
+                    logger.debug('index: %d, wellname: %r, %r, %r',
+                        index, wellname, val, newval)
+                    self.assertEqual(val,newval,
+                        'index: %d, wellname: %r, %r != %r'
+                        % (index, wellname, val, newval))
+                    
         

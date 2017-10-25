@@ -1,24 +1,25 @@
 from __future__ import unicode_literals
 
 import argparse
-import xlrd
-import re
-from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
-
-import logging
-import json
-from reports import ParseError, ValidationError, LIST_DELIMITER_SQL_ARRAY
-from db.support.data_converter import default_converter
-from reports.serialize import parse_val
 from collections import OrderedDict
-from xlsxwriter.utility import xl_col_to_name
-from db.support import lims_utils
-logger = logging.getLogger(__name__)
+import json
+import logging
+import re
 
+import xlrd
+from xlsxwriter.utility import xl_col_to_name
+
+from db import WELL_NAME_PATTERN
+from db.support import lims_utils
+from db.support.data_converter import default_converter
+from reports import ParseError, ValidationError, LIST_DELIMITER_SQL_ARRAY
+from reports.serialize import parse_val
 from reports.serialize.xlsutils import sheet_cols, sheet_rows, \
     workbook_sheets, generic_xls_write_workbook
-from db import WELL_NAME_PATTERN
+
+
+logger = logging.getLogger(__name__)
+
 
 PARTITION_POSITIVE_MAPPING = {
     'NP': 0,
@@ -498,9 +499,12 @@ def create_output_data(screen_facility_id, fields, result_values ):
                     temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
                 logger.debug('excluded data_column_keys: find %r, in %r', temp, data_column_keys)    
                 for data_column_name in temp:
-                    excluded_cols.append(get_column_letter(
-                        len(RESULT_VALUE_FIELD_MAP)+1
-                            +data_column_keys.index(data_column_name)))
+                    # excluded_cols.append(get_column_letter(
+                    #     len(RESULT_VALUE_FIELD_MAP)+1
+                    #         +data_column_keys.index(data_column_name)))
+                    excluded_cols.append(xl_col_to_name(
+                        len(RESULT_VALUE_FIELD_MAP)
+                            + data_column_keys.index(data_column_name)))
                     excluded_cols = sorted(excluded_cols)
             row.append(','.join(excluded_cols))
             

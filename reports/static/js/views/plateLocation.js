@@ -183,7 +183,7 @@ function($, _, Backbone, Backgrid, layoutmanager, typeahead, Iccbl, appModel,
       args.EditView = editView;
       args.DetailView = detailView;
       
-      DetailLayout.prototype.initialize.call(this,args);
+      DetailLayout.prototype.initialize.apply(this,args);
 
     },
     

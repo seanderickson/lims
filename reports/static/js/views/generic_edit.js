@@ -42,8 +42,6 @@ define([
     
     tagname: 'siuniteditor',
     
-//    defaultValue: 0,
-    
     fieldTemplate: _.template([
       '<div data-editor class="form-control col-sm-4" title="<%= help %>"  >'
       ].join('')),
@@ -263,7 +261,7 @@ define([
     tagName: 'datepicker',
     template: [
          '<div class="input-group date" >',
-         '  <input type="text" class="form-control">',
+         '  <input type="text" class="form-control"  >',
          '  <span class="input-group-addon" id="datepicker-icon" >',
          '    <i class="glyphicon glyphicon-th"  ></i>',
          '  </span>',
@@ -513,7 +511,13 @@ define([
       this.$el.attr('multiple', 'multiple');
       this.setOptions(this.schema.options);
       return this;
+    },
+    getValue: function(){
+      var val = this.$el.val();
+      
+      return val == "" ? null: val
     }
+    
   });
   
   var ChosenMultiSelect = Backbone.Form.editors.Select.extend({
@@ -527,6 +531,12 @@ define([
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
+    },
+    
+    getValue: function(){
+      var val = this.$el.val();
+      
+      return val == "" ? null: val
     }
   });
   
@@ -550,7 +560,14 @@ define([
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
+    },
+    
+    getValue: function(){
+      var val = this.$el.val();
+      
+      return val == "" ? null: val
     }
+  
   });
   
   var EditView = Backbone.Form.extend({
@@ -753,7 +770,21 @@ define([
                 if (_.has(this.schema,'rows')) {
                   this.$el.attr('rows',this.schema['rows']);
                 }
+              },
+              
+              getValue: function() {
+                value = this.$el.val();
+                
+                // Cleanup strings containing newlines: 
+                // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
+                // NOTE: JSON does not officially support control-characters, so 
+                // newlines should be escaped/unescaped on send/receive in the API (TODO)
+                if (_.isString(value)) {
+                  value = value.replace(/(\r\n|\n|\r)/gm,"\n");
+                }
+                return value;
               }
+        
             }),
             editorClass: 'form-control',
             template: self.altTextAreaFieldTemplate,
@@ -847,7 +878,19 @@ define([
             _.extend(fieldSchema, typeMap[fi.display_type]);
           }
           if (_.has(typeMap, fi.edit_type)) {
-            _.extend(fieldSchema, typeMap[fi.edit_type]);
+            if (fi.edit_type == 'select' && fi.data_type == 'integer'){
+              var baseEditor = typeMap[fi.edit_type]['type'];
+              var editor = baseEditor.extend({
+                getValue: function(){
+                  var value = baseEditor.__super__.getValue.apply(this, arguments);
+                  return value == "" ? null : parseFloat(value);
+                }
+              });
+              _.extend(fieldSchema, typeMap[fi.edit_type], {type: editor});
+            }else{
+              _.extend(fieldSchema, typeMap[fi.edit_type]);
+            }
+            
           }
           
           if (cell_options) {
@@ -981,7 +1024,9 @@ define([
           var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice) {
             if (vocabulary[choice].is_retired) {
-              console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+              if (appModel.DEBUG) {
+                console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+              }
             } else {
               choiceHash.push({ 
                 val: choice, 
@@ -992,15 +1037,18 @@ define([
           choiceHash = _.sortBy(choiceHash, function(choice){
             return choice.ordinal;
           });
-          if (fi.edit_type == 'select' && !fi.required ) {
-            choiceHash.unshift({ val: '', label: ''});
-          }
+//          if (fi.edit_type == 'select' && !fi.required ) {
+//            choiceHash.unshift({ val: '', label: ''});
+//          }
         }catch(e) {
           var msg = 'Vocabulary unavailable: field: ' + fi.key +  
             ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
           console.log(msg,e);
           appModel.error(msg);
         }
+      }
+      if (fi.edit_type == 'select' && !fi.required ) {
+        choiceHash.unshift({ val: '', label: ''});
       }
 
       return choiceHash;
@@ -1157,6 +1205,11 @@ define([
           }
         }
         
+        // NOTE: array values are assumed to be unordered for generic_edit
+        if (_.isArray(value) && _.isArray(prev)){
+          return _.isEqual(value.sort(), prev.sort());
+        }
+        
         // Cleanup strings containing newlines: 
         // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
         // NOTE: JSON does not officially support control-characters, so 
@@ -1179,6 +1232,10 @@ define([
       this.remove();
       appModel.router.back();
     }, 
+    
+    commit: function(options) {
+      return EditView.__super__.commit.apply(this, arguments);
+    },
     
     /**
      * Default save success action
@@ -1303,7 +1360,7 @@ define([
           var key = pair[0];
           var value = pair[1];
           if (!_.isUndefined(value) && !_.isNull(value)){
-            if (!_.contains(changedAttributes,key)){
+            if (!_.has(changedAttributes,key)){
               changedAttributes[key] = value;
             }
           }

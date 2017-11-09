@@ -23,6 +23,7 @@ define([
 	  initialize: function(args) {
 	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
+	    this.args = args;
 	    var resource = this.resource = args.resource || this.model.resource;
       var detailKeys = this.detailKeys = args.detailKeys || resource.detailKeys(); 
       var adminKeys = this.adminKeys = self.model.resource.adminKeys();
@@ -46,6 +47,12 @@ define([
       if(! appModel.getCurrentUser().is_superuser){
         this.buttons = _.without(this.buttons,'delete');
       }
+      this.buttons_left = _.filter(this.buttons, function(button){
+        return button == 'edit';
+      });
+      this.buttons_right = _.filter(this.buttons, function(button){
+        return button != 'edit';
+      });
       
       // If "hideIfEmpty" then remove null attributes
       _.each(self.model.keys(), function(key){
@@ -444,10 +451,14 @@ define([
 
     serialize: function() {
       return {
-        'buttons': _.chain(this.buttons), // TODO: buttons from the resource
+        'buttons_right': _.chain(this.buttons_right), // TODO: buttons from the resource
+        'buttons_left': _.chain(this.buttons_left), // TODO: buttons from the resource
         'groupedKeys': _.chain(this.groupedKeys),
         'keys': _.chain(this.detailKeys), // TODO: groupedKeys replaces detailKeys
-        'adminKeys': this.adminKeys
+        'adminKeys': this.adminKeys,
+        'table_class': _.result(this.args,'table_class', 'col-sm-8'),
+        'label_col_class': _.result(this.args,'label_col_class', 'col-xs-3'),
+        'value_col_class': _.result(this.args,'value_col_class', 'col-xs-7')    
       };      
     },    
     

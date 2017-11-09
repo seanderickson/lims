@@ -624,26 +624,11 @@ define([
     
     getScreens: function(callback){
       data_for_get = { 
-        exact_fields: ['title','facility_id'], 
+        exact_fields: ['title','facility_id','data_sharing_level','screen_type'], 
         study_type__is_null: true
       };
       return this.getCachedResourceCollection(
         'screens', this.dbApiUri + '/screen', data_for_get, callback );
-    },
-
-    getScreensOptions: function(options, callback){
-      options = options || {};
-      data_for_get = { 
-        exact_fields: ['title','facility_id'], 
-        study_type__is_null: true,
-      };
-      var cachekey = _.map(_.pairs(data_for_get),function(pair){
-        return pair.join(':');
-      }).join('-')
-      
-      data_for_get = _.extend(data_for_get, options);
-      return this.getCachedResourceCollection(
-        'screens-'+cachekey, this.dbApiUri + '/screen', data_for_get, callback );
     },
 
     getCachedResourceCollection: function(
@@ -695,7 +680,7 @@ define([
         this.dbApiUri + '/screensaveruser', 
         { 
           lab_affiliation_id__is_blank: false,
-          classification__eq: 'principal_investigator',
+          classification__eq: this.VOCAB_USER_CLASSIFICATION_PI,
           exact_fields: ['username','lab_name','name','email'], 
           order_by: ['name']
         }, 
@@ -707,7 +692,7 @@ define([
         'users', 
         this.dbApiUri + '/screensaveruser', 
         { 
-          exact_fields: ['username','name','email'], 
+          exact_fields: ['username','name','email','sm_data_sharing_level','rnai_data_sharing_level'], 
           order_by: ['name']
         }, 
         callback );
@@ -832,6 +817,23 @@ define([
       self.set('permissionOptions',permissionOptions);
     },
 
+    /**
+     * Retrun an array of options for a Iccbl.SelectCell
+     */
+    getVocabularySelectCellArray: function(scope){
+      var options = [];
+      try{
+        var vocabulary = Iccbl.appModel.getVocabulary(scope);
+        _.each(_.keys(vocabulary),function(choice){
+          options.push([vocabulary[choice].title,choice]);
+        });
+      }catch(e){
+        var msg = 'Vocabulary unavailable: vocabulary_scope_ref: ' + scope;
+        console.log(msg,e);
+        this.error(msg);
+      }
+      return options;
+    },
     
     /** 
      * Return an array of options for a vocabulary select.
@@ -883,8 +885,10 @@ define([
         var matchedVocabularies = {};
         _.each(_.keys(vocabularies), function(candidateScope){
           if(candidateScope.match('^' + scope + '$')){
-            console.log(
-              'matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
+            if (DEBUG) {
+                console.log(
+                'matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
+            }
             _.extend(matchedVocabularies,vocabularies[candidateScope]);
           }
         });
@@ -1236,25 +1240,7 @@ define([
               return true;
             }
           });
-      console.log('permission', r_perm, !_.isUndefined(match));
       return !_.isUndefined(match);
-    },
-    
-    /**
-     * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
-     */
-    getSMUALevel: function(user){
-      return _.find(user.get('usergroups'), function(usergroup){
-        if(usergroup.toLowerCase().indexOf('smdsl') > -1) return true;
-      });
-    },
-    /**
-     * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
-     */
-    getRNAUALevel: function(user){
-      return _.find(user.get('usergroups'), function(usergroup){
-        if(usergroup.toLowerCase().indexOf('rnaidsl') > -1) return true;
-      });
     },
     
     hasGroup: function(groupName) {
@@ -1481,9 +1467,12 @@ define([
       var msg_rows = this.dict_to_rows(jsonObj);
       console.log('msg_rows: ', msg_rows);
       var bodyMsg = msg_rows;
-      if (_.isArray(msg_rows) && msg_rows.length > 1){
+      if (_.isArray(msg_rows)){
         if (msg_rows.length > 40){
           buttons_on_top = true;
+        }
+        if (msg_rows.length > 1) {
+          
         }
         bodyMsg = _.map(msg_rows, function(msg_row){
           return msg_row.join(': ');
@@ -2316,6 +2305,16 @@ define([
       </div>\
     </div>\
   ');
+  appState._horizontal_form_field_template = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label col-sm-6" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
+        '    <div class="col-sm-6" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+//        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
   
   appState.schemaClass = new SchemaClass(); // make accessible to outside world
   appState.resources = {};   // TO be retrieved from the server 
@@ -2346,6 +2345,7 @@ define([
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
+  appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
   
   appState.LIST_DELIMITER_SUB_ARRAY = '$';
 

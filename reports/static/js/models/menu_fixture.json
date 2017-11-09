@@ -124,6 +124,9 @@
         },
         "attachedfile":{
           "view": "list"
+        },
+        "useragreement":{
+          "view": "list"
         }
       }
     }

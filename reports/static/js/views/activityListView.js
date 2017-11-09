@@ -20,9 +20,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
           
           this.$el.empty();
           var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-          
           var hrefTemplate = this.hrefTemplate;
-          
           var activityType = this.model.get('activity_class');
           if (_.contains(['libraryscreening','externallibraryscreening'],activityType)){
             hrefTemplate = '#screen/{screen_facility_id}' + 
@@ -53,12 +51,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
       },resource.fields['activity_id'].display_options);
 
       resource.fields['activity_id']['backgridCellType'] = linkCell;
-      resource.fields['date_of_activity']['backgridCellType'] = linkCell;
+      resource.fields['date_of_activity']['backgridCellType'] = linkCell.extend({
+        'formatter': _.extend({}, Iccbl.StringFormatter.prototype, {
+          fromRaw(rawValue){
+            return Iccbl.getDateString(rawValue);
+          }
+        })
+      });
 
       ActivityView.__super__.initialize.apply(this, arguments);      
-      
     }
-    
   });
 
   return ActivityView;

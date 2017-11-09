@@ -49,7 +49,9 @@ define([
       var access_level = this.model.get('user_access_level_granted');
       if (access_level > 1) {
         this.tabbed_resources['summary'] = this.screen_tabbed_resources['summary'];
-        this.tabbed_resources['data'] = this.screen_tabbed_resources['data'];
+        if (this.model.get('has_screen_result') != 1){
+          delete this.tabbed_resources['data']
+        }
         this.tabbed_resources['protocol'] = this.screen_tabbed_resources['protocol'];
       } 
       if (access_level > 2 && _.isEmpty(self.model.get('study_type'))){
@@ -173,17 +175,33 @@ define([
         fields['reconfirmation_screens'].visibility=['d'];
       }
       
+      // Hack to change group name:
+      _.each(fields, function(field){
+        if (field.display_options && 
+            field.display_options.group == 'Pin Transfer / RNAi Transfection'){
+          if (self.model.get('screen_type')=='small_molecule'){
+            field.display_options.group = 'Pin Transfer';
+          } else {
+            field.display_options.group = 'RNAi Transfection';
+          }
+        }
+      });
+      
       // Manage visible fields; admin fields
       var editableKeys = model.resource.updateKeys();
       if (model.isNew()) {
         editableKeys = _.union(editableKeys,model.resource.createKeys());
       }
       editableKeys = _.filter(editableKeys, function(key){
-        return ! _.contains(fields[key].visibility, 'billing');
+        return ! (
+            _.contains(fields[key].visibility, 'billing')
+            || _.contains(fields[key].visibility, 'protocol'));
       });
       var editVisibleKeys = model.resource.allEditVisibleKeys();
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
-        return ! _.contains(fields[key].visibility, 'billing');
+        return ! (
+            _.contains(fields[key].visibility, 'billing')
+            || _.contains(fields[key].visibility, 'protocol'));
       });
       var detailKeys = model.resource.detailKeys();
       var adminKeys = model.resource.adminKeys();
@@ -246,23 +264,23 @@ define([
           EditView.prototype.afterRender.apply(this,arguments);
         },
 
-        validate: function() {
-          // FIXME: 20170605 refactor: this must be tested to verify it works
-          var errs = EditView.prototype.validate.apply(this,arguments);
-          errors = errs || {};
-          console.log('extra validation...')
-          if (!_.isEmpty(this.model.get('data_privacy_expiration_notified_date'))) {
-            if (!_.isEmpty(this.model.get('max_allowed_data_privacy_expiration_date'))) {
-              errors['max_allowed_data_privacy_expiration_date'] = (
-                'can not be set if the expiration notified date is set');
-            }
-            if (!_.isEmpty(this.model.get('min_allowed_data_privacy_expiration_date'))) {
-              errors['min_allowed_data_privacy_expiration_date'] = (
-                'can not be set if the expiration notified date is set');
-            }
-          }
-          
-          if (!_.isEmpty(errors)) return errors;
+        validate: function(attrs) {
+//          // FIXME: 20170605 refactor: this must be tested to verify it works
+//          var errs = EditView.prototype.validate.apply(this,arguments);
+//          errors = errs || {};
+//          console.log('extra validation...')
+//          if (!_.isEmpty(this.model.get('data_privacy_expiration_notified_date'))) {
+//            if (!_.isEmpty(this.model.get('max_allowed_data_privacy_expiration_date'))) {
+//              errors['max_allowed_data_privacy_expiration_date'] = (
+//                'can not be set if the expiration notified date is set');
+//            }
+//            if (!_.isEmpty(this.model.get('min_allowed_data_privacy_expiration_date'))) {
+//              errors['min_allowed_data_privacy_expiration_date'] = (
+//                'can not be set if the expiration notified date is set');
+//            }
+//          }
+//          
+//          if (!_.isEmpty(errors)) return errors;
           return null;
         }
       });
@@ -287,15 +305,9 @@ define([
               [{ val: '', label: ''}].concat(userOptions));
           fields['lab_head_id']['choices'] = (
               appModel.getPrincipalInvestigatorOptions() );
-          fields['publishable_protocol_entered_by']['choices'] = (
-              appModel.getAdminUserOptions() );
           fields['pin_transfer_approved_by_username']['choices'] = (
               appModel.getAdminUserOptions() );
           
-          // TODO: this should default only after pp value is entered
-          //view.model.set('publishable_protocol_entered_by',
-          //    appModel.getCurrentUser().username);
-
           // pick just the non-billing fields: prevent backbone save from sending
           // uninitialized billing fields on create
           var modelKeys = detailKeys.concat(editVisibleKeys);
@@ -307,7 +319,6 @@ define([
           editModel.parse = model.parse;
           editModel.isNew = model.isNew;
 
-          console.log('showEdit: editView: ',editView);
           var editViewInstance = new editView(_.extend({}, self.args, 
             { 
               model: editModel,
@@ -354,12 +365,12 @@ define([
             // reconfirmation up screen itself.
             
             var addReconfirmationScreenControl = $([
-              '<a class="btn btn-default btn-sm pull-down" ',
+              '<a class="btn btn-default btn-sm pull-right" ',
                 'role="button" id="reconfirmationScreenButton" href="#">',
                 'Add a Reconfirmation Screen</a>'
               ].join(''));
             if (appModel.hasPermission('screen','write')) {
-              $('#generic-detail-buttonpanel').append(addReconfirmationScreenControl);
+              $('#generic-detail-buttonpanel-right').append(addReconfirmationScreenControl);
             }
             addReconfirmationScreenControl.click(function(e){
               e.preventDefault();
@@ -403,11 +414,11 @@ define([
           if (appModel.hasGroup('readEverythingAdmin')) {
             var adminControl = $('<a id="admin-control"></a>');
             if (self.isAdmin){
-              adminControl.append('admin&nbsp;&lt;&lt;')
+              adminControl.append('&nbsp;admin&nbsp;&lt;&lt;&nbsp;')
             }else{
-              adminControl.append('admin&nbsp;&gt;&gt;')
+              adminControl.append('&nbsp;admin&nbsp;&gt;&gt;&nbsp;')
             }
-            $('#generic-detail-buttonpanel').append(adminControl);
+            $('#generic-detail-buttonpanel-left').append(adminControl);
             adminControl.click(function(e){
               e.preventDefault();
               self.isAdmin = !self.isAdmin;
@@ -416,32 +427,9 @@ define([
           }
         },
         
-        serialize: function() {
-          var data = DetailView.prototype.serialize.apply(this,arguments);
-          // special handling of the grouped keys for the screen template
-          //var informationKeys = [];
-          //var groupedKeys = [];
-          //var informationKeysOnly = [];
-          //
-          //data['groupedKeys'].each(function(groupKey) {
-          //  if (_.result(groupKey,'title',null) == 'Information') {
-          //    informationKeys = informationKeys.concat(groupKey.fields);
-          //  } 
-          //  else {
-          //    groupedKeys.push(groupKey);
-          //  }
-          //});
-          //console.log('information keys', informationKeys);
-          //data['keys'] = _.chain(informationKeys);
-          //data['groupedKeys'] = _.chain(informationKeys);
-          //data['informationKeys'] = _.chain(informationKeys);
-          return data;
-        },
-        
         template: _.template(detailTemplate)
       });
 
-      
       // FIXME: 20170519: it would be better to pick needed values only from the args 
       view = new DetailLayout(_.extend(self.args, { 
         model: model, 
@@ -1386,6 +1374,9 @@ define([
           // 20170605 - JAS - no funding support if attached to a screen
           saResource.fields['funding_support']['editability'] = [];
           saResource.fields['funding_support']['visibility'] = [];
+          
+          // NOTE: funding support removed from screen.service_activities: redundant
+          //
           //// Funding supports: populate select with screen funding supports;
           //// - if only one screen funding support; set it as default
           //var funding_supports = self.model.get('funding_supports');
@@ -1481,7 +1472,17 @@ define([
           }
         });
         
-        view = new DetailLayout({ 
+        var ProtocolDetailLayout = DetailLayout.extend({
+          showEdit: function(){
+            var pSelf = this;
+            appModel.getAdminUserOptions(function(options){
+              pSelf.model.resource.fields['publishable_protocol_entered_by']['choices'] = options;
+              return DetailLayout.prototype.showEdit.apply(pSelf, arguments);
+            });
+          }
+        });
+        
+        view = new ProtocolDetailLayout({ 
           model: self.model, 
           uriStack: delegateStack,
           detailKeys: protocolKeys,
@@ -1599,8 +1600,55 @@ define([
                 'screen.status',self.model.get('status'))));
         }
       }
+      $(this).queue([
+        appModel.getUserOptions,
+        self.showUserDslWarnings]);
+    },
+    
+    showUserDslWarnings: function() {
+      var self = this;
+      console.log('showUserDslWarnings');
+      $('#content_title_message').find('#screen_member_dsl_message').remove();
+      var users = appModel.getUsers();
+      var screenMembers = users.filter(function(model){
+        var userId = model.get('screensaver_user_id');
+        return ( userId == self.model.get('lead_screener_id')
+            || userId == self.model.get('lab_head_id')
+            || _.contains(self.model.get('collaborator_ids'),userId));
+      });
+      
+      var warnUsers = _.filter(screenMembers, function(member){
+        var userDsl;
+        if (self.model.get('screen_type')=='small_molecule'){
+          userDsl = member.get('sm_data_sharing_level');
+        }
+        else if (self.model.get('screen_type')=='rnai'){
+          userDsl = member.get('rnai_data_sharing_level');
+        } else {
+          console.log('unknown screen type!', self.model.get('screen_type'));
+        }
+        return _.isNumber(userDsl) && userDsl < self.model.get('data_sharing_level');
+      });
+      if (!_.isEmpty(warnUsers)){
+        var userDslProp = 'sm_data_sharing_level';
+        if (self.model.get('screen_type') == 'rnai'){
+          userDslProp = 'rnai_data_sharing_level';
+        }
+        $('#content_title_message').prepend(
+          $('<div id="screen_member_dsl_message" class="alert alert-danger"></div>').html(
+            'Screen Data Sharing Level: ' 
+            + appModel.getVocabularyTitle(
+              'screen.data_sharing_level',self.model.get('data_sharing_level'))
+            + ', is more restrictive than User Data Sharing Level: ' 
+            + _.map(warnUsers, function(user){
+              return '( #' + user.get('screensaver_user_id') + ' - '
+                + user.get('name') + ' - '
+                + appModel.getVocabularyTitle(
+                  'useragreement.data_sharing_level',user.get(userDslProp)) + ')';
+            }).join(', ')));
+      }
     }
-
+    
   });
 
   return ScreenView;

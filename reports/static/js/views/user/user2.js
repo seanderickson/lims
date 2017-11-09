@@ -81,7 +81,7 @@ define([
       var resource = appModel.getResource(this.model.resource.key);
       resource.fields = _.pick(
         this.model.resource.fields,
-        ['username','first_name','last_name','usergroups','permissions']);
+        ['screensaver_user_id', 'username','first_name','last_name','usergroups','permissions']);
       resource.fields['first_name']['visibility'] = [];
       resource.fields['last_name']['visibility'] = [];
       resource.fields['usergroups']['visibility'] = [];

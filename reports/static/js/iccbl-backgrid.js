@@ -759,7 +759,6 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
    * Override collection parse method: Parse server response data.
    */
   parse : function(resp) {
-    console.log('Collection on client, parse called');
     if (_.has(resp,Iccbl.appModel.API_RESULT_DATA)){
       return resp[Iccbl.appModel.API_RESULT_DATA];
     } 
@@ -1079,7 +1078,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
 
 var DateLinkCell = Iccbl.DateLinkCell = Iccbl.LinkCell.extend({
 
-  render : function() {
+  render: function() {
     var self = this;
     this.$el.empty();
     var formattedValue = getIccblDateString(
@@ -4372,20 +4371,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   if(!_.isEmpty(prop.vocabulary)){
     cell_options.optionValues = prop.vocabulary; 
   }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
-    var optionValues = [];
-    var vocabulary_scope_ref = prop.vocabulary_scope_ref;
-    try{
-      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
-        _.each(_.keys(vocabulary),function(choice){
-          optionValues.push([vocabulary[choice].title,choice]);
-        });
-    }catch(e){
-      console.log('build column errorr: e',e);
-    }
     cell_options = _.extend(cell_options,{
-      optionValues: optionValues,
-      vocabulary_scope_ref: vocabulary_scope_ref
-    } );
+      optionValues: 
+        Iccbl.appModel.getVocabularySelectCellArray(prop.vocabulary_scope_ref),
+      vocabulary_scope_ref: prop.vocabulary_scope_ref
+    });
   }
   
   if (_.has(prop, 'backgridCellType')){

@@ -1,20 +1,25 @@
 <div id="generic-detail-top">
   <div class="row">
-    <div class="col-sm-12" id="generic-detail-buttonpanel">
+    <div class="col-sm-6" id="generic-detail-buttonpanel-left">
 <% 
-// add only the edit button on the top for now
-if (buttons) {
-%>
+  if (buttons_left) {
+    buttons_left.each(function(key) {
+    %>
+        <button type="button" class="btn btn-default btn-sm pull-left" id="<%=key %>" name="<%=key %>" ></button>
     <% 
-    buttons.each(function(key) {
+    }); 
+  }  
+%>
+    </div>
+    <div class="col-sm-6" id="generic-detail-buttonpanel-right">
+<% 
+  if (buttons_right) {
+    buttons_right.each(function(key) {
     %>
         <button type="button" class="btn btn-default btn-sm pull-right" id="<%=key %>" name="<%=key %>" ></button>
     <% 
     }); 
-    %>
-    </div>
-<% 
-}  
+  }  
 %>
     </div>
   </div>
@@ -75,16 +80,3 @@ if (buttons) {
   </div>
 </div>
 
-<form id='generic-form' class="form-horizontal" >
-    <div class="controls">
-        <% 
-        if (buttons) {
-          buttons.each(function(key) {
-        %>
-          <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ></button>
-       <% 
-          }); 
-        }  
-        %>
-    </div>
-</form>

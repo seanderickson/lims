@@ -469,6 +469,12 @@
         "rpp": 200
       }
     },
+    "useragreement": {
+      "options": {
+        "order": ["screensaver_user_id"],
+        "rpp": 50
+      }
+    },
     "labaffiliation": {
       "detailView": "DetailView"
     },

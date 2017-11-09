@@ -480,5 +480,10 @@ DROP TABLE gene_old_entrezgene_id;
 DROP TABLE gene_old_entrezgene_symbol;
 DROP TABLE silencing_reagent_non_targetted_genbank_accession_number;
 
+/**
+ * Drop not-null constraint on study type: this is handled in 0002 as well, 
+ * but is failing to be effective on the orchestra server
+ **/
+alter table screen alter column study_type drop not null;
 
 COMMIT;

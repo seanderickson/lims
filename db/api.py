@@ -2902,7 +2902,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
-                if ( screen.screen_type == self.VOCAB_SCREEN_TYPE_SM
+                if ( screen.screen_type == VOCAB_SCREEN_TYPE_SM
                      and screen.data_sharing_level < 3 ):
                     if screen.data_sharing_level == current_dsl:
                         logger.info(
@@ -2925,7 +2925,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
-                if ( screen.screen_type == self.VOCAB_SCREEN_TYPE_RNAI
+                if ( screen.screen_type == VOCAB_SCREEN_TYPE_RNAI
                      and screen.data_sharing_level < 3 ):
                     if screen.data_sharing_level == current_dsl:
                         logger.info(
@@ -2994,9 +2994,11 @@ class ScreenAuthorization(UserGroupAuthorization):
     
     def get_user_effective_data_sharing_level(self, screensaver_user, screen_type):
         effective_dsl = 0
-        if screen_type==VOCAB_SCREEN_TYPE_RNAI and self.has_rna_data_deposited(screensaver_user) is False:
+        if screen_type==VOCAB_SCREEN_TYPE_RNAI \
+            and self.has_rna_data_deposited(screensaver_user) is False:
             return effective_dsl
-        if screen_type==VOCAB_SCREEN_TYPE_SM and self.has_sm_data_deposited(screensaver_user) is False:
+        if screen_type==VOCAB_SCREEN_TYPE_SM \
+            and self.has_sm_data_deposited(screensaver_user) is False:
             return effective_dsl
         
         return self.get_user_data_sharing_level(screensaver_user, screen_type)

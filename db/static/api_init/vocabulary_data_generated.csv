@@ -222,3 +222,12 @@ sirna,library.type,12,siRNA
 dmso,library.solvent,0,DMSO
 other_aqueous,library.solvent,1,"Other (aqueous)"
 rnai_buffer,library.solvent,2,"RNAi buffer"
+hms_affiliate_hms_quad,lab_head.appointment_category,1,"HMS Affiliate with HMS Quad Appointment"
+hms_quad_facultly,lab_head.appointment_category,2,"HMS Quad Faculty"
+Micro_and_Immuno,lab_head.appointment_department,1,"Micro and Immuno"
+Sys_Bio,lab_head.appointment_department,2,"Sys Bio"
+Neuro,lab_head.appointment_department,3,Neuro
+Cell_Bio,lab_head.appointment_department,4,"Cell Bio"
+Biomedical_Informatics,lab_head.appointment_department,5,"Biomedical Informatics"
+BCMP,lab_head.appointment_department,6,BCMP
+Genetics,lab_head.appointment_department,7,Genetics

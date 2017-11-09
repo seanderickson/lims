@@ -25,9 +25,6 @@ class Migration(migrations.Migration):
             model_name='attachedfile',
             name='attached_file_type',
         ),
-# TODO: reinstate this 20170630
-#         migrations.DeleteModel(
-#             name='AttachedFileType'),
         
         migrations.RemoveField(
             model_name='screenfundingsupportlink',
@@ -92,6 +89,12 @@ class Migration(migrations.Migration):
 #         migrations.DeleteModel(
 #             name='UserChecklistItem',
 #         ),
+        migrations.DeleteModel(
+            name='AttachedFileType',
+        ),
+        migrations.DeleteModel(
+            name='UserChecklistItem',
+        ),
 
         # TODO: service_activity depends on funding support
 #         migrations.RunSQL('DROP TABLE funding_support; '),

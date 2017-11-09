@@ -34,3 +34,4 @@ patch,field,metahash_fields_publication.csv
 patch,field,metahash_fields_platelocation.csv
 patch,field,metahash_fields_screenercherrypick.csv
 patch,field,metahash_fields_labaffiliation.csv
+patch,field,metahash_fields_useragreement.csv

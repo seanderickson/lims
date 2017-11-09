@@ -48,7 +48,7 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
     VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
-    VOCAB_LCP_STATUS_PLATED
+    VOCAB_LCP_STATUS_PLATED, VOCAB_USER_CLASSIFICATION_PI
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
@@ -74,6 +74,7 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
+from django.db.utils import ProgrammingError
 
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,8 @@ except:
 BASE_URI_DB = '/db/api/v1'
 
 LCP_COPYWELL_KEY = db.api.LabCherryPickResource.LCP_COPYWELL_KEY
+VOCAB_USER_AGREEMENT_RNAI = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
+VOCAB_USER_AGREEMENT_SM = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_SM
 
 
 class DBResourceTestCase(IResourceTestCase):
@@ -186,17 +189,20 @@ class DBResourceTestCase(IResourceTestCase):
         
         input_data = ScreenFactory.attributes()
         logger.info('input_data: %r', input_data)
+        
+        
         if data:
             input_data.update(data)
         if 'lab_head_id' not in input_data:
             lab_head = self.create_lab_head()
             input_data['lab_head_id'] = str(lab_head['screensaver_user_id'])
+        user_input_data = { 'lab_head_id': input_data['lab_head_id'] }
         if 'lead_screener_id' not in input_data:
-            lead_screener = self.create_screensaveruser()
+            lead_screener = self.create_screening_user(user_input_data)
             input_data['lead_screener_id'] = str(lead_screener['screensaver_user_id'])
         if 'collaborator_ids' not in input_data:
-            collaborator1 = self.create_screensaveruser()
-            collaborator2 = self.create_screensaveruser()
+            collaborator1 = self.create_screening_user(user_input_data)
+            collaborator2 = self.create_screening_user(user_input_data)
             input_data['collaborator_ids'] = [
                 collaborator1['screensaver_user_id'], collaborator2['screensaver_user_id']]
         input_data['collaborator_ids'] = [ 
@@ -263,53 +269,132 @@ class DBResourceTestCase(IResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         return self.deserialize(resp)
 
-    def create_screensaveruser(self, data=None):
-        ''' Create a test ScreensaverUser through the API'''
-        
+#     def create_screensaveruser(self, data=None):
+#         ''' Create a test ScreensaverUser through the API'''
+#         
+#         input_data = ScreensaverUserFactory.attributes()
+#         if data:
+#             input_data.update(data)
+#         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+#         test_uri = '/'.join([resource_uri,input_data['username']])
+#         logger.info('create user: %r', input_data)
+#         return self._create_resource(input_data,resource_uri,test_uri)
+#     
+    def create_staff_user(self, data=None):
         input_data = ScreensaverUserFactory.attributes()
         if data:
             input_data.update(data)
+        input_data['is_staff'] = True
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         test_uri = '/'.join([resource_uri,input_data['username']])
         logger.info('create user: %r', input_data)
         return self._create_resource(input_data,resource_uri,test_uri)
     
     def create_lab_head(self, data=None):
-
-        lab_head_data = self.create_screensaveruser(data=data)
-        logger.info('lab_head_data: %r', lab_head_data)
-        return self.update_user_to_lab_head(lab_head_data)
-    
-    def update_user_to_lab_head(self, lab_head_data):
         lab_affiliation = self.create_lab_affiliation()
-        
-        user_patch_data = {
-            'screensaver_user_id': lab_head_data['screensaver_user_id'],
-            'classification': 'principal_investigator',
-            'lab_affiliation_id': lab_affiliation['lab_affiliation_id']
-            }
-        
-        resource_uri = BASE_URI_DB + '/screensaveruser/'
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', 
-            data=user_patch_data, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in _data)
-        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
-        new_lab_head = _data[API_RESULT_DATA][0]
-        logger.info('the new lab affiliation has been set: %r', new_lab_head)
+
+        input_data = ScreensaverUserFactory.attributes()
+        if data:
+            input_data.update(data)
+
+        input_data['classification'] = VOCAB_USER_CLASSIFICATION_PI
+        input_data['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
+
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+        test_uri = '/'.join([resource_uri,input_data['username']])
+        logger.info('create user: %r', input_data)
+        new_lab_head = self._create_resource(input_data,resource_uri,test_uri)
         
         self.assertEqual(
-            lab_affiliation['name'], 
-            new_lab_head['lab_affiliation_name'])
-        
+            new_lab_head['screensaver_user_id'], new_lab_head['lab_head_id'])
         return new_lab_head
+        
+    def create_screening_user(self, data=None):
+        input_data = ScreensaverUserFactory.attributes()
+        if data:
+            input_data.update(data)
+        if 'lab_head_id' not in input_data:
+            raise ProgrammingError('lab_head_id is required')
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+        test_uri = '/'.join([resource_uri,input_data['username']])
+        logger.info('create screening user: %r', input_data)
+        return self._create_resource(input_data,resource_uri,test_uri)
     
+    def set_screening_user_data_sharing_level(
+        self, screensaver_user_id, type, data_sharing_level, date_active=None,
+        input_file = None):
+        
+        
+        # 1.B Valid input
+        user_agreement_input = {
+            'screensaver_user_id': screensaver_user_id,
+            'type': type,
+            'data_sharing_level': data_sharing_level,
+            }
+        if date_active is not None:
+            user_agreement_input['date_active'] = date_active
+
+        test_comment = 'test update comment for user agreement'
+        authentication=self.get_credentials()
+        post_kwargs = { 'limit': 0, 'includes': ['*'] }
+        post_kwargs['HTTP_AUTHORIZATION'] = authentication
+        post_kwargs[HEADER_APILOG_COMMENT] = test_comment
+        post_kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        
+        def post_input(input_file):
+            # NOTE: create a detail URI; post_list is not implemented
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % screensaver_user_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
+        
+        
+        if input_file is None:
+            # Use a default "user agreement" attachment
+            filename = 'iccbl_sm_user_agreement_march2015.pdf'
+            filepath = \
+                '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,filename)
+            logger.info('Open and POST file: %r', filepath)
+            with open(filepath) as input_file:
+                post_input(input_file)
+        else:
+            post_input(input_file)        
+                
+        # 1.A Verify User Agreement was created
+        
+        resource_uri = '/'.join([
+            BASE_URI_DB,'useragreement', str(screensaver_user_id),
+            VOCAB_USER_AGREEMENT_SM])
+        user_agreement_output = self.get_single_resource(resource_uri)
+        
+        logger.info('user agreement created: %r', user_agreement_output)
+        self.assertEqual(
+            user_agreement_input['type'], 
+            user_agreement_output['type'])
+        self.assertEqual(
+            user_agreement_input['data_sharing_level'], 
+            user_agreement_output['data_sharing_level'])
+        if 'date_active' in user_agreement_input:
+            self.assertEqual(
+                user_agreement_input['date_active'],
+                user_agreement_output['date_active'])        
+        else:
+            self.assertIsNotNone(user_agreement_output.get('date_active'))
+            
+        return user_agreement_output
+    
+            
     def create_lab_affiliation(self, data=None):
         attributes = LabAffiliationFactory.attributes()
         if data is not None:
@@ -414,20 +499,20 @@ def setUpModule():
     try:
         su = ScreensaverUser.objects.get(username=IResourceTestCase.username)
         logger.info('found ss user: %r', su)
-        temp_test_case = DBResourceTestCase(methodName='get_from_server')
+        temp_test_case = DBResourceTestCase(methodName='get_single_resource')
         resource_uri = \
             BASE_URI_DB + '/screensaveruser/' +IResourceTestCase.username
         DBResourceTestCase.admin_user = \
-            temp_test_case.get_from_server(resource_uri)
+            temp_test_case.get_single_resource(resource_uri)
         logger.info('got admin user: %r', DBResourceTestCase.admin_user)
-    except Exception:
-        logger.exception('create an admin screensaveruser...')
-        temp_test_case = DBResourceTestCase(methodName='create_screensaveruser')
-        DBResourceTestCase.admin_user = temp_test_case.create_screensaveruser({ 
+    except ObjectDoesNotExist:
+        logger.info('create an admin screensaveruser...')
+        temp_test_case = DBResourceTestCase(methodName='create_staff_user')
+        DBResourceTestCase.admin_user = temp_test_case.create_staff_user({ 
             'username': temp_test_case.username,
             'first_name': 'super_user1_first_name',
             'last_name': 'super_user1_last_name',
-            'is_superuser': True
+            'is_superuser': True,
         })
         logger.info('admin screensaveruser created')
     
@@ -439,10 +524,9 @@ def tearDownModule():
 #     Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
 #     LabAffiliation.objects.all().delete()
 
-    # remove the admin user
-    # ScreensaverUser.objects.all().delete() 
-    # UserProfile.objects.all().delete()
-    # User.objects.all().delete()
+    ScreensaverUser.objects.all().delete()
+    UserProfile.objects.all().delete()
+    User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
 
@@ -578,7 +662,7 @@ class LibraryResource(DBResourceTestCase):
             ('library: %r'% library1, 'expected', 
                 expected_count, 'found',len(returned_data)))
         
-        specific_schema = self.get_from_server(resource_uri + '/schema')
+        specific_schema = self.get_single_resource(resource_uri + '/schema')
         fields = specific_schema['fields']
         self.validate_wells(input_data, returned_data, fields)
         
@@ -605,6 +689,7 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
+        logger.info('patch_response: %r', patch_response)
         self.assertTrue(API_RESULT_DATA in patch_response)
         self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
         patch_response = patch_response[API_RESULT_DATA][0]
@@ -1814,7 +1899,7 @@ class LibraryResource(DBResourceTestCase):
                 len(returned_data), 'expected',expected_count,
                 'returned_data',returned_data))
 
-        specific_schema = self.get_from_server(resource_uri + '/schema')
+        specific_schema = self.get_single_resource(resource_uri + '/schema')
         fields = specific_schema['fields']
         self.validate_wells(input_data, returned_data, fields)
                     
@@ -2062,7 +2147,7 @@ class LibraryResource(DBResourceTestCase):
                 len(returned_data), 'expected',expected_count )))
 
         # 1. test well keys
-        specific_schema = self.get_from_server(resource_uri + '/schema')
+        specific_schema = self.get_single_resource(resource_uri + '/schema')
         fields = specific_schema['fields']
         
         self.validate_wells(input_data, returned_data, fields)
@@ -3238,9 +3323,10 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test1c_create_study...')        
 
         lab_head = self.create_lab_head()
-        lead_screener = self.create_screensaveruser()
-        collaborator1 = self.create_screensaveruser()
-        collaborator2 = self.create_screensaveruser()
+        user_data = { 'lab_head_id': lab_head['screensaver_user_id']}
+        lead_screener = self.create_screening_user(user_data)
+        collaborator1 = self.create_screening_user(user_data)
+        collaborator2 = self.create_screening_user(user_data)
         input_data = ScreenFactory.attributes()
         data = {
             'facility_id': '100000',
@@ -3296,11 +3382,11 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test2a_create_library_screening_cherry_picked_copies...')
                 
         logger.info('A. Set up dependencies...')
-        logger.info('create users...')
-        self.screening_user = self.create_screensaveruser({ 
-            'username': 'screening1'
-        })
-        
+#         # (Single users must have a lab head - or be a lab head)
+#         self.screening_user = self.create_lab_head({ 
+#             'username': 'screening1'
+#         })
+
         # FIXME: create an "LibraryScreeningPerformers" admin group
         performed_by = self.admin_user
         
@@ -3678,9 +3764,10 @@ class ScreenResource(DBResourceTestCase):
                 
         # Set up dependencies
         logger.info('create users...')
-        self.screening_user = self.create_screensaveruser({ 
-            'username': 'screening1'
-        })
+#         # (Single users must have a lab head - or be a lab head)
+#         self.screening_user = self.create_lab_head({ 
+#             'username': 'screening1'
+#         })
         
         # FIXME: create an "LibraryScreeningPerformers" admin group
         performed_by_user = self.admin_user
@@ -4325,9 +4412,10 @@ class ScreenResource(DBResourceTestCase):
 
         logger.info('test3_create_publication ...')
         
-        self.screening_user = self.create_screensaveruser({ 
-            'username': 'screening1'
-        })
+#         # (Single users must have a lab head - or be a lab head)
+#         self.screening_user = self.create_lab_head({ 
+#             'username': 'screening1'
+#         })
         logger.info('create screen...')        
         screen = self.create_screen({
             'screen_type': 'small_molecule'
@@ -4515,14 +4603,14 @@ class ScreenResource(DBResourceTestCase):
 
         logger.info('screen created: %r', screen_item)
 
-        self.screening_user = self.create_screensaveruser({ 
-            'username': 'screening1'
+        self.pin_transfer_user = self.create_staff_user({ 
+            'username': 'pin_transfer_admin1'
         })
 
         # 1. Set the pin_transfer data
         # FIXME: admin approved pin tranfer user only
         pin_transfer_data_expected = {
-            'pin_transfer_approved_by_username': self.screening_user['username'],
+            'pin_transfer_approved_by_username': self.pin_transfer_user['username'],
             'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
             'pin_transfer_comments': 'test pin_transfer_comments' }
         
@@ -4588,7 +4676,7 @@ class ScreenResource(DBResourceTestCase):
             'the facility_id was not created')
         
         # FIXME: performed_by_username belongs to ServiceActivityPerformers group
-        performed_by_user = self.create_screensaveruser(
+        performed_by_user = self.create_staff_user(
             { 'username': 'service_activity_performer'})
 
         service_activity_post = {
@@ -4658,9 +4746,9 @@ class CherryPickRequestResource(DBResourceTestCase):
 
     def _setup_duplex_data(self):
         logger.info('create users...')
-        self.test_admin_user = self.create_screensaveruser(
+        self.test_admin_user = self.create_staff_user(
             { 'username': 'adminuser',
-              'permissions': 'resource/cherrypickrequest/write'  
+              'permissions': 'resource/cherrypickrequest/write',
             })
 
         logger.info('create library...')
@@ -4772,9 +4860,9 @@ class CherryPickRequestResource(DBResourceTestCase):
     def _setup_data(self):
         # Set up dependencies
         logger.info('create users...')
-        self.test_admin_user = self.create_screensaveruser(
+        self.test_admin_user = self.create_staff_user(
             { 'username': 'adminuser',
-              'permissions': 'resource/cherrypickrequest/write'  
+              'permissions': 'resource/cherrypickrequest/write',
             })
 
         logger.info('create library...')
@@ -7289,18 +7377,19 @@ class CherryPickRequestResource(DBResourceTestCase):
 #         self.assertTrue(len(available_bins)==0)
 
 
-
-class MutualScreensTest(DBResourceTestCase,ResourceTestCase):
-    
-    def test_mutual_positives_to_screen(self):
-        pass
-        # create two screens
-        # create two screen results
-        # set data sharing levels
-        # find assay wells that overlap
-        # verify that members of screen1 can see mutual positives for screen2
-        
 class ScreensaverUserResource(DBResourceTestCase):
+    # Tests
+    # 1. Create User
+    # - no ecommons
+    # - ecommons
+    # - username
+    # - staff
+    # - lab head/lab member
+    # 2. User Agreement / DSL
+    # - SM
+    # - RNAi
+    # - expire
+    # - update
         
     def setUp(self):
         super(ScreensaverUserResource, self).setUp()
@@ -7314,82 +7403,42 @@ class ScreensaverUserResource(DBResourceTestCase):
         ServiceActivity.objects.all().delete()
         logger.info('delete users, including: %r', self.username)
         ScreensaverUser.objects.all().exclude(username=self.username).delete()
-         
+          
         UserGroup.objects.all().delete()
         UserProfile.objects.all().exclude(username=self.username).delete()
         User.objects.all().exclude(username=self.username).delete()
         ApiLog.objects.all().delete()
-        
+         
         # removed: should not be nec
         # Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
         LabAffiliation.objects.all().delete()
-        
-    def test01_create_user_iccbl(self):
 
-        logger.info('test01_create_user_iccbl...')
-        # create users using only ecommons, username
-        simple_user_input = { 
-            'ecommons_id': 'tester01c',
-            'first_name': 'FirstName01c',
-            'last_name': 'LastName01c',    
-            'email': 'tester01c@limstest.com',    
-            'harvard_id': '332122',
-            'harvard_id_expiration_date': '2018-05-01',
-        }
-        resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_test_uri = '/'.join([
-            resource_uri,simple_user_input['ecommons_id']])
-        created_user = self._create_resource(
-            simple_user_input, resource_uri, resource_test_uri)
-        self.assertTrue(
-            simple_user_input['ecommons_id']==created_user['username'],
-            'username should equal the ecommons id if only ecommons is'
-            ' provided: %r, %r' % (simple_user_input,created_user))
+    def test0_create_admin_user(self):
         
-        # Verify that the ecommons & username cannot be changed
-        
-        user_update = {'ecommons_id': 'testerxxxx'}
-        resource_uri = '/'.join([
-            BASE_URI_DB,'screensaveruser',simple_user_input['ecommons_id']])
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', data=user_update, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [400], 
-            (resp.status_code, self.get_content(resp)))
-        resp_data = self.deserialize(resp)
-        logger.info('(expected) error response: %r', resp_data)
-        
-        self.assertTrue(API_RESULT_ERROR in resp_data)
-        self.assertTrue('username' in resp_data[API_RESULT_ERROR])
-        
-    def test0_create_user(self):
-        
-        logger.info('test0_create_user...')
-        self.user1 = self.create_screensaveruser({ 
-            'username': 'st1',
-            'is_active': False
-        })
-
-        logger.info('test0_create_user 2...')
-        self.user2 = self.create_screensaveruser({ 
-            'username': 'st2',
-            'is_active': False
-            })
-        logger.info('test0_create_user screening user...')
-        self.screening_user = self.create_screensaveruser(
-            { 'username': 'screening1', 'is_active': True })
-        
-        self.assertTrue(self.screening_user['is_active'])
-        
+#         logger.info('test0_create_user...')
+#         self.user1 = self.create_lab_head({ 
+#             'username': 'st1',
+#             'is_active': False
+#         })
+# 
+# #         logger.info('test0_create_user 2...')
+# #         self.user2 = self.create_screensaveruser({ 
+# #             'username': 'st2',
+# #             'is_active': False
+# #             })
+#         logger.info('test0_create_user screening user...')
+#         self.screening_user = self.create_screening_user(
+#             { 'username': 'screening1', 'is_active': True,
+#                 'lab_head_id': self.user1['screensaver_user_id'] })
+#         self.assertTrue(self.screening_user['is_active'])
+#         
         # FIXME: test more specific admin user permissions
         logger.info('test0_create_user admin user...')
-        self.test_admin_user = self.create_screensaveruser(
-            { 'username': 'adminuser'})
+        self.test_admin_user = self.create_staff_user(
+            { 'username': 'adminuser' })
         logger.info('test0_create_user admin user 2...')
-        self.test_admin_user2 = self.create_screensaveruser(
-            { 'username': 'adminuser2'})
+        self.test_admin_user2 = self.create_staff_user(
+            { 'username': 'adminuser2' })
         # create an admin
         patch_obj = { 'objects': [
             {
@@ -7413,27 +7462,111 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
-
-    def test02_create_user_without_username(self):
-    
-        # 1. create a user with no username (first, last must be unique)
-        logger.info('test02_create_user_without_username...')
-        # create a non-login user with no username
-        user1_input_data = { 
-            'first_name': 'FirstNameUniq1',
-            'last_name': 'LastNameUniq1',    
-        }
-        resource_uri = BASE_URI_DB + '/screensaveruser'
         
+        
+
+    def test1_create_user_iccbl(self):
+
+        logger.info('test01_create_user_iccbl...')
         _data_for_get = { 
             'limit': 0,
             'includes': '*',
             'HTTP_ACCEPT': 'application/json'
         }
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        
+        # 1. create users using only ecommons (username will be set)
+        simple_user_input = { 
+            'ecommons_id': 'tester01c',
+            'first_name': 'FirstName01c',
+            'last_name': 'LastName01c',    
+            'email': 'tester01c@limstest.com',    
+            'harvard_id': '332122',
+            'harvard_id_expiration_date': '2018-05-01',
+        }
+        
+        # 1.A Verify that user must be a lab head or have a lab_head
+        resp = self.api_client.post(
+            resource_uri, format='json', data=simple_user_input, 
+            authentication=self.get_credentials(), **_data_for_get)
+        self.assertTrue(
+            resp.status_code == 400, 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('resp: %r', new_obj)
+        self.assertTrue(API_RESULT_ERROR in new_obj)
+        self.assertTrue('lab_head_id' in new_obj[API_RESULT_ERROR])
+        self.assertTrue('classification' in new_obj[API_RESULT_ERROR])
+        
+        # 1.B Create the user as a lab_head
+
+        # 1.B.1 Create lab affiliation
+        lab_affiliation = self.create_lab_affiliation()
+        simple_user_input['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
+        simple_user_input['classification'] = VOCAB_USER_CLASSIFICATION_PI
+
+        # 1.B.2 Create user with only ecommons
+        resp = self.api_client.post(
+            resource_uri, format='json', data=simple_user_input, 
+            authentication=self.get_credentials(), **_data_for_get)
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(API_RESULT_DATA in new_obj)
+        self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
+            'more than one object returned for: %r, returns: %r'
+            % (resource_uri,new_obj))
+        created_user = new_obj[API_RESULT_DATA][0]
+        self.assertEqual(
+            simple_user_input['ecommons_id'],created_user['username'],
+            'username should equal the ecommons id if only ecommons is'
+            ' provided: %r, %r' % (simple_user_input,created_user))
+        
+        # 1.C Verify that the ecommons & username cannot be changed
+        
+        user_update = {'ecommons_id': 'testerxxxx'}
+        resource_uri = '/'.join([
+            BASE_URI_DB,'screensaveruser',simple_user_input['ecommons_id']])
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=user_update, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        resp_data = self.deserialize(resp)
+        logger.info('(expected) error response: %r', resp_data)
+        
+        self.assertTrue(API_RESULT_ERROR in resp_data)
+        self.assertTrue('username' in resp_data[API_RESULT_ERROR])
+        
+    def test2_create_user_without_username(self):
+        logger.info('test02_create_user_without_username...')
+    
+        # 1.A Create a user with no username (first, last must be unique)
+
+        _data_for_get = { 
+            'limit': 0,
+            'includes': '*',
+            'HTTP_ACCEPT': 'application/json'
+        }
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+
+        # 1.A.1 User must be a lab head or have a lab_head
+        # 1.A.1 Create a Lab Affiliation
+        # - All screensaver users must be either staff (requires user names),
+        # or classified as PI's, or have a PI assigned.
+        lab_affiliation = self.create_lab_affiliation()
+        user1_input_data = { 
+            'first_name': 'FirstNameUniq1',
+            'last_name': 'LastNameUniq1',
+            'classification': VOCAB_USER_CLASSIFICATION_PI,
+            'lab_affiliation_id': lab_affiliation['lab_affiliation_id']
+        }
         resp = self.api_client.post(
             resource_uri, format='json', data=user1_input_data, 
             authentication=self.get_credentials(), **_data_for_get)
-        logger.info('resp: %r', resp)
         self.assertTrue(
             resp.status_code in [200,201], 
             (resp.status_code, self.get_content(resp)))
@@ -7443,39 +7576,47 @@ class ScreensaverUserResource(DBResourceTestCase):
             'more than one object returned for: %r, returns: %r'
             % (resource_uri,new_obj))
         user1_output_data = new_obj[API_RESULT_DATA][0]
-        logger.info('post create user (no username): %r', user1_output_data)
-        # 1.a verify that a user with no username has been created
+
+        # 1.B Verify that a user with no username has been created
         self.assertIsNone(user1_output_data.get('username'))
         self.assertFalse(user1_output_data.get('is_active'))
         
-        # 1.b verify that a second attempt fails with the same first/last name
+        # 1.C verify that a second attempt fails with the same first/last name
         resp = self.api_client.post(
             resource_uri, format='json', data=user1_input_data, 
             authentication=self.get_credentials(), **_data_for_get)
-        
         self.assertTrue(
             resp.status_code in [400], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         self.assertTrue(API_RESULT_ERROR in new_obj)
-        # NOTE: should be an error for a non-unique user
+        # verify error for a non-unique user
         errors = new_obj[API_RESULT_ERROR]
         self.assertTrue('first_name' in errors)
         self.assertTrue('last_name' in errors)
         logger.info('second attempt (expected) errors reported: %r', errors)
         
-        # 1.c create another
+        # 2. Create another user as lab member
         user2_input_data = { 
             'first_name': 'FirstNameUniq2',
             'last_name': 'LastNameUniq2',    
         }
+        
+        # 2.A Verify that user cannot be created without a Lab Head assigned
         resp = self.api_client.post(
             resource_uri, format='json', data=user2_input_data, 
             authentication=self.get_credentials(), **_data_for_get)
+        new_obj = self.deserialize(resp)
+        logger.info('resp: %r', new_obj)
+        self.assertTrue(API_RESULT_ERROR in new_obj)
+        self.assertTrue('lab_head_id' in new_obj[API_RESULT_ERROR])
+        self.assertTrue('classification' in new_obj[API_RESULT_ERROR])
         
-        self.assertTrue(
-            resp.status_code in [200,201], 
-            (resp.status_code, self.get_content(resp)))
+        # 2.A.1 Set the lab_head for the user
+        user2_input_data['lab_head_id'] = user1_output_data['screensaver_user_id']
+        resp = self.api_client.post(
+            resource_uri, format='json', data=user2_input_data, 
+            authentication=self.get_credentials(), **_data_for_get)
         new_obj = self.deserialize(resp)
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
@@ -7483,38 +7624,23 @@ class ScreensaverUserResource(DBResourceTestCase):
             % (resource_uri,new_obj))
         user2_output_data = new_obj[API_RESULT_DATA][0]
         logger.info('post create user (no username): %r', user2_output_data)
-
-        # 2. set the user as a lab_head for users and screens
-        # 2.a convert the user to a lab head
         
-        user1_data_as_lab_head = self.update_user_to_lab_head(user1_output_data)
+        self.assertIsNone(user2_output_data.get('username'))
+        self.assertFalse(user2_output_data.get('is_active'))
         self.assertEqual(
-            user1_data_as_lab_head['screensaver_user_id'], 
+            user2_output_data['lab_head_id'],
             user1_output_data['screensaver_user_id'])
-        self.assertEqual(
-            user1_data_as_lab_head['classification'], 'principal_investigator')
         
-        user2_data_patch2 = {
-            'screensaver_user_id': user2_output_data['screensaver_user_id'],
-            'lab_head_id': user1_data_as_lab_head['screensaver_user_id'] }
-        
-        resource_uri = BASE_URI_DB + '/screensaveruser/'
-        resp = self.api_client.patch(
+        # 2.B Verify user2 is a lab member
+        user1_output_data2 = self.get_single_resource(
             resource_uri, 
-            format='json', 
-            data=user2_data_patch2, 
-            authentication=self.get_credentials())
+            {'screensaver_user_id': user1_output_data['screensaver_user_id']})
+        self.assertTrue('lab_member_ids' in user1_output_data2)
+        lab_member_ids = user1_output_data2['lab_member_ids']
         self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in _data)
-        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
-        user2_output_data2 = _data[API_RESULT_DATA][0]
-        
-        self.assertTrue(
-            user2_output_data2['lab_head_id'], 
-            user1_data_as_lab_head['screensaver_user_id'])
+            str(user2_output_data['screensaver_user_id']) in lab_member_ids,
+            'lab_member_ids: %r, does not contain: %r'
+            % (lab_member_ids, user2_output_data['screensaver_user_id']))
         
         # 3. Set the username for user1
         # - this creates a reports_userprofile for the user
@@ -7542,7 +7668,68 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             user1_input_data2['username'], user1_output_data2['username'])
 
-    def test03_update_lab_affiliation_name(self): 
+    def test3_create_lab_head(self):
+
+        logger.info('test4_create_lab_head...')
+        
+        # 1. Create the Lab Head
+        lab_head = self.create_lab_head()
+        logger.info('lab_head created: %r', lab_head)
+        self.assertTrue(
+            'lab_affiliation_id' in lab_head, 
+            'Lab head does not contain "lab_affiliation_id": %r' % lab_head)
+        self.assertTrue(
+            'lab_head_id' in lab_head, 
+            'Lab head does not contain "lab_head_id": %r' % lab_head)
+        self.assertEqual(lab_head['screensaver_user_id'], lab_head['lab_head_id'])
+        self.assertEqual(lab_head['classification'], VOCAB_USER_CLASSIFICATION_PI)
+        
+        # 1.A Verify not allowed: Change the Lab Head classification to "unassigned"
+        lab_head_update = {
+            'username': lab_head['username'],
+            'classification': 'unassigned'
+        }
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=lab_head_update, 
+            authentication=self.get_credentials())
+        self.assertEqual(resp.status_code, 400,
+            'status code != 400; %r, %r' 
+                % ( resp.status_code, 'Not Allowed: changing PI classification'))
+
+        # 2. Assign a Lab Member by creating a new user with lab_head_id
+        logger.info('2. Assign a user to the Lab Head...')
+        user_data = {
+            'username': 'test4screeningUser', 
+            'lab_head_id': lab_head['screensaver_user_id']
+        }
+        updated_user = self.create_screening_user(data=user_data)
+        logger.info('User: %r (with lab head set)', updated_user)
+        
+        self.assertEqual(
+            updated_user['lab_head_id'], lab_head['screensaver_user_id'])
+        self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_name'], 
+            lab_head['lab_affiliation_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+
+        # 2.B Verify user2 is a lab member
+        lab_head_updated = self.get_single_resource(
+            resource_uri, 
+            {'screensaver_user_id': lab_head['screensaver_user_id']})
+        self.assertTrue('lab_member_ids' in lab_head_updated)
+        lab_member_ids = lab_head_updated['lab_member_ids']
+        self.assertTrue(
+            str(updated_user['screensaver_user_id']) in lab_member_ids,
+            'lab_member_ids: %r, does not contain: %r'
+            % (lab_member_ids, updated_user['screensaver_user_id']))
+        
+    def test4_update_lab_affiliation_name(self): 
         ''' 
         Simple test for the updating the name of a Lab Affiliation
         '''
@@ -7568,193 +7755,15 @@ class ScreensaverUserResource(DBResourceTestCase):
         for key,val in lab_affiliation.items():
             self.assertEqual(lab_affiliation[key],new_lab_affiliation[key])
         
-    def test01_create_lab_head(self):
-
-        logger.info('test01_create_lab_head...')
         
-        logger.info('1. Create the lab head...')
-        lab_head = self.create_lab_head()
-        logger.info('lab_head created: %r', lab_head)
-        self.assertTrue(
-            'lab_affiliation_id' in lab_head, 
-            'Lab head does not contain "lab_affiliation_id": %r' % lab_head)
-        self.assertTrue(
-            'lab_head_id' in lab_head, 
-            'Lab head does not contain "lab_head_id": %r' % lab_head)
-        self.assertEqual(lab_head['screensaver_user_id'], lab_head['lab_head_id'])
-        self.assertEqual(lab_head['classification'], 'principal_investigator')
-        
-        logger.info('2. Assign a user to the Lab Head...')
-        
-        user = self.create_screensaveruser({ 'username': 'st1'})
-        user_data = {
-            'username': user['username'],
-            'lab_head_id': lab_head['screensaver_user_id']
-            }
-        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', 
-            data=user_data, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in _data)
-        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
-        updated_user = _data[API_RESULT_DATA][0]
-
-        logger.info('User: %r (with lab head set)', updated_user)
-        
-        self.assertEqual(
-            updated_user['lab_head_id'], lab_head['screensaver_user_id'])
-        self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
-        self.assertEqual(
-            updated_user['lab_affiliation_name'], 
-            lab_head['lab_affiliation_name'])
-        self.assertEqual(
-            updated_user['lab_affiliation_category'], 
-            lab_head['lab_affiliation_category'])
-        
-        logger.info('3. Change the Lab Head classification to "unassigned"...') 
-        # - removes the lab members
-        
-        lab_head_update = {
-            'username': lab_head['username'],
-            'classification': 'unassigned'
-        }
-        logger.info('lab_head update: %r', lab_head_update)
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', 
-            data=lab_head_update, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in _data)
-        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
-        updated_lab_head = _data[API_RESULT_DATA][0]
-
-        logger.info(
-            'updated user; no longer lab_head: %r (classification unset)', 
-            updated_lab_head)
-        
-        self.assertEqual(
-            updated_lab_head['lab_affiliation_id'],None, 
-            'updated_lab_head should not contain "lab_affiliation_id": %r' 
-                % updated_lab_head)
-        self.assertEqual(
-            updated_lab_head['lab_head_id'],None, 
-            'updated_lab_head should not contain "lab_head_id": %r' 
-                % updated_lab_head)
-        self.assertEqual(updated_lab_head['lab_name'], None)
-        self.assertEqual(
-            updated_lab_head['lab_affiliation_name'], None)
-        self.assertEqual(
-            updated_lab_head['lab_affiliation_category'], None)
-        self.assertEqual(updated_lab_head['classification'], 'unassigned')
-        
-        logger.info('3.A check that the user no longer has the lab head...')
-        
-        updated_user = self.get_single_resource(
-            resource_uri, {'username': user['username']})
-        
-        self.assertEqual(updated_user['lab_head_id'], None)
-        self.assertEqual(updated_user['lab_name'], None)
-        self.assertEqual(
-            updated_user['lab_affiliation_name'], None)
-        self.assertEqual(
-            updated_user['lab_affiliation_category'], None)
-        
-        logger.info('4. Update the lab members directly on the lab head...')
-        
-        logger.info('4a. reset the user to a lab_head...')
-        lab_head_update2 = {
-            'username': lab_head['username'],
-            'classification': 'principal_investigator',
-            'lab_affiliation_id': lab_head['lab_affiliation_id']
-        }
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', 
-            data=lab_head_update2, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in _data)
-        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
-        updated_lab_head2 = _data[API_RESULT_DATA][0]
-        logger.info(
-            'updated_lab_head: %r (classification reset to pi)', 
-            updated_lab_head2)
-        self.assertEqual(
-            updated_lab_head2['classification'], 'principal_investigator')
-        
-        logger.info('4.b set lab member...')
-        
-        lab_head_update3 = {
-            'username': lab_head['username'],
-            'lab_member_ids': [str(user['screensaver_user_id']),]
-        }
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', 
-            data=lab_head_update3, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
-        _data = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in _data)
-        self.assertEqual(len(_data[API_RESULT_DATA]), 1)        
-        updated_lab_head3 = _data[API_RESULT_DATA][0]
-        logger.info('updated_lab_head3: %r (add member)', updated_lab_head3)
-        self.assertEqual(
-            updated_lab_head3['lab_member_ids'], 
-            lab_head_update3['lab_member_ids'])
-        
-        user_after_update3 = self.get_single_resource(
-            resource_uri, {'username': user['username']})
-        logger.info('User: %r (lab head set)', user_after_update3)
-        
-        self.assertEqual(
-            user_after_update3['lab_head_id'], lab_head['screensaver_user_id'])
-        self.assertEqual(user_after_update3['lab_name'], lab_head['lab_name'])
-        self.assertEqual(
-            user_after_update3['lab_affiliation_name'], 
-            lab_head['lab_affiliation_name'])
-        self.assertEqual(
-            user_after_update3['lab_affiliation_category'], 
-            lab_head['lab_affiliation_category'])
-        
-    def test01a_update_lab_head_dsl(self):
-        
-        # Verify that the lab member dsl's are updated on lab head update.
-        
-        # TODO: Business rules:
-        # 1. User DSL must match Lab Head (PI) DSL
-        # 1.a On updating user's SMUA, should the validation limit the DSL choice to 
-        # match the PI's?
-        # 2. On updating PI's SMUA, should batch operation include updating the
-        # lab member DSL's?
-        # 3. Does PI SMUA expiration affect Lab Member SMUA expiration?
-        
-        pass
-        
-        
-    def test1_patch_usergroups(self):
+    def test7_patch_usergroups(self):
         ''' 
         Verify the reports.UserResource usergroup functionality from the 
         ScreensaverUserResource
         '''
         
         logger.info('test1_patch_usergroups...')
-        self.test0_create_user();
+        
         group_patch = { 'objects': [
             { 
                 'name': 'usergroup1'
@@ -7796,18 +7805,22 @@ class ScreensaverUserResource(DBResourceTestCase):
         except Exception, e:
             logger.exception('on group_patch: %r', group_patch)
             raise
-
+        
+        admin_user1 = self.create_staff_user()
+        admin_user2 = self.create_staff_user()
+        admin_user3 = self.create_staff_user()
+        
         userpatch = [   
             {
-                'username': self.user1['username'],
+                'username': admin_user1['username'],
                 'usergroups': ['usergroup1',]
             },
             {
-                'username': self.screening_user['username'],
+                'username': admin_user2['username'],
                 'usergroups': ['usergroup2',]
             },
             {
-                'username': self.test_admin_user['username'],
+                'username': admin_user3['username'],
                 'usergroups': ['usergroup3',]
             },
         ]
@@ -7841,19 +7854,30 @@ class ScreensaverUserResource(DBResourceTestCase):
                 % (len(new_objs), groupname, [x['username'] for x in new_objs] ))
             self.assertEqual(username, new_objs[0]['username'])
 
-    def test2_user_checklist(self):
+    def test8_user_checklist(self):
         
         logger.info('test2_user_checklist...')
-        self.test0_create_user();
+        # Create a lab head, as all users must either be a lab head or have one
+        checklist_user = self.create_lab_head()
         
         # Note "get_credentials" returns the superuser
         admin_performing_operation = self.username
-        test_su_id = str(self.user1['screensaver_user_id'])
+        test_su_id = str(checklist_user['screensaver_user_id'])
         
-        # FIXME: create a "ChecklistAdmin" usergroup
-        # Note admin assigned to the checklist operation
-        checklist_admin = self.test_admin_user
-        checklist_admin2 = self.test_admin_user2
+        # TODO: create a "ChecklistAdmin" usergroup
+        # Note: currently creating using a superuser (and assigning to the 
+        # "checklist_admin" - who can be any staff user
+        # TODO: check that user must be staff
+        checklist_admin = self.create_staff_user({ 
+            'username': 'checklist_admin_1',
+            # 'is_superuser': True,
+            'is_active': True
+        })
+        checklist_admin2 = self.create_staff_user({ 
+            'username': 'checklist_admin_2',
+            # 'is_superuser': True,
+            'is_active': True
+        })
 
         # 1. Create a UserChecklist item        
         checklist_patch = {
@@ -7982,15 +8006,22 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # 3. modify date only
         
-    def test3_attached_files(self):
+    def test9_attached_files(self):
         
         logger.info('test3_attached_files...')
-        self.test0_create_user();
+
+        # Create a lab head, as all users must either be a lab head or have one
+        af_user = self.create_lab_head()
 
         # Test using embedded "contents" field               
-        test_su_id = str(self.user1['screensaver_user_id'])
-        # FIXME: create an admin with ScreensaverUser/write permission
-        attached_file_admin = self.test_admin_user
+        test_su_id = str(af_user['screensaver_user_id'])
+
+        # TODO: create admin user with permissions        
+        attached_file_admin = self.create_staff_user({ 
+            'username': 'attached_file_admin',
+            'is_superuser': True,
+            'is_active': True
+        })
         
         attachedfile_item_post = {
             'created_by_username': attached_file_admin['username'], 
@@ -8049,21 +8080,27 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('no file found at: %r', uri)
             raise
     
-    def test3a_attached_file_filesystem(self):
+    def test9a_attached_file_filesystem(self):
         
         logger.info('test3a_attached_file_filesystem...')
         
-        self.test0_create_user();
+        # Create a lab head, as all users must either be a lab head or have one
+        af_user = self.create_lab_head()
 
-        # Test using embedded "contents" field               
-        test_su_id = str(self.user1['screensaver_user_id'])
-        admin_username = self.test_admin_user['username']
+        test_su_id = str(af_user['screensaver_user_id'])
+        # TODO: create admin user with permissions        
+        attached_file_admin = self.create_staff_user({ 
+            'username': 'attached_file_admin1',
+            'is_superuser': True,
+            'is_active': True
+        })
         attachedfile_item_post = {
-            'created_by_username': admin_username, 
+            'created_by_username': attached_file_admin['username'], 
             'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
         }
 
-        content_type = MULTIPART_CONTENT
+        # 1.A Create the attached file
+        
         resource_uri = \
             BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_su_id
         authentication=self.get_credentials()
@@ -8083,12 +8120,14 @@ class ScreensaverUserResource(DBResourceTestCase):
             # NOTE: content_type arg is req'd with django.test.Client.post
             # NOTE: content_type defaults to MULTIPART_CONTENT
             resp = self.django_client.post(
-                resource_uri, content_type=content_type, 
+                resource_uri, content_type=MULTIPART_CONTENT, 
                 data=attachedfile_item_post, **kwargs)
             self.assertTrue(
                 resp.status_code in [201, 202], 
                 (resp.status_code,self.get_content(resp)))
         
+        # 1.B Get the attached file information
+
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         resp = self.api_client.get(
             resource_uri,
@@ -8102,69 +8141,135 @@ class ScreensaverUserResource(DBResourceTestCase):
             attachedfile_item_post, new_obj[API_RESULT_DATA][0], 
             excludes=['attached_file'])
         self.assertTrue(result,msgs)
+        
+        # 1.C Retrieve the file and compare
+        
         af = new_obj[API_RESULT_DATA][0]
         uri = '/db/attachedfile/%s/content' % af['attached_file_id']
-        try:
-            admin_user = User.objects.get(username=admin_username)
-            view, args, kwargs = resolve(uri)
-            kwargs['request'] = self.api_client.client.request()
-            kwargs['request'].user=admin_user
-            result = view(*args, **kwargs)
-            logger.info('attached_file request view result: %r',result)
-            output_filename = '%s.out.%s' % tuple(filename.split('.'))
-            logger.info('write %s to %r', filename, output_filename)
-            with open(output_filename, 'w') as out_file:
-                out_file.write(self.get_content(result))
-            self.assertTrue(filecmp.cmp(filename,output_filename), 
-                'input file: %r, not equal to output file: %r' 
-                % (filename, output_filename))
-            os.remove(output_filename)    
-        except Exception, e:
-            logger.info('no file found at: %r', uri)
-            raise
+        admin_user = User.objects.get(username=attached_file_admin['username'])
+        view, args, kwargs = resolve(uri)
+        kwargs['request'] = self.api_client.client.request()
+        kwargs['request'].user=admin_user
+        result = view(*args, **kwargs)
+        output_filename = '%s.out.%s' % tuple(filename.split('.'))
+        logger.info('write %s to %r', filename, output_filename)
+        with open(output_filename, 'w') as out_file:
+            out_file.write(self.get_content(result))
+        self.assertTrue(filecmp.cmp(filename,output_filename), 
+            'input file: %r, not equal to output file: %r' 
+            % (filename, output_filename))
+        os.remove(output_filename)    
         
-        # TODO: delete attached file
+        # 2.Delete attached file
+        resource_uri = \
+            BASE_URI_DB + '/attachedfile/%s' % af['attached_file_id']
+        resp = self.api_client.delete(
+            resource_uri, authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code == 204, 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 2.A Verify attached file is deleted
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code == 404, 
+            ('error, attached file should be deleted', resp.status_code, 
+                self.get_content(resp)))
+
+        # 2.A.1 Verify attached file content is removed
+        admin_user = User.objects.get(username=attached_file_admin['username'])
+        view, args, kwargs = resolve(uri)
+        kwargs['request'] = self.api_client.client.request()
+        kwargs['request'].user=admin_user
+        result = view(*args, **kwargs)
+        self.assertEqual(result.status_code,404,
+            ('error, attached file should be deleted', resp.status_code, 
+                self.get_content(result)))
+        
         # TODO: attachedfile logs
-    
-    def test4_user_agreement_updator(self):
+
+    def test10_user_agreement_updator(self):
         
-        logger.info('test4_user_agreement_updator...')
-        self.test0_create_user();
-        test_su_id = str(self.user1['screensaver_user_id'])
-        # FIXME: create an admin with ScreensaverUser/write priv
-        admin_username = self.test_admin_user['username']
+        logger.info('test10_user_agreement_updator...')
         
-        # 1. small molecule data sharing
+        # Setup
+        # Create a lab head, as all users must either be a lab head or have one
+        ua_user = self.create_lab_head({
+            'is_active': False })
+        self.assertFalse(ua_user['is_active'])
+        test_su_id = str(ua_user['screensaver_user_id'])
+
+        # TODO: Create specific Group/Permissions for User Agreement        
+        ua_admin = self.create_staff_user({ 
+            'username': 'attached_file_admin1',
+            'is_superuser': True,
+            'is_active': True
+        })
         
-        useragreement_item_post = {
-            'admin_user': admin_username,
-            'created_by_username': admin_username, 
-            'type': 'sm',
-            'data_sharing_level': 2 
+        # 1. Test Small Molecule User Agreement
+
+        # 1.A Invalid; may not patch to create; may not create without file
+        user_agreement_input_no_file = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 2,
             }
-        test_comment = 'test update comment for user agreement'
-        content_type = MULTIPART_CONTENT
         resource_uri = \
             BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user_agreement_input_no_file, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [404], 
+            (resp.status_code, self.get_content(resp)))
         
+        # 1.B Invalid: may create with POST; but attached file is required
+        test_comment = 'test update comment for user agreement'
         authentication=self.get_credentials()
-        kwargs = { 'limit': 0, 'includes': ['*'] }
-        kwargs['HTTP_AUTHORIZATION'] = authentication
-        kwargs[HEADER_APILOG_COMMENT] = test_comment
-        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        post_kwargs = { 'limit': 0, 'includes': ['*'] }
+        post_kwargs['HTTP_AUTHORIZATION'] = authentication
+        post_kwargs[HEADER_APILOG_COMMENT] = test_comment
+        post_kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+        logger.info('POST user agreement %r to the server...', resource_uri)
+        resp = self.django_client.post(
+            resource_uri, content_type=MULTIPART_CONTENT, 
+            data=user_agreement_input_no_file, **post_kwargs)
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        data = self.deserialize(resp)
+        logger.info('response: %r', data) 
+        data = data[API_RESULT_ERROR]
+        key = 'attached_file'
+        self.assertTrue(key in data, 
+            'Error: response error not found: %r, obj: %r' %(key, data))
         
-        file = 'iccbl_sm_user_agreement_march2015.pdf'
-        filename = \
-            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
-        logger.info('Open and POST file: %r', filename)
-        with open(filename) as input_file:
-
-            logger.info('POST user agreement to the server...')
-            useragreement_item_post['attached_file'] = input_file
-            
+        # 1.B Valid input
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 2,
+            'date_active': '2017-10-22'
+            }
+        filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filepath = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,filename)
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            # NOTE: create a detail URI; post_list is not implemented
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
-                data=useragreement_item_post, **kwargs)
+                data=user_agreement_input, **post_kwargs)
             if resp.status_code not in [200]:
                 logger.info(
                     'resp code: %d, resp: %r, content: %r', 
@@ -8173,68 +8278,74 @@ class ScreensaverUserResource(DBResourceTestCase):
                 resp.status_code in [200], 
                 (resp.status_code))
         
-        # Tests: 
-        # 1.a check that the user agreement is an attached file to the user
-        attached_type = db.api.UserAgreementResource.FILE_TYPE_SM_UA
-        data_for_get = { 
-            'limit': 0, 'includes': ['*'],
-            'type__eq': attached_type
-        }
-        resp = self.api_client.get(
-            resource_uri,
-            authentication=self.get_credentials(), data=data_for_get )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        logger.info('new obj: %s ' % new_obj)
-        self.assertTrue(API_RESULT_DATA in new_obj)
-        af = new_obj[API_RESULT_DATA][0]
-        uri = '/db/attachedfile/%s/content' % af['attached_file_id']
-        try:
-            admin_user = User.objects.get(username=admin_username)
-            view, args, kwargs = resolve(uri)
-            kwargs['request'] = self.api_client.client.request()
-            kwargs['request'].user=admin_user
-            result = view(*args, **kwargs)
-            output_filename = '%s.out.%s' % tuple(filename.split('.'))
-            logger.info('write %s to %r', filename, output_filename)
-            with open(output_filename, 'w') as out_file:
-                out_file.write(self.get_content(result))
-            self.assertTrue(filecmp.cmp(filename,output_filename), 
-                'input file: %r, not equal to output file: %r' 
-                % (filename, output_filename))    
-        except Exception, e:
-            logger.exception('no file found at: %r', uri)
-            raise
+        # 1.A Verify User Agreement was created
         
-        # 1.b check that the data sharing level for the type is assigned
+        resource_uri = '/'.join([
+            BASE_URI_DB,'useragreement', test_su_id,VOCAB_USER_AGREEMENT_SM])
+        user_agreement_output = self.get_single_resource(resource_uri)
+        
+        logger.info('user agreement created: %r', user_agreement_output)
+        self.assertEqual(
+            user_agreement_input['type'], 
+            user_agreement_output['type'])
+        self.assertEqual(
+            user_agreement_input['data_sharing_level'], 
+            user_agreement_output['data_sharing_level'])
+        self.assertEqual(
+            user_agreement_input['date_active'],
+            user_agreement_output['date_active'])
+        
+        # 1.B Verify that the attached file was created 
+        
+        self.assertTrue('file_id' in user_agreement_output)
+        
+        file_id = str(user_agreement_output['file_id'])
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'attachedfile', file_id])
+        af_output_data = self.get_single_resource(resource_uri)
+
+        self.assertEqual(
+            af_output_data['type'],
+            db.api.UserAgreementResource.VOCAB_FILE_TYPE_SMUA)
+        self.assertEqual(af_output_data['filename'], filename)
+        
+        # 1.B.1 Verify the attached file content matches
+        uri = '/db/attachedfile/%s/content' % file_id
+        admin_user = User.objects.get(username=ua_admin['username'])
+        view, args, kwargs = resolve(uri)
+        logger.info('Attached file uri: %r resolved to %r, %r, %r', 
+            uri, view, args, kwargs)
+
+        kwargs['request'] = self.api_client.client.request()
+        kwargs['request'].user=admin_user
+        logger.info('get the SMUA attached file: %r', uri)
+        result = view(*args, **kwargs)
+        self.assertTrue(result.status_code == 200,
+            'status code: %r: %r' % (
+                result.status_code, self.get_content(result)))
+        output_filename = '%s.out.%s' % tuple(filepath.split('.'))
+        logger.info('write %s to %r', filename, output_filename)
+        with open(output_filename, 'w') as out_file:
+            out_file.write(self.get_content(result))
+        self.assertTrue(filecmp.cmp(filepath,output_filename), 
+            'input file: %r, not equal to output file: %r' 
+            % (filepath, output_filename))    
+        
+        # 1.C Verify that the DSL is shown on the ScreensaverUser, 
+        # and the user is "is_active"
         
         resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        resource_uri = '/'.join([resource_uri,ua_user['username']])
         user_data = self.get_single_resource(resource_uri)
         
         self.assertEqual(
             user_data['sm_data_sharing_level'],
-            useragreement_item_post['data_sharing_level'])
+            user_agreement_input['data_sharing_level'])
         self.assertEqual(
             user_data['is_active'], True)
 
-        # 1.c check that a checklist item has been created for the user agreement
-        
-        resource_uri = BASE_URI_DB + '/userchecklist'
-        resource_uri = '/'.join([resource_uri,test_su_id])
-        checklist_items = self.get_list_resource(
-            resource_uri, {'status__eq': 'activated'})
-        logger.info('checklist_items: %r', checklist_items)
-        self.assertTrue(len(checklist_items)==1)
-        val = db.api.UserAgreementResource.CHK_TYPE_SM_UA_ACTIVE
-        self.assertTrue(checklist_items[0]['name'] == val,
-            'wrong checklist item - expected name: %r, %r'
-            %(val, checklist_items[0]))
-        
         # 1.d check logs
-        
+         
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
@@ -8247,77 +8358,146 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('logs: %r', apilogs)
         self.assertEqual(
             len(apilogs),1, 'wrong apilog count: %r' % apilogs)
+        parent_log = apilogs[0]
+        self.assertTrue(parent_log['comment']==test_comment,
+            'comment %r should be: %r' % (parent_log['comment'], test_comment))
+        self.assertTrue('sm_data_sharing_level' in parent_log['diff_keys'])
+        self.assertEqual(parent_log['child_logs'], 1)
+        
+        # 1.e UserAgreement logs (child log)
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'useragreement', 
+            'parent_log': parent_log['id'] 
+        }
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
+        logger.info('child logs (useragreement): %r', apilogs)
+        self.assertEqual(
+            len(apilogs),1, 'wrong apilog count: %r' % apilogs)
         apilog = apilogs[0]
-        self.assertTrue(apilog['comment']==test_comment,
-            'comment %r should be: %r' % (apilog['comment'], test_comment))
-        self.assertTrue('sm_data_sharing_level' in apilog['diff_keys'])
-
-        # 1.c Verify that the user agreement cannot be set again if it is 
-        # already active
-        useragreement_item_post = {
-            'admin_user': admin_username,
-            'created_by_username': admin_username, 
-            'type': 'sm',
-            'data_sharing_level': 2 
+        
+        self.assertTrue(parent_log['id'],apilog['parent_log_id'])
+        
+        # 2. Patching       
+        
+        # 2.A Use an invalid DSL
+        user_agreement_input2 = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'screensaver_user_id': test_su_id,
+            'data_sharing_level': 5,
             }
-        test_comment = 'test update comment for user agreement'
-        content_type = MULTIPART_CONTENT
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
-        
-        authentication=self.get_credentials()
-        kwargs = { 'limit': 0, 'includes': ['*'] }
-        kwargs['HTTP_AUTHORIZATION'] = authentication
-        kwargs[HEADER_APILOG_COMMENT] = test_comment
-        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
-        
-        file = 'iccbl_sm_user_agreement_march2015.pdf'
-        filename = \
-            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
-        logger.info('Open and POST file: %r', filename)
-        with open(filename) as input_file:
+        resource_uri = BASE_URI_DB + '/useragreement'
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user_agreement_input2, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        data = self.deserialize(resp)
+        logger.info('response: %r', data) 
+        data = data[API_RESULT_ERROR]
+        key = 'data_sharing_level'
+        self.assertTrue(find_in_dict(key, data), 
+            'Error: response error not found: %r, obj: %r' %(key, data))
 
-            logger.info('POST user agreement to the server...')
-            useragreement_item_post['attached_file'] = input_file
-            
+        # 2.B. Patch date_notified
+        user_agreement_input3 = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'screensaver_user_id': test_su_id,
+            'date_notified': '2017-10-23',
+            }
+        resource_uri = BASE_URI_DB + '/useragreement'
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user_agreement_input3, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        user_agreement_output3 = self.deserialize(resp)
+        logger.info('user_agreement_output3: %r', user_agreement_output3)
+        user_agreement_output3 = user_agreement_output3[API_RESULT_DATA][0]
+        self.assertEqual(
+            user_agreement_input3['date_notified'],
+            user_agreement_output3['date_notified'])
+        
+        # 2.C Patch date_active?
+        
+        # 2.D Patch data_sharing_level
+        
+        # 2.E POST/PATCH a new file; verify that previous file is deleted from the system
+        
+        # 2.F Verify that attached file may not be deleted unless not attached 
+        # to a user agreement
+        file_id = str(user_agreement_output3['file_id'])
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'attachedfile', file_id])
+        resp = self.api_client.delete(
+            resource_uri, authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code == 400, 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 3. Patch - expired
+        
+        user_agreement_input3a = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'screensaver_user_id': test_su_id,
+            'status': 'expired',
+            }
+        resource_uri = BASE_URI_DB + '/useragreement'
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user_agreement_input3a, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        user_agreement_output3a = self.deserialize(resp)
+        user_agreement_output3a = user_agreement_output3a[API_RESULT_DATA][0]
+        
+        self.assertEqual('expired', user_agreement_output3a['status'])
+        
+        self.assertEqual(
+            _now().date().strftime("%Y-%m-%d"),
+            user_agreement_output3a['date_expired'])
+        logger.info('after patch expired: %r', user_agreement_output3a)
+        # 3.A Verify that the User has is_active==False
+        
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        resource_uri = '/'.join([resource_uri,ua_user['username']])
+        user_data = self.get_single_resource(resource_uri)
+        
+        self.assertEqual(
+            user_data['is_active'], False)
+
+        
+        # 4. Reset the User Agreement:
+        # Requires a new POST, with attached file
+        # if date_notified, date_expired were set, then they are unset
+        
+        user_agreement_input4 = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 3,
+            'screensaver_user_id': test_su_id,
+            'date_active': '2017-10-27',
+            }
+        with open(filepath) as input_file:
+            user_agreement_input4['attached_file'] = input_file
+            user_agreement_input4['filename'] = filename
+
+            # NOTE: create a detail URI; post_list is not implemented
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
-                data=useragreement_item_post, **kwargs)
-            self.assertEqual(resp.status_code, 400)
-        
-        # 1.d User DSL must match Lab Head DSL
-
-        # 2 rnai data sharing
-        
-        useragreement_item_post = {
-            'admin_user': admin_username,
-            'created_by_username': admin_username, 
-            'type': 'rnai',
-            'data_sharing_level': 1 
-            }
-        test_comment = 'test update rna comment for user agreement'
-        content_type = MULTIPART_CONTENT
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
-        
-        authentication=self.get_credentials()
-        kwargs = { 'limit': 0, 'includes': ['*'] }
-        kwargs['HTTP_AUTHORIZATION'] = authentication
-        kwargs[HEADER_APILOG_COMMENT] = test_comment
-        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
-        
-        file = 'iccbl_rnai_ua_march2015.pdf'
-        filename = \
-            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
-        logger.info('Open and POST file: %r', filename)
-        with open(filename) as input_file:
-
-            logger.info('PUT user agreement to the server...')
-            useragreement_item_post['attached_file'] = input_file
-            
-            resp = self.django_client.post(
-                resource_uri, content_type=MULTIPART_CONTENT, 
-                data=useragreement_item_post, **kwargs)
+                data=user_agreement_input4, **post_kwargs)
             if resp.status_code not in [200]:
                 logger.info(
                     'resp code: %d, resp: %r, content: %r', 
@@ -8325,102 +8505,112 @@ class ScreensaverUserResource(DBResourceTestCase):
             self.assertTrue(
                 resp.status_code in [200], 
                 (resp.status_code))
+
+            user_agreement_output4 = self.deserialize(resp)
+            user_agreement_output4 = user_agreement_output4[API_RESULT_DATA][0]
+            logger.info('after resetting  4: %r', user_agreement_output4)
+            self.assertEqual(
+                user_agreement_input4['date_active'],
+                user_agreement_output4['date_active'])
+            self.assertEqual(
+                user_agreement_input4['filename'],
+                user_agreement_output4['filename'])
+            self.assertEqual(
+                user_agreement_input4['data_sharing_level'],
+                user_agreement_output4['data_sharing_level'])
+            self.assertEqual('active', user_agreement_output4['status'])
+            self.assertIsNone(user_agreement_output4['date_notified'])
+            self.assertIsNone(user_agreement_output4['date_expired'])
         
-        # 2.a check that the user agreement is an attached file to the user
-        attached_type = db.api.UserAgreementResource.FILE_TYPE_RNA_UA
-        data_for_get = { 
-            'limit': 0, 'includes': ['*'], 
-            'type__eq': attached_type 
-        }
-        resp = self.api_client.get(
-            resource_uri,
-            authentication=self.get_credentials(), data=data_for_get )
+        # 4.A Verify that previous attached file may now be deleted 
+        file_id = str(user_agreement_output3['file_id'])
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'attachedfile', file_id])
+        resp = self.api_client.delete(
+            resource_uri, authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code == 204, 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 4.B Reset the User Agreement to None
+
+        user_agreement_input4a = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'screensaver_user_id': test_su_id,
+            'status': 'inactive'
+            }
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=user_agreement_input4a, 
+            authentication=self.get_credentials())
+        if resp.status_code not in [200]:
+            logger.info(
+                'resp code: %d, resp: %r, content: %r', 
+                resp.status_code, resp, resp.content)
         self.assertTrue(
             resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        self.assertEqual(
-            len(new_obj[API_RESULT_DATA]), 1, 
-            'wrong count of user agreements returned: %r' % new_obj)
+            (resp.status_code))
+        user_agreement_output4a = self.deserialize(resp)
+        user_agreement_output4a = user_agreement_output4a[API_RESULT_DATA][0]
+        logger.info('after resetting  4a: %r', user_agreement_output4a)
+        self.assertIsNone(user_agreement_output4a['date_active'])
+        self.assertIsNone(user_agreement_output4a['date_notified'])
+        self.assertIsNone(user_agreement_output4a['date_expired'])
+        self.assertIsNone(user_agreement_output4a['file_id'])
+        self.assertIsNone(user_agreement_output4a['filename'])
+        self.assertIsNone(user_agreement_output4a['data_sharing_level'])
+        VOCAB_UA_STATUS_INACTIVE = 'inactive'
+        self.assertEqual(user_agreement_output4a['status'], VOCAB_UA_STATUS_INACTIVE)
+        logger.info('status: %r', user_agreement_output4a)
         
-        af = new_obj[API_RESULT_DATA][0]
-        uri = '/db/attachedfile/%s/content' % af['attached_file_id']
-        try:
-            admin_user = User.objects.get(username=admin_username)
-            view, args, kwargs = resolve(uri)
-            kwargs['request'] = self.api_client.client.request()
-            kwargs['request'].user=admin_user
-            result = view(*args, **kwargs)
-            output_filename = '%s.out.%s' % tuple(filename.split('.'))
-            logger.info('write %s to %r', filename, output_filename)
-            with open(output_filename, 'w') as out_file:
-                out_file.write(self.get_content(result))
-            self.assertTrue(filecmp.cmp(filename,output_filename), 
-                'input file: %r, not equal to output file: %r' 
-                % (filename, output_filename))    
-        except Exception, e:
-            logger.exception('no file found at: %r', uri)
-            raise
 
-        # 2.b check that the data sharing level for the type is assigned
+    def test11_update_lab_head_dsl(self):
         
-        resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,test_su_id])
-        user_data = self.get_single_resource(resource_uri)
+        # Verify that the lab member dsl's are updated on lab head update.
         
-        self.assertEqual(
-            user_data['rnai_data_sharing_level'],
-            useragreement_item_post['data_sharing_level'])
-        self.assertEqual(
-            user_data['is_active'], True)
+        # TODO: Business rules:
+        # 1. User DSL must match Lab Head (PI) DSL
+        # 1.a On updating user's SMUA, should the validation limit the DSL choice to 
+        # match the PI's?
+        # 2. On updating PI's SMUA, should batch operation include updating the
+        # lab member DSL's?
+        # 3. Does PI SMUA expiration affect Lab Member SMUA expiration?
+        
+        pass
+        
+        
+        # TODO: test user/lab head/screen DSL combinations
+        # - user cannot be created as non-lab head without a lab head (unless staff)
+        # - DSL must match lab head
+        # - change Lab Head DSL changes user DSL
+        
+        
+        # User agreement
+        # - attached file
+        # - date active (checklist item event)
+        # - dsl level
+        # - date expired
 
-        # 2.c check that checklist item has been created for user agreement
-        
-        resource_uri = BASE_URI_DB + '/userchecklist'
-        resource_uri = '/'.join([resource_uri,test_su_id])
-        checklist_items = self.get_list_resource(resource_uri, 
-            {'status__eq': 'activated',
-             'name__eq': u'current_rnai_user_agreement_active'})
-        self.assertEqual(len(checklist_items),1)
-        val = db.api.UserAgreementResource.CHK_TYPE_RNA_UA_ACTIVE
-        self.assertTrue(checklist_items[0]['name'] == val,
-            'wrong checklist item - expected name: %r, %r'
-            %(val, checklist_items[0]))
-        
-        # 2.d check logs
-        
-        resource_uri = BASE_REPORTS_URI + '/apilog'
-        data_for_get={ 
-            'limit': 0, 
-            'ref_resource_name': 'screensaveruser', 
-            'key': test_su_id,
-            'diff_keys__contains': 'rnai_data_sharing_level',
-            'order_by': 'date_created' 
-        }
-        apilogs = self.get_list_resource(
-            resource_uri, data_for_get=data_for_get )
-        logger.info('logs: %r', apilogs)
-        self.assertEqual(
-            len(apilogs),1, 'wrong apilogs count: %r' % apilogs)
-        apilog = apilogs[0]
-        self.assertTrue(apilog['comment']==test_comment,
-            'comment %r should be: %r' % (apilog['comment'], test_comment))
-        self.assertTrue('rnai_data_sharing_level' in apilog['diff_keys'])
+
+
     
     # TODO: test expire dsl: create a "UserAgreementResource.expire"
         
-    def test5_service_activity(self):
+    def test12_service_activity(self):
         
         logger.info('test5_service_activity...')
-        self.test0_create_user();
-        
-        serviced_user = self.user1
+#         self.test0_create_user();
+        # Create a lab head, as all users must either be a lab head or have one
+        serviced_user = self.create_lab_head()
         
         # FIXME: make sure performed_by_username belongs to 
         # ServiceActivityPerformers group
-        performed_by_user = self.create_screensaveruser(
+        performed_by_user = self.create_staff_user(
             { 'username': 'service_activity_performer'})
-        performed_by_user2 = self.create_screensaveruser(
+        performed_by_user2 = self.create_staff_user(
             { 'username': 'service_activity_performer2'})
 
         service_activity_post = {
@@ -8531,6 +8721,7 @@ class ScreensaverUserResource(DBResourceTestCase):
                 .format(**new_obj))
         
         # 3 delete serviceactivity
+        logger.info('Delete service activity...')
         resource_uri = '/'.join([
             BASE_URI_DB,'serviceactivity',str(new_obj['activity_id'])])
         resp = self.api_client.delete(
@@ -8626,34 +8817,38 @@ class DataSharingLevel(DBResourceTestCase):
             screen['facility_id']: screen 
                 for screen in reference_screens}
         logger.info('starting reference screens: %r', reference_screens.keys())
-        user_data = {
-        }
         for dsl in range(1,4):
             for lab in ['a','b']:
-                _data = dict(
-                    user_data,
-                    sm_data_sharing_level=dsl)
+                _data = {}
+#                 _data = dict(
+#                     user_data,
+#                     sm_data_sharing_level=dsl)
                 lab_head_username = 'lab_head%d%s' % (dsl,lab)
                 lab_head = reference_users.get(lab_head_username, None)
                 if lab_head is None:
                     _data = dict(_data,username=lab_head_username)
                     logger.info('setup: user not found; creating %r...', _data)
                     lab_head = set_user_password(self.create_lab_head(_data))
-                
+                    self.set_screening_user_data_sharing_level(
+                        lab_head['screensaver_user_id'], 'sm', dsl)
                 _data = dict(_data,lab_head_id=lab_head['screensaver_user_id'])
                 lead_screener_username = 'lead_screener%d%s' % (dsl,lab)
                 lead_screener = reference_users.get(lead_screener_username, None)
                 if lead_screener is None:
                     _data = dict(_data, username=lead_screener_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    lead_screener = set_user_password(self.create_screensaveruser(_data))
+                    lead_screener = set_user_password(self.create_screening_user(_data))
+                    self.set_screening_user_data_sharing_level(
+                        lead_screener['screensaver_user_id'], 'sm', dsl)
                     
                 collaborator_username = 'collaborator%d%s' % (dsl,lab)
                 collaborator = reference_users.get(collaborator_username, None)
                 if collaborator is None:
                     _data = dict(_data, username=collaborator_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    collaborator = set_user_password(self.create_screensaveruser(_data))
+                    collaborator = set_user_password(self.create_screening_user(_data))
+                    self.set_screening_user_data_sharing_level(
+                        collaborator['screensaver_user_id'], 'sm', dsl)
                 
                 # Create screens for each lab, by level
                 screen_data = {
@@ -9722,7 +9917,7 @@ class RawDataTransformer(DBResourceTestCase):
     
     def test1_collation(self):
         
-        counter2 = Counter(
+        counter1 = Counter(
             OrderedDict((
                 ('plate',(1,2,3)),
                 ('condition',('c1','c2')),
@@ -9759,16 +9954,16 @@ class RawDataTransformer(DBResourceTestCase):
 
         for i in range(0,24):
             reading_hash = OrderedDict(
-                zip(counter.counter_hash.keys(),
+                zip(counter1.counter_hash.keys(),
                     expected_sequences[i]))
             logger.info('i: %d, reading_hash: %r', i,reading_hash)
-            self.assertEqual(reading_hash,counter.get_readout(i))
-            self.assertEqual(i, counter.get_index(reading_hash))
+            self.assertEqual(reading_hash, counter1.get_readout(i))
+            self.assertEqual(i, counter1.get_index(reading_hash))
             
         try:
             logger.info('out of range: %d: returns %r', 
                 len(expected_sequences), 
-                counter.get_readout(len(expected_sequences)))
+                counter1.get_readout(len(expected_sequences)))
             self.fail('index out of range, should be an error')
         except:
             logger.exception('expected exception')
@@ -9811,7 +10006,7 @@ class RawDataTransformer(DBResourceTestCase):
             reading_hash = OrderedDict(
                 zip(counter.counter_hash.keys(),
                     expected_sequences[i]))
-            logger.info('i: %d, reading_hash: %r', i,reading_hash)
+            logger.debug('i: %d, reading_hash: %r', i,reading_hash)
             self.assertEqual(reading_hash,counter.get_readout(i))
             self.assertEqual(i, counter.get_index(reading_hash))
 
@@ -9884,7 +10079,7 @@ class RawDataTransformer(DBResourceTestCase):
                                 counter.counter_hash.keys(), index)
                             
                             counter_readout = counter.get_readout(index)
-                            logger.info('readout: %r, found: %r',
+                            logger.debug('readout: %r, found: %r',
                                 readout, counter_readout)
                             self.assertFalse(
                                 any(val!=readout[key] 
@@ -9930,7 +10125,7 @@ class RawDataTransformer(DBResourceTestCase):
         excel_row = 0
         for i,matrix in enumerate(expected_matrices):
             # write some random text
-            logger.info('writing matrix: %d', i)
+            logger.debug('writing matrix: %d', i)
             random_text = ''.join(
                 random.choice(string.ascii_uppercase + string.digits) 
                     for _ in range(24))

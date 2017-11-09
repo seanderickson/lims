@@ -41,16 +41,16 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(related_name='lab_heads', 
                 to='db.LabAffiliation', null=True),
         ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='rnai_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='sm_data_sharing_level',
-            field=models.IntegerField(null=True),
-        ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='rnai_data_sharing_level',
+#             field=models.IntegerField(null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='sm_data_sharing_level',
+#             field=models.IntegerField(null=True),
+#         ),
         # 20170918; stashing here, to avoid sql pending trigger error in 0003
         migrations.RemoveField(
             model_name='screen',

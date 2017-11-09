@@ -461,6 +461,7 @@ delete from assay_plate
 /**
  * Alter the assay_plate unique index:
  * - Django migration command for this is not working on orchestra/postgreSQL 8.4
+ * current UNIQUE(library_screening_id, plate_number, replicate_ordinal)
  **/
 DROP INDEX assay_plate_unique_index;
 ALTER TABLE assay_plate 

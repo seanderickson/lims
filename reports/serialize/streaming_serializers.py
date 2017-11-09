@@ -310,7 +310,6 @@ def cursor_generator(cursor, visible_fields, list_fields=[], value_templates=[])
             value = None
             if row.has_key(key):
                 value = row[key]
-                     
             if value and key in list_fields:
                 if isinstance(value, six.string_types):
                     # NOTE: filter empty strings; func.array_to_string inserts 

@@ -591,13 +591,30 @@ class SqlAlchemyResource(IccblBaseResource):
                     'create "about" expression for: %r, %r, decimals %r', 
                     field_name, value, decimals)
         elif filter_type == 'contains':
-            if data_type == 'string':
-                value = str(value)
-            expression = col.contains(value)
+            value = str(value)
+            if value.find('^') == 0:
+                value = value[1:]
+            else:
+                value = '%' + value
+            if value.find('$') == len(value)-1:
+                value = value[:-1]
+            else:
+                value = value + '%'
+            expression = col.like(value)
+#             if data_type == 'string':
+#                 value = str(value)
+#             expression = col.contains(value)
         elif filter_type == 'icontains':
-            if data_type == 'string':
-                value = str(value)
-            expression = col.ilike('%{value}%'.format(value=value))
+            value = str(value)
+            if value.find('^') == 0:
+                value = value[1:]
+            else:
+                value = '%' + value
+            if value.find('$') == len(value)-1:
+                value = value[:-1]
+            else:
+                value = value + '%'
+            expression = col.ilike(value)
         elif filter_type == 'lt':
             expression = col < value
         elif filter_type == 'lte':
@@ -771,8 +788,10 @@ class SqlAlchemyResource(IccblBaseResource):
             data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
             content_type=JSON_MIMETYPE)
         if user is None:
+            logger.info('_get_detail_response_internal, no user')
             class User:
                 is_superuser = True
+                username = 'internal_request'
             request.user = User
         else:
             request.user = user
@@ -790,8 +809,10 @@ class SqlAlchemyResource(IccblBaseResource):
             self._meta.resource_name,content_type)
         
         if user is None:
+            logger.debug('_get_list_response_internal, no user')
             class User:
                 is_superuser = True
+                username = 'internal_request'
             request.user = User
         else:
             request.user = user
@@ -872,7 +893,6 @@ class SqlAlchemyResource(IccblBaseResource):
                         count = 1
                     else:
                         count = conn.execute(count_stmt).scalar()
-                logger.info('count: %s', count)
                 
 #                 if count == 1 or count < limit:
 #                     return {
@@ -887,7 +907,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         count, settings.MAX_ROWS_FOR_CACHE_RESULTPROXY)
                     return None
                 
-                # now fill in the cache with the prefetched sets or rows
+                # Fill in the cache with the prefetched sets or rows
                 for y in range(prefetch_number):
                     new_offset = offset + limit*y;
                     _start = limit*y
@@ -1057,7 +1077,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     return HttpResponse(status=404)
                 
                 if DEBUG_STREAMING:
-                    logger.info('json setup done, meta: %r', meta)
+                    logger.info('json setup done, s: %r', meta)
     
             else: # not json
             

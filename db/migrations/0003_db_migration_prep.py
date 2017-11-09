@@ -118,6 +118,8 @@ def create_simple_vocabularies(apps):
                 # dep: 0020(provisional) -> moves to 0002: move classification column
                 ['classification', 'user.classification',
                     apps.get_model('db', 'ScreensaverUser').objects.all()],
+                ['gender', 'user.gender',
+                    apps.get_model('db', 'ScreensaverUser').objects.all()],
                 ['lab_head_appointment_category', 'lab_head.appointment_category',
                     apps.get_model('db', 'ScreensaverUser').objects.all()],
                 ['lab_head_appointment_department', 'lab_head.appointment_department',

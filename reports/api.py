@@ -22,14 +22,14 @@ from django.contrib.auth.models import User as DjangoUser
 from django.contrib.sessions.models import Session
 from django.core.cache import cache, caches
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
-import django.core.exceptions
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.aggregates import Max
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse, Http404, HttpResponseBase
+from django.http.response import HttpResponse, Http404, HttpResponseBase,\
+    HttpResponseNotFound
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
@@ -37,10 +37,7 @@ from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct, exists
 from tastypie.authentication import BasicAuthentication, MultiAuthentication
-from tastypie.exceptions import NotFound, ImmediateHttpResponse, \
-    BadRequest
-from tastypie.http import HttpForbidden, HttpNotFound, \
-    HttpNoContent
+from tastypie.exceptions import BadRequest
 from tastypie.utils.urls import trailing_slash
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
@@ -547,7 +544,7 @@ class ApiResource(SqlAlchemyResource):
 
     def build_schema(self, user=None):
         
-        logger.info('build schema for: %r: %r', self._meta.resource_name, user)
+        logger.debug('build schema for: %r: %r', self._meta.resource_name, user)
         schema = self.get_resource_resource()._get_resource_schema(
             self._meta.resource_name, user)
         if DEBUG_RESOURCES:
@@ -632,11 +629,14 @@ class ApiResource(SqlAlchemyResource):
         if DEBUG_PARSE:
             logger.info('parse: %r:%r', self._meta.resource_name, schema is None)
             logger.info('parse: %r', deserialized)
+       
         mutable_fields = fields        
         if fields is None:
+            
             if schema is None:
                 logger.info('build raw schema for parse')
                 schema = self.build_schema()
+        
             fields = schema['fields']
             mutable_fields = {}
             for key,field in fields.items():
@@ -647,6 +647,7 @@ class ApiResource(SqlAlchemyResource):
         if DEBUG_PARSE:
             logger.info('r: %r, mutable fields: %r', self._meta.resource_name, 
             mutable_fields.keys() )
+        
         initializer_dict = {}
         for key,field in mutable_fields.items():
             _val = None
@@ -1093,7 +1094,7 @@ class ApiResource(SqlAlchemyResource):
             if original_data is not None and len(original_data) != 0:
                 raise ValidationError({ 
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
-            original_data = None
+#             original_data = None
 #         log.save()
         
         logger.info('patch_obj: %r, %r', deserialized, log)
@@ -1177,7 +1178,6 @@ class ApiResource(SqlAlchemyResource):
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
         log.save()
-
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         if API_RESULT_OBJ in patch_result:
             obj = patch_result[API_RESULT_OBJ]
@@ -1193,14 +1193,15 @@ class ApiResource(SqlAlchemyResource):
                 if val is not None:
                     kwargs_for_log['%s' % id_field] = val
         new_data = self._get_detail_response_internal(**kwargs_for_log)
-        logger.debug('new_data: %r', new_data)
+        logger.info('new_data: %r', new_data)
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
             id_attribute=id_attribute, schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
-            logger.debug('patch log: %r', patched_log)
-        
+            logger.info('patch log: %r', patched_log)
+        else:
+            logger.info('no patch log')
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,], }
         if API_RESULT_META in patch_result:
@@ -1326,9 +1327,9 @@ class ApiResource(SqlAlchemyResource):
 
         # Log
         logger.info('deleted: %s' %kwargs_for_log)
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
+#         log_comment = None
+#         if HEADER_APILOG_COMMENT in request.META:
+#             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         # 20170601 - no diffs for delete
         # log.diffs = { k:[v,None] for k,v in original_data.items()}
@@ -1336,10 +1337,10 @@ class ApiResource(SqlAlchemyResource):
         logger.info('delete, api log: %r', log)
 
         # TODO: return meta information
-        return HttpNoContent()
+        return HttpResponse(status=204)
 
     @write_authorization
-    @un_cache        
+#     @un_cache        
     @transaction.atomic    
     def put_obj(self,request, deserialized, **kwargs):
         try:
@@ -1350,7 +1351,7 @@ class ApiResource(SqlAlchemyResource):
         return self.patch_obj(request, deserialized, **kwargs)            
 
     @write_authorization
-    @un_cache        
+#     @un_cache        
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete obj must be implemented')
@@ -1362,15 +1363,12 @@ class ApiResource(SqlAlchemyResource):
 
     def validate(self, _dict, patch=False, schema=None):
         '''
-        Perform validation according the the field schema:
+        Perform declarative validations according the the field schema:
         @param patch if False then check all fields (for required); not just the 
         patched fields (use if object is being created). When patching, only 
         need to check the fields that are present in the _dict
         
         @return a dict of field_key->[erors] where errors are string messages
-        
-        #TODO: create vs update validations: validate that create-only
-        fields are not updated
         '''
         DEBUG_VALIDATION = False or logger.isEnabledFor(logging.DEBUG)
         if DEBUG_VALIDATION:
@@ -1657,7 +1655,6 @@ class ApiResource(SqlAlchemyResource):
  
         if HEADER_APILOG_COMMENT in request.META:
             log.comment = request.META[HEADER_APILOG_COMMENT]
-     
         if kwargs:
             for key, value in kwargs.items():
                 if hasattr(log, key):
@@ -1693,10 +1690,6 @@ class ApiResource(SqlAlchemyResource):
         if exclude_patterns is None:
             exclude_patterns = default_exclude_patterns
             
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
-        
         if DEBUG_PATCH_LOG:
             logger.info(
                 'prev_dict: %s, ======new_dict====: %s', 
@@ -1705,6 +1698,8 @@ class ApiResource(SqlAlchemyResource):
         if log is None:
             log = self.make_log(
                 request, attributes=new_dict, id_attribute=id_attribute, **kwargs)
+        if HEADER_APILOG_COMMENT in request.META:
+            log.comment = request.META[HEADER_APILOG_COMMENT]
         if not log.key:
             self.make_log_key(log, new_dict, id_attribute=id_attribute,
                 **kwargs)
@@ -1719,7 +1714,12 @@ class ApiResource(SqlAlchemyResource):
                         % (prev_dict,new_dict))
                 else:
                     logger.info('no diffs found: %r', log.uri) 
-                log = None
+                if log.comment is None:
+                    # if no comment, no need to save the log
+                    log = None
+            else:
+                logger.info('PATCH: %r', log.uri) 
+                
         else: # creating
             log.api_action = API_ACTION_CREATE
             if full_create_log is True:
@@ -1728,6 +1728,8 @@ class ApiResource(SqlAlchemyResource):
                         if val is not None }
             if DEBUG_PATCH_LOG:
                 logger.info('create, api log: %r', log)
+            else:
+                logger.info('CREATE: %r', log.uri) 
     
         if DEBUG_PATCH_LOG:
             logger.info('log patch done: %r', log)
@@ -1744,9 +1746,9 @@ class ApiResource(SqlAlchemyResource):
         '''
         logs = []
         
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
+#         log_comment = None
+#         if HEADER_APILOG_COMMENT in request.META:
+#             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         if DEBUG_PATCH_LOG:
             logger.info('log patches: %s' %kwargs)
@@ -2751,9 +2753,9 @@ class ResourceResource(ApiResource):
             user_cache_key = 'resources_%s' % user.username
             
             user_resources = resource_cache.get(user_cache_key)
-            logger.info('user resource retrieved from cache: %r', user_resources)
+            logger.debug('user resource retrieved from cache: %r', user_resources)
         if not user_resources:    
-            
+            logger.debug('user resources not cached, build resources')
             if use_cache and self.use_cache:
                 resources = resource_cache.get('resources')
                 
@@ -3308,7 +3310,7 @@ class VocabularyResource(ApiResource):
         return result
     
     @write_authorization
-    @un_cache 
+#     @un_cache 
     @transaction.atomic       
     def delete_obj(self, request, deserialized, **kwargs):
         schema = kwargs.pop('schema', None)
@@ -3399,7 +3401,7 @@ class VocabularyResource(ApiResource):
             logger.debug('save: %r, as %r', deserialized, vocab)
             vocab.save()
             self.patch_elapsedtime4 += (time.time() - start_time)
-                    
+            logger.debug('patch vocab done: %r', id_kwargs)        
             return { API_RESULT_OBJ: vocab }
             
         except Exception, e:
@@ -3920,6 +3922,12 @@ class UserResource(ApiResource):
                         # FIXME: first check if permissions have changed
                         userprofile.permissions.clear()
                         if val:
+                            # NOTE: staff requirement is enforced in the db application
+                            # if user.is_staff != True:
+                            #     raise ValidationError(
+                            #         key='permissions',
+                            #         msg='May only be set for staff users')
+                            
                             pr = self.get_permission_resource()
                             for p in val:
                                 permission_key = ( 
@@ -3944,6 +3952,11 @@ class UserResource(ApiResource):
                         logger.info('patch usergroups: %r', val)
                         userprofile.usergroup_set.clear()
                         if val:
+                            # NOTE: staff requirement is enforced in the db application
+                            # if user.is_staff != True:
+                            #     raise ValidationError(
+                            #         key='usergroups',
+                            #         msg='May only be set for staff users')
                             ugr = self.get_usergroup_resource()
                             for g in val:
                                 usergroup_key = ugr.find_key_from_resource_uri(g)

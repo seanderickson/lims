@@ -48,8 +48,6 @@ import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
 from tastypie.authentication import BasicAuthentication, MultiAuthentication
 from tastypie.exceptions import BadRequest
-from tastypie.http import HttpNotFound
-import tastypie.http
 from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
 import unicodecsv
@@ -69,7 +67,7 @@ from db.models import ScreensaverUser, Screen, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
     ScreenKeyword, ResultValue, AssayWell, Publication, ScreenerCherryPick, \
     LabCherryPick, CherryPickRequestEmptyWell, CherryPickScreening, \
-    LabAffiliation
+    LabAffiliation, UserAgreement
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
@@ -147,7 +145,9 @@ VOCAB_LCP_STATUS_SELECTED = 'selected'
 VOCAB_LCP_STATUS_NOT_SELECTED = 'not_selected'
 VOCAB_LCP_STATUS_UNFULFILLED = 'unfulfilled'
 VOCAB_LCP_STATUS_PLATED = 'plated'
-
+VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator'
+VOCAB_SCREEN_TYPE_SM = 'small_molecule'
+VOCAB_SCREEN_TYPE_RNAI = 'rnai'
 # API_PARAM_PLATE_MAPPING_OVERRIDE = 'plate_mapping_override'
 API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents'
 API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections'
@@ -1973,7 +1973,7 @@ class LibraryCopyPlateResource(DbApiResource):
             plate_kwargs['includes'] = ['plate_id']
             original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
-                raise HttpNotFound
+                raise Http404
             logger.info('got the plate objects for search data: %d', len(original_data))
             logger.debug('plates %r', ['{copy_name}/{plate_number}'.format(**lcp)
                 for lcp in original_data])
@@ -2039,7 +2039,7 @@ class LibraryCopyPlateResource(DbApiResource):
             # Find all of the plates
             original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
-                raise HttpNotFound
+                raise Http404
             logger.info('got the plate objects for search data: %d', len(original_data))
             logger.debug('plates for batch edit %r', 
                 ['{copy_name}/{plate_number}'.format(**lcp)
@@ -2188,7 +2188,582 @@ class LibraryCopyPlateResource(DbApiResource):
                     
         return { API_RESULT_OBJ: plate }
 
+class UserAgreementResource(DbApiResource):
+    
+    VOCAB_USER_AGREEMENT_SM = 'sm'
+    VOCAB_USER_AGREEMENT_RNAI = 'rnai'
+    
+    VOCAB_FILE_TYPE_SMUA = 'iccb_l_small_molecule_user_agreement'
+    VOCAB_FILE_TYPE_RNAI = 'iccb_l_rnai_user_agreement'
+    
+    class Meta:
+
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             IccblSessionAuthentication())
+        resource_name = 'useragreement'
+        authorization = UserGroupAuthorization(resource_name)
+        serializer = LimsSerializer()
+
+    def __init__(self, **kwargs):
+        
+        self.screensaveruser_resource = None
+        self.attached_file_resource = None
+        super(UserAgreementResource, self).__init__(**kwargs)
+
+    def get_su_resource(self):
+        if self.screensaveruser_resource is None:
+            self.screensaveruser_resource = ScreensaverUserResource()
+        return self.screensaveruser_resource
+    
+    def get_attached_file_resource(self):
+        if self.attached_file_resource is None:
+            self.attached_file_resource = AttachedFileResource()
+        return self.attached_file_resource
+    
+    def prepend_urls(self):
+        
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+#             url((r"^(?P<resource_name>%s)/" 
+#                  r"(?P<user_agreement_id>([\d]+))%s$")
+#                     % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/" 
+                 r"(?P<screensaver_user_id>([\d]+))/"
+                 r"(?P<type>(\w+))%s$")
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ] 
+
+    @read_authorization
+    def get_detail(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail'] = True
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def get_list(self, request, **kwargs):
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        kwargs['file_type__in'] = [self.VOCAB_FILE_TYPE_RNAI, self.VOCAB_FILE_TYPE_SMUA]
+        return self.build_list_response(request, **kwargs)
+
+    def build_list_response(self, request, **kwargs):
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash)
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
+              
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        rowproxy_generator = None
+        if use_vocab is True:
+            rowproxy_generator = \
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
+        
+        # specific setup
+        _su = self.bridge['screensaver_user']
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('ua_user')
+        _lab_head = ScreensaverUserResource.get_lab_head_cte('ualh').cte('ulab_head')
+        _user_agreement = self.bridge['user_agreement']
+        _lab_head_ua = _user_agreement.alias('lab_head_ua')
+        _af = self.bridge['attached_file']
+        _lhaf = _af.alias('lhaf')
+        _vocab = self.bridge['reports_vocabulary']
+        
+        username = param_hash.pop('username', None)
+        screensaver_user_id = param_hash.pop('screensaver_user_id', None)
+        
+        # Create an "all_users" table that contains one entry for each 
+        # agreement type for each user in the system.
+        agreement_type_table = (
+            select([
+                _vocab.c.key.label('type'),
+                _vocab.c.ordinal,
+                _vocab.c.is_retired.label('is_retired'),
+            ])
+            .select_from(_vocab)
+            .where(_vocab.c.scope == 'useragreement.type')
+            .where(_vocab.c.is_retired != True)
+            .order_by(_vocab.c.ordinal))
+        types = []
+        with get_engine().connect() as conn:
+            result = conn.execute(agreement_type_table)
+            types =  [x[0] for x in result ]
+        queries = []
+        for type in types:
+            query = (
+                select([
+                    _su.c.screensaver_user_id,_su.c.username,
+                    _su.c.lab_head_id,
+                    literal_column("'%s'"%type).label('type')])
+                .select_from(_su))
+            if username:
+                query = query.where(
+                    _su.c.username == username)
+            if screensaver_user_id:
+                query = query.where(
+                    _su.c.screensaver_user_id == screensaver_user_id)
+            queries.append(query)
+        all_users = union_all(*queries).cte('all_users')
+      
+        # Build a table of entered agreements
+        j = _su
+        j = j.join(
+            _user_agreement, _user_agreement.c.screensaver_user_id 
+                == _su.c.screensaver_user_id, isouter=True)
+        j = j.join(
+            _af, _user_agreement.c.file_id 
+                == _af.c.attached_file_id, isouter=True)
+        entered_agreements = select([
+            _su.c.screensaver_user_id,
+            _user_agreement.c.data_sharing_level,
+            _user_agreement.c.type,
+            _user_agreement.c.date_active,
+            _user_agreement.c.date_expired,
+            _user_agreement.c.date_notified,
+            _af.c.attached_file_id.label('file_id'),
+            _af.c.filename,
+            ]).select_from(j).cte('entered_agreements')
+        _user_entered_agreements = entered_agreements.alias('user_entered_agreements')        
+        _lh_entered_agreements = entered_agreements.alias('lh_entered_agreements')        
+        
+        custom_columns = {
+            'screensaver_user_id': all_users.c.screensaver_user_id,
+            'username': _user_cte.c.username,
+            'user_name': _user_cte.c.name,
+            'user_first_name': _user_cte.c.first_name,
+            'user_last_name': _user_cte.c.last_name,
+            'user_email': _user_cte.c.email,
+            'type' : all_users.c.type,
+            'data_sharing_level': _user_entered_agreements.c.data_sharing_level,
+            'status': case([
+                ( _user_entered_agreements.c.date_active != None, 
+                  case([
+                      (_user_entered_agreements.c.date_expired != None, 'expired')],
+                      else_='active'))],
+                else_='inactive'),  
+            'date_active': _user_entered_agreements.c.date_active,
+            'date_notified': _user_entered_agreements.c.date_notified,
+            'date_expired': _user_entered_agreements.c.date_expired,
+            'file_id': _user_entered_agreements.c.file_id,
+            'filename': _user_entered_agreements.c.filename,
+            'lab_head_id': _lh_entered_agreements.c.screensaver_user_id,
+            'lab_head_name': _lab_head.c.name,
+            'lab_affiliation_category': _lab_head.c.lab_affiliation_category,
+            'lab_affiliation_name': _lab_head.c.lab_affiliation_name,
+            'lab_head_data_sharing_level': _lh_entered_agreements.c.data_sharing_level,
+            'lab_head_user_agreement_status': 
+                case([
+                ( _lh_entered_agreements.c.screensaver_user_id == None, None),
+                ( _lh_entered_agreements.c.date_active != None, 
+                    case([
+                    (_lh_entered_agreements.c.date_expired != None, 'expired')],
+                    else_='active'))],
+                else_='inactive'),  
+            'lab_head_file_id': _lh_entered_agreements.c.file_id,
+            'lab_head_filename': _lh_entered_agreements.c.filename,
+            }
+        
+        base_query_tables = [] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+         
+        # Build the final query by joining all_users to entered agreements
+        j = all_users
+        j = j.join(_user_cte, all_users.c.screensaver_user_id
+            ==_user_cte.c.screensaver_user_id)
+        j = j.join(_user_entered_agreements, 
+            and_( all_users.c.screensaver_user_id
+                ==_user_entered_agreements.c.screensaver_user_id,
+                all_users.c.type==_user_entered_agreements.c.type),
+            isouter=True)
+        j = j.join(
+            _lh_entered_agreements,
+            and_(
+                all_users.c.lab_head_id != all_users.c.screensaver_user_id,
+                all_users.c.lab_head_id == _lh_entered_agreements.c.screensaver_user_id,
+                _lh_entered_agreements.c.type== all_users.c.type),
+            isouter=True
+            )
+        j = j.join(_lab_head,
+            all_users.c.lab_head_id == _lab_head.c.screensaver_user_id, isouter=True)
+        
+        stmt = select(columns.values()).select_from(j)
+        stmt = stmt.order_by(
+            all_users.c.screensaver_user_id, 
+            all_users.c.type)
+
+        # general setup
+
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+        
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def post_list(self, request, schema=None, **kwargs):
+        raise NotImplementedError
+    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic
+    def post_detail(self, request, **kwargs):
+        '''
+        Modified POST because:
+        - Attached File may be included in request
+        '''
+        schema = kwargs.get('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        fields = schema['fields']
+        id_attribute = schema['id_attribute']
+        
+        # Perform manual deserialization; MULTIPART content is in POST dict
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.info('param_hash: %r', {k:v for k,v in param_hash.items() if k != 'schema'})
+        deserialized = {}
+        for key in fields.keys():
+            if param_hash.get(key, None) is not None:
+                deserialized[key] = param_hash[key]
+        
+        # POST is only used to create or reset to active; file is required
+        # Note: see PATCH: status=deactivate
+        attached_file = request.FILES.get('attached_file', None)
+        if attached_file is None:
+            status_update = deserialized.get('status', None)
+            if status_update is None or status_update not in ('inactive','expire'):
+                raise ValidationError(
+                    key='attached_file',
+                    msg='required to create or reactivate a user agreement')
+        # NOT supporting normal deserialization with POST
+        # if attached_file is None:
+        #     # If no attached file, allow ordinary deserialization
+        #     deserialized = self.deserialize(
+        #         request, format=kwargs.get('format', None))
+        #     logger.info('deserialized: %r', deserialized)
+
+        # Validate Identity
+        username = deserialized.pop('username', None)
+        screensaver_user_id = deserialized.pop('screensaver_user_id', None)
+        if username is None and screensaver_user_id is None:
+            raise NotImplementedError(
+                'must provide a screensaver_user_id or username parameter')
+        if username is not None and screensaver_user_id is not None:
+            raise NotImplementedError(
+                'must provide either a screensaver_user_id or username parameter')
+        if username is not None:
+            su = ScreensaverUser.objects.get(username=username)
+            screensaver_user_id = su.screensaver_user_id
+        deserialized['screensaver_user_id'] = screensaver_user_id
+
+        id_kwargs = self.get_id(deserialized,validate=True, **kwargs)
+
+        # Create a parent log for the user
+        user_resource = self.get_su_resource()
+        # Cache the user data for logging
+        kwargs_for_user = {
+            'exact_fields': ['screensaver_user_id', 'is_active',
+                'sm_data_sharing_level', 'rnai_data_sharing_level',
+                'lab_head_id'] 
+        }
+        kwargs_for_user['screensaver_user_id'] = screensaver_user_id
+        original_user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
+        if not original_user_data:
+            msg = 'User not found: %r'
+            raise ValidationError({
+                'screensaver_user_id': msg % screensaver_user_id,
+                'username': msg % username
+            })
+        parent_log = user_resource.make_log(
+            request, attributes=original_user_data, api_action='PATCH')
+        parent_log.save()
+
+        log = self.make_log(
+            request, id_kwargs, id_attribute=id_attribute, schema=schema)
+        log.save()
+        original_data = self._get_detail_response_internal(**id_kwargs)
+
+        # POST is only used to create or reset to active
+        # Note: see PATCH: status=deactivate, expire
+        try:
+            user_agreement = UserAgreement.objects.get(**id_kwargs)
+            logger.info('UA exists: resetting: %r', user_agreement)
+            user_agreement.date_active=_now()
+            user_agreement.date_expired = None
+            user_agreement.date_notified = None
+            user_agreement.save()
+        except ObjectDoesNotExist:
+            user_agreement = UserAgreement.objects.create(**id_kwargs)
+            if 'date_active' not in deserialized:
+                deserialized['date_active'] = _now().date().strftime("%Y-%m-%d")
+#             user_agreement.date_active=_now()
+            logger.info('UA DNE, creating: %r', user_agreement)
+        
+        # Perform the PATCH
+        logger.info('patch_obj: %r', deserialized)
+        patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
+        user_agreement = patch_result[API_RESULT_OBJ]
+        user_agreement.save()
+
+        # === Attached File ===
+        # TODO: delete existing Attached File if replacing
+        attached_type = None
+        if user_agreement.type == self.VOCAB_USER_AGREEMENT_SM:
+            attached_type = self.VOCAB_FILE_TYPE_SMUA
+        elif user_agreement.type == self.VOCAB_USER_AGREEMENT_RNAI:
+            attached_type = self.VOCAB_FILE_TYPE_RNAI
+        else:
+            raise ValidationError(
+                key='type', 
+                msg='must be one of %r' % [
+                    self.VOCAB_USER_AGREEMENT_SM, self.VOCAB_USER_AGREEMENT_RNAI])
+        kwargs_for_attachedfile = { 'screensaver_user_id': screensaver_user_id }
+        kwargs_for_attachedfile['type'] = attached_type
+        kwargs_for_attachedfile['filename'] = deserialized.get('filename')
+        
+        attached_file_resource = self.get_attached_file_resource()
+        attached_file_response = \
+            attached_file_resource.post_detail(request, **kwargs_for_attachedfile)
+        logger.info('UserAgreement attached file result: %r', attached_file_response)
+        if attached_file_response.status_code == 201:
+            af_data = attached_file_resource._meta.serializer.deserialize(
+                LimsSerializer.get_content(attached_file_response), JSON_MIMETYPE)
+            logger.info('attached_file: %r', af_data)
+            user_agreement.file_id = af_data['attached_file_id']
+            user_agreement.save()
+        else:
+            error_resp = attached_file_resource._meta.serializer.deserialize(
+                LimsSerializer.get_content(attached_file_response), JSON_MIMETYPE)
+            logger.error('attached file error: %r, %r', 
+                attached_file_response.status_code, error_resp)
+            raise Exception('attached file resource error: %r', error_resp)
+
+        # === Attached File - Done ===
+
+        if user_agreement.date_active is not None:
+            if user_agreement.date_expired is None:
+
+                logger.info('UserAgreement is active: %r, add login access for user')
+                # NOTE: is_active is a reports.user property and will only be 
+                # set if the user has a ecommonsId or username set
+                user_schema = user_resource.build_schema(request.user)
+                user_patch_data = {
+                    'screensaver_user_id': screensaver_user_id,
+                    'is_active': True }
+                patch_result = user_resource.patch_obj(
+                    request, user_patch_data, schema=user_schema)
+                logger.info('user patch result: %r', patch_result)
+
+        
+        new_user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
+        user_resource.log_patch(request, original_user_data, new_user_data, parent_log)
+        parent_log.save()
+        
+        new_data = self._get_detail_response_internal(**id_kwargs)
+        
+        self.log_patch(request, original_data, new_data, log, 
+            id_attribute=id_attribute, parent_log=parent_log, full_create_log=True)
+        log.save()
+        
+        data = { API_RESULT_DATA: [new_data]}
+        return self.build_response(request, data)
+    
+    @write_authorization
+    @transaction.atomic
+    def patch_obj(self, request, deserialized, **kwargs):
+
+        logger.info('patch user agreement item: %r', deserialized)
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        fields = schema['fields']
+        id_attribute = schema['id_attribute']
+
+        id_kwargs = self.get_id(deserialized,validate=True,schema=schema,**kwargs)
+        
+        screensaver_user_id = id_kwargs['screensaver_user_id']
+        screensaver_user = ScreensaverUser.objects.get(
+            screensaver_user_id=screensaver_user_id)
+
+        # PATCH may not be used to create a user agreement; see post_detail
+        user_agreement = UserAgreement.objects.get(**id_kwargs)
+
+        initializer_dict = self.parse(deserialized, schema=schema, create=True)
+        logger.info('initializer: %r', initializer_dict)
+        
+        if not initializer_dict:
+            raise Exception('Empty patch')
+        
+        errors = self.validate(initializer_dict, schema=schema)
+        if errors:
+            raise ValidationError(errors)
+        
+        new_status = initializer_dict.pop('status', None)
+        if new_status is not None:
+            if initializer_dict:
+                logger.error(
+                    'Other actions not allowed if expiring or deactivating: %r', 
+                    initializer_dict)
+                raise ValidationError(
+                    key='status', 
+                    msg='other values may not be set if expiring or deactivating')
+            if user_agreement.date_active is None:
+                raise ValidationError(
+                    key='status', msg='Agreement is not active')
+        else:
+            if user_agreement.date_expired is not None:
+                msg = 'Expired agreements may not be patched'
+                raise ValidationError({
+                    k:msg for k in initializer_dict.keys() })
+
+        for key, val in initializer_dict.items():
+            if hasattr(user_agreement, key):
+                setattr(user_agreement, key, val)
+
+        if user_agreement.date_active is None:
+            raise ValidationError(
+                key='date_active', msg='required')
+        
+        if user_agreement.data_sharing_level is None:
+            raise ValidationError(
+                key='data_sharing_level', msg='required')
+        
+        meta = {}
+        if new_status is not None:
+            if new_status == 'expired':
+                if user_agreement.date_expired is not None:
+                    raise ValidationError(
+                        key='status', 
+                        msg='Agreement may not be expired more than once')
+                user_agreement.date_expired = _now()
+                user_agreement.save()
+                logger.info('UserAgreement %r expired', user_agreement)
+#                 return { API_RESULT_OBJ: user_agreement }
+            elif new_status == 'inactive':
+                if user_agreement.date_expired is not None:
+                    raise ValidationError(
+                        key='status', 
+                        msg='Agreement is already expired and may not be deactivated')
+                user_agreement.date_active = None
+                user_agreement.date_notified = None
+                user_agreement.data_sharing_level = None
+                user_agreement.file = None
+                user_agreement.save()
+                logger.info('UserAgreement %r deactivated', user_agreement)
+#                 return { API_RESULT_OBJ: user_agreement }
+            else:
+                raise ValidationError(
+                    key='status', msg='may only be set to "expired" or "inactive"')
+        else:
+            # Disallow setting DSL to a level different than the Lab Head
+            lab_head_id = screensaver_user.lab_head_id
+            logger.info('lab_head_id %r', lab_head_id)
+            if lab_head_id != screensaver_user.screensaver_user_id:
+                try:
+                    lh_user_agreement = UserAgreement.objects.get(
+                        screensaver_user_id=lab_head_id, type=user_agreement.type)
+                    if user_agreement.data_sharing_level is not None:
+                        if user_agreement.data_sharing_level != \
+                            lh_user_agreement.data_sharing_level:
+                            raise ValidationError(
+                                key='data_sharing_level',
+                                msg='Must match Lab Head value: %r' 
+                                    % lh_user_agreement.data_sharing_level)    
+                except ObjectDoesNotExist:
+                    logger.info('no lab head user agreement found')
+                    raise ValidationError(
+                        key='status',
+                        msg='User may not be active until their lab head has a user agreement')
+            # TODO: if user is a LabHead:
+            # Display warning if Lab Head DSL is being set to something other than
+            # Lab_member's DSL
+            # TODO: if DSL does not match user screens, display warning?
+            
+            user_agreement.save()
+        
+        active_user_agreements = UserAgreement.objects\
+            .filter(screensaver_user=screensaver_user)\
+            .filter(date_active__isnull=False)\
+            .filter(date_expired__isnull=True)
+        # If all user agreements are inactive, turn off login capability
+        if not active_user_agreements.exists():
+            logger.info(
+                'no active user agreements exist for %r, removing is_active', 
+                screensaver_user)
+            user_resource = self.get_su_resource()
+            user_schema = user_resource.build_schema(request.user)
+            user_patch_data = {
+                'screensaver_user_id': screensaver_user_id,
+                'is_active': False }
+            patch_result = user_resource.patch_obj(
+                request, user_patch_data, schema=user_schema)
+            logger.info('user patch result: %r', patch_result)
+        
+        logger.info('UserAgreement %r patched', user_agreement)
+
+        return { 
+            API_RESULT_OBJ: user_agreement,
+            API_RESULT_META: meta }
+
 class ScreenAuthorization(UserGroupAuthorization):
+    
+    VOCAB_USER_AGREEMENT_SM = UserAgreementResource.VOCAB_USER_AGREEMENT_SM
+    VOCAB_USER_AGREEMENT_RNAI = UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
+    
     '''
     Implements the data viewing restrictions defined in the ICCB-L User 
     Agreement documents (Small Molecule and RNAi).
@@ -2289,12 +2864,12 @@ class ScreenAuthorization(UserGroupAuthorization):
                     row[0:]))
         return _dict
     
-    def get_my_screens(self, screensaver_user):
+    def get_user_screens(self, screensaver_user):
         '''
         Return the screens that the user is a member of.
         '''
         if DEBUG_SCREEN_ACCESS:
-            logger.info('get_my_screens %r', screensaver_user)
+            logger.info('get_user_screens %r', screensaver_user)
         my_screens = Screen.objects.all().filter(
             Q(lead_screener=screensaver_user)
             | Q(lab_head=screensaver_user)
@@ -2304,22 +2879,39 @@ class ScreenAuthorization(UserGroupAuthorization):
                 screensaver_user.username, [s.facility_id for s in my_screens])
         return set(my_screens)
     
+    def get_user_data_sharing_level(self, screensaver_user, type):
+        active_agreements = \
+            screensaver_user.useragreement_set.all()\
+            .filter(type=type).filter(date_active__isnull=False)\
+            .filter(date_expired__isnull=True)
+        current_dsl = 0
+        if active_agreements.exists():
+            current_dsl = active_agreements[0].data_sharing_level
+        else:
+            logger.info('no active %r user agreements for user: %r', type, screensaver_user)
+        return current_dsl
+    
     def has_sm_data_deposited(self, screensaver_user):
         '''
         True if the user has qualifying data deposited
         - as defined in the User Agreement: level 1 or 2 data, depending on the 
         data_sharing_level for the user.
         '''
-        my_screens = self.get_my_screens(screensaver_user)
+        current_dsl = self.get_user_data_sharing_level(
+            screensaver_user, self.VOCAB_USER_AGREEMENT_SM)
+        my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
-                if ( screen.screen_type == 'small_molecule'
+                if ( screen.screen_type == self.VOCAB_SCREEN_TYPE_SM
                      and screen.data_sharing_level < 3 ):
-                    if screen.data_sharing_level == screensaver_user.sm_data_sharing_level:
-                        logger.info('has_sm_data_deposited %r: True', screensaver_user)
+                    if screen.data_sharing_level == current_dsl:
+                        logger.info(
+                            'has_sm_data_deposited %r: True, dsl: %r', 
+                            screensaver_user.screensaver_user_id, current_dsl)
                         return True
         if DEBUG_SCREEN_ACCESS:
-            logger.info('has_sm_data_deposited %r: False', screensaver_user)
+            logger.info('has_sm_data_deposited %r: %r', 
+                screensaver_user.screensaver_user_id, current_dsl)
         return False
     
     def has_rna_data_deposited(self, screensaver_user):
@@ -2328,16 +2920,21 @@ class ScreenAuthorization(UserGroupAuthorization):
         - as defined in the User Agreement: level 1 or 2 data, depending on the 
         data_sharing_level for the user.
         '''
-        my_screens = self.get_my_screens(screensaver_user)
+        current_dsl = self.get_user_data_sharing_level(
+            screensaver_user, self.VOCAB_USER_AGREEMENT_RNAI)
+        my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
-                if ( screen.screen_type == 'rnai'
+                if ( screen.screen_type == self.VOCAB_SCREEN_TYPE_RNAI
                      and screen.data_sharing_level < 3 ):
-                    if screen.data_sharing_level == screensaver_user.rnai_data_sharing_level:
-                        logger.info('has_rna_data_deposited %r: True', screensaver_user)
+                    if screen.data_sharing_level == current_dsl:
+                        logger.info(
+                            'has_rnai_data_deposited %r: True, dsl: %r', 
+                            screensaver_user.screensaver_user_id, current_dsl)
                         return True
         if DEBUG_SCREEN_ACCESS:
-            logger.info('has_rna_data_deposited %r: False', screensaver_user)
+            logger.info('has_rnai_data_deposited %r: %r', 
+                screensaver_user.screensaver_user_id, current_dsl)
         return False
     
     def get_read_authorized_screens(self, screensaver_user):
@@ -2351,7 +2948,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         if DEBUG_SCREEN_ACCESS:
             logger.info('get_read_authorized_screens %r', screensaver_user)
         authorized_screens = set()
-        authorized_screens.update(self.get_my_screens(screensaver_user))
+        authorized_screens.update(self.get_user_screens(screensaver_user))
         public_screens = Screen.objects.all().filter(data_sharing_level=0)
         authorized_screens.update(public_screens)
 
@@ -2360,18 +2957,19 @@ class ScreenAuthorization(UserGroupAuthorization):
         
         if has_sm_data_deposited:
             visible_screens = (
-                Screen.objects.all().filter(screen_type='small_molecule')
+                Screen.objects.all().filter(screen_type=VOCAB_SCREEN_TYPE_SM)
                     .filter(data_sharing_level__lt=3))
             authorized_screens.update(visible_screens)
         if has_rna_data_deposited:
             visible_screens = (
-                Screen.objects.all().filter(screen_type='rnai')
+                Screen.objects.all().filter(screen_type=VOCAB_SCREEN_TYPE_RNAI)
                     .filter(data_sharing_level__lt=3))
             authorized_screens.update(visible_screens)
         if DEBUG_SCREEN_ACCESS:
             logger.info(
-                'user: %r, authorized_screens: %r', 
-                screensaver_user, [x.facility_id for x in authorized_screens])
+                'user: %r, visible screens (dsl <3): %r', 
+                screensaver_user.screensaver_user_id, 
+                [x.facility_id for x in authorized_screens])
         return authorized_screens
     
     def has_screen_read_authorization(self, user, screen_facility_id):
@@ -2389,16 +2987,26 @@ class ScreenAuthorization(UserGroupAuthorization):
         
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
         authorized_screens = self.get_read_authorized_screens(screensaver_user)
-        return screen_facility_id in set([screen.facility_id for screen in authorized_screens])
-    
+        result = screen_facility_id in set([screen.facility_id for screen in authorized_screens])
+        logger.info('has_screen_read_authorization: %r, %r: %r', 
+            user, screen_facility_id, result)
+        return result
     
     def get_user_effective_data_sharing_level(self, screensaver_user, screen_type):
         effective_dsl = 0
-        if screen_type=='rnai' and self.has_rna_data_deposited(screensaver_user):
-            effective_dsl = scrensaver_user.rnai_data_sharing_level
-        if screen_type=='small_molecule' and self.has_sm_data_deposited(screensaver_user):
-            effective_dsl = screensaver_user.sm_data_sharing_level
-        return effective_dsl
+        if screen_type==VOCAB_SCREEN_TYPE_RNAI and self.has_rna_data_deposited(screensaver_user) is False:
+            return effective_dsl
+        if screen_type==VOCAB_SCREEN_TYPE_SM and self.has_sm_data_deposited(screensaver_user) is False:
+            return effective_dsl
+        
+        return self.get_user_data_sharing_level(screensaver_user, screen_type)
+        
+#         if screensaver_user.useragreement_set.filter(type=screen_type).exists():
+#             user_agreement = screensaver_user.useragreement_set.filter(type=screen_type)[0]
+#             if user_agreement.date_expired is None:
+#                 effective_dsl = user_agreement.data_sharing_level
+# 
+#         return effective_dsl
     
     def get_screen_access_level_table(self, username):
         '''
@@ -2430,25 +3038,27 @@ class ScreenAuthorization(UserGroupAuthorization):
         screensaver_user = ScreensaverUser.objects.get(username=username)
         my_screen_facility_ids = set([
             screen.facility_id for screen 
-                in self.get_my_screens(screensaver_user)])
+                in self.get_user_screens(screensaver_user)])
         
         if DEBUG_SCREEN_ACCESS:
             logger.info('my screens: %r, %r', username, my_screen_facility_ids)
 
         user_effective_sm_dsl = self.get_user_effective_data_sharing_level(
-            screensaver_user, 'small_molecule')
+            screensaver_user, VOCAB_SCREEN_TYPE_SM)
         user_effective_rna_dsl = self.get_user_effective_data_sharing_level(
-            screensaver_user, 'rnai')
+            screensaver_user, VOCAB_SCREEN_TYPE_RNAI)
 
         my_qualified_sm_facility_ids = set([
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
-                    == user_effective_sm_dsl            
+                    == user_effective_sm_dsl and
+                screen_overlapping_table[facility_id]['screen_type'] == VOCAB_SCREEN_TYPE_SM            
             ])
         my_qualified_rnai_facility_ids = set([
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
-                    == user_effective_rna_dsl            
+                    == user_effective_rna_dsl and 
+                screen_overlapping_table[facility_id]['screen_type'] == VOCAB_SCREEN_TYPE_RNAI            
             ])
 
         
@@ -2463,10 +3073,10 @@ class ScreenAuthorization(UserGroupAuthorization):
                 facility_id=None, data_sharing_level=None, 
                 screen_type=None, overlapping_positive_screens=None ):
 
-            if screen_type == 'rnai':
+            if screen_type == VOCAB_SCREEN_TYPE_RNAI:
                 user_effective_dsl = user_effective_rna_dsl
                 my_qualified_facility_ids = my_qualified_rnai_facility_ids
-            elif screen_type == 'small_molecule':
+            elif screen_type == VOCAB_SCREEN_TYPE_SM:
                 user_effective_dsl = user_effective_sm_dsl
                 my_qualified_facility_ids = my_qualified_sm_facility_ids
             else:
@@ -2501,6 +3111,8 @@ class ScreenAuthorization(UserGroupAuthorization):
             screens_by_user_access_level[ual].add(facility_id)
         
         if DEBUG_SCREEN_ACCESS: 
+            logger.info('screens_by_user_access_level: %r ',
+                screens_by_user_access_level)
             logger.info('screen access levels for "%s" %r',
                 username, [(k,len(v)) for k,v 
                     in screens_by_user_access_level.items()])
@@ -2582,8 +3194,7 @@ class ScreenAuthorization(UserGroupAuthorization):
             
             screen_access_dict = self.get_screen_access_level_table(user.username)
             fields_by_level = self.get_fields_by_level(fields)
-            if DEBUG_SCREEN_ACCESS:
-                logger.info('fields by level: %r', fields_by_level)
+            logger.debug('fields by level: %r', fields_by_level)
             class Row:
                 def __init__(self, row):
                     logger.debug(
@@ -2685,7 +3296,7 @@ class ScreenResultAuthorization(ScreenAuthorization):
                 screen = Screen.objects.get(facility_id=screen_facility_id)
 
                 screensaver_user = ScreensaverUser.objects.get(username=user.username)
-                users_own_screens = self.get_my_screens(screensaver_user)
+                users_own_screens = self.get_user_screens(screensaver_user)
                 user_effective_dsl = self.get_user_effective_data_sharing_level(
                     screensaver_user, screen.screen_type)
                 can_view = False
@@ -3925,11 +4536,11 @@ class ScreenResultResource(DbApiResource):
                     field['visibility'].remove('d')
             newfields.update(current_fields)
             
-            if screenresult.screen.screen_type == 'small_molecule':
+            if screenresult.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
                 if 'compound_name' in newfields:
                     newfields['compound_name']['visibility'] = ['l','d']
                     newfields['compound_name']['ordinal'] = 12
-            elif screenresult.screen.screen_type == 'rnai':
+            elif screenresult.screen.screen_type == VOCAB_SCREEN_TYPE_RNAI:
                 if 'facility_entrezgene_id' in newfields:
                     newfields['facility_entrezgene_id']['visibility'] = ['l','d']
                     newfields['facility_entrezgene_id']['ordinal'] = 10
@@ -4124,7 +4735,7 @@ class ScreenResultResource(DbApiResource):
         else:
             raise BadRequest('no screen result to delete')
 
-        return tastypie.http.HttpNoContent()
+        return HttpResponse(status=204)
             
     @write_authorization
     @un_cache 
@@ -5966,7 +6577,7 @@ class CherryPickRequestAuthorization(ScreenAuthorization):
             return filter_expression
         
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        my_screens = self.get_my_screens(screensaver_user)
+        my_screens = self.get_user_screens(screensaver_user)
         # Can only see own screens
         
         auth_filter = column('screen_facility_id').in_(
@@ -5987,7 +6598,7 @@ class CherryPickRequestAuthorization(ScreenAuthorization):
             return True
         
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        my_screens = self.get_my_screens(screensaver_user)
+        my_screens = self.get_user_screens(screensaver_user)
         
         cpr = CherryPickRequest.objects.get(cherry_pick_request_id=cherry_pick_request_id)
         
@@ -10852,13 +11463,10 @@ class PublicationResource(DbApiResource):
                     'no such attribute on publication: %s:%r' % (key, val))
 
         parent_log = kwargs.get('parent_log',None)
-        logger.info('parent_log: %r', parent_log)
         if parent_log is None and publication.screen is not None:
             parent_log = self.log_to_screen(
                 publication.screen, publication, request)
             kwargs['parent_log'] = parent_log
-            logger.info('1parent_log: %r', parent_log)
-        logger.info('parent_log: %r', parent_log)
             
         publication.save()
 
@@ -10965,13 +11573,11 @@ class PublicationResource(DbApiResource):
         log.uri = '/'.join([self._meta.resource_name,log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION_DELETE
-#         log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
-#         log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
         log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
 
-        return tastypie.http.HttpNoContent()
+        return HttpResponse(status=204)
 
 class AttachedFileAuthorization(ScreenAuthorization):
     '''
@@ -10983,7 +11589,7 @@ class AttachedFileAuthorization(ScreenAuthorization):
             return filter_expression
 
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        my_screens = self.get_my_screens(screensaver_user)
+        my_screens = self.get_user_screens(screensaver_user)
         
         auth_filter = or_(
             column('screen_facility_id').in_(
@@ -11034,13 +11640,18 @@ class AttachedFileResource(DbApiResource):
         
         super(AttachedFileResource, self).__init__(**kwargs)
         self.screen_resource = None
+        self.user_resource = None
         
     def get_screen_resource(self):
         if self.screen_resource is None:
             self.screen_resource = ScreenResource()
         return self.screen_resource
 
-
+    def get_user_resource(self):
+        if self.user_resource is None:
+            self.user_resource = ScreensaverUserResource()
+        return self.user_resource
+    
     def prepend_urls(self):
         
         return [
@@ -11096,7 +11707,7 @@ class AttachedFileResource(DbApiResource):
                 })
         parent_log = screen_resource.make_log(request)
         parent_log.api_action = API_ACTION_PATCH
-        parent_log.key = screen.facility_id
+        parent_log.key = str(screen.facility_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
         parent_log.diff_keys = ['attached_files'];
         current_files = _screen_data['attached_files'] or []
@@ -11107,6 +11718,23 @@ class AttachedFileResource(DbApiResource):
             new_files = list(current_files)
             new_files.append(af.filename)
         parent_log.diffs = { 'attached_files': [current_files,new_files]}
+        parent_log.save()
+        return parent_log
+
+    def log_to_user(self, user, af, request, is_delete=False):
+        '''
+        Creates a parent log for attached_files for screens
+        '''
+        user_resource = self.get_screen_resource()
+        parent_log = user_resource.make_log(request)
+        parent_log.api_action = API_ACTION_PATCH
+        parent_log.key = str(user.screensaver_user_id)
+        parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
+        parent_log.diff_keys = ['attached_files'];
+        if is_delete:
+            parent_log.diffs =  { 'attached_fiels': [af.filename,None] }
+        else:
+            parent_log.diffs =  { 'attached_fiels': [None, af.filename] }
         parent_log.save()
         return parent_log
 
@@ -11249,8 +11877,10 @@ class AttachedFileResource(DbApiResource):
         if parent_log is None and af.screen is not None:
             parent_log = \
                 self.log_to_screen(af.screen, af, request, is_delete=False)
+        if parent_log is None and af.screensaver_user is not None:
+            parent_log = \
+                self.log_to_user(af.screensaver_user, af, request, is_delete=False)
         # TODO: log_to_reagent
-        # TODO: log_to_screensaver_user
         
         af.save()
 
@@ -11283,6 +11913,17 @@ class AttachedFileResource(DbApiResource):
             NotImplementedError('must provide a attached_file_id parameter')
         
         af = AttachedFile.objects.get(attached_file_id=attached_file_id)
+        
+        try:
+            ua_query = UserAgreement.objects.all().filter(file=af)
+            if ua_query.exists():
+                raise ValidationError(
+                    key='%s' % af.filename,
+                    msg='File is attached to the current (%s) User Agreement' % ua_query[0].type)
+        except ObjectDoesNotExist:
+            logger.info('ok to delete attached file, no associated user agreement')
+        
+        
         _dict = model_to_dict(af)
 
         # Create parent log
@@ -11290,23 +11931,24 @@ class AttachedFileResource(DbApiResource):
         if parent_log is None and af.screen is not None:
             parent_log = \
                 self.log_to_screen(af.screen, af, request, is_delete=True)
+        if parent_log is None and af.screensaver_user is not None:
+            parent_log = \
+                self.log_to_user(af.screensaver_user, af, request, is_delete=True)
 
         af.delete()
         
         id_attribute = resource = schema['id_attribute']
-
         log = self.make_log(request, **kwargs)
         log.ref_resource_name = self._meta.resource_name
         log.key = '/'.join([str(_dict[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name, log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION_DELETE
-        log.added_keys = json.dumps(_dict.keys(), cls=DjangoJSONEncoder)
-        log.diffs = json.dumps(_dict, cls=DjangoJSONEncoder)
+        log.diffs = { k: [v,None] for k,v in _dict.items() }
         log.save()
         logger.debug('delete, api log: %r', log)
 
-        return tastypie.http.HttpNoContent()
+        return HttpResponse(status=204)
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -11471,212 +12113,6 @@ class AttachedFileResource(DbApiResource):
             raise e  
 
 
-class UserAgreementResource(AttachedFileResource):
-
-    FILE_TYPE_SM_UA = 'iccb_l_nsrb_small_molecule_user_agreement'
-    FILE_TYPE_RNA_UA = 'iccb_l_nsrb_rnai_user_agreement'
-    
-    CHK_TYPE_SM_UA_ACTIVE = 'current_small_molecule_user_agreement_active'
-    CHK_TYPE_RNA_UA_ACTIVE = 'current_rnai_user_agreement_active'
-
-    class Meta:
-
-        queryset = AttachedFile.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
-                                             IccblSessionAuthentication())
-        resource_name = 'useragreement'
-        authorization = UserGroupAuthorization(resource_name)
-        serializer = LimsSerializer()
-
-    def __init__(self, **kwargs):
-        
-        self.screensaveruser_resource = None
-        self.userchecklist_resource = None
-        super(UserAgreementResource, self).__init__(**kwargs)
-
-    def get_screensaveruser_resource(self):
-        if not self.screensaveruser_resource:
-            self.screensaveruser_resource = ScreensaverUserResource()
-        return self.screensaveruser_resource
-    
-    def get_userchecklist_resource(self):
-        if not self.userchecklist_resource:
-            self.userchecklist_resource = UserChecklistResource()
-        return self.userchecklist_resource
-
-    def prepend_urls(self):
-        
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url((r"^(?P<resource_name>%s)/" 
-                 r"(?P<attached_file_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/user/(?P<screensaver_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url((r"^(?P<resource_name>%s)/user/(?P<screensaver_user_id>([\d]+))" 
-                 r"/(?P<attached_file_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url((r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))" 
-                 r"/(?P<attached_file_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ] 
-        
-    def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for AttachedFiles")
-    
-    def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for AttachedFiles")
-    
-    def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for AttachedFiles")
-    
-    def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for AttachedFiles")
-    
-    @read_authorization
-    def get_detail(self, request, **kwargs):
-
-        attached_file_id = kwargs.get('attached_file_id', None)
-        if not attached_file_id:
-            raise NotImplementedError(
-                'must provide a attached_file_id parameter')
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail'] = True
-        return self.build_list_response(request, **kwargs)
-
-    @read_authorization
-    def get_list(self, request, **kwargs):
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        kwargs['file_type__in'] = [self.FILE_TYPE_RNA_UA, self.FILE_TYPE_SM_UA]
-        return self.build_list_response(request, **kwargs)
-    
-    @write_authorization
-    @un_cache        
-    @transaction.atomic
-    def post_detail(self, request, **kwargs):
-                
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-
-        type = param_hash.pop('type', None)
-        if not type:
-            raise ValidationError(key='type', msg='required')
-        
-        attached_type = None
-        uci_name = None
-        if type == 'sm':
-            attached_type = self.FILE_TYPE_SM_UA
-            uci_name = self.CHK_TYPE_SM_UA_ACTIVE
-        elif type == 'rnai':
-            attached_type = self.FILE_TYPE_RNA_UA
-            uci_name = self.CHK_TYPE_RNA_UA_ACTIVE
-        else:
-            raise ValidationError(
-                key='type', 
-                msg='must be one of %r' % ['sm', 'rnai'])
-        kwargs['type'] = attached_type
-        
-        username = param_hash.pop('username', None)
-        screensaver_user_id = param_hash.pop('screensaver_user_id', None)
-        if username is None and screensaver_user_id is None:
-            raise NotImplementedError(
-                'must provide a screensaver_user_id or username parameter')
-        if username is not None and screensaver_user_id is not None:
-            raise NotImplementedError(
-                'must provide either a screensaver_user_id or username parameter')
-        admin_username = param_hash.get('admin_user', None)
-        if not admin_username:
-            admin_username = request.user.username
-        admin_user = ScreensaverUser.objects.get(username=admin_username)
-        
-        data_sharing_level = param_hash.pop('data_sharing_level', None)
-        if data_sharing_level is None:
-            raise ValidationError(key='data_sharing_level', msg='required')
-        
-        data_sharing_level = parse_val(
-            data_sharing_level,'data_sharing_level', 'integer')
-        if data_sharing_level not in [1,2,3]:
-            raise ValidationError(
-                key='data_sharing_level',
-                msg='must be one of %r' % [1,2,3])
-
-        user_resource = self.get_screensaveruser_resource()
-        kwargs_for_user = {
-            'exact_fields': ['screensaver_user_id', 'is_active',
-                'sm_data_sharing_level', 'rnai_data_sharing_level'] 
-        }
-        if username is not None:
-            su = ScreensaverUser.objects.get(username=username)
-            screensaver_user_id = su.screensaver_user_id
-        if screensaver_user_id is not None:
-            kwargs_for_user['screensaver_user_id'] = screensaver_user_id
-            
-        user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
-        apilog = self.get_screensaveruser_resource().make_log(
-            request, attributes=user_data)
-
-        # - the user agreement is an attached file to the user
-        attached_file_result = super(UserAgreementResource,self).post_detail(request, **kwargs)
-        logger.info('UserAgreement attached file result: %r', attached_file_result)
-        
-        if type == 'sm':
-            apilog.diffs = { 'sm_data_sharing_level': 
-                [user_data['sm_data_sharing_level'], data_sharing_level] }
-            user_data['sm_data_sharing_level'] = data_sharing_level
-        else:
-            apilog.diffs = { 'rnai_data_sharing_level': 
-                [user_data['rnai_data_sharing_level'], data_sharing_level] }
-            user_data['rnai_data_sharing_level'] = data_sharing_level
-
-        if user_data['is_active'] is not True:
-            apilog.diffs['is_active'] = [user_data['is_active'], True]
-        user_data['is_active'] = True
-                
-        apilog.save()
-        user_resource.patch_obj(request, user_data)        
-        
-        # create a checklist item for the user agreement
-        user_checklist_item_resource = self.get_userchecklist_resource()
-        checklist_data = {
-            'screensaver_user_id': screensaver_user_id, 
-            'name': uci_name,
-            'admin_username': admin_user.username,
-            'is_checked': True,
-            'date_effective': timezone.now().strftime("%Y%m%d") 
-            }
-        
-        chk_patch_result = user_checklist_item_resource.patch_obj(request, checklist_data)
-        
-        data = {
-            'screensaver_user_id': screensaver_user_id,
-            'first_name': user_data['first_name'],
-            'last_name': user_data['last_name'],
-            'msg': 'User agreement updated',
-            'actions': {
-                'user_checklist_item': uci_name,
-                'is_active': True,
-                'user_agreement_file_type': attached_type,
-                'file': 'tbd'
-                }
-        }
-        return self.build_response(request, data)
-        return HttpResponse(status=201)
-
-    # TODO: create a "UserAgreementResource.delete_detail"
-
 class ActivityResourceAuthorization(ScreenAuthorization):        
 
     def _is_resource_authorized(
@@ -11696,7 +12132,7 @@ class ActivityResourceAuthorization(ScreenAuthorization):
         #     return query
         # 
         # screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        # my_screens = self.get_my_screens(screensaver_user)
+        # my_screens = self.get_user_screens(screensaver_user)
         # # Can only see own activities
         # 
         # if serviced_user_table is not None and screen_table is not None:
@@ -11721,7 +12157,7 @@ class ActivityResourceAuthorization(ScreenAuthorization):
             return filter_expression
          
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        my_screens = self.get_my_screens(screensaver_user)
+        my_screens = self.get_user_screens(screensaver_user)
         # Can only see own activities
          
         if self.resource_name == 'serviceactivity':
@@ -11750,7 +12186,7 @@ class ActivityResourceAuthorization(ScreenAuthorization):
             return True
         else:
             screensaver_user = ScreensaverUser.objects.get(username=user.username)
-            my_screens = self.get_my_screens(screensaver_user)
+            my_screens = self.get_user_screens(screensaver_user)
             
             activity = Activity.objects.get(activity_id=activity_id)
             if hasattr(activity, 'labactivity'):
@@ -11794,6 +12230,7 @@ class ActivityResource(DbApiResource):
 
         self.service_activity_resource = None
         self.screen_resource = None
+        self.su_resource = None
         super(ActivityResource, self).__init__(**kwargs)
 
     def prepend_urls(self):
@@ -11807,14 +12244,19 @@ class ActivityResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
+    
+    def get_su_resource(self):
+        if self.su_resource is None:
+            self.su_resource = ScreensaverUserResource()
+        return self.su_resource
 
     def get_service_activity_resource(self):
-        if not self.service_activity_resource:
+        if self.service_activity_resource is None:
             self.service_activity_resource = ServiceActivityResource()
         return self.service_activity_resource
 
     def get_screen_resource(self):
-        if not self.screen_resource:
+        if self.screen_resource is None:
             self.screen_resource = ScreenResource()
         return self.screen_resource
 
@@ -11849,24 +12291,32 @@ class ActivityResource(DbApiResource):
             so that this method may be called multiple times to compose a query
         '''
         _screen = self.bridge['screen']
-        _user_cte = ScreensaverUserResource.get_user_cte().cte(
-            'users_%s' % alias_qualifier)
-        _performed_by = _user_cte.alias('performed_by_%s' % alias_qualifier)
-        _performed_by1 = _user_cte.alias('performed_by1_%s' % alias_qualifier)
-        _performed_by2 = _user_cte.alias('performed_by2_%s' % alias_qualifier)
-        _created_by = _user_cte.alias('created_by_%s' % alias_qualifier)
-        _created_by1 = _user_cte.alias('created_by1_%s' % alias_qualifier)
         _activity = self.bridge['activity']
         _su = self.bridge['screensaver_user']
+        # perform some hacks to speed up the query
+        _performed_by_users_cte = \
+            ScreensaverUserResource.get_user_cte()\
+            .where(
+                exists(select([None]).select_from(_activity)
+                    .where(_su.c.screensaver_user_id==_activity.c.performed_by_id)))\
+            .cte('performers_%s' % alias_qualifier)
+        _performed_by = _performed_by_users_cte.alias('performed_by_%s' % alias_qualifier)
+        _performed_by1 = _performed_by_users_cte.alias('performed_by1_%s' % alias_qualifier)
+        _performed_by2 = _performed_by_users_cte.alias('performed_by2_%s' % alias_qualifier)
+        _created_by_users_cte = \
+            ScreensaverUserResource.get_user_cte()\
+            .where(
+                exists(select([None]).select_from(_activity)
+                    .where(_su.c.screensaver_user_id==_activity.c.created_by_id)))\
+            .cte('creators_%s' % alias_qualifier)
+        _created_by = _created_by_users_cte.alias('created_by_%s' % alias_qualifier)
+        _created_by1 = _created_by_users_cte.alias('created_by1_%s' % alias_qualifier)
         _lhsu = _su.alias('lhsu_%s' % alias_qualifier)
         _sfs = self.bridge['screen_funding_supports']
-        
         
         lab_head_table = \
             ScreensaverUserResource.get_lab_head_cte(alias_qualifier)\
                 .cte('lab_heads_%s' % alias_qualifier)
-
-        
         return {
             'performed_by_name': (
                 select([_performed_by1.c.name])
@@ -11936,6 +12386,8 @@ class ActivityResource(DbApiResource):
                 '  from activity '
                 '  join lab_activity la using(activity_id) '
                 '  where la.screen_id=screen.screen_id '
+                '  and not exists(select null from cherry_pick_liquid_transfer cplt'
+                '     where cplt.activity_id = activity.activity_id) '
                 '  UNION ALL'
                 '  select date_of_activity '
                 '  from activity '
@@ -11985,13 +12437,17 @@ class ActivityResource(DbApiResource):
             self.get_service_activity_resource().get_query(param_hash, user))
         # if a field is not present in the subquery, create an empty field            
         sa_columns = []
-        for key in [key for key, field in field_hash.items() 
-            if field['scope'] == 'fields.activity'] :
-            if key not in columns_sa:
-                sa_columns.append(cast(literal_column("null"), 
-                    sqlalchemy.sql.sqltypes.Text).label(key))
-            else:
-                sa_columns.append(literal_column(key))
+        for key, field in field_hash.items():
+            if field['scope'] == 'fields.activity':
+                if key not in columns_sa:
+                    if field['data_type'] == 'string':
+                        sa_columns.append(cast(literal_column("null"), 
+                            sqlalchemy.sql.sqltypes.Text).label(key))
+                    else:
+                        sa_columns.append(literal_column("null").label(key))
+                else:
+                    sa_columns.append(literal_column(key))
+#         logger.info('sa_columns: %r', sa_columns)
         stmt_sa = stmt_sa.cte('serviceactivities')
         stmt1 = select(sa_columns).select_from(stmt_sa)
 
@@ -11999,29 +12455,32 @@ class ActivityResource(DbApiResource):
             self.get_lab_activity_query(param_hash, user))
         # if a field is not present in the subquery, create an empty field            
         la_columns = []
-        for key in [key for key, field in field_hash.items() 
-            if field['scope'] == 'fields.activity'] :
-            if key not in columns_la:
-                logger.info(
-                    ('get_lab_activity_query '
-                     'adding dummy col: %r'), key)
-                la_columns.append(cast(
-                    literal_column("null"), 
-                    sqlalchemy.sql.sqltypes.Text).label(key))
-            else:
-                la_columns.append(literal_column(key))
+        for key, field in field_hash.items():
+            if field['scope'] == 'fields.activity':
+                if key not in columns_la:
+                    logger.info('create dummy col for %r', key)
+                    if field['data_type'] == 'string':
+                        la_columns.append(cast(literal_column("null"), 
+                            sqlalchemy.sql.sqltypes.Text).label(key))
+                    else: 
+                        la_columns.append(literal_column("null").label(key))
+                else:
+                    la_columns.append(literal_column(key))
+                    
+#         logger.info('la_columns: %r', la_columns)
         stmt_la = stmt_la.cte('labactivities')
         stmt2 = select(la_columns).select_from(stmt_la)
         
+        stmt = stmt1.union_all(stmt2)
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+
         if logger.isEnabledFor(logging.DEBUG):
-            compiled_stmt = str(stmt2.compile(
+            compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),
                 compile_kwargs={"literal_binds": True}))
             logger.info('compiled_stmt %s', compiled_stmt)
 
-        stmt = stmt1.union_all(stmt2)
-        (stmt, count_stmt) = self.wrap_statement(
-            stmt, order_clauses, filter_expression)
 
         columns = { key:literal_column(key) for key in field_hash.keys()}
         return (field_hash, columns, stmt, count_stmt, filename)
@@ -12030,7 +12489,7 @@ class ActivityResource(DbApiResource):
 
         _library_screening = self.bridge['library_screening']
         _cps = self.bridge['cherry_pick_screening']
-        _cplt = self.bridge['cherry_pick_liquid_transfer']
+        # _cplt = self.bridge['cherry_pick_liquid_transfer']
         _screen = self.bridge['screen']
         
         activity_type_column = cast(case([
@@ -12044,11 +12503,21 @@ class ActivityResource(DbApiResource):
             else_='cplt'), sqlalchemy.sql.sqltypes.Text)
 
         return { 
-            'cherry_pick_request_id': 
-                cast(func.coalesce(
-                        _cps.c.cherry_pick_request_id, 
-                        _cplt.c.cherry_pick_request_id, None), 
-                    sqlalchemy.sql.sqltypes.Text),
+            'serviced_user_id': cast(
+                literal_column("null"),sqlalchemy.sql.sqltypes.Numeric),
+            'serviced_user': cast(
+                literal_column("null"),sqlalchemy.sql.sqltypes.Text),
+            'serviced_username': cast(
+                literal_column("null"),sqlalchemy.sql.sqltypes.Text),
+            'funding_support': cast(
+                literal_column("null"),sqlalchemy.sql.sqltypes.Text),
+            'cherry_pick_request_id': _cps.c.cherry_pick_request_id,
+            # 20171108 - Do not show CPLT activities in the general activity report
+            # 'cherry_pick_request_id': 
+            #     cast(func.coalesce(
+            #             _cps.c.cherry_pick_request_id, 
+            #             _cplt.c.cherry_pick_request_id, None), 
+            #         sqlalchemy.sql.sqltypes.Text),
             'type': activity_type_column,
             'activity_class': activity_type_column,
             }
@@ -12096,15 +12565,16 @@ class ActivityResource(DbApiResource):
         # TODO: delegate to sub_classes (when built)
         _library_screening = self.bridge['library_screening']
         _cps = self.bridge['cherry_pick_screening']
-        _cplt = self.bridge['cherry_pick_liquid_transfer']
+        # 20171108 - Do not show CPLT activities in general report
+        # _cplt = self.bridge['cherry_pick_liquid_transfer']
         j = j.join(
             _library_screening,
             _la.c.activity_id == _library_screening.c.activity_id, isouter=True)
         j = j.join(_cps, _la.c.activity_id == _cps.c.activity_id, isouter=True)
-        j = j.join(_cplt, _la.c.activity_id == _cplt.c.activity_id, isouter=True)
+        # j = j.join(_cplt, _la.c.activity_id == _cplt.c.activity_id, isouter=True)
                 
-        custom_columns = self.get_custom_lab_activity_columns('lab_activity')
-        custom_columns.update(self.get_custom_columns('la'))
+        custom_columns = self.get_custom_columns('la')
+        custom_columns.update(self.get_custom_lab_activity_columns('lab_activity'))
         
         base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
         columns = self.build_sqlalchemy_columns(
@@ -12282,14 +12752,18 @@ class ServiceActivityResource(ActivityResource):
                     key='screen_facility_id',
                     msg='screen does not exist: %r' % serviced_screen_facility_id)
         if performed_by_user_id:
-            try:
-                performed_by_user = ScreensaverUser.objects.get(
-                    screensaver_user_id=performed_by_user_id)
-                initializer_dict['performed_by'] = performed_by_user
-            except ObjectDoesNotExist:
+            performed_by = \
+                self.get_su_resource()._get_detail_response_internal(
+                exact_fields=['screensaver_user_id','is_staff'],
+                screensaver_user_id=performed_by_user_id)
+            if not performed_by: 
                 raise ValidationError(
                     key='performed_by_user_id',
-                    msg='username does not exist: %r' % performed_by_user)
+                    msg='No such screensaver_user_id: %r' % performed_by_user_id)
+            if performed_by.get('is_staff',False) != True:
+                raise ValidationError(
+                    key='performed_by_user_id',
+                    msg='Must be a staff user')
 
         service_activity = None
         if patch:
@@ -12310,6 +12784,8 @@ class ServiceActivityResource(ActivityResource):
             
             service_activity = ServiceActivity()
             service_activity.created_by = adminuser
+        
+        service_activity.performed_by_id = performed_by_user_id
         
         model_field_names = [
             x.name for x in service_activity._meta.get_fields()]
@@ -12780,7 +13256,7 @@ class LibraryScreeningResource(ActivityResource):
                     if _row['remaining_well_volume']:
                         vol_min = LSR.MIN_WELL_VOL_RNAI
                         error_key = LSR.MSG_INSUFFICIENT_VOL
-                        if screen.screen_type == 'small_molecule':
+                        if screen.screen_type == VOCAB_SCREEN_TYPE_SM:
                             vol_min = LSR.MIN_WELL_VOL_SMALL_MOLECULE
                             error_key += (' (req %s)' 
                                 % lims_utils.convert_decimal(vol_min,1e-6, 1))
@@ -13794,10 +14270,10 @@ class LibraryScreeningResource(ActivityResource):
                 for plate in plates]
         
         min_plate_volume_after_transfer = 0
-        if library_screening.screen.screen_type == 'rnai':
+        if library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_RNAI:
             min_plate_volume_after_transfer = \
                 self.MIN_WELL_VOL_RNAI
-        elif library_screening.screen.screen_type == 'small_molecule':
+        elif library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
             min_plate_volume_after_transfer = \
                 self.MIN_WELL_VOL_SMALL_MOLECULE
             
@@ -14169,7 +14645,7 @@ class LibraryScreeningResource(ActivityResource):
             # raise an Error instead for insufficient vol
             plates_insufficient_volume = sorted(plates_insufficient_volume)
             # msg = '%d plates' % len(plates_insufficient_volume)
-            # if library_screening.screen.screen_type == 'small_molecule':
+            # if library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
             #     extra_msg = (' (%s uL is required for Small Molecule)'
             #         %  lims_utils.convert_decimal(
             #             self.MIN_WELL_VOL_SMALL_MOLECULE, 1e-6, 1))
@@ -14290,11 +14766,17 @@ class ScreenResource(DbApiResource):
         self.lcp_resource = None
         self.libraryscreening_resource = None
         self.screenresult_resource = None
+        self.su_resource = None
          
     def clear_cache(self):
         logger.info('clear screen caches')
         DbApiResource.clear_cache(self)
         caches['screen'].clear()
+        
+    def get_su_resource(self):
+        if self.su_resource is None:
+            self.su_resource = ScreensaverUserResource()
+        return self.su_resource
         
     def get_screenresult_resource(self):
         if self.screenresult_resource is None:
@@ -15492,14 +15974,18 @@ class ScreenResource(DbApiResource):
             if _key in initializer_dict:
                 val = initializer_dict[_key]
                 if val:
-                    try:
-                        pin_transfer_approved_by = (
-                            ScreensaverUser.objects.get(
-                                username=val))
-                    except ObjectDoesNotExist:
+                    pin_transfer_approved_by = \
+                        self.get_su_resource()._get_detail_response_internal(
+                        exact_fields=['screensaver_user_id','is_staff'],
+                        username=val)
+                    if not pin_transfer_approved_by: 
                         raise ValidationError(
                             key=_key,
                             msg='No such username: %r' % val)
+                    if pin_transfer_approved_by.get('is_staff',False) != True:
+                        raise ValidationError(
+                            key='pin_transfer_approved_by_username',
+                            msg='Must be a staff user')
             pin_transfer_date_approved = \
                 initializer_dict.get('pin_transfer_date_approved',None)
             pin_transfer_comments = \
@@ -15566,7 +16052,8 @@ class ScreenResource(DbApiResource):
             if pin_transfer_approved_by is not None:
                 if screen.pin_transfer_admin_activity is None:
                     activity = \
-                        Activity(performed_by=pin_transfer_approved_by)
+                        Activity(performed_by_id=
+                            pin_transfer_approved_by['screensaver_user_id'])
                     activity.date_of_activity = \
                         activity.date_created
                     activity.save()
@@ -15575,8 +16062,8 @@ class ScreenResource(DbApiResource):
                     logger.info('created pta: %r', 
                         screen.pin_transfer_admin_activity)
                 else:
-                    screen.pin_transfer_admin_activity.performed_by = \
-                        pin_transfer_approved_by
+                    screen.pin_transfer_admin_activity.performed_by_id = \
+                        pin_transfer_approved_by['screensaver_user_id']
                     screen.pin_transfer_admin_activity.save()
             if screen.pin_transfer_admin_activity is None:
                 # secondary pin transfer validation
@@ -15751,8 +16238,7 @@ class StudyResource(ScreenResource):
 
 class ScreensaverUserResourceAuthorization(UserResourceAuthorization):
 
-    def get_screens(self, user):
-        screensaver_user = ScreensaverUser.objects.get(username=user.username)
+    def get_user_screens(self, screensaver_user):
         my_screens = Screen.objects.all().filter(
             Q(lead_screener=screensaver_user)
             | Q(lab_head=screensaver_user)
@@ -15767,7 +16253,7 @@ class ScreensaverUserResourceAuthorization(UserResourceAuthorization):
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
         associated_users = set([screensaver_user])
         
-        for screen in self.get_screens(user):
+        for screen in self.get_user_screens(screensaver_user):
             associated_users.add(screen.lead_screener)
             associated_users.add(screen.lab_head)
             associated_users.update([su for su in screen.collaborators.all()])
@@ -15805,6 +16291,7 @@ class UserChecklistAuthorization(ScreensaverUserResourceAuthorization):
         # If the user may see the CPR, there are no property restrictions
         return extant_generator
 
+    
 class UserChecklistResource(DbApiResource):
 
     class Meta:
@@ -16031,7 +16518,6 @@ class UserChecklistResource(DbApiResource):
             rowproxy_generator=rowproxy_generator,
             title_function=title_function, meta=kwargs.get('meta', None),
             use_caching=True)
-             
 
     @write_authorization
     @un_cache
@@ -16054,14 +16540,10 @@ class UserChecklistResource(DbApiResource):
         if not screensaver_user_id:
             screensaver_user_id = kwargs.get('screensaver_user_id', None)
         if not screensaver_user_id:
-            raise ValidationError(
-                key='screensaver_user_id',
-                msg='required')
+            raise ValidationError(key='screensaver_user_id', msg='required')
         item_name = deserialized.get('name', None)
         if not item_name:
-            raise ValidationError(
-                key='name',
-                msg='required')
+            raise ValidationError(key='name', msg='required')
 
         try:
             user = ScreensaverUser.objects.get(screensaver_user_id=screensaver_user_id)
@@ -16323,6 +16805,9 @@ class LabAffiliationResource(DbApiResource):
 
 
 class ScreensaverUserResource(DbApiResource):    
+    
+    VOCAB_USER_AGREEMENT_RNAI = UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
+    VOCAB_USER_AGREEMENT_SM = UserAgreementResource.VOCAB_USER_AGREEMENT_SM
 
     class Meta:
 
@@ -16409,6 +16894,10 @@ class ScreensaverUserResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_serviceactivitydetailview'),
                 name="api_dispatch_user_serviceactivitydetailview"),
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/activities%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_user_activityview'),
+                name="api_dispatch_user_activityview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/screens%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_screenview'),
@@ -16446,14 +16935,29 @@ class ScreensaverUserResource(DbApiResource):
     def dispatch_user_serviceactivityview(self, request, **kwargs):
         kwargs['serviced_user_id__eq'] = kwargs.pop('screensaver_user_id')
         return ServiceActivityResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_user_serviceactivitydetailview(self, request, **kwargs):
+        return ServiceActivityResource().dispatch('detail', request, **kwargs)    
+    
+    def dispatch_user_activityview(self, request, **kwargs):
+        screensaver_user_id = kwargs.pop('screensaver_user_id')
+        
+        nested_search_data = [
+            { 'serviced_user_id__eq' : screensaver_user_id},
+            {'performed_by_user_id__eq': screensaver_user_id},
+        ]
+        
+        screensaver_user = ScreensaverUser.objects.get(pk=screensaver_user_id)
+        user_screens = self._meta.authorization.get_user_screens(screensaver_user)
+        nested_search_data.append( { 'screen_facility_id__in':  [ s.facility_id 
+            for s in user_screens ]})
+        kwargs['nested_search_data'] = nested_search_data
+        return ActivityResource().dispatch('list', request, **kwargs)    
 
     def dispatch_user_screenview(self, request, **kwargs):
         kwargs['screens_for_userid'] = kwargs.pop('screensaver_user_id')
         return ScreenResource().dispatch('list', request, **kwargs)    
 
-    def dispatch_user_serviceactivitydetailview(self, request, **kwargs):
-        return ServiceActivityResource().dispatch('detail', request, **kwargs)    
-    
     def build_schema(self, user=None):
         
         schema = super(ScreensaverUserResource, self).build_schema(user=user)
@@ -16474,8 +16978,8 @@ class ScreensaverUserResource(DbApiResource):
         
         bridge = get_tables()
         _su = bridge['screensaver_user']
-        _up = bridge['reports_userprofile']
-        _au = bridge['auth_user']
+#         _up = bridge['reports_userprofile']
+#         _au = bridge['auth_user']
         
         j = _su
         user_table = (
@@ -16512,6 +17016,7 @@ class ScreensaverUserResource(DbApiResource):
                 _user.c.screensaver_user_id,
                 _user.c.name,
                 _user.c.username,
+                affiliation_table.c.lab_affiliation_id,
                 affiliation_table.c.name.label('lab_affiliation_name'),
                 affiliation_table.c.category.label('lab_affiliation_category'),
                 _concat(
@@ -16579,224 +17084,233 @@ class ScreensaverUserResource(DbApiResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
-        try:
+        # general setup
             
-            # general setup
-            
-            manual_field_includes = set(param_hash.get('includes', []))
-            exact_fields = set(param_hash.get('exact_fields', []))
+        manual_field_includes = set(param_hash.get('includes', []))
+        exact_fields = set(param_hash.get('exact_fields', []))
         
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash)
 
-            filter_expression = self._meta.authorization.filter(
-                request.user, filter_expression)
-                  
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
+        filter_expression = self._meta.authorization.filter(
+            request.user, filter_expression)
+              
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
              
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = None
+        if use_vocab is True:
             rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
  
-            # specific setup
-            _su = self.bridge['screensaver_user']
-            _au = self.bridge['auth_user']
-            _up = self.bridge['reports_userprofile']
-            _s = self.bridge['screen']
-            _screen_collab = self.bridge['screen_collaborators']
-            _fur = self.bridge['user_facility_usage_role']
-            _lhsu = _su.alias('lhsu')
+        # specific setup
+        _su = self.bridge['screensaver_user']
+        _au = self.bridge['auth_user']
+        _up = self.bridge['reports_userprofile']
+        _s = self.bridge['screen']
+        _screen_collab = self.bridge['screen_collaborators']
+        _fur = self.bridge['user_facility_usage_role']
+        _lhsu = _su.alias('lhsu')
+        _user_agreement = self.bridge['user_agreement']
 
-            lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
-            lab_member = ScreensaverUserResource.get_user_cte().cte('users_labmember')
+        lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
+        lab_member = ScreensaverUserResource.get_user_cte().cte('users_labmember')
             
-            _all_screens = union(
-                select([
-                    _screen_collab.c.screensaveruser_id.label('screensaver_user_id'),
-                    _screen_collab.c.screen_id,
-                    _s.c.facility_id, 
-                    literal_column("'collaborator'").label('role')])
-                .select_from(_screen_collab.join(
-                    _s, _s.c.screen_id==_screen_collab.c.screen_id)),
-                select([
-                    _s.c.lead_screener_id.label('screensaver_user_id'),
-                    _s.c.screen_id, 
-                    _s.c.facility_id, 
-                    literal_column("'lead_screener'").label('role')]),
-                select([
-                    _s.c.lab_head_id.label('screensaver_user_id'),
-                    _s.c.screen_id,
-                    _s.c.facility_id, 
-                    literal_column("'lab_head'").label('role')])
-            ).order_by('facility_id').cte('all_screens')
+        _all_screens = union(
+            select([
+                _screen_collab.c.screensaveruser_id.label('screensaver_user_id'),
+                _screen_collab.c.screen_id,
+                _s.c.facility_id, 
+                literal_column("'collaborator'").label('role')])
+            .select_from(_screen_collab.join(
+                _s, _s.c.screen_id==_screen_collab.c.screen_id)),
+            select([
+                _s.c.lead_screener_id.label('screensaver_user_id'),
+                _s.c.screen_id, 
+                _s.c.facility_id, 
+                literal_column("'lead_screener'").label('role')]),
+            select([
+                _s.c.lab_head_id.label('screensaver_user_id'),
+                _s.c.screen_id,
+                _s.c.facility_id, 
+                literal_column("'lab_head'").label('role')])
+        ).order_by('facility_id').cte('all_screens')
                 
             
-            custom_columns = {
-                'is_staff': func.coalesce(_au.c.is_staff, False),
-                'is_active': func.coalesce(_au.c.is_active, False),
-                'is_superuser': func.coalesce(_au.c.is_superuser, False),
-                'username': _au.c.username,
-                'name': _concat_with_sep(
-                    args=[_su.c.last_name,_su.c.first_name,], sep=', '),
-                'screens': (
-                    select([func.array_to_string(
-                        func.array_agg(_all_screens.c.facility_id),
+        custom_columns = {
+            'is_staff': func.coalesce(_au.c.is_staff, False),
+            'is_active': func.coalesce(_au.c.is_active, False),
+            'is_superuser': func.coalesce(_au.c.is_superuser, False),
+            'username': _au.c.username,
+            'name': _concat_with_sep(
+                args=[_su.c.last_name,_su.c.first_name,], sep=', '),
+            'screens': (
+                select([func.array_to_string(
+                    func.array_agg(_all_screens.c.facility_id),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(_all_screens)
+                .where(_all_screens.c.screensaver_user_id
+                    ==_su.c.screensaver_user_id)
+                ),
+            'screens_lab_head': (
+                select([func.array_to_string(
+                    func.array_agg(_all_screens.c.facility_id),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(_all_screens)
+                .where(_all_screens.c.screensaver_user_id
+                    ==_su.c.screensaver_user_id)
+                .where(_all_screens.c.role=='lab_head')
+                ),
+            'screens_lead': (
+                select([func.array_to_string(
+                    func.array_agg(_all_screens.c.facility_id),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(_all_screens)
+                .where(_all_screens.c.screensaver_user_id
+                    ==_su.c.screensaver_user_id)
+                .where(_all_screens.c.role=='lead_screener')
+                ),
+            'screens_collaborator': (
+                select([func.array_to_string(
+                    func.array_agg(_all_screens.c.facility_id),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(_all_screens)
+                .where(_all_screens.c.screensaver_user_id
+                    ==_su.c.screensaver_user_id)
+                .where(_all_screens.c.role=='collaborator')
+                ),
+            'lab_name': lab_head_table.c.lab_name_full,
+            'lab_head_id': lab_head_table.c.screensaver_user_id,
+            'lab_member_ids': (
+                select([
+                    func.array_to_string(
+                        func.array_agg(literal_column('screensaver_user_id')),
                         LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_all_screens)
-                    .where(_all_screens.c.screensaver_user_id
-                        ==_su.c.screensaver_user_id)
-                    ),
-                'screens_lab_head': (
-                    select([func.array_to_string(
-                        func.array_agg(_all_screens.c.facility_id),
+                .select_from(
+                    select([lab_member.c.screensaver_user_id])
+                    .select_from(lab_member)
+                    .order_by(lab_member.c.last_first)
+                    .where(lab_member.c.lab_head_id
+                        ==literal_column('screensaver_user.screensaver_user_id'))
+                    .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
+                    .alias('inner'))        
+                ),
+            'lab_member_names': (
+                select([
+                    func.array_to_string(
+                        func.array_agg(literal_column('name')),
                         LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_all_screens)
-                    .where(_all_screens.c.screensaver_user_id
-                        ==_su.c.screensaver_user_id)
-                    .where(_all_screens.c.role=='lab_head')
-                    ),
-                'screens_lead': (
-                    select([func.array_to_string(
-                        func.array_agg(_all_screens.c.facility_id),
+                .select_from(
+                    select([lab_member.c.name])
+                    .select_from(lab_member)
+                    .order_by(lab_member.c.last_first)
+                    .where(lab_member.c.lab_head_id
+                        ==literal_column('screensaver_user.screensaver_user_id'))
+                    .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
+                    .alias('inner'))        
+                ),
+            'lab_affiliation_name': lab_head_table.c.lab_affiliation_name,
+            'lab_affiliation_category': lab_head_table.c.lab_affiliation_category,
+            'facility_usage_roles': (
+                select([
+                    func.array_to_string(
+                        func.array_agg(_fur.c.facility_usage_role),
                         LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_all_screens)
-                    .where(_all_screens.c.screensaver_user_id
-                        ==_su.c.screensaver_user_id)
-                    .where(_all_screens.c.role=='lead_screener')
-                    ),
-                'screens_collaborator': (
-                    select([func.array_to_string(
-                        func.array_agg(_all_screens.c.facility_id),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_all_screens)
-                    .where(_all_screens.c.screensaver_user_id
-                        ==_su.c.screensaver_user_id)
-                    .where(_all_screens.c.role=='collaborator')
-                    ),
-                'lab_name': lab_head_table.c.lab_name_full,
-                'lab_head_id': lab_head_table.c.screensaver_user_id,
-                'lab_member_ids': (
-                    select([
-                        func.array_to_string(
-                            func.array_agg(literal_column('screensaver_user_id')),
-                            LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(
-                        select([lab_member.c.screensaver_user_id])
-                        .select_from(lab_member)
-                        .order_by(lab_member.c.last_first)
-                        .where(lab_member.c.lab_head_id
-                            ==literal_column('screensaver_user.screensaver_user_id'))
-                        .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
-                        .alias('inner'))        
-                    ),
-                'lab_member_names': (
-                    select([
-                        func.array_to_string(
-                            func.array_agg(literal_column('name')),
-                            LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(
-                        select([lab_member.c.name])
-                        .select_from(lab_member)
-                        .order_by(lab_member.c.last_first)
-                        .where(lab_member.c.lab_head_id
-                            ==literal_column('screensaver_user.screensaver_user_id'))
-                        .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
-                        .alias('inner'))        
-                    ),
-                'lab_affiliation_name': lab_head_table.c.lab_affiliation_name,
-                'lab_affiliation_category': lab_head_table.c.lab_affiliation_category,
-                'facility_usage_roles': (
-                    select([
-                        func.array_to_string(
-                            func.array_agg(_fur.c.facility_usage_role),
-                            LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(_fur)
-                    .where(_fur.c.screensaver_user_id 
-                        == _su.c.screensaver_user_id)),
-                }
+                .select_from(_fur)
+                .where(_fur.c.screensaver_user_id 
+                    == _su.c.screensaver_user_id)),
+            'sm_data_sharing_level': (
+                select([_user_agreement.c.data_sharing_level])
+                .select_from(_user_agreement)
+                .where(_user_agreement.c.type==self.VOCAB_USER_AGREEMENT_SM)
+                .where(_user_agreement.c.date_expired==None)
+                .where(_user_agreement.c.screensaver_user_id
+                    ==_su.c.screensaver_user_id)),
+            'rnai_data_sharing_level': (
+                select([_user_agreement.c.data_sharing_level])
+                .select_from(_user_agreement)
+                .where(_user_agreement.c.type==self.VOCAB_USER_AGREEMENT_RNAI)
+                .where(_user_agreement.c.date_expired==None)
+                .where(_user_agreement.c.screensaver_user_id
+                    ==_su.c.screensaver_user_id)),
+        }
 
-            # delegate to the user resource
-            default_fields = ['fields.screensaveruser', 'fields.user']
-            _temp = { key:field for key, field in field_hash.items() 
-                if field.get('scope', None) in default_fields }
-            field_hash = _temp
-            logger.debug('final field hash: %s', field_hash.keys())
-            sub_columns = self.get_user_resource().build_sqlalchemy_columns(
-                field_hash.values(),
-                custom_columns=custom_columns)
-            base_query_tables = [
-                'screensaver_user', 'reports_user', 'auth_user'] 
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=sub_columns)
+        # delegate to the user resource
+        default_fields = ['fields.screensaveruser', 'fields.user']
+        _temp = { key:field for key, field in field_hash.items() 
+            if field.get('scope', None) in default_fields }
+        field_hash = _temp
+        logger.debug('final field hash: %s', field_hash.keys())
+        sub_columns = self.get_user_resource().build_sqlalchemy_columns(
+            field_hash.values(),
+            custom_columns=custom_columns)
+        base_query_tables = [
+            'screensaver_user', 'reports_user', 'auth_user'] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=sub_columns)
 
-            # build the query statement
+        # build the query statement
+        
+        j = _su
+        j = j.join(_up, _su.c.user_id == _up.c.id, isouter=True)
+        j = j.join(_au, _up.c.user_id == _au.c.id, isouter=True)
+        
+        j = j.join(
+            lab_head_table, 
+            _su.c.lab_head_id==lab_head_table.c.screensaver_user_id,
+            isouter=True)
+        
+        stmt = select(columns.values()).select_from(j)
+        # natural ordering
+        stmt = stmt.order_by(_su.c.last_name, _su.c.first_name)
             
-            j = _su
-            j = j.join(_up, _su.c.user_id == _up.c.id, isouter=True)
-            j = j.join(_au, _up.c.user_id == _au.c.id, isouter=True)
-            
-            j = j.join(
-                lab_head_table, 
-                _su.c.lab_head_id==lab_head_table.c.screensaver_user_id,
-                isouter=True)
-            
-            stmt = select(columns.values()).select_from(j)
-            # natural ordering
-            stmt = stmt.order_by(_su.c.last_name, _su.c.first_name)
-            
-            if self._meta.authorization.is_restricted_view(request.user):
-                logger.info('create_authorized_user_filter')
-                associated_users = \
-                    self._meta.authorization.get_associated_users(request.user)
-                stmt = stmt.where(
-                    _su.c.screensaver_user_id.in_([
-                        user.screensaver_user_id for user in associated_users]))
-            
-            # general setup
-             
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            # logger.info(
-            #     'stmt: %s',
-            #     str(stmt.compile(
-            #         dialect=postgresql.dialect(),
-            #         compile_kwargs={"literal_binds": True})))
+        if self._meta.authorization.is_restricted_view(request.user):
+            logger.info('create_authorized_user_filter')
+            associated_users = \
+                self._meta.authorization.get_associated_users(request.user)
+            stmt = stmt.where(
+                _su.c.screensaver_user_id.in_([
+                    user.screensaver_user_id for user in associated_users]))
+        
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        # logger.info(
+        #     'stmt: %s',
+        #     str(stmt.compile(
+        #         dialect=postgresql.dialect(),
+        #         compile_kwargs={"literal_binds": True})))
 
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-             
-        except Exception, e:
-            logger.exception('on get_list')
-            raise e  
-
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
+        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_list must be implemented')
                 
@@ -16884,18 +17398,34 @@ class ScreensaverUserResource(DbApiResource):
                 raise ValidationError(key='last_name', msg='required')
             
             try:
-                extant_user = ScreensaverUser.objects.get(
-                    first_name=deserialized['first_name'],
-                    last_name=deserialized['last_name'])
-                msg = ('Screensaver User: %r has already been created using '
-                    'the given first and last names: %r %r'
-                    % (extant_user.screensaver_user_id, extant_user.first_name,
-                        extant_user.last_name ))
-                raise ValidationError({
-                    'first_name': msg, 'last_name': msg })
+                first_name=parse_val(
+                    deserialized['first_name'],'first_name', 'string')
+                last_name = parse_val(
+                    deserialized['last_name'],'last_name', 'string')
+                extant_users = ScreensaverUser.objects.filter(
+                    first_name__iexact=first_name,
+                    last_name__iexact=last_name)
+                if extant_users.exists():
+                    ids = [su.screensaver_user_id for su in extant_users.all()]
+                    msg = ('Screensaver User: %r has already been created using '
+                        'the given first and last names: %s %s'
+                        % (ids, first_name,last_name ))
+                    raise ValidationError({
+                        'first_name': msg, 'last_name': msg })
             except ObjectDoesNotExist:
                 logger.info('ok to create new user: %r', deserialized)
-            
+        else:
+            try:
+                extant_user = ScreensaverUser.objects.get(**id_kwargs)
+                msg = 'User %r, identified by %r already exists'
+                raise ValidationError({
+                    key:msg%(extant_user.screensaver_user_id, value) 
+                        for key, value in id_kwargs.items() 
+                })
+                
+            except ObjectDoesNotExist:
+                logger.info('ok to create new user %r', id_kwargs)
+                
         return super(ScreensaverUserResource,self).post_detail(
             request, data=deserialized, **kwargs)
     
@@ -16927,13 +17457,13 @@ class ScreensaverUserResource(DbApiResource):
                     logger.info('creating non-login user: %r', deserialized)
             except ObjectDoesNotExist:
                 is_patch=False
-                
         if screensaver_user:
             is_patch = True
-        
-        logger.info('patching screensaveruser: %r: %r, %r',
-            deserialized, screensaver_user, is_patch)
-                            
+            logger.info('patching screensaveruser: %r: %r',
+                deserialized, screensaver_user)
+        else:
+            logger.info('creating Screensaver User: %r', deserialized)
+            
         errors = self.validate(deserialized, schema=schema,patch=is_patch)
         if errors:
             raise ValidationError(errors)
@@ -16944,19 +17474,24 @@ class ScreensaverUserResource(DbApiResource):
             'fields.screensaveruser fields: %s', screensaveruser_fields.keys())
         initializer_dict = self.parse(
             deserialized, create=not is_patch, fields=screensaveruser_fields)
-        logger.info('deserialized: %r', deserialized)
-        logger.info('initializer_dict: %r', initializer_dict)
+        
+        logger.debug('initializer_dict: %r', initializer_dict)
+        
         if screensaver_user is None:
-            logger.info('id_kwargs: %r', id_kwargs)
             if id_kwargs:
+                logger.info('Create log in Screensaver User for: %r', id_kwargs)
                 screensaver_user = ScreensaverUser(**id_kwargs)
-                logger.info('1a...%r', screensaver_user.ecommons_id)
             else:
+                logger.info(
+                    'Create non-log in Screensaver User for: %r %r',
+                    initializer_dict['first_name'],initializer_dict['last_name'])
                 screensaver_user = ScreensaverUser(
                     first_name=initializer_dict['first_name'],
                     last_name=initializer_dict['last_name'])
         
+        messages = []
         if initializer_dict:
+            # Validation rules for username, ecommons_id
             new_username = initializer_dict.pop('username',None)
             if new_username is not None:
                 new_username = new_username.strip()
@@ -16991,7 +17526,6 @@ class ScreensaverUserResource(DbApiResource):
                     else:
                         screensaver_user.username = new_ecommons
                 else:
-                    
                     logger.info('screensaver_user: %r, setting ecommons: %r', 
                         screensaver_user.screensaver_user_id, new_ecommons)
                     screensaver_user.ecommons_id = new_ecommons
@@ -17001,7 +17535,60 @@ class ScreensaverUserResource(DbApiResource):
                         raise ValidationError(
                             key='username', 
                             msg='immutable (via ecommons_id)')
-                        
+            
+            # Validation rules for first_name, last_name
+            first_name = initializer_dict.pop('first_name', None)
+            last_name = initializer_dict.pop('last_name', None)
+            
+            if first_name is not None or last_name is not None:
+                if last_name is None:
+                    last_name = screensaver_user.last_name
+                if first_name is None:
+                    first_name = screensaver_user.first_name
+                if first_name != screensaver_user.first_name \
+                    or last_name != screensaver_user.last_name:
+                    extant_users = ScreensaverUser.objects.filter(
+                        first_name__iexact=first_name,
+                        last_name__iexact=last_name)
+                    if extant_users.exists():
+                        ids = [su.screensaver_user_id for su in extant_users.all()]
+                        msg = ('Screensaver User: %r has already been created using '
+                            'the given first and last names: %s %s'
+                            % (ids, first_name,last_name ))
+                        raise ValidationError({
+                            'first_name': msg, 'last_name': msg })
+                    screensaver_user.first_name = first_name
+                    screensaver_user.last_name = last_name
+
+            key = 'lab_head_id'
+            lab_head_id = initializer_dict.get(key,None)
+            if lab_head_id:
+                try:
+                    lab_head = ScreensaverUser.objects.get(
+                        screensaver_user_id=lab_head_id)
+                    if lab_head.classification != VOCAB_USER_CLASSIFICATION_PI:
+                        raise ValidationError(
+                            'Chosen lab head "user.classification must be %r '
+                            % VOCAB_USER_CLASSIFICATION_PI)
+                except ObjectDoesNotExist, e:
+                    raise ValidationError(
+                        key=_key,
+                        msg='Screensaver user for %r not found' % lh_id)
+            
+            key = 'classification'
+            classification = initializer_dict.get(key,None)
+            if classification:
+                if classification == VOCAB_USER_CLASSIFICATION_PI:
+                    if lab_head_id is not None:
+                        raise ValidationError(
+                            key='lab_head_id',
+                            msg='Classification may not be % for lab member'
+                                % VOCAB_USER_CLASSIFICATION_PI)
+                elif screensaver_user.classification == VOCAB_USER_CLASSIFICATION_PI:
+                    raise ValidationError(
+                        key=key, msg='May not be changed from %r'
+                            % VOCAB_USER_CLASSIFICATION_PI)
+                    
             for key, val in initializer_dict.items():
                 if hasattr(screensaver_user, key):
                     setattr(screensaver_user, key, val)
@@ -17010,11 +17597,12 @@ class ScreensaverUserResource(DbApiResource):
                 'no (basic) screensaver_user fields to update %s',
                 deserialized)
         
+        # Tie ScreensaverUser entry to Reports.User:
+        # If reports_userprofile exists, or username is set, patch the 
+        # reports_userprofile
         reports_kwargs = {}
         if screensaver_user.username is not None:
             reports_kwargs['username'] = screensaver_user.username
-        # If reports_userprofile exists, or username is set, patch the 
-        # reports_userprofile
         user = None
         if reports_kwargs:
             # create/get userprofile
@@ -17023,6 +17611,7 @@ class ScreensaverUserResource(DbApiResource):
                 deserialized.update({
                     'first_name': screensaver_user.first_name,
                     'last_name': screensaver_user.last_name})
+            
             deserialized['username'] = screensaver_user.username
             logger.info('patch the reports user: %r, %r',
                 reports_kwargs, deserialized)
@@ -17031,6 +17620,7 @@ class ScreensaverUserResource(DbApiResource):
             logger.info('patched userprofile %s', patch_response)
             user = patch_response[API_RESULT_OBJ]
         
+        is_staff = False
         if user:
             if screensaver_user.user is None:
                 screensaver_user.user = user
@@ -17044,72 +17634,76 @@ class ScreensaverUserResource(DbApiResource):
                 screensaver_user.screensaver_user_id, 
                 screensaver_user.username, user.username)
             screensaver_user.username = user.username
+
+            auth_user = user.user
+            is_staff = auth_user.is_staff
+        
         screensaver_user.save()
         
-        vocab_pi_classification = 'principal_investigator'
-        # check classification, but don't set, already set, above
-        if 'classification' in initializer_dict:
-            classification = initializer_dict['classification']
+        # Validate business rules for user types
+        if is_staff != True:
+            usergroups = deserialized.get('usergroups', None)
+            if usergroups:
+                raise ValidationError(
+                    key='usergroups',
+                    msg='May only be set for staff users')
+            permissions = deserialized.get('permissions', None)
+            if usergroups:
+                raise ValidationError(
+                    key='permissions',
+                    msg='May only be set for staff users')
 
-            if classification != vocab_pi_classification:
-                if initializer_dict.get('lab_affiliation_id', None):
-                    raise ValidationError(
-                        key='classification',
-                        msg='must be %r to assign a lab_affiliation_id' 
-                            % vocab_pi_classification)
-                else:
-                    screensaver_user.lab_affiliation = None
-                    screensaver_user.lab_members.remove()
-            else:
+            if screensaver_user.classification == VOCAB_USER_CLASSIFICATION_PI:
                 if screensaver_user.lab_affiliation is None:
                     # should already be set
                     raise ValidationError(
                         key='lab_affiliation_id',
                         msg='Must be set if classification is %r'
-                            % vocab_pi_classification)
+                            % VOCAB_USER_CLASSIFICATION_PI)
+                if screensaver_user.lab_head != screensaver_user:
+                    screensaver_user.lab_head = screensaver_user
+            
+            if screensaver_user.classification != VOCAB_USER_CLASSIFICATION_PI:
                 
-                screensaver_user.lab_head = screensaver_user
+                lab_head = screensaver_user.lab_head
+                if lab_head is None:
+                    raise ValidationError({
+                        'lab_head_id': 'Must be set for non staff',
+                        'classification': 
+                            'Must be %r if non staff and not a lab member'
+                                % VOCAB_USER_CLASSIFICATION_PI })
                 
-        screensaver_user.save()
-        
-        _key = 'lab_head_id'            
-        if _key in initializer_dict:
-            lh_id = initializer_dict[_key]
-            if lh_id:
-                if screensaver_user.classification == vocab_pi_classification:
-                    if lh_id != screensaver_user.screensaver_user_id:
-                        raise ValidationError(
-                            key=_key,
-                            msg='User classification is %r' % vocab_pi_classification)
-                    else:
-                        # Assign lab_head to self
-                        screensaver_user.lab_head = screensaver_user
-                else:            
-                    try:
-                        lab_head = ScreensaverUser.objects.get(
-                            screensaver_user_id=lh_id)
-                        if lab_head.classification != vocab_pi_classification:
-                            raise ValidationError(
-                                'Chosen lab head "user.classification must be %r '
-                                % vocab_pi_classification)
-                        screensaver_user.lab_head = lab_head
-
-                        # FIXME: should reset user dsls to lab_head values iff they are already set?
-                        # screensaver_user.sm_data_sharing_level = \
-                        #     lab_head.sm_data_sharing_level
-                        # screensaver_user.rnai_data_sharing_level = \
-                        #     lab_head.rnai_data_sharing_level
-                            
-                    except ObjectDoesNotExist, e:
-                        logger.info(
-                            'Lab Head Screensaver User %s does not exist',
-                            lh_id)
-                        raise ValidationError(
-                            key=_key,
-                            msg='lab_head_id not found %s' % lh_id)
-            else:
-                screensaver_user.lab_head = None
-
+                lab_head_user_agreements = \
+                    UserAgreement.objects.all().filter(screensaver_user=lab_head)
+                
+                for ua in screensaver_user.useragreement_set.all():
+                    if lab_head_user_agreements.exists():
+                        for lhua in lab_head_user_agreements.all():
+                            if lhua.type == ua.type:
+                                if lhua.data_sharing_level != ua.data_sharing_level:
+                                    messages.append
+                
+                # Reset user dsls to lab_head values
+                # TODO: warn and override                
+#                 if screensaver_user.sm_data_sharing_level \
+#                         != lab_head.sm_data_sharing_level:
+#                     if lab_head.sm_data_sharing_level is not None:
+#                         messages.append('%r updated from %r to %r'
+#                             % ( 'sm_data_sharing_level',
+#                                 screensaver_user.sm_data_sharing_level,
+#                                 lab_head.sm_data_sharing_level ))
+#                         screensaver_user.sm_data_sharing_level = \
+#                             lab_head.sm_data_sharing_level
+#                 if screensaver_user.rnai_data_sharing_level \
+#                         != lab_head.rnai_data_sharing_level:
+#                     if lab_head.rnai_data_sharing_level is not None:
+#                         messages.append('%r updated from %r to %r'
+#                             % ( 'rnai_data_sharing_level',
+#                                 screensaver_user.rnai_data_sharing_level,
+#                                 lab_head.rnai_data_sharing_level ))
+#                         screensaver_user.rnai_data_sharing_level = \
+#                             lab_head.rnai_data_sharing_level
+            
         screensaver_user.save()
         
         _key = 'lab_member_ids'
@@ -17118,25 +17712,46 @@ class ScreensaverUserResource(DbApiResource):
             lab_members = []
             # may empty
             if lab_member_ids:
-                if screensaver_user.classification != vocab_pi_classification:
+                if screensaver_user.classification != VOCAB_USER_CLASSIFICATION_PI:
                     raise ValidationError(
                         key='lab_member_ids',
-                        msg='User classification must be %r' % vocab_pi_classification)
+                        msg='User classification must be %r' % VOCAB_USER_CLASSIFICATION_PI)
             for lab_member_id in lab_member_ids:
                 try:
                     lab_member = ScreensaverUser.objects.get(
                         screensaver_user_id=lab_member_id)
-                    if lab_member.classification == vocab_pi_classification:
+                    if lab_member.classification == VOCAB_USER_CLASSIFICATION_PI:
                         raise ValidationError(
                             key='lab_member_ids',
                             msg='User is a %r and cannot be added as a lab member'
-                                % vocab_pi_classification)
+                                % VOCAB_USER_CLASSIFICATION_PI)
                     
                     lab_members.append(lab_member)
-                    lab_member.sm_data_sharing_level = \
-                        screensaver_user.sm_data_sharing_level
-                    lab_member.rnai_data_sharing_level = \
-                        screensaver_user.rnai_data_sharing_level
+                    
+                    # FIXME: need override from UI to set
+                    msg='lab member data sharing level (%r) must match lab head'
+                    if screensaver_user.useragreement_set.exists():
+                        if lab_member.useragreement_set.exists():
+                            for ua in screensaver_user.useragreement_set.all():
+                                for member_ua in lab_member.useragreement_set.all():
+                                    if ua.type == member_ua.type:
+                                        if ua.data_sharing_level is None:
+                                            continue
+                                        if member_ua.data_sharing_level is None:
+                                            continue
+                                        if ua.date_expired is not None:
+                                            continue
+                                        if member_ua.date_expired is not None:
+                                            continue
+                                        if ua.data_sharing_level != member_ua.data_sharing_level:
+                                            raise ValidationError(
+                                                key='lab_member_ids',
+                                                msg=msg%member_ua.data_sharing_level)
+                    
+#                     lab_member.sm_data_sharing_level = \
+#                         screensaver_user.sm_data_sharing_level
+#                     lab_member.rnai_data_sharing_level = \
+#                         screensaver_user.rnai_data_sharing_level
                 except ObjectDoesNotExist:
                     raise ValidationError(
                         key=_key,
@@ -17144,36 +17759,6 @@ class ScreensaverUserResource(DbApiResource):
             screensaver_user.lab_members = lab_members
         screensaver_user.save()
                 
-        key = 'sm_data_sharing_level'
-        dsl_err_msg = '"%r" does not match the lab_head: "%r"'
-        if key in initializer_dict:
-            val = initializer_dict[key]
-            lab_head = screensaver_user.lab_head
-            if lab_head and lab_head != screensaver_user:
-                lab_head_val = lab_head.sm_data_sharing_level
-                if val != lab_head_val:
-                    raise ValidationError(
-                        key=key,
-                        msg=dsl_err_msg % (val, lab_head_val))
-            else:
-                # Note; has already been set; must set the lab members as well
-                for lab_member in screensaver_user.lab_members.all():
-                    lab_member.sm_data_sharing_level = screensaver_user.sm_data_sharing_level
-        key = 'rnai_data_sharing_level'
-        if key in initializer_dict:
-            val = initializer_dict[key]
-            lab_head = screensaver_user.lab_head
-            if lab_head and lab_head != screensaver_user:
-                lab_head_val = lab_head.rnai_data_sharing_level
-                if val != lab_head_val:
-                    raise ValidationError(
-                        key=key,
-                        msg=dsl_err_msg % (val, lab_head_val))
-            else:
-                # Note; has already been set; must set the lab members as well
-                for lab_member in screensaver_user.lab_members.all():
-                    lab_member.rnai_data_sharing_level = screensaver_user.rnai_data_sharing_level
-        
         if 'facility_usage_roles' in initializer_dict:
             current_roles = set([r.facility_usage_role 
                 for r in screensaver_user.userfacilityusagerole_set.all()])
@@ -17194,7 +17779,18 @@ class ScreensaverUserResource(DbApiResource):
                 ur.save()
 
         logger.info('patch_obj done: %r', screensaver_user)
-        return { API_RESULT_OBJ: screensaver_user }
+        
+        
+        meta = {
+            API_MSG_RESULT: {
+                'messages': messages
+            },
+        }
+        
+        return { 
+            API_RESULT_OBJ: screensaver_user,
+            API_RESULT_META: meta 
+        }
             
 
 class LibraryResourceAuthorization(UserGroupAuthorization):        
@@ -17217,18 +17813,19 @@ class LibraryResourceAuthorization(UserGroupAuthorization):
         
     # NOTE: 20170908 - Not used, all authenticated users may access - JAS/CS
     def get_authorized_library_screen_types(self, user):
-        screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        
-        # TODO: review requirements
-        screen_types = set()
-        SM_TYPE = 'small_molecule'
-        RNAI_TYPE = 'rnai'
-        if screensaver_user.sm_data_sharing_level is not None:
-            screen_types.add(SM_TYPE)
-        if screensaver_user.rnai_data_sharing_level is not None:
-            screen_types.add(SM_TYPE)
-        
-        return screen_types
+        pass
+        # screensaver_user = ScreensaverUser.objects.get(username=user.username)
+        # 
+        # # TODO: review requirements
+        # screen_types = set()
+        # SM_TYPE = VOCAB_SCREEN_TYPE_SM
+        # RNAI_TYPE = 'rnai'
+        # if screensaver_user.sm_data_sharing_level is not None:
+        #     screen_types.add(SM_TYPE)
+        # if screensaver_user.rnai_data_sharing_level is not None:
+        #     screen_types.add(SM_TYPE)
+        # 
+        # return screen_types
 
 class NaturalProductReagentResource(DbApiResource):
     # Consider folding the NaturalProductReagentResource into ReagentResource
@@ -19239,18 +19836,19 @@ class LibraryResource(DbApiResource):
                     "], '%s' ) )" % LIST_DELIMITER_SQL_ARRAY
                     )
                 }
-            concentration_sql = (
-                'select short_name, '
-                'exists(select null from well '
-                '  where well.library_id=l.library_id '
-                '  and well.mg_ml_concentration is not null limit 1) mg_ml_measure, '
-                'exists(select null from well '
-                '  where well.library_id=l.library_id '
-                '  and well.molar_concentration is not null limit 1) molar_measure '
-                'from library l;')
-            with get_engine().connect() as conn:
-                result = conn.execute(text(concentration_sql))
-                cached_ids =  [x[0] for x in result ]
+            ##### FIXME: 20171106 unused
+#             concentration_sql = (
+#                 'select short_name, '
+#                 'exists(select null from well '
+#                 '  where well.library_id=l.library_id '
+#                 '  and well.mg_ml_concentration is not null limit 1) mg_ml_measure, '
+#                 'exists(select null from well '
+#                 '  where well.library_id=l.library_id '
+#                 '  and well.molar_concentration is not null limit 1) molar_measure '
+#                 'from library l;')
+#             with get_engine().connect() as conn:
+#                 result = conn.execute(text(concentration_sql))
+#                 cached_ids =  [x[0] for x in result ]
             
                      
             base_query_tables = ['library']
@@ -19276,10 +19874,10 @@ class LibraryResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by("short_name")
 
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if use_titles is True:

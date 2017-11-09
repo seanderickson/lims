@@ -765,5 +765,30 @@ class Migration(migrations.Migration):
             ' where lh.screensaver_user_id=su.screensaver_user_id'),
         # end TODO: 20170918 ======
 
+        migrations.CreateModel(
+            name='UserAgreement',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('type', models.TextField()),
+                ('data_sharing_level', models.IntegerField(null=True)),
+                ('date_active', models.DateField(null=True)),
+                ('date_expired', models.DateField(null=True)),
+                ('date_notified', models.DateField(null=True)),
+                ('file', models.ForeignKey(to='db.AttachedFile', null=True)),
+            ],
+            options={
+                'db_table': 'user_agreement',
+            },
+        ),
+        migrations.AddField(
+            model_name='useragreement',
+            name='screensaver_user',
+            field=models.ForeignKey(to='db.ScreensaverUser'),
+        ),
+        migrations.AlterUniqueTogether(
+            name='useragreement',
+            unique_together=set([('screensaver_user', 'type')]),
+        ),
+
         
     ]

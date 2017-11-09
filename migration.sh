@@ -296,13 +296,6 @@ function migratedb {
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  migration='0009'
-  if [[ ! $completed_migrations =~ $migration ]]; then
-    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-  fi
-  
   migration='0010'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"

@@ -79,8 +79,6 @@ def parse_val(value, key, data_type, options=None):
         # FIXME: None should be returned for String
         if ( value is None 
             or value == '' 
-#             or value == 'None' 
-#             or value == u'None' 
             or value == 'null'
             or value == u'n/a'):
             if data_type == 'string': 
@@ -101,8 +99,10 @@ def parse_val(value, key, data_type, options=None):
                 value = value.strip()
             return value
         elif data_type == 'integer':
-            # todo: this is a kludge, create an integer from values like "5.0"
-            return int(float(value))
+            if isinstance(value, six.string_types):
+                # todo: this is a kludge, create an integer from values like "5.0"
+                return int(float(value))
+            return int(value)
         elif data_type == 'date':
             return dateutil.parser.parse(value).date()
         elif data_type == 'datetime':

@@ -82,24 +82,24 @@ def create_roles(apps, schema_editor):
             su.screensaveruserrole_set.all()
                 .values_list('screensaver_user_role', flat=True))
         logger.info('user: %r, roles: %r', su.username, roles)
-        if 'rnaiDsl1MutualScreens' in roles:
-            logger.info('set rnai dsl 1')
-            su.rnai_data_sharing_level = 1
-        elif 'rnaiDsl2MutualPositives' in roles:
-            logger.info('set rnai dsl 2')
-            su.rnai_data_sharing_level = 2
-        elif 'rnaiDsl3SharedScreens' in roles:
-            logger.info('set rnai dsl 3')
-            su.rnai_data_sharing_level = 3
-        if 'smDsl1MutualScreens' in roles:
-            logger.info('set sm dsl 1')
-            su.sm_data_sharing_level = 1
-        elif 'smDsl2MutualPositives' in roles:
-            logger.info('set sm dsl 2')
-            su.sm_data_sharing_level = 2
-        elif 'smDsl3SharedScreens' in roles:
-            logger.info('set sm dsl 3')
-            su.sm_data_sharing_level = 3
+#         if 'rnaiDsl1MutualScreens' in roles:
+#             logger.info('set rnai dsl 1')
+#             su.rnai_data_sharing_level = 1
+#         elif 'rnaiDsl2MutualPositives' in roles:
+#             logger.info('set rnai dsl 2')
+#             su.rnai_data_sharing_level = 2
+#         elif 'rnaiDsl3SharedScreens' in roles:
+#             logger.info('set rnai dsl 3')
+#             su.rnai_data_sharing_level = 3
+#         if 'smDsl1MutualScreens' in roles:
+#             logger.info('set sm dsl 1')
+#             su.sm_data_sharing_level = 1
+#         elif 'smDsl2MutualPositives' in roles:
+#             logger.info('set sm dsl 2')
+#             su.sm_data_sharing_level = 2
+#         elif 'smDsl3SharedScreens' in roles:
+#             logger.info('set sm dsl 3')
+#             su.sm_data_sharing_level = 3
         
         if 'readEverythingAdmin' in roles or su.classification == 'staff':
             auth_user.is_staff = True
@@ -118,8 +118,7 @@ def create_roles(apps, schema_editor):
         
         auth_user.save()
         su.save()
-        logger.info('su: %r sm_dsl: %r, rna_dsl: %r', 
-            su.username, su.sm_data_sharing_level, su.rnai_data_sharing_level)
+        logger.info('su: %r',su.username)
         
     logger.info('created %d roles for %d users, %d active', 
         roles_assigned, users_assigned, active_user_count)

@@ -76,7 +76,7 @@ billing_comments,fields.screen,,,/reports/api/v1/field/fields.screen/billing_com
 screen_id,fields.screen,custom,,/reports/api/v1/field/fields.screen/screen_id/,999,,TRUE,"Internal Screen ID","Internal Screen ID",TRUE,,,,,integer,,,,,,,,,0
 status,fields.screen,,,/reports/api/v1/field/fields.screen/status/,32,,TRUE,"The current status of the screen",Status,TRUE,,screen.status,[l;d;e],[c;u],string,,,select,,,,,,3
 status_date,fields.screen,,,/reports/api/v1/field/fields.screen/status_date/,33,,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,[l;d],[c;u],date,,,,,,,,,3
-screensaver_user_role,fields.screen,custom,,/reports/api/v1/field/fields.screen/screensaver_user_role/,92,,TRUE,"Role of the provided screener","User Role",TRUE,,,,,list,,,,,,,,,
+screensaver_user_role,fields.screen,custom,,/reports/api/v1/field/fields.screen/screensaver_user_role/,92,,TRUE,"Role of the provided screener","User Role",TRUE,,screen.user_role,,,string,,,select,,,,,,
 keywords,fields.screen,custom,,/reports/api/v1/field/fields.screen/keywords/,65,,TRUE,"A set of keywords associated with the screen",Keywords,TRUE,,,,,list,,,textarea,,,,,,3
 coms_registration_number,fields.screen,,,/reports/api/v1/field/fields.screen/coms_registration_number/,35,,TRUE,"COMS number, provided by PI's lab","COMS Registration Number",TRUE,,,,,string,,,,,,,,[readEverythingAdmin],
 coms_approval_date,fields.screen,,,/reports/api/v1/field/fields.screen/coms_approval_date/,36,,TRUE,"The date of approval by COMS or the date on which we determine that our existing approval already covers the proposed experiments","ICCB-L COMS Approval Date",TRUE,,,,,date,,,,,,,,[readEverythingAdmin],

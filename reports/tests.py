@@ -76,7 +76,8 @@ from tastypie import fields
 from reports import dump_obj, HEADER_APILOG_COMMENT
 from reports.api import compare_dicts, API_RESULT_DATA
 from reports.dump_obj import dumpObj
-from reports.models import API_ACTION_CREATE, MetaHash
+from reports.models import API_ACTION_CREATE, MetaHash, UserGroup, \
+    UserProfile, ApiLog, Permission
 from reports.serialize import parse_val
 import reports.serialize.csvutils as csvutils
 from reports.serialize.sdfutils import MOLDATAKEY
@@ -160,7 +161,8 @@ def decode_from_utf8(val):
     
 def equivocal(val1, val2):
     '''
-    Test for equivalence between string,number,boolean,or list where:
+    Test for equivalence between submitted and returned (csv) values:
+    Compares string,number,boolean,or list where:
     - either object has been converted to a string,
     - with lists, ordering has changed, or members have been converted to 
     their string representation.
@@ -1172,7 +1174,7 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            logger.debug('post response: %r', new_obj)
+            logger.info('post response: %r', new_obj)
             
         new_obj = self.get_single_resource(
             resource_test_uri, data_for_get=_data_for_get)
@@ -1216,11 +1218,14 @@ class IResourceTestCase(SimpleTestCase):
             resource_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)
         if resp.status_code == 404:
+            logger.info('resp: %r', resp)
+            logger.info('no resource found: %r, %r', resource_uri, data_for_get)
             return None
         self.assertTrue(
             resp.status_code in [200,201], 
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
+        # NOTE: not all responses have data nested in API_RESULT_DATA
         if API_RESULT_DATA in new_obj:
             self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
                 'more than one object returned for: %r, returns: %r'
@@ -1235,22 +1240,23 @@ class IResourceTestCase(SimpleTestCase):
         '''
         resource_uri = BASE_URI + '/resource/' + resource_name
         logger.info('Get the resource schema: %r', resource_uri )
-        return self.get_from_server(resource_uri)
+        return self.get_single_resource(resource_uri)
         
-    def get_from_server(self, resource_uri, data_for_get=None):
-        ''' DEPRECATED, does the same thing as get_list_resource '''
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*'
-        }
-        if data_for_get:
-            _data_for_get.update(data_for_get)
-        resp = self.api_client.get(
-            resource_uri, format='json', authentication=self.get_credentials(), 
-            data=_data_for_get)
-        self.assertTrue(resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        return self.deserialize(resp)
+#     def get_from_server(self, resource_uri, data_for_get=None):
+#         ''' should be deprecated, as this essentially does the same thing as 
+#         get_list_resource '''
+#         _data_for_get = { 
+#             'limit': 0,
+#             'includes': '*'
+#         }
+#         if data_for_get:
+#             _data_for_get.update(data_for_get)
+#         resp = self.api_client.get(
+#             resource_uri, format='json', authentication=self.get_credentials(), 
+#             data=_data_for_get)
+#         self.assertTrue(resp.status_code in [200], 
+#             (resp.status_code, self.get_content(resp)))
+#         return self.deserialize(resp)
     
     def _patch_test(
         self,resource_name, filename, keys_not_to_check=['resource_uri'], 
@@ -1413,10 +1419,18 @@ class IResourceTestCase(SimpleTestCase):
                         logger.info(
                             'reinit_pattern resource match: %r', resource)
                         processAction()
+                    else:
+                        logger.info(
+                            'reinit_pattern: %r doesnt match resource: %r',
+                            reinit_pattern, resource)
                     if pattern.search(filename):
                         logger.info(
                             'reinit_pattern filename match: %r', filename)
                         processAction()
+                    else:
+                        logger.info(
+                            'reinit_pattern: %r doesnt match filename: %r',
+                            reinit_pattern, filename)
                 else:
                     processAction()
                     
@@ -1455,7 +1469,7 @@ def setUpModule():
                 reinit_metahash = True
             if 'reinit_pattern' in arg:
                 # grab the next arg
-                reinit_pattern = sys.argv[i]
+                reinit_pattern = sys.argv[i+1]
             if 'TestApiInit' in arg:
                 runTestApiInit[0] = True
         if keepdb and runTestApiInit[0]:
@@ -1513,7 +1527,8 @@ class TestApiClient(object):
         Performs a simulated ``GET`` request to the provided URI.
         """
         content_type = self.serializer.get_content_type_for_format(format)
-        kwargs['HTTP_ACCEPT'] = content_type
+        if 'HTTP_ACCEPT' not in kwargs:
+            kwargs['HTTP_ACCEPT'] = content_type
 
         # GET & DELETE are the only times we don't serialize the data.
         if data is not None:
@@ -1534,7 +1549,11 @@ class TestApiClient(object):
         as the body instead of becoming part of the URI.
         """
         content_type = self.serializer.get_content_type_for_format(format)
-        kwargs['content_type'] = content_type
+        logger.info('content_type: %r', content_type)
+        if 'content_type' not in kwargs:
+            kwargs['content_type'] = content_type
+        if 'HTTP_ACCEPT' not in kwargs:
+            kwargs['HTTP_ACCEPT'] = content_type
 
         if data is not None:
             kwargs['data'] = self.serializer.serialize(data, content_type)
@@ -1553,7 +1572,11 @@ class TestApiClient(object):
         the body instead of becoming part of the URI.
         """
         content_type = self.serializer.get_content_type_for_format(format)
-        kwargs['content_type'] = content_type
+        logger.info('content_type: %r', content_type)
+        if 'content_type' not in kwargs:
+            kwargs['content_type'] = content_type
+        if 'HTTP_ACCEPT' not in kwargs:
+            kwargs['HTTP_ACCEPT'] = content_type
 
         if data is not None:
             kwargs['data'] = self.serializer.serialize(data, content_type)
@@ -1573,7 +1596,10 @@ class TestApiClient(object):
         as the body instead of becoming part of the URI.
         """
         content_type = self.serializer.get_content_type_for_format(format)
-        kwargs['content_type'] = content_type
+        if 'content_type' not in kwargs:
+            kwargs['content_type'] = content_type
+        if 'HTTP_ACCEPT' not in kwargs:
+            kwargs['HTTP_ACCEPT'] = content_type
 
         if data is not None:
             kwargs['data'] = self.serializer.serialize(data, content_type)
@@ -1584,12 +1610,10 @@ class TestApiClient(object):
         # Django doesn't support PATCH natively.
         parsed = urlparse.urlparse(uri)
         r = {
-#             'CONTENT_LENGTH': len(kwargs['data']) if data else 0,
             'CONTENT_TYPE': content_type,
             'PATH_INFO': self.client._get_path(parsed),
             'QUERY_STRING': parsed[4],
             'REQUEST_METHOD': 'PATCH',
-#             'wsgi.input': FakePayload(kwargs['data']),
         }
         if data:
             r['CONTENT_LENGTH'] = len(kwargs['data'])
@@ -1607,7 +1631,11 @@ class TestApiClient(object):
 
         """
         content_type = self.serializer.get_content_type_for_format(format)
-        kwargs['content_type'] = content_type
+        logger.info('content_type: %r', content_type)
+        if 'content_type' not in kwargs:
+            kwargs['content_type'] = content_type
+        if 'HTTP_ACCEPT' not in kwargs:
+            kwargs['HTTP_ACCEPT'] = content_type
 
         # GET & DELETE are the only times we don't serialize the data.
         if data is not None:
@@ -2166,6 +2194,15 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
 
     def setUp(self):
         super(UserResource, self).setUp()
+
+    def tearDown(self):
+        IResourceTestCase.tearDown(self)
+        
+        logger.info('delete users, including: %r', self.username)
+        UserGroup.objects.all().delete()
+        UserProfile.objects.all().exclude(username=self.username).delete()
+        User.objects.all().exclude(username=self.username).delete()
+        ApiLog.objects.all().delete()
     
     def test0_create_user(self):
         
@@ -2357,6 +2394,15 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
 
     def setUp(self):
         super(UserGroupResource, self).setUp()
+
+    def tearDown(self):
+        IResourceTestCase.tearDown(self)
+        
+        logger.info('delete users, including: %r', self.username)
+        UserGroup.objects.all().delete()
+        UserProfile.objects.all().exclude(username=self.username).delete()
+        User.objects.all().exclude(username=self.username).delete()
+        ApiLog.objects.all().delete()
 
     def test2_create_usergroup_with_permissions(self):
         logger.info('test2_create_usergroup_with_permissions...')

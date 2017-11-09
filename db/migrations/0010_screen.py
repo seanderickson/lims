@@ -205,9 +205,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(migrate_screen_status),
-        migrations.RunPython(migrate_pin_transfer_approval),
-        
         # moved to 0002:
         # migrations.AddField(
         #     model_name='screen',
@@ -221,6 +218,8 @@ class Migration(migrations.Migration):
         #     field=models.TextField(null=True),
         # ),
         
+        migrations.RunPython(migrate_screen_status),
+        migrations.RunPython(migrate_pin_transfer_approval),
         migrations.RunPython(migrate_screen_project_phase),
         
         # TODO: reinstate for final migration; leaving fields in the db for 

@@ -13,7 +13,7 @@ import django.core.exceptions
 from django.core.signals import got_request_exception
 from django.http.response import HttpResponseBase, HttpResponse, \
     HttpResponseNotFound, Http404, HttpResponseForbidden
-from django.middleware.csrf import _sanitize_token, REASON_NO_REFERER,\
+from django.middleware.csrf import _sanitize_token, REASON_NO_REFERER, \
     REASON_BAD_REFERER, REASON_BAD_TOKEN
 from django.utils import six
 from django.utils.cache import patch_cache_control, patch_vary_headers
@@ -137,10 +137,10 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             url(r"^(?P<resource_name>%s)/schema%s$" % (
                 self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<%s>.*?)%s$" % (
-                self._meta.resource_name, self._meta.detail_uri_name, 
-                trailing_slash()), self.wrap_view('dispatch_detail'), 
-                name="api_dispatch_detail"),
+#             url(r"^(?P<resource_name>%s)/(?P<%s>.*?)%s$" % (
+#                 self._meta.resource_name, self._meta.detail_uri_name, 
+#                 trailing_slash()), self.wrap_view('dispatch_detail'), 
+#                 name="api_dispatch_detail"),
         ]
 
     def dispatch_clear_cache(self, request, **kwargs):
@@ -318,6 +318,11 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     'Permission Denied: ': '%r'%e }
                 response = self.build_error_response(
                     request, data, response_class=HttpResponseForbidden, **kwargs)
+
+            except ObjectDoesNotExist as e:
+                logger.info('not found: %r', e)
+                return self.build_error_response(
+                    request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
             
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
@@ -369,7 +374,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         else:
             content_type = self.get_serializer().get_content_type(request)
         logger.debug('deserialize for content_type: %r', content_type)
-        if content_type.startswith('multipart'):
+        if content_type.startswith('multipart') and len(request.FILES) > 0:
+                
             logger.debug('request.Files.keys: %r', request.FILES.keys())
             # process *only* one attached file
             if len(request.FILES.keys()) != 1:
@@ -509,12 +515,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         the_trace = '\n'.join(traceback.format_exception(*(sys.exc_info())))
         response_class = HttpApplicationError
         response_code = 500
-
-        NOT_FOUND_EXCEPTIONS = (NotFound, ObjectDoesNotExist, Http404)
-
-        if isinstance(exception, NOT_FOUND_EXCEPTIONS):
-            response_class = HttpResponseNotFound
-            response_code = 404
 
         if settings.DEBUG:
             data = {

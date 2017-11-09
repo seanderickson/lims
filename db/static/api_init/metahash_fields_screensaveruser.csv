@@ -9,17 +9,17 @@ lab_head_id,fields.screensaveruser,,,7,,TRUE,"The Screensaver User ID of the Lab
 lab_affiliation_id,fields.screensaveruser,,,8,,TRUE,"Lab Affiliation ID","Principal Investigator Lab Affiliation",TRUE,,,[c;u],integer,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}', 'widthClass': 'col-sm-8' }",select,,,,,,1
 lab_affiliation_name,fields.screensaveruser,,,9,,TRUE,"Lab Affiliation Name","Principal Investigator Lab Affiliation Name",TRUE,,,,string,,,,,,,,,1
 lab_affiliation_category,fields.screensaveruser,,,10,,TRUE,"Lab Affiliation Category","Lab Affiliation Category",TRUE,lab_affiliation.category,,,string,,,select,,,,,,1
-lab_member_ids,fields.screensaveruser,custom,,11,,TRUE,"Lab Member Screensaver User Ids","Lab Members",TRUE,,,[c;u],list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }",multiselect3,,,,,,1
+lab_member_ids,fields.screensaveruser,custom,,11,,TRUE,"Lab Member Screensaver User Ids","Lab Members",TRUE,,,,list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }",multiselect3,,,,,,1
 lab_member_names,fields.screensaveruser,custom,,12,,TRUE,"Lab Member Names","Lab Member Names",TRUE,,,,list,,,,,,,,,1
 lab_head_appointment_category,fields.screensaveruser,,,13,,TRUE,"Lab Head Appointment Category","App't Category",TRUE,lab_head.appointment_category,,[c;u],string,,,select,,,,,[readEverythingAdmin],
 lab_head_appointment_department,fields.screensaveruser,,,14,,TRUE,"Lab Head Appointment Department","App't Department",TRUE,lab_head.appointment_department,,[c;u],string,,,select,,,,,[readEverythingAdmin],
 lab_head_appointment_update_date,fields.screensaveruser,,,15,,TRUE,"The date when Lab Head Appointment was set","Date App't Updated",TRUE,,,[c;u],date,,,,,,,,[readEverythingAdmin],
 email,fields.screensaveruser,,,16,,TRUE,Email,Email,TRUE,,[l;d],[c;u],string,,"{ 'maxlength': '100' }",,,,"^[\w\-]{1,}([\w\-\+.]{1,1}[\w\-]{1,}){0,}[@][\w\-]{1,}([.]([\w\-]{1,})){1,3}$",,,1
 ecommons_id,fields.screensaveruser,,,17,,TRUE,Ecommons,Ecommons,TRUE,,[l;d],[c;u],string,,,,,,^\w+$,,[readEverythingAdmin],
-username,fields.screensaveruser,auth_user,,18,,TRUE,Username,Username,TRUE,,[d],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,1
+username,fields.screensaveruser,auth_user,,18,,TRUE,Username,Username,TRUE,,,[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,^\w+$,,,1
 harvard_id,fields.screensaveruser,,,19,,TRUE,"The Harvard ID of the user","Harvard ID",TRUE,,[l;d],[c;u],string,,,,,,,,[readEverythingAdmin],
-harvard_id_expiration_date,fields.screensaveruser,,,20,,TRUE,"The date this user's Harvard ID is initially set to expire","Harvard ID Initial Expiration Date",TRUE,,[d],[c;u],date,,,,,,,,[readEverythingAdmin],
-harvard_id_requested_expiration_date,fields.screensaveruser,,,21,,TRUE,"The requested date when the user's Harvard ID will expire","Harvard ID Requested Expiration Date",TRUE,,[d],[c;u],date,,,,,,,,[readEverythingAdmin],
+harvard_id_expiration_date,fields.screensaveruser,,,20,,TRUE,"The date this user's Harvard ID is initially set to expire","Harvard ID Initial Expiration Date",TRUE,,,,date,,,,,,,,[readEverythingAdmin],
+harvard_id_requested_expiration_date,fields.screensaveruser,,,21,,TRUE,"The requested date when the user's Harvard ID will expire","Harvard ID Requested Expiration Date",TRUE,,,,date,,,,,,,,[readEverythingAdmin],
 gender,fields.screensaveruser,,,22,,TRUE,"The gender of the user",Gender,TRUE,user.gender,[l;d],[c;u],string,,,select,,,,,,1
 phone,fields.screensaveruser,,,23,,TRUE,"The phone number for this user",Phone,TRUE,,[l;d],[c;u],string,,,,,,,,,1
 mailing_address,fields.screensaveruser,reports_userprofile,,24,,TRUE,"The mailing address of the user","Mailing Address",TRUE,,[l;d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,,3
@@ -33,5 +33,8 @@ permissions,fields.user,,,155,,TRUE,"Permissions assigned directly to the user",
 usergroups,fields.user,,,150,,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[c;u],list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,,,,,[readEverythingAdmin],
 all_permissions,fields.user,,,156,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,,list,link,,,,,,,[readEverythingAdmin],
 date_created,fields.screensaveruser,,,100,,TRUE,"The date the user's account was first recorded in Screensaver","Date Recorded",TRUE,,[l;d],,date,,,,,,,,[readEverythingAdmin],
-sm_data_sharing_level,fields.screensaveruser,,,101,,TRUE,"Small Molecule Data Sharing Level","Small Molecule Data Sharing Level",TRUE,screensaveruser.data_sharing_level,[d],[c;u],integer,,,select,,,,,,3
-rnai_data_sharing_level,fields.screensaveruser,,,102,,TRUE,"RNAi Data Sharing Level","RNAi Data Sharing Level",TRUE,screensaveruser.data_sharing_level,[d],[c;u],integer,,,select,,,,,,3
+sm_data_sharing_level,fields.screensaveruser,,,101,,TRUE,"Small Molecule Data Sharing Level","Small Molecule Data Sharing Level",TRUE,useragreement.data_sharing_level,[d],,integer,,"{ 'group': 'Data Access Level' }",select,,,,,,3
+rnai_data_sharing_level,fields.screensaveruser,,,102,,TRUE,"RNAi Data Sharing Level","RNAi Data Sharing Level",TRUE,useragreement.data_sharing_level,[d],,integer,,"{ 'group': 'Data Access Level' }",select,,,,,,3
+is_active,fields.screensaveruser,auth_user,,103,,TRUE,"True if the user is currently active and may log in to the system","User Can Log In",TRUE,,[l;d],[c;u],boolean,,"{ 'group': 'Data Access Level' }",,,,,,,3
+is_staff,fields.screensaveruser,auth_user,,104,,TRUE,"For information purposes only - permissions are granted using UserGroups","Is Staff",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access Level' }",,,,,,[readEverythingAdmin],
+is_superuser,fields.screensaveruser,auth_user,,105,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access Level' }",,,,,,[superusers],

@@ -200,8 +200,6 @@ def create_user_comments_logs(apps, schema_editor):
 def create_plate_generic_logs(apps, schema_editor):
     logger.info('create plate generic activity logs')
 
-    Activity = apps.get_model('db', 'Activity')
-
     cols = OrderedDict({
         'activity_id': 'a.activity_id',
         'username': 'username',
@@ -263,8 +261,6 @@ def create_plate_generic_logs(apps, schema_editor):
 def create_plate_plated_and_retired_logs(apps, schema_editor):  
 
     logger.info('create plate activity logs')
-
-    Activity = apps.get_model('db', 'Activity')
 
     cols = OrderedDict({
         'activity_id': 'a.activity_id',

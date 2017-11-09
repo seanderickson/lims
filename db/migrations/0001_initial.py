@@ -17,6 +17,7 @@ from django.db.models.deletion import SET_NULL
 ## $> manage.py migrate --fake-initial
 
 ## Developer note:
+## 0001_initial represents the latest schema of the Screensaver 1 database.
 ## New models and fields to be added should not be included in the 0001 file, 
 ## they should be applied in subsequent files, as migration 0001 is "faked" in
 ## the migration.sh script.

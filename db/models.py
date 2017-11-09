@@ -341,6 +341,26 @@ class UserChecklist(models.Model):
             % (self.screensaver_user, self.name, self.is_checked, 
                 self.date_effective, self.admin_user )) 
 
+class UserAgreement(models.Model):
+    
+    screensaver_user = models.ForeignKey('ScreensaverUser', null=False)
+    type = models.TextField()
+    data_sharing_level = models.IntegerField(null=True)
+    file = models.ForeignKey('AttachedFile', null=True)
+    date_active = models.DateField(null=True)
+    date_expired = models.DateField(null=True)
+    date_notified = models.DateField(null=True)
+
+    class Meta:
+        unique_together = (('screensaver_user', 'type'))    
+        db_table = 'user_agreement'
+    
+    def __repr__(self):
+        return (
+            'UserAgreement(screensaver_user=%r, type=%r, '
+            'date_active=%r, date_expired=%r, date_notified=%r )>' 
+            % (self.screensaver_user, self.type, self.date_active, 
+                self.date_expired, self.date_notified )) 
 
 class CherryPickRequest(models.Model):
     
@@ -943,7 +963,7 @@ class ScreensaverUser(models.Model):
     first_name = models.TextField()
     last_name = models.TextField()
     email = models.TextField(null=True)
-    gender = models.CharField(null=True, max_length=15)    
+    gender = models.TextField(null=True)
 
     # mirror the userprofile, auth_user username
     # FIXME: 20170926: not needed
@@ -969,8 +989,8 @@ class ScreensaverUser(models.Model):
     lab_head_appointment_department = models.TextField(null=True)
     lab_head_appointment_update_date = models.DateField(null=True)
 
-    sm_data_sharing_level = models.IntegerField(null=True)
-    rnai_data_sharing_level = models.IntegerField(null=True)
+#     sm_data_sharing_level = models.IntegerField(null=True)
+#     rnai_data_sharing_level = models.IntegerField(null=True)
 
     class Meta:
         db_table = 'screensaver_user'
@@ -1086,7 +1106,7 @@ def create_id():
         logger.debug('seq: %r, created_id: %r', val, new_id)
         return new_id
     except Exception, e:
-        logger.exception('on create_id')
+#         logger.exception('on create_id')
         return None
 
 class Well(models.Model):

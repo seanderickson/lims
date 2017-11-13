@@ -316,8 +316,8 @@ define([
         EditView: editView,
         DetailView: detailView,
         table_class: 'col-sm-12',
-        label_col_class: 'col-xs-1',
-        value_col_class: 'col-xs-11',
+        label_col_class: 'col-xs-2',
+        value_col_class: 'col-xs-10',
         buttons: ['edit', 'history','download']
       });
       
@@ -1828,9 +1828,14 @@ define([
 
     buildMessages: function() {
       var self = this;
-      console.log('build user messages...');
-      $('#content_title_message').find('#user_status_message').remove();
       
+      console.log('build user messages...');
+
+      if (!appModel.hasGroup('readEverythingAdmin')){
+        return;
+      }
+   
+      $('#content_title_message').find('#user_status_message').remove();
       var screens = self.getUserScreens();
       console.log('build user messages', screens);
       if (_.isEmpty(screens)) {

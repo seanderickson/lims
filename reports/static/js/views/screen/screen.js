@@ -731,12 +731,67 @@ define([
       });
       
       var collection = new CollectionClass();
-
-      resource.fields['title']['backgridCellType'] = Iccbl.LinkCell.extend({
-        className: 'text-wrap-cell'
+      
+      var base_fields = ['pubmed_id','pubmed_central_id','attached_filename'];
+      _.each(resource.fields,function(field){
+        if (_.contains(base_fields,field.key)){
+          field['visibility'] = ['l','d'];
+        } else {
+          field['visibility'] = ['d'];
+        }
       });
       var colModel = Iccbl.createBackgridColModel(resource.fields);
-      
+      var lastCol = colModel.pop();
+      colModel.push({
+        'name' : 'citation',
+        'label' : 'Citation',
+        'sortable': false,
+        'searchable': false,
+        'editable' : false,
+        'visible': true,
+        'headerCell': Backgrid.HeaderCell,
+        'cell': Iccbl.LinkCell.extend({
+          hrefTemplate: '#publication/{publication_id}',
+          className: 'text-wrap-cell',
+          render: function(){
+            var model = this.model;
+            this.$el.empty();
+            var formattedValue = '';
+            if (this.model.has('authors')){
+              formattedValue += model.get('authors') + ' '; 
+            }
+            if (model.has('year_published')){
+              formattedValue += '(' + model.get('year_published') + '). ';
+            }
+            if (model.has('title')){
+              var title = model.get('title').trim();
+              if (title.charAt(title.length-1)!='.'){
+                title += '.';
+              }
+              formattedValue += title + ' ';
+            }
+            if (model.has('journal')){
+              formattedValue += model.get('journal') + ' '
+            }
+            if (model.has('volume')){
+              formattedValue += model.get('volume') + ', ';
+            }
+            if (model.has('pages')){
+              formattedValue += model.get('pages') + '.';
+            }
+            console.log('formattedValue', formattedValue);
+            var interpolatedVal = Iccbl.formatString(this.hrefTemplate,model);
+            this.$el.append($('<a>', {
+              tabIndex : -1,
+              href : interpolatedVal,
+              target : this.target,
+              title: 'Citation text for this publication'
+            }).text(formattedValue));
+            return this;
+          }
+        })
+      });
+      colModel.push(lastCol);
       var grid = new Backgrid.Grid({
         columns: colModel,
         collection: collection,
@@ -1607,8 +1662,13 @@ define([
     
     showUserDslWarnings: function() {
       var self = this;
-      console.log('showUserDslWarnings');
       $('#content_title_message').find('#screen_member_dsl_message').remove();
+      
+      if (!appModel.hasGroup('readEverythingAdmin')){
+        return;
+      }
+
+      console.log('showUserDslWarnings');
       var users = appModel.getUsers();
       var screenMembers = users.filter(function(model){
         var userId = model.get('screensaver_user_id');

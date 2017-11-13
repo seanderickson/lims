@@ -149,10 +149,18 @@ define([
         resource.fields['lab_head_appointment_update_date']['visibility'] = ['d','e']
         resource.fields['classification']['visibility'] = ['d','e']
         resource.fields['lab_member_ids']['visibility'] = ['d'];
-        resource.fields['lab_member_ids'].vocabulary = 
-        (
-            _.object(self.model.get('lab_member_ids'),
-              self.model.get('lab_member_names')));
+        resource.fields['lab_member_ids'].vocabulary = {};
+        var lab_member_ids = self.model.get('lab_member_ids');
+        var lab_member_names = self.model.get('lab_member_names');
+        var lab_member_emails = self.model.get('lab_member_emails');
+        for (var i=0; i<lab_member_ids.length; i++){
+          var name = lab_member_names[i];
+          var email = lab_member_emails[i];
+          if (!_.isEmpty(email) && email != 'null'){
+            name += ' &lt;' + email + '&gt;';
+          }
+          resource.fields['lab_member_ids'].vocabulary[lab_member_ids[i]] = name;
+        }
       } else {
         resource.fields['lab_member_ids']['editability'] = [];
       }

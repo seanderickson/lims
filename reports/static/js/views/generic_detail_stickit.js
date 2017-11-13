@@ -322,8 +322,11 @@ define([
               output.push(value);
             }
           });
-          
-          return output.join(', ');
+          var sep = ', ';
+          if (fi.display_options && fi.display_options.separator ){
+            sep = fi.display_options.separator;
+          }
+          return output.join(sep);
         }
         return values;
       };

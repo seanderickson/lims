@@ -32,9 +32,10 @@ rnai_data_sharing_level,fields.screensaveruser,,,41,,TRUE,"RNAi Data Sharing Lev
 is_active,fields.screensaveruser,auth_user,,42,,TRUE,"True if the user is currently active and may log in to the system","User Can Log In",TRUE,,[l;d],[c;u],boolean,,"{ 'group': 'Data Access Level' }",,,,,,,3
 is_staff,fields.screensaveruser,auth_user,,43,,TRUE,"For information purposes only - permissions are granted using UserGroups","Is Staff",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access Level' }",,,,,,[readEverythingAdmin],
 is_superuser,fields.screensaveruser,auth_user,,44,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access Level' }",,,,,,[superusers],
-lab_member_ids,fields.screensaveruser,custom,,45,,TRUE,"Lab Member Screensaver User Ids","Lab Members",TRUE,,,,list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }",multiselect3,,,,,,1
+lab_member_ids,fields.screensaveruser,custom,,45,,TRUE,"Lab Member Screensaver User Ids","Lab Members",TRUE,,,,list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}', 'separator': '<br/>' }",multiselect3,,,,,,1
 lab_member_names,fields.screensaveruser,custom,,46,,TRUE,"Lab Member Names","Lab Member Names",TRUE,,,,list,,,,,,,,,1
-permissions,fields.user,,,47,,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[c;u],list,,,multiselect2,,,,,[readEverythingAdmin],
-usergroups,fields.user,,,48,,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[c;u],list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,,,,,[readEverythingAdmin],
-all_permissions,fields.user,,,49,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,,list,link,,,,,,,[readEverythingAdmin],
-date_created,fields.screensaveruser,,,50,,TRUE,"The date the user's account was first recorded in Screensaver","Date Recorded",TRUE,,[l;d],,date,,,,,,,,[readEverythingAdmin],
+lab_member_emails,fields.screensaveruser,custom,,47,,TRUE,"Lab Member Emails","Lab Member Emails",TRUE,,,,list,,,,,,,,,1
+permissions,fields.user,,,48,,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[c;u],list,,,multiselect2,,,,,[readEverythingAdmin],
+usergroups,fields.user,,,49,,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[c;u],list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,,,,,[readEverythingAdmin],
+all_permissions,fields.user,,,50,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,,list,link,,,,,,,[readEverythingAdmin],
+date_created,fields.screensaveruser,,,51,,TRUE,"The date the user's account was first recorded in Screensaver","Date Recorded",TRUE,,[l;d],,date,,,,,,,,[readEverythingAdmin],

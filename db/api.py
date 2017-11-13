@@ -14756,6 +14756,9 @@ class LibraryScreeningResource(ActivityResource):
         #                 'library_screening delete action requires an activity_id %s' 
         #                 % kwargs)
 
+class RawDataTransformerResource(DbApiResource):
+    
+    pass
 
     
 class ScreenResource(DbApiResource):
@@ -17223,7 +17226,21 @@ class ScreensaverUserResource(DbApiResource):
                         func.array_agg(literal_column('name')),
                         LIST_DELIMITER_SQL_ARRAY)])
                 .select_from(
-                    select([lab_member.c.name])
+                    select([lab_member.c.name, lab_member.c.email])
+                    .select_from(lab_member)
+                    .order_by(lab_member.c.last_first)
+                    .where(lab_member.c.lab_head_id
+                        ==literal_column('screensaver_user.screensaver_user_id'))
+                    .where(lab_member.c.lab_head_id!=lab_member.c.screensaver_user_id)
+                    .alias('inner'))        
+                ),
+            'lab_member_emails': (
+                select([
+                    func.array_to_string(
+                        func.array_agg(func.coalesce(literal_column('email'),'null')),
+                        LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(
+                    select([lab_member.c.name,lab_member.c.email])
                     .select_from(lab_member)
                     .order_by(lab_member.c.last_first)
                     .where(lab_member.c.lab_head_id

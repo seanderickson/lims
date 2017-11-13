@@ -164,7 +164,10 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
   --data-binary @lims/static/production_data/screensaver_usergroups-prod.csv
 # PATCH user-usergroup assignments only
 
-
+# Add user "sde" to the screensaver_users table 20150831
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
+ -X PATCH http://localhost:8000/db/api/v1/screensaveruser/ \
+ --data-binary @lims/static/production_data/screensaver_users-db-prod.csv 
 
 #####
 # run all tests

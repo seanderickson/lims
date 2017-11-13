@@ -21,6 +21,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import resolve
 from django.db import connection
+from django.db.utils import ProgrammingError
 from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
@@ -74,7 +75,6 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-from django.db.utils import ProgrammingError
 
 
 logger = logging.getLogger(__name__)
@@ -523,10 +523,11 @@ def tearDownModule():
     logger.info('=== teardown Module')
 #     Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
 #     LabAffiliation.objects.all().delete()
-
-    ScreensaverUser.objects.all().delete()
-    UserProfile.objects.all().delete()
-    User.objects.all().delete()
+    # 20171111 - no global teardown; only teardown on each instance to allow
+    # selective teardown and to allow skipping teardown
+    # ScreensaverUser.objects.all().delete()
+    # UserProfile.objects.all().delete()
+    # User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
 

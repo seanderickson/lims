@@ -1876,7 +1876,8 @@ define([
             + appModel.getVocabularyTitle(
               'useragreement.data_sharing_level',userDslSm) + ')'
             + " is less restrictive than user's Screens: (" 
-            + error_screens_sm.join(',') + ')'));
+            + error_screens_sm.join(',') + ')')
+            + '(violates policy)');
       }
       if (!_.isEmpty(error_screens_rnai)){
         $('#content_title_message').append(
@@ -1885,7 +1886,8 @@ define([
             + appModel.getVocabularyTitle(
               'useragreement.data_sharing_level',userDslRnai) + ')'
             + " is less restrictive than user's Screens: (" 
-            + error_screens_rnai.join(',') + ')'));
+            + error_screens_rnai.join(',') + ')'
+            + '(violates policy)'));
       }
     },
 

@@ -1705,7 +1705,8 @@ define([
                 + user.get('name') + ' - '
                 + appModel.getVocabularyTitle(
                   'useragreement.data_sharing_level',user.get(userDslProp)) + ')';
-            }).join(', ')));
+            }).join(', ')
+            + ' (violates policy)'));
       }
     }
     

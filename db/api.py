@@ -2474,7 +2474,8 @@ class UserAgreementResource(DbApiResource):
         # Perform manual deserialization; MULTIPART content is in POST dict
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.info('param_hash: %r', {k:v for k,v in param_hash.items() if k != 'schema'})
+        logger.debug('param_hash: %r', 
+            {k:v for k,v in param_hash.items() if k != 'schema'})
         deserialized = {}
         for key in fields.keys():
             if param_hash.get(key, None) is not None:
@@ -2711,7 +2712,6 @@ class UserAgreementResource(DbApiResource):
         else:
             # Disallow setting DSL to a level different than the Lab Head
             lab_head_id = screensaver_user.lab_head_id
-            logger.info('lab_head_id %r', lab_head_id)
             if lab_head_id != screensaver_user.screensaver_user_id:
                 try:
                     lh_user_agreement = UserAgreement.objects.get(
@@ -2879,16 +2879,21 @@ class ScreenAuthorization(UserGroupAuthorization):
                 screensaver_user.username, [s.facility_id for s in my_screens])
         return set(my_screens)
     
-    def get_user_data_sharing_level(self, screensaver_user, type):
+    def get_user_data_sharing_level(self, screensaver_user, user_agreement_type):
+        logger.info('get user data sharing agreements for %r, %r', 
+            screensaver_user, user_agreement_type)
         active_agreements = \
             screensaver_user.useragreement_set.all()\
-            .filter(type=type).filter(date_active__isnull=False)\
+            .filter(type=user_agreement_type)\
+            .filter(date_active__isnull=False)\
             .filter(date_expired__isnull=True)
         current_dsl = 0
         if active_agreements.exists():
             current_dsl = active_agreements[0].data_sharing_level
         else:
             logger.info('no active %r user agreements for user: %r', type, screensaver_user)
+        logger.debug('user dsl: %r, %r, %r', 
+            screensaver_user, user_agreement_type, current_dsl)
         return current_dsl
     
     def has_sm_data_deposited(self, screensaver_user):
@@ -2995,13 +3000,17 @@ class ScreenAuthorization(UserGroupAuthorization):
     def get_user_effective_data_sharing_level(self, screensaver_user, screen_type):
         effective_dsl = 0
         if screen_type==VOCAB_SCREEN_TYPE_RNAI \
-            and self.has_rna_data_deposited(screensaver_user) is False:
-            return effective_dsl
+            and self.has_rna_data_deposited(screensaver_user) is True:
+            effective_dsl = self.get_user_data_sharing_level(
+                screensaver_user, self.VOCAB_USER_AGREEMENT_RNAI)
         if screen_type==VOCAB_SCREEN_TYPE_SM \
-            and self.has_sm_data_deposited(screensaver_user) is False:
-            return effective_dsl
+            and self.has_sm_data_deposited(screensaver_user) is True:
+            effective_dsl =  self.get_user_data_sharing_level(
+                screensaver_user, self.VOCAB_USER_AGREEMENT_SM)
+        if DEBUG_SCREEN_ACCESS:
+            logger.info('effective dsl: %r, %r, %r', screensaver_user, screen_type, effective_dsl)
+        return effective_dsl
         
-        return self.get_user_data_sharing_level(screensaver_user, screen_type)
         
 #         if screensaver_user.useragreement_set.filter(type=screen_type).exists():
 #             user_agreement = screensaver_user.useragreement_set.filter(type=screen_type)[0]
@@ -3049,7 +3058,10 @@ class ScreenAuthorization(UserGroupAuthorization):
             screensaver_user, VOCAB_SCREEN_TYPE_SM)
         user_effective_rna_dsl = self.get_user_effective_data_sharing_level(
             screensaver_user, VOCAB_SCREEN_TYPE_RNAI)
-
+        if DEBUG_SCREEN_ACCESS:
+            logger.info('my dsls: %r, %r, %r', username, 
+                user_effective_sm_dsl,user_effective_rna_dsl)
+        
         my_qualified_sm_facility_ids = set([
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
@@ -3223,7 +3235,7 @@ class ScreenAuthorization(UserGroupAuthorization):
                                     'allow level: %r: %r', 
                                     level, fields_by_level[level])
                     else: 
-                        logger.warn('user: %r has no access level for screen: %r',
+                        logger.warn('user: %r effective_access_level is None, screen: %r',
                             user.username, facility_id)
                     if DEBUG_SCREEN_ACCESS:
                         logger.info('allowed fields: %r', self.allowed_fields)
@@ -11872,7 +11884,7 @@ class AttachedFileResource(DbApiResource):
             if hasattr(af, key):
                 setattr(af, key, val)
             else:
-                logger.warn('no such attribute on attached_file: %s:%r' 
+                logger.debug('no such attribute on attached_file: %s:%r' 
                     % (key, val))
 
         parent_log = kwargs.get('parent_log', None)
@@ -16005,7 +16017,6 @@ class ScreenResource(DbApiResource):
                 
             for key, val in initializer_dict.items():
                 if hasattr(screen, key):
-                    logger.info('setattr: %r:%r', key, val)
                     setattr(screen, key, val)
             screen.clean()
             screen.save()
@@ -16944,15 +16955,13 @@ class ScreensaverUserResource(DbApiResource):
     def dispatch_user_activityview(self, request, **kwargs):
         screensaver_user_id = kwargs.pop('screensaver_user_id')
         
+        # TODO: 20171111 - performance
+        # Can be made more performant by directly joining user to activity table
         nested_search_data = [
             { 'serviced_user_id__eq' : screensaver_user_id},
             {'performed_by_user_id__eq': screensaver_user_id},
         ]
         
-        screensaver_user = ScreensaverUser.objects.get(pk=screensaver_user_id)
-        user_screens = self._meta.authorization.get_user_screens(screensaver_user)
-        nested_search_data.append( { 'screen_facility_id__in':  [ s.facility_id 
-            for s in user_screens ]})
         kwargs['nested_search_data'] = nested_search_data
         return ActivityResource().dispatch('list', request, **kwargs)    
 
@@ -17329,7 +17338,7 @@ class ScreensaverUserResource(DbApiResource):
 
     def get_id(self, deserialized, validate=False, schema=None, **kwargs):
         
-        logger.info('su get_id: %r, %r', deserialized, kwargs)
+        logger.debug('su get_id: %r, %r', deserialized, kwargs)
         id_kwargs = {}
         
         screensaver_user_id = kwargs.get('screensaver_user_id', None)

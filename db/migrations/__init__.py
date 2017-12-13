@@ -1,13 +1,14 @@
 
-import datetime
 import json
 import logging
 
+from datetime import datetime, timedelta
 from django.db import migrations, models
 from pytz import timezone
 import pytz
 from reports.models import ApiLog
 
+logger = logging.getLogger(__name__)
 
 # # unique offset for the logs in this migration to avoid collisions
 # plate_vol_time_offset = 1111
@@ -32,7 +33,7 @@ def create_log_time(key,input_date):
     - Some activities in SS1 have identical date_of_activity
     '''
     date_time = pytz.timezone('US/Eastern').localize(
-        datetime.datetime.combine(input_date, datetime.min.time()))
+        datetime.combine(input_date, datetime.min.time()))
     i = 0
     
     timekey = '%r:%r'

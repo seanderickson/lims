@@ -9,20 +9,44 @@ import pytz
 from reports.models import ApiLog
 
 
-# this is a workaround, because some activities have identical date_of_activity
+# # unique offset for the logs in this migration to avoid collisions
+# plate_vol_time_offset = 1111
+# def create_log_time(input_date):
+#     date_time = pytz.timezone('US/Eastern').localize(
+#         datetime.datetime.combine(input_date, datetime.datetime.min.time()))
+#     i = 0
+#     date_time += datetime.timedelta(0,plate_vol_time_offset)
+#     while date_time in times_seen:
+#         i += 1
+#         date_time += datetime.timedelta(0,i)
+#     times_seen.add(date_time)
+#     return date_time
+
+# Hash of log times: 
+# Workaround, because some activities have identical date_of_activity
 times_seen = set()
-# unique offset for the logs in this migration to avoid collisions
-plate_vol_time_offset = 1111
-def create_log_time(input_date):
+
+def create_log_time(key,input_date):
+    ''' Create a log timestamp that is unique for the key 
+    ("plate_number", "screen_facility_id", etc):
+    - Some activities in SS1 have identical date_of_activity
+    '''
     date_time = pytz.timezone('US/Eastern').localize(
-        datetime.datetime.combine(input_date, datetime.datetime.min.time()))
+        datetime.combine(input_date, datetime.min.time()))
     i = 0
-    date_time += datetime.timedelta(0,plate_vol_time_offset)
-    while date_time in times_seen:
+    
+    timekey = '%r:%r'
+    _timekey = timekey % (key,date_time)
+    while _timekey in times_seen:
         i += 1
-        date_time += datetime.timedelta(0,i)
-    times_seen.add(date_time)
+        logger.info('key: %s, adjust time: %s to %s', 
+            key,
+            date_time.isoformat(), (date_time + timedelta(0,i)))
+        date_time += timedelta(0,i)
+        _timekey = timekey % (key,date_time)
+    times_seen.add(_timekey)
     return date_time
+
 
 def _create_generic_log(activity):
     

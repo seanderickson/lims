@@ -1,11 +1,10 @@
-# TODO: convert to openpyxl
 from __future__ import unicode_literals
 
 from collections import OrderedDict
 import io
 import logging
 
-from tastypie.exceptions import BadRequest
+# from tastypie.exceptions import BadRequest
 import xlrd
 import xlsxwriter
 
@@ -15,12 +14,12 @@ from reports.serialize import csvutils
 import reports.serialize
 
 
-# from PIL import Image
 logger = logging.getLogger(__name__)
 
 
 LIST_DELIMITER_XLS = ';'
 
+# TODO: compare with other packages: openpyxl, pyexcelerate
 def xls_write_workbook(file, data, request=None, image_keys=None, 
     title_function=None, list_brackets=None):
     '''
@@ -30,7 +29,7 @@ def xls_write_workbook(file, data, request=None, image_keys=None,
     '''
 
     if not isinstance(data, dict):
-        raise BadRequest(
+        raise Exception(
             'unknown data for generic xls serialization: %r' % type(data))
 
     wb = xlsxwriter.Workbook(file, {'constant_memory': True})
@@ -129,7 +128,7 @@ def generic_xls_write_workbook(file, data):
             else:
                 generic_write_rows_to_sheet(sheet_rows, sheet)
     else:
-        raise BadRequest(
+        raise Exception(
             'unknown data for generic xls serialization: %r' % type(data))
     logger.info('save to file; %r', file.name)
     wb.close()

@@ -654,10 +654,14 @@ class ApiResource(SqlAlchemyResource):
             if key in deserialized:
                 _val = parse_val(
                     deserialized.get(key,None), key,field['data_type']) 
+                if DEBUG_PARSE:
+                    logger.info('parsing: %r, %r, %r',
+                        key, deserialized.get(key,None), _val)
+                if _val is None:
+                    _val = field.get('default',None)
+                    if _val == '': 
+                        _val = None
                 initializer_dict[key] = _val
-            if DEBUG_PARSE:
-                logger.info('parsing: %r, %r, %r',
-                    key, deserialized.get(key,None), _val)
         return initializer_dict
     
     @read_authorization
@@ -667,7 +671,7 @@ class ApiResource(SqlAlchemyResource):
         - for large raw_search_data (too large for URL param encoding)
         '''
          
-        DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_SEARCH = False or logger.isEnabledFor(logging.DEBUG)
          
         search_ID = kwargs['search_ID']
          
@@ -800,7 +804,7 @@ class ApiResource(SqlAlchemyResource):
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
         logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
-        logger.info('patch logs created')
+        logger.info('patch logs created: %d', len(logs) if logs else 0 )
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         logger.debug('updates: %r', [x for x in logs if x.diffs ])
@@ -1015,9 +1019,10 @@ class ApiResource(SqlAlchemyResource):
                     ids.add(idval)
             kwargs_for_log[id_param] = ids
         new_data = self._get_list_response_internal(**kwargs_for_log)
-        logger.debug('patch list done, new data: %d', len(new_data))
+        logger.debug('post list done, new data: %d', len(new_data))
 
         logs = self.log_patches(request, original_data,new_data,schema=schema, **kwargs)
+        logger.info('post logs created: %d', len(logs) if logs else 0 )
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
@@ -1193,13 +1198,13 @@ class ApiResource(SqlAlchemyResource):
                 if val is not None:
                     kwargs_for_log['%s' % id_field] = val
         new_data = self._get_detail_response_internal(**kwargs_for_log)
-        logger.info('new_data: %r', new_data)
+        logger.debug('new_data: %r', new_data)
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
             id_attribute=id_attribute, schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
-            logger.info('patch log: %r', patched_log)
+            logger.debug('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
         # 20170109 - return complex data
@@ -2421,7 +2426,7 @@ class FieldResource(ApiResource):
         return self.build_response(request, response_hash, **kwargs)
 
     def _build_fields(self, scopes=None):
-        ''' Internal callers
+        ''' Internal callers - build the schema.fields hash
         '''
         if not scopes:
             scopes = MetaHash.objects.all().filter(

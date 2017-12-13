@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from collections import OrderedDict
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 import datetime
 from decimal import Decimal
 import json
@@ -79,7 +78,6 @@ def _create_cpr_log(
     username=None, email=None, performed_by_id=None, comments=None, **kwargs ):
 
     log = ApiLog()
-    log.date_time = create_log_time(date_of_activity)
     if username:
         log.username = username
     else:
@@ -96,11 +94,12 @@ def _create_cpr_log(
         log.comment = 'Cherry Pick Request reservation log (migration)'
     log.ref_resource_name = cpr_resource_name
     log.key = str(cpr_id)
+    log.date_time = create_log_time(log.key,date_of_activity)
     
-    # Hack: to avoid integrity collisions between test migrations
-    if log.date_time in extant_cpr_logs[log.key]:
-        log.date_time = create_log_time(log.date_time)
-    extant_cpr_logs[log.key].add(log.date_time)
+#     # Hack: to avoid integrity collisions between test migrations
+#     if log.date_time in extant_cpr_logs[log.key]:
+#         log.date_time = create_log_time('cpr',log.date_time)
+#     extant_cpr_logs[log.key].add(log.date_time)
         
     log.uri = '/'.join([
         'screen', screen_facility_id, log.ref_resource_name,log.key])
@@ -113,7 +112,6 @@ def _create_wvac_log(
     username=None, email=None, performed_by_id=None, comments=None, **kwargs ):
 
     log = ApiLog()
-    log.date_time = create_log_time(date_of_activity)
     if username:
         log.username = username
     else:
@@ -126,6 +124,7 @@ def _create_wvac_log(
     log.ref_resource_name = copywell_resource_name
     log.key = copywell_resource_name
     log.uri = copywell_resource_name
+    log.date_time = create_log_time(log.key,date_of_activity)
     log.api_action = 'PATCH'
     
     return log
@@ -142,7 +141,7 @@ def _create_ls_log(
     log.uri = '/'.join([
         'screen', screen_facility_id, log.ref_resource_name,log.key])
     log.api_action = 'PATCH'
-    log.date_time = create_log_time(date_of_activity)
+    log.date_time = create_log_time(log.key,date_of_activity)
     if created_by_username:
         log.username = created_by_username
     else:
@@ -168,10 +167,10 @@ def _create_plate_activity_log(activity_dict):
 #         str(int(activity_dict['plate_number'])).zfill(5)])
     log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
     log.comment = activity_dict['comments']
-    log.date_time = create_log_time(activity_dict['date_of_activity'])
-    if log.date_time in extant_plate_logs[log.key]:
-        log.date_time = create_log_time(log.date_time)
-    extant_plate_logs[log.key].add(log.date_time)    
+    log.date_time = create_log_time(log.key,activity_dict['date_of_activity'])
+#     if log.date_time in extant_plate_logs[log.key]:
+#         log.date_time = create_log_time(log.key,log.date_time)
+#     extant_plate_logs[log.key].add(log.date_time)    
     log.username = activity_dict['username']
     if log.username is None:
         log.username = activity_dict['email']
@@ -444,7 +443,7 @@ def create_library_screening_logs(apps, schema_editor):
 #                 str(ls['plate_number']).zfill(5)])
             cp_log.uri = '/'.join([base_uri,cp_log.ref_resource_name,cp_log.key])
             if cp_log.date_time in extant_plate_logs[cp_log.key]:
-                cp_log.date_time = create_log_time(cp_log.date_time)
+                cp_log.date_time = create_log_time(cp_log.key,cp_log.date_time)
             extant_plate_logs[cp_log.key].add(cp_log.date_time)    
             previous_screening_count = copyplate_to_screening_count.get(
                 ls['plate_id'], 0)
@@ -728,7 +727,7 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
 
                     # Hack: to avoid integrity collisions between plate migrations
                     if plate_log.date_time in extant_plate_logs[plate_log.key]:
-                        plate_log.date_time = create_log_time(plate_log.date_time)
+                        plate_log.date_time = create_log_time(plate_log.key,plate_log.date_time)
                     extant_plate_logs[plate_log.key].add(plate_log.date_time)
                     plate_log.comment = None
                     plate_log.ref_resource_name = plate_resource_name
@@ -748,13 +747,13 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
                     logger.debug('plate log: %r, %r', plate_log, plate_log.diffs)
                     cpr_plate_logs[cpr_plate_key] = plate_log
                 cw_log = _child_log_from(cpr_parent_log)
-                # NOTE: prevent integrity collisions with wvac_logs:
-                cw_log.date_time = create_log_time(wva['date_of_activity'])
                 cw_log.comment = None
                 cw_log.ref_resource_name = copywell_resource_name
                 cw_log.key = '/'.join([
                     wva['library_short_name'], wva['copy_name'], wva['well_id']])
                 cw_log.uri = cw_log.ref_resource_name + '/' + cw_log.key
+                # NOTE: prevent integrity collisions with wvac_logs:
+                cw_log.date_time = create_log_time(cw_log.key,wva['date_of_activity'])
                 cw_log.api_action = 'PATCH'
                 prev_data = cw_prev_data.get(cw_log.key,None)
                 if prev_data is None:
@@ -794,12 +793,12 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
                     wva_correction_logs[wvac_id] = wvac_parent_log
             
                 cw_log = _child_log_from(wvac_parent_log)
-                # NOTE: prevent integrity collisions with cpr_logs:
-                cw_log.date_time = create_log_time(wva['date_of_activity'])
                 cw_log.ref_resource_name = copywell_resource_name
                 cw_log.key = '/'.join([
                     wva['library_short_name'], wva['copy_name'], wva['well_id']])
                 cw_log.uri = cw_log.ref_resource_name + '/' + cw_log.key
+                # NOTE: prevent integrity collisions with cpr_logs:
+                cw_log.date_time = create_log_time(cw_log.key,wva['date_of_activity'])
                 cw_log.api_action = 'PATCH'
                 prev_data = cw_prev_data.get(cw_log.key,None)
                 if prev_data is None:
@@ -1081,12 +1080,12 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
             cherry_pick_assay_plate_id__in=cpap_ids):
         # for cpap in cp_screening.cherrypickassayplatescreeninglink_set.all():  
             cpap_log = _child_log_from(cpr_parent_log)
-            cpap_log.date_time = create_log_time(cpr_parent_log.date_time)
             cpap_log.ref_resource_name = cpap_resource_name
             cpap_log.key = '/'.join(str(x) for x in [
                 cpap.cherry_pick_request_id, 
                 cpap.plate_ordinal ])
             cpap_log.uri = '/'.join([base_uri,cpap_log.ref_resource_name,cpap_log.key])
+            cpap_log.date_time = create_log_time(cpap_log.key,cpr_parent_log.date_time)
             # Note: previous state will always be "not plated"
             # NOTE: for the Cherry Pick Screening, the "performed_by" field is a 
             # screen member, not the admin

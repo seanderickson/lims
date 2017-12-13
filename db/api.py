@@ -67,8 +67,9 @@ from db.models import ScreensaverUser, Screen, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
     ScreenKeyword, ResultValue, AssayWell, Publication, ScreenerCherryPick, \
     LabCherryPick, CherryPickRequestEmptyWell, CherryPickScreening, \
-    LabAffiliation, UserAgreement
-from db.support import lims_utils, screen_result_importer, bin_packer
+    LabAffiliation, UserAgreement, RawDataTransform, RawDataInputFile
+from db.support import lims_utils, screen_result_importer, bin_packer,\
+    raw_data_reader, plate_matrix_transformer
 from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
@@ -81,7 +82,7 @@ from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_RESULT_DATA, \
     API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
-    DEBUG_AUTHORIZATION
+    DEBUG_AUTHORIZATION, FieldResource
 from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, ApiLogResource, \
     write_authorization, read_authorization, UserResourceAuthorization
@@ -100,6 +101,8 @@ from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat, _concat_with_sep
+from db.support.plate_matrix_transformer import Collation
+import xlsxwriter
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
@@ -172,16 +175,22 @@ class DbApiResource(reports.api.ApiResource):
         super(reports.api.ApiResource,self).__init__(**kwargs)
         self.resource_resource = None
         self.apilog_resource = None
+        self.field_resource = None
 
     def get_apilog_resource(self):
-        if not self.apilog_resource:
+        if self.apilog_resource is None:
             self.apilog_resource = ApiLogResource()
         return self.apilog_resource
     
     def get_resource_resource(self):
-        if not self.resource_resource:
+        if self.resource_resource is None:
             self.resource_resource = ResourceResource()
         return self.resource_resource
+    
+    def get_field_resource(self):
+        if self.field_resource is None:
+            self.field_resource = FieldResource()
+        return self.field_resource
     
     def get_request_user(self,request):
         
@@ -2313,17 +2322,23 @@ class UserAgreementResource(DbApiResource):
             ])
             .select_from(_vocab)
             .where(_vocab.c.scope == 'useragreement.type')
-            .where(_vocab.c.is_retired != True)
+            .where(func.coalesce(_vocab.c.is_retired,False) != True)
             .order_by(_vocab.c.ordinal))
         types = []
+        compiled_stmt = str(agreement_type_table.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
+        logger.info('user agreement temp table: %s',compiled_stmt)
         with get_engine().connect() as conn:
             result = conn.execute(agreement_type_table)
             types =  [x[0] for x in result ]
+        logger.info('types: %r', types)
         queries = []
         for type in types:
             query = (
                 select([
-                    _su.c.screensaver_user_id,_su.c.username,
+                    _su.c.screensaver_user_id,
+                    _su.c.username,
                     _su.c.lab_head_id,
                     literal_column("'%s'"%type).label('type')])
                 .select_from(_su))
@@ -14758,9 +14773,758 @@ class LibraryScreeningResource(ActivityResource):
 
 class RawDataTransformerResource(DbApiResource):
     
-    pass
+    class Meta:
 
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             IccblSessionAuthentication())
+        resource_name = 'rawdatatransform'
+        authorization = UserGroupAuthorization(resource_name)
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        always_return_data = True 
+        
+    def __init__(self, **kwargs):
+        super(RawDataTransformerResource, self).__init__(**kwargs)
+        self.lcp_resource = None
+        self.reagent_resource = None
+
+    def prepend_urls(self):
+
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<screen_facility_id>([\w]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<screen_facility_id>([\w]+))/"
+                 r"(?P<cherry_pick_request_id>(\d+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
     
+    def get_lcp_resource(self):
+        if self.lcp_resource is None:
+            self.lcp_resource = LibraryCopyPlateResource()
+        return self.lcp_resource
+    
+    def get_reagent_resource(self):
+        if self.reagent_resource is None:
+            self.reagent_resource = ReagentResource()
+        return self.reagent_resource
+    
+    @read_authorization
+    def get_detail(self, request, **kwargs):
+
+        cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
+        screen_facility_id = kwargs.get('screen_facility_id', None)
+        
+        if screen_facility_id is None and cherry_pick_request_id is None:
+            raise Http404('No screen or Cherry Pick Request Specified')
+        
+        screen = None
+        if screen_facility_id:
+            screen = Screen.objects.get(facility_id=screen_facility_id)
+        cpr = None
+        if cherry_pick_request_id:
+            cpr = CherryPickRequest.objects.get(cherry_pick_request_id=cherry_pick_request_id)
+            
+        schema = kwargs.pop('schema')
+        logger.info('get detail: %r', kwargs)
+        schema = self.build_schema()
+
+        _data = {}
+        query = RawDataTransform.objects.all()
+        if screen:
+            query = query.filter(screen=screen)
+            _data['screen_facility_id'] = screen.facility_id
+        else:
+            query = query.filter(screen__isnull=True)
+        if cpr:
+            query = query.filter(cherry_pick_request=cpr)
+            _data['cherry_pick_request_id'] = cpr.cherry_pick_request_id
+        else:
+            query = query.filter(cherry_pick_request__isnull=True)    
+            
+        if not query.exists():
+            raise Http404
+        
+        if query.count() != 1:
+            raise Http404('Wrong number of objects returned: %d', query.count())
+        rdt = query.all()[0]
+        
+        for key in schema['fields'].keys():
+            if hasattr(rdt, key):
+                _data[key] = getattr(rdt,key)
+        
+        if rdt.rawdatainputfile_set.all().exists():
+            input_files = []
+            _data['input_files'] = input_files
+            for rdif in rdt.rawdatainputfile_set.all():
+                logger.info('found input file: %r', rdif)
+                input_file = {}
+                input_files.append(input_file)
+                for key in schema['input_file_fields'].keys():
+                    if hasattr(rdif, key):
+                        input_file[key] = getattr(rdif,key)
+        
+        final_data = { API_RESULT_DATA: _data }
+        
+        return self.build_response(request, _data)
+        
+    def build_schema(self, user=None):
+        schema = DbApiResource.build_schema(self, user=user)    
+    
+        extra_fields = self.get_field_resource()._build_fields(
+            scopes=['fields.rawdatainputfile','fields.rawdataoutput'])
+        
+        schema['input_file_fields'] = { field['key']:field 
+            for field in extra_fields if field['scope'] == 'fields.rawdatainputfile' }
+        schema['output_fields'] = { field['key']:field 
+            for field in extra_fields if field['scope'] == 'fields.rawdataoutput' }
+    
+        return schema
+    
+    @read_authorization
+    def get_list(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+    def build_list_response(self, request, **kwargs):
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+        
+        logger.info('params: %r', param_hash.keys())
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            (filter_expression, filter_hash, readable_filter_hash) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(
+                    schema, param_hash=param_hash)
+            filename = self._get_filename(readable_filter_hash)
+
+            filter_expression = \
+                self._meta.authorization.filter(request.user,filter_expression)
+
+                  
+            order_params = param_hash.get('order_by', [])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_hash.keys(), manual_field_includes,
+                param_hash.get('visibilities'),
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            rowproxy_generator = None
+            if use_vocab is True:
+                rowproxy_generator = \
+                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            rowproxy_generator = \
+               self._meta.authorization.get_row_property_generator(
+                   request.user, field_hash, rowproxy_generator)
+ 
+            # specific setup
+            _rawdatatransform = self.bridge['raw_data_transform']
+            _rawdatainput = self.bridge['raw_data_input_file']
+            _screen = self.bridge['screen']
+            _cpr = self.bridge['cherry_pick_request']
+            
+            j = _rawdatatransform
+            j = j.join(
+                _screen, _rawdatatransform.c.screen_id==_screen.c.screen_id,
+                isouter=True)
+            j = j.join(
+                _cpr, _rawdatatransform.c.cherry_pick_request_id==_cpr.c.cherry_pick_request_id,
+                isouter=True)
+            
+            custom_columns = {
+#                 'lookup_pmid': literal_column("'lookup_pmid'"),
+                }
+
+            base_query_tables = ['raw_data_transform', 'screen','cherry_pick_request' ] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns)
+            
+            stmt = select(columns.values()).select_from(j)
+            # general setup
+             
+            (stmt, count_stmt) = self.wrap_statement(
+                stmt, order_clauses, filter_expression)
+            if not order_clauses and filter_expression is None:
+                _alias = Alias(stmt)
+                stmt = select([text('*')]).select_from(_alias)
+            stmt = stmt.order_by('-screen_facility_id')
+            
+            title_function = None
+            if use_titles is True:
+                def title_function(key):
+                    return field_hash[key]['title']
+            if is_data_interchange:
+                title_function = DbApiResource.datainterchange_title_function(
+                    field_hash,schema['id_attribute'])
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename,
+                field_hash=field_hash,
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function, meta=kwargs.get('meta', None),
+                use_caching=True)
+             
+        except Exception, e:
+            logger.exception('on get_list %s' % self._meta.resource_name)
+            raise e  
+
+    def put_list(self, request, **kwargs):
+        raise NotImplementedError(
+            "Put list is not implemented for Raw Data Transform")
+    
+    def put_detail(self, request, **kwargs):
+        raise NotImplementedError(
+            "Post detail is not implemented for Raw Data Transform")
+    
+    def patch_list(self, request, **kwargs):
+        raise NotImplementedError(
+            "Patch list is not implemented for Raw Data Transform")
+    
+    def patch_detail(self, request, **kwargs):
+        raise NotImplementedError(
+            "Patch detail is not implemented for Raw Data Transform")
+    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic
+    def post_detail(self, request, **kwargs):
+        
+        logger.info('post_detail...')
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+                
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        
+        
+        if len(request.FILES) == 0:
+            raise ValidationError(key='input_file', msg='Required')
+        
+        logger.info('request.FILES: %r', request.FILES.keys())
+        
+        fields = schema['fields']
+        initializer_dict = self.parse(param_hash, fields=fields)
+        # Expand plate ranges
+        plate_ranges = initializer_dict['plate_ranges']
+        lcp_resource = self.get_lcp_resource()
+        (plates,parsed_searches, errors) = lcp_resource.find_plates(plate_ranges)
+        if errors:
+            raise ValidationError(
+                key='plate_ranges', msg = 'Plates not found: %s' % ', '.join(sorted(errors)))
+        logger.info('parsed_searches: %r', parsed_searches)
+        plate_numbers = parsed_searches[0]['plate_numbers_expected']
+        logger.info('plate_numbers: %r', plate_numbers)
+        
+        logger.info('param_hash: %r', param_hash)
+        logger.info('initializer: %r', initializer_dict)
+        
+        screen_facility_id = initializer_dict.pop('screen_facility_id', None)
+        cherry_pick_request_id = initializer_dict.pop('cherry_pick_request_id', None)
+        if screen_facility_id is None and cherry_pick_request_id is None:
+            msg='must provide one of: %r' % parent_fields
+            raise ValidationError({
+                'screen_facility_id': msg,
+                'cherry_pick_request_id': msg 
+            })
+        if screen_facility_id is not None and cherry_pick_request_id is not None:
+            msg='may not specify both screen_facility_id and cherry_pick_request_id'
+            raise ValidationError({
+                'screen_facility_id': msg,
+                'cherry_pick_request_id': msg
+            })
+        screen = None
+        if screen_facility_id:
+            try:
+                screen = Screen.objects.get(
+                    facility_id=screen_facility_id)
+                initializer_dict['screen'] = screen
+            except ObjectDoesNotExist:
+                raise Http404('screen_facility_id %r does not exist' 
+                    % screen_facility_id)
+        cpr = None
+        if cherry_pick_request_id: 
+            try: 
+                cpr = CherryPickRequest.objects.get(
+                    cherry_pick_request_id=cherry_pick_request_id)
+                initializer_dict['cherry_pick_request'] = cpr
+            except ObjectDoesNotExist:
+                raise Http404('cherry_pick_request_id does not exist: %s' 
+                    % cherry_pick_request_id)
+        
+        try:
+            rdt = RawDataTransform.objects.get(
+                screen=screen, cherry_pick_request=cpr)
+            rdt.rawdatainputfile_set.all().delete()
+        except ObjectDoesNotExist:
+            logger.info('create a new raw data transform')
+            rdt = RawDataTransform.objects.create(
+                screen=screen, cherry_pick_request=cpr)
+        
+        for key, val in initializer_dict.items():
+            if hasattr(rdt, key):
+                setattr(rdt, key, val)
+            else:
+                logger.warn(
+                    'no such attribute on raw data transform: %s:%r' % (key, val))
+
+        _meta = {}
+
+        if rdt.assay_plate_size < rdt.library_plate_size:
+            # NOTE: will perform further plates count validation on matrix parsing
+            pass
+        elif rdt.assay_plate_size > rdt.library_plate_size:
+            if len(plate_numbers) % 4 != 0:
+                raise ValidationError(key='plate_ranges', 
+                    msg='Must be a multiple of 4 if assay_plate_size==1536')
+        
+        rnai_columns_to_write = []
+        if rdt.screen.screen_type == 'rnai':
+            rnai_columns_to_write = [
+                'vendor_entrezgene_symbols','vendor_entrezgene_id',
+                'vendor_genbank_accession_numbers','vendor_name','vendor_identifier',
+                'vendor_gene_name', 'facility_gene_name', 'is_deprecated']
+            
+            # TODO: pool
+        exact_well_fields = ['library_well_type','well_id','plate_number','well_name']
+        exact_well_fields.extend(rnai_columns_to_write)
+        wells = self.get_reagent_resource()._get_list_response_internal(**{
+                            'plate_number__in': plate_numbers,
+                            'exact_fields': exact_well_fields
+                            })
+        logger.info('welldata: %r', wells[0].keys())
+        
+        wells = { well['well_id']: well for well in wells }
+        
+        self.get_control_wells(rdt, plate_numbers, wells)
+            
+        input_file_fields = schema['input_file_fields']
+        logger.info('input_file_fields: %r', input_file_fields.keys())
+        
+        with  NamedTemporaryFile(delete=False, suffix='%s' % request.user.username) as temp_file:
+            workbook = xlsxwriter.Workbook(temp_file) #, {'constant_memory': True})
+            plate_numbers_consumed = []
+            plate_numbers_available = plate_numbers
+            for ordinal, filekey in enumerate(sorted(request.FILES.keys())):
+                logger.info('read file: %d, %r', ordinal, filekey)
+                _matrix_read_meta = {}
+                input_file = request.FILES[filekey]
+                input_file_initializer = {
+                    'ordinal': ordinal
+                    }
+                for key,val in param_hash.items():
+                    logger.debug('key: %r, filekey: %r, found: %r', 
+                        key, filekey, key.find(filekey))
+                    if key.find(filekey) == 0:
+                        field_key = key[len(filekey)+1:]
+                        logger.debug('field key: %r, in: %r', 
+                            field_key, field_key in input_file_fields)
+                        if field_key in input_file_fields:
+                            field = input_file_fields[field_key]
+                            input_file_initializer[field_key] = \
+                                parse_val(val, field_key, field['data_type'])
+                logger.info('input_file_initializer: %r', input_file_initializer)
+                filename = initializer_dict.get('filename', None)
+                if filename is None:
+                    filename = input_file.name
+                    initializer_dict['filename'] = filename
+                rdif = RawDataInputFile(**input_file_initializer)
+                rdif.raw_data_transform = rdt
+                
+                (matrices, errors) = raw_data_reader.read(input_file, filename)
+                
+                if errors: 
+                    raise ValidationError(key=filekey, msg=errors)
+                
+                _matrix_read_meta['matrices'] = len(matrices)
+                logger.info('read matrices: %d', len(matrices))
+                
+                collation = Collation.get_value(rdif.collation_order)
+                logger.info('read collation: %r', collation)
+                conditions = re.split(r'[\s,]+', rdif.conditions) if rdif.conditions else 'C1'
+                replicates = [str(x) for x in range(1,rdif.replicates+1)]
+                readouts = re.split(r'[\s,]+', rdif.readouts) if rdif.readouts else 'read1'
+                logger.info('conditions: %r, readouts: %r, replicates: %r',
+                    conditions, readouts, replicates)
+                _matrix_read_meta['conditions'] = ','.join(conditions)
+                _matrix_read_meta['readouts'] = ','.join(readouts)
+                _matrix_read_meta['replicates'] = ','.join(replicates)
+
+                collation_count = len(conditions)*len(replicates)*len(readouts)
+                if rdt.assay_plate_size < rdt.library_plate_size:
+                    collation_count *= 4
+                plates_required = len(matrices)/collation_count
+                if rdt.assay_plate_size > rdt.library_plate_size:
+                    plates_required *= 4
+                if collation_count > len(matrices):
+                    raise ValidationError(
+                        key=filekey, 
+                        msg='Wrong number number of collations: %d, matrices read: %d '
+                            % (collation_count, len(matrices)))
+                if len(matrices)%collation_count != 0:
+                    msg = (
+                        'Wrong number of collations: %d, '
+                        'must be a divisor of matrices read: %d' 
+                        % (collation_count, len(matrices)))
+                    raise ValidationError(
+                        key=filekey, 
+                        msg=msg)
+                
+                if plates_required > len(plate_numbers_available):
+                    msg='Wrong number of plates available: %d, required for collation: %d '
+                    raise ValidationError(
+                        key=filekey, 
+                        msg='Wrong number of plates available: %d, required for collation: %d '
+                            % (len(plate_numbers_available), plates_required))
+                plates_to_read = plate_numbers_available[:plates_required]
+                _matrix_read_meta['plates'] = ','.join([str(x) for x in plates_to_read])
+                plate_numbers_consumed.extend(plates_to_read)
+                plate_numbers_available = plate_numbers_available[plates_required:]
+                
+                counter = plate_matrix_transformer.create_matrix_counter(
+                    collation, plates_to_read, conditions, replicates, readouts)
+                logger.info('counter: %r', counter)
+
+                if rdt.assay_plate_size != rdt.library_plate_size:
+                    matrices = plate_matrix_transformer.transform(
+                        matrices, counter, rdt.assay_plate_size,rdt.library_plate_size)
+                    logger.info('transformed matrices: %d', len(matrices))
+            
+                self.write_xlsx(rdt, workbook, matrices, counter, wells,rnai_columns_to_write)
+                rdif.save()
+                _meta['%d - %s' % (ordinal,filename)] = _matrix_read_meta
+                logger.info('ordinal: %d, plate_numbers_consumed: %r, plate_numbers_available: %r',
+                    ordinal, plate_numbers_consumed, plate_numbers_available)
+            workbook.close()
+            temp_file.close()
+            
+            rdt.temp_output_filename = temp_file.name
+            rdt.save()
+            logger.info('wrote temp file: %r', temp_file.name)
+        
+        if plate_numbers_available:
+            raise ValidationError(
+                key='plate_ranges',
+                msg='All plates specified by: %r were not used: %r'
+                    % (plate_ranges, plate_numbers_available))
+        _meta[API_MSG_RESULT] = 'success'
+        
+        return self.build_response(
+            request, {API_RESULT_META: _meta }, response_class=HttpResponse, **kwargs)
+
+    def get_control_wells(self, rdt, plates_in_order, wells):
+        '''
+        Read in the control well fields:
+        - parse well selection input
+        - transform the assay plate control wells to library plate format
+        - set the control type abbreviation to well['type_abbreviation']
+        - set the control label to well['control_label']
+        collate errors: 
+        - parsing
+        - check for duplicated wells between types
+        - check for control labels assigned to experimental wells
+        '''
+        
+        logger.info('get_control_wells: %r, %r, %d', rdt, plates_in_order, len(wells))
+        combined_errors = defaultdict(dict)
+        assay_control_named_ranges = {}
+        API_MSG_CONTROLS_PARSE_ERROR = 'Parse errors'
+        API_MSG_CONTROLS_DUPLICATES = 'Duplicates found'
+        API_MSG_CONTROLS_WELL_TYPE = (
+            'Control wells must be \'empty\', \'DMSO\', or \'Library Control\'')
+        control_well_fields = [
+            'assay_positive_controls', 'assay_negative_controls',
+            'assay_other_controls']
+        for control_well_field in control_well_fields:
+            (named_ranges, errors) = \
+                lims_utils.parse_named_well_ranges(
+                    getattr(rdt, control_well_field), rdt.assay_plate_size)
+            # FIXME: collate all errors for one ValidationError
+            if errors:
+                combined_errors[control_well_field][API_MSG_CONTROLS_PARSE_ERROR] = errors
+            assay_control_named_ranges[control_well_field] = named_ranges
+            logger.info('control_well_field: %r, %r, named_well_ranges: %r',
+                control_well_field, getattr(rdt, control_well_field), named_ranges)
+
+        logger.info('assay_control_named_ranges: %r', assay_control_named_ranges)
+
+        (named_library_control_ranges, errors) = \
+            lims_utils.parse_named_well_ranges(
+                getattr(rdt, 'library_controls'), rdt.library_plate_size)
+        if errors:
+            combined_errors['library_controls'][API_MSG_CONTROLS_PARSE_ERROR] = errors
+        logger.info('named_library_control_ranges: %r', 
+            named_library_control_ranges)
+        
+        # check for assay well duplicates:
+
+        assay_control_wells_flattened = defaultdict(set)
+        for control_type, named_ranges in assay_control_named_ranges.items():
+            for label, named_range in named_ranges.items():
+                assay_control_wells_flattened[control_type].update(named_range['wells'])
+        
+        for test_control_type, test_wells in assay_control_wells_flattened.items():
+            duplicate_wells = set()
+            for control_type, assay_wells in assay_control_wells_flattened.items():
+                if test_control_type == control_type:
+                    continue
+                duplicate_wells.update(
+                    set(test_wells) & set(assay_wells))
+            if duplicate_wells:
+                combined_errors[test_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells
+
+        # check for library control well overlap
+        library_control_wells = set()
+        for named_range in named_library_control_ranges.values():
+            library_control_wells.update(named_range['wells'])
+        
+        if rdt.assay_plate_size < rdt.library_plate_size:
+            duplicate_wells = set()
+            for assay_control_type, assay_wells in assay_control_wells_flattened.items():
+                convoluted_wells = lims_utils.convolute_wells(
+                    rdt.assay_plate_size, rdt.library_plate_size, assay_wells)
+                duplicates = library_control_wells & set(convoluted_wells)
+                if duplicates:
+                    duplicate_wells |= duplicates
+                    combined_errors[assay_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicates
+            if duplicate_wells:
+                combined_errors['library_controls'][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells 
+        elif rdt.library_plate_size < rdt.assay_plate_size:
+            duplicate_wells = set()
+            for assay_control_type, assay_wells in assay_control_wells_flattened.items():
+                deconvoluted_wells_in_quadrants = lims_utils.deconvolute_wells(
+                    rdt.assay_plate_size, rdt.library_plate_size, assay_wells)
+                duplicates = library_control_wells & set(
+                    [well for sublist in deconvoluted_wells_in_quadrants for well in sublist])
+                if duplicates:
+                    duplicate_wells |= duplicates
+                    combined_errors[assay_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicates
+            if duplicate_wells:
+                combined_errors['library_controls'][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells 
+        else:
+            duplicate_wells = set()
+            for assay_control_type, assay_wells in assay_control_wells_flattened.items():
+                duplicates = library_control_wells & set(assay_wells)
+                if duplicates:
+                    duplicate_wells |= duplicates
+                    combined_errors[assay_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicates
+            if duplicate_wells:
+                combined_errors['library_controls'][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells 
+        
+        # Associate the control well label and type with the wells
+
+        control_well_exceptions = {}
+        control_type_abbreviations = {
+            'assay_positive_controls': 'P',
+            'assay_negative_controls': 'N',
+            'assay_other_controls': 'O',
+            'library_controls': 'C'
+        }
+        library_well_type_abbreviations = {
+            'experimental': 'X',
+            'empty': 'E',
+            'dmso': 'D',
+            'library_control': 'C',
+            'rnai_buffer': 'B' 
+        }
+        
+        for well in wells.values():
+            library_well_type = well.get('library_well_type')
+            plate_number = well['plate_number']
+            well_name = well['well_name']
+            well['type_abbreviation'] = \
+                library_well_type_abbreviations[library_well_type]
+            
+            if plate_number not in plates_in_order:
+                raise ProgrammingError('plate not found: %r', plate_number)
+            plate_index = plates_in_order.index(plate_number)
+            
+            assay_control_wellname = well_name
+            exception_label = (well_name, )
+            if rdt.assay_plate_size > rdt.library_plate_size:
+                # convolute the well to (1536)
+                quadrant = plate_index % 4
+                assay_control_wellname = lims_utils.convolute_well(
+                    rdt.library_plate_size,rdt.assay_plate_size,well_name)[quadrant]
+                exception_label = (assay_control_wellname,well_name)
+            elif rdt.assay_plate_size < rdt.library_plate_size:
+                # deconvolute the well to (96)
+                assay_control_wellname = lims_utils.deconvolute_well(
+                    rdt.library_plate_size,rdt.assay_plate_size,well_name)
+                exception_label = (assay_control_wellname,well_name)
+            
+            library_control_exceptions = control_well_exceptions.setdefault(
+                'library_controls',defaultdict(set))
+            found = False
+            for label, named_range in named_library_control_ranges.items():
+                if well_name in named_range['wells']:
+                    well['control_label'] = label
+                    found = True
+                    if library_well_type == 'experimental':
+                        library_control_exceptions[well_name].add(well['well_id'])
+            
+            if found is False:
+                for control_type, named_ranges in assay_control_named_ranges.items():
+                    assay_control_exceptions = \
+                        control_well_exceptions.setdefault(
+                            control_type,defaultdict(set))
+                    for label, named_range in named_ranges.items():
+                        if assay_control_wellname in named_range['wells']:
+                            well['type_abbreviation'] = \
+                                control_type_abbreviations[control_type]
+                            well['control_label'] = label
+                            if library_well_type == 'experimental':
+                                assay_control_exceptions[assay_control_wellname].add(well['well_id'])
+                            break
+        
+        logger.info('control_well_exceptions: %r', control_well_exceptions)    
+        for control_type, well_exception_dict in control_well_exceptions.items():
+            if not well_exception_dict:
+                continue
+            well_exception_dict = { wellname:','.join(well_ids) 
+                for wellname, well_ids in well_exception_dict.items() }
+            combined_errors[control_type][API_MSG_CONTROLS_WELL_TYPE] = well_exception_dict
+
+        
+        if combined_errors:
+            raise ValidationError(combined_errors)
+        
+    def write_xlsx(self, rdt, workbook, matrices, counter, 
+        library_well_hash,rnai_columns_to_write):
+        '''
+        Write the plate matrices directly to a spreadsheet, in collation order:
+        - merge in library well data.
+        
+        '''
+        DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+        counter_hash = counter.counter_hash
+        plates_to_read = counter_hash['plate']
+        well_schema = None
+        if rnai_columns_to_write:
+            well_schema = self.get_reagent_resource().build_schema()
+        logger.info('write workbook...')
+        
+        counter_readouts = []
+        for condition in counter_hash['condition']:
+            for replicate in counter_hash['replicate']:
+                for readout in counter_hash['readout']:
+                    counter_readouts.append(dict(zip(
+                        ('condition','replicate','readout'),
+                        (condition,replicate,readout))))
+        
+        plate_size = len(matrices[0])*len(matrices[0][0])
+        row_size = len(matrices[0])
+        col_size = len(matrices[0][0])
+        logger.info('row size: %d, col size: %d', row_size, col_size)
+        for plate in counter_hash['plate']:
+            logger.info('write plate: %r', plate)
+            sheet = workbook.add_worksheet(str(plate))
+
+            # Write the header row for the plate:
+                        
+            sheet.write_string(0,0,'Plate')
+            sheet.write_string(0,1,'Well')
+            sheet.write_string(0,2,'Type')
+            sheet.write_string(0,3,'Exclude') # Note, for user - not used by API
+            start_col_count = 4
+            col_to_matrix_index = []
+            for i,counter_readout in enumerate(counter_readouts): 
+                
+                current_col = start_col_count + i
+                collation_string = \
+                    '{condition}_{readout}_{replicate}'.format(**counter_readout)
+                logger.info('write collation_string: col: %d, %s', 
+                    current_col, collation_string)
+                sheet.write_string(0,current_col,collation_string )
+                col_to_matrix_index.append(
+                    counter.get_index(dict(counter_readout, plate=plate)))
+            
+            current_col += 1
+            sheet.write_string(0,current_col,'Pre-Loaded Controls')
+            current_col += 1
+            if rnai_columns_to_write:
+                for i, field in enumerate(rnai_columns_to_write):
+                    fi = well_schema['fields'][field]
+                    sheet.write_string(0,current_col+i,fi['title'])
+                    
+            # Write the values for the plate:
+            
+            # NOTE: to support xlsxwriter 'constant_memory': True - optimized write, 
+            # rows must be written sequentially        
+            for rownum in range(0,row_size):
+                for colnum in range(0, col_size):
+                    output_row = 1 + colnum + rownum * col_size
+                    
+                    wellname = lims_utils.get_well_name(rownum, colnum)
+                    well_id = lims_utils.well_id(plate, wellname)
+                    
+                    well = library_well_hash[well_id]
+                    if DEBUG:
+                        logger.info('write row: %d: %r', output_row, wellname)
+                    sheet.write_string(output_row,0,str(plate))
+                    sheet.write_string(output_row,1,wellname)
+                    sheet.write_string(output_row,2,well.get('type_abbreviation',None))
+                    
+                    for i,matrix_index in enumerate(col_to_matrix_index):
+                        matrix = matrices[matrix_index]
+                        current_col = start_col_count + i
+                        val = matrix[rownum][colnum]
+                        if DEBUG:
+                            logger.info('write output_row: %d, col: %d,  val: %r', 
+                                output_row, current_col, str(val))
+                        sheet.write_string(output_row, current_col, str(val))
+
+                    current_col += 1
+                    control_label = well.get('control_label', None)
+                    if control_label:
+                        sheet.write_string(output_row,current_col,control_label)
+                    elif rnai_columns_to_write:
+                        current_col += 1
+                        for i, field in enumerate(rnai_columns_to_write):
+                            val = well.get(field, None)
+#                             logger.info('well: %r, field %r,val: %r, type: %r', well_id, field, val,fi['data_type'])
+                            if val is not None:
+                                fi = well_schema['fields'][field]
+                                if fi['data_type'] == 'list': 
+                                    val = ', '.join([str(v) for v in val])
+                                else:
+                                    val = str(val)
+                                sheet.write_string(
+                                    output_row, current_col+i, val)
+
+
 class ScreenResource(DbApiResource):
     
     class Meta:
@@ -17516,7 +18280,10 @@ class ScreensaverUserResource(DbApiResource):
                 screensaver_user = ScreensaverUser(
                     first_name=initializer_dict['first_name'],
                     last_name=initializer_dict['last_name'])
-        
+            logger.info('saving new user...')
+            screensaver_user.save()
+            logger.info('new user saved: %r: %r', 
+                screensaver_user, screensaver_user.date_created)
         messages = []
         if initializer_dict:
             # Validation rules for username, ecommons_id
@@ -17619,11 +18386,14 @@ class ScreensaverUserResource(DbApiResource):
                     
             for key, val in initializer_dict.items():
                 if hasattr(screensaver_user, key):
+                    logger.info('set: %r to %r', key, val)
                     setattr(screensaver_user, key, val)
         else:
             logger.info(
                 'no (basic) screensaver_user fields to update %s',
                 deserialized)
+        logger.info('1-a user saved: %r: %r', 
+            screensaver_user, screensaver_user.date_created)
         
         # Tie ScreensaverUser entry to Reports.User:
         # If reports_userprofile exists, or username is set, patch the 
@@ -17647,10 +18417,12 @@ class ScreensaverUserResource(DbApiResource):
                 request, deserialized, **reports_kwargs)
             logger.info('patched userprofile %s', patch_response)
             user = patch_response[API_RESULT_OBJ]
-        
+
         is_staff = False
         if user:
             if screensaver_user.user is None:
+                logger.info('set the reports userprofile: %r to the su: %r', 
+                    user, screensaver_user)
                 screensaver_user.user = user
             else:
                 if screensaver_user.user != user:
@@ -17665,6 +18437,9 @@ class ScreensaverUserResource(DbApiResource):
 
             auth_user = user.user
             is_staff = auth_user.is_staff
+
+        logger.info('1-b user saved: %r: %r', 
+            screensaver_user, screensaver_user.date_created)
         
         screensaver_user.save()
         
@@ -18039,9 +18814,9 @@ class SilencingReagentResource(DbApiResource):
                 select_inner = select_inner.where(
                     text('silencing_reagent.reagent_id=reagent.reagent_id'))
                 select_inner = select_inner.alias('a')
-                select_stmt = select([func.array_to_string(
-                                func.array_agg(column(field_name)),
-                                               LIST_DELIMITER_SQL_ARRAY)])
+                select_stmt = select([
+                    func.array_to_string(func.array_agg(
+                        column(field_name)),LIST_DELIMITER_SQL_ARRAY)])
                 select_stmt = select_stmt.select_from(select_inner)
                 select_stmt = select_stmt.label(key)
                 columns[key] = select_stmt
@@ -18528,24 +19303,40 @@ class ReagentResource(DbApiResource):
         logger.info('build reagent schema for library_classification: %r',
             library_classification)
         schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
-        if library_classification is not None:
-            sub_data = self.get_reagent_resource(
-                library_classification).build_schema(user=user)
-            logger.debug('sub_schema: %r', sub_data['fields'].keys())
-            newfields = {}
-            newfields.update(sub_data['fields'])
-            newfields.update(schema['fields'])
-            schema['fields'] = newfields
+        
+#         for library_classification in ('small_molecule', 'rnai'):
+#             sub_data = self.get_reagent_resource(
+#                 library_classification).build_schema(user=user)
+#             logger.debug('sub_schema: %r', sub_data['fields'].keys())
+#             newfields = {}
+#             newfields.update(sub_data['fields'])
+#             newfields.update(schema['fields'])
+#             schema['fields'] = newfields
+#             
+#             for k, v in schema.items():
+#                 if k != 'fields' and k in sub_data:
+#                     schema[k] = sub_data[k]
             
-            for k, v in schema.items():
-                if k != 'fields' and k in sub_data:
-                    schema[k] = sub_data[k]
-        elif 'search' in kwargs:
+#         if library_classification is not None:
+#             sub_data = self.get_reagent_resource(
+#                 library_classification).build_schema(user=user)
+#             logger.debug('sub_schema: %r', sub_data['fields'].keys())
+#             newfields = {}
+#             newfields.update(sub_data['fields'])
+#             newfields.update(schema['fields'])
+#             schema['fields'] = newfields
+#             
+#             for k, v in schema.items():
+#                 if k != 'fields' and k in sub_data:
+#                     schema[k] = sub_data[k]
+#         if 'search' in kwargs:
+        if True:
             # Build the full schema for search
             # FIXME could determine the schema as in ReagentResource.build_list_response
             sub_data = \
                 self.get_reagent_resource(library_classification='small_molecule')\
                 .build_schema(user=user)
+
             newfields = {}
             newfields.update(sub_data['fields'])
             
@@ -18559,6 +19350,7 @@ class ReagentResource(DbApiResource):
                     field['visibility'].remove('l')
                 if 'd' in field['visibility']:
                     field['visibility'].remove('d')
+            newfields.update(schema['fields'])
             schema['fields'] = newfields
             
         well_schema = WellResource().build_schema(user=user)
@@ -18784,6 +19576,7 @@ class ReagentResource(DbApiResource):
         wells = None
         if well_search_data is not None:
             (wells,errors) = WellResource.find_wells(well_search_data)
+            logger.info('well search errors: %r', errors)
             if errors:
                 raise ValidationError(
                     key='well_search',
@@ -19381,10 +20174,10 @@ class WellResource(DbApiResource):
         }
         if not self._meta.always_return_data:
             return self.build_response(
-                request, {'meta': meta }, response_class=HttpResponse, **kwargs)
+                request, {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
         else:
             return self.build_response(
-                request,  {'meta': meta }, response_class=HttpResponse, **kwargs)
+                request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
 
     def update_screening_stats(self, library):
 
@@ -19480,11 +20273,13 @@ class WellResource(DbApiResource):
             _line = _line.strip()
             if not _line:
                 continue
-            logger.debug('find_wells: well pattern line: %r', _line)
+            logger.info('find_wells: well pattern line: %r', _line)
             
+            line_wells = set()
+            plate_numbers = set()
             patterns = re.split(r'[\s,]+', _line)
-            logger.debug('split line: %r', patterns)
-            plate_number = None
+            logger.info('split line: %r', patterns)
+            search_kwargs = defaultdict(set)
             for _pattern in patterns:
                 if not _pattern:
                     continue
@@ -19493,43 +20288,56 @@ class WellResource(DbApiResource):
                 match = WELL_ID_PATTERN.match(_pattern)
                 if match is not None:
                     plate_number = int(match.group(1))
+                    search_kwargs['plate_number'].add(plate_number)
+                    
+                    plate_numbers.add(plate_number)
                     well_name = match.group(2).upper()
-                    try:
-                        well = Well.objects.get(
-                            plate_number=plate_number, well_name=well_name)
-                        wells.add(well)
-                        logger.debug('found %r for %r', well, _pattern)
-                        continue
-                    except ObjectDoesNotExist:
-                        plate_number = None
-                        errors.append(
-                            'well: %r is does not exist' % _pattern) 
+                    search_kwargs['well_name'].add(well_name)
                 elif PLATE_PATTERN.match(_pattern):
-                    logger.info('verify plates exist: %r', _pattern)
+                    logger.info('plate pattern match: verify plates exist: %r', _pattern)
                     plate_query = Plate.objects.all().filter(plate_number=_pattern)
                     if plate_query.exists():
-                        plate_number = int(_pattern)    
-                        logger.info('found %r for %r', plate_number, _pattern)
+                        logger.info('found %r for %r', plate_numbers, _pattern)
+                        search_kwargs['plate_number'].add(int(_pattern))
                         continue
                     else:
                         errors.append(
                             'plate: %r is does not exist' % _pattern) 
-                if plate_number is not None and WELL_NAME_PATTERN.match(_pattern):
-                    try:
-                        well = Well.objects.get(
-                            plate_number=plate_number, well_name=_pattern.upper())
-                        wells.add(well)
-                        logger.debug('found %r for %r', well, _pattern)
-                    except ObjectDoesNotExist:
-                        errors.append(
-                            'well: "%d:%s" is does not exist' 
-                            % (plate_number,_pattern))
+                elif PLATE_RANGE_PATTERN.match(_pattern):
+                    errors.append('pattern: %r, plate range pattern not supported' % _pattern)
+                    match = PLATE_RANGE_PATTERN.match(_pattern)
+                    plate_query = Plate.objects.all().filter(plate_number__range=sorted([
+                        int(match.group(1)), int(match.group(2))]))
+                    search_kwargs['plate_number'].update([p.plate_number for p in plate_query ])
+                elif WELL_NAME_PATTERN.match(_pattern):
+                    search_kwargs['well_name'].add(_pattern)
                 else:
                     errors.append(
                         'pattern: %r is not a recognized as a well id, or '
                         'a plate number followed by a well name' % _pattern)
-            logger.debug('wells: %d', len(wells))
-        
+            if search_kwargs:
+                query = Well.objects.all()
+                plate_numbers = search_kwargs.get('plate_number', None)
+                if not plate_numbers:
+                    raise Exception('no plate numbers found: %r for %r', search_kwargs, _line)
+                plate_numbers = [p for p in plate_numbers]
+                if len(plate_numbers) > 1:
+                    query = query.filter(plate_number__in=plate_numbers)
+                else:
+                    query = query.filter(plate_number=plate_numbers[0])
+                well_names = search_kwargs.get('well_name', None)
+                if well_names:
+                    well_names = [w for w in well_names]
+                    if len(well_names) > 1:
+                        query = query.filter(well_name__in=well_names)
+                    else: 
+                        query = query.filter(well_name=well_names[0])
+                line_wells = [w for w in query]
+            logger.info('line: %r, wells: %d', _line, len(line_wells))
+            if not line_wells:
+                errors.append('no matches found for line: %r', _line)
+            
+            wells.update(line_wells)
         return (wells, errors)
         
 class LibraryResource(DbApiResource):
@@ -20018,8 +20826,8 @@ class LibraryResource(DbApiResource):
         
                 try:
                     i = 0
-                    logger.info('bulk create wells: %s-%s', 
-                        library.start_plate, library.end_plate)
+                    logger.info('bulk create wells: plates: %s-%s, plate_size: %d', 
+                        library.start_plate, library.end_plate, plate_size)
                     for plate in range(
                             int(library.start_plate), int(library.end_plate) + 1):
                         bulk_create_wells = []

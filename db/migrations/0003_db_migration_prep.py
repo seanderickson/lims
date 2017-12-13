@@ -11,6 +11,7 @@ from db.support.data_converter import default_converter
 import lims
 from lims.base_settings import PROJECT_ROOT
 import unicodecsv as csv
+import six
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,8 @@ def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
     for ordinal, attr_value in (
             enumerate(query.values_list(attr, flat=True)
                 .distinct(attr).order_by(attr))):
+        if isinstance(attr_value, six.string_types):
+            attr_value = attr_value.strip()
         if not attr_value: continue
         
         title = attr_value

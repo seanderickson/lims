@@ -1174,7 +1174,7 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            logger.info('post response: %r', new_obj)
+            logger.debug('post response: %r', new_obj)
             
         new_obj = self.get_single_resource(
             resource_test_uri, data_for_get=_data_for_get)

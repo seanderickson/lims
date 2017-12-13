@@ -12,14 +12,18 @@ from PIL import Image
 from django.conf import settings
 from django.forms.models import model_to_dict
 from django.http import HttpResponse
-from django.http.response import Http404, HttpResponseServerError
+from django.http.response import Http404, HttpResponseServerError,\
+    StreamingHttpResponse
 from django.shortcuts import render
 
 from db import WELL_ID_PATTERN
-from db.models import ScreensaverUser, Reagent, AttachedFile, Publication
+from db.models import ScreensaverUser, Reagent, AttachedFile, Publication,\
+    RawDataTransform
 from db.api import AttachedFileAuthorization,PublicationAuthorization
 from django.core.exceptions import ObjectDoesNotExist
 from reports.api import UserGroupAuthorization
+from reports.serialize.streaming_serializers import FileWrapper1
+from reports.serialize import XLSX_MIMETYPE
 
 
 logger = logging.getLogger(__name__)
@@ -64,7 +68,7 @@ def well_image(request, well_id):
                     % (well_id, e))
                 raise HttpResponseServerError
         else:
-            logger.info('well_image for %s not found at %s', 
+            logger.info('well_image for %s not found at "%s"', 
                 well_id, structure_image_path)
             raise Http404
 
@@ -127,7 +131,7 @@ def attached_file(request, attached_file_id):
         
 def _download_file(request, attached_file):   
     """                                                                         
-    Send a file through Django without loading the whole file into              
+    TODO: Send a file through Django without loading the whole file into              
     memory at once. The FileWrapper will turn the file object into an           
     iterator for chunks of 8KB.                                                 
     """
@@ -144,3 +148,30 @@ def _download_file(request, attached_file):
         logger.exception('on accessing attached file %s' % attached_file)
         raise
 
+def screen_raw_data_transform(
+        request,screen_facility_id):
+    logger.info('download raw_data_transform result for %r, %r', 
+        screen_facility_id)
+    
+    rdt = RawDataTransform.objects.get(screen__facility_id=screen_facility_id)
+    logger.info('attempt to stream file: %r', rdt.temp_output_filename)
+    with open(rdt.temp_output_filename) as temp_file:
+        temp_file.seek(0, os.SEEK_END)
+        size = temp_file.tell()
+        temp_file.seek(0)   
+        response = HttpResponse(temp_file.read())
+        response['Content-Length'] = size
+        response['Content-Type'] = XLSX_MIMETYPE
+        response['Content-Disposition'] = \
+            'attachment; filename=%s.xlsx' % unicode(rdt.output_filename)
+
+        downloadID = request.GET.get('downloadID', None)
+        if downloadID:
+            logger.info('set cookie "downloadID" %r', downloadID )
+            response.set_cookie('downloadID', downloadID)
+        else:
+            logger.debug('no downloadID: %s' % request.GET )
+        
+        return response
+        
+    

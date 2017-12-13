@@ -27,3 +27,4 @@ attachedfile,resource,attached_file,[attached_file_id],[filename],/reports/api/v
 useragreement,resource,user_agreement,[screensaver_user_id;type],"[screensaver_user_id;' ';type]",/reports/api/v1/resource/useragreement/,0,,"User Agreement","User Agreement",[l;d],,,db,,,[xls],
 publication,resource,publication,[publication_id],[title],/reports/api/v1/resource/publication/,0,,"A publication",Publication,[l;d],,,db,,,[xls],
 labaffiliation,resource,lab_affiliation,[lab_affiliation_id],"[name;' (';category;')']",/reports/api/v1/resource/labaffiliation/,0,,"Lab Affiliation","Lab Affiliation",[l;d;e],,,db,,,[xls],
+rawdatatransform,resource,raw_data_transform,[screen_facility_id;cherry_pick_request_id],[screen_facility_id;cherry_pick_request_id],/reports/api/v1/resource/rawdatatransform/,0,,"Raw Data Transform","Raw Data Transform",[l;d],,,db,,,[xls],

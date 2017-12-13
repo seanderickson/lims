@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import argparse
+from collections import defaultdict
 import csv
 import logging
 import os
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_COLS = [12,24,48]
 ALLOWED_ROWS = [8,16,32]
+
+ERROR_PLATE_SIZE = 'Plate size'
+ERROR_COL_SIZE = 'Columns detected'
+ERROR_ROW_SIZE = 'Rows detected'
             
 def is_empty_plate_matrix(matrix2d):
     is_empty = True
@@ -33,6 +38,7 @@ def is_empty_plate_matrix(matrix2d):
 
 def read_rows(rowgenerator):
     plate_matrices = []
+    errors = defaultdict(list)
     
     plate_matrix = None
     in_matrix = False
@@ -64,7 +70,7 @@ def read_rows(rowgenerator):
                     if expected_cols not in ALLOWED_COLS:
                         # matrices are 2/3 ratio, so 12,24, or 36 in width
                         msg = (
-                            'ineligible: row: %d, cols recognized: %d, '
+                            'Not enough cols: ineligible: row: %d, cols recognized: %d, '
                             'must be one of: %r, %r'
                             % (i, expected_cols, ALLOWED_COLS, row))
                         logger.info(msg)
@@ -81,10 +87,10 @@ def read_rows(rowgenerator):
                             'rows found: %r, must be one of %r' 
                             % (i, len(plate_matrices), len(plate_matrix), 
                                 ALLOWED_ROWS))
-                        logger.error(msg)
+                        logger.error(ERROR_ROW_SIZE + ': ' + msg)
+                        errors[ERROR_ROW_SIZE].append(msg)
                         for i,row in enumerate(plate_matrix):
                             logger.error('%r: %r', i, row)
-                        raise Exception(msg)
                 else:
                     logger.info('empty matrix found: %r', plate_matrix)
                     del plate_matrices[-1]
@@ -101,25 +107,33 @@ def read_rows(rowgenerator):
                 # TODO: could verify that all values are numerical
                 if expected_cols > 0:
                     if len(row[1:]) < expected_cols:
-                        raise Exception(
-                            'matrix: %d, row: %d, line: %d, not enough cols: %r'
-                            % (len(plate_matrices), len(plate_matrix)+1,i,line))
-                    plate_matrix.append(row[1:expected_cols+1])
+                        msg = (
+                            'row: %d, matrix: %d, line: %d, not enough cols: %r'
+                            % (i, len(plate_matrices), len(plate_matrix)+1,line))
+                        logger.error(ERROR_COL_SIZE + ': ' + msg)
+                        errors[ERROR_COL_SIZE].append(msg)
+                    else:
+                        plate_matrix.append(row[1:expected_cols+1])
                 else:
                     plate_matrix.append(row[1:])
     logger.info('plate matrices: %r', len(plate_matrices))        
-    return plate_matrices
+    return (plate_matrices, errors)
 
 def read_text(input_file):
-
+    
+    DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+    
     header_pattern = re.compile(r'^\s?(((\d{1,2})\s?)+)$')
     row_pattern = re.compile(
-        r'^\s?([A-Z]{1,2}(\s+([\d\.]+)\s?)+)$',flags=re.IGNORECASE)
+        r'^\s?([A-Z]{1,2}(\s+([\d\.E+-]+)\s?)+)$',flags=re.IGNORECASE)
     plate_matrices = []
+    errors = defaultdict(list)
     plate_matrix = None
     in_matrix = False
     expected_cols = 0
     for i,line in enumerate(input_file):
+        if DEBUG:
+            logger.info('read line: %d: %r', i, line)
         if i < 10:
             logger.debug('read line: %d: %r', i, line)
         line = line.strip()
@@ -133,12 +147,11 @@ def read_text(input_file):
             if expected_cols not in ALLOWED_COLS:
                 # matrices are 2/3 ratio, so 12,24, or 48 in width
                 msg = (
-                    'plate size error: row: %d, cols recognized: %d, '
+                    'row: %d, cols recognized: %d, '
                     'must be one of: %r, %r',
                     i, expected_cols, ALLOWED_COLS, line)
-                logger.error(msg)
-                raise Exception(msg)
-            
+                logger.error(ERROR_PLATE_SIZE + ': ' + msg)
+                errors[ERROR_PLATE_SIZE].append(msg)
             in_matrix = True
             plate_matrix = []
             plate_matrices.append(plate_matrix)
@@ -151,12 +164,12 @@ def read_text(input_file):
                 if expected_cols > 0:
                     if len(row[1:]) < expected_cols:
                         msg = (
-                            'ineligible: row: %d, cols recognized: %d, '
-                            'must be one of: %r, %r'
-                            % (i, expected_cols, ALLOWED_COLS, row))
-                        raise Exception(
-                            'line: %d, matrix: %d, row: %d, not enough cols: %r'
-                            % (i, len(plate_matrices), len(plate_matrix)+1,line))
+                            'row: %d, matrix: %d, line: %d, '
+                            'cols recognized: %d, expected: %d, %r'
+                            % (i, len(plate_matrices), len(plate_matrix)+1,
+                                len(row[1:]), expected_cols,row))
+                        logger.error(ERROR_COL_SIZE + ': ' + msg)
+                        errors[ERROR_COL_SIZE].append(msg)
                     plate_matrix.append(row[1:expected_cols+1])
                 else:
                     plate_matrix.append(row[1:])
@@ -164,36 +177,39 @@ def read_text(input_file):
                 if is_empty_plate_matrix(plate_matrix) is False:
                     if len(plate_matrix) not in ALLOWED_ROWS:
                         msg = (
-                            'row: %d, plate_matrix: %d read fail, '
+                            'row: %d, plate_matrix: %d, '
                             'rows found: %r, must be one of %r' 
                             % (i, len(plate_matrices), len(plate_matrix), 
                                 ALLOWED_ROWS))
-                        logger.error(msg)
+                        logger.error(ERROR_ROW_SIZE + ': ' + msg)
+                        errors[ERROR_ROW_SIZE].append(msg)
                         for i,row in enumerate(plate_matrix):
                             logger.error('%r: %r', i, row)
-                        raise Exception(msg)
                 else:
                     del plate_matrices[-1]
                 in_matrix = False
     logger.info('plate matrices: %d', len(plate_matrices))
     
-    return plate_matrices
+    return (plate_matrices, errors)
     
 def read_xlsx(input_file):
 
     wb = xlrd.open_workbook(file_contents=input_file.read())
     sheets = xlsutils.workbook_sheets(wb)
     plate_matrices = []
-
+    errors = {}
     for sheet in sheets:
         
-        sheet_plate_matrices = read_rows(xlsutils.sheet_rows(sheet))
+        (sheet_plate_matrices,sheet_errors) = read_rows(xlsutils.sheet_rows(sheet))
         logger.info('for sheet: %r, %d matrices read', 
             sheet.name, len(sheet_plate_matrices))
         if sheet_plate_matrices:
             plate_matrices += sheet_plate_matrices
             logger.info('plate_matrices: %r', len(plate_matrices))
-    return plate_matrices
+        if sheet_errors:
+            logger.warn('sheet errors: %r: %r', sheet.name, sheet_errors)
+            errors[sheet.name] = sheet_errors
+    return (plate_matrices, errors)
 
 def read_csv(input_file):
 
@@ -208,26 +224,27 @@ def read_csv(input_file):
             'could not determine CSV delimiter, choosing default: %r', delimiter)
     input_file.seek(0)
     reader = csv.reader(input_file, delimiter=delimiter)
-    plate_matrices = read_rows(reader)
+    (plate_matrices, errors) = read_rows(reader)
     
-    return plate_matrices
+    return (plate_matrices, errors)
 
 def read(input_file, filename):
 
     extension = os.path.splitext(filename)[-1]
     logger.info('file: %r, extension: %r',filename, extension)
     plate_matrices = []
+    errors = {}
     if extension in ['.xls', '.xlsx']:
         logger.info('opening XLS file: %r', filename)
-        plate_matrices = read_xlsx(input_file)
+        (plate_matrices,errors) = read_xlsx(input_file)
     elif extension in ['.csv']:
         logger.info('opening CSV file: %r', filename)
-        plate_matrices = read_csv(input_file)
+        (plate_matrices,errors) = read_csv(input_file)
     else:
         logger.info('Assume file: %r is text', filename)
-        plate_matrices = read_text(input_file)
+        (plate_matrices,errors) = read_text(input_file)
                         
-    return plate_matrices
+    return (plate_matrices,errors)
         
 parser = argparse.ArgumentParser(
     description='Parse raw data files into Python matrices')
@@ -253,7 +270,10 @@ if __name__ == "__main__":
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
 
     with open(args.file) as input_file:
-        plate_matrices = read(input_file, args.file)
+        (plate_matrices,errors) = read(input_file, args.file)
+        
+        if errors:
+            raise Exception('Parse errors: %r' % errors)
         
         for i,matrix in enumerate(plate_matrices):
             logger.info('matrix #: %r', i)

@@ -36,12 +36,11 @@ def get_rows(platesize):
 def get_cols(platesize):
     return int(math.sqrt(3*platesize/2))
     
-def well_name(row, col):
+def get_well_name(row, col):
     ''' Convert zero-based row/col indexes to a well name:
-    - row is [A-Z]
+    - row zero based index
     - col uses a zero based index to create a 1-based well_name column
     '''
-#     name= chr(ord('A')+row) + '{:0>2d}'.format(col+1)
     name= row_to_letter(row) + '{:0>2d}'.format(col+1)
     return name
 
@@ -58,7 +57,7 @@ def well_name_from_index_rows_first(index, platesize):
     ''' 
     rows = get_rows(platesize)
     cols = get_cols(platesize)
-    name = well_name(int(index/cols),(index%cols))
+    name = get_well_name(int(index/cols),(index%cols))
     return name
 
 def well_name_from_index(index, platesize):
@@ -71,13 +70,13 @@ def well_name_from_index(index, platesize):
     rows = get_rows(platesize)
     cols = get_cols(platesize)
     # Fill by cols just like the Screening lab does: col then row
-    name = well_name(int(index/cols),(index%cols))
+    name = get_well_name(int(index/cols),(index%cols))
     logger.debug('index: %d, platesize: %d, name: %r', index, platesize, name)
     # Fill in cols by row then col
-    #     name = well_name((index%rows),int(index/rows))
+    #     name = get_well_name((index%rows),int(index/rows))
     return name
 
-def index_from_well_name(well_name, platesize):
+def index_from_get_well_name(well_name, platesize):
     
     row_index = well_name_row_index(well_name)
     col_index = well_name_col_index(well_name)
@@ -124,26 +123,27 @@ def letter_to_row_index(rowletter):
     if len(rowletter) == 1:
         return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.index(rowletter.upper())
     else:
-        return letter_to_row(rowletter[-1]) + 26*letter_to_row(rowletter[:-1])
+        return letter_to_row_index(rowletter[-1]) + 26*(letter_to_row_index(rowletter[:-1])+1)
     
-def well_name_row_index(well_name):
-    ''' Convert well_name row letter to zero-based row index '''
+def well_row_col(well_name):
+    '''
+    @return zero based (row_index,col_index)
+    '''
     match = WELL_NAME_PATTERN.match(well_name)
     if not match:
         raise ValidationError(
             key='well_name', 
             msg='%r does not match pattern: %s' % (well_name,WELL_NAME_PATTERN.pattern))
-    return letter_to_row_index(match.group(1));
+    return (letter_to_row_index(match.group(1)), int(match.group(2))-1)
+
+def well_name_row_index(well_name):
+    ''' Convert well_name row letter to zero-based row index '''
+    return well_row_col(well_name)[0]
 
 def well_name_col_index(well_name):
     ''' Convert 1-base well_name column to zero-based column index '''
-    
-    match = WELL_NAME_PATTERN.match(well_name)
-    if not match:
-        raise ValidationError(
-            key='well_name', 
-            msg='%r does not match pattern: %s' % (well_name,WELL_NAME_PATTERN.pattern))
-    return int(match.group(2))-1
+    return well_row_col(well_name)[1]
+
 
 def well_id_plate_number(well_id):
     ''' Get the plate_number from the well_id '''
@@ -180,7 +180,198 @@ def plate_size_from_plate_type(plate_type):
                 % (plate_size,plate_type,ALLOWED_PLATE_SIZES))
     return plate_size
 
+def parse_named_well_ranges(raw_data, plate_size):
+    logger.info('parse_named_well_ranges(%r, %r) ', raw_data, plate_size)
+    
+    errors = []
+    wells_shared_between_ranges_error_msg = 'duplicate wells found in ranges: [%s]'
+    named_well_ranges = {}
+    ordinal = 1
+    re_strip_quotes = re.compile(r'["\']+')
+    
+    for well_range in re.split(r'\n', raw_data):
+        logger.info('well_range: %r', well_range)
+        well_range = well_range.strip()
+        if not well_range:
+            continue
+        
+        unparsed = well_range
+        range_to_label = re.split(r'[=]+', well_range)
+        logger.info('range_to_label %r', range_to_label)
+        label = ''
+        if len(range_to_label) == 2:
+            label = re_strip_quotes.sub('',range_to_label[1])
+            unparsed = re_strip_quotes.sub('', range_to_label[0])
+        elif len(range_to_label) > 2:
+            errors.add(
+                'may only have one equal sign per line: %r', well_range)
+        
+        named_well_range = named_well_ranges.get(label,None)
+        if named_well_range is None:
+            named_well_range = {
+                'label': label,
+                'ordinal': ordinal,
+                'text': unparsed,
+                'wells': []
+                }
+            named_well_ranges[label] = named_well_range
+            ordinal += 1
+
+        parsed_wells = parse_well_ranges(unparsed, plate_size, errors)
+        
+        logger.info('parsed wells: %r, %r', label, parsed_wells)
+        named_well_range['wells'].extend(parsed_wells)
+
+    # find duplicates
+    duplicate_wells = set()
+    for test_label, test_well_range in named_well_ranges.items():
+        
+        for label, well_range in named_well_ranges.items():
+            if test_well_range == well_range:
+                continue
+            duplicate_wells.update(
+                set(test_well_range['wells']) & set(well_range['wells']))
+    if duplicate_wells:
+        errors.append(wells_shared_between_ranges_error_msg 
+            % ','.join(sorted(duplicate_wells)))
+    
+    if errors:
+        logger.info('parse: %r returns errors: %s', raw_data, '; '.join(errors))
+    return (named_well_ranges, errors)
+
+def parse_well_ranges(raw_data, plate_size, errors):
+    
+    logger.info('parse_well_ranges: %r, %r', raw_data, plate_size);
+    WELL_PATTERN = re.compile(r'^([a-zA-Z]{1,2})(\d{1,2})$')
+    COL_PATTERN = re.compile('^(col:)?\s*(\d{1,2})$')
+    ROW_PATTERN = re.compile('^(row:)?\s*([a-zA-Z]{1,2})$')
+    
+    range_parts_unequal_msg = 'Both values of the range must be the same type: %r';
+    n_cols = get_cols(plate_size)
+    n_rows = get_rows(plate_size)
+    wells = []
+    
+    raw_data = raw_data.strip()
+    if not raw_data:
+        return wells
+
+    DISALLOWED_CHARS = re.compile(r'[^\s\-"\',a-zA-Z0-9]+')
+    
+    if DISALLOWED_CHARS.match(raw_data):
+        errors.add('Disallowed chars found: &lt;' + DISALLOWED_CHARS.pattern + '&gt;')
+        return wells
+  
+    for input in re.split(r'\s*,\s*', raw_data):
+        if not input:
+            continue
+        logger.info('parse well pattern: %r', input)
+        parts = re.split(r'\s*-\s*', input)
+        
+        if len(parts) == 2:
+            logger.info('parts: %r', parts)
+            if ROW_PATTERN.match(parts[0]):
+                match1 = ROW_PATTERN.match(parts[0])
+                match2 = ROW_PATTERN.match(parts[1])
+                if not match2:
+                    errors.add(range_parts_unequal_msg % input)
+                start_row = letter_to_row_index(match1.group(2))
+                stop_row = letter_to_row_index(match2.group(2))
+                
+                row_range = sorted([start_row,stop_row])
+                logger.info('input: %r, row_range: %r', parts, row_range)
+                if row_range[1] >= n_rows:
+                    errors.add('row is out of range: %r, max: %r', 
+                        input, row_to_letter(n_rows-1))
+                    continue
+                for i in range(0,n_cols):
+                    for j in range(row_range[0],row_range[1]+1):
+                        wells.append(get_well_name(j,i))
+            elif COL_PATTERN.match(parts[0]):
+                match1 = COL_PATTERN.match(parts[0])
+                match2 = COL_PATTERN.match(parts[1])
+                if not match2:
+                    errors.add(range_parts_unequal_msg % input)
+                start_col = int(match1.group(2))-1
+                stop_col = int(match2.group(2))-1
+                
+                col_range = sorted([start_col, stop_col])
+                logger.info('col_range: %r, %r', parts, col_range)
+                if col_range[1] >= n_cols:
+                    errors.add('col is out of range: %r, max: %r', 
+                        input, n_cols)
+                    continue
+                for i in range(col_range[0],col_range[1]+1):
+                    for j in range(0,n_rows):
+                        wells.append(get_well_name(j,i))
+            elif WELL_PATTERN.match(parts[0]):
+                match1 = WELL_PATTERN.match(parts[0])
+                match2 = WELL_PATTERN.match(parts[1])
+                if not match2:
+                    errors.add(range_parts_unequal_msg % input)
+                start_row = letter_to_row_index(match1.group(1))
+                stop_row = letter_to_row_index(match2.group(1))
+                start_col = int(match1.group(2))-1
+                stop_col = int(match2.group(2))-1
+                col_range = sorted([start_col, stop_col])
+                if col_range[1] >= n_cols:
+                    errors.add('col is out of range: %r, max: %r', 
+                        input, n_cols)
+                    continue
+                row_range = sorted([start_row,stop_row])
+                logger.info('well range: %r, %r, %r', parts,row_range,col_range)
+                if row_range[1] >= n_rows:
+                    errors.add('row is out of range: %r, max: %r', 
+                        input, row_to_letter(n_rows-1))
+                    continue
+                for i in range(col_range[0],col_range[1]+1):
+                    for j in range(row_range[0],row_range[1]+1):
+                        wells.append(get_well_name(j,i))
+            else:
+                errors.append('unrecognized block range entry: %r'% input)
+        elif len(parts) == 1:
+            input = parts[0]
+            if ROW_PATTERN.match(input):
+                row = letter_to_row_index(ROW_PATTERN.match(input).group(2))
+                if row >= n_rows:
+                    errors.add('row is out of range: %r, max: %r', 
+                        input, row_to_letter(n_rows-1))
+                    continue
+                for i in range(0,n_cols):
+                    wells.append(get_well_name(row,i))
+            elif COL_PATTERN.match(input):
+                col = int(COL_PATTERN.match(input).group(2))-1
+                if col >= n_cols:
+                    errors.add('col is out of range: %r, max: %r', 
+                        input, n_cols)
+                    continue
+                for j in range(0,n_rows):
+                    wells.append(get_well_name(j,col))
+            elif WELL_PATTERN.match(input):
+                row = letter_to_row_index(WELL_PATTERN.match(input).group(1))
+                col = int(WELL_PATTERN.match(input).group(2))-1
+                if row >= n_rows:
+                    errors.add('row is out of range: %r, max: %r', 
+                        input, row_to_letter(n_rows-1))
+                    continue
+                if col >= n_cols:
+                    errors.add('col is out of range: %r, max: %r', 
+                        input, n_cols)
+                    continue
+                wells.append(get_well_name(row,col))
+            else:
+                errors.append('unrecognized single specifier entry: %r'% input)
+        else:
+            errors.append('unrecognized entry: %r' % input)
+    return sorted(wells)
+  
+   
+
 def parse_wells_to_leave_empty(wells_to_leave_empty, plate_size):
+    '''
+    TODO: replace with parse_well_ranges
+    Parse the wells to leave empty field of the Cherry Pick Request.
+    '''
+    
     
     logger.info('raw wells_to_leave_empty: %r, plate_size: %r', 
         wells_to_leave_empty, plate_size)
@@ -415,7 +606,7 @@ def convolute_row(source_ps, dest_ps, source_matrix_quadrant,row):
     factor = dest_ps/source_ps;  
     if factor != 4:
         raise ProgrammingError('convolute may only be used for '
-            'dest_ps/source_ps == 4: %d/%d' % (source_ps, dest_ps))
+            'dest_ps/source_ps == 4: %d/%d' % (dest_ps,source_ps))
     if source_matrix_quadrant not in [0,1,2,3]:
         raise ProgrammingError('source_matrix_quadrant must be 0<=n<4: %r'
             % source_matrix_quadrant)
@@ -427,9 +618,73 @@ def convolute_col(source_ps, dest_ps, source_matrix_quadrant, col):
     factor = dest_ps/source_ps;  
     if factor != 4:
         raise ProgrammingError('convolute may only be used for '
+            'dest_ps/source_ps == 4: %d/%d'% (dest_ps,source_ps))
+    return col * factor/2 + source_matrix_quadrant%(factor/2)
+
+def convolute_well(source_ps, dest_ps, wellname):
+    '''
+    Map a list of wells from (96,384) plate format to (384,1536) plate format.
+    '''
+    factor = dest_ps/source_ps  
+    if factor != 4:
+        raise ProgrammingError('convolute may only be used for '
+            'dest_ps/source_ps == 4: %d/%d'% (dest_ps,source_ps))
+    convoluted_wells = []
+    (row,col) = well_row_col(wellname)
+    for quadrant in range(0,factor):
+        new_row = convolute_row(source_ps, dest_ps, quadrant, row)
+        new_col = convolute_col(source_ps, dest_ps, quadrant, col)
+        convoluted_wells.append(get_well_name(new_row,new_col))
+    return convoluted_wells
+
+def convolute_wells(source_ps, dest_ps, wells):
+    '''
+    Map a list of wells from (96,384) plate format to (384,1536) plate format.
+    '''
+    convoluted_wells = []
+    factor = dest_ps/source_ps  
+    if factor != 4:
+        raise ProgrammingError('convolute may only be used for '
             'dest_ps/source_ps == 4: %d/%d'
             % (source_ps, dest_ps))
-    return col * factor/2 + source_matrix_quadrant%(factor/2)
+    for wellname in  wells:
+        convoluted_wells.extend(convolute_well(source_ps, dest_ps, wellname))
+    logger.debug('wells convoluted: %r, %r, %r, %r', 
+        wells, source_ps,dest_ps, convoluted_wells)
+    return convoluted_wells
+
+def deconvolute_well(source_ps, dest_ps, wellname):
+    '''
+    Map a well from (384,1536) plate format to (96,384) plate format.
+    '''
+    (row,col) = well_row_col(wellname)
+    quadrant = deconvolute_quadrant(source_ps, dest_ps, row, col)
+    new_row = deconvolute_row(source_ps, dest_ps, row, col)
+    new_col = deconvolute_col(source_ps, dest_ps, row, col)
+    return get_well_name(new_row,new_col)
+
+def deconvolute_wells(source_ps, dest_ps, wells):
+    '''
+    Map a list of wells from (384,1536) plate format to (96,384) plate format.
+
+    @return map of the plateQuadrant->deconvolutedWells where plateQuadrant
+    is in [0,1,2,3]
+    '''
+    
+    deconvoluted_plate_quadrant_wells = [[] for q in range(0,4)]
+    for wellname in wells:
+        (row,col) = well_row_col(wellname)
+        
+        quadrant = deconvolute_quadrant(source_ps, dest_ps, row, col)
+        new_row = deconvolute_row(source_ps, dest_ps, row, col)
+        new_col = deconvolute_col(source_ps, dest_ps, row, col)
+        
+        deconvoluted_plate_quadrant_wells[quadrant].append(get_well_name(new_row,new_col))
+
+    logger.info('wells deconvoluted: %r, %d, %d, %r', 
+        wells, source_ps,dest_ps, deconvoluted_plate_quadrant_wells)
+    return deconvoluted_plate_quadrant_wells
+
 
 def create_blank_matrix(ps):
     matrix = []

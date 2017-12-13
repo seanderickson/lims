@@ -792,7 +792,9 @@ class SqlAlchemyResource(IccblBaseResource):
             class User:
                 is_superuser = True
                 username = 'internal_request'
-            request.user = User
+                def is_authenticated(self):
+                    return True
+            request.user = User()
         else:
             request.user = user
         result = self._get_detail_response(request, **kwargs)
@@ -813,7 +815,9 @@ class SqlAlchemyResource(IccblBaseResource):
             class User:
                 is_superuser = True
                 username = 'internal_request'
-            request.user = User
+                def is_authenticated(self):
+                    return True
+            request.user = User()
         else:
             request.user = user
         result = self._get_list_response(request, **kwargs)

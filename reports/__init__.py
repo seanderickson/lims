@@ -39,7 +39,7 @@ class ValidationError(Exception):
         self.errors = errors or {}
          
         if key:
-            if not isinstance(msg, (list,tuple)):
+            if not isinstance(msg, (list,tuple,dict)):
                 msg = [msg]
             self.errors[key] = msg
      

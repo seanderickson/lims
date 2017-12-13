@@ -66,7 +66,7 @@ from reports import ValidationError, HEADER_APILOG_COMMENT, _now, \
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_NOT_ALLOWED, \
-    API_RESULT_META, API_PARAM_OVERRIDE
+    API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ
 from reports.models import ApiLog, UserProfile, UserGroup, API_ACTION_PATCH, \
     API_ACTION_CREATE, Vocabulary
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE
@@ -1774,25 +1774,37 @@ class LibraryResource(DBResourceTestCase):
         fields = library_resource['fields']
         resource_uri = BASE_URI_DB + '/library'
         for key,field in fields.items():
-            if field.get('required', False):
-                logger.debug('testing required field: %r, %r', key, field)
+            default = field.get('default', None)
+            if field.get('required', False) is True:
+                logger.info('testing required field: %r, %r', key, field)
                 
                 library_item = LibraryFactory.attributes()
                 library_item[key] = None
                 resp = self.api_client.post(
                     resource_uri, format='json', data=library_item, 
                     authentication=self.get_credentials())
-                self.assertTrue(
-                    resp.status_code in [400], 
-                    (resp.status_code, self.get_content(resp)))
-        
-                data = self.deserialize(resp)
-                logger.info('response: %r', data) 
-                data = data[API_RESULT_ERROR]
-                self.assertTrue(find_in_dict(key, data), 
-                    'Error: response error not found: %r, obj: %r' %(key, data))
+                
+                if default:
+                    self.assertTrue(
+                        resp.status_code in [200], 
+                        ('test for default field %r fails' % key, 
+                            resp.status_code, self.get_content(resp)))
+                    data = self.deserialize(resp)
+                    logger.info('response: %r', data) 
+                    data = data[API_RESULT_DATA]
+                    self.assertEqual(len(data),1)
+                    self.assertEqual(default, data[0][key])
+                else:
+                    self.assertTrue(
+                        resp.status_code in [400], 
+                        ('test for %r fails' % key, resp.status_code, self.get_content(resp)))
+                    data = self.deserialize(resp)
+                    logger.info('response: %r', data) 
+                    data = data[API_RESULT_ERROR]
+                    self.assertTrue(find_in_dict(key, data), 
+                        'Error: response error not found: %r, obj: %r' %(key, data))
 
-        # Test invalid Library name                
+        logger.info('Test invalid Library name...')                
         library_item = LibraryFactory.attributes()
         library_item['library_name'] = 'invalid & name'
         resp = self.api_client.post(
@@ -1813,7 +1825,7 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, data), 
             'Error: response error not found: %r, obj: %r' %(key, data))
 
-        # Test invalid Library type
+        logger.info('Test invalid Library type...')
         library_item = LibraryFactory.attributes()
         library_item['library_type'] = 'invalid_type'
         resp = self.api_client.post(
@@ -6281,7 +6293,7 @@ class CherryPickRequestResource(DBResourceTestCase):
                         'random assigments are not random: %r' % random_assigments)
                 random_assigments = []
                 
-            current_index = lims_utils.index_from_well_name(
+            current_index = lims_utils.index_from_get_well_name(
                 destination_well, platesize)
             # (knowing the first available well) test start point as well
             if previous_index == 0 and is_random is False:
@@ -9916,6 +9928,63 @@ class DataSharingLevel(DBResourceTestCase):
         
 class RawDataTransformer(DBResourceTestCase):
     
+    def test11_control_well_parsing(self):
+        
+        input_1 = '\n'.join([
+            '1-2,D04-E06="range1"',
+            'H04-I06="range2"',
+            'C-D="range3"'
+            ])
+        expected_named_ranges = [
+            {
+                'ordinal': 1,
+                'label': 'range1',
+                'wells':["A01", "B01", "C01", "D01", "E01", "F01", "G01", 
+                    "H01", "I01", "J01", "K01", "L01", "M01", "N01", "O01", "P01",
+                    "A02", "B02", "C02", "D02", "E02", "F02", "G02", 
+                    "H02", "I02", "J02", "K02", "L02", "M02", "N02", "O02", "P02",
+                    "D04", "D05", "D06",
+                    "E04", "E05", "E06",
+                ]
+            },
+            {
+                'ordinal': 2,
+                'label': 'range2',
+                'wells': ["H04", "H05", "H06","I04", "I05", "I06"]
+            },
+            {
+                'ordinal': 3,
+                'label': 'range3',
+                'wells': [
+                    "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09", "C10", "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23", "C24",
+                    "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24"]
+            }
+        ]
+        plate_size = 384
+        (parsed_named_ranges,errors) = lims_utils.parse_named_well_ranges(input_1, plate_size)
+        logger.info('%r, %r', parsed_named_ranges, errors)
+
+        
+        self.assertTrue(len(errors)==1, 'unexpected errors: %r' % errors)
+        self.assertTrue('duplicate wells found in ranges: [C01,C02,D01,D02,D04,D05,D06]' in errors[0])
+        
+        for expected_range in expected_named_ranges:
+            parsed_range = None
+            for label, output_range in parsed_named_ranges.items():
+                logger.info('output_range: %r', output_range)
+                if expected_range['ordinal'] == output_range['ordinal']:
+                    parsed_range = output_range
+            self.assertIsNotNone(parsed_range, 'expected range not found: %r' % expected_range)
+            
+            self.assertEqual(expected_range['label'], parsed_range['label'])
+            
+            wells_expected = set(expected_range['wells'])
+            wells_parsed = set(parsed_range['wells'])
+            self.assertEqual(wells_expected, wells_parsed,
+                '%r: input != output: %r, %r' 
+                % (expected_range['label'], sorted(wells_expected), sorted(wells_parsed)))
+            
+                
     def test1_collation(self):
         
         counter1 = Counter(
@@ -10100,6 +10169,14 @@ class RawDataTransformer(DBResourceTestCase):
                 #logger.info('random: %r', random_number)
                 row.append(random_number)
         return matrix
+
+    def test5_server_test(self):
+        
+        # Tests 
+        # - raw matrix values read in can be associated with well data via the server
+        # - form values are saved per user/screen/cp
+        
+        pass
     
     def test2_matrix_reader(self):
         
@@ -10193,7 +10270,10 @@ class RawDataTransformer(DBResourceTestCase):
         excel_buffer.seek(0)
 
         logger.info('text test...')
-        read_matrices = db.support.raw_data_reader.read(text_buffer, 'test.txt')
+        (read_matrices,errors) = db.support.raw_data_reader.read(text_buffer, 'test.txt')
+        
+        if errors:
+            raise Exception('Parse errors: %r', errors)
         
         self.assertEqual(len(expected_matrices),len(read_matrices),
             'wrong # of matrices read: %d != %d - %r' 
@@ -10208,7 +10288,10 @@ class RawDataTransformer(DBResourceTestCase):
                     % (i,r,len(row), len(expected_row), expected_row, row))
         
         logger.info('csv test...')
-        read_matrices = db.support.raw_data_reader.read(csv_buffer, 'test.csv')
+        (read_matrices,errors) = db.support.raw_data_reader.read(csv_buffer, 'test.csv')
+        
+        if errors:
+            raise Exception('Parse errors: %r', errors)
         
         self.assertEqual(len(expected_matrices),len(read_matrices),
             'csv wrong # of matrices read: %d != %d - %r' 
@@ -10223,8 +10306,11 @@ class RawDataTransformer(DBResourceTestCase):
                     % (i,r,len(row), len(expected_row), expected_row, row))
         
         logger.info('xlsx test...')
-        read_matrices = db.support.raw_data_reader.read(excel_buffer, 'test.xlsx')
-        
+        (read_matrices,errors) = db.support.raw_data_reader.read(excel_buffer, 'test.xlsx')
+
+        if errors:
+            raise Exception('Parse errors: %r', errors)
+
         self.assertEqual(len(expected_matrices),len(read_matrices),
             'excel wrong # of matrices read: %d != %d - %r' 
             % (len(expected_matrices),len(read_matrices),read_matrices))
@@ -10439,7 +10525,7 @@ class RawDataTransformer(DBResourceTestCase):
         for index,matrix in enumerate(plate_matrices96):
             for rownum, row in enumerate(matrix):
                 for colnum,val in enumerate(row):
-                    wellname = lims_utils.well_name(rownum, colnum)
+                    wellname = lims_utils.get_well_name(rownum, colnum)
                     newval = new_plate_matrices96[index][rownum][colnum]
                     self.assertEqual(val,newval,
                         'index: %d, wellname: %r, %r != %r'
@@ -10494,7 +10580,7 @@ class RawDataTransformer(DBResourceTestCase):
         for index,matrix in enumerate(plate_matrices96):
             for rownum, row in enumerate(matrix):
                 for colnum,val in enumerate(row):
-                    wellname = lims_utils.well_name(rownum, colnum)
+                    wellname = lims_utils.get_well_name(rownum, colnum)
                     newval = new_plate_matrices96[index][rownum][colnum]
                     self.assertEqual(val,newval,
                         'index: %d, wellname: %r, %r != %r'
@@ -10697,7 +10783,7 @@ class RawDataTransformer(DBResourceTestCase):
         for index,matrix in enumerate(plate_matrices1536):
             for rownum, row in enumerate(matrix):
                 for colnum,val in enumerate(row):
-                    wellname = lims_utils.well_name(rownum, colnum)
+                    wellname = lims_utils.get_well_name(rownum, colnum)
                     newval = new_plate_matrices1536[index][rownum][colnum]                    
                     logger.debug('index: %d, wellname: %r, %r, %r',
                         index, wellname, val, newval)

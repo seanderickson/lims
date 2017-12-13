@@ -1570,6 +1570,46 @@ class AbaseTestset(models.Model):
     class Meta:
         db_table = 'abase_testset'
 
+class RawDataTransform(models.Model):
+    ''' Store meta data for a raw data input transformation ''' 
+    
+    screen = models.OneToOneField('Screen', null=True)
+    cherry_pick_request = models.OneToOneField('CherryPickRequest', null=True)
+    
+    plate_ranges = models.TextField(null=True)
+    output_filename = models.TextField(null=True)
+    output_sheet_option = models.TextField(null=True)
+    assay_plate_size = models.TextField(null=True)
+    assay_positive_controls = models.TextField(null=True)
+    assay_negative_controls = models.TextField(null=True)
+    assay_other_controls = models.TextField(null=True)
+    library_controls = models.TextField(null=True)
+    library_plate_size = models.TextField(null=True)
+    comments = models.TextField(null=True)
+    
+    temp_output_filename = models.TextField(null=True)
+
+    class Meta:
+        db_table = 'raw_data_transform'
+    
+class RawDataInputFile(models.Model):
+    ''' Store meta data for a raw data input file transformation ''' 
+    
+    raw_data_transform = models.ForeignKey('RawDataTransform')
+    ordinal = models.IntegerField()
+    
+    collation_order = models.TextField(null=True)
+    conditions = models.TextField(null=True)
+    readouts = models.TextField(null=True)
+    readout_type = models.TextField(null=True)
+    replicates = models.IntegerField(null=True)
+    filename = models.TextField(null=True)
+
+    class Meta:
+        db_table = 'raw_data_input_file'
+    
+    
+
 # TODO: deprecated - see migration 0004
 class ChecklistItem(models.Model):
     

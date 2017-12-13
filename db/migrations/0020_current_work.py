@@ -19,7 +19,7 @@ import re
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0018_library_screening_and_cpr_logs'),
+        ('db', '0019_raw_data_transformer'),
     ]
 
     operations = [

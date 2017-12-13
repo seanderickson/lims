@@ -13,6 +13,8 @@ from db.support import lims_utils
 
 logger = logging.getLogger(__name__)
 
+DEBUG = logger.isEnabledFor(logging.DEBUG)
+
 ALLOWED_MATRIX_SIZES = [96,384,1536]
 
 class Collation():
@@ -62,6 +64,12 @@ class Counter(object):
         '''
         self.counter_hash = counter_hash
     
+    def size(self):
+        size = 1
+        for v in self.counter_hash.values():
+            size *= len(v)
+        return size
+        
     def get_index(self,reading_hash):
         ''' Find the index for a counter "reading" '''
         
@@ -132,7 +140,13 @@ def transform(input_matrices, counter, aps, lps):
             if key == 'plate':
                 new_counter_hash['quadrant'] = [0,1,2,3]
         counter96 = Counter(new_counter_hash)
-    
+        
+        if counter96.size() != len(input_matrices):
+            raise ProgrammingError('input_matrices length (%d) must match '
+                'the counter length with 4 quadrants: (%d)'
+                    % (len(input_matrices), counter96.size()))
+        
+        
         # - Create blank output matrices
         convoluted_matrices = [
             lims_utils.create_blank_matrix(lps) 
@@ -150,14 +164,10 @@ def transform(input_matrices, counter, aps, lps):
                     readout96 = dict(readout, quadrant=input_quadrant)
                     logger.debug('index: %d, 384 readout: %r, quadrant: %d, 96: %r',
                         index,readout,input_quadrant,readout96)
+                    logger.debug('counter96: %r' % counter96.counter_hash)
                     input_index = counter96.get_index(readout96)
-                    
-                    input_row = lims_utils.deconvolute_row(
-                        lps, aps, 
-                        rownum, colnum)
-                    input_col = lims_utils.deconvolute_col(
-                        lps, aps, 
-                        rownum, colnum)
+                    input_row = lims_utils.deconvolute_row(lps, aps,rownum, colnum)
+                    input_col = lims_utils.deconvolute_col(lps, aps,rownum, colnum)
                     logger.debug('find: index: %d, cell: [%d][%d]',
                         input_index,input_row,input_col)
                     row[colnum] = input_matrices[input_index][input_row][input_col]
@@ -177,7 +187,7 @@ def transform(input_matrices, counter, aps, lps):
         # Create an adjusted counter to match the input        
         plates = counter.counter_hash.get('plate')
         if len(plates) % 4 != 0:
-            msg = 'Deconvolute: number of plates defined must be a multiple of 4'
+            msg = 'Deconvolute: plate count must be a multiple of 4: %d' % len(plates)
             raise ValidationError({
                 'plates': msg })
             
@@ -216,7 +226,13 @@ def transform(input_matrices, counter, aps, lps):
         return input_matrices
         
 def write_xlsx(workbook, matrices, counter):
+    '''
+    Write the plate matrices directly to a spreadsheet, in collation order:
+    - For testing, does not merge in library well data.
     
+    '''
+    DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+
     logger.info('write workbook...')
     counter_hash = counter.counter_hash
     
@@ -231,35 +247,66 @@ def write_xlsx(workbook, matrices, counter):
     plate_size = len(matrices[0])*len(matrices[0][0])
     row_size = len(matrices[0])
     col_size = len(matrices[0][0])
+    logger.info('row size: %d, col size: %d', row_size, col_size)
     for plate in counter_hash['plate']:
         logger.info('write plate: %r', plate)
         sheet = workbook.add_worksheet(str(plate))
         
         sheet.write_string(0,0,'Plate')
         sheet.write_string(0,1,'Well')
-        
-        for colnum in range(0, col_size):
-            for rownum in range(0,row_size):
-                output_row = 1 + rownum + colnum * row_size
-                wellname = lims_utils.well_name(rownum, colnum)
-                logger.info('write row: %d: %r', output_row, wellname)
-                sheet.write_string(output_row,0,str(plate))
-                sheet.write_string(output_row,1,wellname)
-
+        col_to_matrix_index = []
         for i,counter_readout in enumerate(counter_readouts): 
             
             current_col = 2 + i
             collation_string = '{condition}_{readout}_{replicate}'.format(**counter_readout)
-            logger.info('write collation: %r', counter_readout)
+            logger.info('write collation_string: col: %d, %s', current_col, collation_string)
             sheet.write_string(0,current_col,collation_string )
-            
-            matrix_index = counter.get_index(dict(counter_readout, plate=plate))
-            matrix = matrices[matrix_index]
-            for colnum in range(0, col_size):
-                for rownum in range(0,row_size):
-                    output_row = 1 + rownum + colnum * row_size
+
+            col_to_matrix_index.append(
+                counter.get_index(dict(counter_readout, plate=plate)))
+
+        # NOTE: to support xlsxwriter 'constant_memory': True - optimized write, 
+        # rows must be written sequentially        
+        for colnum in range(0, col_size):
+            for rownum in range(0,row_size):
+                output_row = 1 + rownum + colnum * row_size
+                
+                wellname = lims_utils.get_well_name(rownum, colnum)
+                if DEBUG:
+                    logger.info('write row: %d: %r', output_row, wellname)
+                sheet.write_string(output_row,0,str(plate))
+                sheet.write_string(output_row,1,wellname)
+
+                for i,matrix_index in enumerate(col_to_matrix_index):
+                    matrix = matrices[matrix_index]
+                    current_col = 2 + i
                     val = matrix[rownum][colnum]
-                    sheet.write_string(output_row, current_col, val)
+                    if DEBUG:
+                        logger.info('write output_row: %d, col: %d,  val: %r', 
+                            output_row, current_col, str(val))
+                    sheet.write_string(output_row, current_col, str(val))
+
+
+        # NOTE: to support xlsqriter 'constant_memory': True - optimized write,
+        # rows must be written sequentially
+        # for i,counter_readout in enumerate(counter_readouts): 
+        #     
+        #     current_col = 2 + i
+        #     collation_string = '{condition}_{readout}_{replicate}'.format(**counter_readout)
+        #     logger.info('write collation_string: col: %d, %s', current_col, collation_string)
+        #     sheet.write_string(0,current_col,collation_string )
+        #     
+        #     matrix_index = counter.get_index(dict(counter_readout, plate=plate))
+        #     logger.info('write matrix: %d', matrix_index)
+        #     matrix = matrices[matrix_index]
+        #     for colnum in range(0, col_size):
+        #         for rownum in range(0,row_size):
+        #             output_row = 1 + rownum + colnum * row_size
+        #             val = matrix[rownum][colnum]
+        #             if DEBUG:
+        #                 logger.info('write output_row: %d, col: %d,  val: %r', 
+        #                     output_row, current_col, str(val))
+        #             sheet.write_string(output_row, current_col, str(val))
     logger.info('write xls finished')
     
 def create_matrix_counter(collation, plates, conditions, replicates, readouts):

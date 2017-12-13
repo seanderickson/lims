@@ -323,7 +323,10 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 logger.info('not found: %r', e)
                 return self.build_error_response(
                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
-            
+            except Http404 as e:
+                logger.info('not found: %r', e)
+                return self.build_error_response(
+                    request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):

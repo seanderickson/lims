@@ -15,7 +15,7 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
     UserAgreementResource, PublicationResource,PlateLocationResource,\
-    LabAffiliationResource
+    LabAffiliationResource, RawDataTransformerResource
 
 import db.api
 
@@ -46,10 +46,13 @@ v1_api.register(LibraryScreeningResource())
 v1_api.register(UserAgreementResource())
 v1_api.register(PublicationResource())
 v1_api.register(LabAffiliationResource())
+v1_api.register(RawDataTransformerResource())
 v1_api.register(db.api.ResourceResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
+    url(r'^screen_raw_data_transform/(?P<screen_facility_id>\S+)$',
+        'db.views.screen_raw_data_transform', name="screen_raw_data_transform" ),
     url(r'^smiles_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
     url(r'^well_image/(?P<well_id>\S+)$','db.views.well_image', name="well_image" ),
     url(r'^attachedfile/(?P<attached_file_id>\d+)/content$',

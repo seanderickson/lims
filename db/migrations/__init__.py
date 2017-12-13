@@ -32,7 +32,7 @@ def create_log_time(key,input_date):
     - Some activities in SS1 have identical date_of_activity
     '''
     date_time = pytz.timezone('US/Eastern').localize(
-        datetime.combine(input_date, datetime.min.time()))
+        datetime.datetime.combine(input_date, datetime.min.time()))
     i = 0
     
     timekey = '%r:%r'

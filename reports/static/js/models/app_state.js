@@ -1146,7 +1146,7 @@ define([
           }
         }
       }).fail(function(){ 
-        console.log('fail...', arguments, failCallback);
+        console.log('fail...', failCallback);
         if (failCallback){
           failCallback.apply(this,arguments);
         }else{
@@ -1381,37 +1381,113 @@ define([
         Iccbl.appModel.error(msg);
       }
     },
-    
-    dict_to_rows: function(dict){
+  
+    /**
+     * Process an error dict into single string for display to the end user.
+     */
+    print_dict: function(dict){
       var self = this;
-      var rows = [];
-      console.log('dict_to_rows', dict);
+      var output = '';
       if (_.isObject(dict) && !_.isArray(dict)){
-        _.each(_.keys(dict), function(key){
-          _.each(self.dict_to_rows(dict[key]),function(row){
-            if (_.isUndefined(row)){
-              rows.push(key);
-            }else{
-              var keyrow = [key];
-              if (!_.isArray(row)){
-                keyrow.push(row);
-              }else{
-                keyrow = keyrow.concat(row);
-              }
-              rows.push(keyrow);
-            }
-          });
+        output = _.map(_.keys(dict), function(key){
+          var err = key + ': ';
+          var parts = self.print_dict(dict[key]);
+          if (parts.length > 40){
+            err += '<br/>' + parts;
+          } else {
+            err += parts;
+          }
+          return err;
+        }).join('<br/>');
+        
+      } else if (_.isArray(dict)){
+        var cumulative = '';
+        dict = _.map(dict, function(val){
+          cumulative += val;
+          if (cumulative.length > 40 && cumulative != val){
+            val = '<br/>' + val;
+            cumulative = val;
+          }
+          return val;
         });
-      }else{
-        console.log('obj: ', dict);
-        if (_.isArray(dict)){
-          return dict;
-        }else{
-          return [dict];
-        }
+        output += dict.join(', ');
+      } else {
+        output += dict;
       }
-      return rows;
+      return output;
     },
+    
+//    /**
+//     * Process an error dict into an array for display to the end user.
+//     */
+//    dict_to_rows: function(dict){
+//      var self = this;
+//      var rows = [];
+//      console.log('dict_to_rows', dict);
+//      if (_.isObject(dict) && !_.isArray(dict)){
+//        console.log('dict to rows: dict', dict);
+//        _.each(_.keys(dict), function(key){
+//          console.log('error key', key,dict[key]);
+////          rows.push(key);
+//          var keyrow = [key];
+//          _.each(self.dict_to_rows(dict[key]),function(row){
+//            if (!_.isUndefined(row)){
+////              var keyrow = [];
+//              if (!_.isArray(row)){
+//                row = '' + row;
+//                row = row.replace(/(\r\n|\n|\r)/gm,"<br/>\n"); 
+//                keyrow.push(row);
+//              }else{
+//                keyrow = keyrow.concat(_.map(row, function(rowval){
+//                  rowval = '' + rowval;
+//                  return rowval.replace(/(\r\n|\n|\r)/gm,"<br/>\n");
+//                }));
+//              }
+//            }
+//          });
+//          rows.push(keyrow);
+//        });
+//      }else{
+//        console.log('non-dict: ', dict);
+//        if (_.isArray(dict)){
+//          return dict;
+//        }else{
+//          return [dict];
+//        }
+//      }
+//      return rows;
+//    },
+    
+//    dict_to_rows_old: function(dict){
+//      var self = this;
+//      var rows = [];
+//      console.log('dict_to_rows', dict);
+//      if (_.isObject(dict) && !_.isArray(dict)){
+//        _.each(_.keys(dict), function(key){
+//          _.each(self.dict_to_rows(dict[key]),function(row){
+//            if (_.isUndefined(row)){
+//              rows.push(key);
+//            }else{
+//              var keyrow = [key];
+//              if (!_.isArray(row)){
+//                keyrow.push(row);
+//              }else{
+//                keyrow = keyrow.concat(row);
+//              }
+//              rows.push(keyrow);
+//            }
+//          });
+//        });
+//      }else{
+//        console.log('obj: ', dict);
+//        if (_.isArray(dict)){
+//          return dict;
+//        }else{
+//          return [dict];
+//        }
+//      }
+//      return rows;
+//    },
     
     /**
      * Parse connection result (sent as a JSON object)
@@ -1425,13 +1501,14 @@ define([
       if (_.isObject(data) && !_.isString(data)){
         data = _.result(data,API_MSG_RESULT,data);
         data = _.result(data,API_RESULT_META,data);
-        var msg_rows = this.dict_to_rows(data);
-        var bodyMsg = msg_rows;
-        if (_.isArray(msg_rows) && msg_rows.length > 1){
-          bodyMsg = _.map(msg_rows, function(msg_row){
-            return msg_row.join(': ');
-          }).join('<br>');
-        }
+//        var msg_rows = this.dict_to_rows(data);
+//        var bodyMsg = msg_rows;
+//        if (_.isArray(msg_rows) && msg_rows.length > 1){
+//          bodyMsg = _.map(msg_rows, function(msg_row){
+//            return msg_row.join(': ');
+//          }).join('<br>');
+//        }
+        var bodyMsg = this.print_dict(data);
         this.showModalMessage(
           _.extend({}, options, {
             body: bodyMsg,
@@ -1464,20 +1541,19 @@ define([
         title = title.charAt(0).toUpperCase() + title.slice(1);
       }
       var buttons_on_top = false;
-      var msg_rows = this.dict_to_rows(jsonObj);
-      console.log('msg_rows: ', msg_rows);
-      var bodyMsg = msg_rows;
-      if (_.isArray(msg_rows)){
-        if (msg_rows.length > 40){
-          buttons_on_top = true;
-        }
-        if (msg_rows.length > 1) {
-          
-        }
-        bodyMsg = _.map(msg_rows, function(msg_row){
-          return msg_row.join(': ');
-        }).join('<br>');
-      }
+//      var msg_rows = this.dict_to_rows(jsonObj);
+//      console.log('msg_rows: ', msg_rows);
+//      var bodyMsg = msg_rows;
+//      if (_.isArray(msg_rows)){
+//        if (msg_rows.length > 40){
+//          buttons_on_top = true;
+//        }
+//        bodyMsg = _.map(msg_rows, function(msg_row){
+//          if (_.isArray(msg_row)) return msg_row.join(': ');
+//          else return '' + msg_row;
+//        }).join('<br>');
+//      }
+      var bodyMsg = this.print_dict(jsonObj);
       Iccbl.appModel.showModalMessage({
         buttons_on_top: buttons_on_top,
         body: bodyMsg,
@@ -2076,7 +2152,7 @@ define([
       var form = new Backbone.Form({
         model: formFields,
         template: _.template([
-          "<div>",
+//          "<div>",
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
           ].join(''))
@@ -2287,6 +2363,7 @@ define([
      '<div class="form-horizontal container" id="_form_template" >',
      '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
      "</form>",
+     '<div id="data-error" class="has-error" ></div>',
      "</div>"].join(''));      
   appState._field_template = _.template([
     '<div class="form-group" key="form-group-<%=key%>" >',
@@ -2306,15 +2383,25 @@ define([
     </div>\
   ');
   appState._horizontal_form_field_template = _.template([
-        '<div class="form-group" >',
-        '    <label class="control-label col-sm-6" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
-        '    <div class="col-sm-6" >',
-        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
-        '      <div data-error class="text-danger" ></div>',
-//        '      <div><%= help %></div>',
-        '    </div>',
-        '  </div>',
-      ].join(''));
+    '<div class="form-group" >',
+    '  <label class="control-label col-sm-6" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
+    '  <div class="col-sm-6" >',
+    '    <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '    <div data-error class="text-danger" ></div>',
+    //   <div><%= help %></div>',
+    '  </div>',
+    '</div>',
+  ].join(''));
+  appState._horizontal_form_2col_field_template = _.template([
+    '<div class="form-group" >',
+    '  <label class="control-label col-sm-2" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
+    '  <div class="col-sm-10" >',
+    '    <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '    <div data-error class="text-danger" ></div>',
+    //   <div><%= help %></div>',
+    '  </div>',
+    '</div>',
+  ].join(''));
   
   appState.schemaClass = new SchemaClass(); // make accessible to outside world
   appState.resources = {};   // TO be retrieved from the server 

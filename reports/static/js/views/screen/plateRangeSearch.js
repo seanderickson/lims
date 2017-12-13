@@ -59,14 +59,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var volumeField = _.result(
         libraryScreeningResource['fields'], 
         'volume_transferred_per_well_from_library_plates', {});
-      var TextArea2 = Backbone.Form.editors.TextArea.extend({
-        render: function() {
-          TextArea2.__super__.render.apply(this,arguments);
-          this.$el.attr('placeholder', 
-            'Enter Plate Number ranges, followed by the Copy Name');
-          return this;
-        },        
-      });
+//      var TextArea2 = Backbone.Form.editors.TextArea.extend({
+//        render: function() {
+//          TextArea2.__super__.render.apply(this,arguments);
+//          this.$el.attr('placeholder', 
+//            'Enter Plate Number ranges, followed by the Copy Name');
+//          return this;
+//        },        
+//      });
+
       function validatePlateSearch(value, formValues){
         var errors = [];
         var final_search_array = Iccbl.parseRawPlateSearch(value,errors);
@@ -94,7 +95,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         key: 'plate_search',
         editorClass: 'input-full form-control',
         validators: ['required', validatePlateSearch],
-        type: TextArea2,
+        placeholder: 'Enter Plate Number ranges, followed by the Copy Name',
+        type: EditView.TextArea2,
         template: appModel._field_template
       };
       formSchema['volume_required'] = {

@@ -25,7 +25,7 @@
 			      // console.log('process menu ' + key);
    %>
             <li  class="" id="<%= key %>" title="<%=ui_resource.description %>">
-            <a href="#"><%= ui_resource.title %></a></li>
+            <a href="#<%= key %>"><%= ui_resource.title %></a></li>
    <%
             // Process submenus2
             var submenu2 = submenu['submenus'][key];
@@ -42,7 +42,7 @@
                 var ui_resource1 = ui_resources[key];
               %>
                 <li class="" id="<%= key %>" title="<%=ui_resource1.description %>">
-                <a href="#"><strong><%= ui_resource1.title %></a></strong></li>
+                <a href="#<%= key %>"><strong><%= ui_resource1.title %></a></strong></li>
               <%
               }); // each submenu2 items
              %>

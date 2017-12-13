@@ -569,23 +569,38 @@ define([
     }
   
   });
+
+  var TextArea2 = Backbone.Form.editors.TextArea.extend({
+    render: function() {
+      TextArea2.__super__.render.apply(this,arguments);
+      this.$el.attr('placeholder', this.schema.placeholder);
+      return this;
+    },        
+  });
   
   var EditView = Backbone.Form.extend({
     
     /**
-     * @param resource - the API resource schema
+     * @param resource - the API resource schema,
+     * @param modelFields (optional) specific resource_schema.fields to use
+     * @param editSchemaOverrides - (optional) Backbone.Form schema definitions, 
+     *  by field.key; values override Backbone.Form schema generated from the 
+     *  resource_schema
      */
     initialize: function(args) {
 
       console.log('Editview initialize: ', args);
       var self = this;
+      this.resource = args.resource || this.model.resource;
+      this.modelFields = args.modelFields || this.resource.fields;
+      this.uriStack = args.uriStack;
+      this.editSchemaOverrides = args.editSchemaOverrides || {};
       
       if (!_.isUndefined(args.isCreate)){
         this.isCreate = args.isCreate;
       } else {
         this.isCreate = false;
       }
-      this.uriStack = args.uriStack;
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
       this.saveSuccessCallBack = args.saveSuccessCallBack;
@@ -593,17 +608,12 @@ define([
       if (!_.isBoolean(this.fullSaveOnEdit)) {
         this.fullSaveOnEdit = false;
       }
-      
-      this.resource = args.resource || this.model.resource;
-      this.modelFields = args.modelFields || this.resource.fields;
-      
       if (args.editVisibleKeys) {
         this.editVisibleKeys = args.editVisibleKeys;
       } else {
         this.editVisibleKeys = this.resource.allEditVisibleKeys();
       }
       this.groupedKeys = this.resource.groupedKeys(this.editVisibleKeys);
-      
       if (args.editableKeys) {
         this.editableKeys = args.editableKeys;
       } else { 
@@ -628,8 +638,8 @@ define([
       }
       
       // The delegateModel/View is used to display visible, but not editable fields
-//      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
-//      delegateModel.resource = this.model.resource;
+      //      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
+      //      delegateModel.resource = this.model.resource;
       var delegateModel = this.model;
       this.delegateDetailView = new DetailView({ model: delegateModel });
       
@@ -638,7 +648,7 @@ define([
       } else {
         this.template = _.template(editTemplate);
       }
-      _.bindAll(this, 'save','save_fail','save_success');
+      _.bindAll(this, 'save','save_fail','save_success','process_errors');
 
       // NOTE: due to a phantomjs js bug, must convert arguments to a real array
       Backbone.Form.prototype.initialize.apply(this,Array.prototype.slice.apply(arguments));
@@ -764,12 +774,16 @@ define([
           },
         'textarea':
           {
-            type: Backbone.Form.editors.TextArea.extend({
+            type: TextArea2.extend({
               initialize: function() {
                 Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
                 if (_.has(this.schema,'rows')) {
                   this.$el.attr('rows',this.schema['rows']);
                 }
+                // TODO: how to do cols? (not this)
+                //if (_.has(this.schema,'cols')) {
+                //  this.$el.attr('cols',this.schema['cols']);
+                //}
               },
               
               getValue: function() {
@@ -845,7 +859,7 @@ define([
         var fi = self.modelFields[key];
         var cell_options = fi.display_options;
 
-        var fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
+        var fieldSchema = _.extend({}, defaultFieldSchema);
         
         fieldSchema['title'] = fi.title;
         var tooltip = fi.description;
@@ -910,9 +924,11 @@ define([
           if (appModel.DEBUG){
             console.log('editSchema for key created: ', key, editSchema[key]);
           }
-          
         }
-
+        if (_.has(self.editSchemaOverrides, key)){
+          fieldSchema = _.extend(fieldSchema, self.editSchemaOverrides[key]);
+        }
+        editSchema[key] = fieldSchema;
       });      
       
       console.log('editSchema created');
@@ -1017,7 +1033,9 @@ define([
       // 2.a from fieldinformation.vocabulary, if available
       // 2.b fetch and add vocabulary from server
       var choiceHash = fi.choices || [];
-      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
+      if (_.isEmpty(choiceHash)) {
+        //  TODO 20171204 - test using the fi.choices to override
+        //      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
         choiceHash = []
         // replace the fi.choices with the vocabulary, if available
         try{
@@ -1253,36 +1271,43 @@ define([
       }
     },
     
+    process_errors: function(errors) {
+      var self = this;
+      console.log('errors in response:', errors, _.keys(errors));
+      var non_field_errors = {};
+      _.each(_.keys(errors), function(key) {
+        var error = errors[key];
+        console.log('error:', key, error, _.has(self.fields,key));
+        if (_.has(self.fields, key)) {
+          var final_error  = appModel.print_dict(error);
+          console.log('error processed as', error, final_error);
+          self.fields[key].setError(final_error);
+          $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+          console.log('added error for: "', key, '", val: "', 
+            self.fields[key].getValue(), '"');
+        }else{
+          non_field_errors[key] = error;
+        }
+      });
+      console.log('non-field errors', non_field_errors);
+      return non_field_errors;
+    },
+    
     save_fail: function(jqXHR, textStatus, errorThrown) { 
       var self = this;
       if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
         var errors = _.result(jqXHR.responseJSON,'errors',null);
         if (errors) {
-          console.log('errors in response:', errors);
-          var non_field_errors = {};
-          _.each(_.keys(errors), function(key) {
-            var error = errors[key];
-            if (_.has(self.fields, key)) {
-              if (_.isString(error)){
-                error = error.replace(/(\r\n|\n|\r)/gm,"<br/>\n") 
-              }else if (_.isArray(error)){
-                error = error.join('<br/>\n');
-              }
-              self.fields[key].setError(error);
-              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-              console.log('added error for: "', key, '", val: "', 
-                self.fields[key].getValue(), '"');
-            }else{
-              non_field_errors[key] = error;
-            }
-          });
+          var non_field_errors = self.process_errors(errors);
           if (!_.isEmpty(non_field_errors)){
             appModel.showJsonMessages(non_field_errors);
           }
-          return;
+        } else {
+          Iccbl.appModel.jqXHRfail.apply(this,arguments); 
         }
+      } else {
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
       }
-      Iccbl.appModel.jqXHRfail.apply(this,arguments); 
     },
     
     save: function(changedAttributes, options){
@@ -1398,6 +1423,7 @@ define([
   EditView.DatePicker = DatePicker;
   EditView.DisabledField = DisabledField;
   EditView.SIunitEditor = SIunitEditor;
+  EditView.TextArea2 = TextArea2;
   EditView.CheckPositiveValidator = CheckPositiveValidator;
   EditView.CheckPositiveNonZeroValidator = CheckPositiveNonZeroValidator;
   Iccbl.EditView = EditView;

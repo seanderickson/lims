@@ -52,13 +52,13 @@ define([
 
       var args = args || {};
 
-      var TextArea2 = Backbone.Form.editors.TextArea.extend({
-        render: function() {
-          TextArea2.__super__.render.apply(this,arguments);
-          this.$el.attr('placeholder', this.schema.placeholder);
-          return this;
-        },        
-      });
+//      var TextArea2 = Backbone.Form.editors.TextArea.extend({
+//        render: function() {
+//          TextArea2.__super__.render.apply(this,arguments);
+//          this.$el.attr('placeholder', this.schema.placeholder);
+//          return this;
+//        },        
+//      });
       
       var schema2 = {};
       function validatePlateSearch(value, formValues){
@@ -82,7 +82,7 @@ define([
         help: 'enter a comma separated list',
         placeholder: 'e.g. 1000-1005 B\n2000 C',
         validators: ['required',validatePlateSearch],
-        type: TextArea2,
+        type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
@@ -110,7 +110,7 @@ define([
         help: 'enter a comma separated list',
         placeholder: 'e.g. 1000 A08,A09,A10\n1740:D12',
         validators: ['required'],
-        type: TextArea2,
+        type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
@@ -153,7 +153,7 @@ define([
         help: 'Enter a screening inquiry',
         placeholder: 'e.g. (Screen #) 1000-2000,2015,3017 100 nL x 2',
         validators: ['required',validateScreeningInquiry],
-        type: TextArea2,
+        type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };

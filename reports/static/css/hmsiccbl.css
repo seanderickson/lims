@@ -511,3 +511,14 @@ table.backgrid.left-align td{
 .welcome-message {
   font-size: medium;
 }
+
+.extra-small-table {
+ font-size: 7px;
+}
+
+.textarea-noscroll {
+  word-wrap: normal;
+}
+.textarea-noscroll::-webkit-scrollbar {
+  display: none;
+}

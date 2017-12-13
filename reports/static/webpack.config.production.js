@@ -29,7 +29,8 @@ module.exports = {
       chosen: 'jquery-chosen/chosen.jquery.min',
       quicksearch: 'jquery.quicksearch/dist/jquery.quicksearch.min.js',
       layoutmanager: 'layoutmanager/backbone.layoutmanager',
-      jquery_bonsai: 'jquery-bonsai/jquery.bonsai.js'
+      jquery_bonsai: 'jquery-bonsai/jquery.bonsai.js',
+      google_palette: 'google-palette/palette.js'
     },
     extensions: ['', '.js', '.json'] 
   },

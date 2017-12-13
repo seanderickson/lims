@@ -10,12 +10,14 @@ define([
   'views/list2',
   'views/screen/libraryScreening',
   'views/screen/plateRangeSearch',
+  'views/screen/rawDataTransformer',
   'views/generic_edit',
   'utils/tabbedController',
   'utils/plateRangeTable',
   'templates/genericResource.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView,
-            ListView, LibraryScreeningView, PlateRangeSearchView, EditView, TabbedController, 
+            ListView, LibraryScreeningView, PlateRangeSearchView, 
+            RawDataTransformer, EditView, TabbedController, 
             PlateRangePrototype, genericLayout) {
   
   var ScreenSummaryView = TabbedController.extend({
@@ -65,6 +67,12 @@ define([
         invoke : 'setPlateRangeSearch',
         permission: 'screen'
       },
+      transformer: {
+        description : 'Transform Raw Data',
+        title : 'Transform Raw Data',
+        invoke : 'setRawDataTransformer',
+        permission: 'library'
+      },
     },      
     
     /**
@@ -76,6 +84,51 @@ define([
         'base_url': self.model.resource.key + '/' + self.model.key + '/summary',
         'tab_resources': this.tabbed_resources
       }      
+    },
+    
+    setRawDataTransformer: function(delegateStack) {
+      console.log('setRawDataTransformer', delegateStack);
+      var self = this;
+      
+      var rawdataResource = appModel.getResource('rawdatatransform');
+      var schemaUrl = [rawdataResource.apiUri,
+                       'schema'].join('/');
+      function showTransformer(schemaResult) {
+        var options = {
+          failCallback: function(){
+            var newModel = appModel.newModelFromResource(schemaResult);
+            newModel.set('screen_facility_id', self.model.get('facility_id'));
+            newModel.resource = schemaResult;
+            showView(newModel);
+          }
+        };
+        appModel.getModel(
+          rawdataResource.key, self.model.key, 
+          function(model){
+            model.resource = schemaResult;
+            if (!model.has('library_plate_size')){
+              model.set('library_plate_size', schemaResult.fields['library_plate_size'].default );
+            }
+            showView(model);
+          }, 
+          options);
+      };
+      function showView(model){
+        var view = new RawDataTransformer({
+          screen: self.model,
+          model: model,
+          uriStack: delegateStack
+        });
+        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        this.consumedStack = ['transformer'];
+        self.reportUriStack([]);
+        
+      }
+      
+      appModel.getResourceFromUrl(schemaUrl, showTransformer);
+      
     },
     
     setPlateRangeSearch: function(delegateStack) {

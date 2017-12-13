@@ -33,6 +33,12 @@ var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTER
 var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/;
 var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = 
   /^(\d+)\s*-\s*(\d+)$/;
+
+var WELL_PATTERN = Iccbl.WELL_PATTERN = /^([a-zA-Z]{1,2})(\d{1,2})$/i;
+var COL_PATTERN = Iccbl.COL_PATTERN = /^(col:)?\s*(\d{1,2})$/i;
+var ROW_PATTERN = Iccbl.ROW_PATTERN = /^(row:)?\s*([a-zA-Z]{1,2})$/i;
+
+
 /** 
  * COPY_NAME_PATTERN:
  * -must start with an alpha char
@@ -52,9 +58,11 @@ var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
 // Utility Functions
 
 /**
- * Convert a plate row index to a letter
+ * Convert a plate row index to an standard plate layout letter.
+ * @param i 0 based row index
  */
 var rowToLetter = Iccbl.rowToLetter = function(i){
+//  console.log('rowToLetter: ', i);
   if (i<26){
     return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i];
   } else {
@@ -64,6 +72,74 @@ var rowToLetter = Iccbl.rowToLetter = function(i){
   }
 };
 
+/**
+ * @return 0 based row index for the row letter
+ */
+var letterToRow = Iccbl.letterToRow = function(rowletter){
+  if (rowletter.length == 1){
+    return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.indexOf(rowletter.toUpperCase());
+  } else {
+    return letterToRow(rowletter.charAt(rowletter.length-1))
+      + 26*(letterToRow(rowletter.slice(0,rowletter.length-1))+1)
+  }
+};
+
+var getRows = Iccbl.getRows = function(plateSize){
+  return parseInt(Math.sqrt(2*plateSize/3));
+};
+
+var getCols = Iccbl.getCols = function(plateSize){
+  return parseInt(Math.sqrt(3*plateSize/2));
+};
+
+///**
+// * @param row 0 based index
+// * @param col - 1 based index
+// */
+//var getWellName = Iccbl.getWellName = function(row, col){
+//  var wellName = rowToLetter(row);
+//  if (col < 10){
+//    wellName += '0' + col;
+//  } else {
+//    wellName += col;
+//  }
+//  return wellName
+//};
+
+/**
+ * @param row 0 based index
+ * @param col - 0 based index
+ */
+var getWellName = Iccbl.getWellName = function(row, col){
+  var wellName = rowToLetter(row);
+  col = col+1;
+  if ( col<10 ) {
+    wellName += '0' + col;
+  } else {
+    wellName += col;
+  }
+  return wellName
+};
+
+///**
+// * @return [row, col] 0,1 based row and col indexes
+// */
+//var getWellRowCol = Iccbl.getWellRowCol = function(wellName){
+//  var rowLetter = WELL_PATTERN.exec(wellName)[1];
+//  var row = letterToRow(rowLetter);
+//  var col = parseInt(WELL_PATTERN.exec(wellName)[2]);
+//  return [row,col];
+//}
+
+/**
+ * @return [row, col] 0 based row and col indexes
+ */
+var getWellRowCol = Iccbl.getWellRowCol = function(wellName){
+  var rowLetter = WELL_PATTERN.exec(wellName)[1];
+  var row = letterToRow(rowLetter);
+  var col = parseInt(WELL_PATTERN.exec(wellName)[2])-1;
+  return [row,col];
+}
 
 /**
  * String padding utility
@@ -207,6 +283,618 @@ var getIccblDateString = Iccbl.getDateString = function(jsDate){
       + '/' + lpad(jsDate.getFullYear(), 4, 0) );
 };
 
+/** 
+ * Matrix convolution/deconvolution Utilities:
+ * - Convolution: converting (96,384) to (384,1536)
+ * - Deconvolution: converting (1536,384) to (384,96)
+ **/
+
+/**
+ * Map (1536,384)-well row,col to (384,96)-well output quadrant
+ * @param row 0 based
+ * @param col 0 based
+ */
+var deconvoluteQuadrant = Iccbl.deconvoluteQuadrant = function(source_ps, dest_ps, row, col){
+
+  var factor = source_ps/dest_ps
+  if (factor != 4){
+    throw 'Deconvolute may only be used for source_ps/dest_ps == 4: ' + 
+      source_ps + '/' + dest_ps;
+  }
+  return col%(factor/2) +  (row%(factor/2))*(factor/2);
+};
+
+/**
+ * Map (1536,384-)well input row to (384-)well output row
+ * @param row 0 based
+ * @param col 0 based
+ */
+var deconvoluteRow = Iccbl.deconvoluteRow = function(source_ps, dest_ps,row, col){
+  
+  var dest_matrix_number = deconvoluteQuadrant(source_ps, dest_ps, row, col)
+  var factor = source_ps/dest_ps  
+  return Math.trunc(row/(factor/2))+ row%(factor/2)-Math.trunc(dest_matrix_number/(factor/2));
+};
+
+/**
+ * Map (1536,384)-well input col to (384,96)-well output col
+ * @param row 0 based
+ * @param col 0 based
+ */
+var deconvoluteCol = Iccbl.deconvoluteCol = function(source_ps, dest_ps, row, col){
+    
+  var dest_matrix_number = deconvoluteQuadrant(source_ps, dest_ps, row, col);
+  var factor = source_ps/dest_ps  
+  return Math.trunc(col/Math.trunc(factor/2))+ col%(factor/2)-dest_matrix_number%(factor/2);
+};
+
+/**
+ * Map (96,384)-well input row to (384,1536)-well output row
+ * @param row 0 based
+ * @param col 0 based
+ */
+var convoluteRow = Iccbl.convoluteRow = function(source_ps, dest_ps, source_matrix_quadrant,row){
+  var factor = dest_ps/source_ps;  
+  if (factor != 4){
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+      dest_ps + '/' + source_ps;
+  }
+  if (!_.contains([0,1,2,3], source_matrix_quadrant)){
+    throw 'source_matrix_quadrant must be 0<=n<4: ' + source_matrix_quadrant;
+  }
+  return row * factor/2 + Math.trunc(source_matrix_quadrant/(factor/2))
+};
+    
+/**
+ * Map (96,384)-well input col to (384,1536)-well output col
+ * @param row 0 based
+ * @param col 0 based
+ */
+var convoluteCol = Iccbl.convoluteCol = function(source_ps, dest_ps, source_matrix_quadrant, col){
+  var factor = dest_ps/source_ps;  
+  if (factor != 4){
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+      dest_ps + '/' + source_ps;
+  }
+  return col * factor/2 + source_matrix_quadrant%(factor/2)
+  
+};
+
+/**
+ * Map a well from (96,384) plate format to (384,1536) plate format.
+ * returns 4 wells for each quadrant
+ */
+var convoluteWell = Iccbl.convoluteWell = function(source_ps, dest_ps, wellName){
+  var factor = dest_ps/source_ps;  
+  if (factor != 4){
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+      dest_ps + '/' + source_ps;
+  }
+  var convolutedWells = [];
+  var row_col = Iccbl.getWellRowCol(wellName);
+  for (var quadrant = 0;quadrant<factor;quadrant++){
+    var newRowIndex = Iccbl.convoluteRow(source_ps,dest_ps,quadrant,row_col[0]);
+    var newColIndex = Iccbl.convoluteCol(source_ps,dest_ps,quadrant,row_col[1]);
+    convolutedWells.push(Iccbl.getWellName(newRowIndex,newColIndex));
+  }
+  return convolutedWells;
+};
+
+/**
+ * Map a list of wells from (96,384) plate format to (384,1536) plate format.
+ */
+var convoluteWells = Iccbl.convoluteWells = function(source_ps, dest_ps, wells){
+  var convolutedWells = [];
+  _.each(wells, function(wellName){
+    convolutedWells = convolutedWells.concat(convoluteWell(source_ps,dest_ps,wellName));
+  });
+  console.log('wells convoluted', wells, source_ps,dest_ps, convolutedWells);
+  convolutedWells.sort();
+  return convolutedWells;
+};
+
+/**
+ * Map a well from (384,1536) plate format to (96,384) plate format.
+ * @return [quadrant, new_wellname]
+ **/
+var deconvoluteWell = Iccbl.deconvoluteWell = function(source_ps, dest_ps, wellName){
+  var row_col = Iccbl.getWellRowCol(wellName);
+  var row = row_col[0], col = row_col[1];
+  var plateQuadrant = Iccbl.deconvoluteQuadrant(source_ps, dest_ps, row, col);
+  var newRowIndex = Iccbl.deconvoluteRow(source_ps, dest_ps, row, col);
+  var newColIndex = Iccbl.deconvoluteCol(source_ps, dest_ps, row, col);
+  return [plateQuadrant, Iccbl.getWellName(newRowIndex,newColIndex)];
+};
+
+/**
+ * Map a list of wells from (384,1536) plate format to (96,384) plate format.
+ * 
+ * @return map of the plateQuadrant->deconvolutedWells 
+ *  where plateQuadrant is in [0,1,2,3]
+ */
+var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wells){
+  var deconvolutedPlateQuadrantWells = {
+    0: [], 1:[], 2:[], 3:[]
+  };
+  console.log('deconvoluteWells...');
+  _.each(wells, function(wellName){
+    var quadrant_new_well = deconvoluteWell(source_ps,dest_ps, wellName);
+    var quadrant = quadrant_new_well[0];
+    var newWellname = quadrant_new_well[1];
+    deconvolutedPlateQuadrantWells[quadrant].push(newWellname);
+  });
+  
+  console.log('wells deconvoluted', wells, source_ps,dest_ps, deconvolutedPlateQuadrantWells);
+  return deconvolutedPlateQuadrantWells;
+};
+
+//// Well Selection Parsing Utilities
+
+/**
+ * Parse labeled input specified in the Well Selection mini-language:
+ * - One named range per line, if the label is omitted, 
+ * then a blank label is created:
+ *  <well selections>="<label>"
+ * - If a label is repeated, then wells are concatenated
+ * - Wells may not be repeated between labels
+ */
+var parseNamedWellRanges = Iccbl.parseNamedWellRanges = 
+  function(rawData, plateSize, errors) {
+  
+  console.log('parseNamedWellRanges', rawData, plateSize);
+  var duplicate_wells_error_msg = 'duplicate wells found in ranges: ';
+  var namedWellRanges = {};
+  
+  var ordinal = 1;
+  
+  _.each(rawData.split(/\n/), function(range){
+  
+    range = range.trim();
+    if (_.isEmpty(range)) return;
+    
+    console.log('parse range', range);
+    
+    var rangeToLabel = range.split(/[=]+/);
+    var label = '';
+    var unparsed = range;
+    if (rangeToLabel.length == 2){
+      label = rangeToLabel[1].replace(/["']+/g,'');
+      unparsed = rangeToLabel[0].replace(/["']+/g,'');
+    }
+    else if (rangeToLabel.length == 1){
+      // pass
+    } else {
+      errors.push('range to label inputs may on have one equal sign per line: ' + range );
+      return;
+    }
+    
+    if (!_.has(namedWellRanges, label)){
+      var namedWellRange = {
+        label: label,
+        text: unparsed,
+        wells: [],
+        ordinal: ordinal
+      };
+      ordinal += 1;
+      namedWellRanges[label] = namedWellRange;
+    } else {
+      namedWellRange = namedWellRanges[label];
+    }
+    var parsedWells = Iccbl.parseWellSelections(unparsed, plateSize, errors);
+    console.log('parsedWells', label, parsedWells);
+    namedWellRange['wells'] = namedWellRange['wells'].concat(parsedWells);
+  });
+
+  var duplicates = 
+    Iccbl.find_duplicates(_.map(_.values(namedWellRanges),
+      function(nwr){
+        return nwr['wells'];
+      }
+    ));
+  
+  if (!_.isEmpty(duplicates)){
+    errors.push(duplicate_wells_error_msg + duplicates.join(', '));
+  }
+  console.log('found named well ranges', namedWellRanges);
+  return namedWellRanges;
+};
+
+var find_duplicates = Iccbl.find_duplicates = function(arrays){
+  console.log('find_duplicates in arrays', arrays)
+  var duplicates = [];
+  for(var i=0;i<arrays.length;i++){
+    var test_array = arrays[i];
+    if (!_.isArray(test_array)){
+      throw 'find_duplicates requires an array of arrays';
+    }
+    for (var j=0; j< arrays.length; j++){
+      if (j==i) continue;
+      var array = arrays[j];
+      var d1 = _.intersection(test_array,array);
+      duplicates = duplicates.concat(d1);
+    }
+  }
+  duplicates = _.unique(duplicates);
+  console.log('duplicates found', duplicates);
+  return duplicates;
+};
+
+
+/**
+ * Parse input specified in the Well Selection mini-language:
+ * where <well selections> are comma separated well-block specifiers:
+ * - single well names,
+ * - blocks of wells, defined by:
+ *  <upper right well name> - <lower left well name>,
+ * - single columns, specified by the column number,
+ * - single rows, specified by the row letter,
+ * - column or row blocks, specified by
+ *  <left column> - <right column>
+ *  <top row> - <bottom row>
+ * 
+ **/
+var parseWellSelections = Iccbl.parseWellSelections = 
+  function(rawData, plateSize, errors){
+  
+  console.log('parseWellSelections: ', rawData, plateSize);
+  
+  var wells = [];
+  rawData = rawData.trim();
+  if (_.isEmpty(rawData)){
+    return wells;
+  }
+
+  var disallowedMatch = /[^\s\-"',a-zA-Z0-9]+/g;
+  var disallowed = disallowedMatch.exec(rawData);
+  if (disallowed){
+    errors.push('Disallowed chars found: "' + disallowed + '"');
+    return;
+  }
+  
+  var inputs = rawData.split(/\s*,\s*/);
+  
+  var numCols = Iccbl.getCols(plateSize);
+  var numRows = Iccbl.getRows(plateSize);
+  
+  var WELL_PATTERN = this.WELL_PATTERN;
+  var rangePartsUnequal = 'Both values of the range must be the same type';
+  _.each(inputs, function(input){
+    if (_.isEmpty(input)) return;
+    console.log('input', input);
+    var range = input.split(/\s*-\s*/);
+    if (range.length == 2) {
+      console.log('range:', range);
+      if (ROW_PATTERN.exec(range[0])){
+        console.log('row: ', range[0]);
+        if (!ROW_PATTERN.exec(range[1])){
+          errors.push(rangePartsUnequal + ': ' + input);
+          return;
+        }
+        var startRow = Iccbl.letterToRow(ROW_PATTERN.exec(range[0])[2]);
+        var stopRow = Iccbl.letterToRow(ROW_PATTERN.exec(range[1])[2]);
+        if(startRow>stopRow) {
+          var tempVal=startRow; 
+          startRow=stopRow; stopRow=tempVal;
+        }
+        if (stopRow >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        for(var i=0;i<=numCols;i++) {
+          for(var j=startRow; j<=stopRow; j++)
+          {
+            wells.push(Iccbl.getWellName(j,i));
+          }
+        }
+      }
+      else if (COL_PATTERN.exec(range[0])){
+        console.log('col: ', range[0]);
+        if (!COL_PATTERN.exec(range[1])){
+          errors.push(rangePartsUnequal + ': ' + input);
+          return;
+        }
+        var startCol = parseInt(COL_PATTERN.exec(range[0])[2])-1;
+        var stopCol = parseInt(COL_PATTERN.exec(range[1])[2])-1;
+        if(startCol>stopCol) {
+          var tempVal = startCol; startCol=stopCol; stopCol=tempVal;
+        }
+        if (stopCol >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        for(var i=startCol; i<=stopCol; i++) {
+          for(var j=0; j<numRows; j++) {
+            wells.push(Iccbl.getWellName(j,i));
+          }
+        }
+      }
+      else if (WELL_PATTERN.exec(range[0])){
+        if (!WELL_PATTERN.exec(range[1])){
+          errors.push(rangePartsUnequal + ': ' + input);
+          return;
+        }
+        console.log('well: ', range[0]);
+        var one = WELL_PATTERN.exec(range[0]);
+        var two = WELL_PATTERN.exec(range[1]);
+        console.log('one/two', one, two);
+        var startRow = Iccbl.letterToRow(one[1]);
+        var stopRow = Iccbl.letterToRow(two[1]);
+        if (startRow>stopRow) {
+          var tempVal=startRow; startRow=stopRow; stopRow=tempVal;
+        }
+        var startCol = parseInt(one[2])-1;
+        var stopCol = parseInt(two[2])-1;
+        
+        if(startCol>stopCol) {
+          var tempVal = startCol; startCol=stopCol; stopCol=tempVal;
+        }
+        if (stopCol >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        if (stopRow >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        console.log('start stop row/col: ', startRow,stopRow,startCol,stopCol);
+        for(var i=startCol; i<=stopCol; i++) {
+          for(var j=startRow; j<=stopRow; j++) {
+            wells.push(Iccbl.getWellName(j,i));
+          }
+        }
+      }else{
+        errors.push('unrecognized entry: ' + input);
+      }
+    }else if (range.length == 1) {
+      if (ROW_PATTERN.exec(range[0])){
+        var row = Iccbl.letterToRow(ROW_PATTERN.exec(range[0])[2]);
+        if (row >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        for(var i=0;i<numCols;i++) {
+          wells.push(Iccbl.getWellName(row,i));
+        }
+      }
+      else if (COL_PATTERN.exec(range[0])){
+        var col = parseInt(COL_PATTERN.exec(range[0])[2])-1;
+        if (col  >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        for(var j=0; j<numRows; j++) {
+          wells.push(Iccbl.getWellName(j,col));
+        }
+      }
+      else if (WELL_PATTERN.exec(range[0])){
+        var pattern = WELL_PATTERN.exec(range[0]);
+        var row = Iccbl.letterToRow(pattern[1]);
+        var col = parseInt(pattern[2])-1;
+        if (col  >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        if (row >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        wells.push(Iccbl.getWellName(row,col))
+      }else{
+        errors.push('unrecognized entry: ' + input);
+      }
+    }
+  });
+  console.log('wells', wells);
+  return wells;
+};
+
+/**
+ * Output selected named ranges of wells into the Well Selection mini-language:
+ * - One named range per line, if the label is blank, then it is omitted:
+ *  <well selections>="<label>"
+ * where <well selections> are comma separated well-block specifiers:
+ * - single well names,
+ * - blocks of wells, defined by:
+ *  <upper right well name> - <lower left well name>,
+ * - single columns, specified by the column number,
+ * - single rows, specified by the row letter,
+ * - column or row blocks, specified by
+ *  <left column> - <right column>
+ *  <top row> - <bottom row>
+ * 
+ **/
+var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
+  function(namedWellRanges, plateSize) {
+  
+  console.log('generateNamedWellBlockString', namedWellRanges);
+  var self = this;
+  var finalArray = [];
+//  var WELL_PATTERN = self.WELL_PATTERN;
+  var nCols = self.getCols(plateSize);
+  var nRows = self.getRows(plateSize);
+  _.each(namedWellRanges, function(namedRange){
+    var wellBlocks = self.getWellBlocks(namedRange['wells'], plateSize);
+    var label = namedRange['label'];
+    if (!_.isEmpty(wellBlocks)){
+      var entries = [];
+      _.each(wellBlocks, function(wellBlock){
+        var entry;
+        var firstEntry = wellBlock[0][0];
+        if (wellBlock.length > 1){
+          var lastBlock = wellBlock[wellBlock.length-1];
+          var lastEntry = lastBlock[lastBlock.length-1]; 
+          console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
+          if (wellBlock[0].length == nRows){
+            // assume a col
+            var firstCol = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
+            var lastCol = parseInt(WELL_PATTERN.exec(lastEntry)[2]);
+            entry = firstCol + '-' + lastCol;
+          }else if (wellBlock[0].length == nCols){
+            // assume a row
+            var rowLetter1 = WELL_PATTERN.exec(firstEntry)[1];
+            var rowLetter2 = WELL_PATTERN.exec(lastEntry)[1];
+            entry = rowLetter1 + '-' + rowLetter2;
+          } else {
+            entry = firstEntry + '-' + lastEntry;
+          }
+        }else{
+          var onlyBlock = wellBlock[0];
+          var firstEntry = onlyBlock[0];
+          if (onlyBlock.length > 1){
+            var lastEntry = onlyBlock[onlyBlock.length-1];
+            if (onlyBlock.length == nRows){
+              // assume a col
+              entry = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
+            }
+            else if (onlyBlock.length == nCols){
+              // assume a row
+              entry = WELL_PATTERN.exec(firstEntry)[1];
+            }else{
+              entry = firstEntry + '-' + lastEntry;
+            }
+          } else {
+            entry = firstEntry;
+          }
+        }
+        entries.push(entry);
+      });
+      if (!_.isEmpty(label)){
+        finalArray.push(entries.join(',') + '="' + label + '"' );
+      }else{
+        finalArray.push(entries.join(','));
+      }
+    }
+  });
+  console.log('finalArray', finalArray);
+  return finalArray.join('\n');
+};
+
+
+/**
+ * Group a list of well names into contiguous blocks of wells:
+ * Process:
+ * - starting with a sorted (by row,col) list
+ * - first, divide the list into sublists of adjacent wells; 
+ * either adjacent rows in a column or adjacent columns in a row 
+ * (which ever yields the largest sublist for the start well)
+ * - second combine adjacent row or column sublists into larger well blocks
+ * consisting of the sublists.
+ * - single wells are separated into well blocks consisting of one well.
+ * - Block shape may not be optimal, and is determined by the order of 
+ * operations (first scanning for adjacent rows, then columns) 
+ **/
+var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
+  var self = this;
+  var nCols = self.getCols(plateSize);
+  var nRows = self.getRows(plateSize);
+  wells.sort();
+  var colBlocks = [];
+  
+  function findColBlock(wellName, allWells){
+    var colBlock;
+    var row_col = Iccbl.getWellRowCol(wellName);
+    console.log('findColBlock: wellName', wellName, row_col);
+    var row = row_col[0];
+    var col = row_col[1];
+    // first scan down cols
+    var blockByCol = [wellName];
+    var allWellsCopy = _.without(allWells, wellName);
+    for(var currentRow=row+1; currentRow<nRows; currentRow++){
+      var testWell = Iccbl.getWellName(currentRow,col);
+      if (_.contains(allWellsCopy,testWell)){
+        blockByCol.push(testWell);
+        allWells = _.without(allWellsCopy, testWell);
+      } else {
+        break;
+      }
+    }
+    // second scan across rows
+    var blockByRow = [wellName];
+    var allWellsCopy = _.without(allWells, wellName);
+    for(var currentCol=col+1; currentCol<nCols; currentCol++){
+      var testWell = Iccbl.getWellName(row,currentCol);
+      if (_.contains(allWells,testWell)){
+        blockByRow.push(testWell);
+        allWells = _.without(allWells, testWell);
+      } else {
+        break;
+      }
+    }
+    // choose whichever gives biggest block, col blocks first
+    console.log('choose biggest block:', blockByCol, blockByRow);
+    if (blockByCol.length >= blockByRow.length){
+      colBlock = blockByCol;
+    }else{
+      colBlock = blockByRow;
+    }
+    
+    colBlock.sort();
+    return colBlock;
+  }
+  
+  function findColBlocks(remainingWells){
+    if(!_.isEmpty(remainingWells)){
+      var seedWell = remainingWells.shift();
+      var colBlock = findColBlock(seedWell, remainingWells);
+      colBlocks.push(colBlock);
+      remainingWells = _.difference(remainingWells, colBlock);
+      findColBlocks(remainingWells);
+    }
+  };
+  findColBlocks(wells);
+  console.log('colBlocks', colBlocks);
+  
+  function findWellBlock(colBlock, colBlocks){
+    console.log('findWellBlock', colBlock,colBlocks)
+    var wellBlock = [colBlock];
+    var test_start = Iccbl.getWellRowCol(colBlock[0]);
+    var test_stop = Iccbl.getWellRowCol(colBlock[colBlock.length-1]);
+    _.each(colBlocks, function(currentBlock){
+      var row_col_start = Iccbl.getWellRowCol(currentBlock[0]);
+      var row_col_stop = Iccbl.getWellRowCol(currentBlock[currentBlock.length-1]);
+      if (test_start[1]+1== row_col_start[1]){
+        // cols adjacent
+        if (test_start[0] == row_col_start[0]
+          && test_stop[0] == row_col_stop[0]){
+          console.log('found adjacent col', colBlock, currentBlock);
+          test_start = row_col_start;
+          wellBlock.push(currentBlock);
+        }
+      }
+      else if (test_start[0]+1 == row_col_start[0]){
+        // rows adjacent
+        if (test_start[1] == row_col_start[1]
+          && test_stop[1] == row_col_stop[1]){
+          //console.log('found adjacent row', colBlock, currentBlock);
+          test_start = row_col_start;
+          wellBlock.push(currentBlock);
+        }
+      }
+    });
+    console.log('findWellBlock finds', wellBlock);
+    return wellBlock;
+  };
+  var wellBlocks = [];
+  function findWellBlocks(remainingColBlocks){
+    if(!_.isEmpty(remainingColBlocks)){
+      var seedBlock = remainingColBlocks.shift();
+      var blocks = findWellBlock(seedBlock, remainingColBlocks);
+      _.each(blocks, function(block){
+        if (_.contains(remainingColBlocks, block)){
+          remainingColBlocks = _.without(remainingColBlocks,block);
+        }
+      });
+      wellBlocks.push(blocks);
+      findWellBlocks(remainingColBlocks);
+    }
+  };
+  findWellBlocks(colBlocks);
+  
+  console.log('final getWellBlocks', wellBlocks);
+  return wellBlocks;
+};
+
+
 /**
  * Parse a Copy Plate search by line into an array of search lines of the form:
  * input: 
@@ -322,7 +1010,6 @@ var parseSIVolume = Iccbl.parseSIVolume = function(rawText){
  *    screen_facility_id, volume_required, plate_ranges, replicate_count }
  */
 var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText, errors) {
-  
   
   var screenPattern = /\(\s*(\w+)\s*\)/; 
   var volumePattern = /\s+([\d\.]+\s*[un]L)\s+x\s*\d+\s*$/i;

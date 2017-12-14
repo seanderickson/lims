@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-    
 from __future__ import unicode_literals
 
-from datetime import datetime, time, date, timedelta
+# from datetime import datetime, time, date, timedelta
+import datetime
 import json
 import logging
 
@@ -74,8 +75,8 @@ def make_log(
             max_datetime = log.date_time
         logger.info('log time collision: %s, adjust log time from : %s to %s', 
             e, max_datetime.isoformat(), 
-            (max_datetime + timedelta(0,collision_counter)))
-        max_datetime += timedelta(0,collision_counter)
+            (max_datetime + datetime.timedelta(0,collision_counter)))
+        max_datetime += datetime.timedelta(0,collision_counter)
         times_seen.add(max_datetime)
         log.date_time = max_datetime
         collision_counter = collision_counter + 1

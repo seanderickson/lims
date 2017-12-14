@@ -2,7 +2,8 @@
 import json
 import logging
 
-from datetime import datetime, timedelta
+# from datetime import datetime, timedelta
+import datetime
 from django.db import migrations, models
 from pytz import timezone
 import pytz
@@ -32,8 +33,9 @@ def create_log_time(key,input_date):
     ("plate_number", "screen_facility_id", etc):
     - Some activities in SS1 have identical date_of_activity
     '''
+    
     date_time = pytz.timezone('US/Eastern').localize(
-        datetime.combine(input_date, datetime.min.time()))
+        datetime.datetime.combine(input_date, datetime.datetime.min.time()))
     i = 0
     
     timekey = '%r:%r'
@@ -42,8 +44,8 @@ def create_log_time(key,input_date):
         i += 1
         logger.info('key: %s, adjust time: %s to %s', 
             key,
-            date_time.isoformat(), (date_time + timedelta(0,i)))
-        date_time += timedelta(0,i)
+            date_time.isoformat(), (date_time + datetime.timedelta(0,i)))
+        date_time += datetime.timedelta(0,i)
         _timekey = timekey % (key,date_time)
     times_seen.add(_timekey)
     return date_time

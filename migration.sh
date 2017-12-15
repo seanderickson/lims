@@ -360,6 +360,12 @@ function migratedb {
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
     
+    migration='0019'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    
 
 # TEMP: 20170614 disable post migrations; leaves vestigal fields/tables in place TODO: reinstate    
 #    migration='0098' 

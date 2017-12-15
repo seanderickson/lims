@@ -442,8 +442,8 @@ def create_library_screening_logs(apps, schema_editor):
                 str(ls['plate_number'])])
 #                 str(ls['plate_number']).zfill(5)])
             cp_log.uri = '/'.join([base_uri,cp_log.ref_resource_name,cp_log.key])
-            if cp_log.date_time in extant_plate_logs[cp_log.key]:
-                cp_log.date_time = create_log_time(cp_log.key,cp_log.date_time)
+#             if cp_log.date_time in extant_plate_logs[cp_log.key]:
+            cp_log.date_time = create_log_time(cp_log.key,cp_log.date_time)
             extant_plate_logs[cp_log.key].add(cp_log.date_time)    
             previous_screening_count = copyplate_to_screening_count.get(
                 ls['plate_id'], 0)
@@ -726,13 +726,13 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
                     plate_log = _child_log_from(cpr_parent_log)
 
                     # Hack: to avoid integrity collisions between plate migrations
-                    if plate_log.date_time in extant_plate_logs[plate_log.key]:
-                        plate_log.date_time = create_log_time(plate_log.key,plate_log.date_time)
+                    plate_log.key = plate_key
+                    plate_log.ref_resource_name = plate_resource_name
+                    plate_log.uri = '/'.join([plate_log.ref_resource_name,plate_log.key])
+#                     if plate_log.date_time in extant_plate_logs[plate_log.key]:
+                    plate_log.date_time = create_log_time(plate_log.key,plate_log.date_time)
                     extant_plate_logs[plate_log.key].add(plate_log.date_time)
                     plate_log.comment = None
-                    plate_log.ref_resource_name = plate_resource_name
-                    plate_log.key = plate_key
-                    plate_log.uri = '/'.join([plate_log.ref_resource_name,plate_log.key])
                     prev_cplt_screening_count = plate_prev_data.get(plate_log.key, None)
                     if prev_cplt_screening_count is None:
                         prev_cplt_screening_count = 0
@@ -743,6 +743,7 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
                             prev_cplt_screening_count,
                             new_plate_cplt_screening_count ],
                         }
+                    logger.debug('save plate log: %r', plate_log)
                     plate_log.save()
                     logger.debug('plate log: %r, %r', plate_log, plate_log.diffs)
                     cpr_plate_logs[cpr_plate_key] = plate_log

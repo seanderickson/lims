@@ -42,8 +42,7 @@ def create_log_time(key,input_date):
     _timekey = timekey % (key,date_time)
     while _timekey in times_seen:
         i += 1
-        logger.info('key: %s, adjust time: %s to %s', 
-            key,
+        logger.info('%d, key: %s, adjust time: %s to %s', i, key,
             date_time.isoformat(), (date_time + datetime.timedelta(0,i)))
         date_time += datetime.timedelta(0,i)
         _timekey = timekey % (key,date_time)

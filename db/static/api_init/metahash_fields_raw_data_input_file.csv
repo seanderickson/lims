@@ -2,7 +2,7 @@ key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_
 screen_facility_id,fields.rawdatainputfile,,,0,,TRUE,"Screen Facility ID",Screen,TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}', 'group': 'Screen' }",,,,,,,,,
 cherry_pick_request_id,fields.rawdatainputfile,,,1,,TRUE,"Cherry Pick Request ID","Cherry Pick Request ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}' }",,,,,,,,,
 ordinal,fields.rawdatainputfile,,,2,,TRUE,"Input Order","Input Order",TRUE,,,[l;d],,integer,,,,,,,,,,,
-collation_order,fields.rawdatainputfile,,,3,,TRUE,"Collation of plates by condition, replicate, readout and library plate",Collation,TRUE,,rawdatainput.collation_order,[l;d],[c;u],string,,,select,,,PQ_C_REP_READ,,,,,
+collation_order,fields.rawdatainputfile,,,3,,TRUE,"Collation of assay plates by library plate, quadrant (if 96 well assay plates are used), condition, replicate, readout",Collation,TRUE,,rawdatainput.collation_order,[l;d],[c;u],string,,,select,,,PQ_C_REP_READ,,,,,
 conditions,fields.rawdatainputfile,,,4,,TRUE,Conditions,Conditions,TRUE,,,[l;d],[c;u],string,,,,,,,,,,,
 readouts,fields.rawdatainputfile,,,5,,TRUE,Readouts,Readouts,TRUE,,,[l;d],[c;u],string,,,,,,,,,,,
 readout_type,fields.rawdatainputfile,,,6,,TRUE,"Readout Type","Readout Type",TRUE,,datacolumn.assay_readout_type,[l;d],[c;u],string,,,select,,,,,,,,

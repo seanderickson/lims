@@ -1099,10 +1099,7 @@ class ApiResource(SqlAlchemyResource):
             if original_data is not None and len(original_data) != 0:
                 raise ValidationError({ 
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
-#             original_data = None
-#         log.save()
-        
-        logger.info('patch_obj: %r, %r', deserialized, log)
+        logger.debug('patch_obj: %r, %r', deserialized, log)
         logger.debug('patch_obj: %r', kwargs)
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         if API_RESULT_OBJ in patch_result:
@@ -1960,7 +1957,7 @@ class ApiLogResource(ApiResource):
           
             (filter_expression, filter_hash, readable_filter_hash) = SqlAlchemyResource.\
                 build_sqlalchemy_filters(schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
 
             if filter_expression is None and 'parent_log_id' not in kwargs:
                 raise InformationError(
@@ -3123,7 +3120,7 @@ class VocabularyResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             
             if DEBUG_GET_LIST: 
                 logger.info('filter_fields: %r, kwargs: %r', 
@@ -3725,7 +3722,7 @@ class UserResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             
             filter_expression = self._meta.authorization.filter(
                 request.user, filter_expression)
@@ -3838,6 +3835,7 @@ class UserResource(ApiResource):
         if not schema:
             raise Exception('schema not initialized')
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
+        logger.info('delete userprofile: %r', id_kwargs)
         UserProfile.objects.get(**id_kwargs).delete()
     
     @write_authorization
@@ -3869,7 +3867,7 @@ class UserResource(ApiResource):
                     ecommons_id)
                 username = ecommons_id
             
-            logger.info('deserialized: %r', deserialized) 
+            logger.debug('deserialized: %r', deserialized) 
             try:
                 user = DjangoUser.objects.get(username=username)
                 is_patch = True
@@ -4384,7 +4382,7 @@ class UserGroupResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
               
@@ -4775,7 +4773,7 @@ class PermissionResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                   

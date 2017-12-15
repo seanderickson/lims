@@ -156,16 +156,16 @@ def image_generator(rows, image_keys, request):
                         image = reports.serialize.resolve_image(request, val)
                         # If it exists, write the fullpath to the file
                         fullpath = request.build_absolute_uri(val)
-                        logger.debug('image exists: %r, abs_uri: %r', val, fullpath)
+                        logger.debug(
+                            'image exists: %r, abs_uri: %r', val, fullpath)
                         row[key] = fullpath
                     except Http404, e:
-                        logger.info('no image found at: %r', val)
-#                         logger.info('no image at: %r, %r', val,e)
+                        logger.debug('no image found at: %r', val)
                         row[key] = None
                     # TODO: remove tastypie exceptions
                     except ImmediateHttpResponse, e:
-                        logger.info('no image found at: %r, %r', val, str(e._response))
-#                         logger.info('no image at: %r, %r', val,e)
+                        logger.info(
+                            'no image found at: %r, %r', val, str(e._response))
                         row[key] = None
                     except Exception, e:
                         logger.exception(

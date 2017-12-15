@@ -6,23 +6,20 @@ import logging
 import os.path
 import sys
 import types
-from wsgiref.util import FileWrapper
 
 from PIL import Image
 from django.conf import settings
-from django.forms.models import model_to_dict
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
-from django.http.response import Http404, HttpResponseServerError,\
-    StreamingHttpResponse
+from django.http.response import Http404, HttpResponseServerError
 from django.shortcuts import render
 
 from db import WELL_ID_PATTERN
-from db.models import ScreensaverUser, Reagent, AttachedFile, Publication,\
+from db.api import AttachedFileAuthorization, PublicationAuthorization
+from db.models import ScreensaverUser, Reagent, AttachedFile, Publication, \
     RawDataTransform
-from db.api import AttachedFileAuthorization,PublicationAuthorization
-from django.core.exceptions import ObjectDoesNotExist
 from reports.api import UserGroupAuthorization
-from reports.serialize.streaming_serializers import FileWrapper1
 from reports.serialize import XLSX_MIMETYPE
 
 
@@ -34,16 +31,14 @@ def main(request):
     logger.debug(str(('main search: ', search)))
     return render(request, 'db/index.html', {'search': search})
 
+@login_required
 def well_image(request, well_id):
-    if(not request.user.is_authenticated()):
-        return HttpResponse('Log in required.', status=401)
 
     # TODO: use group authorization - not required at ICCBL
     # auth = UserGroupAuthorization('well')
     # if auth.has_read_authorization(
     #     request.user, well_id) is not True:
     #     return HttpResponse(status=403)
-    
     match = WELL_ID_PATTERN.match(well_id)
     if not match:
         logger.warn('invalid well_id format: %d, pattern: %s' 
@@ -72,10 +67,8 @@ def well_image(request, well_id):
                 well_id, structure_image_path)
             raise Http404
 
-
+@login_required
 def smiles_image(request, well_id):
-    if(not request.user.is_authenticated()):
-        return HttpResponse('Log in required.', status=401)
     # TODO: not tested
         
     import rdkit.Chem
@@ -92,43 +85,48 @@ def smiles_image(request, well_id):
     return response
 
 
+@login_required
 def publication_attached_file(request, publication_id):
-    if(not request.user.is_authenticated()):
-        return HttpResponse('Log in required.', status=401)
-
+    response = None
     try:
         publication = Publication.objects.get(publication_id=publication_id)
         auth = PublicationAuthorization('publication')
         if auth.has_publication_read_authorization(
             request.user, publication_id) is not True:
-            return HttpResponse(status=403)
+            response = HttpResponse(status=403)
         else:
-            return _download_file(request,publication.attachedfile)
+            response = _download_file(request,publication.attachedfile)
     except ObjectDoesNotExist,e:
         msg = 'could not find publication object for id: %r' % publication_id
         logger.exception(msg)
-        return HttpResponse(status=404)
+        response = HttpResponse(status=404)
+    return process_response(request, response)
 
+@login_required
 def attached_file(request, attached_file_id):
-    if(not request.user.is_authenticated()):
-        logger.warn('access to restricted: user: %r, file: %r',
-            request.user,attached_file) 
-        return HttpResponse('Log in required.', status=401)
-
+    logger.info('request: %r', request)
+    response = None
     try:
+        logger.info('get attached file: %r, %r', request, attached_file_id)
         af = AttachedFile.objects.get(attached_file_id=attached_file_id)
+        logger.info('found: %r', af)
         auth = AttachedFileAuthorization('attachedfile')
         if auth.has_file_read_authorization(
                 request.user, attached_file_id) is not True:
-            return HttpResponse(status=403)
+            logger.info('no read access...')
+            response = HttpResponse(status=403)
         else:
-            return _download_file(request,af)
+            logger.info('creating response...')
+            response = _download_file(request,af)
+            logger.info('response: %r', response)
     except ObjectDoesNotExist,e:
-        msg = 'could not find attached file object for id: %r' % attached_file_id
+        msg = 'AttachedFile not found: %r' % attached_file_id
         logger.exception(msg)
-        return HttpResponse(status=404)
+        response = HttpResponse(status=404)
 
+    return process_response(request, response)
         
+@login_required
 def _download_file(request, attached_file):   
     """                                                                         
     TODO: Send a file through Django without loading the whole file into              
@@ -137,25 +135,67 @@ def _download_file(request, attached_file):
     """
     logger.debug('download attached file: %s', attached_file)
     try:     
-        
         response = HttpResponse(
-            str(attached_file.contents), content_type='application/octet-stream') 
+            str(attached_file.contents), 
+            content_type='application/octet-stream') 
         response['Content-Disposition'] = \
             'attachment; filename=%s' % unicode(attached_file.filename)
         response['Content-Length'] = len(attached_file.contents)
+        logger.info('download file response %r', response)
         return response
     except Exception,e:
         logger.exception('on accessing attached file %s' % attached_file)
         raise
 
+@login_required
 def screen_raw_data_transform(
         request,screen_facility_id):
     logger.info('download raw_data_transform result for %r, %r', 
         screen_facility_id)
     
-    rdt = RawDataTransform.objects.get(screen__facility_id=screen_facility_id)
-    logger.info('attempt to stream file: %r', rdt.temp_output_filename)
-    with open(rdt.temp_output_filename) as temp_file:
+    response = None
+    try:
+        rdt = RawDataTransform.objects.get(
+            screen__facility_id=screen_facility_id)
+        if not os.path.exists(rdt.temp_output_filename):
+            logger.info('raw data file for %d not found at "%s"', 
+                rdt, rdt.temp_output_filename)
+            response = HttpResponse(status=404)
+        else:
+            logger.info('attempt to stream file: %r', rdt.temp_output_filename)
+            response = stream_raw_data_file(
+                request, rdt.temp_output_filename,rdt.output_filename)
+    except ObjectDoesNotExist:
+        response = HttpResponse(status=404)
+        
+    return process_response(request, response)
+
+@login_required
+def cpr_raw_data_transform(
+        request,cherry_pick_request_id):
+    logger.info('download raw_data_transform result for %r, %r', 
+        cherry_pick_request_id)
+
+    response = None
+    try:
+        rdt = RawDataTransform.objects.get(
+            cherry_pick_request__cherry_pick_request_id=cherry_pick_request_id)
+        if not os.path.exists(rdt.temp_output_filename):
+            logger.info('raw data file for %d not found at "%s"', 
+                rdt, rdt.temp_output_filename)
+            response = HttpResponse(status=404)
+        else:
+            logger.info('attempt to stream file: %r', rdt.temp_output_filename)
+            response = stream_raw_data_file(
+                request, rdt.temp_output_filename,rdt.output_filename)
+    except ObjectDoesNotExist:
+        response = HttpResponse(status=404)
+    
+    return process_response(request, response)
+
+def stream_raw_data_file(request, filename, output_filename):
+
+    with open(filename) as temp_file:
         temp_file.seek(0, os.SEEK_END)
         size = temp_file.tell()
         temp_file.seek(0)   
@@ -163,15 +203,19 @@ def screen_raw_data_transform(
         response['Content-Length'] = size
         response['Content-Type'] = XLSX_MIMETYPE
         response['Content-Disposition'] = \
-            'attachment; filename=%s.xlsx' % unicode(rdt.output_filename)
+            'attachment; filename=%s.xlsx' % unicode(output_filename)
+        return response
+    
+def process_response(request, response):
 
+    if hasattr(request, 'GET'):    
         downloadID = request.GET.get('downloadID', None)
         if downloadID:
             logger.info('set cookie "downloadID" %r', downloadID )
             response.set_cookie('downloadID', downloadID)
         else:
             logger.debug('no downloadID: %s' % request.GET )
-        
-        return response
+    
+    return response
         
     

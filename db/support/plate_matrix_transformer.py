@@ -110,6 +110,9 @@ class Counter(object):
 
         return reading_hash
     
+    def __repr__(self, *args, **kwargs):
+        return '%r' % self.counter_hash
+    
 def transform(input_matrices, counter, aps, lps):
     
     assert aps in ALLOWED_MATRIX_SIZES, \
@@ -140,7 +143,7 @@ def transform(input_matrices, counter, aps, lps):
             if key == 'plate':
                 new_counter_hash['quadrant'] = [0,1,2,3]
         counter96 = Counter(new_counter_hash)
-        
+        logger.info('counter96: %r', counter96)
         if counter96.size() != len(input_matrices):
             raise ProgrammingError('input_matrices length (%d) must match '
                 'the counter length with 4 quadrants: (%d)'
@@ -186,10 +189,11 @@ def transform(input_matrices, counter, aps, lps):
                 'library_plate_size': msg })
         # Create an adjusted counter to match the input        
         plates = counter.counter_hash.get('plate')
+        logger.info('plates: %r', plates)
         if len(plates) % 4 != 0:
             msg = 'Deconvolute: plate count must be a multiple of 4: %d' % len(plates)
             raise ValidationError({
-                'plates': msg })
+                'plate_ranges': msg })
             
         plates_1536 = OrderedDict()
         for i,plate in enumerate(plates):

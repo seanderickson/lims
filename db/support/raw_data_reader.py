@@ -46,14 +46,16 @@ def read_rows(rowgenerator):
     
     for i,cellgenerator in enumerate(rowgenerator):
         row = [x for x in cellgenerator]
-        logger.debug('read row: %d: %r', i, row)
+        logger.info('read row: %d: %r', i, row)
 
         # Matrix Header row: 
         # - empty cell followed by all number cells; 
         # - only consider if length is in ALLOWED_COLS 
-        cell0 = row[0]
-        if cell0:
-            cell0 = cell0.strip()
+        cell0 = None
+        if row:
+            cell0 = row[0]
+            if cell0:
+                cell0 = cell0.strip()
         logger.debug('cell0: %r', cell0)
         if not cell0:
             if in_matrix is False:

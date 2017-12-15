@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-import decimal
+from collections import defaultdict
 from decimal import Decimal
+import decimal
 from itertools import chain, combinations
 import logging
 import math
 import re
 
+from django.db.utils import ProgrammingError
+
 from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
-from django.db.utils import ProgrammingError
+
 
 ## PLATE_SEARCH_LINE_SPLITTING_PATTERN:
 # Each plate search range is split
@@ -30,6 +33,15 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_PLATE_SIZES = [96,384]
 
+ERROR_DUPLICATE_WELLS = 'Duplicate Wells Found'
+ERROR_PARSE_EQUALSIGN = 'May only have one equal sign per line'
+DISALLOWED_WELL_RANGE_CHARS = re.compile(r'[^\s\-"\',a-zA-Z0-9]+')
+ERROR_WELL_RANGE_DISALLOWED_CHARS = \
+    'Disallowed chars found: &lt;' + DISALLOWED_WELL_RANGE_CHARS.pattern + '&gt;'    
+ERROR_WELL_RANGE_PARTS_UNEQUAL = 'Both values of the range must be the same type'
+ERROR_WELL_ROW_OUT_OF_RANGE = 'Row is out of range, max: %r'
+ERROR_WELL_COL_OUT_OF_RANGE = 'Col is out of range: max: %r'
+ERROR_ENTRY_NOT_RECOGNIZED = 'Unrecognized entry'
 def get_rows(platesize):
     return int(math.sqrt(2*platesize/3))
 
@@ -183,28 +195,31 @@ def plate_size_from_plate_type(plate_type):
 def parse_named_well_ranges(raw_data, plate_size):
     logger.info('parse_named_well_ranges(%r, %r) ', raw_data, plate_size)
     
-    errors = []
-    wells_shared_between_ranges_error_msg = 'duplicate wells found in ranges: [%s]'
+    errors = defaultdict(list)
+#     wells_shared_between_ranges_error_msg = 'duplicate wells found in ranges: [%s]'
     named_well_ranges = {}
+    
+    if not raw_data:
+        return (named_well_ranges,errors)
+    
     ordinal = 1
     re_strip_quotes = re.compile(r'["\']+')
     
     for well_range in re.split(r'\n', raw_data):
-        logger.info('well_range: %r', well_range)
+        logger.debug('well_range: %r', well_range)
         well_range = well_range.strip()
         if not well_range:
             continue
         
         unparsed = well_range
         range_to_label = re.split(r'[=]+', well_range)
-        logger.info('range_to_label %r', range_to_label)
+        logger.debug('range_to_label %r', range_to_label)
         label = ''
         if len(range_to_label) == 2:
             label = re_strip_quotes.sub('',range_to_label[1])
             unparsed = re_strip_quotes.sub('', range_to_label[0])
         elif len(range_to_label) > 2:
-            errors.add(
-                'may only have one equal sign per line: %r', well_range)
+            errors[ERROR_PARSE_EQUALSIGN].append(well_range)
         
         named_well_range = named_well_ranges.get(label,None)
         if named_well_range is None:
@@ -219,7 +234,7 @@ def parse_named_well_ranges(raw_data, plate_size):
 
         parsed_wells = parse_well_ranges(unparsed, plate_size, errors)
         
-        logger.info('parsed wells: %r, %r', label, parsed_wells)
+        logger.debug('parsed wells: %r, %r', label, parsed_wells)
         named_well_range['wells'].extend(parsed_wells)
 
     # find duplicates
@@ -232,11 +247,10 @@ def parse_named_well_ranges(raw_data, plate_size):
             duplicate_wells.update(
                 set(test_well_range['wells']) & set(well_range['wells']))
     if duplicate_wells:
-        errors.append(wells_shared_between_ranges_error_msg 
-            % ','.join(sorted(duplicate_wells)))
+        errors[ERROR_DUPLICATE_WELLS] = sorted(duplicate_wells)
     
     if errors:
-        logger.info('parse: %r returns errors: %s', raw_data, '; '.join(errors))
+        logger.info('parse: %r returns errors: %r', raw_data,errors)
     return (named_well_ranges, errors)
 
 def parse_well_ranges(raw_data, plate_size, errors):
@@ -246,7 +260,6 @@ def parse_well_ranges(raw_data, plate_size, errors):
     COL_PATTERN = re.compile('^(col:)?\s*(\d{1,2})$')
     ROW_PATTERN = re.compile('^(row:)?\s*([a-zA-Z]{1,2})$')
     
-    range_parts_unequal_msg = 'Both values of the range must be the same type: %r';
     n_cols = get_cols(plate_size)
     n_rows = get_rows(plate_size)
     wells = []
@@ -255,10 +268,8 @@ def parse_well_ranges(raw_data, plate_size, errors):
     if not raw_data:
         return wells
 
-    DISALLOWED_CHARS = re.compile(r'[^\s\-"\',a-zA-Z0-9]+')
-    
-    if DISALLOWED_CHARS.match(raw_data):
-        errors.add('Disallowed chars found: &lt;' + DISALLOWED_CHARS.pattern + '&gt;')
+    if DISALLOWED_WELL_RANGE_CHARS.match(raw_data):
+        errors[ERROR_WELL_RANGE_DISALLOWED_CHARS].append(raw_data)
         return wells
   
     for input in re.split(r'\s*,\s*', raw_data):
@@ -273,15 +284,16 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 match1 = ROW_PATTERN.match(parts[0])
                 match2 = ROW_PATTERN.match(parts[1])
                 if not match2:
-                    errors.add(range_parts_unequal_msg % input)
+                    errors[ERROR_WELL_RANGE_PARTS_UNEQUAL].append(input)
                 start_row = letter_to_row_index(match1.group(2))
                 stop_row = letter_to_row_index(match2.group(2))
                 
                 row_range = sorted([start_row,stop_row])
                 logger.info('input: %r, row_range: %r', parts, row_range)
                 if row_range[1] >= n_rows:
-                    errors.add('row is out of range: %r, max: %r', 
-                        input, row_to_letter(n_rows-1))
+                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+#                     errors.add('row is out of range: %r, max: %r', 
+#                         input, row_to_letter(n_rows-1))
                     continue
                 for i in range(0,n_cols):
                     for j in range(row_range[0],row_range[1]+1):
@@ -290,15 +302,16 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 match1 = COL_PATTERN.match(parts[0])
                 match2 = COL_PATTERN.match(parts[1])
                 if not match2:
-                    errors.add(range_parts_unequal_msg % input)
+                    errors[ERROR_WELL_RANGE_PARTS_UNEQUAL].append(input)
                 start_col = int(match1.group(2))-1
                 stop_col = int(match2.group(2))-1
                 
                 col_range = sorted([start_col, stop_col])
                 logger.info('col_range: %r, %r', parts, col_range)
                 if col_range[1] >= n_cols:
-                    errors.add('col is out of range: %r, max: %r', 
-                        input, n_cols)
+                    errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
+#                     errors.add('col is out of range: %r, max: %r', 
+#                         input, n_cols)
                     continue
                 for i in range(col_range[0],col_range[1]+1):
                     for j in range(0,n_rows):
@@ -307,42 +320,47 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 match1 = WELL_PATTERN.match(parts[0])
                 match2 = WELL_PATTERN.match(parts[1])
                 if not match2:
-                    errors.add(range_parts_unequal_msg % input)
+                    errors[ERROR_WELL_RANGE_PARTS_UNEQUAL].append(input)
                 start_row = letter_to_row_index(match1.group(1))
                 stop_row = letter_to_row_index(match2.group(1))
                 start_col = int(match1.group(2))-1
                 stop_col = int(match2.group(2))-1
                 col_range = sorted([start_col, stop_col])
                 if col_range[1] >= n_cols:
-                    errors.add('col is out of range: %r, max: %r', 
-                        input, n_cols)
+                    errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
+#                     errors.add('col is out of range: %r, max: %r', 
+#                         input, n_cols)
                     continue
                 row_range = sorted([start_row,stop_row])
                 logger.info('well range: %r, %r, %r', parts,row_range,col_range)
                 if row_range[1] >= n_rows:
-                    errors.add('row is out of range: %r, max: %r', 
-                        input, row_to_letter(n_rows-1))
+                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+#                     errors.add('row is out of range: %r, max: %r', 
+#                         input, row_to_letter(n_rows-1))
                     continue
                 for i in range(col_range[0],col_range[1]+1):
                     for j in range(row_range[0],row_range[1]+1):
                         wells.append(get_well_name(j,i))
             else:
-                errors.append('unrecognized block range entry: %r'% input)
+                errors[ERROR_ENTRY_NOT_RECOGNIZED].append(input)
+#                 errors.append('unrecognized block range entry: %r'% input)
         elif len(parts) == 1:
             input = parts[0]
             if ROW_PATTERN.match(input):
                 row = letter_to_row_index(ROW_PATTERN.match(input).group(2))
                 if row >= n_rows:
-                    errors.add('row is out of range: %r, max: %r', 
-                        input, row_to_letter(n_rows-1))
+                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+#                     errors.add('row is out of range: %r, max: %r', 
+#                         input, row_to_letter(n_rows-1))
                     continue
                 for i in range(0,n_cols):
                     wells.append(get_well_name(row,i))
             elif COL_PATTERN.match(input):
                 col = int(COL_PATTERN.match(input).group(2))-1
                 if col >= n_cols:
-                    errors.add('col is out of range: %r, max: %r', 
-                        input, n_cols)
+                    errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
+#                     errors.add('col is out of range: %r, max: %r', 
+#                         input, n_cols)
                     continue
                 for j in range(0,n_rows):
                     wells.append(get_well_name(j,col))
@@ -350,18 +368,22 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 row = letter_to_row_index(WELL_PATTERN.match(input).group(1))
                 col = int(WELL_PATTERN.match(input).group(2))-1
                 if row >= n_rows:
-                    errors.add('row is out of range: %r, max: %r', 
-                        input, row_to_letter(n_rows-1))
+                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+#                     errors.add('row is out of range: %r, max: %r', 
+#                         input, row_to_letter(n_rows-1))
                     continue
                 if col >= n_cols:
-                    errors.add('col is out of range: %r, max: %r', 
-                        input, n_cols)
+                    errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
+#                     errors.add('col is out of range: %r, max: %r', 
+#                         input, n_cols)
                     continue
                 wells.append(get_well_name(row,col))
             else:
-                errors.append('unrecognized single specifier entry: %r'% input)
+                errors[ERROR_ENTRY_NOT_RECOGNIZED].append(input)
+#                 errors.append('unrecognized single specifier entry: %r'% input)
         else:
-            errors.append('unrecognized entry: %r' % input)
+            errors[ERROR_ENTRY_NOT_RECOGNIZED].append(input)
+#             errors.append('unrecognized entry: %r' % input)
     return sorted(wells)
   
    

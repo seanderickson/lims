@@ -481,7 +481,6 @@ def setUpModule():
         IResourceTestCase.user = User.objects.get(
             username=IResourceTestCase.username)
         logger.info('superuser found: %r', IResourceTestCase.user)
-        logger.info('users: %r', [str(u) for u in User.objects.all()])
     except ObjectDoesNotExist:
         logger.info('creating superuser: %s', IResourceTestCase.username)
         IResourceTestCase.user = User.objects.create_superuser(
@@ -496,25 +495,33 @@ def setUpModule():
     else:
         print 'skip database metahash initialization when using keepdb'
 
+    new_admin_user = None
     try:
+        # Create a DB ScreensaverUser (mirror the Auth user created above)
         su = ScreensaverUser.objects.get(username=IResourceTestCase.username)
         logger.info('found ss user: %r', su)
         temp_test_case = DBResourceTestCase(methodName='get_single_resource')
         resource_uri = \
             BASE_URI_DB + '/screensaveruser/' +IResourceTestCase.username
-        DBResourceTestCase.admin_user = \
+        new_admin_user = \
             temp_test_case.get_single_resource(resource_uri)
+        DBResourceTestCase.admin_user = new_admin_user
         logger.info('got admin user: %r', DBResourceTestCase.admin_user)
     except ObjectDoesNotExist:
+        logger.info('admin user not found: %r', IResourceTestCase.username)
+        
+    if not new_admin_user:
         logger.info('create an admin screensaveruser...')
         temp_test_case = DBResourceTestCase(methodName='create_staff_user')
-        DBResourceTestCase.admin_user = temp_test_case.create_staff_user({ 
+        new_admin_user = temp_test_case.create_staff_user({ 
             'username': temp_test_case.username,
             'first_name': 'super_user1_first_name',
             'last_name': 'super_user1_last_name',
             'is_superuser': True,
         })
         logger.info('admin screensaveruser created')
+        DBResourceTestCase.admin_user = new_admin_user
+                
     
     logger.info('=== setup Module done')
 
@@ -536,6 +543,7 @@ class LibraryResource(DBResourceTestCase):
         super(LibraryResource, self).setUp()
 
     def tearDown(self):
+        logger.info('=== tearDown...')
 
         DBResourceTestCase.tearDown(self)
         logger.info('delete library resources')
@@ -697,7 +705,8 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue('comment_array' in patch_response, 
             'patch_response: %r' % patch_response)
         comment_array = patch_response['comment_array']
-        self.assertTrue(len(comment_array),1)
+        self.assertTrue(comment_array and len(comment_array)==1, 
+            'no comment array: %r' % patch_response)
         self.assertTrue(test_comment in patch_response['comment_array'][0], 
             'test_comment: %r not found in library response obj: %r' % (
                 test_comment, patch_response))
@@ -2415,6 +2424,7 @@ class ScreenResultResource(DBResourceTestCase):
         super(ScreenResultResource, self).setUp()
 
     def tearDown(self):
+        logger.info('=== tearDown...')
         
         DBResourceTestCase.tearDown(self)
         logger.info('delete resources')
@@ -3235,6 +3245,7 @@ class ScreenResource(DBResourceTestCase):
         super(ScreenResource, self).setUp()
 
     def tearDown(self):
+        logger.info('=== tearDown...')
         DBResourceTestCase.tearDown(self)
         Screen.objects.all().delete()
         Library.objects.all().delete()
@@ -4748,6 +4759,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         super(CherryPickRequestResource, self).setUp()
 
     def tearDown(self):
+        logger.info('=== tearDown...')
         DBResourceTestCase.tearDown(self)
         logger.info('delete resources')
         Screen.objects.all().delete()
@@ -7408,6 +7420,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         super(ScreensaverUserResource, self).setUp()
 
     def tearDown(self):
+        logger.info('=== tearDown...')
         DBResourceTestCase.tearDown(self)
         
         logger.info('delete resources')
@@ -8163,6 +8176,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         view, args, kwargs = resolve(uri)
         kwargs['request'] = self.api_client.client.request()
         kwargs['request'].user=admin_user
+        logger.info('access file: %r, %r', args, kwargs)
         result = view(*args, **kwargs)
         output_filename = '%s.out.%s' % tuple(filename.split('.'))
         logger.info('write %s to %r', filename, output_filename)
@@ -8779,6 +8793,7 @@ class DataSharingLevel(DBResourceTestCase):
         self.general_user_password = 'testpass1'
 
     def tearDown(self):
+        logger.info('=== tearDown...')
         DBResourceTestCase.tearDown(self)
         # NOTE: tearDown may be eliminated for iterative testing:
         # the setup_data method will check for existence of data before creating
@@ -9966,7 +9981,11 @@ class RawDataTransformer(DBResourceTestCase):
 
         
         self.assertTrue(len(errors)==1, 'unexpected errors: %r' % errors)
-        self.assertTrue('duplicate wells found in ranges: [C01,C02,D01,D02,D04,D05,D06]' in errors[0])
+        self.assertTrue(lims_utils.ERROR_DUPLICATE_WELLS in errors)
+        self.assertEqual(set(errors[lims_utils.ERROR_DUPLICATE_WELLS]),
+            set(['C01','C02','D01','D02','D04','D05','D06']))
+#         self.assertTrue('Duplicate Wells Found: C01,C02,D01,D02,D04,D05,D06' 
+#             in errors[0], 'Error not recognized: %r' % errors)
         
         for expected_range in expected_named_ranges:
             parsed_range = None

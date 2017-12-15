@@ -321,11 +321,11 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
             except ObjectDoesNotExist as e:
                 logger.info('not found: %r', e)
-                return self.build_error_response(
+                response = self.build_error_response(
                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
             except Http404 as e:
                 logger.info('not found: %r', e)
-                return self.build_error_response(
+                response = self.build_error_response(
                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
@@ -430,7 +430,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         logger.debug('serialize to: %r', content_type)
         return self.get_serializer().serialize(data, content_type)
 
-    def _get_filename(self, readable_filter_hash, filename=None, **extra):
+    def _get_filename(self, readable_filter_hash, schema, filename=None, **extra):
         MAX_VAL_LENGTH = 20
         file_elements = [self._meta.resource_name]
         if filename is not None:
@@ -443,7 +443,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     val = val[:MAX_VAL_LENGTH]
                     file_elements.append(val)
         for key,val in readable_filter_hash.items():
-            file_elements.append(str(key))
+            if key not in schema['id_attribute']:
+                file_elements.append(str(key))
             val = default_converter(str(val))
             val = val[:MAX_VAL_LENGTH]
             file_elements.append(val)

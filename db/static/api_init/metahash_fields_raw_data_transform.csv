@@ -8,6 +8,6 @@ assay_plate_size,fields.rawdatatransform,,,5,,TRUE,"Assay Plate Size","Assay Pla
 assay_positive_controls,fields.rawdatatransform,,,6,,TRUE,"Assay Positive Control Wells","Assay Positive Controls",TRUE,,,[l;d],[c;u],string,,"{ 'rows': 2 }",textarea,,,,,,,,
 assay_negative_controls,fields.rawdatatransform,,,7,,TRUE,"Assay Negative Control Wells","Assay Negative Controls",TRUE,,,[l;d],[c;u],string,,"{ 'rows': 2 }",textarea,,,,,,,,
 assay_other_controls,fields.rawdatatransform,,,8,,TRUE,"Assay Other Control Wells","Assay Other Controls",TRUE,,,[l;d],[c;u],string,,"{ 'rows': 2 }",textarea,,,,,,,,
-library_controls,fields.rawdatatransform,,,9,,TRUE,"Library Controls","Library Controls",TRUE,,,[l;d],[c;u],string,,"{ 'rows': 2 }",textarea,,,,,,,,
-library_plate_size,fields.rawdatatransform,,,10,,TRUE,"Library Plate Size","Library Plate Size",TRUE,,plate.size,[l;d],[c;u],integer,,,select,,,384,TRUE,,,,
+library_plate_size,fields.rawdatatransform,,,9,,TRUE,"Library Plate Size","Library Plate Size",TRUE,,plate.size,[l;d],[c;u],integer,,,select,,,384,TRUE,,,,
+library_controls,fields.rawdatatransform,,,10,,TRUE,"Library Controls","Library Controls",TRUE,,,[l;d],[c;u],string,,"{ 'rows': 2 }",textarea,,,,,,,,
 comments,fields.rawdatatransform,,,11,,TRUE,Comments,Comments,TRUE,,,[l;d],[c;u],string,,,textarea,,,,,,,,

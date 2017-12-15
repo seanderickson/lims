@@ -280,7 +280,7 @@ class PlateLocationResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                  
@@ -1591,7 +1591,7 @@ class LibraryCopyPlateResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                  
@@ -2278,7 +2278,7 @@ class UserAgreementResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
               
@@ -3837,7 +3837,7 @@ class ScreenResultResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, **extra_params)
+        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
                               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
@@ -5610,7 +5610,7 @@ class DataColumnResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
 
             filter_expression = self._meta.authorization.filter(
                 request.user, filter_expression)
@@ -6044,7 +6044,7 @@ class CopyWellResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
 
@@ -7187,7 +7187,7 @@ class CherryPickRequestResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
@@ -9029,7 +9029,7 @@ class ScreenerCherryPickResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, **extra_params)
+            filename = self._get_filename(readable_filter_hash, schema, **extra_params)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                                   
@@ -9293,7 +9293,7 @@ class LabCherryPickResource(DbApiResource):
     @transaction.atomic
     def patch_list(self, request, **kwargs):
         
-        DEBUG_LCP = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_LCP = False or logger.isEnabledFor(logging.DEBUG)
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -9317,8 +9317,9 @@ class LabCherryPickResource(DbApiResource):
             cherry_pick_request_id=cpr_id)
         logger.info(
             'patch_list: cpr: %r, screen: %r...', cpr, cpr.screen.facility_id)
-        original_cpr = self.get_cpr_resource()._get_detail_response_internal(**{
-            'cherry_pick_request_id': cpr_id })
+        original_cpr = \
+            self.get_cpr_resource()._get_detail_response_internal(
+                **{'cherry_pick_request_id': cpr_id })
         # NOTE: not logging all LCP updates at this time, copywell logs can be used
         # original_lab_cherry_pick_copywells = \
         #     self._get_list_response_internal(
@@ -9435,7 +9436,7 @@ class LabCherryPickResource(DbApiResource):
             if selection_update['selected'] is True:
                 selections_per_well[source_well_id].append(copy.name)
                 
-        logger.info('selection_updates: %r', selection_updates)
+        logger.info('selection_updates: %r', selection_updates.keys())
         # Check that only one copy is selected per well
         errors = []
         for source_well_id, copies in selections_per_well.items():
@@ -9446,7 +9447,7 @@ class LabCherryPickResource(DbApiResource):
             raise ValidationError(
                 key = API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED,
                 msg = '\n'.join(errors))
-        logger.debug('selection_updates: %r', selection_updates)
+        logger.debug('selection_updates: %r', selection_updates.keys())
         
         lcps_to_deselect = set()
         # First, find all of the deselections
@@ -9541,9 +9542,11 @@ class LabCherryPickResource(DbApiResource):
             # Plate cplt_screening_count should only be updated if this is the 
             # first lcp for the plate. If lcps already exist for the plate,
             # then the cplt_screening_count has already been adjusted.
-            new_plate_assignments = set([lcp['plate'] for lcp in selection_updates.values()])
+            new_plate_assignments = \
+                set([lcp['plate'] for lcp in selection_updates.values()])
             current_plate_assignments = set()
-            for lcp in [lcp for lcp in current_lcps.values() if lcp.copy is not None]:
+            for lcp in [lcp for 
+                lcp in current_lcps.values() if lcp.copy is not None]:
                 copy = lcp.copy
                 try:
                     plate = Plate.objects.get(
@@ -9557,7 +9560,8 @@ class LabCherryPickResource(DbApiResource):
             plates_to_ignore = current_plate_assignments-new_plate_assignments
             result_meta = \
                 self.get_copywell_resource().reserve_cherry_pick_volumes(
-                    cpr, lcps_to_allocate, parent_log, plates_to_ignore=plates_to_ignore)
+                    cpr, lcps_to_allocate, parent_log, 
+                    plates_to_ignore=plates_to_ignore)
             result_meta_allocate.update(result_meta)
             
             cpr.date_volume_reserved = _now().date() 
@@ -9578,12 +9582,13 @@ class LabCherryPickResource(DbApiResource):
                         'source_plate_type','destination_plate_type',
                         'source_copywell_id','source_copy_well_volume',
                         'volume_approved',
-                        '-structure_image','-molfile', '-library_plate_comment_array'],
+                        '-structure_image','-molfile', 
+                        '-library_plate_comment_array'],
                 })
         for lcp_cw in new_lab_cherry_pick_copywells:
             name = cw_formatter.format(**lcp_cw)
             if ( Decimal(lcp_cw['source_copy_well_volume'])
-                < cpr.transfer_volume_per_well_approved ):
+                    < cpr.transfer_volume_per_well_approved ):
                 logger.info(
                     'vol requires override: lcp_cw: %r, approved: %r, available: %r', 
                     name, cpr.transfer_volume_per_well_approved, 
@@ -9622,7 +9627,8 @@ class LabCherryPickResource(DbApiResource):
         parent_log.json_field = _meta
         parent_log.save()
 
-        # TODO: not logging all lcp changes at this time; copywell child logs can be used
+        # TODO: not logging all lcp changes at this time; copywell child logs 
+        # can be used 
         # original_lab_cherry_pick_copywells = {
         #     lcp['source_well_id']:lcp for lcp in original_lab_cherry_pick_copywells}
         # new_lab_cherry_pick_copywells = {
@@ -9690,7 +9696,8 @@ class LabCherryPickResource(DbApiResource):
             
             
             logger.debug('new lcp fields: %r',
-                [(field['key'],field['scope']) for field in schema['fields'].values()])
+                [(field['key'],field['scope']) 
+                    for field in schema['fields'].values()])
             return schema
         except Exception, e:
             logger.exception('xxx: %r', e)
@@ -9871,7 +9878,7 @@ class LabCherryPickResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, **extra_params)
+            filename = self._get_filename(readable_filter_hash, schema, **extra_params)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
             
@@ -10360,7 +10367,7 @@ class CherryPickPlateResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)                                  
+            filename = self._get_filename(readable_filter_hash, schema)                                  
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
             
@@ -10818,7 +10825,7 @@ class LibraryCopyResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
 
@@ -11328,7 +11335,7 @@ class PublicationResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
 
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
@@ -11638,12 +11645,13 @@ class AttachedFileAuthorization(ScreenAuthorization):
     def has_file_read_authorization(self, user, attached_file_id):
         logger.info('has_file_read_authorization: %r, %r', user, attached_file_id)
         is_restricted = self.is_restricted_view(user)
+        logger.info('1...%r', is_restricted)
         if is_restricted is not True:
             return True
-        
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
         attached_file = AttachedFile.objects.get(attached_file_id=attached_file_id)
         
+        logger.info('2...')
         if attached_file.screensaver_user == screensaver_user:
             return True
         elif attached_file.screen:
@@ -11651,6 +11659,7 @@ class AttachedFileAuthorization(ScreenAuthorization):
             return attached_file.screen in authorized_screens
         if attached_file.screensaver_user is None and attached_file.screen is None:
             return True
+        logger.info('return False')
         return False
         
 class AttachedFileResource(DbApiResource):
@@ -12037,7 +12046,7 @@ class AttachedFileResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
 
@@ -12441,7 +12450,7 @@ class ActivityResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
         
         # NOTE: try "filter_in_sql" for performance
         # NOTE: filters are done in the subquery clauses
@@ -12883,7 +12892,7 @@ class ServiceActivityResource(ActivityResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
         filter_expression = \
             self._meta.authorization.filter(user,filter_expression)
 
@@ -13790,7 +13799,7 @@ class LibraryScreeningResource(ActivityResource):
         logger.info('order_clauses: %r', order_clauses)
         stmt = stmt.order_by('activity_id')
 
-        filename = self._get_filename(readable_filter_hash, **extra_params)
+        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
         
         return (field_hash, columns, stmt, count_stmt,filename)
         
@@ -14772,7 +14781,34 @@ class LibraryScreeningResource(ActivityResource):
         #                 % kwargs)
 
 class RawDataTransformerResource(DbApiResource):
-    
+
+    ERROR_CONTROL_PARSE = 'Parse errors'
+    ERROR_CONTROL_DUPLICATES = lims_utils.ERROR_DUPLICATE_WELLS
+    ERROR_CONTROL_WELL_TYPE = (
+        'Control wells must be \'empty\', \'DMSO\', or \'Library Control\'')
+    ERROR_MATRIX_SIZE_DETECTED = \
+        'Matrix size detected: %d, does not match Assay Plate Size: %d'
+    ERROR_COLLATION_COUNT = 'Number of collations: %d, '\
+        'must be a divisor of the number matrices read: %d'
+    ERROR_PLATE_COUNT = (
+        'Not enough library plates: '
+        'Matrices read: %d (transformed: %d), '
+        'Collations: %d, '
+        'Plates Required: %d, Plates Available: %d')
+    control_type_abbreviations = {
+        'assay_positive_controls': 'P',
+        'assay_negative_controls': 'N',
+        'assay_other_controls': 'O',
+        'library_controls': 'C'
+    }
+    library_well_type_abbreviations = {
+        'experimental': 'X',
+        'empty': 'E',
+        'dmso': 'D',
+        'library_control': 'C',
+        'rnai_buffer': 'B' 
+    }
+
     class Meta:
 
         authentication = MultiAuthentication(BasicAuthentication(),
@@ -14788,6 +14824,7 @@ class RawDataTransformerResource(DbApiResource):
         super(RawDataTransformerResource, self).__init__(**kwargs)
         self.lcp_resource = None
         self.reagent_resource = None
+        self.labcherrypick_resource = None
 
     def prepend_urls(self):
 
@@ -14816,6 +14853,11 @@ class RawDataTransformerResource(DbApiResource):
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
     
+    def get_labcherrypick_resource(self):
+        if self.labcherrypick_resource is None:
+            self.labcherrypick_resource = LabCherryPickResource()
+        return self.labcherrypick_resource
+    
     @read_authorization
     def get_detail(self, request, **kwargs):
 
@@ -14838,16 +14880,19 @@ class RawDataTransformerResource(DbApiResource):
 
         _data = {}
         query = RawDataTransform.objects.all()
-        if screen:
-            query = query.filter(screen=screen)
-            _data['screen_facility_id'] = screen.facility_id
-        else:
-            query = query.filter(screen__isnull=True)
         if cpr:
             query = query.filter(cherry_pick_request=cpr)
             _data['cherry_pick_request_id'] = cpr.cherry_pick_request_id
         else:
-            query = query.filter(cherry_pick_request__isnull=True)    
+            query = query.filter(screen=screen)
+            _data['screen_facility_id'] = screen.facility_id
+#         else:
+#             query = query.filter(screen__isnull=True)
+#         if cpr:
+#             query = query.filter(cherry_pick_request=cpr)
+#             _data['cherry_pick_request_id'] = cpr.cherry_pick_request_id
+#         else:
+#             query = query.filter(cherry_pick_request__isnull=True)    
             
         if not query.exists():
             raise Http404
@@ -14922,7 +14967,7 @@ class RawDataTransformerResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
 
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
@@ -15028,45 +15073,39 @@ class RawDataTransformerResource(DbApiResource):
                 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        
-        
+
         if len(request.FILES) == 0:
             raise ValidationError(key='input_file', msg='Required')
-        
         logger.info('request.FILES: %r', request.FILES.keys())
         
         fields = schema['fields']
         initializer_dict = self.parse(param_hash, fields=fields)
+        logger.info('initializer: %r', initializer_dict)
+        
         # Expand plate ranges
         plate_ranges = initializer_dict['plate_ranges']
         lcp_resource = self.get_lcp_resource()
         (plates,parsed_searches, errors) = lcp_resource.find_plates(plate_ranges)
         if errors:
             raise ValidationError(
-                key='plate_ranges', msg = 'Plates not found: %s' % ', '.join(sorted(errors)))
+                key='plate_ranges', 
+                msg = 'Plates not found: %s' % ', '.join(sorted(errors)))
         logger.info('parsed_searches: %r', parsed_searches)
         plate_numbers = parsed_searches[0]['plate_numbers_expected']
         logger.info('plate_numbers: %r', plate_numbers)
         
-        logger.info('param_hash: %r', param_hash)
-        logger.info('initializer: %r', initializer_dict)
-        
         screen_facility_id = initializer_dict.pop('screen_facility_id', None)
-        cherry_pick_request_id = initializer_dict.pop('cherry_pick_request_id', None)
+        cherry_pick_request_id = \
+            initializer_dict.pop('cherry_pick_request_id', None)
         if screen_facility_id is None and cherry_pick_request_id is None:
-            msg='must provide one of: %r' % parent_fields
+            msg='must provide one of: %r' % [
+                'screen_facility_id','cherry_pick_request_id']
             raise ValidationError({
                 'screen_facility_id': msg,
                 'cherry_pick_request_id': msg 
             })
-        if screen_facility_id is not None and cherry_pick_request_id is not None:
-            msg='may not specify both screen_facility_id and cherry_pick_request_id'
-            raise ValidationError({
-                'screen_facility_id': msg,
-                'cherry_pick_request_id': msg
-            })
         screen = None
-        if screen_facility_id:
+        if screen_facility_id is not None and cherry_pick_request_id is None:
             try:
                 screen = Screen.objects.get(
                     facility_id=screen_facility_id)
@@ -15075,7 +15114,7 @@ class RawDataTransformerResource(DbApiResource):
                 raise Http404('screen_facility_id %r does not exist' 
                     % screen_facility_id)
         cpr = None
-        if cherry_pick_request_id: 
+        if cherry_pick_request_id is not None: 
             try: 
                 cpr = CherryPickRequest.objects.get(
                     cherry_pick_request_id=cherry_pick_request_id)
@@ -15096,47 +15135,88 @@ class RawDataTransformerResource(DbApiResource):
         for key, val in initializer_dict.items():
             if hasattr(rdt, key):
                 setattr(rdt, key, val)
-            else:
-                logger.warn(
-                    'no such attribute on raw data transform: %s:%r' % (key, val))
 
         _meta = {}
 
-        if rdt.assay_plate_size < rdt.library_plate_size:
-            # NOTE: will perform further plates count validation on matrix parsing
-            pass
-        elif rdt.assay_plate_size > rdt.library_plate_size:
+        aps = rdt.assay_plate_size
+        lps = rdt.library_plate_size
+        
+        if aps > lps:
             if len(plate_numbers) % 4 != 0:
                 raise ValidationError(key='plate_ranges', 
                     msg='Must be a multiple of 4 if assay_plate_size==1536')
         
+        rnai_columns = [
+            'vendor_entrezgene_symbols','vendor_entrezgene_id',
+            'vendor_genbank_accession_numbers','vendor_gene_name', 
+            'facility_entrezgene_symbols','facility_entrezgene_id',
+            'facility_genbank_accession_numbers','facility_gene_name', 
+            'vendor_name','vendor_identifier','is_deprecated']
         rnai_columns_to_write = []
-        if rdt.screen.screen_type == 'rnai':
-            rnai_columns_to_write = [
-                'vendor_entrezgene_symbols','vendor_entrezgene_id',
-                'vendor_genbank_accession_numbers','vendor_name','vendor_identifier',
-                'vendor_gene_name', 'facility_gene_name', 'is_deprecated']
+        wells = {}
+        lcp_copywells = {}
+        control_well_named_ranges = None
+        if screen:
+            if rdt.screen.screen_type == 'rnai':
+                rnai_columns_to_write = rnai_columns
+                # TODO: pool
+            exact_well_fields = [
+                'library_well_type','well_id','plate_number','well_name']
+            exact_well_fields.extend(rnai_columns_to_write)
+            wells = self.get_reagent_resource()\
+                ._get_list_response_internal(**{
+                    'plate_number__in': plate_numbers,
+                    'exact_fields': exact_well_fields
+                })
+            if not wells:
+                raise ProgrammingError(
+                    'no wells found for the plates: %r', plate_numbers)
+            logger.info('retrieved %d wells for transformation', len(wells))
+            logger.info('sample well keys: %r', wells[0].keys())
+            wells = { well['well_id']: well for well in wells }
+            control_well_named_ranges = self.get_control_wells(rdt)
             
-            # TODO: pool
-        exact_well_fields = ['library_well_type','well_id','plate_number','well_name']
-        exact_well_fields.extend(rnai_columns_to_write)
-        wells = self.get_reagent_resource()._get_list_response_internal(**{
-                            'plate_number__in': plate_numbers,
-                            'exact_fields': exact_well_fields
-                            })
-        logger.info('welldata: %r', wells[0].keys())
-        
-        wells = { well['well_id']: well for well in wells }
-        
-        self.get_control_wells(rdt, plate_numbers, wells)
+            self.set_control_wells_to_library_wells(
+                rdt, control_well_named_ranges, plate_numbers, wells)
+            
+        elif cpr:
+            includes = [
+                'vendor_batch_id','vendor_name','vendor_identifier',
+                '-structure_image','-molfile','-library_plate_comment_array']
+            if cpr.screen.screen_type == 'rnai':
+                rnai_columns_to_write = rnai_columns
+                includes.extend(rnai_columns_to_write)
+            lcp_copywells = \
+                self.get_labcherrypick_resource()\
+                    ._get_list_response_internal(**{
+                        'cherry_pick_request_id': cpr.cherry_pick_request_id,
+                        'source_copy_name__is_null': False,
+                        'includes': includes,
+                    })
+            if not lcp_copywells:
+                raise ProgrammingError('No lab cherry picks found for cpr: %r', 
+                    cpr.cherry_pick_request_id)
+            logger.info('retrieved %d lcp_copywells for transformation', 
+                len(lcp_copywells))
+            logger.info('sample lcp well keys: %r', lcp_copywells[0].keys())
+            lcp_copywells = { 
+                lims_utils.well_id(
+                    lcp['cherry_pick_plate_number'],lcp['destination_well']):lcp
+                        for lcp in lcp_copywells }
+            control_well_named_ranges = self.get_control_wells(rdt)
+            
+            
             
         input_file_fields = schema['input_file_fields']
         logger.info('input_file_fields: %r', input_file_fields.keys())
         
-        with  NamedTemporaryFile(delete=False, suffix='%s' % request.user.username) as temp_file:
+        with  NamedTemporaryFile(
+            delete=False, suffix='%s' % request.user.username) as temp_file:
+            
             workbook = xlsxwriter.Workbook(temp_file) #, {'constant_memory': True})
             plate_numbers_consumed = []
             plate_numbers_available = plate_numbers
+            
             for ordinal, filekey in enumerate(sorted(request.FILES.keys())):
                 logger.info('read file: %d, %r', ordinal, filekey)
                 _matrix_read_meta = {}
@@ -15145,17 +15225,14 @@ class RawDataTransformerResource(DbApiResource):
                     'ordinal': ordinal
                     }
                 for key,val in param_hash.items():
-                    logger.debug('key: %r, filekey: %r, found: %r', 
-                        key, filekey, key.find(filekey))
                     if key.find(filekey) == 0:
                         field_key = key[len(filekey)+1:]
-                        logger.debug('field key: %r, in: %r', 
-                            field_key, field_key in input_file_fields)
                         if field_key in input_file_fields:
                             field = input_file_fields[field_key]
                             input_file_initializer[field_key] = \
                                 parse_val(val, field_key, field['data_type'])
                 logger.info('input_file_initializer: %r', input_file_initializer)
+
                 filename = initializer_dict.get('filename', None)
                 if filename is None:
                     filename = input_file.name
@@ -15163,53 +15240,78 @@ class RawDataTransformerResource(DbApiResource):
                 rdif = RawDataInputFile(**input_file_initializer)
                 rdif.raw_data_transform = rdt
                 
+                vocabularies = DbApiResource.get_vocabularies(input_file_fields)
+                readout_type = rdif.readout_type
+                if 'readout_type' in vocabularies:
+                    readout_type = \
+                        vocabularies['readout_type'][rdif.readout_type]['title']
+                else:
+                    logger.warn('readout_type not found in vocabulary: %r', 
+                        vocabularies)
+                    
                 (matrices, errors) = raw_data_reader.read(input_file, filename)
-                
                 if errors: 
                     raise ValidationError(key=filekey, msg=errors)
                 
+                assay_plate_size_read = len(matrices[0])*len(matrices[0][0])
+                if assay_plate_size_read != aps:
+                    msg = self.ERROR_MATRIX_SIZE_DETECTED % (
+                        assay_plate_size_read, aps)
+                    raise ValidationError({
+                        filekey: msg, 'assay_plate_size': msg })
+                
                 _matrix_read_meta['matrices'] = len(matrices)
+                if aps > lps:
+                    _matrix_read_meta['matrices (384 well)'] = len(matrices)*4
+                elif aps < lps:
+                    _matrix_read_meta['matrices (384 well)'] = len(matrices)/4
                 logger.info('read matrices: %d', len(matrices))
                 
                 collation = Collation.get_value(rdif.collation_order)
                 logger.info('read collation: %r', collation)
-                conditions = re.split(r'[\s,]+', rdif.conditions) if rdif.conditions else 'C1'
-                replicates = [str(x) for x in range(1,rdif.replicates+1)]
-                readouts = re.split(r'[\s,]+', rdif.readouts) if rdif.readouts else 'read1'
+                conditions = re.split(r'[\s,]+', rdif.conditions) \
+                    if rdif.conditions else ['C1',]
+                replicates = [chr(ord('A')+x) for x in range(0,rdif.replicates)]
+                readouts = re.split(r'[\s,]+', rdif.readouts) \
+                    if rdif.readouts else ['read1',]
                 logger.info('conditions: %r, readouts: %r, replicates: %r',
                     conditions, readouts, replicates)
                 _matrix_read_meta['conditions'] = ','.join(conditions)
                 _matrix_read_meta['readouts'] = ','.join(readouts)
                 _matrix_read_meta['replicates'] = ','.join(replicates)
 
-                collation_count = len(conditions)*len(replicates)*len(readouts)
-                if rdt.assay_plate_size < rdt.library_plate_size:
-                    collation_count *= 4
-                plates_required = len(matrices)/collation_count
-                if rdt.assay_plate_size > rdt.library_plate_size:
-                    plates_required *= 4
-                if collation_count > len(matrices):
-                    raise ValidationError(
-                        key=filekey, 
-                        msg='Wrong number number of collations: %d, matrices read: %d '
-                            % (collation_count, len(matrices)))
-                if len(matrices)%collation_count != 0:
-                    msg = (
-                        'Wrong number of collations: %d, '
-                        'must be a divisor of matrices read: %d' 
-                        % (collation_count, len(matrices)))
-                    raise ValidationError(
-                        key=filekey, 
-                        msg=msg)
+                # Determine the plates to read and validate relative sizes
                 
+                collation_count = len(conditions)*len(replicates)*len(readouts)
+                transformed_matrix_count = len(matrices)
+                if aps > lps:
+                    transformed_matrix_count *=4
+                elif lps > aps:
+                    collation_count *= 4
+
+                if collation_count > len(matrices):
+                    msg = self.ERROR_COLLATION_COUNT % (
+                        collation_count, len(matrices))
+                    raise ValidationError(key=filekey, msg=msg)
+                if len(matrices)%collation_count != 0:
+                    msg = self.ERROR_COLLATION_COUNT % (
+                        collation_count, len(matrices))
+                    raise ValidationError(key=filekey, msg=msg)
+                
+                plates_required = transformed_matrix_count/collation_count
+                logger.info('collation count: %d, plates required: %d',
+                    collation_count, plates_required)
                 if plates_required > len(plate_numbers_available):
-                    msg='Wrong number of plates available: %d, required for collation: %d '
-                    raise ValidationError(
-                        key=filekey, 
-                        msg='Wrong number of plates available: %d, required for collation: %d '
-                            % (len(plate_numbers_available), plates_required))
+                    logger.info(str((len(matrices), transformed_matrix_count,
+                        collation_count, plates_required, len(plate_numbers_available))))
+                    msg = self.ERROR_PLATE_COUNT % (
+                        len(matrices), transformed_matrix_count,
+                        collation_count, plates_required, len(plate_numbers_available))
+                    raise ValidationError({
+                        filekey: msg, 'plate_ranges': msg })
                 plates_to_read = plate_numbers_available[:plates_required]
-                _matrix_read_meta['plates'] = ','.join([str(x) for x in plates_to_read])
+                _matrix_read_meta['plates'] = ','.join(
+                    [str(x) for x in plates_to_read])
                 plate_numbers_consumed.extend(plates_to_read)
                 plate_numbers_available = plate_numbers_available[plates_required:]
                 
@@ -15217,16 +15319,29 @@ class RawDataTransformerResource(DbApiResource):
                     collation, plates_to_read, conditions, replicates, readouts)
                 logger.info('counter: %r', counter)
 
-                if rdt.assay_plate_size != rdt.library_plate_size:
+                if aps != lps:
                     matrices = plate_matrix_transformer.transform(
-                        matrices, counter, rdt.assay_plate_size,rdt.library_plate_size)
+                        matrices, counter, aps,lps)
                     logger.info('transformed matrices: %d', len(matrices))
             
-                self.write_xlsx(rdt, workbook, matrices, counter, wells,rnai_columns_to_write)
+                if screen:
+                    self.write_xlsx(
+                        rdif, readout_type, workbook, matrices, counter, wells, 
+                        rnai_columns_to_write)
+                elif cpr:
+                    self.write_cpr_xlsx(
+                        rdif, readout_type, workbook, matrices, counter, 
+                        lcp_copywells, control_well_named_ranges,
+                        rnai_columns_to_write)
+                else:
+                    raise ProgrammingError('no screen or cpr')
                 rdif.save()
                 _meta['%d - %s' % (ordinal,filename)] = _matrix_read_meta
-                logger.info('ordinal: %d, plate_numbers_consumed: %r, plate_numbers_available: %r',
+                logger.info(
+                    'ordinal: %d, plate_numbers_consumed: %r, '
+                    'plate_numbers_available: %r',
                     ordinal, plate_numbers_consumed, plate_numbers_available)
+                
             workbook.close()
             temp_file.close()
             
@@ -15244,7 +15359,7 @@ class RawDataTransformerResource(DbApiResource):
         return self.build_response(
             request, {API_RESULT_META: _meta }, response_class=HttpResponse, **kwargs)
 
-    def get_control_wells(self, rdt, plates_in_order, wells):
+    def get_control_wells(self, rdt):
         '''
         Read in the control well fields:
         - parse well selection input
@@ -15257,171 +15372,368 @@ class RawDataTransformerResource(DbApiResource):
         - check for control labels assigned to experimental wells
         '''
         
-        logger.info('get_control_wells: %r, %r, %d', rdt, plates_in_order, len(wells))
+        logger.info('get_control_wells: %r', rdt)
+        aps = rdt.assay_plate_size
+        lps = rdt.library_plate_size
         combined_errors = defaultdict(dict)
         assay_control_named_ranges = {}
-        API_MSG_CONTROLS_PARSE_ERROR = 'Parse errors'
-        API_MSG_CONTROLS_DUPLICATES = 'Duplicates found'
-        API_MSG_CONTROLS_WELL_TYPE = (
-            'Control wells must be \'empty\', \'DMSO\', or \'Library Control\'')
         control_well_fields = [
             'assay_positive_controls', 'assay_negative_controls',
             'assay_other_controls']
-        for control_well_field in control_well_fields:
+        for cfield in control_well_fields:
             (named_ranges, errors) = \
                 lims_utils.parse_named_well_ranges(
-                    getattr(rdt, control_well_field), rdt.assay_plate_size)
-            # FIXME: collate all errors for one ValidationError
+                    getattr(rdt, cfield), aps)
             if errors:
-                combined_errors[control_well_field][API_MSG_CONTROLS_PARSE_ERROR] = errors
-            assay_control_named_ranges[control_well_field] = named_ranges
+                combined_errors[cfield][self.ERROR_CONTROL_PARSE] = errors
+            assay_control_named_ranges[cfield] = named_ranges
             logger.info('control_well_field: %r, %r, named_well_ranges: %r',
-                control_well_field, getattr(rdt, control_well_field), named_ranges)
+                cfield, getattr(rdt, cfield), named_ranges)
 
-        logger.info('assay_control_named_ranges: %r', assay_control_named_ranges)
+        logger.info('assay control named ranges: %r', assay_control_named_ranges)
 
-        (named_library_control_ranges, errors) = \
+        (library_control_named_ranges, errors) = \
             lims_utils.parse_named_well_ranges(
-                getattr(rdt, 'library_controls'), rdt.library_plate_size)
+                getattr(rdt, 'library_controls'), lps)
         if errors:
-            combined_errors['library_controls'][API_MSG_CONTROLS_PARSE_ERROR] = errors
-        logger.info('named_library_control_ranges: %r', 
-            named_library_control_ranges)
+            error_hash = combined_errors['library_controls']
+            error_hash[self.ERROR_CONTROL_PARSE] = errors
+        logger.info('library_control_named_ranges: %r', 
+            library_control_named_ranges)
         
-        # check for assay well duplicates:
-
-        assay_control_wells_flattened = defaultdict(set)
-        for control_type, named_ranges in assay_control_named_ranges.items():
+        # Check for duplicated control wells between types:
+        DUP_ERROR = self.ERROR_CONTROL_DUPLICATES
+        # Assay well duplicates:
+        assay_controls_flattened = defaultdict(set)
+        for ctype, named_ranges in assay_control_named_ranges.items():
             for label, named_range in named_ranges.items():
-                assay_control_wells_flattened[control_type].update(named_range['wells'])
+                assay_controls_flattened[ctype].update(named_range['wells'])
         
-        for test_control_type, test_wells in assay_control_wells_flattened.items():
+        for test_ctype, test_wells in assay_controls_flattened.items():
             duplicate_wells = set()
-            for control_type, assay_wells in assay_control_wells_flattened.items():
-                if test_control_type == control_type:
+            for ctype, assay_wells in assay_controls_flattened.items():
+                if test_ctype == ctype:
                     continue
                 duplicate_wells.update(
                     set(test_wells) & set(assay_wells))
             if duplicate_wells:
-                combined_errors[test_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells
+                combined_errors[test_ctype][DUP_ERROR] = duplicate_wells
 
-        # check for library control well overlap
+        # check for library control well duplicates
         library_control_wells = set()
-        for named_range in named_library_control_ranges.values():
+        for named_range in library_control_named_ranges.values():
             library_control_wells.update(named_range['wells'])
         
-        if rdt.assay_plate_size < rdt.library_plate_size:
+        if aps < lps:
             duplicate_wells = set()
-            for assay_control_type, assay_wells in assay_control_wells_flattened.items():
+            for assay_ctype, assay_wells in assay_controls_flattened.items():
                 convoluted_wells = lims_utils.convolute_wells(
-                    rdt.assay_plate_size, rdt.library_plate_size, assay_wells)
+                    aps, lps, assay_wells)
                 duplicates = library_control_wells & set(convoluted_wells)
                 if duplicates:
                     duplicate_wells |= duplicates
-                    combined_errors[assay_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicates
+                    combined_errors[assay_ctype][DUP_ERROR] = duplicates
             if duplicate_wells:
-                combined_errors['library_controls'][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells 
-        elif rdt.library_plate_size < rdt.assay_plate_size:
+                combined_errors['library_controls'][DUP_ERROR] = duplicate_wells 
+        elif lps < aps:
             duplicate_wells = set()
-            for assay_control_type, assay_wells in assay_control_wells_flattened.items():
+            for assay_ctype, assay_wells in assay_controls_flattened.items():
                 deconvoluted_wells_in_quadrants = lims_utils.deconvolute_wells(
-                    rdt.assay_plate_size, rdt.library_plate_size, assay_wells)
+                    aps, lps, assay_wells)
                 duplicates = library_control_wells & set(
-                    [well for sublist in deconvoluted_wells_in_quadrants for well in sublist])
+                    [well for sublist in deconvoluted_wells_in_quadrants 
+                        for well in sublist])
                 if duplicates:
                     duplicate_wells |= duplicates
-                    combined_errors[assay_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicates
+                    combined_errors[assay_ctype][DUP_ERROR] = duplicates
             if duplicate_wells:
-                combined_errors['library_controls'][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells 
+                combined_errors['library_controls'][DUP_ERROR] = duplicate_wells 
         else:
             duplicate_wells = set()
-            for assay_control_type, assay_wells in assay_control_wells_flattened.items():
+            for assay_ctype, assay_wells in assay_controls_flattened.items():
                 duplicates = library_control_wells & set(assay_wells)
                 if duplicates:
                     duplicate_wells |= duplicates
-                    combined_errors[assay_control_type][API_MSG_CONTROLS_DUPLICATES] = duplicates
+                    combined_errors[assay_ctype][DUP_ERROR] = duplicates
             if duplicate_wells:
-                combined_errors['library_controls'][API_MSG_CONTROLS_DUPLICATES] = duplicate_wells 
+                combined_errors['library_controls'][DUP_ERROR] = duplicate_wells 
+        
+        if combined_errors:
+            raise ValidationError(combined_errors)
+        
+        assay_control_named_ranges['library_controls'] = library_control_named_ranges
+        
+        return assay_control_named_ranges 
+        
+    def set_control_wells_to_library_wells(
+        self, rdt, control_well_named_ranges, plates_in_order,wells):
+
+        aps = rdt.assay_plate_size
+        lps = rdt.library_plate_size
         
         # Associate the control well label and type with the wells
-
+        combined_errors = defaultdict(dict)
         control_well_exceptions = {}
-        control_type_abbreviations = {
-            'assay_positive_controls': 'P',
-            'assay_negative_controls': 'N',
-            'assay_other_controls': 'O',
-            'library_controls': 'C'
-        }
-        library_well_type_abbreviations = {
-            'experimental': 'X',
-            'empty': 'E',
-            'dmso': 'D',
-            'library_control': 'C',
-            'rnai_buffer': 'B' 
-        }
         
+        library_control_named_ranges = control_well_named_ranges['library_controls']
+        assay_control_named_ranges = { ctype: nr for ctype,nr in 
+            control_well_named_ranges.items() if ctype != 'library_controls' }
         for well in wells.values():
             library_well_type = well.get('library_well_type')
             plate_number = well['plate_number']
             well_name = well['well_name']
             well['type_abbreviation'] = \
-                library_well_type_abbreviations[library_well_type]
+                self.library_well_type_abbreviations[library_well_type]
             
             if plate_number not in plates_in_order:
+                # NOT a validation error, plate numbers were used to find wells
                 raise ProgrammingError('plate not found: %r', plate_number)
             plate_index = plates_in_order.index(plate_number)
             
             assay_control_wellname = well_name
-            exception_label = (well_name, )
-            if rdt.assay_plate_size > rdt.library_plate_size:
+            if aps > lps:
                 # convolute the well to (1536)
                 quadrant = plate_index % 4
                 assay_control_wellname = lims_utils.convolute_well(
-                    rdt.library_plate_size,rdt.assay_plate_size,well_name)[quadrant]
-                exception_label = (assay_control_wellname,well_name)
-            elif rdt.assay_plate_size < rdt.library_plate_size:
+                    lps,aps,well_name)[quadrant]
+            elif aps < lps:
                 # deconvolute the well to (96)
                 assay_control_wellname = lims_utils.deconvolute_well(
-                    rdt.library_plate_size,rdt.assay_plate_size,well_name)
-                exception_label = (assay_control_wellname,well_name)
+                    lps,aps,well_name)
             
             library_control_exceptions = control_well_exceptions.setdefault(
                 'library_controls',defaultdict(set))
             found = False
-            for label, named_range in named_library_control_ranges.items():
+            for label, named_range in library_control_named_ranges.items():
                 if well_name in named_range['wells']:
                     well['control_label'] = label
                     found = True
                     if library_well_type == 'experimental':
-                        library_control_exceptions[well_name].add(well['well_id'])
+                        library_control_exceptions[well_name].add(
+                            well['well_id'])
             
             if found is False:
-                for control_type, named_ranges in assay_control_named_ranges.items():
-                    assay_control_exceptions = \
+                for ctype, named_ranges in assay_control_named_ranges.items():
+                    ctype_exceptions = \
                         control_well_exceptions.setdefault(
-                            control_type,defaultdict(set))
+                            ctype,defaultdict(set))
                     for label, named_range in named_ranges.items():
                         if assay_control_wellname in named_range['wells']:
                             well['type_abbreviation'] = \
-                                control_type_abbreviations[control_type]
+                                self.control_type_abbreviations[ctype]
                             well['control_label'] = label
                             if library_well_type == 'experimental':
-                                assay_control_exceptions[assay_control_wellname].add(well['well_id'])
+                                ctype_exceptions[assay_control_wellname].add(
+                                    well['well_id'])
                             break
         
         logger.info('control_well_exceptions: %r', control_well_exceptions)    
-        for control_type, well_exception_dict in control_well_exceptions.items():
+        for ctype, well_exception_dict in control_well_exceptions.items():
             if not well_exception_dict:
                 continue
             well_exception_dict = { wellname:','.join(well_ids) 
                 for wellname, well_ids in well_exception_dict.items() }
-            combined_errors[control_type][API_MSG_CONTROLS_WELL_TYPE] = well_exception_dict
-
+            combined_errors[ctype][self.ERROR_CONTROL_WELL_TYPE] = \
+                well_exception_dict
         
         if combined_errors:
             raise ValidationError(combined_errors)
         
-    def write_xlsx(self, rdt, workbook, matrices, counter, 
+    def write_cpr_xlsx(
+        self, rdif, readout_type, workbook, matrices, counter, lcp_well_hash,
+        control_well_named_ranges,rnai_columns_to_write ):
+        '''
+        Write the plate matrices directly to a spreadsheet, in collation order:
+        - merge in lab_cherry_pick data.
+        '''
+        DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+
+        cpr_id = rdif.raw_data_transform.cherry_pick_request.cherry_pick_request_id
+        aps = rdif.raw_data_transform.assay_plate_size
+        lps = rdif.raw_data_transform.library_plate_size
+        
+        control_well_hash = {}
+        for ctype, named_ranges in control_well_named_ranges.items():
+            for label,named_range in named_ranges.items():
+                for wellname in named_range['wells']:
+                    control_well_hash[wellname] = (ctype, label)
+        
+        counter_hash = counter.counter_hash
+
+        logger.info('write worksheet for %r...', rdif)
+        
+        counter_readouts = []
+        for condition in counter_hash['condition']:
+            for replicate in counter_hash['replicate']:
+                for readout in counter_hash['readout']:
+                    counter_readouts.append(dict(zip(
+                        ('condition','replicate','readout'),
+                        (condition,replicate,readout))))
+        
+        plate_size = len(matrices[0])*len(matrices[0][0])
+        row_size = len(matrices[0])
+        col_size = len(matrices[0][0])
+        logger.info('row size: %d, col size: %d', row_size, col_size)
+        
+        # NOTE: Even with "all_plates_in_single_worksheet" option, each input 
+        # file must be in its own sheet, because collations may differ
+        single_sheet = None
+        cumulative_output_row = 0
+        if rdif.raw_data_transform.output_sheet_option \
+                == 'all_plates_in_single_worksheet':
+            single_sheet = workbook.add_worksheet('data_%d' % (rdif.ordinal+1) )
+        
+        for plate in counter_hash['plate']:
+            cpr_plate = 'CP%d_%d' % (cpr_id, plate)
+            logger.info('write plate: %r', cpr_plate)
+            
+            if single_sheet:
+                sheet = single_sheet
+            else:
+                sheet = workbook.add_worksheet(cpr_plate)
+
+            # Write the header row for the plate:
+            sheet.write_string(0,0,'Plate')
+            sheet.write_string(0,1,'Well')
+            sheet.write_string(0,2,'Type')
+            start_col_count = 3
+            col_to_matrix_index = []
+            for i,counter_readout in enumerate(counter_readouts): 
+                
+                current_col = start_col_count + i
+                collation_string = \
+                    '{readout}_{condition}_{replicate}'.format(**counter_readout)
+                collation_string = readout_type + '_' + collation_string
+                if DEBUG:
+                    logger.info('write collation_string: col: %d, %s', 
+                        current_col, collation_string)
+                sheet.write_string(0,current_col,collation_string )
+                col_to_matrix_index.append(
+                    counter.get_index(dict(counter_readout, plate=plate)))
+            
+            current_col += 1
+            sheet.write_string(0,current_col,'Pre-Loaded Controls')
+            current_col += 1
+            sheet.write_string(0,current_col,'Library Plate')
+            current_col += 1
+            sheet.write_string(0,current_col,'Source Well')
+            current_col += 1
+            sheet.write_string(0,current_col,'Library Name')
+            current_col += 1
+            sheet.write_string(0,current_col,'Vendor ID')
+            current_col += 1
+            sheet.write_string(0,current_col,'Vendor Batch ID')
+                
+            if rnai_columns_to_write:
+                current_col += 1
+                sheet.write_string(0,current_col,'Gene Symbol')
+                current_col += 1
+                sheet.write_string(0,current_col,'Gene IDs')
+                current_col += 1
+                sheet.write_string(0,current_col,'Genbank Accession Nos')
+                current_col += 1
+                sheet.write_string(0,current_col,'Gene Names')
+                    
+            # Write the values for the plate:
+            
+            # NOTE: to support xlsxwriter 'constant_memory': True - optimized write, 
+            # rows must be written sequentially        
+            for rownum in range(0,row_size):
+                for colnum in range(0, col_size):
+                    output_row = 1 + cumulative_output_row + colnum + rownum * col_size
+                    
+                    wellname = lims_utils.get_well_name(rownum, colnum)
+                    
+                    assay_plate_wellname = wellname
+                    if aps < lps:
+                        assay_plate_wellname = \
+                            lims_utils.deconvolute_well(lps, aps, wellname)
+                    elif lps < aps:
+                        quadrant = counter_hash['plates'].index(plate)%4
+                        assay_plate_wellname = \
+                            lims_utils.convolute_well(
+                                lps, aps, wellname)[quadrant]
+                    control = control_well_hash.get(assay_plate_wellname, None)
+                    well_id = lims_utils.well_id(plate, wellname)
+                    lcp_well = lcp_well_hash.get(well_id, None)
+                    if DEBUG:
+                        logger.info('write row: %d: %r', output_row, well_id)
+                        logger.info('found lcp well: %r', lcp_well)
+                    
+                    sheet.write_string(output_row,0,cpr_plate)
+                    sheet.write_string(output_row,1,wellname)
+                    
+                    if control:
+                        abbrev = self.control_type_abbreviations[control[0]]
+                        sheet.write_string(output_row,2,abbrev)
+                    elif lcp_well:
+                        sheet.write_string(output_row,2,'X')
+                    else:
+                        sheet.write_string(output_row,2,'E')
+                            
+                    for i,matrix_index in enumerate(col_to_matrix_index):
+                        matrix = matrices[matrix_index]
+                        current_col = start_col_count + i
+                        val = matrix[rownum][colnum]
+                        if DEBUG:
+                            logger.info('write output_row: %d, col: %d,  val: %r', 
+                                output_row, current_col, str(val))
+                        sheet.write_string(output_row, current_col, str(val))
+
+                    current_col += 1
+                    if control:
+                        sheet.write_string(output_row,current_col,control[1])
+                    elif lcp_well:    
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,
+                            str(lcp_well.get('library_plate')))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,
+                            lcp_well.get('source_well_name'))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,
+                            lcp_well.get('library_short_name'))
+                        current_col += 1
+                        vals = [lcp_well.get('vendor_name'),
+                            lcp_well.get('vendor_identifier')]
+                        vals = [ str(v) for v in vals if v ]
+                        sheet.write_string(output_row,current_col,' '.join(vals))
+                        current_col += 1
+                        val = lcp_well.get('vendor_batch_id',None)
+                        if val:
+                            sheet.write_string(output_row,current_col,)
+
+                        if rnai_columns_to_write:
+                            current_col += 1
+                            vals = [lcp_well.get('vendor_entrezgene_symbols'),
+                                    lcp_well.get('facility_entrezgene_symbols')]
+                            vals = sorted(set(
+                                [ v for vs in vals if vs for v in vs if v ]))
+                            sheet.write_string(output_row,current_col,', '.join(vals))
+                            
+                            current_col += 1
+                            vals = [lcp_well.get('vendor_entrezgene_id'),
+                                    lcp_well.get('facility_entrezgene_id')]
+                            vals = sorted(set([ str(v) for v in vals if v ]))
+                            sheet.write_string(output_row,current_col,', '.join(vals))
+                            
+                            current_col += 1
+                            vals = [lcp_well.get('vendor_genbank_accession_numbers'),
+                                    lcp_well.get('facility_genbank_accession_numbers')]
+                            vals = sorted(set(
+                                [ str(v) for vs in vals if vs for v in vs if v ]))
+                            sheet.write_string(output_row,current_col,', '.join(vals))
+                            
+                            current_col += 1
+                            vals = [lcp_well.get('vendor_gene_name'),
+                                    lcp_well.get('facility_gene_name')]
+                            vals = sorted(set([ str(v) for v in vals if v ]))
+                            sheet.write_string(output_row,current_col,', '.join(vals))
+            if single_sheet:
+                cumulative_output_row = output_row                
+
+        
+    def write_xlsx(self, rdif, readout_type, workbook, matrices, counter, 
         library_well_hash,rnai_columns_to_write):
         '''
         Write the plate matrices directly to a spreadsheet, in collation order:
@@ -15448,10 +15760,23 @@ class RawDataTransformerResource(DbApiResource):
         row_size = len(matrices[0])
         col_size = len(matrices[0][0])
         logger.info('row size: %d, col size: %d', row_size, col_size)
+
+        # NOTE: Even with "all_plates_in_single_worksheet" option, each input 
+        # file must be in its own sheet, because collations may differ
+        single_sheet = None
+        cumulative_output_row = 0
+        if rdif.raw_data_transform.output_sheet_option \
+                == 'all_plates_in_single_worksheet':
+            single_sheet = workbook.add_worksheet('data_%d' % (rdif.ordinal+1) )
+        
         for plate in counter_hash['plate']:
             logger.info('write plate: %r', plate)
-            sheet = workbook.add_worksheet(str(plate))
 
+            if single_sheet:
+                sheet = single_sheet
+            else:
+                sheet = workbook.add_worksheet(str(plate))
+            
             # Write the header row for the plate:
                         
             sheet.write_string(0,0,'Plate')
@@ -15464,28 +15789,36 @@ class RawDataTransformerResource(DbApiResource):
                 
                 current_col = start_col_count + i
                 collation_string = \
-                    '{condition}_{readout}_{replicate}'.format(**counter_readout)
-                logger.info('write collation_string: col: %d, %s', 
-                    current_col, collation_string)
+                    '{readout}_{condition}_{replicate}'.format(**counter_readout)
+                collation_string = readout_type + '_' + collation_string
+                if DEBUG:
+                    logger.info('write collation_string: col: %d, %s', 
+                        current_col, collation_string)
                 sheet.write_string(0,current_col,collation_string )
                 col_to_matrix_index.append(
                     counter.get_index(dict(counter_readout, plate=plate)))
             
             current_col += 1
             sheet.write_string(0,current_col,'Pre-Loaded Controls')
-            current_col += 1
             if rnai_columns_to_write:
-                for i, field in enumerate(rnai_columns_to_write):
-                    fi = well_schema['fields'][field]
-                    sheet.write_string(0,current_col+i,fi['title'])
-                    
-            # Write the values for the plate:
-            
+                current_col += 1
+                sheet.write_string(0,current_col,'Entrezgene Symbol')
+                current_col += 1
+                sheet.write_string(0,current_col,'Entrezgene ID')
+                current_col += 1
+                sheet.write_string(0,current_col,'Genbank Accession No.')
+                current_col += 1
+                sheet.write_string(0,current_col,'Catalog No.')
+                current_col += 1
+                sheet.write_string(0,current_col,'Gene Name')
+                current_col += 1
+                sheet.write_string(0,current_col,'Deprecated Pool')
+                
             # NOTE: to support xlsxwriter 'constant_memory': True - optimized write, 
             # rows must be written sequentially        
             for rownum in range(0,row_size):
                 for colnum in range(0, col_size):
-                    output_row = 1 + colnum + rownum * col_size
+                    output_row = 1 + cumulative_output_row + colnum + rownum * col_size
                     
                     wellname = lims_utils.get_well_name(rownum, colnum)
                     well_id = lims_utils.well_id(plate, wellname)
@@ -15495,7 +15828,8 @@ class RawDataTransformerResource(DbApiResource):
                         logger.info('write row: %d: %r', output_row, wellname)
                     sheet.write_string(output_row,0,str(plate))
                     sheet.write_string(output_row,1,wellname)
-                    sheet.write_string(output_row,2,well.get('type_abbreviation',None))
+                    sheet.write_string(
+                        output_row,2,well.get('type_abbreviation',None))
                     
                     for i,matrix_index in enumerate(col_to_matrix_index):
                         matrix = matrices[matrix_index]
@@ -15512,18 +15846,42 @@ class RawDataTransformerResource(DbApiResource):
                         sheet.write_string(output_row,current_col,control_label)
                     elif rnai_columns_to_write:
                         current_col += 1
-                        for i, field in enumerate(rnai_columns_to_write):
-                            val = well.get(field, None)
-#                             logger.info('well: %r, field %r,val: %r, type: %r', well_id, field, val,fi['data_type'])
-                            if val is not None:
-                                fi = well_schema['fields'][field]
-                                if fi['data_type'] == 'list': 
-                                    val = ', '.join([str(v) for v in val])
-                                else:
-                                    val = str(val)
-                                sheet.write_string(
-                                    output_row, current_col+i, val)
+                        vals = [well.get('vendor_entrezgene_symbols'),
+                                well.get('facility_entrezgene_symbols')]
+                        vals = sorted(set(
+                            [ v for vs in vals if vs for v in vs if v ]))
+                        sheet.write_string(output_row,current_col,', '.join(vals))
+                        
+                        current_col += 1
+                        vals = [well.get('vendor_entrezgene_id'),
+                                well.get('facility_entrezgene_id')]
+                        vals = sorted(set([ str(v) for v in vals if v ]))
+                        sheet.write_string(output_row,current_col,', '.join(vals))
+                        
+                        current_col += 1
+                        vals = [well.get('vendor_genbank_accession_numbers'),
+                                well.get('facility_genbank_accession_numbers')]
+                        vals = sorted(set(
+                            [str(v) for vs in vals if vs for v in vs if v ]))
+                        sheet.write_string(output_row,current_col,', '.join(vals))
+                        
+                        current_col += 1
+                        vals = [well.get('vendor_name'),well.get('vendor_identifier')]
+                        vals = [ str(v) for v in vals if v ]
+                        sheet.write_string(output_row,current_col,' '.join(vals))
 
+                        current_col += 1
+                        vals = [well.get('vendor_gene_name'),
+                                well.get('facility_gene_name')]
+                        vals = sorted(set([ str(v) for v in vals if v ]))
+                        sheet.write_string(output_row,current_col,', '.join(vals))
+
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,
+                            'Y' if well.get('is_deprecated') is True else '')
+
+            if single_sheet:
+                cumulative_output_row = output_row                
 
 class ScreenResource(DbApiResource):
     
@@ -15941,7 +16299,7 @@ class ScreenResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, **extra_params)
+        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
         
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
@@ -17149,7 +17507,7 @@ class UserChecklistResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
               
@@ -17450,7 +17808,7 @@ class LabAffiliationResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                   
@@ -17870,7 +18228,7 @@ class ScreensaverUserResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
 
         filter_expression = self._meta.authorization.filter(
             request.user, filter_expression)
@@ -18226,6 +18584,7 @@ class ScreensaverUserResource(DbApiResource):
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
 
+        DEBUG_USER_PATCH = False or logger.isEnabledFor(logging.DEBUG)
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -18392,7 +18751,7 @@ class ScreensaverUserResource(DbApiResource):
             logger.info(
                 'no (basic) screensaver_user fields to update %s',
                 deserialized)
-        logger.info('1-a user saved: %r: %r', 
+        logger.info('User saved: %r: %r', 
             screensaver_user, screensaver_user.date_created)
         
         # Tie ScreensaverUser entry to Reports.User:
@@ -18411,8 +18770,9 @@ class ScreensaverUserResource(DbApiResource):
                     'last_name': screensaver_user.last_name})
             
             deserialized['username'] = screensaver_user.username
-            logger.info('patch the reports user: %r, %r',
-                reports_kwargs, deserialized)
+            if DEBUG_USER_PATCH:
+                logger.info('patch the reports user: %r, %r',
+                    reports_kwargs, deserialized)
             patch_response = self.get_user_resource().patch_obj(
                 request, deserialized, **reports_kwargs)
             logger.info('patched userprofile %s', patch_response)
@@ -18421,8 +18781,9 @@ class ScreensaverUserResource(DbApiResource):
         is_staff = False
         if user:
             if screensaver_user.user is None:
-                logger.info('set the reports userprofile: %r to the su: %r', 
-                    user, screensaver_user)
+                if DEBUG_USER_PATCH:
+                    logger.info('set the reports userprofile: %r to the su: %r', 
+                        user, screensaver_user)
                 screensaver_user.user = user
             else:
                 if screensaver_user.user != user:
@@ -18430,9 +18791,10 @@ class ScreensaverUserResource(DbApiResource):
                         key='username',
                         msg='ss user found: %r, not equal to current: %r'\
                             % (user, screensaver_user.user))    
-            logger.info('set the username: %r: %r, %r', 
-                screensaver_user.screensaver_user_id, 
-                screensaver_user.username, user.username)
+            if DEBUG_USER_PATCH:
+                logger.info('set the username: %r: %r, %r', 
+                    screensaver_user.screensaver_user_id, 
+                    screensaver_user.username, user.username)
             screensaver_user.username = user.username
 
             auth_user = user.user
@@ -18569,13 +18931,16 @@ class ScreensaverUserResource(DbApiResource):
             if new_roles is None:
                 new_roles = []
             new_roles = set(new_roles)
-            logger.info('roles to delete: %s', current_roles - new_roles)
+            if DEBUG_USER_PATCH:
+                logger.info('roles to delete: %s', current_roles - new_roles)
             (screensaver_user.userfacilityusagerole_set
                 .filter(facility_usage_role__in=current_roles - new_roles)
                 .delete())
             for role in new_roles - current_roles:
-                logger.info(
-                    'create facility_usage_role: %s, %s', screensaver_user, role)
+                if DEBUG_USER_PATCH:
+                    logger.info(
+                        'create facility_usage_role: %s, %s', 
+                        screensaver_user, role)
                 ur = UserFacilityUsageRole.objects.create(
                     screensaver_user=screensaver_user,
                     facility_usage_role=role)            
@@ -19380,7 +19745,7 @@ class ReagentResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             
             if filter_expression is None:
                 raise InformationError(
@@ -20304,7 +20669,7 @@ class WellResource(DbApiResource):
                         errors.append(
                             'plate: %r is does not exist' % _pattern) 
                 elif PLATE_RANGE_PATTERN.match(_pattern):
-                    errors.append('pattern: %r, plate range pattern not supported' % _pattern)
+#                     errors.append('pattern: %r, plate range pattern not supported' % _pattern)
                     match = PLATE_RANGE_PATTERN.match(_pattern)
                     plate_query = Plate.objects.all().filter(plate_number__range=sorted([
                         int(match.group(1)), int(match.group(2))]))
@@ -20555,7 +20920,7 @@ class LibraryResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash)
+            filename = self._get_filename(readable_filter_hash, schema)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                 

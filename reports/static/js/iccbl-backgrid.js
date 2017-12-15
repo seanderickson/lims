@@ -446,6 +446,11 @@ var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
   var namedWellRanges = {};
   
   var ordinal = 1;
+  if (! rawData ){
+    return namedWellRanges;
+  }else{
+    rawData = rawData.trim();
+  }
   
   _.each(rawData.split(/\n/), function(range){
   

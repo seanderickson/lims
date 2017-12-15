@@ -38,6 +38,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       self.consumedStack = [];
       _.bindAll(this, 'submitUpload');
       
+      self.show_library_controls = true;
+      if (self.cherry_pick_request){
+        self.show_library_controls = false;
+      }
+      if (self.screen && self.screen.get('screen_type') == 'small_molecule'){
+        self.show_library_controls = false;
+      }
+      
       // Track the input file metadata
       var InputFileCollection = Backbone.Collection.extend({
         // explicitly define the id so that collection compare & equals work
@@ -55,6 +63,19 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         '<button type="button" class="btn btn-default btn-xs" ',
         'id="download_button" >download</button>',
       ].join(''));
+          
+      self.downloadButton.click(function(e){
+        e.preventDefault();
+        console.log('download transformed file...');
+        if (self.screen){
+          appModel.downloadUrl(
+            '/db/screen_raw_data_transform/' + self.screen.get('facility_id'));
+        }else if (self.cherry_pick_request){
+          appModel.downloadUrl(
+            '/db/cpr_raw_data_transform/' 
+              + self.cherry_pick_request.get('cherry_pick_request_id'));
+        }
+      });
       self.uploadButton = $([
         '<button type="button" class="btn btn-default btn-xs" ',
         'id="upload_button" >upload</button>',
@@ -79,8 +100,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     submitUpload: function() {
       var self = this;
       console.log('Transform form uploadData...');
-      var url = [self.resource.apiUri, 
-           self.screen.key].join('/');
+      
+      var url;
+      if (self.screen){
+        url = [self.resource.apiUri, self.screen.key].join('/');
+      }else if (self.cherry_pick_request){
+        url = [self.resource.apiUri, 
+               self.cherry_pick_request.get('screen_facility_id'),
+               self.cherry_pick_request.get('cherry_pick_request_id')].join('/');
+      }
 
       // find the input files
       var input_errors = [];
@@ -166,7 +194,18 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       vocab = _.reject(vocab, function(obj){
         return obj.val == 1;
       });
-      this.model.resource.fields['assay_plate_size'].choices = vocab;
+      this.model.resource.fields['assay_plate_size'].choiceHash = vocab;
+      vocab_scope_ref = 
+        self.model.resource.fields['library_plate_size']['vocabulary_scope_ref'];
+      vocab = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
+      vocab = _.reject(vocab, function(obj){
+        return obj.val != 384;
+      });
+      this.model.resource.fields['library_plate_size'].choiceHash = vocab;
+
+      if (self.show_library_controls == false){
+        self.model.resource.fields['library_controls']['editability'] = [];
+      }
       
       // TODO: Create a separate TransformerEditView class
       var TransformerEditView = EditView.extend({
@@ -191,14 +230,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           var inputFileArea = inputFilesDiv.find('#input_file_form_area');
           editForm.$el.find('#generic-edit-buttons-bottom').append(inputFilesDiv);
           
-          
-          self.downloadButton.click(function(e){
-            e.preventDefault();
-            var url = '/db/screen_raw_data_transform/' + self.screen.get('facility_id');
-            console.log('download url clicked', url);
-            appModel.downloadUrl(url);
-          });
-          
           self.inputFileCollection.each(function(input_file_model){
             console.log('input_file', input_file_model);
             self._create_input_file_form(inputFileArea, input_file_model);
@@ -217,6 +248,25 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           
           self.setupWellControlSelectionButtons(editForm);
           
+          editForm.$el.find('[name="plate_ranges"]').change(function(){
+            // runs schema and model validation, errors not nee
+            var errors = editForm.commit({ validate: true }); 
+            if (!_.isEmpty(errors)) return;
+            var plate_ranges = editForm.getValue('plate_ranges');
+            if (_.isEmpty(plate_ranges)) return;
+            var plate_range_string = plate_ranges.split(/\s*,\s*/).join('_');
+            if (self.screen){
+                editForm.setValue('output_filename', 
+                  self.screen.get('facility_id') + '_' + plate_range_string);
+            }else if (self.cherry_pick_request){
+                editForm.setValue('output_filename', 
+                  'cpr' + self.cherry_pick_request.get('cherry_pick_request_id')
+                  + '_' + plate_range_string);
+            }
+            // run validation again, to clear filename error
+            var errors = editForm.commit({ validate: true }); 
+          });
+      
           EditView.prototype.afterRender.apply(this,arguments);
 
           if (!self.model.isNew()){
@@ -356,6 +406,40 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           };
         }
       };
+      function plateRangesValidator(value, formValues){
+        var errors = [];
+        var platesAndRanges = value.split(/\s*,\s*/);
+        var plates = [];
+        _.each(platesAndRanges, function(pr){
+          if (Iccbl.PLATE_RANGE_PATTERN.test(pr)){
+            var rangeParts = Iccbl.PLATE_RANGE_PATTERN.exec(pr);
+            plates = plates.concat([rangeParts[1],rangeParts[2]]);
+          }else{
+            plates.push(pr);
+          }
+        })
+        _.each(plates,function(plate){
+          if (!Iccbl.PLATE_PATTERN.exec(plate)){
+            errors.push('Not a plate number: ' + plate);
+          }else if (self.screen){
+            // TODO: check plate numbers?
+          }else if (self.cherry_pick_request){
+            if (parseInt(plate) > self.cherry_pick_request.get('number_plates_completed')){
+              errors.push('Plate is out of range: ' + plate 
+                + ', max: ' + self.cherry_pick_request.get('number_plates_completed'));
+            }
+          }
+        })
+        if (!_.isEmpty(errors)){
+          console.log('plates error', errors);
+          return {
+            type: 'parse',
+            message: errors.join('; ')
+          };
+        }
+        
+      }
+      
       var view = self.view = new TransformerEditView({ 
         model: this.model,
         resource: this.model.resource,
@@ -376,6 +460,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'library_controls': {
             validators: [libraryWellSelectionValidator, libraryControlWellOverlapValidator],
             editorAttrs: { widthClass: 'col-sm-6'}
+          },
+          'plate_ranges': {
+            validators: ['required', plateRangesValidator]
           }
         }
       });
@@ -494,7 +581,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         // runs schema and model validation, errors not nee
         var errors = editForm.commit({ validate: true }); 
       });
-
+      
       select_assay_negatives_button.click(
         _.partial(assayControlsButtonHandler,'assay_negative_controls'));
       editForm.$el.find('div[data-fields="assay_negative_controls"]')
@@ -513,16 +600,26 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var errors = editForm.commit({ validate: true }); 
       });
       
-      select_library_controls_button.click(
-        _.partial(libraryControlsButtonHandler,'library_controls'));
-      editForm.$el.find('div[data-fields="library_controls"]')
-        .find('.form-group').append(select_library_controls_button);
-      editForm.$el.find('[name="library_controls"]').change(function(){
+      if (self.show_library_controls === true){
+        select_library_controls_button.click(
+          _.partial(libraryControlsButtonHandler,'library_controls'));
+        editForm.$el.find('div[data-fields="library_controls"]')
+          .find('.form-group').append(select_library_controls_button);
+        editForm.$el.find('[name="library_controls"]').change(function(){
+          // runs schema and model validation, errors not nee
+          var errors = editForm.commit({ validate: true }); 
+          // errors not needed; commit will cause to display
+        });
+      }
+      editForm.$el.find('[name="assay_plate_size"]').change(function(){
         // runs schema and model validation, errors not nee
         var errors = editForm.commit({ validate: true }); 
-        // errors not needed; commit will cause to display
       });
-      
+      editForm.$el.find('[name="library_plate_size"]').change(function(){
+        // runs schema and model validation, errors not nee
+        var errors = editForm.commit({ validate: true }); 
+      });
+
       // Show combined assay controls
       var show_all_assay_controls_button = $([
         '<a class="btn btn-default btn-sm" ',
@@ -553,6 +650,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'role="button" id="show_all_assay_and_library_controls_button" >',
           'Show All Assay and Library Controls</a>'
         ].join(''));
+      if (self.show_library_controls === false){
+        show_all_assay_and_library_controls_button = $([
+          '<a class="btn btn-default btn-sm" ',
+            'role="button" id="show_all_assay_and_library_controls_button" >',
+            'Show All Controls in Library Plate Format</a>'
+          ].join(''));
+      }      
       show_all_assay_and_library_controls_button.click(function(e){
         e.preventDefault();
         editForm.commit({ validate: true }); 
@@ -561,13 +665,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var libraryPlateSize = values['library_plate_size'];
         var errors = []; // already processed in validate
         var controlWellNamedRanges = self.getAllAssayControlWellRanges(values, errors);
-        var libraryControlNamedRanges = Iccbl.parseNamedWellRanges(
-          values['library_controls'],libraryPlateSize,errors);
         var libraryControlWells = [];
-        _.each(_.values(libraryControlNamedRanges), function(namedRange){
-          libraryControlWells = libraryControlWells.concat(namedRange['wells']);
-        });
-
+        
+        if (self.show_library_controls === true){
+          var libraryControlNamedRanges = Iccbl.parseNamedWellRanges(
+            values['library_controls'],libraryPlateSize,errors);
+          _.each(_.values(libraryControlNamedRanges), function(namedRange){
+            libraryControlWells = libraryControlWells.concat(namedRange['wells']);
+          });
+        }
         console.log('show_all_assay_and_library_controls', 
           assayPlateSize, libraryPlateSize, errors);
         
@@ -575,8 +681,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           controlWellNamedRanges, libraryControlWells);
       }); // show_all_assay_and_library_controls_button button handler
 
-      editForm.$el.find('div[data-fields="library_controls"]')
-        .find('.form-group').append(show_all_assay_and_library_controls_button);
+      if (self.show_library_controls === true){
+        editForm.$el.find('div[data-fields="library_controls"]')
+          .find('.form-group').append(show_all_assay_and_library_controls_button);
+      }else{
+        editForm.$el.find('div[data-fields="assay_other_controls"]')
+          .find('.form-group').append(show_all_assay_and_library_controls_button);
+      }
     },
     
     showAllAssayControlsWellSelector: function(assayPlateSize, controlWellNamedRanges){
@@ -628,10 +739,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     showAllControlsWellSelector: function(
       assayPlateSize, libraryPlateSize, assayControlNamedRanges, libraryControlWells){
       var self = this;
-      var libraryControlWellRange = {
-        wells: libraryControlWells,
-        label: self.resource.fields['library_controls'].title
-      };
+      var libraryControlWellRange;
+      if (!_.isEmpty(libraryControlWells)){
+        libraryControlWellRange = {
+          wells: libraryControlWells,
+          label: self.resource.fields['library_controls'].title
+        };
+      }
       
       var colorPalette = self.CONTROL_WELLS_COLOR_PALETTE;
       var quadLabels = ['QA1','QA2','QB1','QB2'];
@@ -683,8 +797,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       
       if (assayPlateSize <= libraryPlateSize){
         console.log('assayPlateSize <= libraryPlateSize...');
-        controlWellNamedRanges['library_controls'] = _.extend({},
-          libraryControlWellRange, { ordinal: newOrdinal });
+        if (libraryControlWellRange){
+          controlWellNamedRanges['library_controls'] = _.extend({},
+            libraryControlWellRange, { ordinal: _.size(controlWellNamedRanges)+1 });
+        }
         var duplicates = 
           Iccbl.find_duplicates(_.map(_.values(controlWellNamedRanges),
             function(nwr){
@@ -711,7 +827,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           css_modal_content: { overflow: 'hidden'},
           okText: 'ok',
           view: el,
-          title: 'All Control Wells',
+          title: 'All Control Wells (Library plate format)',
           ok: function(e) {
             e.preventDefault();
             if (!_.isEmpty(wellSelector.getErrors())){
@@ -736,8 +852,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               _.extend({}, namedWellRange, {
                 wells: wellsByQuadrant[quadrant]
               });
-            controlWellNamedRangesByQuadrant[quadrant][libraryControlWellRange.label] =
-              _.extend({},libraryControlWellRange, { ordinal: 4 });
+            if (libraryControlWellRange){
+              controlWellNamedRangesByQuadrant[quadrant][libraryControlWellRange.label] =
+                _.extend({},libraryControlWellRange, { ordinal: 4 });
+            }
           }
         });
         console.log('controlWellNamedRangesByQuadrant', controlWellNamedRangesByQuadrant);  
@@ -752,8 +870,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'id="next_quadrant_button" >>> show next quadrant</button>',
         ].join(''));
         $template.find('#button_area').append($nextGridButton);
-        var currentQuadrant = 0;
         
+        var title = '';
+        if (libraryControlWellRange){
+          title += 'Library Controls and ';
+        }
+        var currentQuadrant = 0;
         function showNextGrid(){
           var currentControlWellNamedRanges = controlWellNamedRangesByQuadrant[currentQuadrant];
           var duplicates = 
@@ -776,8 +898,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
             editable: false
           });
           var el = wellSelector.render().el;
-          $('#modal_title').html('Library Controls and Assay Controls (Quadrant: '+ 
-            quadLabels[currentQuadrant] + ')');
+          $('#modal_title').html(
+            title + 'Assay Controls (Quadrant: '+quadLabels[currentQuadrant] + ')');
           console.log('set el', el);
           $template.find('#grid_area').empty().append(el);
           currentQuadrant +=1;
@@ -791,7 +913,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           css_modal_content: { overflow: 'hidden'},
           okText: 'ok',
           view: $template,
-          title: 'Library Controls and Assay Controls (Quadrant: '+quadLabels[0] + ')',
+          title: title + 'Assay Controls (Quadrant: '+quadLabels[0] + ')',
           ok: function(e) {
             // TODO: cleanup
           }              
@@ -908,7 +1030,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         template: fieldTemplate
       };
       formSchema['collation_order'] = {
-        title: 'Collation Order',
+        title: fields['collation_order'].title,
+        help: fields['collation_order'].description,
         key: 'collation_order',
         type: Backbone.Form.editors.Select.extend({
             className: 'form-control'
@@ -932,8 +1055,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       formSchema['conditions'] = {
         title: 'Conditions',
         key: 'conditions',
-        type: 'TextArea',
-        editorClass: 'input-full',
+        type: EditView.TextArea2,
+        editorClass: 'form-control input-full',
         template: fieldTemplate
       };
       formSchema['replicates'] = {
@@ -941,13 +1064,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         key: 'replicates',
         validators: [EditView.CheckPositiveNonZeroValidator],
         type: Backbone.Form.editors.Number,
+        editorClass: 'form-control',
         template: fieldTemplate
       };
       formSchema['readouts'] = {
         title: 'Readout Names',
         key: 'readouts',
-        type: 'TextArea',
-        editorClass: 'input-full',
+        type: EditView.TextArea2,
+//        type: 'TextArea',
+        editorClass: 'form-control input-full',
         template: fieldTemplate
       };
       

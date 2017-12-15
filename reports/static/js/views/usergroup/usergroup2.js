@@ -150,7 +150,7 @@ define([
       
       var view = this.tabViews[key];
       
-      this.model.resource.fields['permissions']['choices'] = appModel.get('permissionOptions');
+      this.model.resource.fields['permissions'].choiceHash = appModel.get('permissionOptions');
       
       var editView = EditView.extend({});
       
@@ -164,10 +164,10 @@ define([
           appModel.initializeAdminMode(function(){
             var fields = self.model.resource.fields;
             var options = appModel.getUserGroupOptions();
-            fields['super_groups']['choices'] = options;
-            fields['sub_groups']['choices'] = options;
-            fields['users']['choices'] = appModel.getUsernameOptions();
-            fields['permissions']['choices'] = appModel.getPermissionsOptions();
+            fields['super_groups'].choiceHash = options;
+            fields['sub_groups'].choiceHash = options;
+            fields['users'].choiceHash = appModel.getUsernameOptions();
+            fields['permissions'].choiceHash = appModel.getPermissionsOptions();
             DetailLayout.prototype.showEdit.call(view,arguments);
           });  
         };

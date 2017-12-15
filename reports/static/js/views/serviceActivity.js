@@ -104,20 +104,20 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       function setupEditView(callback){
         var resource = self.model.resource;
         appModel.getUsersInGroupOptions('serviceActivityPerformers', function(options){
-          resource.fields['performed_by_username']['choices'] = options;
+          resource.fields['performed_by_user_id'].choiceHash = options;
   
           if (self.user ){
             var screen_facility_field = resource.fields['screen_facility_id'];
             screen_facility_field['edit_type'] = 'select';
             var choices = appModel._get_user_screen_choices(self.user);
             choices.unshift({ 'val': '', 'label': 'not selected' });
-            screen_facility_field['choices'] = choices;
+            screen_facility_field.choiceHash = choices;
           }
           if (self.screen){
             
             var serviced_user_field = resource.fields['serviced_user_id'];
             serviced_user_field['edit_type'] = 'select';
-            serviced_user_field['choices'] = 
+            serviced_user_field.choiceHash = 
               appModel._get_screen_member_choices(self.screen);
           }
           view = DetailLayout.prototype.showEdit.apply(self,arguments);

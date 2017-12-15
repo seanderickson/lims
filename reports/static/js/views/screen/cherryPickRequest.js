@@ -6,6 +6,7 @@ define([
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
+  'views/screen/rawDataTransformer',
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
   'views/generic_edit',
@@ -14,7 +15,7 @@ define([
   'utils/wellSelector',
   'templates/genericResource.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            DetailLayout, DetailView, EditView,
+            RawDataTransformer, DetailLayout, DetailView, EditView,
             ListView, TabbedController, WellSelector, genericLayout) {
   
   var CherryPickView = TabbedController.extend({
@@ -24,13 +25,6 @@ define([
       self.args = args;
       this._classname = 'CherryPickRequestView';
       
-//      this.tabbed_resources = _.extend({},this.cherry_pick_tabbed_resources);
-//      if (! this.model.get('number_plates')>0){
-//        delete this.tabbed_resources['cherrypickplates'];
-//      }
-//      if(self.model.get('total_number_lcps') == 0){
-//        delete this.tabbed_resources['labcherrypicks'];
-//      }      
       TabbedController.prototype.initialize.apply(this,arguments);
       
       if (_.isUndefined(this.screen)){
@@ -43,10 +37,8 @@ define([
           throw "Wrong screen: " + this.screen.get('facility_id') + " for this Cherry Pick Request";
         }
       }
-      
       _.bindAll(this, 'createScpView','createLcpView',
                 'showScpSearchForm','showWellsToLeaveEmptyDialog');
-      
     },
 
     cherry_pick_tabbed_resources: {
@@ -85,6 +77,12 @@ define([
         invoke : 'setCherryPickPlates',
         permission: 'cherrypickrequest'
       },
+      transformer: {
+        description : 'Transform Raw Data',
+        title : 'Transform Raw Data',
+        invoke : 'setRawDataTransformer',
+        permission: 'rawdatatransform'
+      },
             
     },      
 
@@ -110,6 +108,9 @@ define([
         delete this.tabbed_resources['labcherrypicks'];
         delete this.tabbed_resources['sourceplates'];
       }      
+      if(self.model.get('number_plates_completed') == 0){
+        delete this.tabbed_resources['transformer'];
+      }
       
       return {
         'base_url': self.model.resource.key + '/' + self.model.key,
@@ -151,22 +152,6 @@ define([
                 ].join('/'), 
                 {trigger:true});
             }
-
-// 20170525: model.parse fixed in app_state; this should not be needed
-//            var model = _.result(data, appModel.API_RESULT_DATA, null);
-//            if (!_.isEmpty(model)){
-//              model = new Backbone.Model(model);
-//              model.key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-//              appModel.router.navigate([
-//                self.screen.resource.key,self.screen.key,'cherrypickrequest',
-//                model.key].join('/'), 
-//                {trigger:true});
-//            } else { 
-//              appModel.router.navigate([
-//                self.screen.resource.key,self.screen.key,'cherrypickrequest'
-//                ].join('/'), 
-//                {trigger:true});
-//            }
           }else{
             appModel.router.navigate([
               self.screen.resource.key,self.screen.key,'cherrypickrequest',
@@ -228,11 +213,11 @@ define([
         var innerself = this;
         appModel.initializeAdminMode(function(){
           var fields = self.model.resource.fields;
-          fields['requested_by_id'].choices = 
+          fields['requested_by_id'].choiceHash = 
             appModel._get_screen_member_choices(self.screen);
           // TODO: resource/cherrypickrequest/write
           appModel.getAdminUserOptions(function(options){
-            fields['volume_approved_by_username'].choices = options;
+            fields['volume_approved_by_username'].choiceHash = options;
           },'cherrypickrequest');
             
           var number_plates = self.model.get('number_plates');
@@ -465,6 +450,57 @@ define([
       
     }, // end showPlateMappingGrid
     
+    setRawDataTransformer: function(delegateStack) {
+      console.log('setRawDataTransformer', delegateStack);
+      var self = this;
+      
+      var rawdataResource = appModel.getResource('rawdatatransform');
+      var schemaUrl = [rawdataResource.apiUri,
+                       'schema'].join('/');
+      function showTransformer(schemaResult) {
+        var cpr_id = self.model.get('cherry_pick_request_id');
+        var options = {
+          failCallback: function(){
+            var newModel = appModel.newModelFromResource(schemaResult);
+            newModel.set('cherry_pick_request_id', cpr_id );
+            var plate_numbers = _.times(
+              self.model.get('number_plates_completed'), 
+              function(i){ return i+1;});
+            newModel.set('plate_ranges', plate_numbers.join(','));
+            newModel.set('output_filename', 'cpr' + cpr_id + '_' + plate_numbers.join('_'));
+            newModel.resource = schemaResult;
+            showView(newModel);
+          }
+        };
+        var rdtKey = [self.model.get('screen_facility_id'),cpr_id].join('/');
+        appModel.getModel(
+          rawdataResource.key, rdtKey, 
+          function(model){
+            model.resource = schemaResult;
+            if (!model.has('library_plate_size')){
+              model.set('library_plate_size', schemaResult.fields['library_plate_size'].default );
+            }
+            showView(model);
+          }, 
+          options);
+      };
+      function showView(model){
+        var view = new RawDataTransformer({
+          cherry_pick_request: self.model,
+          model: model,
+          uriStack: delegateStack
+        });
+        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        this.consumedStack = ['transformer'];
+        self.reportUriStack([]);
+        
+      }
+      
+      appModel.getResourceFromUrl(schemaUrl, showTransformer);
+      
+    },    
     setCherryPickPlates: function(delegateStack) {
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,
@@ -1342,10 +1378,10 @@ define([
           // that happen before the selected_on_server flag is set
           return;
         }
-//        if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
-//            || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
-//          return;
-//        }
+        //if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
+        //    || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
+        //  return;
+        //}
 
         var current_copy_name = model.get('source_copy_name');
         var source_well_id = model.get('source_well_id');
@@ -1952,7 +1988,6 @@ define([
       return view;
     }, // createLcpView
     
-    
     /**
      * Screener Cherry Picks view
      */
@@ -2135,7 +2170,7 @@ define([
       });
       var view = new View();
       self.setView('#tab_container', view).render();
-//      self.reportUriStack([]);
+      //      self.reportUriStack([]);
     }, // end showScpSearchForm
     
     createScpView: function(schemaResult, delegateStack){

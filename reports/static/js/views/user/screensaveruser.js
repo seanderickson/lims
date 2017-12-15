@@ -137,8 +137,7 @@ define([
       vocab_dsl = _.reject(vocab_dsl, function(obj){
         return obj.val == 2;
       });
-      resource.fields['rnai_data_sharing_level'].choices = vocab_dsl;
-//      resource.fields['rnai_data_sharing_level'].vocabulary_scope_ref = null;
+      resource.fields['rnai_data_sharing_level'].choiceHash = vocab_dsl;
       
       var originalClassification = self.model.get('classification');
       if ( originalClassification == appModel.VOCAB_USER_CLASSIFICATION_PI){
@@ -296,12 +295,12 @@ define([
 //            var fields = self.model.resource.fields;
             var fields = resource.fields;
 
-            fields['lab_head_id']['choices'] = 
+            fields['lab_head_id'].choiceHash = 
               appModel.getPrincipalInvestigatorOptions();
-//            fields['lab_member_ids']['choices'] = 
+//            fields['lab_member_ids'].choiceHash = 
 //              appModel.getUserOptions();
             fields['lab_member_ids']['title'] = 'Lab Members';
-            fields['lab_affiliation_id']['choices'] = 
+            fields['lab_affiliation_id'].choiceHash = 
               appModel.getLabAffiliationOptions();
   
             // - add listener to update view options when classification changes
@@ -760,9 +759,8 @@ define([
         });
         var _form_el = form.render().el;
       
-        var file_input_txt =           '<label id="file-button" class="btn btn-default btn-file">' + 
+        var file_input_txt = '<label id="file-button" class="btn btn-default btn-file">' + 
           'Browse<input type="file" name="fileInput" style="display: none;"></label>'; 
-
         if (uaModel.has('filename')) {
           formFields.set('file_input', '(' + uaModel.get('filename') + ')');
           file_input_txt += 
@@ -816,7 +814,7 @@ define([
             if(!_.isEmpty(errors) ){
               console.log('form errors, abort submit: ',errors);
               _.each(_.keys(errors), function(key){
-                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+                $('[name="'+key +'"]').parents('.form-group').addClass('has-error');
               });
               if (_.has(errors,'_others')){
                 $form = $('#uploadUAButton_form');
@@ -887,19 +885,20 @@ define([
                   });
                 }
               }
-// FIXME: should admin be required to override if DSL is less restrictive than screen?              
-//              // Show a warning if DSL does not match one of user's screens
-//              var warnScreens = _.filter(self.getUserScreens(), function(screen){
-//                return ( screen.get('screen_type') == type 
-//                    && screen.get('data_sharing_level') > dsl);
-//              });
-//              if (!_.isEmpty(warnScreens)){
-//                $errorDiv = $('<div id="general_error" class="panel text-danger" />');
-//                $errorDiv.append('Error: User screens are more restrictive: (' + 
-//                  _.pluck(warnScreens, 'facility_id').join(', ') + ')');
-//                $form = $('#uploadUAButton_form');
-//                $form.append($errorDiv);
-//              }
+              // TODO: Should admin be required to override if DSL is less 
+              // restrictive than screen?              
+              // (Show a warning if DSL does not match one of user's screens)
+              //var warnScreens = _.filter(self.getUserScreens(), function(screen){
+              //  return ( screen.get('screen_type') == type 
+              //      && screen.get('data_sharing_level') > dsl);
+              //});
+              //if (!_.isEmpty(warnScreens)){
+              //  $errorDiv = $('<div id="general_error" class="panel text-danger" />');
+              //  $errorDiv.append('Error: User screens are more restrictive: (' + 
+              //    _.pluck(warnScreens, 'facility_id').join(', ') + ')');
+              //  $form = $('#uploadUAButton_form');
+              //  $form.append($errorDiv);
+              //}
               var headers = {};
               var comments = values['comments'];
               headers[appModel.HEADER_APILOG_COMMENT] = comments;
@@ -1133,7 +1132,7 @@ define([
       vocab_cls = _.reject(vocab_cls, function(obj){
         return obj.val == appModel.VOCAB_USER_CLASSIFICATION_PI;
       });
-      resource.fields['classification']['choices'] = vocab_cls;
+      resource.fields['classification'].choiceHash = vocab_cls;
       resource.fields['classification']['vocabulary_scope_ref'] = null;
       var hideForLabMember = [
         'lab_head_id','lab_affiliation_id','lab_member_ids',

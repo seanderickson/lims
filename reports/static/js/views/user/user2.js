@@ -105,9 +105,9 @@ define([
         showEdit: function() {
           var self = this;
           appModel.initializeAdminMode(function(){
-            self.model.resource.fields['permissions']['choices'] = 
+            self.model.resource.fields['permissions'].choiceHash = 
               appModel.getPermissionsOptions();
-            self.model.resource.fields['usergroups']['choices'] = 
+            self.model.resource.fields['usergroups'].choiceHash = 
               appModel.getUserGroupOptions();
             UsergroupDetailLayout.__super__.showEdit.apply(self,arguments);
           });

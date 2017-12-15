@@ -71,7 +71,7 @@ define([
         description : 'Transform Raw Data',
         title : 'Transform Raw Data',
         invoke : 'setRawDataTransformer',
-        permission: 'library'
+        permission: 'rawdatatransform'
       },
     },      
     

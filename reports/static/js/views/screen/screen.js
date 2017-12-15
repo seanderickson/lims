@@ -300,12 +300,12 @@ define([
           // until loaded
           
           var userOptions = appModel.getUserOptions();
-          fields['collaborator_ids']['choices'] = userOptions;
-          fields['lead_screener_id']['choices'] = (
+          fields['collaborator_ids'].choiceHash = userOptions;
+          fields['lead_screener_id'].choiceHash = (
               [{ val: '', label: ''}].concat(userOptions));
-          fields['lab_head_id']['choices'] = (
+          fields['lab_head_id'].choiceHash = (
               appModel.getPrincipalInvestigatorOptions() );
-          fields['pin_transfer_approved_by_username']['choices'] = (
+          fields['pin_transfer_approved_by_username'].choiceHash = (
               appModel.getAdminUserOptions() );
           
           // pick just the non-billing fields: prevent backbone save from sending
@@ -1337,9 +1337,9 @@ define([
       
       var newModel = appModel.createNewModel('cherrypickrequest', defaults);
 
-      newModel.resource.fields['requested_by_id'].choices = 
+      newModel.resource.fields['requested_by_id'].choiceHash = 
         appModel._get_screen_member_choices(self.model);
-      newModel.resource.fields['volume_approved_by_username'].choices = 
+      newModel.resource.fields['volume_approved_by_username'].choiceHash = 
         appModel.getAdminUserOptions();
       
       var view = new CherryPickRequestView({ 
@@ -1448,7 +1448,7 @@ define([
           //  vocabulary = _.filter(vocabulary, function(item){
           //    return _.contains(funding_supports,item.val);
           //  });
-          //  funding_support_field.choices = vocabulary;
+          //  funding_support_field.choiceHash = vocabulary;
           //  funding_support_field.vocabulary_scope_ref = '';
           //  if (funding_supports.length == 1){
           //    defaults['funding_support'] = funding_supports[0];
@@ -1531,7 +1531,7 @@ define([
           showEdit: function(){
             var pSelf = this;
             appModel.getAdminUserOptions(function(options){
-              pSelf.model.resource.fields['publishable_protocol_entered_by']['choices'] = options;
+              pSelf.model.resource.fields['publishable_protocol_entered_by'].choiceHash = options;
               return DetailLayout.prototype.showEdit.apply(pSelf, arguments);
             });
           }

@@ -1032,7 +1032,7 @@ define([
       // 2. override with fieldinformation.vocabulary:
       // 2.a from fieldinformation.vocabulary, if available
       // 2.b fetch and add vocabulary from server
-      var choiceHash = fi.choices || [];
+      var choiceHash = fi.choiceHash || [];
       if (_.isEmpty(choiceHash)) {
         //  TODO 20171204 - test using the fi.choices to override
         //      if (!_.isEmpty(fi.vocabulary_scope_ref)) {

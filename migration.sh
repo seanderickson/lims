@@ -388,6 +388,12 @@ function migratedb {
 
 }
 
+function migrate_result_values {
+  psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+    -f ./db/migrations/manual/result_value_migration.sql >>"$LOGFILE" 2>&1 \
+    || error "manual migrate_result_values failed: $?"
+}
+
 function bootstrap {
   echo "Bootstrapping the web server: $(ts) ...">> "$LOGFILE"
   
@@ -797,7 +803,7 @@ function main {
   
   django_syncdb
 
-  premigratedb  
+  premigratedb
 
   bootstrap
   
@@ -824,6 +830,10 @@ function main {
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
     PYTHONPATH=. python reports/utils/django_requests.py -u sde  \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
+  fi
+  
+  if [[ $MIGRATE_RESULT_VALUE_TABLE -ne 0 ]]; then
+    migrate_result_values
   fi
 
 }

@@ -150,7 +150,7 @@ def _download_file(request, attached_file):
 @login_required
 def screen_raw_data_transform(
         request,screen_facility_id):
-    logger.info('download raw_data_transform result for %r, %r', 
+    logger.info('download raw_data_transform result for screen %r', 
         screen_facility_id)
     
     response = None
@@ -173,7 +173,7 @@ def screen_raw_data_transform(
 @login_required
 def cpr_raw_data_transform(
         request,cherry_pick_request_id):
-    logger.info('download raw_data_transform result for %r, %r', 
+    logger.info('download raw_data_transform result for cpr %r', 
         cherry_pick_request_id)
 
     response = None

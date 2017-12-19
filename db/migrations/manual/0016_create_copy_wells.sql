@@ -298,6 +298,7 @@ create index well_library_id on well (library_id);
 **/
 create index assay_well_sr_is_positive_idx2 on assay_well(screen_result_id, is_positive, well_id);
 
+create index result_value_is_excluded_index on result_value(data_column_id, is_exclude);
 
 /** add back in fk constraint **/
 

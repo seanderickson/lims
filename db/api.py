@@ -3884,6 +3884,7 @@ class ScreenResultResource(DbApiResource):
                 and '-exclude' not in order_params):
             filter_excluded = False
         if filter_excluded:
+            logger.info('filter excluded...')
             base_clause = base_clause.join(
                 excluded_cols_select, 
                 _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
@@ -4054,8 +4055,14 @@ class ScreenResultResource(DbApiResource):
         j = j.join(_reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
         j = j.join(_library,_w.c.library_id==_library.c.library_id)
 
-        j = j.join(excluded_cols_select, 
-            excluded_cols_select.c.well_id == _aw.c.well_id, isouter=True)
+        if filter_excluded:
+            # FIXME: 20171218: create an index for the exclude col on result_value
+            # - ultimately needed is a refactor of the result value table:
+            # - 1. divide into sm and rnai tables,
+            # - 2. refactor (using assay_well?) to index each row in results 
+            # (or create an assay_row table)
+            j = j.join(excluded_cols_select, 
+                excluded_cols_select.c.well_id == _aw.c.well_id, isouter=True)
         # Using nested selects
         for fi in [
             fi for fi in field_hash.values() 

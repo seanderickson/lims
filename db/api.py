@@ -15068,7 +15068,6 @@ class RawDataTransformerResource(DbApiResource):
             "Patch detail is not implemented for Raw Data Transform")
     
     @write_authorization
-    @un_cache        
     @transaction.atomic
     def post_detail(self, request, **kwargs):
         
@@ -15554,20 +15553,19 @@ class RawDataTransformerResource(DbApiResource):
         - merge in lab_cherry_pick data.
         '''
         DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+        logger.info('write cpr worksheet for %r...', rdif)
 
         cpr_id = rdif.raw_data_transform.cherry_pick_request.cherry_pick_request_id
         aps = rdif.raw_data_transform.assay_plate_size
         lps = rdif.raw_data_transform.library_plate_size
+        counter_hash = counter.counter_hash
+        plates_to_read = counter_hash['plate']
         
         control_well_hash = {}
         for ctype, named_ranges in control_well_named_ranges.items():
             for label,named_range in named_ranges.items():
                 for wellname in named_range['wells']:
                     control_well_hash[wellname] = (ctype, label)
-        
-        counter_hash = counter.counter_hash
-
-        logger.info('write worksheet for %r...', rdif)
         
         counter_readouts = []
         for condition in counter_hash['condition']:
@@ -15576,7 +15574,13 @@ class RawDataTransformerResource(DbApiResource):
                     counter_readouts.append(dict(zip(
                         ('condition','replicate','readout'),
                         (condition,replicate,readout))))
-        
+                        
+        headers = ['Plate', 'Well', 'Type']
+        if aps > lps:
+            headers = ['Plate','Well','Source Plate','Quadrant','Source Well','Type']
+        elif lps > aps:
+            headers = ['Plate','Well','Quadrant','Source Well','Type']
+
         plate_size = len(matrices[0])*len(matrices[0][0])
         row_size = len(matrices[0])
         col_size = len(matrices[0][0])
@@ -15585,25 +15589,37 @@ class RawDataTransformerResource(DbApiResource):
         # NOTE: Even with "all_plates_in_single_worksheet" option, each input 
         # file must be in its own sheet, because collations may differ
         single_sheet = None
+        sheet_name = None
+        quadrant = None
+        source_plates = None
         cumulative_output_row = 0
         if rdif.raw_data_transform.output_sheet_option \
                 == 'all_plates_in_single_worksheet':
-            single_sheet = workbook.add_worksheet('data_%d' % (rdif.ordinal+1) )
+            sheet_name = 'data_%d' % (rdif.ordinal+1)
+            single_sheet = workbook.add_worksheet(sheet_name)
         
-        for plate in counter_hash['plate']:
+        for plate_index, plate in enumerate(counter_hash['plate']):
             cpr_plate = 'CP%d_%d' % (cpr_id, plate)
-            logger.info('write plate: %r', cpr_plate)
-            
+            new_sheet_name = 'CP%d_%d' % (cpr_id, plate)
+            if aps > lps:
+                quadrant = plate_index % 4
+                source_plates = plates_to_read[(plate_index/4):(plate_index/4+4)]
+                new_sheet_name = 'CP%d_%s' % (
+                    cpr_id, ','.join([str(p) for p in source_plates]))
+            elif lps > aps:
+                pass
             if single_sheet:
                 sheet = single_sheet
-            else:
-                sheet = workbook.add_worksheet(cpr_plate)
+            elif sheet_name != new_sheet_name:
+                sheet_name = new_sheet_name
+                sheet = workbook.add_worksheet(sheet_name)
+            logger.info('write sheet: %r', sheet_name)
 
             # Write the header row for the plate:
-            sheet.write_string(0,0,'Plate')
-            sheet.write_string(0,1,'Well')
-            sheet.write_string(0,2,'Type')
-            start_col_count = 3
+            for i, header in enumerate(headers):
+                sheet.write_string(0,i,header)
+            
+            start_col_count = len(headers)
             col_to_matrix_index = []
             for i,counter_readout in enumerate(counter_readouts): 
                 
@@ -15648,46 +15664,62 @@ class RawDataTransformerResource(DbApiResource):
             for rownum in range(0,row_size):
                 for colnum in range(0, col_size):
                     output_row = 1 + cumulative_output_row + colnum + rownum * col_size
+                    current_col = 0      
                     
                     wellname = lims_utils.get_well_name(rownum, colnum)
-                    
-                    assay_plate_wellname = wellname
-                    if aps < lps:
-                        assay_plate_wellname = \
-                            lims_utils.deconvolute_well(lps, aps, wellname)
-                    elif lps < aps:
-                        quadrant = counter_hash['plates'].index(plate)%4
-                        assay_plate_wellname = \
-                            lims_utils.convolute_well(
-                                lps, aps, wellname)[quadrant]
-                    control = control_well_hash.get(assay_plate_wellname, None)
                     well_id = lims_utils.well_id(plate, wellname)
                     lcp_well = lcp_well_hash.get(well_id, None)
                     if DEBUG:
                         logger.info('write row: %d: %r', output_row, well_id)
                         logger.info('found lcp well: %r', lcp_well)
                     
-                    sheet.write_string(output_row,0,cpr_plate)
-                    sheet.write_string(output_row,1,wellname)
+                    sheet.write_string(output_row,current_col,cpr_plate)
+                    current_col += 1
+                    sheet.write_string(output_row,current_col,wellname)
+                    current_col += 1
+                    
+                    assay_plate_wellname = wellname
+                    if aps > lps:
+                        assay_plate_wellname = \
+                            lims_utils.convolute_well(
+                                lps, aps, wellname)[quadrant]
+                        sheet.write_string(output_row,current_col,
+                            ','.join([str(p) for p in source_plates]))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,str(quadrant+1))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,assay_plate_wellname);
+                        current_col += 1
+                    elif lps > aps:
+                        assay_plate_wellname = \
+                            lims_utils.deconvolute_well(lps, aps, wellname)
+                        (row,col) = lims_utils.well_row_col(wellname)
+                        source_quadrant = lims_utils.deconvolute_quadrant(lps, aps, row, col)
+                        sheet.write_string(output_row,current_col,str(source_quadrant+1))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,assay_plate_wellname);
+                        current_col += 1
+                    
+                    control = control_well_hash.get(assay_plate_wellname, None)
                     
                     if control:
                         abbrev = self.control_type_abbreviations[control[0]]
-                        sheet.write_string(output_row,2,abbrev)
+                        sheet.write_string(output_row,current_col,abbrev)
                     elif lcp_well:
-                        sheet.write_string(output_row,2,'X')
+                        sheet.write_string(output_row,current_col,'X')
                     else:
-                        sheet.write_string(output_row,2,'E')
+                        sheet.write_string(output_row,current_col,'E')
+                    current_col += 1
                             
                     for i,matrix_index in enumerate(col_to_matrix_index):
                         matrix = matrices[matrix_index]
-                        current_col = start_col_count + i
                         val = matrix[rownum][colnum]
                         if DEBUG:
                             logger.info('write output_row: %d, col: %d,  val: %r', 
-                                output_row, current_col, str(val))
-                        sheet.write_string(output_row, current_col, str(val))
+                                output_row, current_col+i, str(val))
+                        sheet.write_string(output_row, current_col+i, str(val))
 
-                    current_col += 1
+                    current_col += i+1
                     if control:
                         sheet.write_string(output_row,current_col,control[1])
                     elif lcp_well:    
@@ -15738,6 +15770,8 @@ class RawDataTransformerResource(DbApiResource):
                             sheet.write_string(output_row,current_col,', '.join(vals))
             if single_sheet:
                 cumulative_output_row = output_row                
+            if aps > lps and quadrant < 4:
+                cumulative_output_row = output_row                
 
         
     def write_xlsx(self, rdif, readout_type, workbook, matrices, counter, 
@@ -15748,11 +15782,12 @@ class RawDataTransformerResource(DbApiResource):
         
         '''
         DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+        
+        aps = rdif.raw_data_transform.assay_plate_size
+        lps = rdif.raw_data_transform.library_plate_size
         counter_hash = counter.counter_hash
         plates_to_read = counter_hash['plate']
-        well_schema = None
-        if rnai_columns_to_write:
-            well_schema = self.get_reagent_resource().build_schema()
+
         logger.info('write workbook...')
         
         counter_readouts = []
@@ -15762,7 +15797,13 @@ class RawDataTransformerResource(DbApiResource):
                     counter_readouts.append(dict(zip(
                         ('condition','replicate','readout'),
                         (condition,replicate,readout))))
-        
+
+        headers = ['Plate', 'Well', 'Type','Exclude']
+        if aps > lps:
+            headers = ['Plate','Well','Source Plate','Quadrant','Source Well','Type']
+        elif lps > aps:
+            headers = ['Plate','Well','Quadrant','Source Well','Type']
+
         plate_size = len(matrices[0])*len(matrices[0][0])
         row_size = len(matrices[0])
         col_size = len(matrices[0][0])
@@ -15771,26 +15812,35 @@ class RawDataTransformerResource(DbApiResource):
         # NOTE: Even with "all_plates_in_single_worksheet" option, each input 
         # file must be in its own sheet, because collations may differ
         single_sheet = None
+        sheet_name = None
+        quadrant = None
+        source_plates = None
         cumulative_output_row = 0
         if rdif.raw_data_transform.output_sheet_option \
                 == 'all_plates_in_single_worksheet':
-            single_sheet = workbook.add_worksheet('data_%d' % (rdif.ordinal+1) )
+            sheet_name = 'data_%d' % (rdif.ordinal+1)
+            single_sheet = workbook.add_worksheet(sheet_name)
         
-        for plate in counter_hash['plate']:
-            logger.info('write plate: %r', plate)
-
+        for plate_index, plate in enumerate(counter_hash['plate']):
+            new_sheet_name = str(plate)
+            if aps > lps:
+                quadrant = plate_index % 4
+                source_plates = plates_to_read[(plate_index/4):(plate_index/4+4)]
+                new_sheet_name = ','.join([str(p) for p in source_plates])
+            elif lps > aps:
+                pass
             if single_sheet:
                 sheet = single_sheet
-            else:
-                sheet = workbook.add_worksheet(str(plate))
-            
+            elif sheet_name != new_sheet_name:
+                sheet_name = new_sheet_name
+                sheet = workbook.add_worksheet(sheet_name)
+            logger.info('write sheet: %r', sheet_name)
+
             # Write the header row for the plate:
+            for i, header in enumerate(headers):
+                sheet.write_string(0,i,header)
                         
-            sheet.write_string(0,0,'Plate')
-            sheet.write_string(0,1,'Well')
-            sheet.write_string(0,2,'Type')
-            sheet.write_string(0,3,'Exclude') # Note, for user - not used by API
-            start_col_count = 4
+            start_col_count = len(headers)
             col_to_matrix_index = []
             for i,counter_readout in enumerate(counter_readouts): 
                 
@@ -15822,10 +15872,11 @@ class RawDataTransformerResource(DbApiResource):
                 sheet.write_string(0,current_col,'Deprecated Pool')
                 
             # NOTE: to support xlsxwriter 'constant_memory': True - optimized write, 
-            # rows must be written sequentially        
+            # rows must be written sequentially  
             for rownum in range(0,row_size):
                 for colnum in range(0, col_size):
                     output_row = 1 + cumulative_output_row + colnum + rownum * col_size
+                    current_col = 0      
                     
                     wellname = lims_utils.get_well_name(rownum, colnum)
                     well_id = lims_utils.well_id(plate, wellname)
@@ -15833,21 +15884,44 @@ class RawDataTransformerResource(DbApiResource):
                     well = library_well_hash[well_id]
                     if DEBUG:
                         logger.info('write row: %d: %r', output_row, wellname)
-                    sheet.write_string(output_row,0,str(plate))
-                    sheet.write_string(output_row,1,wellname)
+                    sheet.write_string(output_row,current_col,str(plate))
+                    current_col += 1
+                    sheet.write_string(output_row,current_col,wellname)
+                    current_col += 1
+                    
+                    if aps > lps:
+                        sheet.write_string(output_row,current_col,
+                            ','.join([str(p) for p in source_plates]))
+                        current_col += 1
+                        source_wells = lims_utils.convolute_well(lps, aps, wellname)
+                        sheet.write_string(output_row,current_col,str(quadrant+1))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,source_wells[quadrant]);
+                        current_col += 1
+                    elif lps > aps:
+                        (row,col) = lims_utils.well_row_col(wellname)
+                        source_quadrant = lims_utils.deconvolute_quadrant(lps, aps, row, col)
+                        source_wellname = lims_utils.deconvolute_well(lps, aps, wellname)
+                        sheet.write_string(output_row,current_col,str(source_quadrant+1))
+                        current_col += 1
+                        sheet.write_string(output_row,current_col,source_wellname);
+                        current_col += 1
+                    
                     sheet.write_string(
-                        output_row,2,well.get('type_abbreviation',None))
+                        output_row,current_col,well.get('type_abbreviation',None))
+                    current_col += 1
+                    # NOP sheet.write_string(output_row,current_col, 'exclude')
+                    current_col += 1
                     
                     for i,matrix_index in enumerate(col_to_matrix_index):
                         matrix = matrices[matrix_index]
-                        current_col = start_col_count + i
                         val = matrix[rownum][colnum]
                         if DEBUG:
                             logger.info('write output_row: %d, col: %d,  val: %r', 
-                                output_row, current_col, str(val))
-                        sheet.write_string(output_row, current_col, str(val))
+                                output_row, current_col+i, str(val))
+                        sheet.write_string(output_row, current_col+i, str(val))
 
-                    current_col += 1
+                    current_col += i +1
                     control_label = well.get('control_label', None)
                     if control_label:
                         sheet.write_string(output_row,current_col,control_label)
@@ -15888,6 +15962,8 @@ class RawDataTransformerResource(DbApiResource):
                             'Y' if well.get('is_deprecated') is True else '')
 
             if single_sheet:
+                cumulative_output_row = output_row                
+            if aps > lps and quadrant < 4:
                 cumulative_output_row = output_row                
 
 class ScreenResource(DbApiResource):

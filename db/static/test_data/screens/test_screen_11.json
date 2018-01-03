@@ -1,11 +1,14 @@
 {
   "collaborator_usernames": [
-    "sr50","kls4","rw105","rs360","jas60"
+    "note_this_is_not_used", "djw11","kls4","sr50","rs360","rw105", "jbn6", "jas60", "gf5", "sde4"
   ], 
+  "collaborator_ids": [ 761, 763, 767, 4888, 4645, 1742, 3984, 5194, 3370 ],
   "data_sharing_level": 0, 
   "facility_id": "11", 
   "lab_head_username": "caroline_shamu", 
+  "lab_head_id": 1520, 
   "lead_screener_username": "djw11", 
+  "lead_screener_id": 761,
   "project_phase": "primary_screen", 
   "screen_type": "small_molecule", 
   "summary": "Tests Small Molecule screen functionality", 

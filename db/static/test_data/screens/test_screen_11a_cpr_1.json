@@ -1,7 +1,7 @@
 {
   "assay_plate_type": "eppendorf_384",
   "comments": "Test Cherry Pick for RNAi pool Screener Cherry Picks (from Screen 1246, 44311)",
-  "requested_by_username": "djw11",
+  "requested_by_id": 761,
   "date_requested": "2017-02-24",
   "date_volume_approved": "2017-02-24",
   "is_randomized_assay_plate_layout": true,

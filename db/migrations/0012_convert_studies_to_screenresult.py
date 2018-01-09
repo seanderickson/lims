@@ -16,10 +16,10 @@ def convert_studies(apps,schema_editor):
     
     # 1. Create placeholder ScreenResults for all studies
     for screen in ( Screen.objects.all()
-        .filter(project_phase__exact='annotation')
+        .filter(project_phase__icontains='annotation')
         .order_by('facility_id')):
         
-        logger.info('processing: %s', screen.facility_id)
+        logger.info('convert study: %s', screen.facility_id)
         screen_result = ScreenResult.objects.create(
             screen=screen,
             date_created=screen.date_created,

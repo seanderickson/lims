@@ -20,6 +20,10 @@ def convert_studies(apps,schema_editor):
         .order_by('facility_id')):
         
         logger.info('convert study: %s', screen.facility_id)
+        
+        if ScreenResult.objects.all().filter(screen=screen).exists():
+            ScreenResult.objects.get(screen=screen).delete()
+        
         screen_result = ScreenResult.objects.create(
             screen=screen,
             date_created=screen.date_created,

@@ -116,6 +116,10 @@ define([
       
       
       var screenResultResource = appModel.getResource('screenresult');
+//      if (! _.isEmpty(this.model.get('study_type'))) {
+//        screenResultResource['fields']['assay_well_control_type']['visibility'] = [];
+//      }
+
       var schemaUrl = [appModel.dbApiUri,
                        'screenresult',
                        self.model.key,
@@ -134,11 +138,11 @@ define([
           '  <input type="checkbox">show positive rows only',
           '</label>'
           ].join(''));
-        var show_mutual_positives_control1 = $([
-          '<label class="checkbox-inline">',
-           '  <input type="checkbox">mutual positives',
-           '</label>'
-           ].join(''));
+//        var show_mutual_positives_control1 = $([
+//          '<label class="checkbox-inline">',
+//           '  <input type="checkbox">mutual positives',
+//           '</label>'
+//           ].join(''));
         var show_mutual_positives_control = $([
           '<button class="btn btn-default btn-sm" role="button" ',
           'id="showMutualPositives" title="Show mutual positive columns" >',
@@ -161,7 +165,7 @@ define([
             $deleteScreenResultsButton,$loadScreenResultsButton);
         }
         
-        // create an option vocab for the exclued col, if needed
+        // create an option vocab for the excluded col, if needed
         if (_.has(schemaResult['fields'], 'excluded')) {
           var options = [];
           _.each(schemaResult['fields'],function(field) {
@@ -565,89 +569,6 @@ define([
       
       
     },
-
-//    showOtherScreenColumnsDialogTester: function(resultView){
-//      
-//      var TestCollection = Backbone.Collection.extend({
-//        modelId: function(attrs) {
-//          return attrs.id;
-//        }
-//      });
-//      
-//      var testCollection = new TestCollection([
-//        {
-//          id: 1,
-//          category: 'category1',
-//          type: 'type1',
-//          nameb: 'name1b',
-//          checked: true
-//        },
-//        {
-//          id: 11,
-//          category: 'category1',
-//          type: 'type1',
-//          nameb: 'name11b'
-//        },
-//        {
-//          id: 2,
-//          category: 'category2',
-//          type: 'type2',
-//          nameb: 'name2b'
-//        },
-//        {
-//          id: 3,
-//          category: 'category3',
-//          type: 'type3',
-//          nameb: 'name3b'
-//        },
-//        {
-//          id: 31,
-//          category: 'category3',
-//          type: 'type2',
-//          nameb: 'name31b',
-//          checked: true
-//        },
-//        {
-//          id: 4,
-//          category: 'category4',
-//          type: 'type2',
-//          nameb: 'name4b'
-//        },
-//        {
-//          id: 5,
-//          category: 'category5',
-//          type: 'type5',
-//          nameb: 'name5b'
-//        }
-//      ]);
-//      
-//      var dcView = new TreeSelector({
-//        collection: testCollection,
-//        treeAttributes: ['category', 'type', 'nameb']
-//      });
-//      
-//      Backbone.Layout.setupView(dcView);
-//
-//      function showColumns() {
-//        console.log('todo...');
-//      };
-//      var el = dcView.render().el;
-//      var dialog = appModel.showModal({
-//          buttons_on_top: true,
-//          css: { 
-//              display: 'table',
-//              height: '500px',
-//              width: '80%'
-//            },
-//          css_modal_content: {
-//            overflow: 'hidden'
-//          },
-//          ok: showColumns,
-//          view: el,
-//          title: 'Select Other Screen Columns to display'
-//      });
-//      
-//    },
     
     /**
      * Loads the screen results using ajax to post the file.
@@ -854,9 +775,6 @@ define([
       Iccbl.getCollectionOnClient(url, function(collection) {
         // create a colModel for the list
         var columns = [];
-//        var TextWrapCell = Backgrid.Cell.extend({
-//          className: 'text-wrap-cell'
-//        })
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,

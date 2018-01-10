@@ -47,7 +47,7 @@ define([
       TabbedController.prototype.initialize.apply(this,arguments);
       
       var access_level = this.model.get('user_access_level_granted');
-      if (access_level > 1) {
+      if (access_level > 1 && _.isEmpty(self.model.get('study_type'))) {
         this.tabbed_resources['summary'] = this.screen_tabbed_resources['summary'];
         if (this.model.get('has_screen_result') != 1){
           delete this.tabbed_resources['data']
@@ -359,7 +359,8 @@ define([
             }
           }
           
-          if (_.isEmpty(model.get('primary_screen'))){
+          if (_.isEmpty(self.model.get('study_type'))
+              && _.isEmpty(model.get('primary_screen'))){
             
             // Reconfirmation up screens can be added, if the current screen is not a 
             // reconfirmation up screen itself.
@@ -411,7 +412,8 @@ define([
             });
                                               
           }
-          if (appModel.hasGroup('readEverythingAdmin')) {
+          if (_.isEmpty(self.model.get('study_type'))
+              && appModel.hasGroup('readEverythingAdmin')) {
             var adminControl = $('<a id="admin-control"></a>');
             if (self.isAdmin){
               adminControl.append('&nbsp;admin&nbsp;&lt;&lt;&nbsp;')

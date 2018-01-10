@@ -46,10 +46,8 @@ class BaseSerializer(object):
         ('html', 'text/html'),
         ('json', JSON_MIMETYPE),
      ))
-    def __init__(self, content_types=None):
-
-        self.content_types = content_types or {}    
-        self.content_types['json'] = JSON_MIMETYPE
+    def __init__(self):
+        pass
 
     @staticmethod
     def get_content(resp):
@@ -127,6 +125,7 @@ class BaseSerializer(object):
                 if DEBUG_ACCEPT_CONTENT_TYPE:
                     logger.info('get content type from HTTP_ACCEPT: %r', 
                         request.META.get('HTTP_ACCEPT', '*/*'))
+                    logger.info('content types: %r', self.content_types)
                 try:
                     content_type = mimeparse.best_match(
                         self.content_types.values(), 
@@ -169,13 +168,17 @@ class BaseSerializer(object):
         
     def get_content_type(self, request):    
 
-        logger.debug('get_content_type: %r, %r', request, format)
+        DEBUG_CONTENT_TYPE = False or logger.isEnabledFor(logging.DEBUG)
+
+        if DEBUG_CONTENT_TYPE:
+            logger.info('get_content_type: %r, %r', request, format)
 
         content_type = None
         
         if request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
             content_type = request.META.get('CONTENT_TYPE', '*/*')
-            logger.debug('"CONTENT_TYPE": %r', content_type)
+            if DEBUG_CONTENT_TYPE:
+                logger.info('"CONTENT_TYPE": %r', content_type)
         elif request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
             logger.info(
                 'no "CONTENT_TYPE" found, fallback "HTTP_ACCEPT" header %r',
@@ -196,7 +199,8 @@ class BaseSerializer(object):
                 if 'application/json' in  request.META['HTTP_ACCEPT']:
                     content_type = 'application/json'
             
-            logger.debug('"HTTP_ACCEPT" - content_type: %r', content_type)
+            if DEBUG_CONTENT_TYPE:
+                logger.info('"HTTP_ACCEPT" - content_type: %r', content_type)
         if not content_type:
             raise BadRequest(
                 'No content type found for request: %r, %r'
@@ -271,15 +275,14 @@ class BaseSerializer(object):
         else:
             return None
 
-
 class SDFSerializer(BaseSerializer):
     
     def __init__(self, content_types=None):
-
-        content_types = content_types or {}    
-        content_types['sdf'] = SDF_MIMETYPE
-        
-        super(SDFSerializer,self).__init__(content_types=content_types);
+        super(SDFSerializer,self).__init__()
+        self.content_types = OrderedDict( (
+            ('sdf', SDF_MIMETYPE),
+            ('json', JSON_MIMETYPE),
+         ))
         
     def to_sdf(self, data, options=None):
         
@@ -309,16 +312,16 @@ class SDFSerializer(BaseSerializer):
         else:
             return objects
 
-
 class XLSSerializer(BaseSerializer):
     
     def __init__(self,content_types=None):
 
-        content_types = content_types or {}    
-        content_types['xls'] = XLS_MIMETYPE
-        content_types['xlsx'] = XLSX_MIMETYPE
-        
-        super(XLSSerializer,self).__init__(content_types=content_types);
+        super(XLSSerializer,self).__init__();
+        self.content_types = OrderedDict( (
+            ('xls', XLS_MIMETYPE),
+            ('xlsx', XLSX_MIMETYPE),
+            ('json', JSON_MIMETYPE),
+         ))
 
     def to_xls(self,data, options=None, **kwargs):
 
@@ -373,16 +376,16 @@ class XLSSerializer(BaseSerializer):
             return { root: data }
         else:
             return data
-
                 
 class CSVSerializer(BaseSerializer):
     
     def __init__(self, content_types=None):
         
-        content_types = content_types or {}    
-        content_types['csv'] = CSV_MIMETYPE
-
-        super(CSVSerializer,self).__init__(content_types=content_types)
+        super(CSVSerializer,self).__init__()
+        self.content_types = OrderedDict( (
+            ('csv', CSV_MIMETYPE),
+            ('json', JSON_MIMETYPE),
+         ))
         
     def to_csv(self, data, root='objects', options=None):
         '''
@@ -453,13 +456,14 @@ class CSVSerializer(BaseSerializer):
 class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
 
     def __init__(self, content_types=None):
-        
-        content_types = content_types or {}    
-        content_types['xls'] = XLS_MIMETYPE
-        content_types['xlsx'] = XLSX_MIMETYPE
-        content_types['json'] = JSON_MIMETYPE
-        
-        super(ScreenResultSerializer,self).__init__(content_types=content_types);
+        super(ScreenResultSerializer,self).__init__();
+        self.content_types = OrderedDict( (
+            ('sdf', SDF_MIMETYPE),
+            ('xls', XLS_MIMETYPE),
+            ('xlsx', XLSX_MIMETYPE),
+            ('csv', CSV_MIMETYPE),
+            ('json', JSON_MIMETYPE),
+         ))
 
     def to_xlsx(self, data, options=None):
         logger.info(
@@ -493,11 +497,11 @@ class CursorSerializer(BaseSerializer):
     
     def __init__(self, content_types=None):
 
-        content_types = content_types or {}    
-        content_types['csv'] = CSV_MIMETYPE
-        content_types['json'] = JSON_MIMETYPE
-        
-        super(CursorSerializer,self).__init__(content_types=content_types);
+        super(CursorSerializer,self).__init__();
+        self.content_types = OrderedDict( (
+            ('csv', CSV_MIMETYPE),
+            ('json', JSON_MIMETYPE),
+         ))
 
     def to_csv(self, obj, options=None):
         raw_data = cStringIO.StringIO()
@@ -606,5 +610,13 @@ class LimsSerializer(CSVSerializer,SDFSerializer, XLSSerializer):
     ''' 
     Combine all of the Serializers used by the API
     '''
-
+    def __init__(self, content_types=None):
+        super(LimsSerializer,self).__init__();
+        self.content_types = OrderedDict( (
+            ('sdf', SDF_MIMETYPE),
+            ('xls', XLS_MIMETYPE),
+            ('xlsx', XLSX_MIMETYPE),
+            ('csv', CSV_MIMETYPE),
+            ('json', JSON_MIMETYPE),
+         ))
 

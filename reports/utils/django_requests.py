@@ -67,7 +67,9 @@ def get_logged_in_session(username, password, base_url,
     r = s.send(prepped)
     logger.info('response code: %r', r.status_code)
     if DEBUG:
-        sys.stderr.write('login response: %s\n' % r.content )
+        sys.stderr.write('\nlogin response headers: %r' % r.headers)
+        sys.stderr.write('\nlogin response cookies: %r' % r.cookies)
+        sys.stderr.write('\nlogin response:\s%s\n' % r.content )
     
     if r.status_code in [200]:
         if 'logged in as:' not in r.content:
@@ -109,6 +111,10 @@ def get_session(username=None, password=None, base_url=None, login_form=LOGIN_FO
 def delete(url, request_or_session, headers):
     r = request_or_session.delete(url,headers=headers);
     
+    if DEBUG:
+        sys.stderr.write('\nresponse headers: %r' % r.headers)
+        sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+        sys.stderr.write('\nresponse:\n%s\n' % r.content )
     if r.status_code not in [204]:
         raise Exception("Error: status: %s, %s" 
                         % (r.status_code, r.content))
@@ -119,6 +125,10 @@ def get(url,request_or_session,headers):
 
     logger.info('GET: %r', url)
     r = request_or_session.get(url,headers=headers)
+    if DEBUG:
+        sys.stderr.write('\nresponse headers: %r' % r.headers)
+        sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+        sys.stderr.write('\nresponse:\n%s\n' % r.content )
     
     if r.status_code not in [200]:
         raise Exception("Error: status: %s, %s" 
@@ -145,35 +155,53 @@ def put(url, request_or_session, file, headers=None ):
     
         r = request_or_session.send(prepped)        
             
+        if DEBUG:
+            sys.stderr.write('\nresponse headers: %r' % r.headers)
+            sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+            sys.stderr.write('\nresponse:\n%s\n' % r.content )
+
         if r.status_code not in [200,202]:
             raise Exception("Error: status: %s\n%s\n%s" 
                             % (r.status_code, r.headers, r.content))
         return r
     
-def post(url, request_or_session, file, headers=None ):
-
-    with open(file) as f:
-        
-        if headers == None:
-            headers = {}
-        headers['Referer']=url
-        headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
-        if DEBUG:
-            sys.stderr.write('csrftoken: %s\n' % request_or_session.cookies['csrftoken'])
-            sys.stderr.write('headers: %s\n' % str((headers)))
-        
-        r = Request('POST', url,
-                    headers=headers,
-                    data=f.read())
-        
+def post(url, request_or_session, file=None, headers=None ):
+    if headers == None:
+        headers = {}
+    headers['Referer']=url
+    headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
+    if DEBUG:
+        sys.stderr.write('csrftoken: %s\n' 
+            % request_or_session.cookies['csrftoken'])
+        sys.stderr.write('headers: %s\n' % str((headers)))
+    
+    def do_post(f):
+        if f: 
+            r = Request('POST', url,
+                        headers=headers,
+                        data=f.read())
+        else: 
+            r = Request('POST', url,
+                        headers=headers)
+            
         prepped = request_or_session.prepare_request(r)
     
         r = request_or_session.send(prepped)        
+        if DEBUG:
+            sys.stderr.write('\nresponse headers: %r' % r.headers)
+            sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+            sys.stderr.write('\nresponse:\n%s\n' % r.content )
             
         if r.status_code not in [200,202]:
             raise Exception("Error: status: %s\n%s\n%s" 
                             % (r.status_code, r.headers, r.content))
         return r
+
+    if file is not None:
+        with open(file) as f:
+            return do_post(f)
+    else:
+        return do_post(None)
     
 def patch(url,request_or_session,file, headers=None ):
     
@@ -195,6 +223,11 @@ def patch(url,request_or_session,file, headers=None ):
     
         r = request_or_session.send(prepped)        
             
+        if DEBUG:
+            sys.stderr.write('\nresponse headers: %r' % r.headers)
+            sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+            sys.stderr.write('\nresponse:\n%s\n' % r.content )
+
         if r.status_code not in [200,202]:
             raise Exception("Error: status: %s\n%s\n%s" 
                             % (r.status_code, r.headers, r.content))

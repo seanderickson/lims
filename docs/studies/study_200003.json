@@ -1,0 +1,12 @@
+{ 
+  "facility_id": "200003",
+  "title": "Confirmed Positives",
+  "screen_type": "rnai",
+  "study_type": "in_silico",
+  "summary": "Summary and Count of the follow-up screens for a well/reagent.\nWhere:\n\"N\" is 0 <= N <= M, M is the max number of duplexes per pool in any library (currently = 4), and,\n\"Number of screens confirming with N duplexes\" is the number of follow-up screens that confirmed the well as a positive with N duplexes.\n\"Weighted Average\" is the average number of confirmed positives per screen (the # screens per count, weighted average = ( Sum(count[N]*N)/Sum(count[N]) )",
+  "lab_head_id": 3989,
+  "lab_head_name": "Sean Erickson EDIT",
+  "lead_screener_id": 3989,
+  "lead_screener_name": "Sean Erickson EDIT"
+}
+

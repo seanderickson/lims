@@ -20,6 +20,7 @@ from reports.serialize.xlsutils import sheet_cols, sheet_rows, \
 
 logger = logging.getLogger(__name__)
 
+DEBUG_IMPORTER = False or logger.isEnabledFor(logging.DEBUG)
 
 PARTITION_POSITIVE_MAPPING = {
     'NP': 0,
@@ -146,7 +147,8 @@ def parse_columns(columns_sheet):
     return parsed_cols
         
 def result_value_field_mapper(header_row, parsed_columns):
-    logger.info('map result value header row... %r', parsed_columns.keys())
+    if DEBUG_IMPORTER:
+        logger.info('map result value header row... %r', parsed_columns.keys())
     mapped_row = []
     header_row = [x for x in header_row]
     for i,value in enumerate(header_row):
@@ -155,7 +157,8 @@ def result_value_field_mapper(header_row, parsed_columns):
         else:
             colname = xlrd.book.colname(i)
             mapped_row.append(colname)
-    logger.info('mapped header row: %r to %r', header_row, mapped_row)
+    if DEBUG_IMPORTER:
+        logger.info('mapped header row: %r', dict(zip(header_row, mapped_row)))
     unmapped = [key for key,value in RESULT_VALUE_FIELD_MAP.items() 
         if value not in mapped_row]
     if unmapped:
@@ -163,7 +166,8 @@ def result_value_field_mapper(header_row, parsed_columns):
             % (str(','.join(unmapped)), header_row))
         logger.info(msg)
         raise ParseError(key='header row',msg=msg)
-    logger.info('mapped result value header row: %r', mapped_row) 
+    if DEBUG_IMPORTER:
+        logger.info('mapped result value header row: %r', mapped_row) 
     return mapped_row
         
 def parse_result_values(parsed_columns, sheets):
@@ -189,12 +193,13 @@ def parse_result_values(parsed_columns, sheets):
             try:
                 result = parse_result_row(
                     i,parsed_columns,dict(zip(header_row,row)))
+                if DEBUG_IMPORTER:
+                    logger.info('parsed row: %d: %r',i,  result)
                 if result['well_id'] in well_ids:
                     raise ParseError(
                         key=result['well_id'],
                         msg='duplicate')
                 well_ids.add(result['well_id'])
-                logger.debug('parsed row: %d: %r',i,  result)
                 yield result
             except ValidationError,e:
                 logger.exception('parse error: %r', e)
@@ -477,6 +482,8 @@ def create_output_data(screen_facility_id, fields, result_values ):
         row_count = 0
         for result_value in result_values:
             row_count += 1
+            if DEBUG_IMPORTER:
+                logger.info('result_value: %d: %r', row_count, result_value)
             row = []
             
             row.extend(result_value['well_id'].split(':'))
@@ -508,6 +515,8 @@ def create_output_data(screen_facility_id, fields, result_values ):
                     excluded_cols = sorted(excluded_cols)
             row.append(','.join(excluded_cols))
             
+            if DEBUG_IMPORTER:
+                logger.info('write rvs: data_column_keys: %r', data_column_keys)
             for j,key in enumerate(data_column_keys):
                 if result_value.has_key(key):
                     row.append(result_value[key])
@@ -520,7 +529,8 @@ def create_output_data(screen_facility_id, fields, result_values ):
             
             if row_count % 10000 == 0:
                 logger.info('generated %d rows', row_count)
-            logger.debug('generate row %d: %r',row_count, row)
+            if DEBUG_IMPORTER:
+                logger.info('generate row %d: %r',row_count, row)
             yield OrderedDict(zip(header_row,row))
     
     data['Data'] = result_value_generator(result_values)

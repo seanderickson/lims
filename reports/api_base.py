@@ -468,11 +468,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             content_type = self.get_serializer().get_content_type_for_format(format)
         else:
             content_type = self.get_serializer().get_accept_content_type(request)
-            
         logger.debug('build response for data: %r, content type: %r', data, content_type)
-        logger.debug('build_response: %r, serializing...', content_type)
+        logger.info('build_response: %r, serializing...', content_type)
         serialized = self.serialize(data, content_type)
-        logger.debug('serialized: %d', len(data))
         response = response_class(
             content=serialized, 
             content_type=content_type)

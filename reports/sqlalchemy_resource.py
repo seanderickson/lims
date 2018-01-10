@@ -187,7 +187,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 [ str((key,field['visibility'])) 
                     for key,field in schema_fields.items()])
             logger.info('field access levels: %r', 
-                [ str((key,field['data_access_level'])) 
+                [ str((key,field.get('data_access_level', None))) 
                     for key,field in schema_fields.items()])
         try:
             if exact_fields:

@@ -534,6 +534,61 @@ function setup_production_users {
 
 }
 
+function create_studies {
+
+  # Create in_silico statistical studies
+  echo "create in_silico statistical studies: $(ts) ..." >> "$LOGFILE"
+
+  echo "create in_silico statistical studies using a local dev server on port $BOOTSTRAP_PORT..."
+  
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status"
+    exit $runserver_status
+  fi
+  #  echo "wait for server process: ($!) to start..."
+  #  wait $server_pid
+  sleep 3
+  
+  study_file=docs/studies/study_200001.json
+  # lead_screener=sde_edit
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file}
+
+  study_file=docs/studies/study_200002.json
+  # lead_screener=sde_edit
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file}
+
+  study_file=docs/studies/study_200003.json
+  # lead_screener=sde_edit
+  PYTHONPATH=. python reports/utils/django_requests.py -u sde -p ${adminpass} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_confirmed_positive_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file}
+
+  ####
+  echo "create in_silico statistical studies finished, stop server ..."
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  # kill $server_pid
+
+  echo "create in_silico statistical studies done: $(ts)" >> "$LOGFILE"
+
+}
+
 function setup_test_data {
   # Create data for end-user testing
   
@@ -754,8 +809,6 @@ function setup_test_data {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
     --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
-
-
   ####
   echo "setup_test_data finished, stop server ..."
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
@@ -818,6 +871,8 @@ function main {
   
   setup_test_data
 
+  create_studies
+
   # put this here to see if LSF will start reporting results
   # exit 0
     
@@ -870,7 +925,7 @@ main "$@"
   
 #  setup_test_data
 
-
+#  create_studies
 
 
 

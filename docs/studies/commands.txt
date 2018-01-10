@@ -1,0 +1,23 @@
+# Study Generators
+# (to be run from the project root)
+
+# Small Molecule screened count study:
+# - NOTE: takes 18:30 to create 885786 assay_wells on 20180110
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -a POST http://localhost:8000/db/api/v1/study/create_screened_count_study \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200001.json
+
+# RNAi screened count study:
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -a POST http://localhost:8000/db/api/v1/study/create_screened_count_study \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200002.json
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -a POST http://localhost:8000/db/api/v1/study/create_confirmed_positive_study \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200003.json

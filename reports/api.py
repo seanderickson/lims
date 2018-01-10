@@ -1068,6 +1068,7 @@ class ApiResource(SqlAlchemyResource):
         
         _data = self.build_post_detail(request, deserialized, **kwargs)
         
+        # TODO: status_code=201
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
     
@@ -1398,7 +1399,7 @@ class ApiResource(SqlAlchemyResource):
                     if name in id_attribute:
                         continue
                     editability = field.get('editability',None)
-                    if not editability or 'u' not in editability:
+                    if editability and 'u' not in editability:
                         logger.info('field: %r, %r, %r', name, editability, field)
                         errors[name] = 'cannot be changed'
                         continue
@@ -1594,16 +1595,19 @@ class ApiResource(SqlAlchemyResource):
             def keys(self):
                 return self.row.keys();
             def __getitem__(self, key):
-                if not self.row[key]:
+                if self.row[key] is None:
                     return None
                 if key in vocabularies:
                     if self.row[key] not in vocabularies[key]:
-                        logger.error(
-                            ('Unknown vocabulary:'
-                             ' scope:%s key:%s val:%r, keys defined: %r'),
-                            field_hash[key]['vocabulary_scope_ref'], key, 
-                            self.row[key],vocabularies[key].keys() )
-                        return self.row[key] 
+                        if str(self.row[key]) not in vocabularies[key]:
+                            logger.error(
+                                ('Unknown vocabulary:'
+                                 ' scope:%s key:%s val:%r, keys defined: %r'),
+                                field_hash[key]['vocabulary_scope_ref'], key, 
+                                self.row[key],vocabularies[key].keys() )
+                            return self.row[key] 
+                        else:
+                            return vocabularies[key][str(self.row[key])]['title']
                     else:
                         return vocabularies[key][self.row[key]]['title']
                 else:

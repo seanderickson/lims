@@ -101,6 +101,7 @@ class DBResourceTestCase(IResourceTestCase):
     
         super(DBResourceTestCase, self).__init__(*args,**kwargs)
         self.directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
+        self.sr_serializer = ScreenResultSerializer()
 
     def _bootstrap_init_files(self, reinit_pattern=None):
         logger.info( 'bootstrap reinit_pattern: %r', reinit_pattern)
@@ -456,7 +457,254 @@ class DBResourceTestCase(IResourceTestCase):
             self.assertEqual(lab_affiliation[key],new_lab_affiliation[key])
 
         return new_lab_affiliation
-    
+
+    def _setup_duplex_data(self):
+        logger.info('create users...')
+        self.test_admin_user = self.create_staff_user(
+            { 'username': 'adminuser',
+              'permissions': 'resource/cherrypickrequest/write',
+            })
+
+        logger.info('create library...')
+        self.pool_library1 = self.create_library({
+            'start_plate': 50000, 
+            'end_plate': 50000,
+            'screen_type': 'rnai',
+            'is_pool': True })
+        self.duplex_library1 = self.create_library({
+            'start_plate': 50001, 
+            'end_plate': 50004,
+            'screen_type': 'rnai' })
+
+        logger.info('set some experimental wells...')
+        # Create the duplex library wells first
+        logger.info('create duplex library %r wells...', 
+            self.duplex_library1['short_name'])
+        resource_name = 'well'
+        input_well_data = []
+        for plate in range(
+            self.duplex_library1['start_plate'],
+            self.duplex_library1['end_plate']+1):
+            experimental_well_count = 384
+            duplex_well_data = [
+                self.create_test_well(
+                    plate,i,library_well_type='experimental',
+                    molar_concentration='0.001',
+                    vendor_name='duplex_vendor2') 
+                for i in range(0,experimental_well_count)]
+            input_well_data.extend(duplex_well_data)
+        logger.info(
+            'patch duplex library %r wells: %d...', 
+            self.duplex_library1['short_name'], len(input_well_data))
+        logger.debug('input_well_data: %r', input_well_data)
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', 
+            self.duplex_library1['short_name'],resource_name])
+        resp = self.api_client.patch(
+            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        self.duplex_wells = self.get_list_resource(resource_uri)
+        self.duplex_wells = {
+            well['well_id']:well for well in self.duplex_wells }
+
+        # Create the pool library wells, using duplex wells
+        logger.info(
+            'create pool library %r wells...', self.pool_library1['short_name'])
+        plate = 50000
+        experimental_well_count = 384
+        input_well_data = []
+        for i in range(0,experimental_well_count):
+            input_well = self.create_test_well(
+                plate,i,library_well_type='experimental',
+                molar_concentration='0.001',
+                vendor_name='rna_vendor1') 
+            duplex_wells = []
+            for duplex_plate in range(
+                    self.duplex_library1['start_plate'],
+                    self.duplex_library1['end_plate']+1):
+                duplex_wells.append(
+                    lims_utils.well_id(duplex_plate, input_well['well_name']))
+            input_well['duplex_wells'] = duplex_wells
+            input_well_data.append(input_well)
+        logger.info(
+            'patch pool library %r wells...', self.pool_library1['short_name'])
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', 
+            self.pool_library1['short_name'],resource_name])
+        resp = self.api_client.patch(
+            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        self.pool_wells = self.get_list_resource(resource_uri)
+        for pool_well in self.pool_wells:
+            self.assertTrue('duplex_wells' in pool_well)
+            for duplex_well in pool_well['duplex_wells']:
+                self.assertTrue(duplex_well in self.duplex_wells,
+                    'duplex well not found: %r in %r' 
+                    % (duplex_well, self.duplex_wells.keys()))
+        self.pool_wells = { well['well_id']:well for well in self.pool_wells }
+        
+        logger.info('Create library copies...')
+        
+        # copy1: cherry_pick_source_plate
+        duplex_library_copy1_input = {
+            'library_short_name': self.duplex_library1['short_name'],
+            'copy_name': "copy1",
+            'usage_type': "cherry_pick_source_plates",
+            'initial_plate_well_volume': '0.000010',
+            'initial_plate_status': 'available'
+        }  
+        self.duplex_library_copy1 = self.create_copy(duplex_library_copy1_input)
+        logger.info(
+            'created duplex_library_copy1: %r', self.duplex_library_copy1)
+#  
+#         logger.info('create rnai screen...')        
+#         self.rnai_screen = self.create_screen({
+#             'screen_type': 'rnai'
+#             })   
+
+    @staticmethod
+    def _create_screen_result_test_data(
+        screen_facility_id, well_ids, confirmed_positive_wells=None, 
+        false_positive_wells=None, partition_positive_wells=None):
+        
+        confirmed_positive_wells = confirmed_positive_wells or []
+        false_positive_wells = false_positive_wells or []   
+        partition_positive_wells = partition_positive_wells or []   
+        
+        fields = {
+            'E': {
+                'name': 'Field1_non_positive_indicator',
+                'data_worksheet_column': 'E',
+                'data_type': 'numeric',
+                'decimal_places': 4, 
+                'description': 'Non-positive field',
+                'replicate_ordinal': 2,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'flourescence_intensity',
+            },
+            'F': {
+                'name': 'Field2_positive_indicator',
+                'data_worksheet_column': 'F',
+                'data_type': 'confirmed_positive_indicator',
+                'description': 'positive indicator field',
+                'how_derived': 'z-score > 1 for Field3'
+            },
+            'G': {
+                'name': 'Field3_partitioned_positive',
+                'data_worksheet_column': 'G',
+                'data_type': 'partition_positive_indicator',
+                'description': 'partition positive indicator',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+        }
+        
+        result_values = []
+        for i, well_id in enumerate(well_ids):
+            
+            result_value = {
+                'well_id': well_id,
+                'E': i+1
+            }
+            if well_id in confirmed_positive_wells:
+                result_value['F'] = 'CP'
+            if well_id in false_positive_wells:
+                result_value['F'] = 'FP'
+            if well_id in partition_positive_wells:
+                result_value['G'] = 'W'
+            result_values.append(result_value)
+        
+        input_data = OrderedDict((
+            ('meta', {'screen_facility_id': screen_facility_id } ),
+            ('fields', fields),
+            ('objects', result_values),
+        ))
+        return input_data
+
+
+    def create_screen_result_for_test(
+            self, screen_facility_id,well_ids, 
+            confirmed_positive_wells=None, false_positive_wells=None,
+            partition_positive_wells=None):
+        
+        input_data = self._create_screen_result_test_data(
+            screen_facility_id,
+            well_ids, confirmed_positive_wells=confirmed_positive_wells, 
+            false_positive_wells=false_positive_wells,
+            partition_positive_wells=partition_positive_wells)
+
+        # The ScreenResultSerializer only recognizes the XLSX format:
+        # So serialize the input data into an XLSX file
+        input_data_put = screen_result_importer.create_output_data(
+            screen_facility_id, 
+            input_data['fields'], 
+            input_data['objects'] )
+        input_data_put = self.sr_serializer.serialize(
+            input_data_put, XLSX_MIMETYPE)
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        logger.info('PUT screen result to the server...')
+
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        resp = self.django_client.put(
+            resource_uri, data=input_data_put, **data_for_get )
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(
+            resp.status_code in [200, 204], resp.status_code)
+
+        output_data = self.get_screenresult(screen_facility_id)
+        
+        ScreenResultSerializerTest.validate(self, input_data, output_data)
+
+    def get_screenresult(self,screen_facility_id, username=None, data=None):
+        
+        if username:
+            authentication=self.create_basic(username, self.general_user_password)
+        else:
+            authentication=self.get_credentials()
+        
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get['HTTP_AUTHORIZATION'] = authentication
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        
+        logger.info('GET screen result %r from the server, %r', 
+            screen_facility_id, data_for_get)
+        resp = self.django_client.get(resource_uri, data=data, **data_for_get)
+        if resp.status_code not in [200]:
+            content = self.serializer.from_xlsx(self.get_content(resp))
+            logger.info('resp: %r',content)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] 
+                        for x in content])
+        self.assertTrue(resp.status_code in [200],resp.status_code)
+        output_data = self.sr_serializer.deserialize(
+            self.get_content(resp), XLSX_MIMETYPE)
+        return output_data
+ 
 
 def setUpModule():
 
@@ -498,17 +746,31 @@ def setUpModule():
     new_admin_user = None
     try:
         # Create a DB ScreensaverUser (mirror the Auth user created above)
+        # Check in two steps
+        # 1. Look for the screensaver_user object:
         su = ScreensaverUser.objects.get(username=IResourceTestCase.username)
         logger.info('found ss user: %r', su)
-        temp_test_case = DBResourceTestCase(methodName='get_single_resource')
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/' +IResourceTestCase.username
-        new_admin_user = \
-            temp_test_case.get_single_resource(resource_uri)
-        DBResourceTestCase.admin_user = new_admin_user
-        logger.info('got admin user: %r', DBResourceTestCase.admin_user)
+        # 2. Test if the resource returns a user:
+        if su:
+            temp_test_case = DBResourceTestCase(methodName='get_single_resource')
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/' +IResourceTestCase.username
+            new_admin_user = \
+                temp_test_case.get_single_resource(resource_uri)
+            if new_admin_user:
+                DBResourceTestCase.admin_user = new_admin_user
+                logger.info('got admin user: %r', DBResourceTestCase.admin_user)
+            else:
+                # If the resource DNE, remove the screensaver_user entry:
+                # - this entry is invalid:
+                # - /db and /reports tests may run out of order: in this case
+                # /reports test teardown methods may remove the 
+                # reports.user_profile; so the db/screensaver_user object is 
+                # invalid and must be recreated.
+                logger.info('remove/recreate the user: %r', su)
+                su.delete()
     except ObjectDoesNotExist:
-        logger.info('admin user not found: %r', IResourceTestCase.username)
+        logger.info('ss admin user not found: %r', IResourceTestCase.username)
         
     if not new_admin_user:
         logger.info('create an admin screensaveruser...')
@@ -4749,6 +5011,332 @@ class ScreenResource(DBResourceTestCase):
         logger.debug('serviceactivity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
         
+                
+    def test_7_create_confirmed_positive_study(self):
+        logger.info('test_7_create_confirmed_positive_study...')
+        # 1. Setup
+        # 1.A Create a library and wells
+        
+        self._setup_duplex_data()
+
+        # 1.B Create the test screens
+        
+        start_plate = self.duplex_library1['start_plate']
+        end_plate = self.duplex_library1['end_plate']
+        well_ids_to_create = []
+        for plate_number in range(start_plate, end_plate+1):
+            well_ids_to_create += ['%05d:A0%d' % (plate_number, i) for i in range(1,10)]
+
+        screen1confirmed = self.create_screen({
+            'screen_type': 'rnai'
+            })
+        logger.info('created screen: %s', screen1confirmed['facility_id'])
+        self.create_screen_result_for_test(
+            screen1confirmed['facility_id'], well_ids_to_create,
+            confirmed_positive_wells=[
+                '%05d:A02'%start_plate,
+                '%05d:A03'%start_plate,
+                '%05d:A04'%start_plate,
+                '%05d:A05'%start_plate,
+            ])
+        screen2confirmed = self.create_screen({
+            'screen_type': 'rnai'
+            })
+        self.create_screen_result_for_test(
+            screen2confirmed['facility_id'], well_ids_to_create,
+            confirmed_positive_wells=[
+                '%05d:A02'%start_plate,
+                '%05d:A02'%(start_plate+1),
+            ],
+            false_positive_wells=[
+                '%05d:A03'%start_plate,
+            ])
+
+        screen3confirmed = self.create_screen({
+            'screen_type': 'rnai'
+            })
+        self.create_screen_result_for_test(
+            screen3confirmed['facility_id'], well_ids_to_create,
+            confirmed_positive_wells=[
+                '%05d:A02'%start_plate,
+                '%05d:A02'%(start_plate+1),
+                '%05d:A02'%(start_plate+2),
+                '%05d:A03'%start_plate,
+                '%05d:A03'%(start_plate+1),
+                '%05d:A03'%(start_plate+2),
+            ])
+        
+        screen4confirmed = self.create_screen({
+            'screen_type': 'rnai'
+            })
+        self.create_screen_result_for_test(
+            screen4confirmed['facility_id'], well_ids_to_create,
+            confirmed_positive_wells=[
+                '%05d:A02'%start_plate,
+                '%05d:A02'%(start_plate+1),
+                '%05d:A02'%(start_plate+2),
+                '%05d:A02'%(start_plate+3),
+                ],
+            false_positive_wells=[
+                '%05d:A04'%start_plate,
+            ])
+        
+        # 1.C Create the study
+        lab_head = self.create_lab_head()
+        user_data = { 'lab_head_id': lab_head['screensaver_user_id']}
+        lead_screener = self.create_screening_user(user_data)
+        facility_id = '10'
+        data = {
+            'screen_type': 'rnai',
+            'title': 'Test Confirmed Positives Study',
+            'study_type': 'in_silico',
+            'facility_id': facility_id,
+            'lab_head_id': lab_head['screensaver_user_id'],
+            'lead_screener_id': lead_screener['screensaver_user_id'],
+        }
+        input_data = ScreenFactory.attributes()
+        input_data.update(data)
+        logger.info('input_data: %r', input_data)
+        
+        # 2. Create the study data
+        logger.info('test_7_create_confirmed_positive_study, create study results...')
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'study','create_confirmed_positive_study'])
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            authentication=self.get_credentials(),
+            data=input_data)
+        self.assertTrue(
+            resp.status_code in [201], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        logger.info('data: %r', _data)
+        new_study_data = _data[API_RESULT_DATA][0]
+        logger.info('new_study_data: %r', new_study_data)
+        self.assertTrue(new_study_data['has_screen_result'])
+        
+        result_data = self.get_screenresult(facility_id)
+        
+        col_map = {
+            'Weighted Average': 'E',
+            'Number of Screens': 'F',
+            'confirmed_0': 'G',
+            'confirmed_1': 'H',
+            'confirmed_2': 'I',
+            'confirmed_3': 'J',
+            'confirmed_4': 'K',
+            }
+        for i,rv in enumerate(result_data['objects']):
+            logger.info('result_value: %r', rv)
+            if rv['well_id'] == '%05d:A02' % self.pool_library1['start_plate']:
+                self.assertEqual(
+                    rv[col_map['Weighted Average']], '2.5' )
+                self.assertEqual(
+                    rv[col_map['Number of Screens']], 4 )
+                self.assertEqual(
+                    rv[col_map['confirmed_0']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_1']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_2']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_3']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_4']], 1 )
+            elif rv['well_id'] == '%05d:A03' % self.pool_library1['start_plate']:
+                self.assertEqual(
+                    rv[col_map['Weighted Average']], '1.33' )
+                self.assertEqual(
+                    rv[col_map['Number of Screens']], 3 )
+                self.assertEqual(
+                    rv[col_map['confirmed_0']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_1']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_2']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_3']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_4']], 0 )
+            elif rv['well_id'] == '%05d:A04' % self.pool_library1['start_plate']:
+                self.assertEqual(
+                    rv[col_map['Weighted Average']], '0.5' )
+                self.assertEqual(
+                    rv[col_map['Number of Screens']], 2 )
+                self.assertEqual(
+                    rv[col_map['confirmed_0']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_1']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_2']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_3']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_4']], 0 )
+            elif rv['well_id'] == '%05d:A05' % self.pool_library1['start_plate']:
+                self.assertEqual(
+                    rv[col_map['Weighted Average']], '1.0' )
+                self.assertEqual(
+                    rv[col_map['Number of Screens']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_0']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_1']], 1 )
+                self.assertEqual(
+                    rv[col_map['confirmed_2']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_3']], 0 )
+                self.assertEqual(
+                    rv[col_map['confirmed_4']], 0 )
+            else:
+                self.fail('unexpected result value: %r', rv)
+                
+    
+    def test_8_create_screened_count_study(self):
+
+        logger.info('test_8_create_screened_count_study...')
+        
+        
+        logger.info('create library...')
+        start_plate = 1000
+        end_plate = 1002
+        self.library1 = self.create_library({
+            'start_plate': start_plate, 
+            'end_plate': end_plate,
+            'screen_type': 'small_molecule' })
+        experimental_well_count = 384
+        input_well_data = []
+        for plate in range(start_plate, end_plate+1):
+            for i in range(0,experimental_well_count):
+                input_well = self.create_test_well(
+                    plate,i,library_well_type='experimental',
+                    molar_concentration='0.001',
+                    vendor_name='SM_vendor1') 
+                input_well_data.append(input_well)
+        logger.info(
+            'patch library %r wells: %d...', 
+            self.library1['short_name'], len(input_well_data))
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', 
+            self.library1['short_name'],resource_name])
+        resp = self.api_client.patch(
+            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        well_ids_to_create = []
+        for plate_number in range(start_plate, end_plate+1):
+            well_ids_to_create += ['%05d:A0%d' % (plate_number, i) for i in range(1,10)]
+        
+        screen1confirmed = self.create_screen({
+            'screen_type': 'small_molecule'
+            })
+        logger.info('created screen: %s', screen1confirmed['facility_id'])
+        self.create_screen_result_for_test(
+            screen1confirmed['facility_id'], well_ids_to_create,
+            confirmed_positive_wells=[
+                '%05d:A02'%start_plate,
+                '%05d:A03'%start_plate,
+                '%05d:A04'%start_plate,
+                '%05d:A05'%start_plate,
+            ])
+        screen2confirmed = self.create_screen({
+            'screen_type': 'small_molecule'
+            })
+        self.create_screen_result_for_test(
+            screen2confirmed['facility_id'], well_ids_to_create,
+            confirmed_positive_wells=[
+                '%05d:A02'%start_plate,
+                '%05d:A02'%(start_plate+1),
+            ],
+            false_positive_wells=[
+                '%05d:A03'%start_plate,
+            ])
+        
+        # 1.C Create the study
+        lab_head = self.create_lab_head()
+        user_data = { 'lab_head_id': lab_head['screensaver_user_id']}
+        lead_screener = self.create_screening_user(user_data)
+        facility_id = '10'
+        data = {
+            'screen_type': 'small_molecule',
+            'title': 'Test Reagent Counts Study',
+            'study_type': 'in_silico',
+            'facility_id': facility_id,
+            'lab_head_id': lab_head['screensaver_user_id'],
+            'lead_screener_id': lead_screener['screensaver_user_id'],
+        }
+        input_data = ScreenFactory.attributes()
+        input_data.update(data)
+        logger.info('input_data: %r', input_data)
+        
+        # 2. Create the study data
+        logger.info('test_8_create_screened_count_study, create study results...')
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'study','create_screened_count_study'])
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            authentication=self.get_credentials(),
+            data=input_data)
+        self.assertTrue(
+            resp.status_code in [201], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        logger.info('data: %r', _data)
+        new_study_data = _data[API_RESULT_DATA][0]
+        logger.info('new_study_data: %r', new_study_data)
+        self.assertTrue(new_study_data['has_screen_result'])
+        
+        result_data = self.get_screenresult(facility_id)
+        logger.info('result_data: %r', result_data)
+        col_map = {
+            'Screen Positives Count': 'E',
+            'Screened Count': 'F',
+            }
+        for i,rv in enumerate(result_data['objects']):
+            logger.info('result_value: %r', rv)
+            if rv['well_id'] == '%05d:A02' % start_plate:
+                self.assertEqual(
+                    rv[col_map['Screen Positives Count']], 2 )
+                self.assertEqual(
+                    rv[col_map['Screened Count']], 2 )
+            elif rv['well_id'] == '%05d:A02' % (start_plate+1):
+                self.assertEqual(
+                    rv[col_map['Screen Positives Count']], 1 )
+                self.assertEqual(
+                    rv[col_map['Screened Count']], 2 )
+            elif rv['well_id'] == '%05d:A03' % start_plate:
+                self.assertEqual(
+                    rv[col_map['Screen Positives Count']], 1 )
+                self.assertEqual(
+                    rv[col_map['Screened Count']], 2 )
+            elif rv['well_id'] == '%05d:A04' % start_plate:
+                self.assertEqual(
+                    rv[col_map['Screen Positives Count']], 1 )
+                self.assertEqual(
+                    rv[col_map['Screened Count']], 2 )
+            elif rv['well_id'] == '%05d:A05' % start_plate:
+                self.assertEqual(
+                    rv[col_map['Screen Positives Count']], 1 )
+                self.assertEqual(
+                    rv[col_map['Screened Count']], 2 )
+            elif rv['well_id'] in well_ids_to_create:
+                self.assertEqual(
+                    rv[col_map['Screen Positives Count']], 0 )
+                self.assertEqual(
+                    rv[col_map['Screened Count']], 2 )
+            else:
+                self.fail('unexpected result value: %r', rv)
+        self.assertEqual(len(well_ids_to_create), i+1)
+                
+
+
+
+
         
 class CherryPickRequestResource(DBResourceTestCase):
         
@@ -4768,119 +5356,6 @@ class CherryPickRequestResource(DBResourceTestCase):
         LabAffiliation.objects.all().delete()
         ApiLog.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username='testsuper').delete()
-
-    def _setup_duplex_data(self):
-        logger.info('create users...')
-        self.test_admin_user = self.create_staff_user(
-            { 'username': 'adminuser',
-              'permissions': 'resource/cherrypickrequest/write',
-            })
-
-        logger.info('create library...')
-        self.pool_library1 = self.create_library({
-            'start_plate': 50000, 
-            'end_plate': 50000,
-            'screen_type': 'rnai',
-            'is_pool': True })
-        self.duplex_library1 = self.create_library({
-            'start_plate': 50001, 
-            'end_plate': 50004,
-            'screen_type': 'rnai' })
-
-        logger.info('set some experimental wells...')
-        # Create the duplex library wells first
-        logger.info('create duplex library %r wells...', 
-            self.duplex_library1['short_name'])
-        resource_name = 'well'
-        input_well_data = []
-        for plate in range(
-            self.duplex_library1['start_plate'],
-            self.duplex_library1['end_plate']+1):
-            experimental_well_count = 384
-            duplex_well_data = [
-                self.create_test_well(
-                    plate,i,library_well_type='experimental',
-                    molar_concentration='0.001',
-                    vendor_name='duplex_vendor2') 
-                for i in range(0,experimental_well_count)]
-            input_well_data.extend(duplex_well_data)
-        logger.info(
-            'patch duplex library %r wells...', 
-            self.duplex_library1['short_name'])
-        resource_uri = '/'.join([
-            BASE_URI_DB,'library', 
-            self.duplex_library1['short_name'],resource_name])
-        resp = self.api_client.patch(
-            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
-            authentication=self.get_credentials(), 
-            **{ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        self.duplex_wells = self.get_list_resource(resource_uri)
-        self.duplex_wells = {
-            well['well_id']:well for well in self.duplex_wells }
-
-        # Create the pool library wells, using duplex wells
-        logger.info(
-            'create pool library %r wells...', self.pool_library1['short_name'])
-        plate = 50000
-        experimental_well_count = 384
-        input_well_data = []
-        for i in range(0,experimental_well_count):
-            input_well = self.create_test_well(
-                plate,i,library_well_type='experimental',
-                molar_concentration='0.001',
-                vendor_name='rna_vendor1') 
-            duplex_wells = []
-            for duplex_plate in range(
-                    self.duplex_library1['start_plate'],
-                    self.duplex_library1['end_plate']+1):
-                duplex_wells.append(
-                    lims_utils.well_id(duplex_plate, input_well['well_name']))
-            input_well['duplex_wells'] = duplex_wells
-            input_well_data.append(input_well)
-        logger.info(
-            'patch pool library %r wells...', self.pool_library1['short_name'])
-        resource_name = 'well'
-        resource_uri = '/'.join([
-            BASE_URI_DB,'library', 
-            self.pool_library1['short_name'],resource_name])
-        resp = self.api_client.patch(
-            resource_uri, format='sdf', data={ 'objects': input_well_data } , 
-            authentication=self.get_credentials(), 
-            **{ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        self.pool_wells = self.get_list_resource(resource_uri)
-        for pool_well in self.pool_wells:
-            self.assertTrue('duplex_wells' in pool_well)
-            for duplex_well in pool_well['duplex_wells']:
-                self.assertTrue(duplex_well in self.duplex_wells,
-                    'duplex well not found: %r in %r' 
-                    % (duplex_well, self.duplex_wells.keys()))
-        self.pool_wells = { well['well_id']:well for well in self.pool_wells }
-        
-        logger.info('Create library copies...')
-        
-        # copy1: cherry_pick_source_plate
-        duplex_library_copy1_input = {
-            'library_short_name': self.duplex_library1['short_name'],
-            'copy_name': "copy1",
-            'usage_type': "cherry_pick_source_plates",
-            'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
-        }  
-        self.duplex_library_copy1 = self.create_copy(duplex_library_copy1_input)
-        logger.info(
-            'created duplex_library_copy1: %r', self.duplex_library_copy1)
- 
-        logger.info('create rnai screen...')        
-        self.rnai_screen = self.create_screen({
-            'screen_type': 'rnai'
-            })
 
     def _setup_data(self):
         # Set up dependencies
@@ -5155,6 +5630,12 @@ class CherryPickRequestResource(DBResourceTestCase):
     def _test2a_set_rnai_screener_cherry_picks(self):
         logger.info('test2a_set_rnai_screener_cherry_picks')
         self._setup_duplex_data()
+ 
+        logger.info('create rnai screen...')        
+        self.rnai_screen = self.create_screen({
+            'screen_type': 'rnai'
+            })    
+
         cpr_data = self._create_cherry_pick_request(self.rnai_screen)
     
         # 2. Set Screener Cherry Picks
@@ -8789,7 +9270,6 @@ class DataSharingLevel(DBResourceTestCase):
     
     def __init__(self, *args, **kwargs):
         DBResourceTestCase.__init__(self, *args, **kwargs)
-        self.sr_serializer = ScreenResultSerializer()
         self.general_user_password = 'testpass1'
 
     def tearDown(self):
@@ -9022,103 +9502,6 @@ class DataSharingLevel(DBResourceTestCase):
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
 
-    @staticmethod
-    def _create_screen_result_test_data(
-        screen_facility_id, well_ids, 
-        confirmed_positive_wells=None, partition_positive_wells=None):
-        
-        confirmed_positive_wells = confirmed_positive_wells or []
-        partition_positive_wells = partition_positive_wells or []   
-        
-        fields = {
-            'E': {
-                'name': 'Field1_non_positive_indicator',
-                'data_worksheet_column': 'E',
-                'data_type': 'numeric',
-                'decimal_places': 4, 
-                'description': 'Non-positive field',
-                'replicate_ordinal': 2,
-                'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
-            },
-            'F': {
-                'name': 'Field2_positive_indicator',
-                'data_worksheet_column': 'F',
-                'data_type': 'confirmed_positive_indicator',
-                'description': 'positive indicator field',
-                'how_derived': 'z-score > 1 for Field3'
-            },
-            'G': {
-                'name': 'Field3_partitioned_positive',
-                'data_worksheet_column': 'G',
-                'data_type': 'partition_positive_indicator',
-                'description': 'partition positive indicator',
-                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
-            },
-        }
-        
-        result_values = []
-        for i, well_id in enumerate(well_ids):
-            
-            result_value = {
-                'well_id': well_id,
-                'E': i+1
-            }
-            if well_id in confirmed_positive_wells:
-                result_value['F'] = 'CP'
-            if well_id in partition_positive_wells:
-                result_value['G'] = 'W'
-            result_values.append(result_value)
-        
-        input_data = OrderedDict((
-            ('meta', {'screen_facility_id': screen_facility_id } ),
-            ('fields', fields),
-            ('objects', result_values),
-        ))
-        return input_data
-
-
-    def create_screen_result_for_test(
-            self, screen_facility_id,well_ids, 
-            confirmed_positive_wells=None, partition_positive_wells=None):
-        
-        input_data = self._create_screen_result_test_data(
-            screen_facility_id,
-            well_ids, confirmed_positive_wells, partition_positive_wells)
-
-        # The ScreenResultSerializer only recognizes the XLSX format:
-        # So serialize the input data into an XLSX file
-        input_data_put = screen_result_importer.create_output_data(
-            screen_facility_id, 
-            input_data['fields'], 
-            input_data['objects'] )
-        input_data_put = self.sr_serializer.serialize(
-            input_data_put, XLSX_MIMETYPE)
-
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
-        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
-        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
-        logger.info('PUT screen result to the server...')
-
-        resource_name = 'screenresult'
-        resource_uri = '/'.join([
-            BASE_URI_DB,resource_name,screen_facility_id])
-        resp = self.django_client.put(
-            resource_uri, data=input_data_put, **data_for_get )
-        if resp.status_code not in [200, 204]:
-            content = self.get_content(resp)
-            if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
-        self.assertTrue(
-            resp.status_code in [200, 204], resp.status_code)
-
-        output_data = self.get_screenresult(screen_facility_id)
-        
-        ScreenResultSerializerTest.validate(self, input_data, output_data)
-
     def get_screenresult_json(self, screen_facility_id, username=None, data=None):
         data_for_get = { 'includes': '*' }
         if data is not None:
@@ -9139,37 +9522,6 @@ class DataSharingLevel(DBResourceTestCase):
         new_obj = self.deserialize(resp)
         new_data = new_obj[API_RESULT_DATA]
         return new_data
-
-    def get_screenresult(self,screen_facility_id, username=None, data=None):
-        
-        if username:
-            authentication=self.create_basic(username, self.general_user_password)
-        else:
-            authentication=self.get_credentials()
-        
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
-        data_for_get['HTTP_AUTHORIZATION'] = authentication
-        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
-        resource_name = 'screenresult'
-        resource_uri = '/'.join([
-            BASE_URI_DB,resource_name,screen_facility_id])
-        
-        logger.info('GET screen result %r from the server, %r', 
-            screen_facility_id, data_for_get)
-        resp = self.django_client.get(resource_uri, data=data, **data_for_get)
-        if resp.status_code not in [200, 204]:
-            if resp.status_code == 403:
-                logger.info('resp: %r',self.get_content(resp))
-            content = self.get_content(resp)
-            if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
-        self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
-        output_data = self.sr_serializer.deserialize(
-            self.get_content(resp), XLSX_MIMETYPE)
-        return output_data
 
     def get_screens(self, username, data=None):
         
@@ -10194,6 +10546,19 @@ class RawDataTransformer(DBResourceTestCase):
         # Tests 
         # - raw matrix values read in can be associated with well data via the server
         # - form values are saved per user/screen/cp
+        
+        # 1. Setup:
+        # a. create users
+        # b. create library
+        # c. create screen
+        
+        # 2. Setup transformer input
+        # 3. Validation tests
+        # a. assay controls: named ranges (duplicates, non-control)
+        # b. library controls
+        # c. collation: (counts)
+        # d. transformation (1536->384)
+        # 4. Valid input
         
         pass
     

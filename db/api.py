@@ -165,6 +165,7 @@ logger = logging.getLogger(__name__)
 
 DEBUG_SCREEN_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_DC_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_RV_CREATE = False or logger.isEnabledFor(logging.DEBUG)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -177,6 +178,235 @@ class DbApiResource(reports.api.ApiResource):
         self.apilog_resource = None
         self.field_resource = None
 
+        # Create index tables (shared by resources)
+        with get_engine().connect() as conn:
+            self._create_well_query_index_table(conn)
+            self._create_well_data_column_positive_index_table(conn)
+            self._create_screen_overlap_table(conn)
+    
+    @classmethod
+    def get_table_def(cls,table_name):
+        '''
+        Work around to create table definitions for dynamic tables
+        '''
+        if table_name in get_tables():
+            return get_tables()[table_name]
+        else:
+            if table_name == 'well_data_column_positive_index':
+                return sqlalchemy.sql.schema.Table(
+                    'well_data_column_positive_index', 
+                    aldjemy.core.get_meta(),
+                    sqlalchemy.Column('well_id', sqlalchemy.String),
+                    sqlalchemy.Column('data_column_id', sqlalchemy.Integer),
+                    sqlalchemy.Column('screen_id', sqlalchemy.Integer),
+                    )
+            elif table_name == 'screen_overlap':
+                return sqlalchemy.sql.schema.Table(
+                    'screen_overlap', 
+                    aldjemy.core.get_meta(),
+                    sqlalchemy.Column('screen_id', sqlalchemy.Integer),
+                    sqlalchemy.Column('overlap_screen_id', sqlalchemy.Integer))
+                
+            else:
+                raise Exception('unknown table: %r', table_name)
+        
+
+    def _create_well_query_index_table(self, conn):
+        try:
+            conn.execute(text('select * from "well_query_index"  limit 1; '));
+            logger.debug('The well_query_index table exists')
+            return
+        except Exception as e:
+            logger.exception('creating the well_query_index table')
+       
+        try:
+            conn.execute(text(
+                'CREATE TABLE "well_query_index" ('
+                '"id" serial NOT NULL,  '
+                '"well_id" text NOT NULL REFERENCES "well" ("well_id") '
+                '    DEFERRABLE INITIALLY DEFERRED,'
+                '"query_id" integer NOT NULL REFERENCES "cached_query" ("id") '
+                '    DEFERRABLE INITIALLY DEFERRED'
+                ');'
+            ));
+            logger.info('the well_query_index table has been created')
+        except Exception, e:
+            logger.info((
+                'Exception: %r on trying to create the well_query_index table,'
+                'note that this is normal if the table already exists '
+                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
+
+    def _create_well_data_column_positive_index_table(self, conn):
+        try:
+            conn.execute(text(
+                'select * from "well_data_column_positive_index" limit 1; '));
+            logger.debug('The well_data_column_positive_index table exists')
+            return
+        except Exception as e:
+            logger.info('creating the well_data_column_positive_index table')
+        
+        try:
+            conn.execute(text(
+                'CREATE TABLE well_data_column_positive_index ('
+                ' "well_id" text NOT NULL, '
+                ' "data_column_id" integer NOT NULL, ' 
+                ' "screen_id" integer NOT NULL ' 
+                ');'
+            ));
+            conn.execute(text(
+                'CREATE INDEX wdc_screen_id '
+                'on well_data_column_positive_index(screen_id);'))
+            # TODO: determine if indexes would help.
+            # Note: foreign keys are not needed and complicate delete
+            # 'CREATE TABLE well_data_column_positive_index ('
+            # ' "well_id" text NOT NULL REFERENCES "well" ("well_id") '
+            # '    DEFERRABLE INITIALLY DEFERRED,'
+            # ' "data_column_id" integer NOT NULL ' 
+            # ' REFERENCES "data_column" ("data_column_id") '
+            # '    DEFERRABLE INITIALLY DEFERRED, '
+            # ' "screen_id" integer NOT NULL ' 
+            # ' REFERENCES "screen" ("screen_id") '
+            # '    DEFERRABLE INITIALLY DEFERRED'
+            
+            logger.info('the well_data_column_positive_index table created')
+        except Exception, e:
+            logger.info((
+                'Exception: %r on trying to create the '
+                'well_data_column_positive_index table,'
+                'note that this is normal if the table already exists '
+                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
+    
+    def _create_screen_overlap_table(self, conn):
+        try:
+            conn.execute(text(
+                'select * from "screen_overlap" limit 1; '));
+            logger.debug('The screen_overlap table exists')
+            return
+        except Exception as e:
+            logger.info('creating the screen_overlap table')
+        
+        try:
+            conn.execute(text(
+                'CREATE TABLE screen_overlap ('
+                ' "screen_id" integer NOT NULL, '
+                ' "overlap_screen_id" integer NOT NULL '
+                ');'
+            ));
+            # Note: foreign keys are not needed and complicate delete
+            # 'CREATE TABLE screen_overlap ('
+            # ' "screen_id" integer NOT NULL '
+            # 'REFERENCES "screen" ("screen_id") '
+            # '    DEFERRABLE INITIALLY DEFERRED,'
+            # ' "overlap_screen_id" integer NOT NULL '
+            # 'REFERENCES "screen" ("screen_id") '
+            # '    DEFERRABLE INITIALLY DEFERRED '
+
+            conn.execute(text(
+                'CREATE INDEX screen_overlap_screen_id '
+                'on screen_overlap(screen_id);'))
+            conn.execute(text(
+                'CREATE INDEX screen_overlap_overlap_screen_id '
+                'on screen_overlap(overlap_screen_id);'))
+            logger.info('the screen_overlap table created')
+        except Exception, e:
+            logger.info((
+                'Exception: %r on trying to create the '
+                'screen_overlap table,'
+                'note that this is normal if the table already exists '
+                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
+
+    @classmethod
+    def get_create_well_data_column_positive_index(cls):
+        '''
+        If the well_data_column_positive_index has been cleared, recreate.
+        - recreate the entire index each time
+        '''
+        bridge = get_tables()
+        _aw = bridge['assay_well']
+        _sr = bridge['screen_result']
+        _s = bridge['screen']
+        _dc = bridge['data_column']
+        _wdc = cls.get_table_def('well_data_column_positive_index')
+
+        # Recreate the well_data_column_positive_index:
+        # Note: because this is lazy recreated, we are creating the whole 
+        # index each time; could just recreate for the specific screen
+        count_stmt = select([func.count()]).select_from(_wdc)
+        count = 0
+        with get_engine().begin() as conn:
+            count = int(conn.execute(count_stmt).scalar())        
+            logger.info('well_data_column_positive_index count: %r', count)
+        
+        if count == 0:
+            logger.info('well_data_column_positive_index count: %r, recreating', count)
+        
+            base_stmt = join(
+                _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
+            base_stmt = base_stmt.join(_sr, _sr.c.screen_result_id==_aw.c.screen_result_id)
+            base_stmt = base_stmt.join(_s, _sr.c.screen_id==_s.c.screen_id)
+            base_stmt = select([
+                _aw.c.well_id,
+                _dc.c.data_column_id,
+                _sr.c.screen_id
+                ]).select_from(base_stmt)            
+            base_stmt = base_stmt.where(_aw.c.is_positive)
+            base_stmt = base_stmt.where(_s.c.study_type==None)
+            base_stmt = base_stmt.where(
+                _dc.c.data_type.in_([
+                    'boolean_positive_indicator',
+                    'partition_positive_indicator', 
+                    'confirmed_positive_indicator']))
+            base_stmt = base_stmt.order_by(
+                _dc.c.data_column_id, _aw.c.well_id)
+            insert_statement = (
+                insert(_wdc)
+                    .from_select(['well_id', 'data_column_id','screen_id'], base_stmt))
+            logger.info('execute mutual pos insert statement...')
+            logger.debug(
+                'mutual pos insert statement: %r',
+                str(insert_statement.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
+            get_engine().execute(insert_statement)
+            logger.info('mutual pos insert statement, executed.')
+        return _wdc
+    
+    @classmethod
+    def get_create_screen_overlap_indexes(cls):
+        logger.info('get_create_screen_overlap_indexes...')
+        _wdc = cls.get_create_well_data_column_positive_index()
+        _screen_overlap = cls.get_table_def('screen_overlap')
+        wdc1 = _wdc.alias('wdc1')
+        wdc2 = _wdc.alias('wdc2')
+        
+        count_stmt = select([func.count()]).select_from(_screen_overlap)
+        count = 0
+        with get_engine().begin() as conn:
+            count = int(conn.execute(count_stmt).scalar())        
+            logger.info('screen_overlap count: %r', count)
+        
+        if count == 0:
+            logger.info('screen_overlap count:: %r, recreating', count)
+        
+            base_stmt = (
+                select([wdc1.c.screen_id, wdc2.c.screen_id.label('overlap_screen_id')])
+                .select_from(wdc1)
+                .select_from(wdc2)
+                .where(wdc1.c.screen_id!=wdc2.c.screen_id)
+                .where(wdc1.c.well_id==wdc2.c.well_id)
+                .group_by(wdc1.c.screen_id,wdc2.c.screen_id))
+            insert_statement = (
+                insert(_screen_overlap)
+                    .from_select(['screen_id','overlap_screen_id'], base_stmt))
+            logger.debug(
+                'screen_overlap insert statement: %r',
+                str(insert_statement.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
+            get_engine().execute(insert_statement)
+            logger.info('screen_overlap insert statement, executed.')
+        return _screen_overlap
+    
     def get_apilog_resource(self):
         if self.apilog_resource is None:
             self.apilog_resource = ApiLogResource()
@@ -2825,30 +3055,19 @@ class ScreenAuthorization(UserGroupAuthorization):
         
         return False
 
-    def get_screen_overlap_table(self):
-        ''' Work around method; create the screen_overlap 
-        table for the Aldjemy bridge '''
-        if not 'screen_overlap' in get_tables():
-            if self._screen_overlap_table is None:
-                self._screen_overlap_table = sqlalchemy.sql.schema.Table(
-                    'screen_overlap', 
-                    aldjemy.core.get_meta(),
-                    sqlalchemy.Column('screen_id', sqlalchemy.Integer),
-                    sqlalchemy.Column('overlap_screen_id', sqlalchemy.Integer))
-            return self._screen_overlap_table
-        return get_tables()['screen_overlap']
-    
+   
     def get_screen_overlapping_table(self):
         '''
         Create a current screen-overlap table from the database:
         - Fields: ['facility_id', 'data_sharing_level','screen_type',
         'overlapping_positive_screens']
         '''
-        
+        logger.info('get_screen_overlapping_table...')
         bridge = get_tables()
         _screen = bridge['screen']
         _overlap_screen = _screen.alias('overlap_screen')
-        _screen_overlap = self.get_screen_overlap_table()
+        _screen_overlap = DbApiResource.get_create_screen_overlap_indexes()
+        
         stmt = (
             select([
                 _screen.c.facility_id,
@@ -3461,65 +3680,14 @@ class ScreenResultResource(DbApiResource):
         self.scope = 'fields.screenresult'
         super(ScreenResultResource, self).__init__(**kwargs)
         
-        with get_engine().connect() as conn:
-            try:
-                conn.execute(text('select * from "well_query_index"  limit 1; '));
-                logger.debug('The well_query_index table exists')
-            except Exception as e:
-                logger.exception('creating the well_query_index table')
-                self._create_well_query_index_table(conn)
-            try:
-                conn.execute(text(
-                    'select * from "well_data_column_positive_index" limit 1; '));
-                logger.debug('The well_data_column_positive_index table exists')
-            except Exception as e:
-                logger.info('creating the well_data_column_positive_index table')
-                self._create_well_data_column_positive_index_table(conn)
-            try:
-                conn.execute(text(
-                    'select * from "screen_overlap" limit 1; '));
-                logger.debug('The screen_overlap table exists')
-            except Exception as e:
-                logger.info('creating the screen_overlap table')
-                self._create_screen_overlap_table(conn)
         self.reagent_resource = None
         self.screen_resource = None
-        self._well_data_column_positive_index = None
-        self._screen_overlap_table = None
         self.datacolumn_resource = None
         
     def get_datacolumn_resource(self):
         if self.datacolumn_resource is None:
             self.datacolumn_resource = DataColumnResource()
         return self.datacolumn_resource
-
-    def get_well_data_column_positive_index_table(self):
-        ''' Work around method; create the well_data_column_positive_index 
-        table for the Aldjemy bridge '''
-        if not 'well_data_column_positive_index' in get_tables():
-            if self._well_data_column_positive_index is None:
-                self._well_data_column_positive_index = sqlalchemy.sql.schema.Table(
-                    'well_data_column_positive_index', 
-                    aldjemy.core.get_meta(),
-                    sqlalchemy.Column('well_id', sqlalchemy.String),
-                    sqlalchemy.Column('data_column_id', sqlalchemy.Integer),
-                    sqlalchemy.Column('screen_id', sqlalchemy.Integer),
-                    )
-            return self._well_data_column_positive_index
-        return get_tables()['well_data_column_positive_index']
-
-    def get_screen_overlap_table(self):
-        ''' Work around method; create the screen_overlap 
-        table for the Aldjemy bridge '''
-        if not 'screen_overlap' in get_tables():
-            if self._screen_overlap_table is None:
-                self._screen_overlap_table = sqlalchemy.sql.schema.Table(
-                    'screen_overlap', 
-                    aldjemy.core.get_meta(),
-                    sqlalchemy.Column('screen_id', sqlalchemy.Integer),
-                    sqlalchemy.Column('overlap_screen_id', sqlalchemy.Integer))
-            return self._screen_overlap_table
-        return get_tables()['screen_overlap']
 
     def get_reagent_resource(self):
         if not self.reagent_resource:
@@ -3530,90 +3698,6 @@ class ScreenResultResource(DbApiResource):
         if not self.screen_resource:
             self.screen_resource = ScreenResource()
         return self.screen_resource
-    
-    def _create_well_query_index_table(self, conn):
-       
-        try:
-            conn.execute(text(
-                'CREATE TABLE "well_query_index" ('
-                '"id" serial NOT NULL,  '
-                '"well_id" text NOT NULL REFERENCES "well" ("well_id") '
-                '    DEFERRABLE INITIALLY DEFERRED,'
-                '"query_id" integer NOT NULL REFERENCES "cached_query" ("id") '
-                '    DEFERRABLE INITIALLY DEFERRED'
-                ');'
-            ));
-            logger.info('the well_query_index table has been created')
-        except Exception, e:
-            logger.info((
-                'Exception: %r on trying to create the well_query_index table,'
-                'note that this is normal if the table already exists '
-                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
-
-    def _create_well_data_column_positive_index_table(self, conn):
-        
-        try:
-            conn.execute(text(
-                'CREATE TABLE well_data_column_positive_index ('
-                ' "well_id" text NOT NULL, '
-                ' "data_column_id" integer NOT NULL, ' 
-                ' "screen_id" integer NOT NULL ' 
-                ');'
-            ));
-            conn.execute(text(
-                'CREATE INDEX wdc_screen_id '
-                'on well_data_column_positive_index(screen_id);'))
-            # TODO: determine if indexes would help.
-            # Note: foreign keys are not needed and complicate delete
-            # 'CREATE TABLE well_data_column_positive_index ('
-            # ' "well_id" text NOT NULL REFERENCES "well" ("well_id") '
-            # '    DEFERRABLE INITIALLY DEFERRED,'
-            # ' "data_column_id" integer NOT NULL ' 
-            # ' REFERENCES "data_column" ("data_column_id") '
-            # '    DEFERRABLE INITIALLY DEFERRED, '
-            # ' "screen_id" integer NOT NULL ' 
-            # ' REFERENCES "screen" ("screen_id") '
-            # '    DEFERRABLE INITIALLY DEFERRED'
-            
-            logger.info('the well_data_column_positive_index table created')
-        except Exception, e:
-            logger.info((
-                'Exception: %r on trying to create the '
-                'well_data_column_positive_index table,'
-                'note that this is normal if the table already exists '
-                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
-    
-    def _create_screen_overlap_table(self, conn):
-        
-        try:
-            conn.execute(text(
-                'CREATE TABLE screen_overlap ('
-                ' "screen_id" integer NOT NULL, '
-                ' "overlap_screen_id" integer NOT NULL '
-                ');'
-            ));
-            # Note: foreign keys are not needed and complicate delete
-            # 'CREATE TABLE screen_overlap ('
-            # ' "screen_id" integer NOT NULL '
-            # 'REFERENCES "screen" ("screen_id") '
-            # '    DEFERRABLE INITIALLY DEFERRED,'
-            # ' "overlap_screen_id" integer NOT NULL '
-            # 'REFERENCES "screen" ("screen_id") '
-            # '    DEFERRABLE INITIALLY DEFERRED '
-
-            conn.execute(text(
-                'CREATE INDEX screen_overlap_screen_id '
-                'on screen_overlap(screen_id);'))
-            conn.execute(text(
-                'CREATE INDEX screen_overlap_overlap_screen_id '
-                'on screen_overlap(overlap_screen_id);'))
-            logger.info('the screen_overlap table created')
-        except Exception, e:
-            logger.info((
-                'Exception: %r on trying to create the '
-                'screen_overlap table,'
-                'note that this is normal if the table already exists '
-                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
     
     @transaction.atomic()        
     def clear_cache(self, all=False, by_date=None, by_uri=None, by_size=False):
@@ -3697,14 +3781,19 @@ class ScreenResultResource(DbApiResource):
         # TODO: incrementally clear the wdcpi for each set of ids, or all
         if all is True or by_uri is not None:
             logger.info('all: %r, by_uri: %r', all, by_uri)
-            get_engine().execute(delete(self.get_well_data_column_positive_index_table()))
+            get_engine().execute(delete(self.get_table_def('well_data_column_positive_index')))
             logger.info(
                 'cleared all cached well_data_column_positive_indexes')
-            get_engine().execute(delete(self.get_screen_overlap_table()))
+            get_engine().execute(delete(self.get_table_def('screen_overlap')))
             logger.info(
                 'cleared all cached screen_overlap entries')
+        else:
+            logger.info('do not clear the well_data_column_positive_index table...')
         
-        self.get_screen_resource().clear_cache()
+        # Manually clear the screen caches
+        DbApiResource.clear_cache(self)
+        caches['screen'].clear()
+        # self.get_screen_resource().clear_cache()
             
     def prepend_urls(self):
 
@@ -3831,7 +3920,8 @@ class ScreenResultResource(DbApiResource):
         logger.info('build screenresult query')
         
         manual_field_includes = set(param_hash.get('includes', []))
-        manual_field_includes.add('assay_well_control_type')
+        if screenresult.screen.study_type is None:
+            manual_field_includes.add('assay_well_control_type')
             
         # general setup
         (filter_expression, filter_hash, readable_filter_hash) = \
@@ -3883,7 +3973,7 @@ class ScreenResultResource(DbApiResource):
                 and 'exclude' not in order_params
                 and '-exclude' not in order_params):
             filter_excluded = False
-        if filter_excluded:
+        if filter_excluded is True:
             logger.info('filter excluded...')
             base_clause = base_clause.join(
                 excluded_cols_select, 
@@ -3899,6 +3989,7 @@ class ScreenResultResource(DbApiResource):
                  or fi['key'] in order_params
                  or '-%s' % fi['key'] in order_params
                  or fi['key'] in filter_hash)]
+        logger.debug('base fields: %r', base_fields)
         # Using nested selects 
         for fi in [fi for fi in base_fields 
                 if fi.get('is_datacolumn', None)]:
@@ -4055,7 +4146,7 @@ class ScreenResultResource(DbApiResource):
         j = j.join(_reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
         j = j.join(_library,_w.c.library_id==_library.c.library_id)
 
-        if filter_excluded:
+        if 'exclude' in field_hash:
             # FIXME: 20171218: create an index for the exclude col on result_value
             # - ultimately needed is a refactor of the result value table:
             # - 1. divide into sm and rnai tables,
@@ -4336,76 +4427,9 @@ class ScreenResultResource(DbApiResource):
         except Exception, e:
             logger.exception('on get list: %r', e)
             raise e  
-
-    def create_dc_positive_index(self):
-        '''
-        The well_data_column_positive_index has been cleared, recreate.
-        - recreate the entire index each time
-        '''
-        _aw = self.bridge['assay_well']
-        _sr = self.bridge['screen_result']
-        _dc = self.bridge['data_column']
-        _wdc = self.get_well_data_column_positive_index_table()
-        _screen_overlap = self.get_screen_overlap_table()
-        
-        base_stmt = join(
-            _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
-        base_stmt = base_stmt.join(_sr, _sr.c.screen_result_id==_aw.c.screen_result_id)
-        base_stmt = select([
-            _aw.c.well_id,
-            _dc.c.data_column_id,
-            _sr.c.screen_id
-            ]).select_from(base_stmt)            
-        base_stmt = base_stmt.where(_aw.c.is_positive)
-        base_stmt = base_stmt.where(
-            _dc.c.data_type.in_([
-                'boolean_positive_indicator',
-                'partition_positive_indicator', 
-                'confirmed_positive_indicator']))
-        base_stmt = base_stmt.order_by(
-            _dc.c.data_column_id, _aw.c.well_id)
-        insert_statement = (
-            insert(_wdc)
-                .from_select(['well_id', 'data_column_id','screen_id'], base_stmt))
-        logger.debug(
-            'mutual pos insert statement: %r',
-            str(insert_statement.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True})))
-        get_engine().execute(insert_statement)
-        logger.info('mutual pos insert statement, executed.')
-
-        # Create the Screen Overlap entries
-        # INSERT into screen_overlap (screen_id, overlap_screen_id)
-        #     select 
-        #     s1.screen_id,                                                                                                                                
-        #     s2.screen_id as overlap_screen_id
-        #     from well_data_column_positive_index s1, well_data_column_positive_index s2
-        #     where s1.screen_id != s2.screen_id
-        #     and s1.well_id = s2.well_id
-        #     group by  s1.screen_id, s2.screen_id;
-        wdc1 = _wdc.alias('wdc1')
-        wdc2 = _wdc.alias('wdc2')
-        base_stmt = (
-            select([wdc1.c.screen_id, wdc2.c.screen_id.label('overlap_screen_id')])
-            .select_from(wdc1)
-            .select_from(wdc2)
-            .where(wdc1.c.screen_id!=wdc2.c.screen_id)
-            .where(wdc1.c.well_id==wdc2.c.well_id)
-            .group_by(wdc1.c.screen_id,wdc2.c.screen_id))
-        insert_statement = (
-            insert(_screen_overlap)
-                .from_select(['screen_id','overlap_screen_id'], base_stmt))
-        logger.debug(
-            'screen_overlap insert statement: %r',
-            str(insert_statement.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True})))
-        get_engine().execute(insert_statement)
-        logger.info('screen_overlap insert statement, executed.')
     
     def get_mutual_positives_columns(self, screen_result_id):
-        
+        logger.info('get_mutual_positives_columns...')
         cache_key = '%s_mutual_positive_columns' % screen_result_id
         cached_ids = cache.get(cache_key)
         
@@ -4431,18 +4455,6 @@ class ScreenResultResource(DbApiResource):
             _aw = self.bridge['assay_well']
             _sr = self.bridge['screen_result']
             _dc = self.bridge['data_column']
-            
-            # Recreate the well_data_column_positive_index:
-            # Note: because this is lazy recreated, we are creating the whole 
-            # index each time; could just recreate for the specific screen
-            count_stmt = self.get_well_data_column_positive_index_table()
-            count_stmt = select([func.count()]).select_from(count_stmt)
-            count = 0
-            with get_engine().begin() as conn:
-                count = int(conn.execute(count_stmt).scalar())        
-                logger.info('well_data_column_positive_index count: %r', count)
-            if count == 0:
-                self.create_dc_positive_index()
             
             # Query to find mutual positive data columns:
             
@@ -4475,8 +4487,10 @@ class ScreenResultResource(DbApiResource):
             _aw = self.bridge['assay_well']
             _sr = self.bridge['screen_result']
             _dc = self.bridge['data_column']
-            _wdc = self.get_well_data_column_positive_index_table().alias('wdc')
-            _wdc1 = self.get_well_data_column_positive_index_table().alias('wdc1')
+            
+            _wdc = self.get_create_well_data_column_positive_index().alias('wdc')
+            _wdc1 = self.get_create_well_data_column_positive_index().alias('wdc1')
+            
             _dc1 = _dc.alias('dc1')
             
             j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
@@ -4592,120 +4606,115 @@ class ScreenResultResource(DbApiResource):
             logger.info('not cached: %s', cache_key)
             data = super(ScreenResultResource, self).build_schema(user=user)
             
-            if screenresult:
-                try:
-                    
-                    newfields = add_well_fields(data['fields'])
-                    
-                    max_ordinal = 0
-                    for fi in newfields.values():
-                        if fi.get('ordinal', 0) > max_ordinal:
-                            max_ordinal = fi['ordinal']
-                    
-                    logger.info('map datacolumn definitions into field information definitions...')
-                    
-                    datacolumns = self.get_datacolumn_resource()\
+            newfields = add_well_fields(data['fields'])
+            if screenresult.screen.study_type is not None:
+                del newfields['assay_well_control_type']
+                
+            max_ordinal = 0
+            for fi in newfields.values():
+                if fi.get('ordinal', 0) > max_ordinal:
+                    max_ordinal = fi['ordinal']
+            
+            logger.info('map datacolumn definitions into field information definitions...')
+            
+            datacolumns = self.get_datacolumn_resource()\
+                ._get_list_response_internal(
+                    user, screen_facility_id=screen_facility_id)
+            
+            datacolumn_fields = {}
+            for dc in datacolumns:
+                dc['visibility'] = ['l','d']
+                dc['is_datacolumn'] = True
+                # NOTE: if user may view screenresults, access level > 1
+                # - filtering and ordering are allowed
+                dc['filtering'] = True
+                dc['ordering'] = True
+                datacolumn_fields[dc['key']] = dc
+            max_ordinal += len(datacolumn_fields)
+            
+            newfields.update(datacolumn_fields)
+            
+            # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
+            # are added explicitly
+            if show_mutual_positives is True or extra_dc_ids is not None:
+                
+                visible_screens = self.get_screen_resource()._get_list_response_internal(
+                    user=user,
+                    includes=[
+                        'user_access_level_granted','overlapping_positive_screens',
+                        'data_sharing_level','screen_type'])
+                visible_screens = { screen['facility_id']:screen 
+                    for screen in visible_screens }
+                reported_screen = visible_screens[screen_facility_id]
+                
+                reference_datacolumns = self.get_datacolumn_resource()\
+                    ._get_list_response_internal(
+                        screen_type=reported_screen['screen_type'])
+                reference_datacolumns = { dc['data_column_id']:dc 
+                    for dc in reference_datacolumns }
+
+                other_datacolumns = []
+                # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
+                # are added explicitly
+                if show_mutual_positives:
+                    temp_datacolumns = self.get_datacolumn_resource()\
                         ._get_list_response_internal(
-                            user, screen_facility_id=screen_facility_id)
-                    
-                    datacolumn_fields = {}
-                    for dc in datacolumns:
-                        dc['visibility'] = ['l','d']
-                        dc['is_datacolumn'] = True
-                        # NOTE: if user may view screenresults, access level > 1
-                        # - filtering and ordering are allowed
-                        dc['filtering'] = True
-                        dc['ordering'] = True
-                        datacolumn_fields[dc['key']] = dc
-                    max_ordinal += len(datacolumn_fields)
-                    
-                    newfields.update(datacolumn_fields)
-                    
-                    # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
-                    # are added explicitly
-                    if show_mutual_positives is True or extra_dc_ids is not None:
-                        
-                        visible_screens = self.get_screen_resource()._get_list_response_internal(
-                            user=user,
-                            includes=[
-                                'user_access_level_granted','overlapping_positive_screens',
-                                'data_sharing_level','screen_type'])
-                        visible_screens = { screen['facility_id']:screen 
-                            for screen in visible_screens }
-                        reported_screen = visible_screens[screen_facility_id]
-                        
-                        reference_datacolumns = self.get_datacolumn_resource()\
-                            ._get_list_response_internal(
-                                screen_type=reported_screen['screen_type'])
-                        reference_datacolumns = { dc['data_column_id']:dc 
-                            for dc in reference_datacolumns }
+                            user,
+                            screen_facility_id__in=
+                                reported_screen['overlapping_positive_screens'])
+                    for dc in temp_datacolumns:
+                        reference_dc = reference_datacolumns[dc['data_column_id']]
+                        if reference_dc['positives_count'] > 0:
+                            other_datacolumns.append(dc)
+                if extra_dc_ids:
+                    extra_datacolumns = self.get_datacolumn_resource()\
+                        ._get_list_response_internal(
+                            user, 
+                            data_column_id__in=extra_dc_ids)                            
 
-                        other_datacolumns = []
-                        # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
-                        # are added explicitly
-                        if show_mutual_positives:
-                            temp_datacolumns = self.get_datacolumn_resource()\
-                                ._get_list_response_internal(
-                                    user,
-#                                     positives_count__gt=0,
-                                    screen_facility_id__in=
-                                        reported_screen['overlapping_positive_screens'])
-                            for dc in temp_datacolumns:
-                                reference_dc = reference_datacolumns[dc['data_column_id']]
-                                if reference_dc['positives_count'] > 0:
-                                    other_datacolumns.append(dc)
-                        if extra_dc_ids:
-                            extra_datacolumns = self.get_datacolumn_resource()\
-                                ._get_list_response_internal(
-                                    user, 
-                                    data_column_id__in=extra_dc_ids)                            
-
-                            if self._meta.authorization.is_restricted_view(user):
-                                overlapping = reported_screen['overlapping_positive_screens']
-                                for dc in extra_datacolumns:
-                                    if dc['user_access_level_granted'] == 1:
-                                        if reported_screen['user_access_level_granted'] < 3:
-                                            continue
-                                        elif (dc['screen_facility_id'] 
-                                            not in overlapping):
-                                            continue
-                                        else:
-                                            logger.info('allowed level 1 col'
-                                                '%r: %r: %r', 
-                                                dc['key'],dc['title'],dc['data_column_id'])
-                                            other_datacolumns.append(dc)    
-                                    else:
-                                        other_datacolumns.append(dc)
+                    if self._meta.authorization.is_restricted_view(user):
+                        overlapping = reported_screen['overlapping_positive_screens']
+                        for dc in extra_datacolumns:
+                            if dc['user_access_level_granted'] == 1:
+                                if reported_screen['user_access_level_granted'] < 3:
+                                    continue
+                                elif (dc['screen_facility_id'] 
+                                    not in overlapping):
+                                    continue
+                                else:
+                                    logger.info('allowed level 1 col'
+                                        '%r: %r: %r', 
+                                        dc['key'],dc['title'],dc['data_column_id'])
+                                    other_datacolumns.append(dc)    
                             else:
-                                other_datacolumns.extend(extra_datacolumns)
-                        
-                        other_datacolumns = { dc['data_column_id']:dc 
-                            for dc in other_datacolumns }
-                        decorated = [
-                            (dc['screen_facility_id'],dc['ordinal'], dc) 
-                                for dc in other_datacolumns.values()]
-                        decorated.sort(key=itemgetter(0,1))
-                        other_datacolumns = [dc for fid,ordinal,dc in decorated]
-                                                    
-                        datacolumn_fields = {}
-                        for i, dc in enumerate(other_datacolumns):
-                            dc['visibility'] = ['l','d']
-                            dc['is_datacolumn'] = True
-                            dc['ordinal'] = max_ordinal + i
-                            if dc['user_access_level_granted'] > 1:
-                                dc['ordering'] = True
-                                dc['filtering'] = True
-                            datacolumn_fields[dc['key']] = dc
-                            
-                        max_ordinal += len(datacolumn_fields)
-                        
-                        newfields.update(datacolumn_fields)
-                        
-                        
-                    data['fields'] = newfields
-                except Exception, e:
-                    logger.exception('on build schema')
-                    raise e  
+                                other_datacolumns.append(dc)
+                    else:
+                        other_datacolumns.extend(extra_datacolumns)
+                
+                other_datacolumns = { dc['data_column_id']:dc 
+                    for dc in other_datacolumns }
+                decorated = [
+                    (dc['screen_facility_id'],dc['ordinal'], dc) 
+                        for dc in other_datacolumns.values()]
+                decorated.sort(key=itemgetter(0,1))
+                other_datacolumns = [dc for fid,ordinal,dc in decorated]
+                                            
+                datacolumn_fields = {}
+                for i, dc in enumerate(other_datacolumns):
+                    dc['visibility'] = ['l','d']
+                    dc['is_datacolumn'] = True
+                    dc['ordinal'] = max_ordinal + i
+                    if dc['user_access_level_granted'] > 1:
+                        dc['ordering'] = True
+                        dc['filtering'] = True
+                    datacolumn_fields[dc['key']] = dc
+                    
+                max_ordinal += len(datacolumn_fields)
+                
+                newfields.update(datacolumn_fields)
+                
+                
+            data['fields'] = newfields
                 
             logger.info('build screenresult schema done')
             cache.set(cache_key, data)
@@ -4783,8 +4792,6 @@ class ScreenResultResource(DbApiResource):
         screen_facility_id = kwargs['screen_facility_id']
         screen = Screen.objects.get(facility_id=screen_facility_id)
 
-        schema = self.build_schema(user=request.user)
-        
         data = self.deserialize(request)
         meta = data[API_RESULT_META]
         columns = data['fields']
@@ -4795,6 +4802,29 @@ class ScreenResultResource(DbApiResource):
             logger.warn(
                 'screen_facility_id in file %r does not match url: %r'
                 % (meta['screen_facility_id'], screen_facility_id))
+        
+        self.create_screen_result(request, screen, columns, result_values)
+             
+        if not self._meta.always_return_data:
+            response_message = {'success': {
+                API_MSG_RESULT: 'screen result loaded'}}
+            response = self.build_response(request, response_message, **kwargs)
+            response['Content-Disposition'] = (
+                'attachment; filename=screen_result_loading_success-%s.xlsx' 
+                % screen_facility_id )
+            return response
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 200
+            return response 
+    
+    def create_screen_result(self, request, screen, columns, result_values, **kwargs):
+        '''
+        Create a screen results for the given screen (internal callers):
+        - if results exist, replaces
+        '''
+        
+        schema = self.build_schema(user=request.user)
         
         # Clear cache: note "all" because mutual positive columns can change
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
@@ -4819,7 +4849,7 @@ class ScreenResultResource(DbApiResource):
         
         with transaction.atomic():
 
-            logger.info('Create screen result for %r', screen_facility_id)
+            logger.info('Create screen result for %r', screen.facility_id)
             if hasattr(screen, 'screenresult'):
                 screen_result = screen.screenresult
                 logger.info('screen result: %r exists, deleting extant data',
@@ -4851,19 +4881,21 @@ class ScreenResultResource(DbApiResource):
             logger.info('created log: %r', screen_log)
             
             logger.info(
-                'Create screen result data columns for %r', screen_facility_id)
+                'Create screen result data columns for %r', screen.facility_id)
             sheet_col_to_datacolumn = {}
             derived_from_columns_map = {}
             errors = {}
-            for sheet_column, column_info in columns.items():
+            for i, (sheet_column, column_info) in enumerate(columns.items()):
                 if ( column_info.get('screen_facility_id',None)
-                    and column_info['screen_facility_id'] != screen_facility_id ):
+                    and column_info['screen_facility_id'] != screen.facility_id ):
                     logger.info('skipping column for screen_facility_id: %r', 
                         column_info.get('screen_facility_id') )
                     continue;
-                    
+                if column_info.get('ordinal',None) is None:
+                    column_info['ordinal'] = i
                 try:
-                    dc = DataColumnResource().patch_obj(
+                    dc = self.get_datacolumn_resource().patch_obj( 
+                    # TODO: chgd 20180105 dc = DataColumnResource().patch_obj(
                         request, column_info, screen_result=screen_result, **kwargs)
                     sheet_col_to_datacolumn[sheet_column] = dc
                     derived_from_columns = column_info.get(
@@ -4915,6 +4947,10 @@ class ScreenResultResource(DbApiResource):
             # END of Transaction
             
         self.create_data_loading_statistics(screen_result)
+    
+        # Create indexes
+        self.get_create_screen_overlap_indexes()
+        
         screenresult_log.diffs.update({ 
             'created_by': [None,adminuser.username],  
             'experimental_well_count': [
@@ -4928,23 +4964,15 @@ class ScreenResultResource(DbApiResource):
             logger.info('pre-generate the mutual positives index...')
             self.get_mutual_positives_columns(screen_result.screen_result_id)
             logger.info('done - pre-generate the mutual positives index')
-             
-        if not self._meta.always_return_data:
-            response_message = {'success': {
-                API_MSG_RESULT: 'screen result loaded'}}
-            response = self.build_response(request, response_message, **kwargs)
-            response['Content-Disposition'] = (
-                'attachment; filename=screen_result_loading_success-%s.xlsx' 
-                % screen_facility_id )
-            return response
         else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response 
+            logger.info('screen is a study, do not pre-generate mutual positives index')
     
     def create_result_value(
             self, colname, value, dc, well, initializer_dict, 
             assay_well_initializer):
+        
+        if DEBUG_RV_CREATE:
+            logger.info('create result value: %r: %r', colname, value)
         positive_types = [
             'confirmed_positive_indicator',
             'partition_positive_indicator',
@@ -4979,7 +5007,6 @@ class ScreenResultResource(DbApiResource):
         else:
             # Text value
             rv_initializer['value'] = value
-
         # TODO: 20170731: migrate the positive types to a separate 
         # integer only column
         if dc.data_type in positive_types:
@@ -5052,14 +5079,14 @@ class ScreenResultResource(DbApiResource):
                 assay_well_initializer['confirmed_positive_value'] = \
                     rv_initializer['value']
         
-        logger.debug('rv_initializer: %r', rv_initializer)
+        if DEBUG_RV_CREATE:
+            logger.info('rv_initializer: %r', rv_initializer)
         return rv_initializer
     
     @transaction.atomic
     def create_result_values(
             self, screen_result, result_values, sheet_col_to_datacolumn,
             screenresult_log):
-        
         logger.info(
             'create result values for %r ...', screen_result.screen.facility_id)
 
@@ -5103,8 +5130,11 @@ class ScreenResultResource(DbApiResource):
                     for meta_field in meta_columns:
                         if meta_field in result_row:
                             initializer_dict[meta_field] = result_row[meta_field]
-                            
-                    well = Well.objects.get(well_id=result_row['well_id']) 
+                    try:
+                        well = Well.objects.get(well_id=result_row['well_id']) 
+                    except ObjectDoesNotExist, e:
+                        logger.info('well not found: %r', result_row['well_id'])
+                        raise ObjectDoesNotExist('well not found: %r' % result_row['well_id'])
                     # FIXME: check for duplicate wells
                     assay_well_initializer.update({
                         'screen_result_id': screen_result.screen_result_id,
@@ -5124,6 +5154,8 @@ class ScreenResultResource(DbApiResource):
                                  % (allowed_control_well_types, well.library_well_type))
 
                     for colname, val in result_row.items():
+                        if DEBUG_RV_CREATE:
+                            logger.info('result value to create: %r, %r', colname, val)
                         if colname in meta_columns:
                             continue
                         if val is None:
@@ -5150,7 +5182,6 @@ class ScreenResultResource(DbApiResource):
                         #     logger.debug(('not counted for replicate: well: %r, '
                         #         'type: %r, initializer: %r'), 
                         #         well.well_id, well.library_well_type, rv_initializer)   
-                        logger.debug('rv_initializer: %r', rv_initializer)     
                         writer.writerow(rv_initializer)
                         rvs_to_create += 1
                 
@@ -5811,6 +5842,8 @@ class DataColumnResource(DbApiResource):
                 'update data type: %r, %r', 
                 dc_data_type, DataColumnResource.data_type_lookup[dc_data_type])
             _dict.update(DataColumnResource.data_type_lookup[dc_data_type])
+        elif dc_data_type in ['string','text']:
+            _dict['display_type'] = 'full_string'
         logger.debug('_create_datacolumn_from_row: %r, %r, %r',
             key, dc_data_type, _dict )                            
         _dict['ordinal'] = max_ordinal + row_or_dict['ordinal']
@@ -7500,6 +7533,11 @@ class CherryPickRequestResource(DbApiResource):
     @un_cache  
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        '''
+        Create a new Cherry Pick Request
+        - set the screener cherry picks if included
+        '''
+        
         
         schema = kwargs.pop('schema', None)
         if not schema:
@@ -7797,6 +7835,11 @@ class CherryPickRequestResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def dispatch_reserve_map_lab_cherry_picks(self, request, **kwargs):
+        '''
+        Reserve (allocate) the Copy Well volume for the Lab Cherry Picks 
+        on the Cherry Pick Request:
+        - only consider fulfilled LCPs (where a source copy has been assigned) 
+        '''
         
         request_method = request.method.lower()
         if request_method != 'post':
@@ -8332,6 +8375,15 @@ class CherryPickRequestResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def dispatch_set_duplex_lab_cherry_picks(self, request, **kwargs):
+        '''
+        Create Lab Cherry Picks for the Screener Cherry Picks that have already
+        been created for the CPR:
+        - in this case, select the duplex wells corresponding to the pool wells
+        that have been selected as Screener Cherry Picks.
+        - see dispatch_set_lab_cherry_picks for the automatic copy selection 
+        process.
+        '''
+        
         logger.info('dispatch_set_duplex_lab_cherry_picks')
         request_method = request.method.lower()
         if request_method != 'post':
@@ -8437,6 +8489,15 @@ class CherryPickRequestResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def dispatch_set_lab_cherry_picks(self, request, **kwargs):
+        '''
+        Create Lab Cherry Picks for the Screener Cherry Picks that have already
+        been created for the CPR.
+        - find copies for the LCPs:
+            copy.usage_type = cherry_pick_source_plates
+            plate.status = available
+        - assign appropriate copies for the LCPs, if no appropriate copy can be
+        found, leave the LCP unfulfilled (see _find_copies).
+        '''
         logger.info('dispatch_set_lab_cherry_picks')
         request_method = request.method.lower()
         if request_method != 'post':
@@ -8513,7 +8574,8 @@ class CherryPickRequestResource(DbApiResource):
     def _find_copies(self,cpr):
         '''
         Find and assign copies that are fulfillable for the Lab Cherry Picks
-        on the Cherry Pick Request
+        on the Cherry Pick Request:
+        - well copy
         @param cpr Cherry Pick Request with Lab Cherry Picks already created
         '''
         logger.info('find copies for cpr: %d lab cherry picks...', 
@@ -9809,6 +9871,24 @@ class LabCherryPickResource(DbApiResource):
     def build_list_response(self, request, schema=None, **kwargs):
         '''
         Optimized to show the lcp's for one cherry pick request at a time
+        
+        Options:
+        - Default (no options): show only the LCPs that have been created. Do 
+            not show the copy assignments.
+        - API_PARAM_SHOW_COPY_WELLS:
+            show copy wells for the LCPs where: 
+            copy type is cherry_pick_source_plates and, 
+            plate status available
+        - API_PARAM_SHOW_RETIRED_COPY_WELlS:
+            show copy wells for the LCPs where:
+            copy type is cherry_pick_source_plates (available or retired) or 
+            copy type is library_screening_plates (retired)
+        - API_PARAM_SHOW_UNFULFILLED: show only LCPs with no copy assigned
+        - API_PARAM_SHOW_INSUFFICIENT: 
+            for LCPs that already have a copy assigned: show those LCPs where
+            the copy well volume is less than the approved request transfer volume 
+        - API_PARAM_SHOW_MANUAL: show manually selected LCPs
+        
         '''
 
         param_hash = self._convert_request_to_dict(request)
@@ -15994,6 +16074,7 @@ class ScreenResource(DbApiResource):
         logger.info('clear screen caches')
         DbApiResource.clear_cache(self)
         caches['screen'].clear()
+        self.get_screenresult_resource().clear_cache()
         
     def get_su_resource(self):
         if self.su_resource is None:
@@ -16429,7 +16510,7 @@ class ScreenResource(DbApiResource):
         _publication = self.bridge['publication']
         _attached_file = self.bridge['attached_file']
         _dc = self.bridge['data_column']
-        _overlap_screens = self.get_screenresult_resource().get_screen_overlap_table()
+        _overlap_screens = self.get_create_screen_overlap_indexes()
         _overlap_screen = _screen.alias('overlap_screen')
         # create CTEs -  Common Table Expressions for the intensive queries:
         
@@ -16945,44 +17026,39 @@ class ScreenResource(DbApiResource):
             manual_field_includes.add('screen_id')
             
         param_hash['includes'] = manual_field_includes
-            
-        try:
              
-            (field_hash, columns, stmt, count_stmt, filename) = \
-                self.get_query(request, schema, param_hash)
-             
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
-                    field_hash, rowproxy_generator)
-            
+        (field_hash, columns, stmt, count_stmt, filename) = \
+            self.get_query(request, schema, param_hash)
+         
+        rowproxy_generator = None
+        if use_vocab is True:
             rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
-                    
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-             
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-              
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            # use "use_vocab" as a proxy to also adjust siunits for viewing
+            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                field_hash, rowproxy_generator)
+        
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
+                
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+         
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
+          
 
     @classmethod
     def get_screener_role_cte(cls):
@@ -17139,246 +17215,241 @@ class ScreenResource(DbApiResource):
             raise Exception('schema not initialized')
         id_kwargs = self.get_id(deserialized, validate=True, schema=schema, **kwargs)
         logger.info('patch screen: %r', id_kwargs)
+        create = False
         try:
-            create = False
+            screen = Screen.objects.get(**id_kwargs)
+        except ObjectDoesNotExist, e:
+            create = True
+            screen = Screen(**id_kwargs)
+
+        initializer_dict = self.parse(deserialized,  schema=schema, create=create)
+        logger.info('initializer_dict: %r', initializer_dict)
+            
+        errors = self.validate(deserialized,  schema=schema, patch=not create)
+        if errors:
+            raise ValidationError(errors)
+        
+        _key = 'lab_head_id'
+        if _key in initializer_dict:
+            try: 
+                # may not be null
+                lab_head = ScreensaverUser.objects.get(
+                    screensaver_user_id=initializer_dict[_key])
+                initializer_dict['lab_head'] = lab_head
+                
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=_key,
+                    msg='No such user: %r' % initializer_dict[_key])
+        _key = 'lead_screener_id'
+        if _key in initializer_dict:
             try:
-                screen = Screen.objects.get(**id_kwargs)
-            except ObjectDoesNotExist, e:
-                create = True
-                screen = Screen(**id_kwargs)
-
-            initializer_dict = self.parse(deserialized,  schema=schema, create=create)
-            logger.info('initializer_dict: %r', initializer_dict)
-                
-            errors = self.validate(deserialized,  schema=schema, patch=not create)
-            if errors:
-                raise ValidationError(errors)
-            
-            _key = 'lab_head_id'
-            if _key in initializer_dict:
-                try: 
-                    # may not be null
-                    lab_head = ScreensaverUser.objects.get(
-                        screensaver_user_id=initializer_dict[_key])
-                    initializer_dict['lab_head'] = lab_head
-                    
-                except ObjectDoesNotExist:
-                    raise ValidationError(
-                        key=_key,
-                        msg='No such user: %r' % initializer_dict[_key])
-            _key = 'lead_screener_id'
-            if _key in initializer_dict:
+                # may not be null
+                initializer_dict['lead_screener'] = (
+                    ScreensaverUser.objects.get(
+                        screensaver_user_id=initializer_dict[_key]))
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=_key,
+                    msg='No such user: %r' % initializer_dict[_key])
+        _key = 'collaborator_ids'
+        if initializer_dict.get(_key, None) is not None:
+            collaborator_ids = initializer_dict[_key]
+            collaborators = []
+            # may empty
+            for collaborator_id in collaborator_ids:
                 try:
-                    # may not be null
-                    initializer_dict['lead_screener'] = (
-                        ScreensaverUser.objects.get(
-                            screensaver_user_id=initializer_dict[_key]))
+                    collaborators.append(ScreensaverUser.objects.get(
+                        screensaver_user_id=collaborator_id))
                 except ObjectDoesNotExist:
                     raise ValidationError(
                         key=_key,
-                        msg='No such user: %r' % initializer_dict[_key])
-            _key = 'collaborator_ids'
-            if initializer_dict.get(_key, None) is not None:
-                collaborator_ids = initializer_dict[_key]
-                collaborators = []
-                # may empty
-                for collaborator_id in collaborator_ids:
-                    try:
-                        collaborators.append(ScreensaverUser.objects.get(
-                            screensaver_user_id=collaborator_id))
-                    except ObjectDoesNotExist:
-                        raise ValidationError(
-                            key=_key,
-                            msg='No such user: %r' % collaborator_username)
-                initializer_dict['collaborators'] = collaborators
-            _key = 'pin_transfer_approved_by_username'
-            pin_transfer_approved_by = None
-            if _key in initializer_dict:
-                val = initializer_dict[_key]
-                if val:
-                    pin_transfer_approved_by = \
-                        self.get_su_resource()._get_detail_response_internal(
-                        exact_fields=['screensaver_user_id','is_staff'],
-                        username=val)
-                    if not pin_transfer_approved_by: 
-                        raise ValidationError(
-                            key=_key,
-                            msg='No such username: %r' % val)
-                    if pin_transfer_approved_by.get('is_staff',False) != True:
-                        raise ValidationError(
-                            key='pin_transfer_approved_by_username',
-                            msg='Must be a staff user')
-            pin_transfer_date_approved = \
-                initializer_dict.get('pin_transfer_date_approved',None)
-            pin_transfer_comments = \
-                initializer_dict.get('pin_transfer_comments', None)
-            
-            related_initializer = {}
-            related_initializer['cell_lines'] = \
-                initializer_dict.pop('cell_lines', None)
-            related_initializer['funding_supports'] = \
-                initializer_dict.pop('funding_supports', None)
-            related_initializer['keywords'] = \
-                initializer_dict.pop('keywords', None)
-            related_initializer['publications'] = \
-                initializer_dict.pop('publications', None)
-                
-            for key, val in initializer_dict.items():
-                if hasattr(screen, key):
-                    setattr(screen, key, val)
-            screen.clean()
-            screen.save()
-            logger.info('screen.study_type: %r', screen.study_type)
-            # NOTE: collaborators cannot be set until after the object is saved:
-            # the many-to-many related manager is not functional until then.
-            if 'collaborators' in initializer_dict:
-                screen.collaborators = initializer_dict.get('collaborators', None)
-            
-            logger.info('save/created screen: %r', screen)
-            
-            # related objects
-            
-            _key = 'cell_lines'
-            _val = related_initializer.get(_key, None)
-            if _val is not None:
-                (ScreenCellLines.objects
-                    .filter(screen=screen)
-                    .exclude(cell_line__in=_val)
-                    .delete())
-                current_cell_lines = (
-                    ScreenCellLines.objects.filter(screen=screen)
-                        .values_list('cell_line', flat=True))
-                for cell_line in _val:
-                    if cell_line not in current_cell_lines:
-                        ScreenCellLines.objects.create(
-                            screen=screen,
-                            cell_line=cell_line)
-            _key = 'funding_supports'
-            _val = related_initializer.get(_key, None)
-            if _val is not None:
-                (ScreenFundingSupports.objects
-                    .filter(screen=screen)
-                    .exclude(funding_support__in=_val)
-                    .delete())
-                current_funding_supports = (
-                    ScreenFundingSupports.objects.filter(screen=screen)
-                        .values_list('funding_support', flat=True))
-                for funding_support in _val:
-                    if funding_support not in current_funding_supports:
-                        ScreenFundingSupports.objects.create(
-                            screen=screen,
-                            funding_support=funding_support)
-            
-            # Set the pin transfer approval data
-            if pin_transfer_approved_by is not None:
-                if screen.pin_transfer_admin_activity is None:
-                    activity = \
-                        Activity(performed_by_id=
-                            pin_transfer_approved_by['screensaver_user_id'])
-                    activity.date_of_activity = \
-                        activity.date_created
-                    activity.save()
-                    screen.pin_transfer_admin_activity = activity
-                    screen.save()
-                    logger.info('created pta: %r', 
-                        screen.pin_transfer_admin_activity)
-                else:
-                    screen.pin_transfer_admin_activity.performed_by_id = \
-                        pin_transfer_approved_by['screensaver_user_id']
-                    screen.pin_transfer_admin_activity.save()
-            if screen.pin_transfer_admin_activity is None:
-                # secondary pin transfer validation
-                if pin_transfer_date_approved:
-                    raise ValidationError(
-                        key='pin_transfer_date_approved',
-                        msg='requires pin_transfer_approved_by_username')    
-                if pin_transfer_comments:
-                    raise ValidationError(
-                        key='pin_transfer_comments',
-                        msg='requires pin_transfer_approved_by_username')    
-            else:
-                if pin_transfer_date_approved:
-                    screen.pin_transfer_admin_activity.date_of_activity = \
-                        pin_transfer_date_approved
-                if pin_transfer_comments is not None:
-                    screen.pin_transfer_admin_activity.comments = \
-                        pin_transfer_comments
-                screen.pin_transfer_admin_activity.save()
-                
-            # TODO: determine if this is still used
-            _key = 'keywords'
-            _val = related_initializer.get(_key, None)
-            if _val is not None:
-                (ScreenKeyword.objects
-                    .filter(screen=screen)
-                    .exclude(keyword__in=_val)
-                    .delete())
-                current_keywords = (
-                    ScreenKeyword.objects.filter(screen=screen)
-                        .values_list('keyword', flat=True))
-                for keyword in _val:
-                    if keyword not in current_keywords:
-                        ScreenKeyword.objects.create(
-                            screen=screen,
-                            keyword=keyword)
-            
-            _key = 'publications'
-            _val = related_initializer.get(_key, None)
-            if _val is not None:
-                current_publications = set([ 
-                    str(x) for x in
-                        screen.publication_set.all()
-                            .values_list('publication_id', flat=True)])
-                logger.info('current: %r, val: %r', current_publications, _val)
-                publications_delete = current_publications - set(_val)
-                logger.info('delete publications: %r', publications_delete)
-                if publications_delete:
-                    query = Publication.objects.all().filter(
-                        publication_id__in=publications_delete)
-                    logger.info('delete: %r', [x for x in query])
-                    query.delete()
-                # Note: prefer create publications with screen reference set
-                publications_add = set(_val) - current_publications
-                logger.info('add publications: %r', publications_add)
-                if publications_add:
-                    query = Publication.objects.all().filter(
-                        publication_id__in=publications_add)
-                    screen.publication_set.add(query)
-            
-            _key = 'primary_screen'
-            _val = deserialized.get(_key, None)
-            if _val:
-                if ( screen.parent_screen 
-                    and screen.parent_screen.facility_id != _val):
+                        msg='No such user: %r' % collaborator_username)
+            initializer_dict['collaborators'] = collaborators
+        _key = 'pin_transfer_approved_by_username'
+        pin_transfer_approved_by = None
+        if _key in initializer_dict:
+            val = initializer_dict[_key]
+            if val:
+                pin_transfer_approved_by = \
+                    self.get_su_resource()._get_detail_response_internal(
+                    exact_fields=['screensaver_user_id','is_staff'],
+                    username=val)
+                if not pin_transfer_approved_by: 
                     raise ValidationError(
                         key=_key,
-                        msg='May not be reassigned')
-                elif screen.parent_screen is None:
-                    try:
-                        parent_screen = Screen.objects.get(facility_id=_val)
-                        
-                        if screen.screen_type != parent_screen.screen_type:
-                            raise ValidationError(
-                                key=_key,
-                                msg='Primary screen must have the same screen_type')
-                        if screen.lab_head != parent_screen.lab_head:
-                            raise ValidationError(
-                                key=_key,
-                                msg='Primary screen must have the same lab_head')
-                        
-                        screen.parent_screen = parent_screen
-                    except ObjectDoesNotExist:
+                        msg='No such username: %r' % val)
+                if pin_transfer_approved_by.get('is_staff',False) != True:
+                    raise ValidationError(
+                        key='pin_transfer_approved_by_username',
+                        msg='Must be a staff user')
+        pin_transfer_date_approved = \
+            initializer_dict.get('pin_transfer_date_approved',None)
+        pin_transfer_comments = \
+            initializer_dict.get('pin_transfer_comments', None)
+        
+        related_initializer = {}
+        related_initializer['cell_lines'] = \
+            initializer_dict.pop('cell_lines', None)
+        related_initializer['funding_supports'] = \
+            initializer_dict.pop('funding_supports', None)
+        related_initializer['keywords'] = \
+            initializer_dict.pop('keywords', None)
+        related_initializer['publications'] = \
+            initializer_dict.pop('publications', None)
+            
+        for key, val in initializer_dict.items():
+            if hasattr(screen, key):
+                setattr(screen, key, val)
+        screen.clean()
+        screen.save()
+        logger.info('screen.study_type: %r', screen.study_type)
+        # NOTE: collaborators cannot be set until after the object is saved:
+        # the many-to-many related manager is not functional until then.
+        if 'collaborators' in initializer_dict:
+            screen.collaborators = initializer_dict.get('collaborators', None)
+        
+        logger.info('save/created screen: %r', screen)
+        
+        # related objects
+        
+        _key = 'cell_lines'
+        _val = related_initializer.get(_key, None)
+        if _val is not None:
+            (ScreenCellLines.objects
+                .filter(screen=screen)
+                .exclude(cell_line__in=_val)
+                .delete())
+            current_cell_lines = (
+                ScreenCellLines.objects.filter(screen=screen)
+                    .values_list('cell_line', flat=True))
+            for cell_line in _val:
+                if cell_line not in current_cell_lines:
+                    ScreenCellLines.objects.create(
+                        screen=screen,
+                        cell_line=cell_line)
+        _key = 'funding_supports'
+        _val = related_initializer.get(_key, None)
+        if _val is not None:
+            (ScreenFundingSupports.objects
+                .filter(screen=screen)
+                .exclude(funding_support__in=_val)
+                .delete())
+            current_funding_supports = (
+                ScreenFundingSupports.objects.filter(screen=screen)
+                    .values_list('funding_support', flat=True))
+            for funding_support in _val:
+                if funding_support not in current_funding_supports:
+                    ScreenFundingSupports.objects.create(
+                        screen=screen,
+                        funding_support=funding_support)
+        
+        # Set the pin transfer approval data
+        if pin_transfer_approved_by is not None:
+            if screen.pin_transfer_admin_activity is None:
+                activity = \
+                    Activity(performed_by_id=
+                        pin_transfer_approved_by['screensaver_user_id'])
+                activity.date_of_activity = \
+                    activity.date_created
+                activity.save()
+                screen.pin_transfer_admin_activity = activity
+                screen.save()
+                logger.info('created pta: %r', 
+                    screen.pin_transfer_admin_activity)
+            else:
+                screen.pin_transfer_admin_activity.performed_by_id = \
+                    pin_transfer_approved_by['screensaver_user_id']
+                screen.pin_transfer_admin_activity.save()
+        if screen.pin_transfer_admin_activity is None:
+            # secondary pin transfer validation
+            if pin_transfer_date_approved:
+                raise ValidationError(
+                    key='pin_transfer_date_approved',
+                    msg='requires pin_transfer_approved_by_username')    
+            if pin_transfer_comments:
+                raise ValidationError(
+                    key='pin_transfer_comments',
+                    msg='requires pin_transfer_approved_by_username')    
+        else:
+            if pin_transfer_date_approved:
+                screen.pin_transfer_admin_activity.date_of_activity = \
+                    pin_transfer_date_approved
+            if pin_transfer_comments is not None:
+                screen.pin_transfer_admin_activity.comments = \
+                    pin_transfer_comments
+            screen.pin_transfer_admin_activity.save()
+            
+        # TODO: determine if this is still used
+        _key = 'keywords'
+        _val = related_initializer.get(_key, None)
+        if _val is not None:
+            (ScreenKeyword.objects
+                .filter(screen=screen)
+                .exclude(keyword__in=_val)
+                .delete())
+            current_keywords = (
+                ScreenKeyword.objects.filter(screen=screen)
+                    .values_list('keyword', flat=True))
+            for keyword in _val:
+                if keyword not in current_keywords:
+                    ScreenKeyword.objects.create(
+                        screen=screen,
+                        keyword=keyword)
+        
+        _key = 'publications'
+        _val = related_initializer.get(_key, None)
+        if _val is not None:
+            current_publications = set([ 
+                str(x) for x in
+                    screen.publication_set.all()
+                        .values_list('publication_id', flat=True)])
+            logger.info('current: %r, val: %r', current_publications, _val)
+            publications_delete = current_publications - set(_val)
+            logger.info('delete publications: %r', publications_delete)
+            if publications_delete:
+                query = Publication.objects.all().filter(
+                    publication_id__in=publications_delete)
+                logger.info('delete: %r', [x for x in query])
+                query.delete()
+            # Note: prefer create publications with screen reference set
+            publications_add = set(_val) - current_publications
+            logger.info('add publications: %r', publications_add)
+            if publications_add:
+                query = Publication.objects.all().filter(
+                    publication_id__in=publications_add)
+                screen.publication_set.add(query)
+        
+        _key = 'primary_screen'
+        _val = deserialized.get(_key, None)
+        if _val:
+            if ( screen.parent_screen 
+                and screen.parent_screen.facility_id != _val):
+                raise ValidationError(
+                    key=_key,
+                    msg='May not be reassigned')
+            elif screen.parent_screen is None:
+                try:
+                    parent_screen = Screen.objects.get(facility_id=_val)
+                    
+                    if screen.screen_type != parent_screen.screen_type:
                         raise ValidationError(
                             key=_key,
-                            msg='Does not exist: %r' % _val)
+                            msg='Primary screen must have the same screen_type')
+                    if screen.lab_head != parent_screen.lab_head:
+                        raise ValidationError(
+                            key=_key,
+                            msg='Primary screen must have the same lab_head')
+                    
+                    screen.parent_screen = parent_screen
+                except ObjectDoesNotExist:
+                    raise ValidationError(
+                        key=_key,
+                        msg='Does not exist: %r' % _val)
 
-            screen.save()
-            logger.info('patch_obj done')
-            return { API_RESULT_OBJ: screen }
-            
-        except Exception, e:
-            logger.exception('on patch detail')
-            raise e  
+        screen.save()
+        logger.info('patch_obj done')
+        return { API_RESULT_OBJ: screen }
 
 class StudyResource(ScreenResource):
     
@@ -17394,6 +17465,24 @@ class StudyResource(ScreenResource):
         
     def __init__(self, **kwargs):
         super(StudyResource, self).__init__(**kwargs)
+    
+    def prepend_urls(self):
+
+        urls = super(StudyResource, self).prepend_urls()
+        
+        urls = [
+            url(r"^(?P<resource_name>%s)"
+                r"/create_confirmed_positive_study%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_create_confirmed_positive_study'), 
+                name="api_dispatch_create_confirmed_positive_study"),
+            url(r"^(?P<resource_name>%s)"
+                r"/create_screened_count_study%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_create_screened_count_study'), 
+                name="api_dispatch_create_screened_count_study"),
+        ] + urls
+        return urls
             
     def build_schema(self, user=None):
         # Bypass Screen schema
@@ -17404,9 +17493,363 @@ class StudyResource(ScreenResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
         
-        kwargs['study_type__isnull'] = False
+        kwargs['study_type__is_null'] = False
         
         return super(StudyResource,self).build_list_response(request, **kwargs)
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic        
+    def dispatch_create_screened_count_study(self, request, **kwargs):
+        '''
+        Create/Update the Screened Count Study:
+        - Count of positives for each well
+        - Screening count for each well
+        '''
+
+        logger.info('create the create_screened_count_study...')
+
+        request_method = request.method.lower()
+        if request_method != 'post':
+            raise BadRequest('Only POST is allowed')
+
+        convert_post_to_put(request)
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs.pop('data')
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+        if 'facility_id' not in deserialized:
+            raise ValidationError(key='facility_id', msg='required')
+        
+        COL_NAME_POSITIVES_COUNT = 'Screen Positives Count'
+        COL_DESC_POSITIVES_COUNT = \
+            'Number of times scored as positive across all %s Screens'
+        COL_NAME_SCREENED_COUNT = 'Screened Count'
+        COL_DESC_SCREENED_COUNT = 'Number of times screened for all %s Screens'
+        
+        facility_id = deserialized['facility_id']
+        data_sharing_level = deserialized.get('data_sharing_level', None)
+        if data_sharing_level is None:
+            deserialized['data_sharing_level'] = 0
+        patch = True
+        try: 
+            current_study = Screen.objects.get(facility_id=facility_id)
+        except ObjectDoesNotExist:
+            patch = False    
+        if patch is True:
+            if 'study_type' in deserialized:
+                del deserialized['study_type']
+            if 'screen_type' in deserialized:
+                del deserialized['screen_type']    
+            
+        _data = self.build_patch_detail(request, deserialized, **kwargs)
+        _data = _data[API_RESULT_DATA][0]
+        logger.info('study patched: %r', _data)
+        study_obj = Screen.objects.get(facility_id=_data['facility_id'])
+        logger.info('study created/updated: %r', study_obj)
+        study_obj.date_created = _now()
+        study_obj.study_type = 'in_silico'
+        study_obj.save()
+        
+        col_desc_screened_count = COL_DESC_SCREENED_COUNT
+        col_desc_positives_count = COL_DESC_POSITIVES_COUNT
+        if study_obj.screen_type == 'small_molecule':
+            col_desc_screened_count = col_desc_screened_count % 'Small Molecule'
+            col_desc_positives_count = col_desc_positives_count % 'Small Molecule'
+        elif study_obj.screen_type == 'rnai':
+            col_desc_screened_count = col_desc_screened_count % 'RNAi'
+            col_desc_positives_count = col_desc_positives_count % 'RNAi'
+        else:
+            raise ValidationError(key='screen_type', msg='Unknown type')
+        
+        # Create the Data Columns
+        result_columns = OrderedDict((
+            ('E', {
+                'name': COL_NAME_POSITIVES_COUNT,
+                'data_worksheet_column': 'E',
+                'data_type': 'integer',
+                'description': col_desc_positives_count,
+            }),
+            ('F', {
+                'name': COL_NAME_SCREENED_COUNT,
+                'data_worksheet_column': 'F',
+                'data_type': 'integer',
+                'description': col_desc_screened_count,
+            }),
+        ))
+        
+        sql = '''
+        with aws as (
+            select 
+            well_id,
+            is_positive,
+            screen_id
+            from assay_well
+            join well w using(well_id)
+            join screen_result using(screen_result_id)
+            join screen using(screen_id)
+            where screen.screen_type = '{screen_type}'
+            and screen.study_type is null
+            and w.library_well_type = 'experimental'
+        )
+        select
+            well_id,
+            count(*) as screened_count,
+            count(case when is_positive then 1 end ) as positives_count
+        from aws
+        group by well_id
+        order by well_id
+        '''
+        sql = sql.format(screen_type=study_obj.screen_type)
+        columns = ['well_id', 'screened_count', 'positives_count']
+        
+        # Create the study by iterating through the report:
+        # Collate the number of confirmed positives for each Screen
+        with get_engine().connect() as conn:
+            
+            logger.info('execute the screened_count_study...')
+            logger.debug('execute sql: %s', sql)
+            result = conn.execute(text(sql))
+            logger.info('executed the confirmed_positive_study')
+            
+            def result_value_generator(result):
+                for row in result:
+                    _dict = dict(zip(columns,row))
+                    yield {
+                        'well_id': _dict['well_id'],
+                        'assay_well_control_type': None,
+                        'E': _dict['positives_count'],
+                        'F': _dict['screened_count'],
+                    }
+            logger.info('creating study values for: %r', study_obj)
+            self.get_screenresult_resource().create_screen_result(
+                request, study_obj, result_columns, 
+                result_value_generator(result))
+            logger.info('study values created for: %r', study_obj)
+        
+        if not self._meta.always_return_data:
+            response_message = {'success': {
+                API_MSG_RESULT: 'screen result loaded'}}
+            response = self.build_response(request, response_message, **kwargs)
+            return response
+        else:
+            new_data = self._get_detail_response_internal(facility_id=facility_id)
+            data = { API_RESULT_DATA: [new_data]}
+            response = self.build_response(request, data, status_code=201)
+            return response 
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic        
+    def dispatch_create_confirmed_positive_study(self, request, **kwargs):
+        '''
+        Create/Update the Confirmed Positives Study:
+        - Count of follow-up screens for well
+        - M+1 columns named "N duplexes confirming positive", 
+        where 0 <= N <= M, and M is the max number of duplexes per pool in any 
+        library, currently = 4). The value in each column is the number of 
+        follow-up screens that confirmed the well as a positive with N duplexes
+        - "Weighted Average" is the average number of confirmed positives per
+        screen: 
+        sum((duplexes_confirming_positive)*(count of screens))/number of screens
+        '''
+
+        logger.info('create the create_confirmed_positive_study...')
+
+        request_method = request.method.lower()
+        if request_method != 'post':
+            raise BadRequest('Only POST is allowed')
+
+        convert_post_to_put(request)
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs.pop('data')
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+        if 'facility_id' not in deserialized:
+            raise ValidationError(key='facility_id', msg='required')
+        
+        VOCAB_CONFIRMED_POSITIVE = '3'
+        VOCAB_FALSE_POSITIVE = '2'
+        COL_NAME_WEIGHTED_AVG = 'Weighted Average'
+        COL_DESC_WEIGHTED_AVG = 'Average number of confirmed positives per screen'
+        COL_NAME_NUMBER_SCREENS = 'Number of screens'
+        COL_DESC_NUMBER_SCREENS = 'Number of follow up screens testing duplexes for the pool well'
+        COL_NAME_DUPLEX_COUNT = 'number_of_screens_confirming_%d_duplexes'
+        COL_DESC_DUPLEX_COUNT = 'Number of screens confirming with %d duplexes'
+
+        facility_id = deserialized['facility_id']
+        data_sharing_level = deserialized.get('data_sharing_level', None)
+        if data_sharing_level is None:
+            deserialized['data_sharing_level'] = 0
+        patch = True
+        try: 
+            current_study = Screen.objects.get(facility_id=facility_id)
+        except ObjectDoesNotExist:
+            patch = False    
+        if patch is True:
+            if 'study_type' in deserialized:
+                del deserialized['study_type']
+            if 'screen_type' in deserialized:
+                del deserialized['screen_type']    
+            
+        _data = self.build_patch_detail(request, deserialized, **kwargs)
+        _data = _data[API_RESULT_DATA][0]
+        logger.info('study patched: %r', _data)
+        study_obj = Screen.objects.get(facility_id=_data['facility_id'])
+        logger.info('study created/updated: %r', study_obj)
+        study_obj.study_type = 'in_silico'
+        study_obj.date_created = _now()
+        study_obj.save()
+        
+        # Create the Data Columns
+        result_columns = OrderedDict((
+            ('E', {
+                'name': COL_NAME_WEIGHTED_AVG,
+                'data_worksheet_column': 'E',
+                'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': COL_DESC_WEIGHTED_AVG,
+            }),
+            ('F', {
+                'name': COL_NAME_NUMBER_SCREENS,
+                'data_worksheet_column': 'F',
+                'data_type': 'integer',
+                'description': COL_DESC_NUMBER_SCREENS,
+            }),
+        ))
+
+        for i in range(0,5):
+            data_worksheet_column_letter = chr(ord('F')+i+1)
+            result_columns[data_worksheet_column_letter] = {
+                'name': COL_NAME_DUPLEX_COUNT % i,
+                'description': COL_DESC_DUPLEX_COUNT %i,
+                'data_type': 'integer',
+                'data_worksheet_column': data_worksheet_column_letter
+            }
+        
+        # SQL report: all pool reagents -> duplex reagents -> screen -> confirmed_positive_value
+        sql = '''
+            with pool_reagents as (
+            select r.well_id, pr.* from silencing_reagent pr
+              join reagent r using(reagent_id)
+              join well w using(well_id)
+              join library l using(library_id)
+              where l.is_pool is true
+              and l.screen_type = 'rnai' )
+            select 
+                pr.well_id as pr_well_id, 
+                pr.reagent_id as pr_id,
+                dr.well_id as dr_well_id, 
+                dr.reagent_id as dr_id, 
+                aw.confirmed_positive_value, 
+                sr.screen_id,
+                s.facility_id
+              from pool_reagents pr
+              join reagent prr using(reagent_id)
+              join well prw on(prw.well_id=prr.well_id) 
+              join silencing_reagent_duplex_wells srdw on(pr.reagent_id=srdw.silencingreagent_id)
+              join well dw on(dw.well_id=srdw.well_id)
+              join reagent dr on(dr.well_id=dw.well_id)
+              join assay_well aw on(dw.well_id=aw.well_id)
+              join screen_result sr using(screen_result_id)
+              join screen s using(screen_id)
+              where aw.confirmed_positive_value 
+                  in ('{vocab_confirmed_positive}','{vocab_false_positive}')
+              order by pr_id, dr_id, sr.screen_id
+        '''
+            
+        sql = sql.format(vocab_confirmed_positive=VOCAB_CONFIRMED_POSITIVE,
+            vocab_false_positive=VOCAB_FALSE_POSITIVE)
+        columns = ['pr_well_id', 'pr_id', 'dr_well_id', 'dr_id', 
+            'confirmed_positive_value', 'screen_id','facility_id']
+        
+        # Create the study by iterating through the report:
+        # Collate the number of confirmed positives for each Screen
+        with get_engine().connect() as conn:
+            
+            logger.info('execute the confirmed_positive_study...')
+            logger.debug('execute sql: %s', sql)
+            result = conn.execute(text(sql))
+            logger.info('executed the confirmed_positive_study')
+            
+            def result_value_generator(result):
+                
+                def create_result(well_id, screens, screen_confirmed_positives):
+                    screen_count = len(screens)
+                    screens_confirming_zero_duplexes = len(screens)-len(screen_confirmed_positives)
+                    result_row = {
+                        'well_id': well_id  ,
+                        'assay_well_control_type': None,
+                        'F': screen_count ,
+                        'G': screens_confirming_zero_duplexes
+                    }
+                    
+                    weighted_value_sum = 0
+                    weighted_average = 0
+                    pool_reagent_counts = defaultdict(int)
+                    
+                    for i in range(1,5):
+                        data_worksheet_column_letter = chr(ord('G')+i)
+                        pool_reagent_counts[i] = 0
+                        screens_for_weight = len([
+                            num for num in screen_confirmed_positives.values() 
+                            if num==i ])
+                        weighted_value_sum += i * screens_for_weight
+                        result_row[data_worksheet_column_letter] = screens_for_weight
+                    if weighted_value_sum > 0:
+                        weighted_average = round(weighted_value_sum/(1.0*screen_count), 2)
+                        result_row['E'] = weighted_average
+                    logger.debug('yield row: %r', result_row)
+                    return result_row
+                
+                screens = None
+                screen_confirmed_positives = None
+                current_pool_well = None
+                for row in result:
+                    _dict = dict(zip(columns,row))
+                    logger.debug('dict: %r', _dict)
+                    if current_pool_well != _dict['pr_well_id']:
+                        if current_pool_well is not None:
+                            yield create_result(
+                                current_pool_well, screens, 
+                                screen_confirmed_positives)
+                        current_pool_well = _dict['pr_well_id']
+                        screens = set()
+                        screen_confirmed_positives = defaultdict(int)
+
+                    screens.add(_dict['facility_id'])
+                    if _dict['confirmed_positive_value'] == VOCAB_CONFIRMED_POSITIVE:
+                        screen_confirmed_positives[_dict['facility_id']] += 1
+                if screens:
+                    yield create_result(
+                        current_pool_well, screens, screen_confirmed_positives)
+
+            logger.info('creating study values for: %r', study_obj)
+            self.get_screenresult_resource().create_screen_result(
+                request, study_obj, result_columns, 
+                result_value_generator(result))
+            logger.info('study values created for: %r', study_obj)
+        
+        if not self._meta.always_return_data:
+            response_message = {'success': {
+                API_MSG_RESULT: 'screen result loaded'}}
+            response = self.build_response(request, response_message, **kwargs)
+            return response
+        else:
+            new_data = self._get_detail_response_internal(facility_id=facility_id)
+            data = { API_RESULT_DATA: [new_data]}
+            response = self.build_response(request, data, status_code=201)
+            return response 
 
     @write_authorization
     @un_cache
@@ -18828,7 +19271,6 @@ class ScreensaverUserResource(DbApiResource):
                     
             for key, val in initializer_dict.items():
                 if hasattr(screensaver_user, key):
-                    logger.info('set: %r to %r', key, val)
                     setattr(screensaver_user, key, val)
         else:
             logger.info(
@@ -20726,7 +21168,6 @@ class WellResource(DbApiResource):
             line_wells = set()
             plate_numbers = set()
             patterns = re.split(r'[\s,]+', _line)
-            logger.info('split line: %r', patterns)
             search_kwargs = defaultdict(set)
             for _pattern in patterns:
                 if not _pattern:

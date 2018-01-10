@@ -81,6 +81,7 @@ other,assaywell.control_type,6,,"Other Control",Other,
 numeric,datacolumn.data_type,0,"Numeric consists of Integer and Decimal; retained for legacy purposes",Numeric,Numeric,TRUE
 text,datacolumn.data_type,1,"Text is an alias for the String type","Text (string) value",Text,TRUE
 boolean_positive_indicator,datacolumn.data_type,2,"DataColumn contains positive determinations data as true/false values, indicating whether a tested Well Reagent has been identified as having the desired biological activity in the screening assay.","Boolean Positive Indicator","Boolean Positive Indicator",
+boolean,datacolumn.data_type,8,"Alias for boolean_positive_indicator","Boolean Positive Indicator","Boolean Positive Indicator",
 partition_positive_indicator,datacolumn.data_type,3,"DataColumn contains the positive determinations: 'strong', 'medium', 'weak', or 'not positive', indicating indicating whether a tested Well Reagent has been identified as having the desired biological activity in the screening assay, and if so, with what strength.","Partition Positive Indicator","Partition Positive Indicator",
 confirmed_positive_indicator,datacolumn.data_type,4,"DataColumn contains confirmed positive determinations data, indicating whether a follow-up screen has confirmed (reproduced) the original positive determination of a related, primary Screen","Confirmed Positive Indicator","Confirmed Positive Indicator",
 string,datacolumn.data_type,5,,"Text (string) value",String,

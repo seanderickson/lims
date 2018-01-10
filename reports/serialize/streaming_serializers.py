@@ -310,7 +310,9 @@ def cursor_generator(cursor, visible_fields, list_fields=[], value_templates=[])
             value = None
             if row.has_key(key):
                 value = row[key]
-            if value and key in list_fields:
+            else:
+                logger.debug('no value for key: %r, %r', key, row)
+            if value is not None and key in list_fields:
                 if isinstance(value, six.string_types):
                     # NOTE: filter empty strings; func.array_to_string inserts 
                     # a separator before every element, even if list has one value

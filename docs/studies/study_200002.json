@@ -1,0 +1,12 @@
+{ 
+  "facility_id": "200002",
+  "title": "Reagent Counts for RNAi Screens",
+  "screen_type": "rnai",
+  "study_type": "in_silico",
+  "summary": "Annotates each rnai reagent with the number of times it has been screened, and the count of positive hits per reagent (library well) across all rnai screens. This data is based on primary screening data only and the \"positive\" designations were determined by the investigator(s) responsible for each screen.",
+  "lab_head_id": 3989,
+  "lab_head_name": "Sean Erickson EDIT",
+  "lead_screener_id": 3989,
+  "lead_screener_name": "Sean Erickson EDIT"
+}
+

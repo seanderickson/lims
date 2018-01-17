@@ -2768,9 +2768,10 @@ class ResourceResource(ApiResource):
             user_cache_key = 'resources_%s' % user.username
             
             user_resources = resource_cache.get(user_cache_key)
-            logger.debug(
+        if user_resources:
+            logger.info(
                 'user resource retrieved from cache: %r', user_resources.keys())
-        if not user_resources:    
+        else:    
             logger.debug('user resources not cached, build resources')
             if use_cache and self.use_cache:
                 resources = resource_cache.get('resources')

@@ -241,7 +241,7 @@ def read_xlsx(input_file):
 
 def read_csv(input_file):
 
-    delimiter = ','
+    delimiter = str(',')
     try:
         dialect = csv.Sniffer().sniff(
             input_file.read(4096),delimiters=[',', '\t', ';', ' ', ':','^'])

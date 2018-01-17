@@ -15895,9 +15895,9 @@ class RawDataTransformerResource(DbApiResource):
         
         headers = ['Plate', 'Well', 'Type','Exclude']
         if aps > lps:
-            headers = ['Plate','Well','Source Plate','Quadrant','Source Well','Type']
+            headers = ['Plate','Well','Source Plate','Quadrant','Source Well','Type','Exclude']
         elif lps > aps:
-            headers = ['Plate','Well','Quadrant','Source Well','Type']
+            headers = ['Plate','Well','Quadrant','Source Well','Type','Exclude']
 
         row_size = lims_utils.get_rows(lps)
         col_size = lims_utils.get_cols(lps)

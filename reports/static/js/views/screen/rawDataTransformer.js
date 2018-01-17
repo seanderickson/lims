@@ -251,12 +251,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           self.setupWellControlSelectionButtons(editForm);
           
           editForm.$el.find('[name="plate_ranges"]').change(function(){
-            console.log('change...');
             var errors = editForm.commit({ validate: true }); 
+            // runs schema and model validation, errors not needed
             var plate_ranges = editForm.getValue('plate_ranges');
-            console.log('change plate_ranges', errors, plate_ranges);
-            // runs schema and model validation, errors not nee
-            if (!_.isEmpty(errors)) return;
             if (_.isEmpty(plate_ranges)) return;
             var plate_range_string = plate_ranges.split(/\s*,\s*/).join('_');
             if (self.screen){

@@ -57,7 +57,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       self.inputFileCollection = new InputFileCollection(this.model.get('input_files'));
       
       if (self.inputFileCollection.isEmpty()){
-        self.inputFileCollection.add(new Backbone.Model({ordinal: 0}));
+        self.inputFileCollection.add(
+          new Backbone.Model(_.extend(
+              appModel.get_field_defaults(self.resource.input_file_fields),
+              { ordinal: 0 }))
+        );
       }
       self.downloadButton = $([
         '<button type="button" class="btn btn-default btn-xs" ',
@@ -237,11 +241,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           
           self.addInputFileButton.click(function(){
             var ordinal = self.inputFileCollection.size();
-            var input_file_model = new Backbone.Model({ 
-              ordinal: ordinal,
-              collation_order: self.resource.input_file_fields['collation_order']['default'],
-              replicates: self.resource.input_file_fields['replicates']['default']
-            });
+            var input_file_model = new Backbone.Model(_.extend(
+              appModel.get_field_defaults(self.resource.input_file_fields),
+              { ordinal: ordinal }));
             self.inputFileCollection.add(input_file_model);
             self._create_input_file_form(inputFileArea, input_file_model);
           });
@@ -249,10 +251,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           self.setupWellControlSelectionButtons(editForm);
           
           editForm.$el.find('[name="plate_ranges"]').change(function(){
-            // runs schema and model validation, errors not nee
+            console.log('change...');
             var errors = editForm.commit({ validate: true }); 
-            if (!_.isEmpty(errors)) return;
             var plate_ranges = editForm.getValue('plate_ranges');
+            console.log('change plate_ranges', errors, plate_ranges);
+            // runs schema and model validation, errors not nee
+            if (!_.isEmpty(errors)) return;
             if (_.isEmpty(plate_ranges)) return;
             var plate_range_string = plate_ranges.split(/\s*,\s*/).join('_');
             if (self.screen){
@@ -968,6 +972,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       console.log('create_input_file form', $el, input_file_model);
 
       var fields = self.resource.input_file_fields;
+      console.log('input_file_fields', self.resource.input_file_fields);
       var ordinal = input_file_model.get('ordinal');
       var file_input_txt = 
         '<label id="file-button" class="btn btn-default btn-file">' + 
@@ -1039,7 +1044,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         options: Iccbl.appModel.getVocabularySelectOptions(
           fields['collation_order']['vocabulary_scope_ref']),
         template: fieldTemplate,
-        validators: []
+        validators: ['required']
       };
       formSchema['readout_type'] = {
         title: 'Readout Type',
@@ -1050,7 +1055,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         options: Iccbl.appModel.getVocabularySelectOptions(
           fields['readout_type']['vocabulary_scope_ref']),
         template: fieldTemplate,
-        validators: []
+        validators: ['required']
       };
       formSchema['conditions'] = {
         title: 'Conditions',
@@ -1071,7 +1076,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         title: 'Readout Names',
         key: 'readouts',
         type: EditView.TextArea2,
-//        type: 'TextArea',
         editorClass: 'form-control input-full',
         template: fieldTemplate
       };

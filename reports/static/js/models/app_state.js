@@ -1007,7 +1007,78 @@ define([
       return this.newModelFromResource(resource,defaults);
     },
     
-    newModelFromResource: function(resource,defaults){
+    get_field_defaults: function(fields){
+
+      var defaults = {};
+      _.each(_.keys(fields), function(key){
+        var field = fields[key];
+        if( (!_.isUndefined(field.default) && !_.isNull(field.default))
+            && ( _.isNumber(field.default) || _.isBoolean(field.default)
+                || !_.isEmpty(field.default)))
+        {
+          try {
+            if (field.data_type == 'string'){
+                defaults[key] = field.default;
+            }else if (field.data_type == 'boolean'){
+              defaults[key] = JSON.parse(field.default.toLowerCase());
+            }else{
+              // TODO: test all types here
+              defaults[key] = JSON.parse(field.default);
+            }
+          }catch(e){
+            console.log('json parse error', key, field.default);
+            if (field.data_type == 'date' && field.default == 'now'){
+              defaults[key] = Iccbl.getISODateString(new Date());
+            }else{
+              self.error('Warning, unparseable default for field: ' 
+                + field.key + ', value: ' + field.default );
+              defaults[key] = null;
+            }
+          }
+        }else{
+          defaults[key] = null; // placeholders for the edit form
+        }
+      });
+      
+      return defaults;
+    },
+
+    newModelFromResource: function(resource, defaults) {
+      
+      var finalDefaults = _.extend({},
+        this.get_field_defaults(resource.fields, defaults));
+      delete finalDefaults['resource_uri']
+      delete finalDefaults['id'];
+      var NewModel = Backbone.Model.extend({
+        __classname: 'iccbl-model-' + resource.key,
+        urlRoot: resource.apiUri , 
+        defaults: finalDefaults,
+        resource: resource,
+        
+        /**
+         * Override parse:
+         * - unnest the post_obj_response from { objects: [ post_obj_response ] }
+         * - set the model.id; so that isNew() will report false
+         */
+        parse: function(resp,options){
+          var serverAttrs = _.result(resp, Iccbl.appModel.API_RESULT_DATA);
+          if (serverAttrs&& _.isArray(serverAttrs)){
+            if (serverAttrs.length == 1){
+              serverAttrs = serverAttrs[0];
+            }
+          }
+          serverAttrs[this.idAttribute] = Iccbl.getIdFromIdAttribute(serverAttrs,resource );
+          return serverAttrs;
+        }
+      });
+      var newModel = new NewModel();
+      newModel.resource = resource;
+      
+      return newModel;
+      
+    },
+    
+    newModelFromResourceOld: function(resource,defaults){
 
       var defaults = defaults || {};
       

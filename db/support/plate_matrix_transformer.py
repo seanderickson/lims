@@ -35,7 +35,7 @@ class Collation():
 
     @staticmethod
     def get_value(member_name):
-        
+        logger.info('get_value: %r', member_name)
         if member_name.upper() in Collation.ordered_members:
             return Collation.ordered_members.index(member_name.upper())
         else:
@@ -109,6 +109,21 @@ class Counter(object):
             reading_hash[key] = digits[positionIndex]
 
         return reading_hash
+    
+    def iterate_counter_columns(self):
+        '''
+        Perform a standard iteration of the counter columns, per plate:
+        - as specified by the LIMS functionality: iterate in the order:
+        [conditions, replicates, readouts] for each plate.
+        FIXME: this depends on the specific LIMS instance members for the counter.
+        '''
+        counter_hash = self.counter_hash
+        for condition in counter_hash['condition']:
+            for replicate in counter_hash['replicate']:
+                for readout in counter_hash['readout']:
+                    yield dict(zip(
+                        ('condition','replicate','readout'),
+                        (condition,replicate,readout)))
     
     def __repr__(self, *args, **kwargs):
         return '%r' % self.counter_hash

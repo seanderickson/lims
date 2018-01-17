@@ -194,11 +194,13 @@ def sheet_rows(workbook_sheet):
         yield read_row(row)
 
 def sheet_rows_dicts(sheet):
-    colnames = [xlrd.book.colname(i) for i in range(sheet.ncols)]
+    '''
+    Read the sheet as an array of dicts, with the first row as the dict keys
+    '''
     rows = sheet_rows(sheet)
-    header = rows.next()
+    header = [x for x in rows.next()]
     for row in rows:
-        yield dict(zip(header,row))
+        yield dict(zip(header,[x for x in row]))
 
 def sheet_cols(workbook_sheet):
     def read_col(col):

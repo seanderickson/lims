@@ -69,12 +69,14 @@ from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ
 from reports.models import ApiLog, UserProfile, UserGroup, API_ACTION_PATCH, \
     API_ACTION_CREATE, Vocabulary
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
+    xlsutils
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
+import copy
 
 
 logger = logging.getLogger(__name__)
@@ -10295,6 +10297,15 @@ class DataSharingLevel(DBResourceTestCase):
         
 class RawDataTransformer(DBResourceTestCase):
     
+    def tearDown(self):
+        DBResourceTestCase.tearDown(self)
+        Screen.objects.all().delete()
+        Library.objects.all().delete()
+        ApiLog.objects.all().delete()
+        ScreensaverUser.objects.all().exclude(username='testsuper').delete()
+        LabAffiliation.objects.all().delete()
+    
+    
     def test11_control_well_parsing(self):
         
         input_1 = '\n'.join([
@@ -10541,27 +10552,6 @@ class RawDataTransformer(DBResourceTestCase):
                 row.append(random_number)
         return matrix
 
-    def test5_server_test(self):
-        
-        # Tests 
-        # - raw matrix values read in can be associated with well data via the server
-        # - form values are saved per user/screen/cp
-        
-        # 1. Setup:
-        # a. create users
-        # b. create library
-        # c. create screen
-        
-        # 2. Setup transformer input
-        # 3. Validation tests
-        # a. assay controls: named ranges (duplicates, non-control)
-        # b. library controls
-        # c. collation: (counts)
-        # d. transformation (1536->384)
-        # 4. Valid input
-        
-        pass
-    
     def test2_matrix_reader(self):
         
         # create test input matrix
@@ -11175,4 +11165,220 @@ class RawDataTransformer(DBResourceTestCase):
                         'index: %d, wellname: %r, %r != %r'
                         % (index, wellname, val, newval))
                     
+    def test5_server_test(self):
+        
+        # Tests 
+        # - raw matrix values read in can be associated with well data via the server
+        # - form values are saved per user/screen/cp
+        
+        # 1. Setup:
+        
+        self._setup_duplex_data()
+
+        test_screen = self.create_screen({
+            'screen_type': 'rnai'
+            })
+        logger.info('created screen: %s', test_screen['facility_id'])
+        
+        # 2. Setup transformer input
+        # create test input matrix
+        
+        expected_matrices = []
+        assay_plate_size = 384
+        number_of_matrices = 12
+        sep = '\t'
+        for i in range(0,number_of_matrices):
+            expected_matrices.append(self.create_test_matrix(assay_plate_size))
+        logger.info('row0: %r', expected_matrices[0][0])            
+        logger.info('row1: %r', expected_matrices[0][1])            
+        
+        def write_test_file(filepath, matrices):
+            # write out test file
+            text_buffer = cStringIO.StringIO()
+    
+            for i,matrix in enumerate(matrices):
+                # write some random numbers
+                logger.debug('writing matrix: %d', i)
+                random_number = random.uniform(0,10)
+                text_buffer.write(str(random_number) + '\n')
+                text_buffer.write('\n')
+                text_buffer.write(str(random_number) + '\n')
+    
+                width = len(matrix[0])
+                hrow = [str(n+1) for n in range(width)]
+                hrow.insert(0,' ')
+                header_row = sep.join(hrow)
+                text_buffer.write(header_row + '\n')
+                
+                for r,row in enumerate(matrix):
+                    row_letter = lims_utils.row_to_letter(r)
+                    text_buffer.write(sep + row_letter + sep + sep.join(row) + '\n')
+                text_buffer.write('\n')
+        
+            text_buffer.seek(0)
+            with open(filepath, 'w') as fout:    
+                fout.write(text_buffer.getvalue())
+            fout.close()
+
+        filename = 'db/static/test_data/platereader/test5_server_test.txt'
+        filepath = os.path.join(APP_ROOT_DIR, filename)
+        write_test_file(filepath, expected_matrices)
+        
+        # 2.A Write a error matrix file - non valid numeric values
+        test_non_numeric_matrices = []
+        bad_cells = ((5,5),(5,6))
+        for matrix in expected_matrices:
+            new_matrix = copy.deepcopy(matrix)
+            for (row,col) in bad_cells:
+                new_matrix[row][col] = '1.1.1'
+            test_non_numeric_matrices.append(new_matrix)
+        errfilename = 'db/static/test_data/platereader/test5_server_test.error.txt'
+        errfilepath = os.path.join(APP_ROOT_DIR, errfilename)
+        write_test_file(errfilepath, test_non_numeric_matrices)
+
+        # 3. Create raw data input
+        output_filename = 'test5_output1'
+        start_plate = self.duplex_library1['start_plate']
+        end_plate = start_plate + 3
+        if end_plate > self.duplex_library1['end_plate']:
+            self.fail('duplex library does not have enough plates: %r' 
+                % self.duplex_library1)
+        raw_data_transform_input = {
+            'screen_facility_id': test_screen['facility_id'],
+            'library_plate_size': 384,
+            'assay_plate_size': assay_plate_size,
+            'output_sheet_option': 'plate_per_worksheet',
+            'output_filename': output_filename,
+            'plate_ranges': '%d-%d' % (start_plate, end_plate),
+            'assay_positive_controls': '',
+            'assay_negative_controls': '',
+            'assay_other_controls': '',
+            'library_controls': '',
+            'comments': '',
+            }
+        raw_data_file_input = {
+            'collation_order': 'PQ_C_REP_READ',
+            'readout_type': 'luminescence',
+            'replicates':  3, # 4 plates, 3 replicates = 12 matrices
+            'ordinal': 0,
+            }
+        
+        for k,v in raw_data_file_input.items():
+            raw_data_transform_input['input_file_%d_%s' % (0,k)] = v
+
+        counter_expected = Counter(
+            OrderedDict((
+                ('plate',range(start_plate, end_plate+1)),
+                ('condition',('C1',)),
+                ('replicate',('A','B','C')),
+                ('readout',('Read1',) )
+            )))
+
+        # 4. POST
+        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        resource_uri = '/'.join([
+            BASE_URI_DB, 'rawdatatransform',test_screen['facility_id']])
+        
+        # 4.A.1 Error case: invalid non numeric cells             
+        with open(errfilepath) as input_file:
+            raw_data_transform_input['input_file_%d' % 0] = input_file
+
+            # NOTE: the tastypie client does not correctly encode the multipart
+            # form data for a POST, so the django client is used
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=raw_data_transform_input, 
+                **data_for_get)
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code, self.get_content(resp)))
+            post_response = self.deserialize(resp)
+        
+            logger.info('response: %r', post_response )
+            self.assertTrue(API_RESULT_ERROR in post_response, post_response)
+            errors = post_response[API_RESULT_ERROR]
+            self.assertTrue('input_file_0' in errors, errors)
+            self.assertTrue(
+                "matrix: 0, row: 5, col: 5, non numeric value: '1.1.1'" 
+                    in errors['input_file_0'], errors)
+        # 4.A.2 error case: invalid row pattern
+        # TODO    
+        
+        # 4.B POST the good input file
+        with open(filepath) as input_file:
+            raw_data_transform_input['input_file_%d' % 0] = input_file
+
+            # NOTE: the tastypie client does not correctly encode the multipart
+            # form data for a POST, so the django client is used
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=raw_data_transform_input, 
+                **data_for_get)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
+            post_response = self.deserialize(resp)
+        
+            logger.info('response: %r', post_response )
+            
+            self.assertEqual(post_response[API_RESULT_META][API_MSG_RESULT],'success')
+            
+        download_url = '/db/screen_raw_data_transform/' + test_screen['facility_id']
+
+        # 4. Retrieve and validate the tranformer output file
+        admin_user = User.objects.get(username=self.username)
+        view, args, kwargs = resolve(download_url)
+        kwargs['request'] = self.api_client.client.request()
+        kwargs['request'].user=admin_user
+        logger.info('access file: %r, %r', args, kwargs)
+        result = view(*args, **kwargs)
+        output_filename = '%s.out.xlsx' % filepath.split('.')[0]
+        logger.info('write %s to %r', filename, output_filename)
+        with open(output_filename, 'w') as out_file:
+            out_file.write(self.get_content(result))
+            logger.info('wrote: %r', output_filename)
+            
+        # 4.A Read in and validate the output file
+        logger.info('read test file: %r', filename)
+        readout_title = 'Luminescence'
+        
+        with open(output_filename, 'rb') as output_file:
+            wb = xlrd.open_workbook(file_contents=output_file.read())
+            workbook_ds = xlsutils.workbook_as_datastructure(wb)
+            logger.info('workbook as datastructure: %r', workbook_ds.keys())
+            plates_expected = [str(x) for x in range(start_plate, end_plate+1)]
+            
+            self.assertEqual(set(wb.sheet_names()), set(workbook_ds.keys()))
+            first_plate = plates_expected[0]
+            for i,row in enumerate(workbook_ds[first_plate]):
+                logger.debug('plate: %s, row: %r', first_plate, row)
+                well_name = row['Well']
+                row_index = lims_utils.well_name_row_index(well_name)
+                col_index = lims_utils.well_name_col_index(well_name)
+                
+                for counter_readout in counter_expected.iterate_counter_columns():
+                    column_title = \
+                        '{readout}_{condition}_{replicate}'.format(
+                            **counter_readout).title()
+                    column_title = '%s_%s' % (readout_title, column_title)
+                    logger.debug('testing column: %r', column_title)
+                    self.assertTrue(column_title in row)
+                    readout_value = row[column_title]
+
+                    counter_readout['plate'] = int(first_plate)
+                    matrix_index = counter_expected.get_index(counter_readout)
+                    self.assertTrue(matrix_index < len(expected_matrices),
+                        'matrix index: %d >= expected: %d' %(
+                            matrix_index,len(expected_matrices)))
+                    matrix = expected_matrices[matrix_index]
+                    expected_value = matrix[row_index][col_index]
+                    self.assertEqual(readout_value, expected_value)
+                    
+                # TODO:
+                # a. assay controls: named ranges (duplicates, non-control)
+                # b. library controls
+                # c. transformation (1536->384)
+                # d. validate input
+                # e. multiple input files
         

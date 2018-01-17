@@ -506,12 +506,19 @@ class ApiResource(SqlAlchemyResource):
     
     def __init__(self, **kwargs):
         super(ApiResource,self).__init__(**kwargs)
+        logger.debug('initialize ApiResource for %r', self._meta.resource_name)
         self.resource_resource = None
+        self.vocab_resource = None
 
     def get_resource_resource(self):
-        if not self.resource_resource:
+        if self.resource_resource is None:
             self.resource_resource = ResourceResource()
         return self.resource_resource
+    
+    def get_vocab_resource(self):
+        if self.vocab_resource is None:
+            self.vocab_resource = VocabularyResource()
+        return self.vocab_resource
     
     def get_schema(self, request, **kwargs):
     
@@ -1497,7 +1504,7 @@ class ApiResource(SqlAlchemyResource):
                     logger.warn('no vocabulary found for scope: %r, field: %r', 
                         scope, key)
         return vocabularies
-    
+
     @staticmethod
     def create_siunit_rowproxy_generator(field_hash, extant_generator):
         '''
@@ -2181,6 +2188,7 @@ class FieldResource(ApiResource):
         self.resource_resource = None
 
     def clear_cache(self):
+        logger.info('clear_cache: FieldResource...')
         ApiResource.clear_cache(self)
         self.get_resource_resource().clear_cache()
         
@@ -2589,6 +2597,7 @@ class ResourceResource(ApiResource):
             request, app_data, **kwargs)
 
     def clear_cache(self):
+        logger.info('clear_cache ResourceResource ..')
         ApiResource.clear_cache(self)
         caches['resource_cache'].clear()
         
@@ -2759,7 +2768,8 @@ class ResourceResource(ApiResource):
             user_cache_key = 'resources_%s' % user.username
             
             user_resources = resource_cache.get(user_cache_key)
-            logger.debug('user resource retrieved from cache: %r', user_resources)
+            logger.debug(
+                'user resource retrieved from cache: %r', user_resources.keys())
         if not user_resources:    
             logger.debug('user resources not cached, build resources')
             if use_cache and self.use_cache:
@@ -2780,7 +2790,8 @@ class ResourceResource(ApiResource):
                         clear=True))
                 if not resources:
                     # If there are no resources, use self to bootstrap
-                    logger.info('no resources found, using default resource to bootstrap...')
+                    logger.info('no resources found, using default resource '
+                        'to bootstrap...')
                     resource = self.build_schema(user=user)
                     resources = { resource['key']: resource }
                     
@@ -2890,6 +2901,10 @@ class ResourceResource(ApiResource):
                 .filter(scope__icontains='fields.').distinct('scope')]
             resource['extraSelectorOptions'] = { 
                 'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
+        if key == 'vocabulary':
+            temp = [ x.scope for x in Vocabulary.objects.all().distinct('scope')]
+            resource['extraSelectorOptions'] = { 
+                'label': 'Scope', 'searchColumn': 'scope', 'options': temp }
             
     @write_authorization
     @un_cache 
@@ -3078,12 +3093,16 @@ class VocabularyResource(ApiResource):
 #         return HttpResponse(
 #             content=self.serialize(request, cached_content, desired_format), 
 #             content_type=build_content_type(desired_format))
-            
-        
+# 
+#     def clear_cache(self):
+#         logger.info('clear vocabulary caching...')
+#         ApiResource.clear_cache(self)
+#         cache.delete('vocabulary_listing')
+    
     def clear_cache(self):
-        logger.info('clear vocabulary caching...')
-        ApiResource.clear_cache(self)
-        cache.delete('vocabulary_listing')
+        super(VocabularyResource,self).clear_cache()
+        cache.delete('vocabularies');
+
         
     def build_list_response(self,request, **kwargs):
         schema = kwargs.pop('schema', None)
@@ -3262,8 +3281,10 @@ class VocabularyResource(ApiResource):
             raise e  
     
     def _get_vocabularies_by_scope(self, scope):
-        ''' Utility method
-        Retrieve and cache all of the vocabularies in a two level dict
+        ''' Utility method:
+        @return a dict of raw_value -> vocab
+        
+        Note: caches all of the vocabularies in a two level dict
         - keyed by [scope][key]
         '''
         vocabularies = cache.get('vocabularies');
@@ -3296,10 +3317,6 @@ class VocabularyResource(ApiResource):
             logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies)
             return {}
     
-    def clear_cache(self):
-        super(VocabularyResource,self).clear_cache()
-        cache.delete('vocabularies');
-
     @write_authorization
     @un_cache 
     @transaction.atomic       
@@ -3500,7 +3517,7 @@ class UserResource(ApiResource):
     
     def clear_cache(self):
         ApiResource.clear_cache(self)
-        self.get_resource_resource().clear_cache()
+#         self.get_resource_resource().clear_cache()
         
     def get_permission_resource(self):
         if not self.permission_resource:
@@ -4019,7 +4036,7 @@ class UserGroupResource(ApiResource):
 
     def clear_cache(self):
         ApiResource.clear_cache(self)
-        self.get_resource_resource().clear_cache()
+#         self.get_resource_resource().clear_cache()
         
     def get_permission_resource(self):
         if not self.permission_resource:

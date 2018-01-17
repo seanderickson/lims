@@ -1303,12 +1303,12 @@ class IResourceTestCase(SimpleTestCase):
                 logger.debug('objects returned: %r', new_obj[API_RESULT_DATA])
                 self.assertTrue(
                     result, 
-                    ('not found', inputobj, 'msg', outputobj))
+                    'not found: %r, msg: %r' % (inputobj, outputobj))
                 # once found, perform equality based on all keys (in obj1)
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
                     excludes=keys_not_to_check)
                 self.assertTrue(result,
-                    ('not equal', msg, inputobj, outputobj))
+                    'not equal: %r: %r - %r' % ( msg, inputobj, outputobj))
             
             # return both collections for further testing
             return (input_data[API_RESULT_DATA], new_obj[API_RESULT_DATA]) 
@@ -1337,14 +1337,14 @@ class IResourceTestCase(SimpleTestCase):
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
                 resp.status_code <= 204, 
-                (resp.status_code, self.get_content(resp)))
+                '%r: %r' % (resp.status_code, self.get_content(resp)))
             logger.info('get: %r', resource_uri)
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), data=data_for_get)
             self.assertTrue(
                 resp.status_code in [200], 
-                (resp.status_code, self.get_content(resp)))
+                '%r: %r' % (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
             # do a length check, since put will delete existing resources
             self.assertEqual(
@@ -1361,13 +1361,13 @@ class IResourceTestCase(SimpleTestCase):
                     excludes=keys_not_to_check)
                 self.assertTrue(
                     result, 
-                    ('not found', outputobj, new_obj[API_RESULT_DATA] ) )
+                    'not found: %r: %r' % (outputobj, new_obj[API_RESULT_DATA]))
                 # once found, perform equality based on all keys (in obj1)
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
                     excludes=keys_not_to_check)
                 self.assertTrue(
                     result,
-                    ('not equal', msg, inputobj, outputobj))
+                    'not equal: %r: %r - %r' % ( msg, inputobj, outputobj))
             #TODO: GET the apilogs expected and test them
             return (input_data[API_RESULT_DATA], new_obj[API_RESULT_DATA]) 
 

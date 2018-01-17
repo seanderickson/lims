@@ -192,7 +192,7 @@ def post(url, request_or_session, file=None, headers=None ):
             sys.stderr.write('\nresponse cookies: %r' % r.cookies)
             sys.stderr.write('\nresponse:\n%s\n' % r.content )
             
-        if r.status_code not in [200,202]:
+        if r.status_code not in [200,201,202]:
             raise Exception("Error: status: %s\n%s\n%s" 
                             % (r.status_code, r.headers, r.content))
         return r

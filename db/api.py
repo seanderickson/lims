@@ -173,7 +173,7 @@ def _get_raw_time_string():
 class DbApiResource(reports.api.ApiResource):
 
     def __init__(self, **kwargs):
-        super(reports.api.ApiResource,self).__init__(**kwargs)
+        super(DbApiResource,self).__init__(**kwargs)
         self.resource_resource = None
         self.apilog_resource = None
         self.field_resource = None
@@ -6741,6 +6741,7 @@ class CherryPickRequestResource(DbApiResource):
         return self.cpp_resource
     
     def clear_cache(self):
+        logger.info('clear_cache: CherryPickRequestResource...')
         DbApiResource.clear_cache(self)
         # NOTE: don't clear dependent resources to avoid circular refererence 
         # recursion; DbApiResource.clear_cache will clear all caches, for now
@@ -15168,6 +15169,9 @@ class RawDataTransformerResource(DbApiResource):
         initializer_dict = self.parse(param_hash, fields=fields)
         logger.info('initializer: %r', initializer_dict)
         
+        errors = self.validate(initializer_dict, patch=False, schema=schema)
+        if errors:
+            raise ValidationError(errors)
         # Expand plate ranges
         plate_ranges = initializer_dict['plate_ranges']
         lcp_resource = self.get_lcp_resource()
@@ -15232,6 +15236,8 @@ class RawDataTransformerResource(DbApiResource):
                 raise ValidationError(key='plate_ranges', 
                     msg='Must be a multiple of 4 if assay_plate_size==1536')
         
+        # Retrieve the library well / Lab cherry pick well data:
+        # - also record the user entered control well information
         rnai_columns = [
             'vendor_entrezgene_symbols','vendor_entrezgene_id',
             'vendor_genbank_accession_numbers','vendor_gene_name', 
@@ -15249,8 +15255,9 @@ class RawDataTransformerResource(DbApiResource):
             exact_well_fields = [
                 'library_well_type','well_id','plate_number','well_name']
             exact_well_fields.extend(rnai_columns_to_write)
-            wells = self.get_reagent_resource()\
-                ._get_list_response_internal(**{
+            logger.info('get well information: %r, fields: %r ...',
+                plate_numbers, exact_well_fields)
+            wells = self.get_reagent_resource()._get_list_response_internal(**{
                     'plate_number__in': plate_numbers,
                     'exact_fields': exact_well_fields
                 })
@@ -15292,141 +15299,171 @@ class RawDataTransformerResource(DbApiResource):
             control_well_named_ranges = self.get_control_wells(rdt)
             
             
-            
+        # Read in the input matrices
         input_file_fields = schema['input_file_fields']
         logger.info('input_file_fields: %r', input_file_fields.keys())
+        
+        vocab_scope = input_file_fields['readout_type']['vocabulary_scope_ref']
+        readout_vocab = self.get_vocab_resource()._get_vocabularies_by_scope(vocab_scope)
+        if not readout_vocab:
+            logger.warn('no vocabulary found for scope: %r, field: %r', 
+                vocab_scope, 'readout_type')
+        def read_input_matrices(rdt, ordinal, filekey, input_file):
+            logger.info('read matrices for file: %d, %s', ordinal, filekey)
+            logger.info('data file: %r', input_file)
+            input_file_initializer = {
+                'ordinal': ordinal
+                }
+            for key,val in param_hash.items():
+                if key.find(filekey) == 0:
+                    field_key = key[len(filekey)+1:]
+                    if field_key in input_file_fields:
+                        field = input_file_fields[field_key]
+                        input_file_initializer[field_key] = \
+                            parse_val(val, field_key, field['data_type'])
+            logger.info('input_file_initializer: %r', input_file_initializer)
+
+            errors = self.validate(input_file_initializer, 
+                patch=False, 
+                schema={ 
+                    'id_attribute': ['ordinal'],
+                    'fields': input_file_fields })
+            if errors:
+                raise ValidationError(key=filekey, msg=errors)
+
+            filename = initializer_dict.get('filename', None)
+            if filename is None:
+                filename = input_file.name
+                input_file_initializer['filename'] = filename
+            rdif = RawDataInputFile(**input_file_initializer)
+            
+            (matrices, errors) = raw_data_reader.read(input_file, filename)
+            if errors: 
+                raise ValidationError(key=filekey, msg=errors)
+            if not matrices:
+                raise ValidationError(key=filekey, msg='no matrices read')
+            
+            parse_errors = raw_data_reader.parse_to_numeric(matrices)
+            if parse_errors:
+                raise ValidationError(key=filekey, msg=parse_errors)
+            
+            assay_plate_size_read = len(matrices[0])*len(matrices[0][0])
+            if assay_plate_size_read != aps:
+                msg = self.ERROR_MATRIX_SIZE_DETECTED % (
+                    assay_plate_size_read, aps)
+                raise ValidationError({
+                    filekey: msg, 'assay_plate_size': msg })
+            
+            collation = Collation.get_value(rdif.collation_order)
+            logger.info('read collation: %r', collation)
+            conditions = re.split(r'[\s,]+', rdif.conditions) \
+                if rdif.conditions else ['C1',]
+            replicates = [chr(ord('A')+x) for x in range(0,rdif.replicates)]
+            readouts = re.split(r'[\s,]+', rdif.readouts) \
+                if rdif.readouts else ['read1',]
+            logger.info('conditions: %r, readouts: %r, replicates: %r',
+                conditions, readouts, replicates)
+
+            # Determine the plates to read and validate relative sizes
+            
+            collation_count = len(conditions)*len(replicates)*len(readouts)
+            transformed_matrix_count = len(matrices)
+            if aps > lps:
+                transformed_matrix_count *=4
+            elif lps > aps:
+                collation_count *= 4
+
+            if collation_count > len(matrices):
+                msg = self.ERROR_COLLATION_COUNT % (
+                    collation_count, len(matrices))
+                raise ValidationError(key=filekey, msg=msg)
+            if len(matrices)%collation_count != 0:
+                msg = self.ERROR_COLLATION_COUNT % (
+                    collation_count, len(matrices))
+                raise ValidationError(key=filekey, msg=msg)
+            
+            plates_required = transformed_matrix_count/collation_count
+            logger.info('collation count: %d, plates required: %d',
+                collation_count, plates_required)
+            if plates_required > len(plate_numbers):
+                logger.info(str((len(matrices), transformed_matrix_count,
+                    collation_count, plates_required, len(plate_numbers))))
+                msg = self.ERROR_PLATE_COUNT % (
+                    len(matrices), transformed_matrix_count,
+                    collation_count, plates_required, len(plate_numbers))
+                raise ValidationError({
+                    filekey: msg, 'plate_ranges': msg })
+
+            elif plates_required < len(plate_numbers):
+                msg='All plates specified by: %r were not used: %r' \
+                    % (plate_ranges, plate_numbers[plates_required:])
+                raise ValidationError({
+                    filekey: msg, 'plate_ranges': msg })
+            
+            counter = plate_matrix_transformer.create_matrix_counter(
+                collation, plate_numbers, conditions, replicates, readouts)
+            logger.info('counter: %r', counter)
+
+            if aps != lps:
+                matrices = plate_matrix_transformer.transform(
+                    matrices, counter, aps,lps)
+                logger.info('transformed matrices: %d', len(matrices))
+
+            rdif.raw_data_transform = rdt
+            rdif.save()
+            
+            # cache readout_type title
+            if rdif.readout_type in readout_vocab:
+                rdif.readout_title = readout_vocab[rdif.readout_type]['title']
+            else:
+                logger.warn('vocab not found for readout_type: %r, vocabs: %r',
+                    rdif.readout_type, readout_vocab)
+                rdif.readout_title = rdif.readout_type
+            return (matrices, rdif, counter)
+        
         
         with  NamedTemporaryFile(
             delete=False, suffix='%s' % request.user.username) as temp_file:
             
             workbook = xlsxwriter.Workbook(temp_file) #, {'constant_memory': True})
-            plate_numbers_consumed = []
-            plate_numbers_available = plate_numbers
             
+            input_file_data = []
             for ordinal, filekey in enumerate(sorted(request.FILES.keys())):
                 logger.info('read file: %d, %r', ordinal, filekey)
-                _matrix_read_meta = {}
                 input_file = request.FILES[filekey]
-                input_file_initializer = {
-                    'ordinal': ordinal
-                    }
-                for key,val in param_hash.items():
-                    if key.find(filekey) == 0:
-                        field_key = key[len(filekey)+1:]
-                        if field_key in input_file_fields:
-                            field = input_file_fields[field_key]
-                            input_file_initializer[field_key] = \
-                                parse_val(val, field_key, field['data_type'])
-                logger.info('input_file_initializer: %r', input_file_initializer)
+        
+                (matrices, rdif, counter) = \
+                    read_input_matrices(rdt, ordinal, filekey, input_file)
+                input_file_data.append((matrices, rdif, counter))
 
-                filename = initializer_dict.get('filename', None)
-                if filename is None:
-                    filename = input_file.name
-                    initializer_dict['filename'] = filename
-                rdif = RawDataInputFile(**input_file_initializer)
-                rdif.raw_data_transform = rdt
-                
-                vocabularies = DbApiResource.get_vocabularies(input_file_fields)
-                readout_type = rdif.readout_type
-                if 'readout_type' in vocabularies:
-                    readout_type = \
-                        vocabularies['readout_type'][rdif.readout_type]['title']
-                else:
-                    logger.warn('readout_type not found in vocabulary: %r', 
-                        vocabularies)
-                    
-                (matrices, errors) = raw_data_reader.read(input_file, filename)
-                if errors: 
-                    raise ValidationError(key=filekey, msg=errors)
-                
-                assay_plate_size_read = len(matrices[0])*len(matrices[0][0])
-                if assay_plate_size_read != aps:
-                    msg = self.ERROR_MATRIX_SIZE_DETECTED % (
-                        assay_plate_size_read, aps)
-                    raise ValidationError({
-                        filekey: msg, 'assay_plate_size': msg })
-                
-                _matrix_read_meta['matrices'] = len(matrices)
+                _matrix_read_meta = OrderedDict((
+                    ('Ordinal', rdif.ordinal), 
+                    ('Filename', rdif.filename), 
+                    ('Collation', rdif.collation_order),
+                    ('Readout Type', rdif.readout_title)
+                ))
+                _matrix_read_meta['Matrices'] = len(matrices)
                 if aps > lps:
-                    _matrix_read_meta['matrices (384 well)'] = len(matrices)*4
+                    _matrix_read_meta['Matrices read (1536 well)'] = len(matrices)/4
                 elif aps < lps:
-                    _matrix_read_meta['matrices (384 well)'] = len(matrices)/4
+                    _matrix_read_meta['Matrices read (96 well)'] = len(matrices)*4
                 logger.info('read matrices: %d', len(matrices))
                 
-                collation = Collation.get_value(rdif.collation_order)
-                logger.info('read collation: %r', collation)
-                conditions = re.split(r'[\s,]+', rdif.conditions) \
-                    if rdif.conditions else ['C1',]
-                replicates = [chr(ord('A')+x) for x in range(0,rdif.replicates)]
-                readouts = re.split(r'[\s,]+', rdif.readouts) \
-                    if rdif.readouts else ['read1',]
-                logger.info('conditions: %r, readouts: %r, replicates: %r',
-                    conditions, readouts, replicates)
-                _matrix_read_meta['conditions'] = ','.join(conditions)
-                _matrix_read_meta['readouts'] = ','.join(readouts)
-                _matrix_read_meta['replicates'] = ','.join(replicates)
-
-                # Determine the plates to read and validate relative sizes
+                for k,v in counter.counter_hash.items():
+                    _matrix_read_meta[k.title() + 's'] = ', '.join([str(x) for x in v])
+                _meta['File %d' % (rdif.ordinal+1)] = _matrix_read_meta
+                logger.info('Raw data transform file read meta: %r', _matrix_read_meta)
                 
-                collation_count = len(conditions)*len(replicates)*len(readouts)
-                transformed_matrix_count = len(matrices)
-                if aps > lps:
-                    transformed_matrix_count *=4
-                elif lps > aps:
-                    collation_count *= 4
+            if screen:
+                self.write_screen_xlsx(
+                    rdt, plate_numbers, input_file_data, workbook, wells, rnai_columns_to_write)
+            elif cpr:
+                self.write_cpr_xlsx(
+                    rdt, plate_numbers, input_file_data, workbook, lcp_copywells, 
+                    control_well_named_ranges,rnai_columns_to_write)
+            else:
+                raise ProgrammingError('no screen or cpr')
 
-                if collation_count > len(matrices):
-                    msg = self.ERROR_COLLATION_COUNT % (
-                        collation_count, len(matrices))
-                    raise ValidationError(key=filekey, msg=msg)
-                if len(matrices)%collation_count != 0:
-                    msg = self.ERROR_COLLATION_COUNT % (
-                        collation_count, len(matrices))
-                    raise ValidationError(key=filekey, msg=msg)
-                
-                plates_required = transformed_matrix_count/collation_count
-                logger.info('collation count: %d, plates required: %d',
-                    collation_count, plates_required)
-                if plates_required > len(plate_numbers_available):
-                    logger.info(str((len(matrices), transformed_matrix_count,
-                        collation_count, plates_required, len(plate_numbers_available))))
-                    msg = self.ERROR_PLATE_COUNT % (
-                        len(matrices), transformed_matrix_count,
-                        collation_count, plates_required, len(plate_numbers_available))
-                    raise ValidationError({
-                        filekey: msg, 'plate_ranges': msg })
-                plates_to_read = plate_numbers_available[:plates_required]
-                _matrix_read_meta['plates'] = ','.join(
-                    [str(x) for x in plates_to_read])
-                plate_numbers_consumed.extend(plates_to_read)
-                plate_numbers_available = plate_numbers_available[plates_required:]
-                
-                counter = plate_matrix_transformer.create_matrix_counter(
-                    collation, plates_to_read, conditions, replicates, readouts)
-                logger.info('counter: %r', counter)
-
-                if aps != lps:
-                    matrices = plate_matrix_transformer.transform(
-                        matrices, counter, aps,lps)
-                    logger.info('transformed matrices: %d', len(matrices))
-            
-                if screen:
-                    self.write_xlsx(
-                        rdif, readout_type, workbook, matrices, counter, wells, 
-                        rnai_columns_to_write)
-                elif cpr:
-                    self.write_cpr_xlsx(
-                        rdif, readout_type, workbook, matrices, counter, 
-                        lcp_copywells, control_well_named_ranges,
-                        rnai_columns_to_write)
-                else:
-                    raise ProgrammingError('no screen or cpr')
-                rdif.save()
-                _meta['%d - %s' % (ordinal,filename)] = _matrix_read_meta
-                logger.info(
-                    'ordinal: %d, plate_numbers_consumed: %r, '
-                    'plate_numbers_available: %r',
-                    ordinal, plate_numbers_consumed, plate_numbers_available)
                 
             workbook.close()
             temp_file.close()
@@ -15435,11 +15472,6 @@ class RawDataTransformerResource(DbApiResource):
             rdt.save()
             logger.info('wrote temp file: %r', temp_file.name)
         
-        if plate_numbers_available:
-            raise ValidationError(
-                key='plate_ranges',
-                msg='All plates specified by: %r were not used: %r'
-                    % (plate_ranges, plate_numbers_available))
         _meta[API_MSG_RESULT] = 'success'
         
         return self.build_response(
@@ -15626,20 +15658,18 @@ class RawDataTransformerResource(DbApiResource):
             raise ValidationError(combined_errors)
         
     def write_cpr_xlsx(
-        self, rdif, readout_type, workbook, matrices, counter, lcp_well_hash,
+        self, rdt, plate_numbers, input_file_data, workbook, lcp_well_hash,
         control_well_named_ranges,rnai_columns_to_write ):
         '''
         Write the plate matrices directly to a spreadsheet, in collation order:
         - merge in lab_cherry_pick data.
         '''
         DEBUG = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info('write cpr worksheet for %r...', rdif)
+        logger.info('write cpr worksheet for %r...', rdt)
 
-        cpr_id = rdif.raw_data_transform.cherry_pick_request.cherry_pick_request_id
-        aps = rdif.raw_data_transform.assay_plate_size
-        lps = rdif.raw_data_transform.library_plate_size
-        counter_hash = counter.counter_hash
-        plates_to_read = counter_hash['plate']
+        cpr_id = rdt.cherry_pick_request.cherry_pick_request_id
+        aps = rdt.assay_plate_size
+        lps = rdt.library_plate_size
         
         control_well_hash = {}
         for ctype, named_ranges in control_well_named_ranges.items():
@@ -15647,23 +15677,14 @@ class RawDataTransformerResource(DbApiResource):
                 for wellname in named_range['wells']:
                     control_well_hash[wellname] = (ctype, label)
         
-        counter_readouts = []
-        for condition in counter_hash['condition']:
-            for replicate in counter_hash['replicate']:
-                for readout in counter_hash['readout']:
-                    counter_readouts.append(dict(zip(
-                        ('condition','replicate','readout'),
-                        (condition,replicate,readout))))
-                        
         headers = ['Plate', 'Well', 'Type']
         if aps > lps:
             headers = ['Plate','Well','Source Plate','Quadrant','Source Well','Type']
         elif lps > aps:
             headers = ['Plate','Well','Quadrant','Source Well','Type']
 
-        plate_size = len(matrices[0])*len(matrices[0][0])
-        row_size = len(matrices[0])
-        col_size = len(matrices[0][0])
+        row_size = lims_utils.get_rows(lps)
+        col_size = lims_utils.get_cols(lps)
         logger.info('row size: %d, col size: %d', row_size, col_size)
         
         # NOTE: Even with "all_plates_in_single_worksheet" option, each input 
@@ -15673,17 +15694,17 @@ class RawDataTransformerResource(DbApiResource):
         quadrant = None
         source_plates = None
         cumulative_output_row = 0
-        if rdif.raw_data_transform.output_sheet_option \
+        if rdt.output_sheet_option \
                 == 'all_plates_in_single_worksheet':
             sheet_name = 'data_%d' % (rdif.ordinal+1)
             single_sheet = workbook.add_worksheet(sheet_name)
         
-        for plate_index, plate in enumerate(counter_hash['plate']):
+        for plate_index, plate in enumerate(plate_numbers):
             cpr_plate = 'CP%d_%d' % (cpr_id, plate)
             new_sheet_name = 'CP%d_%d' % (cpr_id, plate)
             if aps > lps:
                 quadrant = plate_index % 4
-                source_plates = plates_to_read[(plate_index/4):(plate_index/4+4)]
+                source_plates = plate_numbers[(plate_index/4):(plate_index/4+4)]
                 new_sheet_name = 'CP%d_%s' % (
                     cpr_id, ','.join([str(p) for p in source_plates]))
             elif lps > aps:
@@ -15699,22 +15720,23 @@ class RawDataTransformerResource(DbApiResource):
             for i, header in enumerate(headers):
                 sheet.write_string(0,i,header)
             
-            start_col_count = len(headers)
-            col_to_matrix_index = []
-            for i,counter_readout in enumerate(counter_readouts): 
-                
-                current_col = start_col_count + i
-                collation_string = \
-                    '{readout}_{condition}_{replicate}'.format(**counter_readout)
-                collation_string = readout_type + '_' + collation_string
-                if DEBUG:
-                    logger.info('write collation_string: col: %d, %s', 
-                        current_col, collation_string)
-                sheet.write_string(0,current_col,collation_string )
-                col_to_matrix_index.append(
-                    counter.get_index(dict(counter_readout, plate=plate)))
-            
-            current_col += 1
+            current_col = len(headers)
+            for (matrices, rdif, counter) in input_file_data:
+                for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
+                    collation_string = \
+                        '{readout}_{condition}_{replicate}'.format(
+                            **counter_readout).title()
+                    if rdif.readout_title:
+                        collation_string = '%s_%s' % (rdif.readout_title, collation_string)
+                    else:
+                        collation_string = '%s_%s' % (rdif.readout_type, collation_string)
+                        
+                    if DEBUG:
+                        logger.info('write collation_string: col: %d, %s', 
+                            current_col, collation_string)
+                    sheet.write_string(0,current_col+i,collation_string )
+                current_col += i + 1
+    
             sheet.write_string(0,current_col,'Pre-Loaded Controls')
             current_col += 1
             sheet.write_string(0,current_col,'Library Plate')
@@ -15790,16 +15812,18 @@ class RawDataTransformerResource(DbApiResource):
                     else:
                         sheet.write_string(output_row,current_col,'E')
                     current_col += 1
-                            
-                    for i,matrix_index in enumerate(col_to_matrix_index):
-                        matrix = matrices[matrix_index]
-                        val = matrix[rownum][colnum]
-                        if DEBUG:
-                            logger.info('write output_row: %d, col: %d,  val: %r', 
-                                output_row, current_col+i, str(val))
-                        sheet.write_string(output_row, current_col+i, str(val))
 
-                    current_col += i+1
+                    for j,(matrices, rdif, counter) in enumerate(input_file_data):
+                        for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
+                            matrix_index = counter.get_index(dict(counter_readout, plate=plate))
+                            matrix = matrices[matrix_index]
+                            val = matrix[rownum][colnum]
+                            if DEBUG:
+                                logger.info('write output_row: %d, col: %d,  val: %r', 
+                                    output_row, current_col+i, str(val))
+                            sheet.write_number(output_row, current_col+i, val)
+                        current_col += i +1
+
                     if control:
                         sheet.write_string(output_row,current_col,control[1])
                     elif lcp_well:    
@@ -15853,59 +15877,46 @@ class RawDataTransformerResource(DbApiResource):
             if aps > lps and quadrant < 4:
                 cumulative_output_row = output_row                
 
-        
-    def write_xlsx(self, rdif, readout_type, workbook, matrices, counter, 
-        library_well_hash,rnai_columns_to_write):
+
+    def write_screen_xlsx(
+        self, rdt, plate_numbers, input_file_data, workbook, library_well_hash,
+        rnai_columns_to_write):
         '''
         Write the plate matrices directly to a spreadsheet, in collation order:
         - merge in library well data.
         
         '''
         DEBUG = False or logger.isEnabledFor(logging.DEBUG)
-        
-        aps = rdif.raw_data_transform.assay_plate_size
-        lps = rdif.raw_data_transform.library_plate_size
-        counter_hash = counter.counter_hash
-        plates_to_read = counter_hash['plate']
+
+        aps = rdt.assay_plate_size
+        lps = rdt.library_plate_size
 
         logger.info('write workbook...')
         
-        counter_readouts = []
-        for condition in counter_hash['condition']:
-            for replicate in counter_hash['replicate']:
-                for readout in counter_hash['readout']:
-                    counter_readouts.append(dict(zip(
-                        ('condition','replicate','readout'),
-                        (condition,replicate,readout))))
-
         headers = ['Plate', 'Well', 'Type','Exclude']
         if aps > lps:
             headers = ['Plate','Well','Source Plate','Quadrant','Source Well','Type']
         elif lps > aps:
             headers = ['Plate','Well','Quadrant','Source Well','Type']
 
-        plate_size = len(matrices[0])*len(matrices[0][0])
-        row_size = len(matrices[0])
-        col_size = len(matrices[0][0])
+        row_size = lims_utils.get_rows(lps)
+        col_size = lims_utils.get_cols(lps)
         logger.info('row size: %d, col size: %d', row_size, col_size)
 
-        # NOTE: Even with "all_plates_in_single_worksheet" option, each input 
-        # file must be in its own sheet, because collations may differ
         single_sheet = None
         sheet_name = None
         quadrant = None
         source_plates = None
         cumulative_output_row = 0
-        if rdif.raw_data_transform.output_sheet_option \
-                == 'all_plates_in_single_worksheet':
-            sheet_name = 'data_%d' % (rdif.ordinal+1)
+        if rdt.output_sheet_option == 'all_plates_in_single_worksheet':
+            sheet_name = 'data'
             single_sheet = workbook.add_worksheet(sheet_name)
         
-        for plate_index, plate in enumerate(counter_hash['plate']):
+        for plate_index, plate in enumerate(plate_numbers):
             new_sheet_name = str(plate)
             if aps > lps:
                 quadrant = plate_index % 4
-                source_plates = plates_to_read[(plate_index/4):(plate_index/4+4)]
+                source_plates = plate_numbers[(plate_index/4):(plate_index/4+4)]
                 new_sheet_name = ','.join([str(p) for p in source_plates])
             elif lps > aps:
                 pass
@@ -15920,22 +15931,22 @@ class RawDataTransformerResource(DbApiResource):
             for i, header in enumerate(headers):
                 sheet.write_string(0,i,header)
                         
-            start_col_count = len(headers)
-            col_to_matrix_index = []
-            for i,counter_readout in enumerate(counter_readouts): 
-                
-                current_col = start_col_count + i
-                collation_string = \
-                    '{readout}_{condition}_{replicate}'.format(**counter_readout)
-                collation_string = readout_type + '_' + collation_string
-                if DEBUG:
-                    logger.info('write collation_string: col: %d, %s', 
-                        current_col, collation_string)
-                sheet.write_string(0,current_col,collation_string )
-                col_to_matrix_index.append(
-                    counter.get_index(dict(counter_readout, plate=plate)))
-            
-            current_col += 1
+            current_col = len(headers)
+            for (matrices, rdif, counter) in input_file_data:
+                for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
+                    collation_string = \
+                        '{readout}_{condition}_{replicate}'.format(
+                            **counter_readout).title()
+                    if rdif.readout_title:
+                        collation_string = '%s_%s' % (rdif.readout_title, collation_string)
+                    else:
+                        collation_string = '%s_%s' % (rdif.readout_type, collation_string)
+                    if DEBUG:
+                        logger.info('write collation_string: col: %d, %s', 
+                            current_col, collation_string)
+                    sheet.write_string(0,current_col+i,collation_string )
+                current_col += i + 1
+    
             sheet.write_string(0,current_col,'Pre-Loaded Controls')
             if rnai_columns_to_write:
                 current_col += 1
@@ -15993,15 +16004,17 @@ class RawDataTransformerResource(DbApiResource):
                     # NOP sheet.write_string(output_row,current_col, 'exclude')
                     current_col += 1
                     
-                    for i,matrix_index in enumerate(col_to_matrix_index):
-                        matrix = matrices[matrix_index]
-                        val = matrix[rownum][colnum]
-                        if DEBUG:
-                            logger.info('write output_row: %d, col: %d,  val: %r', 
-                                output_row, current_col+i, str(val))
-                        sheet.write_string(output_row, current_col+i, str(val))
+                    for (matrices, rdif, counter) in input_file_data:
+                        for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
+                            matrix_index = counter.get_index(dict(counter_readout, plate=plate))
+                            matrix = matrices[matrix_index]
+                            val = matrix[rownum][colnum]
+                            if DEBUG:
+                                logger.info('write output_row: %d, col: %d,  val: %r', 
+                                    output_row, current_col+i, str(val))
+                            sheet.write_number(output_row, current_col+i, val)
+                        current_col += i +1
 
-                    current_col += i +1
                     control_label = well.get('control_label', None)
                     if control_label:
                         sheet.write_string(output_row,current_col,control_label)
@@ -16045,6 +16058,7 @@ class RawDataTransformerResource(DbApiResource):
                 cumulative_output_row = output_row                
             if aps > lps and quadrant < 4:
                 cumulative_output_row = output_row                
+        
 
 class ScreenResource(DbApiResource):
     
@@ -17684,7 +17698,7 @@ class StudyResource(ScreenResource):
         COL_DESC_WEIGHTED_AVG = 'Average number of confirmed positives per screen'
         COL_NAME_NUMBER_SCREENS = 'Number of screens'
         COL_DESC_NUMBER_SCREENS = 'Number of follow up screens testing duplexes for the pool well'
-        COL_NAME_DUPLEX_COUNT = 'number_of_screens_confirming_%d_duplexes'
+        COL_NAME_DUPLEX_COUNT = 'Number of screens confirming with %d duplexes'
         COL_DESC_DUPLEX_COUNT = 'Number of screens confirming with %d duplexes'
 
         facility_id = deserialized['facility_id']
@@ -20266,13 +20280,15 @@ class ReagentResource(DbApiResource):
             
             # general setup
             manual_field_includes = set(param_hash.get('includes', []))
-   
+            
+            plate_numbers = param_hash.pop('plate_number__in',None)
+
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
             filename = self._get_filename(readable_filter_hash, schema)
             
-            if filter_expression is None:
+            if filter_expression is None and wells is None:
                 raise InformationError(
                     key='Input filters ',
                     msg='Please enter a filter expression to begin')
@@ -20374,6 +20390,8 @@ class ReagentResource(DbApiResource):
             stmt = select(columns.values()).select_from(j)
             if wells is not None:
                 stmt = stmt.where(_well.c.well_id.in_([w.well_id for w in wells]))
+            if plate_numbers:
+                stmt = stmt.where(_well.c.plate_number.in_(plate_numbers))
             if library:
                 stmt = stmt.where(_well.c.library_id == library.library_id) 
             if cherry_pick_request_id_screener is not None:

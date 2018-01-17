@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 import argparse
 from collections import defaultdict
 import csv
+from decimal import Decimal
 import logging
 import os
 import re
@@ -17,10 +18,24 @@ logger = logging.getLogger(__name__)
 ALLOWED_COLS = [12,24,48]
 ALLOWED_ROWS = [8,16,32]
 
-ERROR_PLATE_SIZE = 'Plate size'
-ERROR_COL_SIZE = 'Columns detected'
-ERROR_ROW_SIZE = 'Rows detected'
-            
+ERROR_PLATE_SIZE = 'Plate size error'
+ERROR_COL_SIZE = 'Column count error'
+ERROR_ROW_SIZE = 'Row count error'
+ERROR_ROW_PATTERN_MATCH = 'Value error'
+      
+def parse_to_numeric(matrices):
+    errors = []
+    for matrix_index, matrix2d in enumerate(matrices):
+        for j,row in enumerate(matrix2d):
+            for i,x in enumerate(row):
+                try:
+                    row[i] = Decimal(str(x))
+                except Exception, e:
+                    logger.warn('matrix parse error: %r', e)
+                    errors.append('matrix: %d, row: %d, col: %d, non numeric value: %r'
+                        % (matrix_index, j, i, x)) 
+    return errors
+
 def is_empty_plate_matrix(matrix2d):
     is_empty = True
     for row in matrix2d:
@@ -46,7 +61,7 @@ def read_rows(rowgenerator):
     
     for i,cellgenerator in enumerate(rowgenerator):
         row = [x for x in cellgenerator]
-        logger.info('read row: %d: %r', i, row)
+        logger.debug('read row: %d: %r', i, row)
 
         # Matrix Header row: 
         # - empty cell followed by all number cells; 
@@ -185,11 +200,19 @@ def read_text(input_file):
                                 ALLOWED_ROWS))
                         logger.error(ERROR_ROW_SIZE + ': ' + msg)
                         errors[ERROR_ROW_SIZE].append(msg)
-                        for i,row in enumerate(plate_matrix):
-                            logger.error('%r: %r', i, row)
+                        # NOTE: also show a parser error; although will miss 
+                        # if the length is in ALLOWED_ROWS: in this case the 
+                        # later numeric conversion will catch the error
+                        msg = (
+                            'row: %d, plate_matrix: %d, must be '
+                            'a row letter followed by numeric values only: %r'
+                            % (i, len(plate_matrices),line))
+                        errors[ERROR_ROW_PATTERN_MATCH].append(msg)
                 else:
                     del plate_matrices[-1]
                 in_matrix = False
+    if not plate_matrices:
+        errors['parse error'] = 'no data read'
     logger.info('plate matrices: %d', len(plate_matrices))
     
     return (plate_matrices, errors)
@@ -211,6 +234,9 @@ def read_xlsx(input_file):
         if sheet_errors:
             logger.warn('sheet errors: %r: %r', sheet.name, sheet_errors)
             errors[sheet.name] = sheet_errors
+            
+    if not plate_matrices:
+        errors['No matrices were found']
     return (plate_matrices, errors)
 
 def read_csv(input_file):

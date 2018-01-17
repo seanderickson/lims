@@ -47,12 +47,12 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.debug('decorator un_cache: %s, %s', self, _func )
+        logger.info('decorator un_cache: %s, %s', self, _func )
         self.clear_cache()
         self.set_caching(False)
         result = _func(self, *args, **kwargs)
         self.set_caching(True)
-        logger.debug('decorator un_cache done: %s, %s', self, _func )
+        logger.info('decorator un_cache done: %s, %s', self, _func )
         return result
 
     return _inner
@@ -362,7 +362,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         return wrapper
 
     def clear_cache(self):
-        logger.debug('clearing the cache from resource: %s (all caches cleared)' 
+        logger.info('clearing the cache from resource: %s (all caches cleared)' 
             % self._meta.resource_name)
         cache.clear()
 

@@ -11175,6 +11175,38 @@ class RawDataTransformer(DBResourceTestCase):
         
         self._setup_duplex_data()
 
+        # TODO: create control wells
+#         input_1 = '\n'.join([
+#             '1-2,D04-E06="range1"',
+#             'H04-I06="range2"',
+#             'C-D="range3"'
+#             ])
+#         expected_named_ranges = [
+#             {
+#                 'ordinal': 1,
+#                 'label': 'range1',
+#                 'wells':["A01", "B01", "C01", "D01", "E01", "F01", "G01", 
+#                     "H01", "I01", "J01", "K01", "L01", "M01", "N01", "O01", "P01",
+#                     "A02", "B02", "C02", "D02", "E02", "F02", "G02", 
+#                     "H02", "I02", "J02", "K02", "L02", "M02", "N02", "O02", "P02",
+#                     "D04", "D05", "D06",
+#                     "E04", "E05", "E06",
+#                 ]
+#             },
+#             {
+#                 'ordinal': 2,
+#                 'label': 'range2',
+#                 'wells': ["H04", "H05", "H06","I04", "I05", "I06"]
+#             },
+#             {
+#                 'ordinal': 3,
+#                 'label': 'range3',
+#                 'wells': [
+#                     "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09", "C10", "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23", "C24",
+#                     "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24"]
+#             }
+#         ]
+
         test_screen = self.create_screen({
             'screen_type': 'rnai'
             })
@@ -11186,13 +11218,31 @@ class RawDataTransformer(DBResourceTestCase):
         expected_matrices = []
         assay_plate_size = 384
         number_of_matrices = 12
-        sep = '\t'
+        start_plate = self.duplex_library1['start_plate']
+        end_plate = start_plate + 3
+        if end_plate > self.duplex_library1['end_plate']:
+            self.fail('duplex library does not have enough plates: %r' 
+                % self.duplex_library1)
+        # Create a plate range that is not in numerical order
+        plate_ranges = '%d-%d, %d-%d' % (
+            start_plate+2, start_plate+3, start_plate, start_plate+1)
+        plates_expected = range(start_plate+2, start_plate+4)
+        plates_expected.extend(range(start_plate, start_plate+2))
+        logger.info('plates_expected: %r', plates_expected)
+        counter_expected = Counter(
+            OrderedDict((
+                ('plate', plates_expected),
+                ('condition',('C1',)),
+                ('replicate',('A','B','C')),
+                ('readout',('Read1',) )
+            )))
         for i in range(0,number_of_matrices):
             expected_matrices.append(self.create_test_matrix(assay_plate_size))
         logger.info('row0: %r', expected_matrices[0][0])            
         logger.info('row1: %r', expected_matrices[0][1])            
         
         def write_test_file(filepath, matrices):
+            sep = '\t'
             # write out test file
             text_buffer = cStringIO.StringIO()
     
@@ -11203,6 +11253,9 @@ class RawDataTransformer(DBResourceTestCase):
                 text_buffer.write(str(random_number) + '\n')
                 text_buffer.write('\n')
                 text_buffer.write(str(random_number) + '\n')
+                text_buffer.write('writing matrix: %d\n' % i)
+                
+                text_buffer.write('matrix for readout: %r\n' % counter_expected.get_readout(i))
     
                 width = len(matrix[0])
                 hrow = [str(n+1) for n in range(width)]
@@ -11238,18 +11291,13 @@ class RawDataTransformer(DBResourceTestCase):
 
         # 3. Create raw data input
         output_filename = 'test5_output1'
-        start_plate = self.duplex_library1['start_plate']
-        end_plate = start_plate + 3
-        if end_plate > self.duplex_library1['end_plate']:
-            self.fail('duplex library does not have enough plates: %r' 
-                % self.duplex_library1)
         raw_data_transform_input = {
             'screen_facility_id': test_screen['facility_id'],
             'library_plate_size': 384,
             'assay_plate_size': assay_plate_size,
             'output_sheet_option': 'plate_per_worksheet',
             'output_filename': output_filename,
-            'plate_ranges': '%d-%d' % (start_plate, end_plate),
+            'plate_ranges': plate_ranges,
             'assay_positive_controls': '',
             'assay_negative_controls': '',
             'assay_other_controls': '',
@@ -11266,13 +11314,6 @@ class RawDataTransformer(DBResourceTestCase):
         for k,v in raw_data_file_input.items():
             raw_data_transform_input['input_file_%d_%s' % (0,k)] = v
 
-        counter_expected = Counter(
-            OrderedDict((
-                ('plate',range(start_plate, end_plate+1)),
-                ('condition',('C1',)),
-                ('replicate',('A','B','C')),
-                ('readout',('Read1',) )
-            )))
 
         # 4. POST
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
@@ -11333,6 +11374,10 @@ class RawDataTransformer(DBResourceTestCase):
         kwargs['request'].user=admin_user
         logger.info('access file: %r, %r', args, kwargs)
         result = view(*args, **kwargs)
+        self.assertTrue(
+            result.status_code == 200, 
+            'raw data transform result file not found: %r, %r' 
+                % (result.status_code, result))
         output_filename = '%s.out.xlsx' % filepath.split('.')[0]
         logger.info('write %s to %r', filename, output_filename)
         with open(output_filename, 'w') as out_file:
@@ -11347,11 +11392,12 @@ class RawDataTransformer(DBResourceTestCase):
             wb = xlrd.open_workbook(file_contents=output_file.read())
             workbook_ds = xlsutils.workbook_as_datastructure(wb)
             logger.info('workbook as datastructure: %r', workbook_ds.keys())
-            plates_expected = [str(x) for x in range(start_plate, end_plate+1)]
+#             plates_expected = [str(x) for x in range(start_plate, end_plate+1)]
             
             self.assertEqual(set(wb.sheet_names()), set(workbook_ds.keys()))
             first_plate = plates_expected[0]
-            for i,row in enumerate(workbook_ds[first_plate]):
+            logger.info('first plate expected: %r', first_plate)
+            for i,row in enumerate(workbook_ds[str(first_plate)]):
                 logger.debug('plate: %s, row: %r', first_plate, row)
                 well_name = row['Well']
                 row_index = lims_utils.well_name_row_index(well_name)

@@ -1048,6 +1048,7 @@ class LibraryCopyPlateResource(DbApiResource):
             {   
                 plates, plate_ranges, copies, 
                 plate_numbers_expected, 
+                plate_numbers_listed_in_order,
                 plate_copy_keys_expected
             }
         '''
@@ -1111,12 +1112,18 @@ class LibraryCopyPlateResource(DbApiResource):
                 parsed_search['plate_copy_keys_expected'] = \
                     list(plate_copy_keys_expected)
             else:
+                plate_numbers_listed_in_order = list(parsed_search['plate'])
                 plate_numbers_expected = set(parsed_search['plate'])
                 plate_numbers_expected.update(*[
                     range(plate_range[0],plate_range[1]+1) 
                     for plate_range in parsed_search['plate_range']])
                 parsed_search['plate_numbers_expected'] = \
-                    list(plate_numbers_expected)
+                    sorted(plate_numbers_expected)
+                for plate_range in parsed_search['plate_range']:
+                    plate_numbers_listed_in_order.extend(
+                        range(plate_range[0],plate_range[1]+1))
+                parsed_search['plate_numbers_listed_in_order'] = \
+                    plate_numbers_listed_in_order
             logger.debug('parsed: %r', parsed_search)
             parsed_searches.append(parsed_search)
         
@@ -1189,7 +1196,8 @@ class LibraryCopyPlateResource(DbApiResource):
             plates.update(plate_query.all())
         
         if not plates:
-            raise ValidationError(key='Search', msg='No results found')
+#             raise ValidationError(key='Search', msg='No results found')
+            errors.add('No plates found')
         logger.info('plates found: %d, errors: %r', len(plates), errors)
         return (plates, parsed_searches, [x for x in sorted(errors)])
 
@@ -14879,10 +14887,10 @@ class RawDataTransformerResource(DbApiResource):
     ERROR_COLLATION_COUNT = 'Number of collations: %d, '\
         'must be a divisor of the number matrices read: %d'
     ERROR_PLATE_COUNT = (
-        'Not enough library plates: '
+        'Plates required (%d) does not match # of plates entered (%d): '
         'Matrices read: %d (transformed: %d), '
-        'Collations: %d, '
-        'Plates Required: %d, Plates Available: %d')
+        'Collations: %d')
+    
     control_type_abbreviations = {
         'assay_positive_controls': 'P',
         'assay_negative_controls': 'N',
@@ -15151,6 +15159,19 @@ class RawDataTransformerResource(DbApiResource):
     @write_authorization
     @transaction.atomic
     def post_detail(self, request, **kwargs):
+        '''
+        Parse raw data input files containing plate read data:
+        - Input matrices are collated based on the specified ordering of
+        plates, conditions, readouts, and replicates.
+        - Input matrix values are associated with library or cherry pick well
+        data.
+        - Assay and library control well data are parsed and associated with 
+        raw data values
+        - All input settings are stored on RawDataTransform and RawDataInputFile
+        objects in the database.
+        - Parsed data is returned in Excel spreadsheet format but not stored in 
+        the database.
+        '''
         
         logger.info('post_detail...')
         
@@ -15181,7 +15202,20 @@ class RawDataTransformerResource(DbApiResource):
                 key='plate_ranges', 
                 msg = 'Plates not found: %s' % ', '.join(sorted(errors)))
         logger.info('parsed_searches: %r', parsed_searches)
-        plate_numbers = parsed_searches[0]['plate_numbers_expected']
+        plate_numbers = parsed_searches[0]['plate_numbers_listed_in_order']
+        # check for duplicates
+        plate_check_set = set()
+        duplicate_plates = set()
+        for plate_number in plate_numbers:
+            if plate_number not in plate_check_set:
+                plate_check_set.add(plate_number)
+            else:
+                duplicate_plates.add(plate_number)
+        if duplicate_plates:
+            raise ValidationError(
+                key='plate_ranges', 
+                msg='plates specified more than once: %s' 
+                    % ', '.join([str(x) for x in duplicate_plates]))
         logger.info('plate_numbers: %r', plate_numbers)
         
         screen_facility_id = initializer_dict.pop('screen_facility_id', None)
@@ -15385,18 +15419,13 @@ class RawDataTransformerResource(DbApiResource):
             plates_required = transformed_matrix_count/collation_count
             logger.info('collation count: %d, plates required: %d',
                 collation_count, plates_required)
-            if plates_required > len(plate_numbers):
+            if plates_required != len(plate_numbers):
                 logger.info(str((len(matrices), transformed_matrix_count,
                     collation_count, plates_required, len(plate_numbers))))
                 msg = self.ERROR_PLATE_COUNT % (
+                    plates_required, len(plate_numbers),
                     len(matrices), transformed_matrix_count,
-                    collation_count, plates_required, len(plate_numbers))
-                raise ValidationError({
-                    filekey: msg, 'plate_ranges': msg })
-
-            elif plates_required < len(plate_numbers):
-                msg='All plates specified by: %r were not used: %r' \
-                    % (plate_ranges, plate_numbers[plates_required:])
+                    collation_count)
                 raise ValidationError({
                     filekey: msg, 'plate_ranges': msg })
             

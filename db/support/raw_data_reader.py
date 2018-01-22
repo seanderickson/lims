@@ -57,7 +57,9 @@ def read_rows(rowgenerator):
     
     plate_matrix = None
     in_matrix = False
-    expected_cols = 0
+#     expected_cols = 0
+    cols_detected = None
+    rows_detected = None
     
     for i,cellgenerator in enumerate(rowgenerator):
         row = [x for x in cellgenerator]
@@ -82,32 +84,51 @@ def read_rows(rowgenerator):
                     else:
                         break
                 if len(header_row)>0:
-                    expected_cols = len(header_row)
-                    logger.debug('expected_cols: %r', expected_cols)
-                    if expected_cols not in ALLOWED_COLS:
-                        # matrices are 2/3 ratio, so 12,24, or 36 in width
+                    _cols = len(header_row)
+                    
+                    if cols_detected is None:
+                        if _cols not in ALLOWED_COLS:
+                            msg = (
+                                'row: %d, columns found: %d, '
+                                'must be one of: %r, %r' 
+                                % (i, _cols, ALLOWED_COLS, row))
+                            logger.error(ERROR_PLATE_SIZE + ': ' + msg)
+                            errors[ERROR_PLATE_SIZE].append(msg)
+                            continue
+                        else:
+                            cols_detected = _cols
+                            rows_detected = int(_cols*2/3)
+                            logger.info('row: %d, cols detected: %r, rows: %r', 
+                                i, cols_detected, rows_detected)
+                    elif _cols != cols_detected:
                         msg = (
-                            'Not enough cols: ineligible: row: %d, cols recognized: %d, '
-                            'must be one of: %r, %r'
-                            % (i, expected_cols, ALLOWED_COLS, row))
-                        logger.info(msg)
+                            'row: %d, header columns found: %d, '
+                            'columns detected: %d: %r'
+                            % (i, _cols, cols_detected, row))
+                        logger.error(ERROR_PLATE_SIZE + ': ' + msg)
+                        errors[ERROR_PLATE_SIZE].append(msg)
                         continue
-                        # raise Exception(msg)
                     in_matrix = True
                     plate_matrix = []
                     plate_matrices.append(plate_matrix)
-            elif in_matrix:
+            else: 
+                # in matrix; blank cell found; signals end of matrix
                 if is_empty_plate_matrix(plate_matrix) is False:
-                    if len(plate_matrix) not in ALLOWED_ROWS:
+                    _rows = len(plate_matrix)
+                    if _rows != rows_detected:
                         msg = (
-                            'row: %d, plate_matrix: %d read fail, '
-                            'rows found: %r, must be one of %r' 
-                            % (i, len(plate_matrices), len(plate_matrix), 
-                                ALLOWED_ROWS))
+                            'row: %d, plate_matrix: %d, '
+                            'rows found: %d, rows detected %d' 
+                            % (i, len(plate_matrices), _rows, rows_detected))
                         logger.error(ERROR_ROW_SIZE + ': ' + msg)
                         errors[ERROR_ROW_SIZE].append(msg)
-                        for i,row in enumerate(plate_matrix):
-                            logger.error('%r: %r', i, row)
+                    if _rows < rows_detected:
+                        msg = (
+                            'row: %d, plate_matrix: %d, must be '
+                            'a row letter followed by numeric values only: %r'
+                            % (i, len(plate_matrices),line))
+                        errors[ERROR_ROW_PATTERN_MATCH].append(msg)
+                    
                 else:
                     logger.info('empty matrix found: %r', plate_matrix)
                     del plate_matrices[-1]
@@ -121,18 +142,23 @@ def read_rows(rowgenerator):
                 # matrix; not validated until the correct number of grid rows 
                 # have been read in, with no empty rows, or only valid grid 
                 # rows found after the header.
-                # TODO: could verify that all values are numerical
-                if expected_cols > 0:
-                    if len(row[1:]) < expected_cols:
-                        msg = (
-                            'row: %d, matrix: %d, line: %d, not enough cols: %r'
-                            % (i, len(plate_matrices), len(plate_matrix)+1,line))
-                        logger.error(ERROR_COL_SIZE + ': ' + msg)
-                        errors[ERROR_COL_SIZE].append(msg)
-                    else:
-                        plate_matrix.append(row[1:expected_cols+1])
+                _cols = len(row[1:])
+                if _cols < cols_detected:
+                    msg = (
+                        'line: %d, matrix: %d, row: %d, not enough cols: %r'
+                        % (i, len(plate_matrices), len(plate_matrix)+1,row))
+                    logger.error(ERROR_COL_SIZE + ': ' + msg)
+                    errors[ERROR_COL_SIZE].append(msg)
                 else:
-                    plate_matrix.append(row[1:])
+                    plate_matrix.append(row[1:cols_detected+1])
+            else:
+                # in matrix; found a cell0 that does not match row letter pattern
+                msg = ('line: %d, matrix: %d, row letter not found for row: %d, %r'
+                    % (i, len(plate_matrices), len(plate_matrix)+1, row))
+                logger.error(ERROR_COL_SIZE + ': ' + msg)
+                errors[ERROR_COL_SIZE].append(msg)
+                in_matrix = False
+                
     logger.info('plate matrices: %r', len(plate_matrices))        
     return (plate_matrices, errors)
 
@@ -147,7 +173,8 @@ def read_text(input_file):
     errors = defaultdict(list)
     plate_matrix = None
     in_matrix = False
-    expected_cols = 0
+    cols_detected = None
+    rows_detected = None
     for i,line in enumerate(input_file):
         if DEBUG:
             logger.info('read line: %d: %r', i, line)
@@ -159,16 +186,31 @@ def read_text(input_file):
         header_match = header_pattern.match(line)
         if header_match:
             logger.debug('recognized header %d: %r', len(plate_matrices), line)
-            expected_cols = len(re.split(r'\s+', line))
-            logger.debug('expected_cols: %r', expected_cols)
-            if expected_cols not in ALLOWED_COLS:
-                # matrices are 2/3 ratio, so 12,24, or 48 in width
-                msg = (
-                    'row: %d, cols recognized: %d, '
-                    'must be one of: %r, %r',
-                    i, expected_cols, ALLOWED_COLS, line)
-                logger.error(ERROR_PLATE_SIZE + ': ' + msg)
-                errors[ERROR_PLATE_SIZE].append(msg)
+            _cols = len(re.split(r'\s+', line))
+            logger.debug('_cols: %r', _cols)
+            if cols_detected is None:
+                if _cols not in ALLOWED_COLS:
+                    # matrices are 2/3 ratio, so 12,24, or 48 in width
+                    msg = (
+                        'row: %d, columns found: %d, '
+                        'must be one of: %r, %r' 
+                        % (i, _cols, ALLOWED_COLS, line))
+                    logger.error(ERROR_PLATE_SIZE + ': ' + msg)
+                    errors[ERROR_PLATE_SIZE].append(msg)
+                else:
+                    cols_detected = _cols
+                    rows_detected = int(_cols*2/3)
+                    logger.info('row: %d, cols detected: %r, rows: %r', 
+                        i, cols_detected, rows_detected)
+            else:
+                if _cols != cols_detected:
+                    msg = (
+                        'row: %d, header columns found: %d, '
+                        'columns detected: %d: %r'
+                        % (i, _cols, cols_detected, line))
+                    logger.error(ERROR_PLATE_SIZE + ': ' + msg)
+                    errors[ERROR_PLATE_SIZE].append(msg)
+                    
             in_matrix = True
             plate_matrix = []
             plate_matrices.append(plate_matrix)
@@ -176,33 +218,29 @@ def read_text(input_file):
         if in_matrix:
             if row_pattern.match(line):
                 row = re.split(r'\s+',line)
-                if len(plate_matrix) == 0:
-                    logger.debug('recognized row0: %r', line)
-                if expected_cols > 0:
-                    if len(row[1:]) < expected_cols:
-                        msg = (
-                            'row: %d, matrix: %d, line: %d, '
-                            'cols recognized: %d, expected: %d, %r'
-                            % (i, len(plate_matrices), len(plate_matrix)+1,
-                                len(row[1:]), expected_cols,row))
-                        logger.error(ERROR_COL_SIZE + ': ' + msg)
-                        errors[ERROR_COL_SIZE].append(msg)
-                    plate_matrix.append(row[1:expected_cols+1])
+                _cols = len(row[1:])
+                if _cols < cols_detected:
+                    msg = (
+                        'row: %d, matrix: %d, line: %d, '
+                        'columns found: %d, columns detected: %d, %r'
+                        % (i, len(plate_matrices), len(plate_matrix)+1,
+                            len(row[1:]), cols_detected,row))
+                    logger.error(ERROR_COL_SIZE + ': ' + msg)
+                    errors[ERROR_COL_SIZE].append(msg)
                 else:
-                    plate_matrix.append(row[1:])
+                    plate_matrix.append(row[1:cols_detected+1])
             else:
                 if is_empty_plate_matrix(plate_matrix) is False:
-                    if len(plate_matrix) not in ALLOWED_ROWS:
+                    _rows = len(plate_matrix)
+                    
+                    if _rows != rows_detected:
                         msg = (
                             'row: %d, plate_matrix: %d, '
-                            'rows found: %r, must be one of %r' 
-                            % (i, len(plate_matrices), len(plate_matrix), 
-                                ALLOWED_ROWS))
+                            'rows found: %d, rows detected %d' 
+                            % (i, len(plate_matrices), _rows, rows_detected))
                         logger.error(ERROR_ROW_SIZE + ': ' + msg)
                         errors[ERROR_ROW_SIZE].append(msg)
-                        # NOTE: also show a parser error; although will miss 
-                        # if the length is in ALLOWED_ROWS: in this case the 
-                        # later numeric conversion will catch the error
+                    if _rows < rows_detected:
                         msg = (
                             'row: %d, plate_matrix: %d, must be '
                             'a row letter followed by numeric values only: %r'
@@ -210,6 +248,7 @@ def read_text(input_file):
                         errors[ERROR_ROW_PATTERN_MATCH].append(msg)
                 else:
                     del plate_matrices[-1]
+                    
                 in_matrix = False
     if not plate_matrices:
         errors['parse error'] = 'no data read'

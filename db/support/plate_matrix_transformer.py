@@ -164,7 +164,6 @@ def transform(input_matrices, counter, aps, lps):
                 'the counter length with 4 quadrants: (%d)'
                     % (len(input_matrices), counter96.size()))
         
-        
         # - Create blank output matrices
         convoluted_matrices = [
             lims_utils.create_blank_matrix(lps) 

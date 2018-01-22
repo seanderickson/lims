@@ -460,7 +460,12 @@ class DBResourceTestCase(IResourceTestCase):
 
         return new_lab_affiliation
 
-    def _setup_duplex_data(self):
+    def _setup_duplex_data(self, control_wells=None):
+        '''
+        Create a pool library and duplex libraries for it.
+        - all wells are experimental unless indicated as control wells.
+        '''
+        control_wells = control_wells or []
         logger.info('create users...')
         self.test_admin_user = self.create_staff_user(
             { 'username': 'adminuser',
@@ -488,13 +493,24 @@ class DBResourceTestCase(IResourceTestCase):
             self.duplex_library1['start_plate'],
             self.duplex_library1['end_plate']+1):
             experimental_well_count = 384
-            duplex_well_data = [
-                self.create_test_well(
-                    plate,i,library_well_type='experimental',
+            for i in range(0,experimental_well_count):
+                well_name = lims_utils.well_name_from_index(
+                    i, experimental_well_count)
+                library_well_type='experimental'
+                if well_name in control_wells:
+                    library_well_type = 'library_control'
+                test_well = self.create_test_well(
+                    plate,i,library_well_type=library_well_type,
                     molar_concentration='0.001',
                     vendor_name='duplex_vendor2') 
-                for i in range(0,experimental_well_count)]
-            input_well_data.extend(duplex_well_data)
+                input_well_data.append(test_well)
+#             duplex_well_data = [
+#                 self.create_test_well(
+#                     plate,i,library_well_type='experimental',
+#                     molar_concentration='0.001',
+#                     vendor_name='duplex_vendor2') 
+#                 for i in range(0,experimental_well_count)]
+#             input_well_data.extend(duplex_well_data)
         logger.info(
             'patch duplex library %r wells: %d...', 
             self.duplex_library1['short_name'], len(input_well_data))
@@ -520,8 +536,13 @@ class DBResourceTestCase(IResourceTestCase):
         experimental_well_count = 384
         input_well_data = []
         for i in range(0,experimental_well_count):
+            well_name = lims_utils.well_name_from_index(
+                i, experimental_well_count)
+            library_well_type='experimental'
+            if well_name in control_wells:
+                library_well_type = 'library_control'
             input_well = self.create_test_well(
-                plate,i,library_well_type='experimental',
+                plate,i,library_well_type=library_well_type,
                 molar_concentration='0.001',
                 vendor_name='rna_vendor1') 
             duplex_wells = []
@@ -7924,23 +7945,6 @@ class ScreensaverUserResource(DBResourceTestCase):
 
     def test0_create_admin_user(self):
         
-#         logger.info('test0_create_user...')
-#         self.user1 = self.create_lab_head({ 
-#             'username': 'st1',
-#             'is_active': False
-#         })
-# 
-# #         logger.info('test0_create_user 2...')
-# #         self.user2 = self.create_screensaveruser({ 
-# #             'username': 'st2',
-# #             'is_active': False
-# #             })
-#         logger.info('test0_create_user screening user...')
-#         self.screening_user = self.create_screening_user(
-#             { 'username': 'screening1', 'is_active': True,
-#                 'lab_head_id': self.user1['screensaver_user_id'] })
-#         self.assertTrue(self.screening_user['is_active'])
-#         
         # FIXME: test more specific admin user permissions
         logger.info('test0_create_user admin user...')
         self.test_admin_user = self.create_staff_user(
@@ -10844,34 +10848,6 @@ class RawDataTransformer(DBResourceTestCase):
 
         plate_matrices384 = db.support.plate_matrix_transformer.transform(
             plate_matrices96, counter384, assay_plate_size, library_plate_size)
-#         # - Create blank output matrices
-#         plate_matrices384 = [
-#             lims_utils.create_blank_matrix(library_plate_size) 
-#             for x in range(0,len(plate_matrices96)/4)]
-# 
-#         # Iterate through output (384) matrices and find the 96 matrix values
-#         # NOTE: could also start by iterating through input matrices
-#         for index,matrix in enumerate(plate_matrices384):
-#             readout = counter384.get_readout(index)
-#             for rownum, row in enumerate(matrix):
-#                 for colnum in range(0,len(row)):
-#                     input_quadrant = lims_utils.deconvolute_quadrant(
-#                         library_plate_size, assay_plate_size, 
-#                         rownum, colnum)
-#                     readout96 = dict(readout, quadrant=input_quadrant)
-#                     logger.debug('index: %d, 384 readout: %r, quadrant: %d, 96: %r',
-#                         index,readout,input_quadrant,readout96)
-#                     input_index = counter96.get_index(readout96)
-#                     
-#                     input_row = lims_utils.deconvolute_row(
-#                         library_plate_size, assay_plate_size, 
-#                         rownum, colnum)
-#                     input_col = lims_utils.deconvolute_col(
-#                         library_plate_size, assay_plate_size, 
-#                         rownum, colnum)
-#                     logger.debug('find: index: %d, cell: [%d][%d]',
-#                         input_index,input_row,input_col)
-#                     row[colnum] = plate_matrices96[input_index][input_row][input_col]
                     
         # 1.E Deconvolute 384 -> 96 for verification
         new_plate_matrices96 = [
@@ -11038,45 +11014,6 @@ class RawDataTransformer(DBResourceTestCase):
         plate_matrices384 = db.support.plate_matrix_transformer.transform(
             plate_matrices1536, counter384, 1536, 384)
 
-#         # 2.D Deconvolute 1536 -> 384
-#         
-#         # Create blank output matrices
-#         plate_matrices384 = [ None for x in range(0,len(plate_matrices1536)*4) ] 
-# #             lims_utils.create_blank_matrix(library_plate_size) 
-# #             for x in range(0,len(plate_matrices1536)*4)]
-# 
-#         # Iterate through input (1536) matrices and find the output 384 matrix value
-#         # NOTE: could also do as before, with the 96 example and iterate through
-#         # the 384 matrices and find the 1536 values
-#         for index, matrix in enumerate(plate_matrices1536):
-#             readout1536 = counter1536.get_readout(index)
-#             plate1536 = readout1536['plate']
-#             
-#             # Convert each 1536 plate separately, and find the output matrix position
-#             output_384_matrices = lims_utils.deconvolute_matrices(
-#                 [matrix], assay_plate_size, library_plate_size)
-#             
-#             for quadrant, matrix384 in enumerate(output_384_matrices):
-#                 plate384 = plates_1536[plate1536][quadrant]
-#                 readout384 = dict(readout1536, plate=plate384)
-#                 index384 = counter384.get_index(readout384)
-#                 
-#                 plate_matrices384[index384] = matrix384    
-#             
-#             # for rownum, row in enumerate(matrix):
-#             #     for colnum, val in enumerate(row):
-#             #         quadrant = lims_utils.deconvolute_quadrant(
-#             #             assay_plate_size, library_plate_size, rownum, colnum)
-#             #         plate384 = plates_1536[plate1536][quadrant]
-#             #         readout384 = dict(readout1536, plate=plate384)
-#             #         index384 = counter384.get_index(readout384)
-#             #         row384 = lims_utils.deconvolute_row(
-#             #             assay_plate_size, library_plate_size, rownum, colnum)
-#             #         col384 = lims_utils.deconvolute_col(
-#             #             assay_plate_size, library_plate_size, rownum, colnum)
-#             #          
-#             #         plate_matrices384[index384][row384][col384] = val
-
         # Write out data for visual verification
         csv_buffer = cStringIO.StringIO()
         csv_writer = csv.writer(csv_buffer, lineterminator='\n')
@@ -11173,40 +11110,45 @@ class RawDataTransformer(DBResourceTestCase):
         
         # 1. Setup:
         
-        self._setup_duplex_data()
 
-        # TODO: create control wells
-#         input_1 = '\n'.join([
-#             '1-2,D04-E06="range1"',
-#             'H04-I06="range2"',
-#             'C-D="range3"'
-#             ])
-#         expected_named_ranges = [
-#             {
-#                 'ordinal': 1,
-#                 'label': 'range1',
-#                 'wells':["A01", "B01", "C01", "D01", "E01", "F01", "G01", 
-#                     "H01", "I01", "J01", "K01", "L01", "M01", "N01", "O01", "P01",
-#                     "A02", "B02", "C02", "D02", "E02", "F02", "G02", 
-#                     "H02", "I02", "J02", "K02", "L02", "M02", "N02", "O02", "P02",
-#                     "D04", "D05", "D06",
-#                     "E04", "E05", "E06",
-#                 ]
-#             },
-#             {
-#                 'ordinal': 2,
-#                 'label': 'range2',
-#                 'wells': ["H04", "H05", "H06","I04", "I05", "I06"]
-#             },
-#             {
-#                 'ordinal': 3,
-#                 'label': 'range3',
-#                 'wells': [
-#                     "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09", "C10", "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23", "C24",
-#                     "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24"]
-#             }
-#         ]
+        assay_plate_size = 384
+        library_controls_input = '1'
+        (library_named_ranges,errors) = lims_utils.parse_named_well_ranges(
+            library_controls_input, assay_plate_size)
+        self.assertTrue(
+            len(errors)==0, 'library_controls parse error: %r' % errors)
+        logger.info('library named ranges: %r', library_named_ranges)
+        positive_controls_input = '\n'.join([
+            'a24-h24="range1"',
+            'a23-h23="range2"',
+            ])
+        (positive_named_ranges,errors) = lims_utils.parse_named_well_ranges(
+            positive_controls_input, assay_plate_size)
+        self.assertTrue(
+            len(errors)==0, 'positive_controls parse error: %r'% errors)
+        negative_controls_input = 'i23-p23="range3"'
+        (negative_named_ranges,errors) = lims_utils.parse_named_well_ranges(
+            negative_controls_input, assay_plate_size)
+        self.assertTrue(
+            len(errors)==0, 'negative_controls parse error: %r'% errors)
+        other_controls_input = 'i24-p24="range4"'
+        (other_named_ranges,errors) = lims_utils.parse_named_well_ranges(
+            other_controls_input, assay_plate_size)
+        self.assertTrue(
+            len(errors)==0, 'other_controls parse error: %r'% errors)
 
+        all_controls = []
+        for nr in library_named_ranges.values():
+            all_controls.extend(nr['wells'])
+        for nr in positive_named_ranges.values():
+            all_controls.extend(nr['wells'])
+        for nr in negative_named_ranges.values():
+            all_controls.extend(nr['wells'])
+        for nr in other_named_ranges.values():
+            all_controls.extend(nr['wells'])
+        logger.info('all controls: %r', all_controls)
+        self._setup_duplex_data(control_wells=all_controls)
+        
         test_screen = self.create_screen({
             'screen_type': 'rnai'
             })
@@ -11216,7 +11158,6 @@ class RawDataTransformer(DBResourceTestCase):
         # create test input matrix
         
         expected_matrices = []
-        assay_plate_size = 384
         number_of_matrices = 12
         start_plate = self.duplex_library1['start_plate']
         end_plate = start_plate + 3
@@ -11255,7 +11196,8 @@ class RawDataTransformer(DBResourceTestCase):
                 text_buffer.write(str(random_number) + '\n')
                 text_buffer.write('writing matrix: %d\n' % i)
                 
-                text_buffer.write('matrix for readout: %r\n' % counter_expected.get_readout(i))
+                text_buffer.write('matrix for readout: %r\n' 
+                    % counter_expected.get_readout(i))
     
                 width = len(matrix[0])
                 hrow = [str(n+1) for n in range(width)]
@@ -11265,7 +11207,8 @@ class RawDataTransformer(DBResourceTestCase):
                 
                 for r,row in enumerate(matrix):
                     row_letter = lims_utils.row_to_letter(r)
-                    text_buffer.write(sep + row_letter + sep + sep.join(row) + '\n')
+                    text_buffer.write(
+                        sep + row_letter + sep + sep.join(row) + '\n')
                 text_buffer.write('\n')
         
             text_buffer.seek(0)
@@ -11298,10 +11241,10 @@ class RawDataTransformer(DBResourceTestCase):
             'output_sheet_option': 'plate_per_worksheet',
             'output_filename': output_filename,
             'plate_ranges': plate_ranges,
-            'assay_positive_controls': '',
-            'assay_negative_controls': '',
-            'assay_other_controls': '',
-            'library_controls': '',
+            'assay_positive_controls': positive_controls_input,
+            'assay_negative_controls': negative_controls_input,
+            'assay_other_controls': other_controls_input,
+            'library_controls': library_controls_input,
             'comments': '',
             }
         raw_data_file_input = {
@@ -11313,7 +11256,6 @@ class RawDataTransformer(DBResourceTestCase):
         
         for k,v in raw_data_file_input.items():
             raw_data_transform_input['input_file_%d_%s' % (0,k)] = v
-
 
         # 4. POST
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
@@ -11387,43 +11329,73 @@ class RawDataTransformer(DBResourceTestCase):
         # 4.A Read in and validate the output file
         logger.info('read test file: %r', filename)
         readout_title = 'Luminescence'
+
+        def test_control(well_name, row, named_ranges, type):
+            for nr in named_ranges.values():
+                if well_name in nr['wells']:
+                    self.assertEqual(row['Type'],type,
+                        '%s != %s, well: %s' 
+                            % (row['Type'],type, well_name))
+                    if nr['label'] and len(nr['label'])!=0:
+                        self.assertEqual(
+                            row['Pre-Loaded Controls'],nr['label'],
+                            '%s != %s, well: %s, %s' 
+                                % (row['Pre-Loaded Controls'],nr['label'], 
+                                    well_name, type))
+                    else:
+                        self.assertEqual(
+                            row['Pre-Loaded Controls'],None,
+                            '%s != %s, well: %s, %s' 
+                                % (row['Pre-Loaded Controls'],nr['label'], 
+                                    well_name, type))
         
         with open(output_filename, 'rb') as output_file:
             wb = xlrd.open_workbook(file_contents=output_file.read())
             workbook_ds = xlsutils.workbook_as_datastructure(wb)
             logger.info('workbook as datastructure: %r', workbook_ds.keys())
-#             plates_expected = [str(x) for x in range(start_plate, end_plate+1)]
             
-            self.assertEqual(set(wb.sheet_names()), set(workbook_ds.keys()))
-            first_plate = plates_expected[0]
-            logger.info('first plate expected: %r', first_plate)
-            for i,row in enumerate(workbook_ds[str(first_plate)]):
-                logger.debug('plate: %s, row: %r', first_plate, row)
-                well_name = row['Well']
-                row_index = lims_utils.well_name_row_index(well_name)
-                col_index = lims_utils.well_name_col_index(well_name)
-                
-                for counter_readout in counter_expected.iterate_counter_columns():
-                    column_title = \
-                        '{readout}_{condition}_{replicate}'.format(
-                            **counter_readout).title()
-                    column_title = '%s_%s' % (readout_title, column_title)
-                    logger.debug('testing column: %r', column_title)
-                    self.assertTrue(column_title in row)
-                    readout_value = row[column_title]
-
-                    counter_readout['plate'] = int(first_plate)
-                    matrix_index = counter_expected.get_index(counter_readout)
-                    self.assertTrue(matrix_index < len(expected_matrices),
-                        'matrix index: %d >= expected: %d' %(
-                            matrix_index,len(expected_matrices)))
-                    matrix = expected_matrices[matrix_index]
-                    expected_value = matrix[row_index][col_index]
-                    self.assertEqual(readout_value, expected_value)
+            self.assertEqual(
+                set([str(x) for x in plates_expected]), set(workbook_ds.keys()))
+            for plate_number in plates_expected:
+                logger.info('checking plate: %r', plate_number)
+                for i,row in enumerate(workbook_ds[str(plate_number)]):
+                    logger.debug('plate: %s, row: %r', plate_number, row)
+                    well_name = row['Well']
+                    row_index = lims_utils.well_name_row_index(well_name)
+                    col_index = lims_utils.well_name_col_index(well_name)
+                    
+                    for counter_readout in counter_expected.iterate_counter_columns():
+                        column_title = \
+                            '{readout}_{condition}_{replicate}'.format(
+                                **counter_readout).title()
+                        column_title = '%s_%s' % (readout_title, column_title)
+                        logger.debug('testing column: %r', column_title)
+                        self.assertTrue(column_title in row)
+                        readout_value = row[column_title]
+    
+                        counter_readout['plate'] = int(plate_number)
+                        matrix_index = counter_expected.get_index(counter_readout)
+                        self.assertTrue(matrix_index < len(expected_matrices),
+                            'matrix index: %d >= expected: %d' %(
+                                matrix_index,len(expected_matrices)))
+                        matrix = expected_matrices[matrix_index]
+                        expected_value = matrix[row_index][col_index]
+                        self.assertEqual(readout_value, expected_value)
+                                    
+                    if well_name in all_controls:
+                        test_control(well_name, row, library_named_ranges,'C')
+                        test_control(well_name, row, positive_named_ranges,'P')
+                        test_control(well_name, row, negative_named_ranges,'N')
+                        test_control(well_name, row, other_named_ranges,'O')
+                    else:
+                        self.assertTrue(row['Type'], 'X')
+                        self.assertEqual(row['Pre-Loaded Controls'], None)
+                    
+                    
+                    
+                    
                     
                 # TODO:
-                # a. assay controls: named ranges (duplicates, non-control)
-                # b. library controls
                 # c. transformation (1536->384)
                 # d. validate input
                 # e. multiple input files

@@ -11164,10 +11164,10 @@ class RawDataTransformer(DBResourceTestCase):
         if end_plate > self.duplex_library1['end_plate']:
             self.fail('duplex library does not have enough plates: %r' 
                 % self.duplex_library1)
-        # Create a plate range that is not in numerical order
+        # Create a plate range that is not in numerical order and reversed
         plate_ranges = '%d-%d, %d-%d' % (
-            start_plate+2, start_plate+3, start_plate, start_plate+1)
-        plates_expected = range(start_plate+2, start_plate+4)
+            start_plate+3, start_plate+2, start_plate, start_plate+1)
+        plates_expected = range(start_plate+3, start_plate+2-1, -1)
         plates_expected.extend(range(start_plate, start_plate+2))
         logger.info('plates_expected: %r', plates_expected)
         counter_expected = Counter(

@@ -1078,16 +1078,27 @@ class LibraryCopyPlateResource(DbApiResource):
             
             parsed_search = defaultdict(list)
             
+            plate_numbers_in_order_listed = list()
             for part in parts:
                 # unquote
                 part = re.sub(r'["\']+','',part)
 
                 if PLATE_PATTERN.match(part):
-                    parsed_search['plate'].append(int(part))
+                    plate_number = int(part)
+                    parsed_search['plate'].append(plate_number)
+                    plate_numbers_in_order_listed.append(plate_number)
                 elif PLATE_RANGE_PATTERN.match(part):
                     match = PLATE_RANGE_PATTERN.match(part)
-                    parsed_search['plate_range'].append(sorted([
-                        int(match.group(1)), int(match.group(2))]))
+                    plate_range = [
+                        int(match.group(1)), int(match.group(2))]
+                    parsed_search['plate_range'].append(sorted(plate_range))
+                    if plate_range[1] < plate_range[0]:
+                        logger.info('extend reversed range: %r',plate_range)
+                        plate_numbers_in_order_listed.extend(
+                            range(plate_range[0],plate_range[1]-1,-1))
+                    else:
+                        plate_numbers_in_order_listed.extend(
+                            range(plate_range[0],plate_range[1]+1))
                 else:
                     # Must be a copy
                     if not COPY_NAME_PATTERN.match(part):
@@ -1096,6 +1107,9 @@ class LibraryCopyPlateResource(DbApiResource):
                             msg='unrecognized pattern: %r' % part)
                     logger.info('recognized copy: %r', part)
                     parsed_search['copy'].append(part)
+
+            parsed_search['plate_numbers_in_order_listed'] = \
+                plate_numbers_in_order_listed
             
             # 20180119 - removed sorting of searches to preserve entered 
             # ordering    
@@ -1114,18 +1128,12 @@ class LibraryCopyPlateResource(DbApiResource):
                 parsed_search['plate_copy_keys_expected'] = \
                     list(plate_copy_keys_expected)
             else:
-                plate_numbers_in_order_listed = list(parsed_search['plate'])
                 plate_numbers_expected = set(parsed_search['plate'])
                 plate_numbers_expected.update(*[
                     range(plate_range[0],plate_range[1]+1) 
                     for plate_range in parsed_search['plate_range']])
                 parsed_search['plate_numbers_expected'] = \
                     sorted(plate_numbers_expected)
-                for plate_range in parsed_search['plate_range']:
-                    plate_numbers_in_order_listed.extend(
-                        range(plate_range[0],plate_range[1]+1))
-                parsed_search['plate_numbers_in_order_listed'] = \
-                    plate_numbers_in_order_listed
             logger.debug('parsed: %r', parsed_search)
             parsed_searches.append(parsed_search)
         
@@ -15204,7 +15212,7 @@ class RawDataTransformerResource(DbApiResource):
             raise ValidationError(
                 key='plate_ranges', 
                 msg = 'Plates not found: %s' % ', '.join(sorted(errors)))
-        logger.info('parsed_searches: %r', parsed_searches)
+        logger.info('parsed_searches: %r', parsed_searches[0]['plate_numbers_in_order_listed'])
         plate_numbers = parsed_searches[0]['plate_numbers_in_order_listed']
         # check for duplicates
         plate_check_set = set()

@@ -4,22 +4,36 @@
 
 
 from __future__ import unicode_literals
-import json
-import requests
-import sys, os
-from urlparse import urlparse
+
 import argparse
 import getpass
+import json
+import logging
+import sys, os
+from urlparse import urlparse
+
+import requests
 
 from django_requests import get_logged_in_session
-
 import reports.serialize.csvutils as csvutils
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 # TODO: this replaces /reports/management/commands/db_init.py - sde4 - 201404
 
+def parse_credentials(credential_file):
+    username, password = None,None
+    
+    with open(credential_file) as f:
+        for line in f:
+            if username is not None:
+                raise ArgumentError(credential_file, 
+                    'must contain a single "username:password"')
+            (username,password) = line.strip().split(':')
+            logger.debug('read: %r:has_password:%r', 
+                username, password is not None)
+    return username, password
 
 class ApiError(Exception):
     
@@ -164,15 +178,22 @@ if __name__ == "__main__":
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
 
-    password = args.password
-    if not password:
-        password = getpass.getpass()
+    if args.credential_file:
+        username,password = parse_credentials(args.credential_file)
+    if username is None:
+        username = args.username
+        if username is None:
+            parser.error(
+                'username is required if not specifying the credential_file')
+        password = args.password
+        if not password:
+            password = getpass.getpass()
     
     headers ={}
 
     #### log in using django form-based auth, and keep the session
     session = get_logged_in_session(
-        args.username, password, base_url)
+        username, password, base_url)
     # django session based auth requires a csrf token
     headers['X-CSRFToken'] = session.cookies['csrftoken']
     # always accept json for debugging the returned values

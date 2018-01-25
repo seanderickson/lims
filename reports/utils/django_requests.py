@@ -36,7 +36,8 @@ def get_logged_in_session(username, password, base_url,
         login_form=ACCOUNTS_LOGIN_FORM
     
     if DEBUG:
-        print 'username:%s:%s,%s,%s' % (username,password,base_url,login_form)
+        print 'username:%s:has_password=%r,%s,%s' % (
+            username,password is not None,base_url,login_form)
     s = requests.Session()
     # first, get the page, to induce django to generate the csrf token
     r = s.get('%s%s' % (base_url, login_form), verify=False)
@@ -63,9 +64,8 @@ def get_logged_in_session(username, password, base_url,
     prepped = s.prepare_request(r)
     
     # Post the login request to the url
-    logger.info('post the login request: url: %r, method: %r', r.url, r.method)
+    logger.debug('post the login request: url: %r, method: %r', r.url, r.method)
     r = s.send(prepped)
-    logger.info('response code: %r', r.status_code)
     if DEBUG:
         sys.stderr.write('\nlogin response headers: %r' % r.headers)
         sys.stderr.write('\nlogin response cookies: %r' % r.cookies)
@@ -109,6 +109,15 @@ def get_session(username=None, password=None, base_url=None, login_form=LOGIN_FO
 
 
 def delete(url, request_or_session, headers):
+    if headers == None:
+        headers = {}
+    headers['Referer']=url
+    headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
+    if DEBUG:
+        sys.stderr.write('csrftoken: %s\n' 
+            % request_or_session.cookies['csrftoken'])
+        sys.stderr.write('headers: %s\n' % str((headers)))
+    logger.debug('DELETE: %r, headers: %r', url, headers)
     r = request_or_session.delete(url,headers=headers);
     
     if DEBUG:
@@ -116,56 +125,62 @@ def delete(url, request_or_session, headers):
         sys.stderr.write('\nresponse cookies: %r' % r.cookies)
         sys.stderr.write('\nresponse:\n%s\n' % r.content )
     if r.status_code not in [204]:
-        raise Exception("Error: status: %s, %s" 
+        logger.warn("Error: status: %s, %s" 
                         % (r.status_code, r.content))
     logger.info('DELETE: %r, response.status_code: %r', url, r.status_code)
     return r
 
-def get(url,request_or_session,headers): 
-
-    logger.info('GET: %r', url)
-    r = request_or_session.get(url,headers=headers)
+def get(url,request_or_session, headers=None, params=None): 
+    if headers == None:
+        headers = {}
+    headers['Referer']=url
+    headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
+    if DEBUG:
+        sys.stderr.write('csrftoken: %s\n' 
+            % request_or_session.cookies['csrftoken'])
+        sys.stderr.write('headers: %s\n' % str((headers)))
+    logger.info('GET: %r, headers: %r', url, headers)
+    r = request_or_session.get(url, headers=headers, params=params)
     if DEBUG:
         sys.stderr.write('\nresponse headers: %r' % r.headers)
         sys.stderr.write('\nresponse cookies: %r' % r.cookies)
         sys.stderr.write('\nresponse:\n%s\n' % r.content )
     
     if r.status_code not in [200]:
-        raise Exception("Error: status: %s, %s" 
+        logger.warn("Error: status: %s, %s" 
                         % (r.status_code, r.content))
     return r
        
-def put(url, request_or_session, file, headers=None ):
+def put(url, request_or_session, data=None, headers=None ):
+    if headers == None:
+        headers = {}
+    headers['Referer']=url
+    headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
+    if DEBUG:
+        sys.stderr.write('csrftoken: %s\n' 
+            % request_or_session.cookies['csrftoken'])
+        sys.stderr.write('headers: %s\n' % str((headers)))
 
-    with open(file) as f:
-        
-        if headers == None:
-            headers = {}
-        headers['Referer']=url
-        headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
-        if DEBUG:
-            sys.stderr.write('csrftoken: %s\n' % request_or_session.cookies['csrftoken'])
-            sys.stderr.write('headers: %s\n' % str((headers)))
-        
-        r = Request('PUT', url,
-                    headers=headers,
-                    data=f.read())
-        
-        prepped = request_or_session.prepare_request(r)
+    r = Request('PUT', url,
+                headers=headers,
+                data=data)
     
-        r = request_or_session.send(prepped)        
-            
-        if DEBUG:
-            sys.stderr.write('\nresponse headers: %r' % r.headers)
-            sys.stderr.write('\nresponse cookies: %r' % r.cookies)
-            sys.stderr.write('\nresponse:\n%s\n' % r.content )
+    prepped = request_or_session.prepare_request(r)
 
-        if r.status_code not in [200,202]:
-            raise Exception("Error: status: %s\n%s\n%s" 
-                            % (r.status_code, r.headers, r.content))
-        return r
+    r = request_or_session.send(prepped)        
+        
+    if DEBUG:
+        sys.stderr.write('\nresponse headers: %r' % r.headers)
+        sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+        sys.stderr.write('\nresponse:\n%s\n' % r.content )
+
+    if r.status_code not in [200,202]:
+        logger.warn("Error: status: %s\n%s\n%s" 
+                        % (r.status_code, r.headers, r.content))
+    return r
+
     
-def post(url, request_or_session, file=None, headers=None ):
+def post(url, request_or_session, data=None, headers=None ):
     if headers == None:
         headers = {}
     headers['Referer']=url
@@ -175,70 +190,57 @@ def post(url, request_or_session, file=None, headers=None ):
             % request_or_session.cookies['csrftoken'])
         sys.stderr.write('headers: %s\n' % str((headers)))
     
-    def do_post(f):
-        if f: 
-            r = Request('POST', url,
-                        headers=headers,
-                        data=f.read())
-        else: 
-            r = Request('POST', url,
-                        headers=headers)
-            
-        prepped = request_or_session.prepare_request(r)
-    
-        r = request_or_session.send(prepped)        
-        if DEBUG:
-            sys.stderr.write('\nresponse headers: %r' % r.headers)
-            sys.stderr.write('\nresponse cookies: %r' % r.cookies)
-            sys.stderr.write('\nresponse:\n%s\n' % r.content )
-            
-        if r.status_code not in [200,201,202]:
-            raise Exception("Error: status: %s\n%s\n%s" 
-                            % (r.status_code, r.headers, r.content))
-        return r
+    r = Request('POST', url,
+                headers=headers,
+                data=data)
+    prepped = request_or_session.prepare_request(r)
 
-    if file is not None:
-        with open(file) as f:
-            return do_post(f)
-    else:
-        return do_post(None)
-    
-def patch(url,request_or_session,file, headers=None ):
-    
-    with open(file) as f:
+    r = request_or_session.send(prepped)        
+    if DEBUG:
+        sys.stderr.write('\nresponse headers: %r' % r.headers)
+        sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+        sys.stderr.write('\nresponse:\n%s\n' % r.content )
         
-        if headers == None:
-            headers = {}
-        headers['Referer']=url
-        headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
-        if DEBUG:
-            sys.stderr.write('csrftoken: %s\n' % request_or_session.cookies['csrftoken'])
-            sys.stderr.write('headers: %s\n' % str((headers)))
-        
-        r = Request('PATCH', url,
-                    headers=headers,
-                    data=f.read())
-        
-        prepped = request_or_session.prepare_request(r)
-    
-        r = request_or_session.send(prepped)        
-            
-        if DEBUG:
-            sys.stderr.write('\nresponse headers: %r' % r.headers)
-            sys.stderr.write('\nresponse cookies: %r' % r.cookies)
-            sys.stderr.write('\nresponse:\n%s\n' % r.content )
+    if r.status_code not in [200,201,202]:
+        logger.warn("Error: status: %s\n%s\n%s" 
+                        % (r.status_code, r.headers, r.content))
+    return r
 
-        if r.status_code not in [200,202]:
-            raise Exception("Error: status: %s\n%s\n%s" 
-                            % (r.status_code, r.headers, r.content))
-        return r
+def patch(url,request_or_session,data=None, headers=None ):
+    if headers == None:
+        headers = {}
+    headers['Referer']=url
+    headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
+    if DEBUG:
+        sys.stderr.write('csrftoken: %s\n' 
+            % request_or_session.cookies['csrftoken'])
+        sys.stderr.write('headers: %s\n' % str((headers)))
+        
+    r = Request('PATCH', url,
+                headers=headers,
+                data=data)
+    prepped = request_or_session.prepare_request(r)
 
-    
+    r = request_or_session.send(prepped)        
+        
+    if DEBUG:
+        sys.stderr.write('\nresponse headers: %r' % r.headers)
+        sys.stderr.write('\nresponse cookies: %r' % r.cookies)
+        sys.stderr.write('\nresponse:\n%s\n' % r.content )
+
+    if r.status_code not in [200,202]:
+        logger.warn("Error: status: %s\n%s\n%s" 
+                        % (r.status_code, r.headers, r.content))
+    return r
+
     
 parser = argparse.ArgumentParser(description='url')
 parser.add_argument('url', help='url to connect to')
 parser.add_argument('-u', '--username', help='username', required=True)
 parser.add_argument('-p', '--password', help='password', required=False)
+parser.add_argument(
+    '-c', '--credential_file',
+    help = 'credential file containing the username:password for api authentication')
 parser.add_argument('-f', '--file', help='file', required=False)
 parser.add_argument('-a', '--action', help='HTTP action', required=True,
                     choices=['GET','POST','PUT','PATCH','DELETE'])
@@ -261,12 +263,19 @@ if __name__ == "__main__":
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
 
-    password = args.password
-    if not password:
-        password = getpass.getpass()
+    if args.credential_file:
+        username,password = parse_credentials(args.credential_file)
+    if username is None:
+        username = args.username
+        if username is None:
+            parser.error(
+                'username is required if not specifying the credential_file')
+        password = args.password
+        if not password:
+            password = getpass.getpass()
     
     # Default headers
-    headers = {'content-type': 'application/json',
+    headers = {'Content-Type': 'application/json',
                'Accept': 'application/json'}
 
     if args.header:
@@ -279,24 +288,32 @@ if __name__ == "__main__":
     url = args.url
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
-    s = get_logged_in_session(args.username,password,base_url,login_form=args.login_form)
+    s = get_logged_in_session(username,password,base_url,login_form=args.login_form)
     
     action = args.action
     
+    logger.info('url: %r, action: %r, file: %r, headers: %r',
+        url, action, args.file, headers)
+    
+    data = None
+    if args.file is not None:
+        with open(args.file) as f:
+            data = f.read()
+    
     if action == 'GET':
-        r = get(url, s, headers)
+        r = get(url, s, headers=headers)
         print r.content
     elif action == 'DELETE':
-        delete(url, s, headers)
+        delete(url, s, headers=headers)
         print 'DELETE: ', url, ' ,response:', r.status_code
     elif action == 'PATCH':
-        r = patch(url,s,args.file,headers)
+        r = patch(url,s,data=data,headers=headers)
         print r.content
     elif action == 'PUT':
-        r = put(url,s,args.file,headers)        
+        r = put(url,s,data=data,headers=headers)        
         print r.content
     elif action == 'POST':
-        r = post(url,s,args.file,headers)        
+        r = post(url,s,data=data,headers=headers)        
         print r.content
     else:
         raise Exception("unknown action %s" % action)

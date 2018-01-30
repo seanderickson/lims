@@ -91,6 +91,10 @@ logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
 
+# NOTE: the simulated django client requests expect the HTTP Header "Accept" to 
+# be stored in the variable "HTTP_ACCEPT"
+DJANGO_ACCEPT_PARAM = 'HTTP_ACCEPT'
+
 # Required for non-staff users to log in
 settings.IS_PRODUCTION_READY = True
 
@@ -1143,7 +1147,7 @@ class IResourceTestCase(SimpleTestCase):
         _data_for_get = { 
             'limit': 0,
             'includes': '*',
-            'HTTP_ACCEPT': 'application/json'
+            DJANGO_ACCEPT_PARAM: 'application/json'
         }
         if data_for_get:
             _data_for_get.update(data_for_get)
@@ -1527,8 +1531,8 @@ class TestApiClient(object):
         Performs a simulated ``GET`` request to the provided URI.
         """
         content_type = self.serializer.get_content_type_for_format(format)
-        if 'HTTP_ACCEPT' not in kwargs:
-            kwargs['HTTP_ACCEPT'] = content_type
+        if DJANGO_ACCEPT_PARAM not in kwargs:
+            kwargs[DJANGO_ACCEPT_PARAM] = content_type
 
         # GET & DELETE are the only times we don't serialize the data.
         if data is not None:
@@ -1552,8 +1556,8 @@ class TestApiClient(object):
         logger.info('content_type: %r', content_type)
         if 'content_type' not in kwargs:
             kwargs['content_type'] = content_type
-        if 'HTTP_ACCEPT' not in kwargs:
-            kwargs['HTTP_ACCEPT'] = content_type
+        if DJANGO_ACCEPT_PARAM not in kwargs:
+            kwargs[DJANGO_ACCEPT_PARAM] = content_type
 
         if data is not None:
             kwargs['data'] = self.serializer.serialize(data, content_type)
@@ -1575,8 +1579,8 @@ class TestApiClient(object):
         logger.info('content_type: %r', content_type)
         if 'content_type' not in kwargs:
             kwargs['content_type'] = content_type
-        if 'HTTP_ACCEPT' not in kwargs:
-            kwargs['HTTP_ACCEPT'] = content_type
+        if DJANGO_ACCEPT_PARAM not in kwargs:
+            kwargs[DJANGO_ACCEPT_PARAM] = content_type
 
         if data is not None:
             kwargs['data'] = self.serializer.serialize(data, content_type)
@@ -1598,8 +1602,8 @@ class TestApiClient(object):
         content_type = self.serializer.get_content_type_for_format(format)
         if 'content_type' not in kwargs:
             kwargs['content_type'] = content_type
-        if 'HTTP_ACCEPT' not in kwargs:
-            kwargs['HTTP_ACCEPT'] = content_type
+        if DJANGO_ACCEPT_PARAM not in kwargs:
+            kwargs[DJANGO_ACCEPT_PARAM] = content_type
 
         if data is not None:
             kwargs['data'] = self.serializer.serialize(data, content_type)
@@ -1634,8 +1638,8 @@ class TestApiClient(object):
         logger.info('content_type: %r', content_type)
         if 'content_type' not in kwargs:
             kwargs['content_type'] = content_type
-        if 'HTTP_ACCEPT' not in kwargs:
-            kwargs['HTTP_ACCEPT'] = content_type
+        if DJANGO_ACCEPT_PARAM not in kwargs:
+            kwargs[DJANGO_ACCEPT_PARAM] = content_type
 
         # GET & DELETE are the only times we don't serialize the data.
         if data is not None:

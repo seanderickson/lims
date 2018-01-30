@@ -44,12 +44,12 @@ PYTHONPATH=. python reports/utils/django_requests.py -u sde \
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f db/static/test_data/screens/test_screen_10.json \
   -a PATCH https://dev.screensaver2.med.harvard.edu/db/api/v1/screen?override=true \
-  --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  --header "Content-Type: application/json" --header "Accept: application/json"
 
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f db/static/test_data/screens/test_screen_10_test_cherrypick.json \
   -a POST https://dev.screensaver2.med.harvard.edu/db/api/v1/cherrypickrequest \
-  --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+  --header "Content-Type: application/json" --header "Accept: application/json" > test_cpr_result1.json
   
 # NOTE: the cherry pick request ID must be determined for this:
 cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
@@ -57,25 +57,25 @@ echo "created cherry pick request: $cpr_id"
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f db/static/test_data/screens/test_screen_10_screener_cherry_picks_for_patch.csv \
   -a PATCH https://dev.screensaver2.med.harvard.edu/db/api/v1/cherrypickrequest/$cpr_id \
-  --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+  --header "Content-Type: text/csv" --header "Accept: application/json"
 
 #####
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f db/static/test_data/screens/test_screen_10.json \
   -a PATCH http://localhost:8000/db/api/v1/v1/screen?override=true \
-  --header "Content-Type: application/json" --header "HTTP-Accept: application/json"
+  --header "Content-Type: application/json" --header "Accept: application/json"
 
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f db/static/test_data/screens/test_screen_10_test_cherrypick.json \
   -a POST http://localhost:8000/db/api/v1/cherrypickrequest \
-  --header "Content-Type: application/json" --header "HTTP-Accept: application/json" > test_cpr_result1.json
+  --header "Content-Type: application/json" --header "Accept: application/json" > test_cpr_result1.json
   
 # NOTE: the cherry pick request ID must be determined for this:
 cpr_id = egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f db/static/test_data/screens/test_screen_10_screener_cherry_picks_for_patch.csv \
   -a PATCH http://localhost:8000/db/api/v1/cherrypickrequest/$cpr_id \
-  --header "Content-Type: text/csv" --header "HTTP-Accept: application/json"
+  --header "Content-Type: text/csv" --header "Accept: application/json"
 
 
 #####
@@ -143,7 +143,7 @@ PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f lims/static/production_data/screensaver_users-prod-patch.csv \
   -a PATCH \
   http://localhost:8000/reports/api/v1/user \
-  --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
+  --header "Content-Type: text/csv" --header "Accept: text/csv"
 
 # Server
 PYTHONPATH=. python reports/utils/db_init.py \
@@ -156,7 +156,7 @@ PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -f lims/static/production_data/screensaver_users-prod-patch.csv \
   -a PATCH \
   https://dev.screensaver2.med.harvard.edu/reports/api/v1/user \
-  --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
+  --header "Content-Type: text/csv" --header "Accept: text/csv"
 
 # PATCH-only (Local using curl)
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
@@ -181,7 +181,7 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
 
 #####
 # upload single meta data files
-curl -v  --dump-header - -H "Content-Type: text/csv" -H "HTTP-Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
 
@@ -193,6 +193,8 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
 
-PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv" -f db/static/api_init/metahash_fields_screen.csv
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f db/static/api_init/metahash_fields_useragreement.csv -v
 
-PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/vocabulary/ --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv" -f reports/static/api_init/vocabulary_data.csv
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f db/static/api_init/metahash_fields_screen.csv
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/vocabulary/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f reports/static/api_init/vocabulary_data.csv

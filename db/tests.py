@@ -73,7 +73,7 @@ from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
     xlsutils
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
-from reports.tests import IResourceTestCase, equivocal
+from reports.tests import IResourceTestCase, equivocal, DJANGO_ACCEPT_PARAM
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
 import copy
@@ -342,7 +342,7 @@ class DBResourceTestCase(IResourceTestCase):
         post_kwargs = { 'limit': 0, 'includes': ['*'] }
         post_kwargs['HTTP_AUTHORIZATION'] = authentication
         post_kwargs[HEADER_APILOG_COMMENT] = test_comment
-        post_kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
         def post_input(input_file):
             # NOTE: create a detail URI; post_list is not implemented
@@ -677,7 +677,7 @@ class DBResourceTestCase(IResourceTestCase):
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         logger.info('PUT screen result to the server...')
 
         resource_name = 'screenresult'
@@ -708,7 +708,7 @@ class DBResourceTestCase(IResourceTestCase):
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['HTTP_AUTHORIZATION'] = authentication
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         resource_name = 'screenresult'
         resource_uri = '/'.join([
             BASE_URI_DB,resource_name,screen_facility_id])
@@ -1600,7 +1600,7 @@ class LibraryResource(DBResourceTestCase):
         # NOTE: the tastypie client does not correctly encode the multipart
         # form data for a POST, so the django client is used
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
@@ -1668,7 +1668,7 @@ class LibraryResource(DBResourceTestCase):
                 'copy_name': copy_data['copy_name'] })
             }
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
             data=data, 
@@ -1749,7 +1749,7 @@ class LibraryResource(DBResourceTestCase):
         # NOTE: the tastypie client does not correctly encode the multipart
         # form data for a POST, so the django client is used
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
@@ -2159,7 +2159,7 @@ class LibraryResource(DBResourceTestCase):
                 % APP_ROOT_DIR )
 
         data_for_get = { 'limit': 0, 'includes': ['*'] }
-        data_for_get['HTTP_ACCEPT'] = SDF_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
 
         logger.info('Open and PUT file: %r', filename)
         with open(filename) as input_file:
@@ -2215,7 +2215,7 @@ class LibraryResource(DBResourceTestCase):
             + '/db/static/test_data/libraries/clean_data_small_molecule_update.sdf')
 
         data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
-        data_for_get['HTTP_ACCEPT'] = SDF_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
 
         logger.info('Open and PATCH file: %r', filename)
         with open(filename) as input_file:
@@ -2414,7 +2414,7 @@ class LibraryResource(DBResourceTestCase):
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         
         data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         xls_serializer = XLSSerializer()
         
         logger.info('Open and PUT file: %r', filename)
@@ -2819,7 +2819,7 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get = {}
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         
         logger.info('load the screen result file...')
         file = 'ScreenResultTest_1_valid.xlsx'
@@ -3024,7 +3024,7 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get = {}
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         screen_facility_id = screen['facility_id']
         resource_name = 'screenresult'
         resource_uri = '/'.join([
@@ -3188,7 +3188,7 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get = {}
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         logger.info('PUT screen result to the server...')
         screen_facility_id = screen['facility_id']
         resource_name = 'screenresult'
@@ -3242,7 +3242,7 @@ class ScreenResultResource(DBResourceTestCase):
          # ignored when deserializing from XLSX
         data_for_get = {}
         data_for_get.update(default_data_for_get)
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         data = {}
         data['includes'] = '*'
         data['show_mutual_positives'] = True
@@ -3342,7 +3342,7 @@ class ScreenResultResource(DBResourceTestCase):
         
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
         file = 'ScreenResultRVErrorsTest.xlsx'
@@ -3483,7 +3483,7 @@ class ScreenResultResource(DBResourceTestCase):
         # Also, HTTP_ACCEPT is set to JSON, simulating the UI
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['CONTENT_TYPE'] = JSON_MIMETYPE
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
         
         resource_name = 'screenresult'
@@ -4756,7 +4756,7 @@ class ScreenResource(DBResourceTestCase):
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
-        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
 
         # Add an attached file and post the publication
         base_filename = 'iccbl_sm_user_agreement_march2015.pdf'
@@ -7984,7 +7984,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         _data_for_get = { 
             'limit': 0,
             'includes': '*',
-            'HTTP_ACCEPT': 'application/json'
+            DJANGO_ACCEPT_PARAM: 'application/json'
         }
         resource_uri = BASE_URI_DB + '/screensaveruser'
         
@@ -8062,7 +8062,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         _data_for_get = { 
             'limit': 0,
             'includes': '*',
-            'HTTP_ACCEPT': 'application/json'
+            DJANGO_ACCEPT_PARAM: 'application/json'
         }
         resource_uri = BASE_URI_DB + '/screensaveruser'
 
@@ -8404,7 +8404,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         test_comment = 'Some test comment 123 xyz'
         
         header_data = { HEADER_APILOG_COMMENT: test_comment}
-        header_data['HTTP_ACCEPT'] = JSON_MIMETYPE
+        header_data[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
         patch_uri = '/'.join([BASE_URI_DB,'userchecklist',test_su_id])
         resp = self.api_client.patch(
@@ -8468,7 +8468,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         test_comment = 'Some test comment 123 xyz'
         
         header_data = { HEADER_APILOG_COMMENT: test_comment}
-        header_data['HTTP_ACCEPT'] = JSON_MIMETYPE
+        header_data[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
         resp = self.api_client.patch(
             patch_uri, 
@@ -8551,7 +8551,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
-        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
         logger.info('Post attached file item: %r', attachedfile_item_post)
         # NOTE: content_type arg is req'd with django.test.Client.post
@@ -8619,7 +8619,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
-        kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         file = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = \
             '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
@@ -8747,7 +8747,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         post_kwargs = { 'limit': 0, 'includes': ['*'] }
         post_kwargs['HTTP_AUTHORIZATION'] = authentication
         post_kwargs[HEADER_APILOG_COMMENT] = test_comment
-        post_kwargs['HTTP_ACCEPT'] = JSON_MIMETYPE
+        post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = \
             BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         logger.info('POST user agreement %r to the server...', resource_uri)
@@ -11259,7 +11259,7 @@ class RawDataTransformer(DBResourceTestCase):
 
         # 4. POST
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
-        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = '/'.join([
             BASE_URI_DB, 'rawdatatransform',test_screen['facility_id']])
         

@@ -29,6 +29,9 @@ from reports.serialize.streaming_serializers import generic_xlsx_response, \
 from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
 
+# NOTE: Django creates an "HTTP_ACCEPT" member in the request.META dictionary
+# for the HTTP Header "Accept"
+DJANGO_ACCEPT_PARAM = 'HTTP_ACCEPT'
 
 logger = logging.getLogger(__name__)
 
@@ -94,15 +97,7 @@ class BaseSerializer(object):
     
     def get_accept_content_type(self, request, format=None):
         '''
-        Fixme: needs rework:
-        1. "content_types" must be sorted properly for 
-        mimeparse.best_match to work
-        2. mimeparse.best_match will give a value from the supported types,
-        even if a match does not exist! 
-        3. This is currently working only because the UI client is setting 
-        an HTTP_ACCEPT that is recognized (or using the "format" param)
         '''
-        
         
         DEBUG_ACCEPT_CONTENT_TYPE = False or logger.isEnabledFor(logging.DEBUG)
         
@@ -121,18 +116,21 @@ class BaseSerializer(object):
                     content_type, format)
         
         if content_type is None:
-            if request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+            if request.META \
+                and request.META.get(DJANGO_ACCEPT_PARAM, '*/*') != '*/*':
+                
+                http_accept = request.META.get(DJANGO_ACCEPT_PARAM, '*/*')
+                
                 if DEBUG_ACCEPT_CONTENT_TYPE:
-                    logger.info('get content type from HTTP_ACCEPT: %r', 
-                        request.META.get('HTTP_ACCEPT', '*/*'))
+                    logger.info('get content type from HTTP ACCEPT: %r', 
+                        http_accept)
                     logger.info('content types: %r', self.content_types)
                 try:
                     content_type = mimeparse.best_match(
-                        self.content_types.values(), 
-                        request.META['HTTP_ACCEPT'])
+                        self.content_types.values(), http_accept)
                     if content_type == 'text/javascript':
                         # NOTE - 
-                        # if the HTTP_ACCEPT header contains multiple entries 
+                        # if the HTTP ACCEPT header contains multiple entries 
                         # with equal weighting, mimeparse.best_match returns
                         # the last match. This results in the request header:
                         # "application/json, text/javascript, */*; q=0.01"
@@ -140,18 +138,17 @@ class BaseSerializer(object):
                         # because the tastypie wrapper interprets this as 
                         # a JSONP request, override here and set to 
                         # 'application/json' 
-                        if 'application/json' in  request.META['HTTP_ACCEPT']:
+                        if 'application/json' in  http_accept:
                             content_type = 'application/json'
                     
-                    logger.debug('"HTTP_ACCEPT" - content_type: %r', content_type)
+                    logger.debug('"HTTP ACCEPT" - content_type: %r', content_type)
     
                     if not content_type:
                         raise BadRequest(
-                            "no best match format for HTTP_ACCEPT: %r"
-                            % request.META['HTTP_ACCEPT'])
+                            "no best match format for HTTP ACCEPT: %r"
+                            % http_accept)
                 except ValueError:
-                    raise BadRequest('Invalid Accept header: %r',
-                        request.META['HTTP_ACCEPT'])
+                    raise BadRequest('Invalid Accept header: %r', http_accept)
             elif request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
                 content_type = request.META.get('CONTENT_TYPE', '*/*')
                 if DEBUG_ACCEPT_CONTENT_TYPE:
@@ -160,7 +157,7 @@ class BaseSerializer(object):
                 logger.error('get_accept_content_type: request.META: %r',
                     request.META)
                 raise BadRequest(
-                    'no CONTENT_TYPE or HTTP_ACCEPT header found: %r, %r' 
+                    'no CONTENT_TYPE or HTTP ACCEPT header found: %r, %r' 
                     % (request.META, format))
         if DEBUG_ACCEPT_CONTENT_TYPE:
             logger.info('content type: %r', content_type)
@@ -179,13 +176,15 @@ class BaseSerializer(object):
             content_type = request.META.get('CONTENT_TYPE', '*/*')
             if DEBUG_CONTENT_TYPE:
                 logger.info('"CONTENT_TYPE": %r', content_type)
-        elif request.META and request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+        elif request.META \
+            and request.META.get(DJANGO_ACCEPT_PARAM, '*/*') != '*/*':
+            
+            http_accept = request.META.get(DJANGO_ACCEPT_PARAM, '*/*')
             logger.info(
-                'no "CONTENT_TYPE" found, fallback "HTTP_ACCEPT" header %r',
-                request.META.get('HTTP_ACCEPT', '*/*'))
+                'no "CONTENT_TYPE" found, fallback "ACCEPT" header %r',
+                http_accept)
             content_type = mimeparse.best_match(
-                self.content_types.values(), 
-                request.META['HTTP_ACCEPT'])
+                self.content_types.values(), http_accept)
             if content_type == 'text/javascript':
                 # NOTE - 
                 # if the HTTP_ACCEPT header contains multiple entries 
@@ -196,7 +195,7 @@ class BaseSerializer(object):
                 # because the tastypie wrapper interprets this as 
                 # a JSONP request, override here and set to 
                 # 'application/json' 
-                if 'application/json' in  request.META['HTTP_ACCEPT']:
+                if 'application/json' in http_accept:
                     content_type = 'application/json'
             
             if DEBUG_CONTENT_TYPE:

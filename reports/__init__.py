@@ -25,6 +25,9 @@ API_RESULT_ERROR = 'errors'
 
 # Header custom comment field
 HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
+# Header for custom comment to be used from clients 
+# (Django translates custom headers, adding "HTTP_" and converting to underscores)
+HEADER_APILOG_COMMENT_CLIENT = 'X-APILOG-COMMENT'
 
 LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 

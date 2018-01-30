@@ -784,9 +784,8 @@ class SqlAlchemyResource(IccblBaseResource):
         
     #@un_cache
     def _get_detail_response_internal(self, user=None, **kwargs):
-        request = self.request_factory.generic('GET', '.', 
-            data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
-            content_type=JSON_MIMETYPE)
+        request = self.request_factory.generic(
+            'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
         if user is None:
             logger.info('_get_detail_response_internal, no user')
             class User:
@@ -802,14 +801,8 @@ class SqlAlchemyResource(IccblBaseResource):
 
     # @un_cache
     def _get_list_response_internal(self, user=None, **kwargs):
-        
-        request = self.request_factory.generic('GET', '.', 
-            data={ 'CONTENT_TYPE': JSON_MIMETYPE, 'HTTP_ACCEPT': JSON_MIMETYPE },
-            content_type=JSON_MIMETYPE)
-        content_type = self.get_serializer().get_accept_content_type(request)
-        logger.debug('_get_list_response_internal: %r: %r', 
-            self._meta.resource_name,content_type)
-        
+        request = self.request_factory.generic(
+            'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
         if user is None:
             logger.debug('_get_list_response_internal, no user')
             class User:
@@ -1026,6 +1019,9 @@ class SqlAlchemyResource(IccblBaseResource):
 
             result = None
             if content_type == JSON_MIMETYPE:
+                # Check cache
+                # Create response "meta" counts
+                
                 logger.info(
                     'streaming json, use_caching: %r, self.use_cache: %r, '
                     'limit: %d, %r', 

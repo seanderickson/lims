@@ -24,6 +24,18 @@ CONTENTTYPE_HEADERS =   {
 
 logger = logging.getLogger(__name__)
 
+def parse_credentials(credential_file):
+    username, password = None,None
+    
+    with open(credential_file) as f:
+        for line in f:
+            if username is not None:
+                raise ArgumentError(credential_file, 
+                    'must contain a single "username:password"')
+            (username,password) = line.strip().split(':')
+            logger.debug('read: %r:has_password:%r', 
+                username, password is not None)
+    return username, password
 
 def get_logged_in_session(username, password, base_url, 
                           login_form=None,
@@ -211,7 +223,7 @@ def patch(url,request_or_session,data=None, headers=None ):
         headers = {}
     headers['Referer']=url
     headers['X-CSRFToken'] = request_or_session.cookies['csrftoken']
-    if DEBUG:
+    if DEBUG or True:
         sys.stderr.write('csrftoken: %s\n' 
             % request_or_session.cookies['csrftoken'])
         sys.stderr.write('headers: %s\n' % str((headers)))
@@ -236,8 +248,8 @@ def patch(url,request_or_session,data=None, headers=None ):
     
 parser = argparse.ArgumentParser(description='url')
 parser.add_argument('url', help='url to connect to')
-parser.add_argument('-u', '--username', help='username', required=True)
-parser.add_argument('-p', '--password', help='password', required=False)
+parser.add_argument('-u', '--username', help='username')
+parser.add_argument('-p', '--password', help='password')
 parser.add_argument(
     '-c', '--credential_file',
     help = 'credential file containing the username:password for api authentication')

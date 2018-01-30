@@ -16,24 +16,12 @@ import requests
 
 from django_requests import get_logged_in_session
 import reports.serialize.csvutils as csvutils
+from reports.utils import parse_credentials
 
 
 logger = logging.getLogger(__name__)
 
 # TODO: this replaces /reports/management/commands/db_init.py - sde4 - 201404
-
-def parse_credentials(credential_file):
-    username, password = None,None
-    
-    with open(credential_file) as f:
-        for line in f:
-            if username is not None:
-                raise ArgumentError(credential_file, 
-                    'must contain a single "username:password"')
-            (username,password) = line.strip().split(':')
-            logger.debug('read: %r:has_password:%r', 
-                username, password is not None)
-    return username, password
 
 class ApiError(Exception):
     
@@ -152,6 +140,9 @@ parser.add_argument(
 parser.add_argument(
     '-p', '--password',
     help='user password for the api authentication')
+parser.add_argument(
+    '-c', '--credential_file',
+    help = 'credential file containing the username:password for api authentication')
 parser.add_argument(
     '-v', '--verbose', dest='verbose', action='count',
     help="Increase verbosity (specify multiple times for more)")    

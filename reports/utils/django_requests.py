@@ -13,6 +13,7 @@ from urlparse import urlparse
 from requests import Request
 import requests
 
+from reports.utils import parse_credentials
 
 DEBUG=False
 LOGIN_FORM = '/db/login/'
@@ -23,19 +24,6 @@ CONTENTTYPE_HEADERS =   {
     } 
 
 logger = logging.getLogger(__name__)
-
-def parse_credentials(credential_file):
-    username, password = None,None
-    
-    with open(credential_file) as f:
-        for line in f:
-            if username is not None:
-                raise ArgumentError(credential_file, 
-                    'must contain a single "username:password"')
-            (username,password) = line.strip().split(':')
-            logger.debug('read: %r:has_password:%r', 
-                username, password is not None)
-    return username, password
 
 def get_logged_in_session(username, password, base_url, 
                           login_form=None,

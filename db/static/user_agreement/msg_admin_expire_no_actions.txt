@@ -1,0 +1,4 @@
+Screensaver Notification: No {screen_type} User Agreements to expire
+No {screen_type} Users have (non expired) agreements dated earlier than the specified cutoff date: {date_active_cutoff}
+
+The the specified cutoff date: {date_active_cutoff} is defined as ({current_date} (today's date) - {days_to_expire} (days)).

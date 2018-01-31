@@ -1,0 +1,7 @@
+Screensaver Alert: {count} {screen_type} user(s) identified for notification
+
+The following {count} {screen_type} user(s) have been identified for notification. These user agreement documents will expire within {days_ahead_to_notify} days from now, and their accounts will be disabled.
+
+The the specified cutoff date: {date_active_cutoff} is defined as ({current_date} (today's date) - {days_to_expire} (days) + {days_ahead_to_notify} (days)).
+
+This action will be done automatically. Administrators will receive a notice when these user accounts are disabled, however, users will receive no further notice.

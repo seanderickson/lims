@@ -1,0 +1,7 @@
+Screensaver Alert: disabled {count} {screen_type} user account(s)
+
+The following {count} {screen_type} user account(s) have been disabled. This automatic action is being taken {days_to_expire} or more days after the User Agreement for this user was activated.  
+
+If this user is exclusively a {screen_type} User, then the login capability for this user has been removed.  These users will require administrative action in order to log in to Screensaver.
+
+The the specified cutoff date: {date_active_cutoff} is defined as ({current_date} (today's date) - {days_to_expire} (days)).

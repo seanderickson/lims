@@ -5,7 +5,7 @@ user_name,fields.useragreement,custom,,2,,string,link,"{ 'hrefTemplate': '#scree
 user_first_name,fields.useragreement,custom,,3,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"First name of the user","User First Name",TRUE,,,,
 user_last_name,fields.useragreement,custom,,4,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"Last name of the user","User Last Name",TRUE,,,,
 user_email,fields.useragreement,custom,,5,,string,,,,TRUE,"User Email","User Email",TRUE,,,,
-type,fields.useragreement,custom,,6,,string,,,select,TRUE,"Type Small Molecule or RNAI","User Agreement Type",TRUE,,useragreement.type,[l;d],
+type,fields.useragreement,custom,,6,,string,link,"{ 'hrefTemplate': '#useragreement/{screensaver_user_id}/{type}' }",select,TRUE,"Type Small Molecule or RNAI","User Agreement Type",TRUE,,useragreement.type,[l;d],
 data_sharing_level,fields.useragreement,custom,,7,,integer,,,select,TRUE,"Data Sharing Level","Data Sharing Level",TRUE,,useragreement.data_sharing_level,[l;d],[c;u]
 status,fields.useragreement,custom,,8,"Status may be set to expired or inactive if the agreement is active",string,,,select,TRUE,"User Agreement Status",Status,TRUE,,useragreement.status,[l;d],[u]
 date_active,fields.useragreement,custom,,9,,date,,,,TRUE,"Date Active","Date Active",TRUE,,,[l;d],[c;u]

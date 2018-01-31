@@ -1,0 +1,4 @@
+Screensaver Notification: no new {screen_type} users to notify for UA expiration
+No {screen_type} users have agreements (that haven't already been notified) dated earlier than the specified cutoff date.
+
+The the specified cutoff date: {date_active_cutoff} is defined as ({current_date} (today's date) - {days_to_expire} (days) + {days_ahead_to_notify} (days)).

@@ -771,8 +771,6 @@ class ApiResource(SqlAlchemyResource):
         
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
-#         if 'schema' in kwargs_for_log:
-#             del kwargs_for_log['schema']
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
@@ -783,28 +781,23 @@ class ApiResource(SqlAlchemyResource):
                     id_vals.add(idval)
                     kwargs_for_log[id_param] = id_vals
         try:
-            logger.debug('get original state, for logging... %r', kwargs_for_log)
+            logger.info('get original state, for logging... %r', kwargs_for_log.keys())
             original_data = self._get_list_response_internal(**kwargs_for_log)
             logger.info('original state retrieved: %d', len(original_data))
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
 
-        try:
-            # FIXME: move transaction to method decorator
-            with transaction.atomic():
-                if 'parent_log' not in kwargs:
-                    parent_log = self.make_log(request, schema=schema)
-                    parent_log.key = self._meta.resource_name
-                    parent_log.uri = self._meta.resource_name
-                    parent_log.save()
-                    kwargs['parent_log'] = parent_log
-                logger.info('perform patch_list: %d', len(deserialized))
-                for _dict in deserialized:
-                    self.patch_obj(request, _dict, **kwargs)
-        except ValidationError as e:
-            logger.exception('Validation error: %r', e)
-            raise e
+        if 'parent_log' not in kwargs:
+            parent_log = self.make_log(request, schema=schema)
+            parent_log.key = self._meta.resource_name
+            parent_log.uri = self._meta.resource_name
+            parent_log.save()
+            kwargs['parent_log'] = parent_log
+        parent_log = kwargs['parent_log']    
+        logger.info('perform patch_list: %d', len(deserialized))
+        for _dict in deserialized:
+            self.patch_obj(request, _dict, **kwargs)
             
         logger.debug('Get new state, for logging: %r...',
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
@@ -1668,6 +1661,7 @@ class ApiResource(SqlAlchemyResource):
  
         if HEADER_APILOG_COMMENT in request.META:
             log.comment = request.META[HEADER_APILOG_COMMENT]
+            logger.info('log comment: %r', log.comment)
         if kwargs:
             for key, value in kwargs.items():
                 if hasattr(log, key):
@@ -3902,7 +3896,8 @@ class UserResource(ApiResource):
                 if errors:
                     raise ValidationError(errors)
                 user = DjangoUser.objects.create_user(username=username)
-                user.is_active = True
+                # User is not active by default
+                # user.is_active = True
                 logger.info('created Auth.User: %s', user)
 
             initializer_dict = self.parse(

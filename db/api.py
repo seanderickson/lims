@@ -2576,7 +2576,6 @@ class UserAgreementResource(DbApiResource):
         compiled_stmt = str(agreement_type_table.compile(
             dialect=postgresql.dialect(),
             compile_kwargs={"literal_binds": True}))
-        logger.info('user agreement temp table: %s',compiled_stmt)
         with get_engine().connect() as conn:
             result = conn.execute(agreement_type_table)
             types =  [x[0] for x in result ]
@@ -2719,6 +2718,32 @@ class UserAgreementResource(DbApiResource):
     @transaction.atomic
     def post_list(self, request, schema=None, **kwargs):
         raise NotImplementedError
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def patch_list(self, request, **kwargs):
+
+        result = super(UserAgreementResource, self).patch_list(request, **kwargs)
+
+        param_hash = self._convert_request_to_dict(request)
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', kwargs.get('test_only'))    
+            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+        
+        return result
+    
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def patch_detail(self, request, **kwargs):
+        result = super(UserAgreementResource, self).patch_detail(request, **kwargs)
+        param_hash = self._convert_request_to_dict(request)
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', kwargs.get('test_only'))    
+            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+        
+        return result
     
     @write_authorization
     @un_cache        
@@ -2814,7 +2839,6 @@ class UserAgreementResource(DbApiResource):
             user_agreement = UserAgreement.objects.create(**id_kwargs)
             if 'date_active' not in deserialized:
                 deserialized['date_active'] = _now().date().strftime("%Y-%m-%d")
-#             user_agreement.date_active=_now()
             logger.info('UA DNE, creating: %r', user_agreement)
         
         # Perform the PATCH
@@ -2848,7 +2872,7 @@ class UserAgreementResource(DbApiResource):
                 LimsSerializer.get_content(attached_file_response), JSON_MIMETYPE)
             logger.info('attached_file: %r', af_data)
             user_agreement.file_id = af_data['attached_file_id']
-            user_agreement.save()
+#             user_agreement.save()
         else:
             error_resp = attached_file_resource._meta.serializer.deserialize(
                 LimsSerializer.get_content(attached_file_response), JSON_MIMETYPE)
@@ -2872,7 +2896,8 @@ class UserAgreementResource(DbApiResource):
                     request, user_patch_data, schema=user_schema)
                 logger.info('user patch result: %r', patch_result)
 
-        
+        user_agreement.save()
+
         new_user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
         user_resource.log_patch(request, original_user_data, new_user_data, parent_log)
         parent_log.save()
@@ -2884,6 +2909,12 @@ class UserAgreementResource(DbApiResource):
         log.save()
         
         data = { API_RESULT_DATA: [new_data]}
+        
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', param_hash.get('test_only'))    
+            raise InformationError(
+                'successful post, "test_only" flag is set, rollback...')
+        
         return self.build_response(request, data)
     
     @write_authorization
@@ -2896,9 +2927,7 @@ class UserAgreementResource(DbApiResource):
             raise Exception('schema not initialized')
         fields = schema['fields']
         id_attribute = schema['id_attribute']
-
         id_kwargs = self.get_id(deserialized,validate=True,schema=schema,**kwargs)
-        
         screensaver_user_id = id_kwargs['screensaver_user_id']
         screensaver_user = ScreensaverUser.objects.get(
             screensaver_user_id=screensaver_user_id)
@@ -2907,8 +2936,6 @@ class UserAgreementResource(DbApiResource):
         user_agreement = UserAgreement.objects.get(**id_kwargs)
 
         initializer_dict = self.parse(deserialized, schema=schema, create=True)
-        logger.info('initializer: %r', initializer_dict)
-        
         if not initializer_dict:
             raise Exception('Empty patch')
         
@@ -2917,6 +2944,7 @@ class UserAgreementResource(DbApiResource):
             raise ValidationError(errors)
         
         new_status = initializer_dict.pop('status', None)
+        new_date_notified = initializer_dict.pop('date_notified', None)
         if new_status is not None:
             if initializer_dict:
                 logger.error(
@@ -2933,7 +2961,9 @@ class UserAgreementResource(DbApiResource):
                 msg = 'Expired agreements may not be patched'
                 raise ValidationError({
                     k:msg for k in initializer_dict.keys() })
-
+            if new_date_notified is not None:
+                user_agreement.date_notified = new_date_notified
+                    
         for key, val in initializer_dict.items():
             if hasattr(user_agreement, key):
                 setattr(user_agreement, key, val)
@@ -2954,9 +2984,7 @@ class UserAgreementResource(DbApiResource):
                         key='status', 
                         msg='Agreement may not be expired more than once')
                 user_agreement.date_expired = _now()
-                user_agreement.save()
                 logger.info('UserAgreement %r expired', user_agreement)
-#                 return { API_RESULT_OBJ: user_agreement }
             elif new_status == 'inactive':
                 if user_agreement.date_expired is not None:
                     raise ValidationError(
@@ -2966,12 +2994,12 @@ class UserAgreementResource(DbApiResource):
                 user_agreement.date_notified = None
                 user_agreement.data_sharing_level = None
                 user_agreement.file = None
-                user_agreement.save()
                 logger.info('UserAgreement %r deactivated', user_agreement)
-#                 return { API_RESULT_OBJ: user_agreement }
             else:
                 raise ValidationError(
                     key='status', msg='may only be set to "expired" or "inactive"')
+        elif new_date_notified is not None:
+            pass
         else:
             # Disallow setting DSL to a level different than the Lab Head
             lab_head_id = screensaver_user.lab_head_id
@@ -2996,7 +3024,7 @@ class UserAgreementResource(DbApiResource):
             # Lab_member's DSL
             # TODO: if DSL does not match user screens, display warning?
             
-            user_agreement.save()
+        user_agreement.save()
         
         active_user_agreements = UserAgreement.objects\
             .filter(screensaver_user=screensaver_user)\
@@ -3015,9 +3043,12 @@ class UserAgreementResource(DbApiResource):
             patch_result = user_resource.patch_obj(
                 request, user_patch_data, schema=user_schema)
             logger.info('user patch result: %r', patch_result)
+        else:
+            logger.info('active user agreements exist: %r',
+                [x for x in active_user_agreements.all()])
         
         logger.info('UserAgreement %r patched', user_agreement)
-
+        
         return { 
             API_RESULT_OBJ: user_agreement,
             API_RESULT_META: meta }
@@ -11616,6 +11647,7 @@ class PublicationResource(DbApiResource):
         if attached_file:
             logger.info('create attached file for publication: %r', publication)
             
+            # af_request = RequestFactory().generic('POST', '.', HTTP_ACCEPT=JSON_MIMETYPE )
             af_request = HttpRequest()
             af_request.META['HTTP_ACCEPT'] = JSON_MIMETYPE
             af_request.user = request.user
@@ -15143,8 +15175,7 @@ class RawDataTransformerResource(DbApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
+                title_function=title_function, meta=kwargs.get('meta', None))
              
         except Exception, e:
             logger.exception('on get_list %s' % self._meta.resource_name)

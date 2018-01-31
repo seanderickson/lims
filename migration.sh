@@ -535,6 +535,30 @@ function setup_production_users {
 
 }
 
+function run_expiration_scripts {
+  # Run user and screen privacy expiration scripts
+  echo "run user and screen privacy expiration scripts: $(ts) ..." >> "$LOGFILE"
+
+  echo "run user notifications..."
+  PYTHONPATH=. python db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u 'https://dev.screensaver2.med.harvard.edu/' \
+  -screen_type sm -days_to_expire 730 -days_ahead_to_notify 14 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -v -admin_email_only
+
+  PYTHONPATH=. python db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u 'https://dev.screensaver2.med.harvard.edu/' \
+  -screen_type sm -days_to_expire 730 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -v -admin_email_only
+
+  echo "user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
+}
+
 function create_studies {
 
   # Create in_silico statistical studies
@@ -876,6 +900,8 @@ function main {
 
   create_studies
 
+  run_expiration_scripts
+  
   # put this here to see if LSF will start reporting results
   # exit 0
     
@@ -930,6 +956,7 @@ main "$@"
 
 #  create_studies
 
+# run_expiration_scripts
 
 
 

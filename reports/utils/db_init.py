@@ -135,7 +135,7 @@ parser.add_argument(
             An input action is a [command,resource,file]; 
             see the reports/static/api_init/api_init_actions.csv file''')
 parser.add_argument(
-    '-U', '--username', required=True,
+    '-U', '--username', 
     help='username for the api authentication')
 parser.add_argument(
     '-p', '--password',

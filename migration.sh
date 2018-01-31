@@ -546,7 +546,7 @@ function run_expiration_scripts {
   -screen_type sm -days_to_expire 730 -days_ahead_to_notify 14 \
   -email_message_directory db/static/user_agreement/ \
   -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
-  -v -admin_email_only
+  -v -admin_email_only >>"$LOGFILE" 2>&1
 
   PYTHONPATH=. python db/support/user_expiration_emailer.py \
   -c ${credential_file} \
@@ -554,9 +554,9 @@ function run_expiration_scripts {
   -screen_type sm -days_to_expire 730 \
   -email_message_directory db/static/user_agreement/ \
   -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
-  -v -admin_email_only
+  -v -admin_email_only >>"$LOGFILE" 2>&1
 
-  echo "user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
+  echo "Done: user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
 }
 
 function create_studies {

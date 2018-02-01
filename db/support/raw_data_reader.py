@@ -9,8 +9,9 @@ import os
 import re
 
 import xlrd
-
 import reports.serialize.xlsutils as xlsutils
+import xlsxwriter
+from db.support import lims_utils
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,8 @@ def is_empty_plate_matrix(matrix2d):
     for row in matrix2d:
         row_empty = True
         for x in row:
-            x = x.strip()
+            if x:
+                x = x.strip()
             if x and x != '-':
                 row_empty = False
                 break
@@ -263,7 +265,7 @@ def read_xlsx(input_file):
     plate_matrices = []
     errors = {}
     for sheet in sheets:
-        
+        logger.info('read sheet: %r', sheet)
         (sheet_plate_matrices,sheet_errors) = read_rows(xlsutils.sheet_rows(sheet))
         logger.info('for sheet: %r, %d matrices read', 
             sheet.name, len(sheet_plate_matrices))
@@ -312,6 +314,40 @@ def read(input_file, filename):
         (plate_matrices,errors) = read_text(input_file)
                         
     return (plate_matrices,errors)
+
+def write_xlsx(workbook, matrices):
+    '''
+    Write the plate matrices directly to a spreadsheet:
+    - transpose row/col into a single column by wellname
+    '''
+    DEBUG = False or logger.isEnabledFor(logging.DEBUG)
+
+    logger.info('write workbook...')
+    
+    row_size = len(matrices[0])
+    col_size = len(matrices[0][0])
+
+    sheet = workbook.add_worksheet('Data')
+    
+    sheet.write_string(0,0,'Matrix')
+    sheet.write_string(0,1,'Well')
+    sheet.write_string(0,2,'Value')
+    
+    output_row = 0
+    for matrix_number, matrix in enumerate(matrices):
+        logger.info('write matrix: %r', matrix_number+1)
+        # NOTE: to support xlsxwriter 'constant_memory': True - optimized write, 
+        # rows must be written sequentially        
+        for colnum in range(0, col_size):
+            for rownum in range(0,row_size):
+                output_row += 1
+                sheet.write_number(output_row,0,matrix_number+1)
+                sheet.write_string(
+                    output_row,1,lims_utils.get_well_name(rownum, colnum))
+                val = matrix[rownum][colnum]
+                if val:
+                    sheet.write_string(output_row,2,val)
+
         
 parser = argparse.ArgumentParser(
     description='Parse raw data files into Python matrices')
@@ -320,6 +356,11 @@ parser.add_argument(
     '-f', '--file', required=True,
     help='''Raw data file;
             examples can be found in db/static/test_data/rawdata''')
+
+parser.add_argument(
+    '-of', '--outputfile', 
+    help='''Output file (xlsx) to write''')
+
 parser.add_argument(
     '-v', '--verbose', dest='verbose', action='count',
     help="Increase verbosity (specify multiple times for more)")    
@@ -342,9 +383,15 @@ if __name__ == "__main__":
         if errors:
             raise Exception('Parse errors: %r' % errors)
         
-        for i,matrix in enumerate(plate_matrices):
-            logger.info('matrix #: %r', i)
-            logger.info('%r', matrix)
-        
-  
-        
+        if args.outputfile:
+            logger.info('write to output file: %r', args.outputfile)
+            workbook = xlsxwriter.Workbook(filename=args.outputfile)
+            write_xlsx(workbook, plate_matrices)
+            workbook.close()
+            logger.info('done: output file: %r', args.outputfile)
+        else:
+            for i,matrix in enumerate(plate_matrices):
+                print '\nmatrix #: %d\n' % i
+                for j,row in enumerate(matrix):
+                    print lims_utils.row_to_letter(j),row
+

@@ -302,29 +302,15 @@ def write_xlsx(workbook, matrices, counter):
                     if DEBUG:
                         logger.info('write output_row: %d, col: %d,  val: %r', 
                             output_row, current_col, str(val))
-                    sheet.write_string(output_row, current_col, str(val))
+                    if val is not None:
+                        sheet.write_string(output_row, current_col, str(val))
 
+                        # TEMP for jen
+#                         logger.info('val: %r: %r', val, re.split(r'\s+',str(val)))
+#                         val = re.split(r'\s+',str(val))
+#                         sheet.write_string(output_row, current_col, val[0])
+#                         sheet.write_string(output_row, current_col+1, val[1])
 
-        # NOTE: to support xlsqriter 'constant_memory': True - optimized write,
-        # rows must be written sequentially
-        # for i,counter_readout in enumerate(counter_readouts): 
-        #     
-        #     current_col = 2 + i
-        #     collation_string = '{condition}_{readout}_{replicate}'.format(**counter_readout)
-        #     logger.info('write collation_string: col: %d, %s', current_col, collation_string)
-        #     sheet.write_string(0,current_col,collation_string )
-        #     
-        #     matrix_index = counter.get_index(dict(counter_readout, plate=plate))
-        #     logger.info('write matrix: %d', matrix_index)
-        #     matrix = matrices[matrix_index]
-        #     for colnum in range(0, col_size):
-        #         for rownum in range(0,row_size):
-        #             output_row = 1 + rownum + colnum * row_size
-        #             val = matrix[rownum][colnum]
-        #             if DEBUG:
-        #                 logger.info('write output_row: %d, col: %d,  val: %r', 
-        #                     output_row, current_col, str(val))
-        #             sheet.write_string(output_row, current_col, str(val))
     logger.info('write xls finished')
     
 def create_matrix_counter(collation, plates, conditions, replicates, readouts):
@@ -384,7 +370,7 @@ parser.add_argument(
 
 parser.add_argument(
     '-of', '--outputfile', required=True,
-    help='''Output file''')
+    help='''Output file (xlsx) to write''')
 
 parser.add_argument(
     '-c', '--collation', required=True,
@@ -423,23 +409,21 @@ if __name__ == "__main__":
         collation, args.plates, args.conditions, args.replicates, args.readouts)
     
     with open(args.file) as input_file:
-        matrices = raw_data_reader.read(input_file, args.file)
-        
+        matrices,errors = raw_data_reader.read(input_file, args.file)
+        if errors:
+            raise Exception('errors: %r', errors)
         if len(matrices) == 0:
-            raise Exception('no plates read')
+            raise Exception('no plates read')        
+        
         assay_plate_size = len(matrices[0])*len(matrices[0][0])
-        
+        logger.info('assay_plate_size: %r: %r: %r', 
+            assay_plate_size,len(matrices[0]), len(matrices[0][0]) )
         library_plate_size = 384
-        
         if assay_plate_size != library_plate_size:
             logger.info('transform from %d to %d', assay_plate_size, library_plate_size)
-            
             matrices = transform(matrices, counter, assay_plate_size, library_plate_size)
 
         workbook = xlsxwriter.Workbook(filename=args.outputfile)
-        
         write_xlsx(workbook, matrices, counter)
-        
         workbook.close()
-        
-        
+

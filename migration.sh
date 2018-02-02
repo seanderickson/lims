@@ -541,7 +541,7 @@ function run_expiration_scripts {
 
   echo "run user notifications..."
   PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
-  db/support/screen_privacy_expiration_emailer.py \
+  db/support/user_expiration_emailer.py \
   -c ${credential_file} \
   -u 'https://dev.screensaver2.med.harvard.edu/' \
   -screen_type sm -days_to_expire 730 -days_ahead_to_notify 14 \
@@ -550,7 +550,7 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
-  db/support/screen_privacy_expiration_emailer.py \
+  db/support/user_expiration_emailer.py \
   -c ${credential_file} \
   -u 'https://dev.screensaver2.med.harvard.edu/' \
   -screen_type sm -days_to_expire 730 \

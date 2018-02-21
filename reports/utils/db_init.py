@@ -169,6 +169,7 @@ if __name__ == "__main__":
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
 
+    username = None
     if args.credential_file:
         username,password = parse_credentials(args.credential_file)
     if username is None:

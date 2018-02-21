@@ -262,7 +262,8 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
-
+    
+    username = None
     if args.credential_file:
         username,password = parse_credentials(args.credential_file)
     if username is None:

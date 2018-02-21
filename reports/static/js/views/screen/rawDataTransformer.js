@@ -1094,6 +1094,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         form.$el.find('#filechosen').html(label);
         form.setValue('filename', label);
       });
+      if (ordinal == 0 ){
+        form.$el.find('#remove_'+ordinal).hide();
+      }
       form.$el.find('#remove_'+ordinal).click(function(){
         if (ordinal == 0){
           console.log('cannot remove the only file');

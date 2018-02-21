@@ -116,6 +116,8 @@ class SqlAlchemyResource(IccblBaseResource):
         DEBUG = False or logger.isEnabledFor(logging.DEBUG)
         
         _dict = {}
+        if request is None:
+            return _dict
         for key in request.GET.keys():
             val = request.GET.getlist(key)
             if DEBUG:
@@ -408,20 +410,38 @@ class SqlAlchemyResource(IccblBaseResource):
             if order_by.startswith('-'):
                 field_name = order_by[1:]
                 order_clause = nullslast(desc(column(field_name)))
-                if ( field_name in visible_fields 
-                    and visible_fields[field_name]['data_type'] == 'string'):
+                field = visible_fields.get(field_name, None)
+                if ( field and field['data_type'] == 'string'
+                    and field.get('alphanumeric_sort', False) is True ):
                     # For string field ordering, double sort as numeric and text
+                    # - if the field begins with a number, lower valued numbers
+                    # should sort later than higher valued numbers. (alpha sort
+                    # will sort on the first digit only).
                     order_clause = text(
-                        "(substring({field_name}, '^[0-9]+'))::int desc " # cast to integer
-                        ",substring({field_name}, '[^0-9_].*$')  desc"  # works as text
+                        "(substring({field_name}, '^[0-9]+'))::int desc nulls last " # cast to integer
+                        ",substring({field_name}, '[^0-9_].*$')  desc nulls last"  # works as text
                         .format(field_name=field_name))
+                    # if ( field_name in visible_fields 
+                    #     and visible_fields[field_name]['data_type'] == 'string'
+                    #     and not visible_fields[field_name]['vocabulary_scope_ref'] 
+                    #     and field_name not in ALPHANUMERIC_SORT_EXCLUSIONS):
+                    #      
+                    #     # For string field ordering, double sort as numeric and text
+                    #     # - if the field begins with a number, lower valued numbers
+                    #     # should sort later than higher valued numbers. (alpha sort
+                    #     # will sort on the first digit only).
+                    #     order_clause = text(
+                    #         "(substring({field_name}, '^[0-9]+'))::int desc nulls last " # cast to integer
+                    #         ",substring({field_name}, '[^0-9_].*$')  desc nulls last"  # works as text
+                    #         .format(field_name=field_name))
             else:
                 order_clause = nullsfirst(asc(column(field_name)))
-                if ( field_name in visible_fields 
-                    and visible_fields[field_name]['data_type'] == 'string'):
+                field = visible_fields.get(field_name, None)
+                if ( field and field['data_type'] == 'string'
+                    and field.get('alphanumeric_sort', False) is True ):
                     order_clause = text(
-                        "(substring({field_name}, '^[0-9]+'))::int "
-                        ",substring({field_name}, '[^0-9_].*$') "
+                        "(substring({field_name}, '^[0-9]+'))::int nulls first"
+                        ",substring({field_name}, '[^0-9_].*$') nulls first"
                         .format(field_name=field_name))
             if field_name in visible_fields:
                 order_clauses.append(order_clause)
@@ -799,7 +819,6 @@ class SqlAlchemyResource(IccblBaseResource):
         result = self._get_detail_response(request, **kwargs)
         return result
 
-    # @un_cache
     def _get_list_response_internal(self, user=None, **kwargs):
         request = self.request_factory.generic(
             'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
@@ -862,7 +881,6 @@ class SqlAlchemyResource(IccblBaseResource):
                         cache_hit['stmt'] != compiled_stmt):
                     cache_hit = None
                     logger.warn('cache collision for key: %r, %r', key, stmt)
-            
             if cache_hit is None:
                 logger.info('no cache hit for key: %r, executing stmt', key)
                 # Note: if no cache hit, then retrive limit*n results, and 

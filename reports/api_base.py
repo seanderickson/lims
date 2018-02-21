@@ -48,7 +48,7 @@ def un_cache(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         logger.info('decorator un_cache: %s, %s', self, _func )
-        self.clear_cache()
+        self.clear_cache(None, **kwargs)
         self.set_caching(False)
         result = _func(self, *args, **kwargs)
         self.set_caching(True)
@@ -144,7 +144,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         ]
 
     def dispatch_clear_cache(self, request, **kwargs):
-        self.clear_cache()
+        self.clear_cache(request, **kwargs)
         return self.build_response(request, 'ok', **kwargs)
 
     def prepend_urls(self):
@@ -361,8 +361,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
         return wrapper
 
-    def clear_cache(self):
-        logger.info('clearing the cache from resource: %s (all caches cleared)' 
+    def clear_cache(self, request, **kwargs):
+        logger.info('clearing the cache from resource: %s' 
             % self._meta.resource_name)
         cache.clear()
 

@@ -819,6 +819,12 @@ class ApiResource(SqlAlchemyResource):
                 API_MSG_COMMENTS: parent_log.comment
             }
         }
+        
+        param_hash = self._convert_request_to_dict(request)
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', kwargs.get('test_only'))    
+            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+
         if not self._meta.always_return_data:
             return self.build_response(
                 request, { 'meta': meta }, response_class=HttpResponse)
@@ -916,6 +922,11 @@ class ApiResource(SqlAlchemyResource):
         
         logger.debug('put list done, new data: %d', len(new_data))
         self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
+
+        param_hash = self._convert_request_to_dict(request)
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', kwargs.get('test_only'))    
+            raise InformationError('successful patch, "test_only" flag is set, rollback...')
         
         logger.info('put_list done.')
         if not self._meta.always_return_data:
@@ -1131,7 +1142,12 @@ class ApiResource(SqlAlchemyResource):
         if patched_log:
             patched_log.save()
             logger.debug('post log: %r', patched_log)
-        
+
+        param_hash = self._convert_request_to_dict(request)
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', kwargs.get('test_only'))    
+            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,] }
         if API_RESULT_META in patch_result:
@@ -1205,6 +1221,12 @@ class ApiResource(SqlAlchemyResource):
             logger.debug('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
+        
+        param_hash = self._convert_request_to_dict(request)
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', kwargs.get('test_only'))    
+            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,], }
         if API_RESULT_META in patch_result:
@@ -2181,10 +2203,10 @@ class FieldResource(ApiResource):
         super(FieldResource,self).__init__(**kwargs)
         self.resource_resource = None
 
-    def clear_cache(self):
+    def clear_cache(self, request, **kwargs):
         logger.info('clear_cache: FieldResource...')
-        ApiResource.clear_cache(self)
-        self.get_resource_resource().clear_cache()
+        ApiResource.clear_cache(self, request, **kwargs)
+        self.get_resource_resource().clear_cache(request, **kwargs)
         
     def get_resource_resource(self):
         if self.resource_resource is None:
@@ -2315,7 +2337,7 @@ class FieldResource(ApiResource):
         # NOTE: current implementation creates the fields hash in memory:
         # TODO: sort
         # TODO: limit
-        
+        logger.info('build field resource response...')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -2347,12 +2369,13 @@ class FieldResource(ApiResource):
         key_in = param_hash.get('key__in', None)
             
         if not scope and not scopes:
+            logger.info('get all scopes...')
             scopes = MetaHash.objects.all().filter(
                 scope__icontains='fields.').values_list('scope',flat=True).distinct()
             if not scopes.exists():
                 # bootstrap case
                 scopes = ['fields.field',]
-                
+            logger.info('scopes retrieved')
         else:
             if scope:
                 filenames=[scope]
@@ -2421,11 +2444,12 @@ class FieldResource(ApiResource):
                 'meta': meta, 
                 self._meta.collection_name: fields 
             }
+            logger.info('Field resource rebuilt')
         kwargs['filename'] = '_'.join(filenames)
         logger.debug('FieldResource build response: %r, %r, %r', 
             self._meta.resource_name, request, 
             {k:v for k,v in kwargs.items() if k!='schema'})
-
+        logger.info('Field resource built')
         return self.build_response(request, response_hash, **kwargs)
 
     def _build_fields(self, scopes=None):
@@ -2590,9 +2614,9 @@ class ResourceResource(ApiResource):
         return self.build_response(
             request, app_data, **kwargs)
 
-    def clear_cache(self):
+    def clear_cache(self, request, **kwargs):
         logger.info('clear_cache ResourceResource ..')
-        ApiResource.clear_cache(self)
+        ApiResource.clear_cache(self, request, **kwargs)
         caches['resource_cache'].clear()
         
     def _get_resource_schema(self,resource_key, user):
@@ -2636,10 +2660,10 @@ class ResourceResource(ApiResource):
         '''
         Override resource method - bootstrap the "Resource" resource schema
         '''
-        logger.debug('build_schema for %r: %r', self._meta.resource_name, user)
+        logger.info('build_schema for %r: %r', self._meta.resource_name, user)
         resource_fields = self.get_field_resource()._get_list_response_internal(
             scope='fields.resource')
-        # build a hash out of the fields
+        logger.info('build a hash out of the fields...')
         field_hash = {}
         for field in resource_fields:
             field_hash[field['key']]=field
@@ -3089,13 +3113,9 @@ class VocabularyResource(ApiResource):
 #             content=self.serialize(request, cached_content, desired_format), 
 #             content_type=build_content_type(desired_format))
 # 
-#     def clear_cache(self):
-#         logger.info('clear vocabulary caching...')
-#         ApiResource.clear_cache(self)
-#         cache.delete('vocabulary_listing')
     
-    def clear_cache(self):
-        super(VocabularyResource,self).clear_cache()
+    def clear_cache(self, request, **kwargs):
+        super(VocabularyResource,self).clear_cache(request, **kwargs)
         cache.delete('vocabularies');
 
         
@@ -3510,8 +3530,8 @@ class UserResource(ApiResource):
         always_return_data = True # this makes Backbone happy
         resource_name = 'user'
     
-    def clear_cache(self):
-        ApiResource.clear_cache(self)
+    def clear_cache(self, request, **kwargs):
+        ApiResource.clear_cache(self, request, **kwargs)
 #         self.get_resource_resource().clear_cache()
         
     def get_permission_resource(self):
@@ -4030,8 +4050,8 @@ class UserGroupResource(ApiResource):
         self.permission_resource = None
         self.user_resource = None
 
-    def clear_cache(self):
-        ApiResource.clear_cache(self)
+    def clear_cache(self, request, **kwargs):
+        ApiResource.clear_cache(self, request, **kwargs)
 #         self.get_resource_resource().clear_cache()
         
     def get_permission_resource(self):

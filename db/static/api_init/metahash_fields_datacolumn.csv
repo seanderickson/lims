@@ -1,38 +1,38 @@
-key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,required,data_type,display_type,display_options,edit_type,is_restricted,value_template,data_access_level
-name,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/name/,,,0,,TRUE,"The name of the data column",Name,TRUE,,,[l;d],[c],TRUE,string,,,,,,0
-description,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/description/,,,1,,TRUE,"The description",Description,TRUE,,,[l;d],[c;u],,string,,,,,,0
-assay_data_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/assay_data_type/,data_column,data_type,3,,TRUE,"Screen Result Assay Data Type","Assay Data Type",TRUE,,datacolumn.data_type,[l;d],,,string,,,,,,0
-data_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_type/,,,2,,TRUE,"The data type","Data Type",TRUE,,datacolumn.data_type,[api],[c],TRUE,string,,,,,,0
-decimal_places,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/decimal_places/,,,3,,TRUE,"Number of significant decimal places","Decimal Places",TRUE,,,[l;d],[c;u],,integer,,,,,,0
-replicate_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/replicate_ordinal/,,,4,,TRUE,"The replicate ordinal","Replicate Ordinal",TRUE,,,[l;d],[c;u],,integer,,,,,,0
-time_point,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/time_point/,,,5,,TRUE,"The time point for data in this column","Time Point",TRUE,,,[l;d],[c;u],,string,,,,,,0
-channel,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/channel/,,,6,,TRUE,"The channel measured",Channel,TRUE,,,[d],[c;u],,string,,,,,,0
-zdepth_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/zdepth_ordinal/,,,7,,TRUE,"The zdepth ordinal","Zdepth Ordinal",TRUE,,,[d],[c;u],,string,,,,,,0
-assay_readout_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/assay_readout_type/,,,8,,TRUE,"The assay readout type","Assay Readout Type",TRUE,,,[l;d],[c;u],,string,,,,,,0
-derived_from_columns,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/derived_from_columns/,custom,,9,,TRUE,"The Data Columns from which this column was derived","Derived From",TRUE,,,[l;d],[c;u],,list,,,,,,2
-how_derived,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/how_derived/,,,99,,TRUE,"If values are derived, how derived","How Derived",TRUE,,,[l;d],[c;u],,string,,,,,,2
-is_follow_up_data,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/is_follow_up_data/,,,10,,TRUE,"Is this follow up data","Is Follow Up",TRUE,,,[l;d],[c;u],,boolean,,,,,,0
-is_derived,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/is_derived/,,,11,,TRUE,"Is Derived","Is Derived",TRUE,,,[d],[c;u],,boolean,,,,,,2
-assay_phenotype,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/assay_phenotype/,,,12,,TRUE,"The assay phenotype","Assay Phenotype",TRUE,,,[l;d],[c;u],,string,,,,,,0
-positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/positives_count/,,,13,,TRUE,"If positives are indicated by this column, cumulative positives count","Positives Count",TRUE,,,[l;d],,,integer,,,,,,2
-strong_positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/strong_positives_count/,,,14,,TRUE,"Strong Positives Count if Partitioned Positives Column","Strong Positives Count",TRUE,,,[d],,,string,,,,,,2
-medium_positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/medium_positives_count/,,,15,,TRUE,"Medium Positives Count if Partitioned Positives Column","Medium Positives Count",TRUE,,,[d],,,string,,,,,,2
-weak_positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/weak_positives_count/,,,16,,TRUE,"Weak Positives Count if Partitioned Positives Column","Weak Positives Count",TRUE,,,[d],,,string,,,,,,2
-ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/ordinal/,,,17,,TRUE,"The ordinal for list order",Ordinal,TRUE,,,[d],[c;u],,integer,,,,,,0
-time_point_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/time_point_ordinal/,,,18,,TRUE,"The time point ordinal","Time Point Ordinal",TRUE,,,[d],,,string,,,,,,0
-screen_facility_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_facility_id/,screen,facility_id,19,,TRUE,"The screen facility ID","Screen Facility ID",TRUE,,,[d],,,string,,,,,,0
-comments,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/comments/,,,20,,TRUE,Comments,Comments,TRUE,,,[l;d],,,string,,,,,,2
-title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/title/,custom,,21,"meta field",FALSE,Title,Title,TRUE,,,[l;d],,,string,,,,,"{name} [{screen_facility_id}]",0
-key,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/key/,custom,,22,"meta field",FALSE,Key,Key,FALSE,,,[l;d],,,string,,,,,,0
-scope,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/scope/,custom,,23,meta_field,FALSE,Scope,Key,FALSE,,,[l;d],,,string,,,,,datacolumn.screenresult-{screen_facility_id},0
-screen_title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_title/,screen,title,24,,TRUE,"Screen Title","Screen Title",TRUE,,,[],,,string,,,,,,0
-mouseover,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/mouseover/,custom,,25,,FALSE,"Extended description for popup text","Popup Text",FALSE,,,[d],,,string,,,,,"{screen_facility_id}: {screen_title} - {name}",0
-visibility,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/visibility/,custom,,24,"meta field",FALSE,Visibility,Visibility,FALSE,,,[],,,string,,,,,,0
-display_options,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/display_options/,custom,,25,"meta field",FALSE,"Display Options","Display Options",FALSE,,,[],,,string,,,,,,0
-edit_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/edit_type/,custom,,26,"meta field",FALSE,"Edit Type","Edit Type",FALSE,,,[],,,string,,,,,,0
-vocabulary_scope_ref,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/vocabulary_scope_ref/,custom,,27,"meta field",FALSE,"Vocabulary reference","Vocabulary reference",FALSE,,,[],,,string,,,,,,0
-data_column_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_column_id/,,,28,,TRUE,"Internal Data Column ID","Data Column ID",TRUE,,,[],,,integer,,,,,,0
-screen_data_sharing_level,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_data_sharing_level/,screen,data_sharing_level,401,,TRUE,"Screen Data Sharing Level","Screen Data Sharing Level",TRUE,,,[api],,,integer,,,,,,0
-user_access_level_granted,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/user_access_level_granted/,custom,,402,"Dynamically calculated for each Screen the current User is viewing; null if the User is an admin",FALSE,"Access level granted for viewing this Screen Data Column","User Screen Access Level",FALSE,,field.data_access_level,[api],,,integer,,,,,,0
-screen_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_type/,screen,,29,,TRUE,"Screen Type","Screen Type",TRUE,,screen.type,[],,,string,,,,,,0
-study_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/study_type/,screen,,30,,TRUE,"The study type (null for screens)","Study Type",TRUE,,study.type,[],,,string,,,,,,0
+key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,required,data_type,display_type,display_options,edit_type,is_restricted,value_template,data_access_level,,alphanumeric_sort
+name,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/name/,,,0,,TRUE,"The name of the data column",Name,TRUE,,,[l;d],[c],TRUE,string,,,,,,0,,
+description,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/description/,,,1,,TRUE,"The description",Description,TRUE,,,[l;d],[c;u],,string,,,,,,0,,
+assay_data_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/assay_data_type/,data_column,data_type,3,,TRUE,"Screen Result Assay Data Type","Assay Data Type",TRUE,,datacolumn.data_type,[l;d],,,string,,,,,,0,,
+data_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_type/,,,2,,TRUE,"The data type","Data Type",TRUE,,datacolumn.data_type,[api],[c],TRUE,string,,,,,,0,,
+decimal_places,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/decimal_places/,,,3,,TRUE,"Number of significant decimal places","Decimal Places",TRUE,,,[l;d],[c;u],,integer,,,,,,0,,
+replicate_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/replicate_ordinal/,,,4,,TRUE,"The replicate ordinal","Replicate Ordinal",TRUE,,,[l;d],[c;u],,integer,,,,,,0,,
+time_point,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/time_point/,,,5,,TRUE,"The time point for data in this column","Time Point",TRUE,,,[l;d],[c;u],,string,,,,,,0,,
+channel,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/channel/,,,6,,TRUE,"The channel measured",Channel,TRUE,,,[d],[c;u],,string,,,,,,0,,
+zdepth_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/zdepth_ordinal/,,,7,,TRUE,"The zdepth ordinal","Zdepth Ordinal",TRUE,,,[d],[c;u],,string,,,,,,0,,
+assay_readout_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/assay_readout_type/,,,8,,TRUE,"The assay readout type","Assay Readout Type",TRUE,,,[l;d],[c;u],,string,,,,,,0,,
+derived_from_columns,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/derived_from_columns/,custom,,9,,TRUE,"The Data Columns from which this column was derived","Derived From",TRUE,,,[l;d],[c;u],,list,,,,,,2,,
+how_derived,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/how_derived/,,,99,,TRUE,"If values are derived, how derived","How Derived",TRUE,,,[l;d],[c;u],,string,,,,,,2,,
+is_follow_up_data,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/is_follow_up_data/,,,10,,TRUE,"Is this follow up data","Is Follow Up",TRUE,,,[l;d],[c;u],,boolean,,,,,,0,,
+is_derived,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/is_derived/,,,11,,TRUE,"Is Derived","Is Derived",TRUE,,,[d],[c;u],,boolean,,,,,,2,,
+assay_phenotype,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/assay_phenotype/,,,12,,TRUE,"The assay phenotype","Assay Phenotype",TRUE,,,[l;d],[c;u],,string,,,,,,0,,
+positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/positives_count/,,,13,,TRUE,"If positives are indicated by this column, cumulative positives count","Positives Count",TRUE,,,[l;d],,,integer,,,,,,2,,
+strong_positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/strong_positives_count/,,,14,,TRUE,"Strong Positives Count if Partitioned Positives Column","Strong Positives Count",TRUE,,,[d],,,string,,,,,,2,,
+medium_positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/medium_positives_count/,,,15,,TRUE,"Medium Positives Count if Partitioned Positives Column","Medium Positives Count",TRUE,,,[d],,,string,,,,,,2,,
+weak_positives_count,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/weak_positives_count/,,,16,,TRUE,"Weak Positives Count if Partitioned Positives Column","Weak Positives Count",TRUE,,,[d],,,string,,,,,,2,,
+ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/ordinal/,,,17,,TRUE,"The ordinal for list order",Ordinal,TRUE,,,[d],[c;u],,integer,,,,,,0,,
+time_point_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/time_point_ordinal/,,,18,,TRUE,"The time point ordinal","Time Point Ordinal",TRUE,,,[d],,,string,,,,,,0,,
+screen_facility_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_facility_id/,screen,facility_id,19,,TRUE,"The screen facility ID","Screen Facility ID",TRUE,,,[d],,,string,,,,,,0,,TRUE
+comments,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/comments/,,,20,,TRUE,Comments,Comments,TRUE,,,[l;d],,,string,,,,,,2,,
+title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/title/,custom,,21,"meta field",FALSE,Title,Title,TRUE,,,[l;d],,,string,,,,,"{name} [{screen_facility_id}]",0,,
+key,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/key/,custom,,22,"meta field",FALSE,Key,Key,FALSE,,,[l;d],,,string,,,,,,0,,
+scope,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/scope/,custom,,23,meta_field,FALSE,Scope,Key,FALSE,,,[l;d],,,string,,,,,datacolumn.screenresult-{screen_facility_id},0,,
+screen_title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_title/,screen,title,24,,TRUE,"Screen Title","Screen Title",TRUE,,,[],,,string,,,,,,0,,
+mouseover,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/mouseover/,custom,,25,,FALSE,"Extended description for popup text","Popup Text",FALSE,,,[d],,,string,,,,,"{screen_facility_id}: {screen_title} - {name}",0,,
+visibility,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/visibility/,custom,,24,"meta field",FALSE,Visibility,Visibility,FALSE,,,[],,,string,,,,,,0,,
+display_options,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/display_options/,custom,,25,"meta field",FALSE,"Display Options","Display Options",FALSE,,,[],,,string,,,,,,0,,
+edit_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/edit_type/,custom,,26,"meta field",FALSE,"Edit Type","Edit Type",FALSE,,,[],,,string,,,,,,0,,
+vocabulary_scope_ref,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/vocabulary_scope_ref/,custom,,27,"meta field",FALSE,"Vocabulary reference","Vocabulary reference",FALSE,,,[],,,string,,,,,,0,,
+data_column_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_column_id/,,,28,,TRUE,"Internal Data Column ID","Data Column ID",TRUE,,,[],,,integer,,,,,,0,,
+screen_data_sharing_level,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_data_sharing_level/,screen,data_sharing_level,401,,TRUE,"Screen Data Sharing Level","Screen Data Sharing Level",TRUE,,,[api],,,integer,,,,,,0,,
+user_access_level_granted,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/user_access_level_granted/,custom,,402,"Dynamically calculated for each Screen the current User is viewing; null if the User is an admin",FALSE,"Access level granted for viewing this Screen Data Column","User Screen Access Level",FALSE,,field.data_access_level,[api],,,integer,,,,,,0,,
+screen_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_type/,screen,,29,,TRUE,"Screen Type","Screen Type",TRUE,,screen.type,[],,,string,,,,,,0,,
+study_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/study_type/,screen,,30,,TRUE,"The study type (null for screens)","Study Type",TRUE,,study.type,[],,,string,,,,,,0,,

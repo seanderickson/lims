@@ -166,6 +166,7 @@ logger = logging.getLogger(__name__)
 DEBUG_SCREEN_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_DC_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_RV_CREATE = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_SCREENRESULT = logger.isEnabledFor(logging.DEBUG)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -223,12 +224,24 @@ class DbApiResource(reports.api.ApiResource):
             conn.execute(text(
                 'CREATE TABLE "well_query_index" ('
                 '"id" serial NOT NULL,  '
-                '"well_id" text NOT NULL REFERENCES "well" ("well_id") '
-                '    DEFERRABLE INITIALLY DEFERRED,'
-                '"query_id" integer NOT NULL REFERENCES "cached_query" ("id") '
-                '    DEFERRABLE INITIALLY DEFERRED'
+                '"well_id" text NOT NULL,'
+                '"query_id" integer NOT NULL'
                 ');'
             ));
+            conn.execute(text(
+                'ALTER TABLE well_query_index '
+                'ADD CONSTRAINT well_query_unique UNIQUE(query_id, well_id) '
+                'DEFERRABLE INITIALLY DEFERRED; '))
+        # 20180216 - fk constraints not necessary
+        # conn.execute(text(
+        #     'CREATE TABLE "well_query_index" ('
+        #     '"id" serial NOT NULL,  '
+        #     '"well_id" text NOT NULL REFERENCES "well" ("well_id") '
+        #     '    DEFERRABLE INITIALLY DEFERRED,'
+        #     '"query_id" integer NOT NULL REFERENCES "cached_query" ("id") '
+        #     '    DEFERRABLE INITIALLY DEFERRED'
+        #     ');'
+        # ));
             logger.info('the well_query_index table has been created')
         except Exception, e:
             logger.info((
@@ -337,38 +350,42 @@ class DbApiResource(reports.api.ApiResource):
             count = int(conn.execute(count_stmt).scalar())        
             logger.info('well_data_column_positive_index count: %r', count)
         
-        if count == 0:
-            logger.info('well_data_column_positive_index count: %r, recreating', count)
-        
-            base_stmt = join(
-                _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
-            base_stmt = base_stmt.join(_sr, _sr.c.screen_result_id==_aw.c.screen_result_id)
-            base_stmt = base_stmt.join(_s, _sr.c.screen_id==_s.c.screen_id)
-            base_stmt = select([
-                _aw.c.well_id,
-                _dc.c.data_column_id,
-                _sr.c.screen_id
-                ]).select_from(base_stmt)            
-            base_stmt = base_stmt.where(_aw.c.is_positive)
-            base_stmt = base_stmt.where(_s.c.study_type==None)
-            base_stmt = base_stmt.where(
-                _dc.c.data_type.in_([
-                    'boolean_positive_indicator',
-                    'partition_positive_indicator', 
-                    'confirmed_positive_indicator']))
-            base_stmt = base_stmt.order_by(
-                _dc.c.data_column_id, _aw.c.well_id)
-            insert_statement = (
-                insert(_wdc)
-                    .from_select(['well_id', 'data_column_id','screen_id'], base_stmt))
-            logger.info('execute mutual pos insert statement...')
-            logger.debug(
-                'mutual pos insert statement: %r',
-                str(insert_statement.compile(
-                    dialect=postgresql.dialect(),
-                    compile_kwargs={"literal_binds": True})))
-            get_engine().execute(insert_statement)
-            logger.info('mutual pos insert statement, executed.')
+            if count == 0:
+                
+                logger.info(
+                    'well_data_column_positive_index count: %r, recreating', count)
+            
+                base_stmt = join(
+                    _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
+                base_stmt = base_stmt.join(
+                    _sr, _sr.c.screen_result_id==_aw.c.screen_result_id)
+                base_stmt = base_stmt.join(_s, _sr.c.screen_id==_s.c.screen_id)
+                base_stmt = select([
+                    _aw.c.well_id,
+                    _dc.c.data_column_id,
+                    _sr.c.screen_id
+                    ]).select_from(base_stmt)            
+                base_stmt = base_stmt.where(_aw.c.is_positive)
+                base_stmt = base_stmt.where(_s.c.study_type==None)
+                base_stmt = base_stmt.where(
+                    _dc.c.data_type.in_([
+                        'boolean_positive_indicator',
+                        'partition_positive_indicator', 
+                        'confirmed_positive_indicator']))
+                base_stmt = base_stmt.order_by(
+                    _dc.c.data_column_id, _aw.c.well_id)
+                insert_statement = (
+                    insert(_wdc)
+                        .from_select(['well_id', 'data_column_id','screen_id'], 
+                            base_stmt))
+                logger.info('execute mutual pos insert statement...')
+                logger.debug(
+                    'mutual pos insert statement: %r',
+                    str(insert_statement.compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True})))
+                get_engine().execute(insert_statement)
+                logger.info('mutual pos insert statement, executed.')
         return _wdc
     
     @classmethod
@@ -386,7 +403,7 @@ class DbApiResource(reports.api.ApiResource):
             logger.info('screen_overlap count: %r', count)
         
         if count == 0:
-            logger.info('screen_overlap count:: %r, recreating', count)
+            logger.info('screen_overlap count: %r, recreating', count)
         
             base_stmt = (
                 select([wdc1.c.screen_id, wdc2.c.screen_id.label('overlap_screen_id')])
@@ -398,13 +415,15 @@ class DbApiResource(reports.api.ApiResource):
             insert_statement = (
                 insert(_screen_overlap)
                     .from_select(['screen_id','overlap_screen_id'], base_stmt))
-            logger.debug(
-                'screen_overlap insert statement: %r',
-                str(insert_statement.compile(
-                    dialect=postgresql.dialect(),
-                    compile_kwargs={"literal_binds": True})))
-            get_engine().execute(insert_statement)
-            logger.info('screen_overlap insert statement, executed.')
+            
+            if logger.isEnabledFor(logging.DEBUG) or DEBUG_SCREENRESULT is True:
+                logger.info(
+                    'screen_overlap insert statement: %r',
+                    str(insert_statement.compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True})))
+            result = get_engine().execute(insert_statement)
+            logger.info('screen_overlap insert statement, executed: %d.' % result.rowcount)
         return _screen_overlap
     
     def get_apilog_resource(self):
@@ -2719,31 +2738,31 @@ class UserAgreementResource(DbApiResource):
     def post_list(self, request, schema=None, **kwargs):
         raise NotImplementedError
 
-    @write_authorization
-    @un_cache
-    @transaction.atomic
-    def patch_list(self, request, **kwargs):
-
-        result = super(UserAgreementResource, self).patch_list(request, **kwargs)
-
-        param_hash = self._convert_request_to_dict(request)
-        if 'test_only' in param_hash:
-            logger.info('test_only flag: %r', kwargs.get('test_only'))    
-            raise InformationError('successful patch, "test_only" flag is set, rollback...')
-        
-        return result
-    
-    @write_authorization
-    @un_cache
-    @transaction.atomic
-    def patch_detail(self, request, **kwargs):
-        result = super(UserAgreementResource, self).patch_detail(request, **kwargs)
-        param_hash = self._convert_request_to_dict(request)
-        if 'test_only' in param_hash:
-            logger.info('test_only flag: %r', kwargs.get('test_only'))    
-            raise InformationError('successful patch, "test_only" flag is set, rollback...')
-        
-        return result
+#     @write_authorization
+#     @un_cache
+#     @transaction.atomic
+#     def patch_list(self, request, **kwargs):
+# 
+#         result = super(UserAgreementResource, self).patch_list(request, **kwargs)
+# 
+#         param_hash = self._convert_request_to_dict(request)
+#         if 'test_only' in param_hash:
+#             logger.info('test_only flag: %r', kwargs.get('test_only'))    
+#             raise InformationError('successful patch, "test_only" flag is set, rollback...')
+#         
+#         return result
+#     
+#     @write_authorization
+#     @un_cache
+#     @transaction.atomic
+#     def patch_detail(self, request, **kwargs):
+#         result = super(UserAgreementResource, self).patch_detail(request, **kwargs)
+#         param_hash = self._convert_request_to_dict(request)
+#         if 'test_only' in param_hash:
+#             logger.info('test_only flag: %r', kwargs.get('test_only'))    
+#             raise InformationError('successful patch, "test_only" flag is set, rollback...')
+#         
+#         return result
     
     @write_authorization
     @un_cache        
@@ -3749,16 +3768,27 @@ class ScreenResultResource(DbApiResource):
         return self.screen_resource
     
     @transaction.atomic()        
-    def clear_cache(self, all=False, by_date=None, by_uri=None, by_size=False):
+    def clear_cache(self, request, **kwargs):
+        
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        
+        all=bool(param_hash.get('all',False))
+        by_date=param_hash.get('by_date',None)
+        by_uri=param_hash.get('by_uri',None)
+        by_size=bool(param_hash.get('by_size', False))
         
         logger.info(
             'clear_cache called: all: %r, by_date: %r, by_uri: %r, by_size: %r',
             all, by_date, by_uri, by_size)
-
-        DbApiResource.clear_cache(self)
+        
+        if all is True or any([by_date,by_size,by_uri]) is False:
+            # Manually clear the screen caches
+            DbApiResource.clear_cache(self, request, **kwargs)
+            caches['screen'].clear()
 
         max_indexes_to_cache = getattr(
-            settings, 'MAX_WELL_INDEXES_TO_CACHE', 2e+08)
+            settings, 'MAX_WELL_INDEXES_TO_CACHE', 3e+08)
         logger.debug('max_indexes_to_cache %s' % max_indexes_to_cache)
 
         _wellQueryIndex = self.bridge['well_query_index']
@@ -3839,9 +3869,9 @@ class ScreenResultResource(DbApiResource):
         else:
             logger.info('do not clear the well_data_column_positive_index table...')
         
-        # Manually clear the screen caches
-        DbApiResource.clear_cache(self)
-        caches['screen'].clear()
+        # Manually clear the screen caches - removed 201802
+        # DbApiResource.clear_cache(self)
+        # caches['screen'].clear()
         # self.get_screen_resource().clear_cache()
             
     def prepend_urls(self):
@@ -3893,6 +3923,7 @@ class ScreenResultResource(DbApiResource):
          WHERE result_value.data_column_id=<id> 
          AND rv.well_id=assay_well.well_id limit 1) as <data_column_value_alias>
         '''
+        logger.debug('build result value for field: %r', field_information)
         key = field_information['key']
         data_column_id = field_information['data_column_id']
         data_column_type = field_information.get('data_type') 
@@ -3915,6 +3946,37 @@ class ScreenResultResource(DbApiResource):
         rv_select = rv_select.label(key)
         return rv_select
 
+    # 20180220 - not used after rv query optimizations
+#     def _build_result_value_column_for_base_select(self, field_information):
+#         '''
+#         join the result_value table as an alias
+#         '''
+#         logger.debug('build result value for field: %r', field_information)
+#         key = field_information['key']
+#         data_column_id = field_information['data_column_id']
+#         data_column_type = field_information.get('data_type') 
+#         # TODO: column to select: use controlled vocabulary
+#         column_to_select = None
+#         if(data_column_type in ['numeric', 'decimal', 'integer']):  
+#             column_to_select = 'numeric_value'
+#         else:
+#             column_to_select = 'value'
+#         logger.debug('_build_result_value_column: %r, %r, %r, %r', 
+#             key, column_to_select, data_column_id, column_to_select)
+#         
+#         _rv = self.bridge['result_value']
+#         _rv = _rv.alias('rv_')
+#         
+#         
+#         rv_select = select([column(column_to_select)]).select_from(_rv)
+#         rv_select = rv_select.where(
+#             _rv.c.data_column_id == field_information['data_column_id'])
+#         rv_select = rv_select.where(_rv.c.well_id == text('assay_well.well_id'))
+#         # FIXME: limit to rv's to 1 - due to the duplicated result value issue
+#         rv_select = rv_select.limit(1)  
+#         rv_select = rv_select.label(key)
+#         return rv_select
+
     def _build_result_value_cte(self, field_information):
         '''
         Not used - an alternate method of constructing the result values as 
@@ -3928,6 +3990,7 @@ class ScreenResultResource(DbApiResource):
         if(data_column_type in ['numeric', 'decimal', 'integer']):  
             column_to_select = 'numeric_value'
         else:
+            # FIXME: boolean result value must be cast to BOOLEAN for filtering sql
             column_to_select = 'value'
         
         rv_select = (
@@ -3961,12 +4024,147 @@ class ScreenResultResource(DbApiResource):
             )
         return excluded_cols_select.cte('exclusions')
     
+    @transaction.atomic
+    def create_cached_well_query(self, 
+        base_stmt, param_hash, screen_facility_id, username):
+        '''
+        Get or create a CachedQuery and well_query_index entries
+        
+        Note: begin() in this context is not properly transactional -
+        (sqlalchemy is not aware of Django connections or transactions).
+        However, the transaction.atomic wrapper will properly roll back.
+        '''
+        MIN_WELLS_TO_CLEAR_INDEXES = getattr(
+            settings, 'MIN_WELLS_TO_CLEAR_INDEXES', 3e5)
+        
+        _wellQueryIndex = self.bridge['well_query_index']
+        
+        # 1.a insert the base statement well ids into the indexing table
+        m = hashlib.md5()
+        compiled_stmt = str(base_stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
+        
+        if DEBUG_SCREENRESULT or True: 
+            logger.info('base_stmt: %r', compiled_stmt)
+        
+        m.update(compiled_stmt)
+        key = m.hexdigest()
+        if DEBUG_SCREENRESULT: 
+            logger.info('cached query key: %r', key)
+
+        (cachedQuery, create_new_well_index_cache) = \
+            CachedQuery.objects.all().get_or_create(key=key)
+        if DEBUG_SCREENRESULT: 
+            logger.info('create_new_well_index_cache: %r', 
+                create_new_well_index_cache)
+        
+        with get_engine().begin() as conn:
+            
+            logger.info('cached query: %r', cachedQuery)
+            if not cachedQuery.count:
+                logger.info('count not created, recreate the cache: %r', cachedQuery)
+                create_new_well_index_cache = True
+                stmt = delete(_wellQueryIndex)\
+                    .where(_wellQueryIndex.c.query_id==cachedQuery.id)
+                conn.execute(stmt)
+            
+            if create_new_well_index_cache:
+                cachedQuery.sql = compiled_stmt
+                cachedQuery.username = username
+                cachedQuery.uri = \
+                    '/screenresult/%s' % screen_facility_id
+                cachedQuery.params = json.dumps(
+                    { k:v for k,v in param_hash.items() if k!='schema'})
+                cachedQuery.save()
+
+                base_stmt = base_stmt.alias('base_stmt')
+                
+                insert_statement = insert(_wellQueryIndex).\
+                    from_select(['well_id', 'query_id'],
+                        select([
+                            literal_column("well_id"),
+                            literal_column(
+                                str(cachedQuery.id)).label('query_id')
+                            ]).select_from(base_stmt))
+                if DEBUG_SCREENRESULT or True:
+                    logger.info('insert stmt: %s',
+                        str(insert_statement.compile(
+                            dialect=postgresql.dialect(),
+                            compile_kwargs={"literal_binds": True})))
+                 
+                logger.info('execute screenresult well index insert...')
+                result = conn.execute(insert_statement)
+                logger.info('screenresult well index complete: %r', result.rowcount)
+                 
+                cachedQuery.count = result.rowcount
+                
+                # cachedQuery.count = self.copy_from(base_stmt, cachedQuery.id)
+                
+                if cachedQuery.count == 0:
+                    cachedQuery.delete()
+                    logger.warn('Query generates no results: %r', compiled_stmt)
+                else:
+                    cachedQuery.save()
+
+                # clear out older cached query wells
+                self.clear_cache(None, by_size=True)
+            else:
+                logger.info('using cached well_query: %r', cachedQuery)
+        logger.info('create_cached_well_query returns: %r', cachedQuery)
+        return cachedQuery
+        
+    def copy_from(self, _stmt, query_id):
+        ''' Use copy from to create the well query index
+        - Note: performance testing indicates no benifit for this.'''
+         
+        count = 0
+ 
+        with get_engine().begin() as conn:
+         
+            with SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as f:
+                fieldnames = ['well_id','query_id']
+                writer = unicodecsv.DictWriter(
+                    f, fieldnames=fieldnames, delimiter=str(','),
+                    lineterminator="\n")
+                 
+                final_stmt = \
+                    select([
+                        literal_column("well_id"),
+                        literal_column(
+                        str(query_id)).label('query_id')
+                    ]).select_from(_stmt)
+                logger.info('execute wqx query...')
+                result = conn.execute(final_stmt)
+                logger.info('executed %d, write temp file...', result.rowcount)
+                for row in result:
+                    wq_initializer = {
+                        'well_id': row[0],
+                        'query_id': row[1] }
+                    writer.writerow(wq_initializer)
+                    count += 1
+                logger.info('wrote temp file: %d....', count)
+                f.seek(0)
+             
+                logger.info(
+                    'use copy_from to create %d well indexes...', count)
+                get_engine().raw_connection().cursor().copy_from(
+                    f, 'well_query_index', sep=str(','), 
+                    columns=fieldnames, null=PSYCOPG_NULL)
+                logger.info('well query indexes created.')
+                 
+        return count
+
     def get_query(
             self, username, screenresult, param_hash, schema, limit, offset,
             **extra_params):
 
-        DEBUG_SCREENRESULT = False or logger.isEnabledFor(logging.DEBUG)
         logger.info('build screenresult query')
+        
+        # Switch result_value query strategy for performance testing:
+        RV_JOIN_TYPE_LEFT_OUTER = 'lo'
+        RV_JOIN_TYPE_NESTED_SELECT = 'ns'
+        RV_JOIN_TYPE = RV_JOIN_TYPE_LEFT_OUTER
         
         manual_field_includes = set(param_hash.get('includes', []))
         if screenresult.screen.study_type is None:
@@ -3998,25 +4196,33 @@ class ScreenResultResource(DbApiResource):
         _reagent = self.bridge['reagent']
         _library = self.bridge['library']
         excluded_cols_select = self.create_exclusions_cte(screenresult)
+        _wellQueryIndex = self.bridge['well_query_index']
                     
         # Strategy: 
         # 1. create the base clause, which will build a stored index in 
         # the table: well_query_index;
         # the base query uses only columns: well_id, +filters, +orderings
-        base_clause = _aw
-        base_clause = base_clause.join(_w, _aw.c.well_id == _w.c.well_id)
-        base_clause = base_clause.join(
-            _sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
-        base_clause = base_clause.join(_s, _sr.c.screen_id == _s.c.screen_id)
-        base_clause = base_clause.join(
-            _reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
-        base_clause = base_clause.join(
-            _library,_w.c.library_id==_library.c.library_id)
-
         base_custom_columns = {
             'well_id': literal_column('assay_well.well_id'),
             }
 
+        # The base_fields are always included in the query: 
+        # - always well_id
+        # - any fields that are used in sort or filtering
+        base_fields = [ fi for fi in field_hash.values() 
+            if ( # everything except datacolumns
+                 fi['key'] == 'well_id'
+                 or fi['key'] in order_params
+                 or '-%s' % fi['key'] in order_params
+                 or fi['key'] in filter_hash)]
+        logger.info('base fields: %r', [
+            (fi['key'], fi['scope']) for fi in base_fields])
+
+        
+        base_clause = _aw
+        base_query_tables = ['assay_well',]
+        
+        # Include join tables as needed for the base clause
         filter_excluded = True
         if ('exclude' not in filter_hash 
                 and 'exclude' not in order_params
@@ -4028,29 +4234,100 @@ class ScreenResultResource(DbApiResource):
                 excluded_cols_select, 
                 _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
             base_custom_columns['exclude'] = literal_column('exclusions.exclude')
+            base_query_tables.append('exclusions')
+        
+        if any([ ( fi.get('table',None) in ('well','reagent') 
+                    or fi['scope'] in [
+                        'fields.reagent','fields.smallmoleculereagent',
+                        'fields.silencingreagent'] ) for fi in base_fields]):
+            logger.info('include well tables')
+            base_query_tables.extend(['well','reagent'])
+            base_clause = base_clause.join(_w, _aw.c.well_id == _w.c.well_id)
+            base_clause = base_clause.join(
+                _reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
+        if any([fi.get('table',None) 
+                in ('screen','screen_result') for fi in base_fields]):
+            logger.info('include screen tables')
+            base_query_tables.extend(['screen','screen_result'])
+            base_clause = base_clause.join(
+                _sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
+            base_clause = base_clause.join(_s, _sr.c.screen_id == _s.c.screen_id)
+        if any([fi.get('table',None) in ('library',) for fi in base_fields]):
+            logger.info('include library table...')
+            # Store the library table as a cte - the postgres query planner 
+            # is not able to use the well-to-library fk to perform an
+            # efficient index scan and instead uses a hash join
             
-        # The base_fields are always included in the query: 
-        # - all (screenresult) fields not part of result value lookup
-        # - any result_value lookups that are used in sort or filtering
-        base_fields = [ fi for fi in field_hash.values() 
-            if ( # everything except datacolumns
-                fi['scope'] in ['fields.screenresult'] 
-                 or fi['key'] in order_params
-                 or '-%s' % fi['key'] in order_params
-                 or fi['key'] in filter_hash)]
-        logger.debug('base fields: %r', base_fields)
-        # Using nested selects 
-        for fi in [fi for fi in base_fields 
-                if fi.get('is_datacolumn', None)]:
-            rv_select = self._build_result_value_column(fi)
-            base_custom_columns[fi['key']] = rv_select
+            # Slight performance increase using plate_number to join
+            # base_query_tables.extend(['library_cte',])
+            # library_cte = (
+            #     select([text('well.well_id, library.*')])
+            #     .select_from(
+            #         _library.join(_w, _w.c.library_id==text('library.library_id'))
+            #         .join(_aw, _w.c.well_id==_aw.c.well_id))
+            #     .where(_aw.c.screen_result_id==screenresult.screen_result_id)).cte('library_cte')
+            # base_clause = base_clause.join(
+            #     library_cte,_aw.c.well_id==text('library_cte.well_id'))
+
+            library_cte = (
+                select([text('a.plate_number, library.*')])
+                .select_from(_library)
+                .select_from(
+                    ( select([_w.c.plate_number, _w.c.library_id])
+                        .select_from(
+                            _w.join(_aw, _w.c.well_id==_aw.c.well_id))
+                        .where(_aw.c.screen_result_id==screenresult.screen_result_id)
+                        .distinct()
+                        .alias('a')))
+                .where(text('a.library_id')==_library.c.library_id)
+                .cte('library_cte'))
+            base_clause = base_clause.join(
+                library_cte,_aw.c.plate_number==text('library_cte.plate_number'))
+            
+            for fi in base_fields:
+                if fi['table'] == 'library':
+                    base_custom_columns[fi['key']] = \
+                        literal_column('library_cte.%s' % fi['key'])
+        
+        # # Include Result Value tables
+        if RV_JOIN_TYPE == RV_JOIN_TYPE_NESTED_SELECT:        
+            # Using nested selects 
+            for fi in [fi for fi in base_fields 
+                    if fi.get('is_datacolumn', None)]:
+                rv_select = self._build_result_value_column(fi)
+                base_custom_columns[fi['key']] = rv_select
+        elif RV_JOIN_TYPE == RV_JOIN_TYPE_LEFT_OUTER:
+            # 20180215
+            # For using rv_joins - all rows must be represented      
+            for fi in [fi for fi in base_fields 
+                    if fi.get('is_datacolumn', None)]:
+                key = fi['key']
+                result_value_alias = _rv.alias('rv_%s' % key)
+                data_column_id = fi['data_column_id']
+                data_column_type = fi.get('data_type') 
+                if data_column_type in ['numeric', 'decimal', 'integer']:
+                    base_custom_columns[key] = \
+                        literal_column('rv_%s.%s' % (key, 'numeric_value') )
+                elif data_column_type == 'boolean':
+                    base_custom_columns[key] = \
+                        literal_column('CAST( rv_%s.%s as BOOLEAN)' 
+                            % (key, 'value'))
+                else:
+                    base_custom_columns[key] = \
+                        literal_column('rv_%s.%s' % (key, 'value') )
+                        
+                base_clause = base_clause.join(result_value_alias,
+                    and_(_aw.c.well_id==result_value_alias.c.well_id,
+                         result_value_alias.c.data_column_id==data_column_id),
+                    isouter=True)
+        else: 
+            raise ProgrammingError('unknown join type: %r', RV_JOIN_TYPE)
         # USING CTEs (shown to be slower)           
         # for fi in [fi for fi in base_fields 
         #         if fi.get('is_datacolumn', None)]:
         #     rv_select = self._build_result_value_cte(fi)
         #     base_clause = base_clause.join(
-        #         rv_select, _aw.c.well_id==rv_select.c.well_id,
-        #         isouter=True)
+        #         rv_select, _aw.c.well_id==rv_select.c.well_id)
         #     rv_selector = (
         #         select([rv_select.c.value])
         #         .select_from(rv_select)
@@ -4059,8 +4336,6 @@ class ScreenResultResource(DbApiResource):
         #     rv_selector.label(fi['key'])
         #     base_custom_columns[fi['key']] = rv_selector            
 
-        base_query_tables = [
-            'assay_well','well','screen_result', 'screen', 'exclusions']
         
         base_columns = self.build_sqlalchemy_columns(
             base_fields, base_query_tables=base_query_tables,
@@ -4073,7 +4348,7 @@ class ScreenResultResource(DbApiResource):
                 and '-is_positive' not in order_params):
             del base_columns['is_positive']
             
-        # Get the reagent columns and join them - only if in the base_fields
+        # Get the reagent column definitions - only if in the base_fields
         reagent_resource = self.get_reagent_resource()
         base_reagent_tables = ['reagent','library','well']
         reagent_columns = []
@@ -4085,88 +4360,22 @@ class ScreenResultResource(DbApiResource):
                 if DEBUG_SCREENRESULT: 
                     logger.info('adding reagent column: %r...', key)
                 base_columns[key] = col
+
         if not base_columns:
             raise ProgrammingError(
                 'no base columns found in sub_columns: %r', sub_columns)
         base_stmt = select(base_columns.values()).select_from(base_clause)
         base_stmt = base_stmt.where(
             _aw.c.screen_result_id == screenresult.screen_result_id)
+
         (base_stmt, count_stmt) = \
             self.wrap_statement(base_stmt, order_clauses, filter_expression)
         base_stmt = base_stmt.order_by(asc(column('well_id')))  
         
-        # 1.a insert the base statement well ids into the indexing table
-        
-        m = hashlib.md5()
-        compiled_stmt = str(base_stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        
-        if DEBUG_SCREENRESULT: logger.info('base_stmt: %r', compiled_stmt)
-        
-        m.update(compiled_stmt)
-        key = m.hexdigest()
-        if DEBUG_SCREENRESULT: logger.info('cached query key: %r', key)
-        _wellQueryIndex = self.bridge['well_query_index']
-        (cachedQuery, create_new_well_index_cache) = \
-            CachedQuery.objects.all().get_or_create(key=key)
-        if DEBUG_SCREENRESULT: 
-            logger.info('create_new_well_index_cache: %r', 
-                create_new_well_index_cache)
-        if create_new_well_index_cache:
-            with get_engine().begin() as conn:
-                # NOTE: mixing Django connection with SQA connection
-                # - thrown exceptions will rollback the nested SQA transaction
-                # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
-                try:
-                    cachedQuery.sql = compiled_stmt
-                    cachedQuery.username = username
-                    cachedQuery.uri = \
-                        '/screenresult/%s' % screenresult.screen.facility_id
-                    cachedQuery.params = json.dumps(
-                        { k:v for k,v in param_hash.items() if k!='schema'})
-                    cachedQuery.save()
-    
-                    base_stmt = base_stmt.alias('base_stmt')
-                    insert_statement = insert(_wellQueryIndex).\
-                        from_select(['well_id', 'query_id'],
-                            select([
-                                literal_column("well_id"),
-                                literal_column(
-                                    str(cachedQuery.id)).label('query_id')
-                                ]).select_from(base_stmt))
-                    if DEBUG_SCREENRESULT:
-                        logger.info(
-                            'insert stmt: %r',
-                            str(insert_statement.compile(
-                                dialect=postgresql.dialect(),
-                                compile_kwargs={"literal_binds": True})))
-                    logger.info('execute screenresult well index insert...')
-                    conn.execute(insert_statement)
-                    logger.info('screenresult well index complete')
-                    count_stmt = _wellQueryIndex
-                    count_stmt = select([func.count()]).select_from(count_stmt)
-                    count_stmt = count_stmt.where(
-                        _wellQueryIndex.c.query_id == cachedQuery.id)
-                    logger.info('execute screenresult cached count query...')
-                    cachedQuery.count = int(conn.execute(count_stmt).scalar())
-                    if cachedQuery.count == 0:
-                        cachedQuery.delete()
-                        logger.warn('Query generates no results: %r', compiled_stmt)
-                    else:
-                        cachedQuery.save()
-                    # clear out older cached query wells
-                    self.clear_cache(by_size=True)
-                except Exception, e:
-                    cachedQuery.delete()
-                    logger.exception('ex on get/create wellquery for screenresult')
-                    raise e
-        else:
-            logger.info('using cached well_query: %r', cachedQuery)
-            
-        ######
-        # Now that query_index table is populated, use it to build the 
-        # output query
+        cachedQuery = self.create_cached_well_query(
+            base_stmt, param_hash, screenresult.screen.facility_id, username)            
+
+        # Use the cached well_query_index table to build efficient output query
         logger.info('build screenresult output query...')
         # specific setup 
         base_query_tables = ['assay_well', 'screen']
@@ -4203,18 +4412,45 @@ class ScreenResultResource(DbApiResource):
             # (or create an assay_row table)
             j = j.join(excluded_cols_select, 
                 excluded_cols_select.c.well_id == _aw.c.well_id, isouter=True)
-        # Using nested selects
-        for fi in [
-            fi for fi in field_hash.values() 
-                if fi.get('is_datacolumn', None)]:
-            logger.debug('building rv column: %r', fi['key'])
-            custom_columns[fi['key']] = self._build_result_value_column(fi)
-            
+        if RV_JOIN_TYPE == RV_JOIN_TYPE_NESTED_SELECT:        
+            # Using nested selects
+            for fi in [
+                fi for fi in field_hash.values() 
+                    if fi.get('is_datacolumn', None)]:
+                logger.debug('building rv column: %r', fi['key'])
+                custom_columns[fi['key']] = self._build_result_value_column(fi)
+        elif RV_JOIN_TYPE == RV_JOIN_TYPE_LEFT_OUTER:
+            # 20180215
+            # Using joins - left join rqd      
+            for fi in [fi for fi in field_hash.values() 
+                    if fi.get('is_datacolumn', None)]:
+                key = fi['key']
+                result_value_alias = _rv.alias('rv_%s' % key)
+                data_column_id = fi['data_column_id']
+                data_column_type = fi['data_type'] 
+                if data_column_type in ['numeric', 'decimal', 'integer']:
+                    custom_columns[key] = \
+                        literal_column('rv_%s.%s' % (key, 'numeric_value') )
+                elif data_column_type == 'boolean':
+                    custom_columns[key] = \
+                        literal_column('CAST( rv_%s.%s as BOOLEAN)' 
+                            % (key, 'value'))
+                else:
+                    custom_columns[key] = \
+                        literal_column('rv_%s.%s' % (key, 'value') )
+                j = j.join(result_value_alias,
+                    and_(_aw.c.well_id==result_value_alias.c.well_id,
+                         result_value_alias.c.data_column_id==data_column_id),
+                    isouter=True)
+        else: 
+            raise ProgrammingError('unknown join type: %r', RV_JOIN_TYPE)
+        
+        
         columns = self.build_sqlalchemy_columns(
             field_hash.values(), base_query_tables=base_query_tables,
             custom_columns=custom_columns)
 
-        # GET THE REAGENT COLUMNS AND JOIN THEM
+        # Get the reagent column definitions
         reagent_resource = self.get_reagent_resource()
         base_reagent_tables = ['reagent','library','well']
         reagent_columns = []
@@ -4229,14 +4465,14 @@ class ScreenResultResource(DbApiResource):
         columns['well_id'] = literal_column('wqx.well_id').label('well_id')
         if DEBUG_SCREENRESULT: 
             logger.info('columns: %r', columns.keys())
-        ######
         
         stmt = select(columns.values()).select_from(j)
         stmt = stmt.where(
             _aw.c.screen_result_id == screenresult.screen_result_id)
+        
         stmt = stmt.order_by(_wqx.c.id)
 
-        if DEBUG_SCREENRESULT: 
+        if DEBUG_SCREENRESULT or True: 
             logger.info(
                 'stmt: %s',
                 str(stmt.compile(
@@ -4245,6 +4481,7 @@ class ScreenResultResource(DbApiResource):
         logger.info('screenresult query built')
         return (field_hash, columns, stmt, count_stmt, cachedQuery, filename)
     
+
     def build_list_response(self, request, **kwargs):
 
         logger.info('build_list_response: %r', kwargs)
@@ -4295,8 +4532,6 @@ class ScreenResultResource(DbApiResource):
         screenresult = ScreenResult.objects.get(
             screen__facility_id=screen_facility_id)              
 
-        # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
-        # are added explicitly
         show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
         if show_mutual_positives is True:
             extra_params['mutual_positive'] = None
@@ -4320,93 +4555,92 @@ class ScreenResultResource(DbApiResource):
             manual_field_includes.discard('molfile')
         param_hash['includes'] = list(manual_field_includes)
 
-        try:
-            logger.info('build screenresult query...')
-            (field_hash, columns, stmt, count_stmt, cachedQuery,filename) = \
-                self.get_query(
-                    request.user.username,
-                    screenresult,
-                    param_hash,
-                    schema,
-                    limit,
-                    offset, **extra_params)
-            # Custom screen result serialization
-            
-            def is_excluded_gen(rows):
-                '''
-                Collate all of the excluded columns by well_id.
-                - This generator creates the full column names; allowing the 
-                "exclusions" query to be simpler.
-                '''
-                excluded_well_to_datacolumn_map = {}
-                for key,field in schema['fields'].items():
-                    if ( field.get('is_datacolumn', False) 
-                        and field['scope'] 
-                            == 'datacolumn.screenresult-%s' % screen_facility_id):
-                        
-                        for well_id in (
-                            ResultValue.objects.filter(
-                                    data_column_id=field['data_column_id'])
-                                .filter(is_exclude=True)
-                                .values_list('well_id', flat=True)):
-                            excluded_cols = excluded_well_to_datacolumn_map.get(well_id,[])
-                            excluded_cols.append(key)
-                            excluded_well_to_datacolumn_map[well_id] = excluded_cols
-                for row in rows:
-                    well_id = row['well_id']
-                    if well_id in excluded_well_to_datacolumn_map:
-                        excluded_cols = excluded_well_to_datacolumn_map[well_id]
-                        row['exclude'] = sorted(excluded_cols)
-                    else:
-                        row['exclude'] = None
-                    yield row                  
-            # Perform custom serialization because each output format will be 
-            # different.
-            list_brackets = LIST_BRACKETS
-            if use_raw_lists:
-                list_brackets = None
-            image_keys = [key for key,field in field_hash.items()
-                if field.get('display_type', None) == 'image']
-            ordered_keys = sorted(field_hash.keys(), 
-                key=lambda x: field_hash[x].get('ordinal',key))
-            list_fields = [ key for (key,field) in field_hash.items() 
-                if( field.get('json_field_type',None) == 'fields.ListField' 
-                    or field.get('linked_field_type',None) == 'fields.ListField'
-                    or field.get('data_type', None) == 'list' ) ]
-            value_templates = {key:field['value_template'] 
-                for key,field in field_hash.items() 
-                    if field.get('value_template', None)}
+        logger.info('build screenresult query...')
+        (field_hash, columns, stmt, count_stmt, cachedQuery,filename) = \
+            self.get_query(
+                request.user.username,
+                screenresult,
+                param_hash,
+                schema,
+                limit,
+                offset, **extra_params)
+        # Custom screen result serialization
+        
+        def is_excluded_gen(rows):
+            '''
+            Collate all of the excluded columns by well_id.
+            - This generator creates the full column names; allowing the 
+            "exclusions" query to be simpler.
+            '''
+            excluded_well_to_datacolumn_map = {}
+            for key,field in schema['fields'].items():
+                if ( field.get('is_datacolumn', False) 
+                    and field['scope'] 
+                        == 'datacolumn.screenresult-%s' % screen_facility_id):
+                    
+                    for well_id in (
+                        ResultValue.objects.filter(
+                                data_column_id=field['data_column_id'])
+                            .filter(is_exclude=True)
+                            .values_list('well_id', flat=True)):
+                        excluded_cols = excluded_well_to_datacolumn_map.get(well_id,[])
+                        excluded_cols.append(key)
+                        excluded_well_to_datacolumn_map[well_id] = excluded_cols
+            for row in rows:
+                well_id = row['well_id']
+                if well_id in excluded_well_to_datacolumn_map:
+                    excluded_cols = excluded_well_to_datacolumn_map[well_id]
+                    row['exclude'] = sorted(excluded_cols)
+                else:
+                    row['exclude'] = None
+                yield row                  
+        # Perform custom serialization because each output format will be 
+        # different.
+        list_brackets = LIST_BRACKETS
+        if use_raw_lists:
+            list_brackets = None
+        image_keys = [key for key,field in field_hash.items()
+            if field.get('display_type', None) == 'image']
+        ordered_keys = sorted(field_hash.keys(), 
+            key=lambda x: field_hash[x].get('ordinal',key))
+        list_fields = [ key for (key,field) in field_hash.items() 
+            if( field.get('json_field_type',None) == 'fields.ListField' 
+                or field.get('linked_field_type',None) == 'fields.ListField'
+                or field.get('data_type', None) == 'list' ) ]
+        value_templates = {key:field['value_template'] 
+            for key,field in field_hash.items() 
+                if field.get('value_template', None)}
 
-            title_function = None
-            if use_titles is True:
-                extra_titles = {
-                    'plate': 'Plate Number',
-                    'well': 'Well Name',
-                    'type': 'Assay Well Control Type',
-                    'exclude': 'Excluded'}
-                def title_function(key):
-                    if key in field_hash:
-                        return field_hash[key]['title']
-                    elif key in extra_titles:
-                        return extra_titles[key]
-                    else:
-                        return key
-            rowproxy_generator = None
+        title_function = None
+        if use_titles is True:
+            extra_titles = {
+                'plate': 'Plate Number',
+                'well': 'Well Name',
+                'type': 'Assay Well Control Type',
+                'exclude': 'Excluded'}
+            def title_function(key):
+                if key in field_hash:
+                    return field_hash[key]['title']
+                elif key in extra_titles:
+                    return extra_titles[key]
+                else:
+                    return key
+        rowproxy_generator = None
 
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
+        
+        logger.info('use_vocab: %r, content_type: %r', use_vocab, content_type)
+        if ( use_vocab or content_type != JSON_MIMETYPE):
+            # NOTE: xls export uses vocab values
+            logger.info('use vocab generator...')
             rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
-            
-            logger.info('use_vocab: %r, content_type: %r', use_vocab, content_type)
-            if ( use_vocab or content_type != JSON_MIMETYPE):
-                # NOTE: xls export uses vocab values
-                logger.info('use vocab generator...')
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-            else:
-                logger.info('do not use vocabularies')
-            # FIXME: use closing wrapper
-            conn = get_engine().connect()
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        else:
+            logger.info('do not use vocabularies')
+
+        with get_engine().connect() as conn:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.info(
                     'excute stmt %r...',
@@ -4473,9 +4707,6 @@ class ScreenResultResource(DbApiResource):
                 return response
             else: 
                 raise BadRequest('content_type not implemented: %r' % content_type)
-        except Exception, e:
-            logger.exception('on get list: %r', e)
-            raise e  
     
     def get_mutual_positives_columns(self, screen_result_id):
         logger.info('get_mutual_positives_columns...')
@@ -4604,8 +4835,6 @@ class ScreenResultResource(DbApiResource):
             self, screenresult=None, show_mutual_positives=False,
             user=None, extra_dc_ids=None):
         '''
-        Note: 20170905 - show_mutual_positives is deprecated: all extra columns
-        are added explicitly
         '''
 
         if user is None:
@@ -4654,6 +4883,7 @@ class ScreenResultResource(DbApiResource):
         else:
             logger.info('not cached: %s', cache_key)
             data = super(ScreenResultResource, self).build_schema(user=user)
+            logger.info('screen_result schema built: %s', cache_key)
             
             newfields = add_well_fields(data['fields'])
             if screenresult.screen.study_type is not None:
@@ -4683,10 +4913,9 @@ class ScreenResultResource(DbApiResource):
             
             newfields.update(datacolumn_fields)
             
-            # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
-            # are added explicitly
             if show_mutual_positives is True or extra_dc_ids is not None:
-                
+                # TODO: only need "overlapping_positive_screens" for the current screen
+                # (should be handled by datacolumn_resoure.authorization anyway?)
                 visible_screens = self.get_screen_resource()._get_list_response_internal(
                     user=user,
                     includes=[
@@ -4703,17 +4932,24 @@ class ScreenResultResource(DbApiResource):
                     for dc in reference_datacolumns }
 
                 other_datacolumns = []
-                # Note: 20170905 - show_mutual_positives is deprecated: all extra columns
-                # are added explicitly
                 if show_mutual_positives:
+                    overlapping_screens = reported_screen['overlapping_positive_screens']
+                    
+                    # TODO: parameterize: Add the reagent count studies
+                    if screenresult.screen.screen_type == 'small_molecule':
+                        overlapping_screens.append('200001')
+                    elif screenresult.screen.screen_type == 'rnai':
+                        overlapping_screens.append('200002')
+                        
                     temp_datacolumns = self.get_datacolumn_resource()\
                         ._get_list_response_internal(
                             user,
-                            screen_facility_id__in=
-                                reported_screen['overlapping_positive_screens'])
+                            screen_facility_id__in=overlapping_screens)
                     for dc in temp_datacolumns:
                         reference_dc = reference_datacolumns[dc['data_column_id']]
-                        if reference_dc['positives_count'] > 0:
+                        if reference_dc['positives_count'] > 0 \
+                            or reference_dc['screen_facility_id'] in ('200001','200002'):
+                            # TODO: parameterize: Add the reagent count studies
                             other_datacolumns.append(dc)
                 if extra_dc_ids:
                     extra_datacolumns = self.get_datacolumn_resource()\
@@ -4743,10 +4979,11 @@ class ScreenResultResource(DbApiResource):
                 other_datacolumns = { dc['data_column_id']:dc 
                     for dc in other_datacolumns }
                 decorated = [
-                    (dc['screen_facility_id'],dc['ordinal'], dc) 
+                    (dc['study_type'] != None,
+                     dc['screen_facility_id'],dc['ordinal'], dc) 
                         for dc in other_datacolumns.values()]
-                decorated.sort(key=itemgetter(0,1))
-                other_datacolumns = [dc for fid,ordinal,dc in decorated]
+                decorated.sort(key=itemgetter(0,1,2))
+                other_datacolumns = [dc for sort_study,fid,ordinal,dc in decorated]
                                             
                 datacolumn_fields = {}
                 for i, dc in enumerate(other_datacolumns):
@@ -4807,7 +5044,7 @@ class ScreenResultResource(DbApiResource):
         screen_facility_id = kwargs['screen_facility_id']
         # Clear cache: note "all" because mutual positive columns can change
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
-        self.clear_cache(all=True)
+        self.clear_cache(None, all=True)
         screen = Screen.objects.get(facility_id=screen_facility_id)
 
         logger.info('delete screen result for %r', screen_facility_id)
@@ -4877,7 +5114,7 @@ class ScreenResultResource(DbApiResource):
         
         # Clear cache: note "all" because mutual positive columns can change
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
-        self.clear_cache(all=True)
+        self.clear_cache(request, all=True)
         
         id_attribute = schema['id_attribute']
 
@@ -5619,6 +5856,8 @@ class DataColumnResource(DbApiResource):
     def __init__(self, **kwargs):
         super(DataColumnResource, self).__init__(**kwargs)
         self.screen_resource = None
+        self.dc_types_vocab = self.get_vocab_resource()\
+            ._get_vocabularies_by_scope('datacolumn.data_type')
         
     def get_screen_resource(self):
         if self.screen_resource is None:
@@ -5669,7 +5908,7 @@ class DataColumnResource(DbApiResource):
     def build_list_response(self, request, **kwargs):
         
         logger.info('build datacolumn response...')
-
+        outer_self = self
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -5703,7 +5942,8 @@ class DataColumnResource(DbApiResource):
                 request.user, filter_expression)
 
 
-            order_params = param_hash.get('order_by', [])
+            order_params = param_hash.get('order_by', 
+                ['-study_type','screen_facility_id','ordinal'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),
@@ -5719,10 +5959,10 @@ class DataColumnResource(DbApiResource):
                 '''
                 
                 class DataColumnRow:
-                    def __init__(self, row):
+                    def __init__(self, row,i):
                         self._dict = \
-                            DataColumnResource._create_datacolumn_from_row(
-                                max_ordinal, row)
+                            outer_self._create_datacolumn_from_row(
+                                row,i)
                     def has_key(self, key):
                         return key in self._dict
                     def keys(self):
@@ -5734,8 +5974,9 @@ class DataColumnResource(DbApiResource):
                 def datacolumn_fields_generator(cursor):
                     if extant_generator:
                         cursor = extant_generator(cursor)
-                    for row in cursor:
-                        yield DataColumnRow(row)
+                    # NOTE: using the given sort order to override the ordinal
+                    for i,row in enumerate(cursor):
+                        yield DataColumnRow(row, max_ordinal+i)
                 return datacolumn_fields_generator
             
             rowproxy_generator = create_dc_generator()
@@ -5810,10 +6051,11 @@ class DataColumnResource(DbApiResource):
                     
             stmt = stmt.order_by('ordinal')
 
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+            if DEBUG_SCREENRESULT is True:
+                compiled_stmt = str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True}))
+                logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if use_titles is True:
@@ -5837,10 +6079,11 @@ class DataColumnResource(DbApiResource):
         'partition_positive_indicator': {
             'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
             'data_type': 'string',
-            'edit_type': 'select'
+            'edit_type': 'select',
             },
         'boolean_positive_indicator': {
-            'data_type': 'boolean' 
+            'data_type': 'boolean',
+#             'vocabulary_scope_ref': 'resultvalue.boolean_positive_indicator'
             },
         'confirmed_positive_indicator': {
             'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
@@ -5849,13 +6092,13 @@ class DataColumnResource(DbApiResource):
             },
     }
             
-    @staticmethod
-    def _create_datacolumn_from_row(max_ordinal, row_or_dict ):
+    def _create_datacolumn_from_row(self, row_or_dict, ordinal_override=0 ):
         ''' Transform a row as defined by the DataColumnResource query into a
         schema field descriptor.
         '''
         _dict = {
             'data_type': 'string',
+            'edit_type': None,
             'display_options': None,
             'ordinal': 0,
             'visibility': ['l', 'd'],
@@ -5863,7 +6106,6 @@ class DataColumnResource(DbApiResource):
             'ordering': True,
             'is_datacolumn': True,
         }
-
         # TODO: 20170731: migrate the data_type of the datacolumn:
         # "numeric" has been replaced by "integer" and "decimal";
         # "text" has been replaced by "string"
@@ -5891,11 +6133,16 @@ class DataColumnResource(DbApiResource):
                 'update data type: %r, %r', 
                 dc_data_type, DataColumnResource.data_type_lookup[dc_data_type])
             _dict.update(DataColumnResource.data_type_lookup[dc_data_type])
+            if _dict.get('description',None) is None:
+                vocab = self.dc_types_vocab[dc_data_type]
+                _dict['description'] = vocab.get('description', None)
         elif dc_data_type in ['string','text']:
             _dict['display_type'] = 'full_string'
         logger.debug('_create_datacolumn_from_row: %r, %r, %r',
-            key, dc_data_type, _dict )                            
-        _dict['ordinal'] = max_ordinal + row_or_dict['ordinal']
+            key, dc_data_type, _dict )
+        if ordinal_override > 0:
+            _dict['ordinal'] = ordinal_override                           
+#         _dict['ordinal'] = max_ordinal + row_or_dict['ordinal']
         for k in row_or_dict.keys():
             if k not in _dict:
                 _dict[k] = row_or_dict[k]
@@ -5903,8 +6150,7 @@ class DataColumnResource(DbApiResource):
         return _dict
 
     # FIXME: deprecated
-    @staticmethod
-    def _create_datacolumn_from_orm(dc):
+    def _create_datacolumn_from_orm(self, dc):
         ''' Transform an ORM DataColumn record into a
         schema field descriptor.
         '''
@@ -5926,6 +6172,10 @@ class DataColumnResource(DbApiResource):
         _dict['derived_from_columns'] = [x.name for x in dc.derived_from_columns.all()]
         _dict['visibility'] = ['api']
         _dict['filtering'] = True
+        _dict['edit_type'] = None
+
+        dc_types_vocab = self.get_vocab_resource()\
+            ._get_vocabularies_by_scope('datacolumn.data_type')
 
         # TODO: 20170731: migrate the data_type of the datacolumn:
         # "numeric" has been replaced by "integer" and "decimal";
@@ -5939,6 +6189,9 @@ class DataColumnResource(DbApiResource):
                 _dict['data_type'] = 'integer'
         elif dc.data_type in DataColumnResource.data_type_lookup:
             _dict.update(DataColumnResource.data_type_lookup[dc.data_type])
+            if _dict.get('description',None) is None:
+                vocab = dc_types_vocab[dc_data_type]
+                _dict['description'] = vocab.get('description', None)
         else:
             _dict['data_type'] = 'string'
         _dict['data_column_id'] = dc.data_column_id
@@ -6789,14 +7042,14 @@ class CherryPickRequestResource(DbApiResource):
             self.cpp_resource = CherryPickPlateResource()
         return self.cpp_resource
     
-    def clear_cache(self):
+    def clear_cache(self, request, **kwargs):
         logger.info('clear_cache: CherryPickRequestResource...')
-        DbApiResource.clear_cache(self)
+        DbApiResource.clear_cache(self, request, **kwargs)
         # NOTE: don't clear dependent resources to avoid circular refererence 
         # recursion; DbApiResource.clear_cache will clear all caches, for now
         # self.get_labcherrypick_resource().clear_cache()
         # self.get_screenercherrypick_resource().clear_cache()
-        self.get_screen_resource().clear_cache()
+        self.get_screen_resource().clear_cache(request, **kwargs)
         
     def prepend_urls(self):
         
@@ -8635,7 +8888,7 @@ class CherryPickRequestResource(DbApiResource):
         if not cpr.lab_cherry_picks.all().exists():
             raise ValidationError(key='lab_cherry_picks', msg='must be set')
         
-        self.clear_cache()
+        self.clear_cache(None)
         logger.info('find eligible lab_cherry_pick copy wells...')
         eligible_lab_cherry_pick_copywells = \
             self.get_labcherrypick_resource()._get_list_response_internal(
@@ -8774,9 +9027,9 @@ class ScreenerCherryPickResource(DbApiResource):
             self.cpr_resource = CherryPickRequestResource()
         return self.cpr_resource
     
-    def clear_cache(self):
-        DbApiResource.clear_cache(self)
-        self.get_cpr_resource().clear_cache()
+    def clear_cache(self, request, **kwargs):
+        DbApiResource.clear_cache(self, request, **kwargs)
+        self.get_cpr_resource().clear_cache(request, **kwargs)
     
     def prepend_urls(self):
         
@@ -9389,9 +9642,9 @@ class LabCherryPickResource(DbApiResource):
             self.cpr_resource = CherryPickRequestResource()
         return self.cpr_resource
     
-    def clear_cache(self):
-        DbApiResource.clear_cache(self)
-        self.get_cpr_resource().clear_cache()
+    def clear_cache(self, request, **kwargs):
+        DbApiResource.clear_cache(self, request, **kwargs)
+        self.get_cpr_resource().clear_cache(request, **kwargs)
     
     def prepend_urls(self):
         
@@ -10434,9 +10687,9 @@ class CherryPickPlateResource(DbApiResource):
             self.cherry_pick_resource = CherryPickRequestResource()
         return self.cherry_pick_resource
     
-    def clear_cache(self):
-        DbApiResource.clear_cache(self)
-        self.get_cherry_pick_resource().clear_cache()
+    def clear_cache(self, request, **kwargs):
+        DbApiResource.clear_cache(self, request, **kwargs)
+        self.get_cherry_pick_resource().clear_cache(request, **kwargs)
         
     def prepend_urls(self):
         
@@ -10874,9 +11127,9 @@ class LibraryCopyResource(DbApiResource):
             self.librarycopyplate_resource = LibraryCopyPlateResource()
         return self.librarycopyplate_resource
 
-    def clear_cache(self):
+    def clear_cache(self, request, **kwargs):
         logger.info('clear copy caches')
-        DbApiResource.clear_cache(self)
+        DbApiResource.clear_cache(self, request, **kwargs)
 
     def prepend_urls(self):
         
@@ -16155,11 +16408,11 @@ class ScreenResource(DbApiResource):
         self.screenresult_resource = None
         self.su_resource = None
          
-    def clear_cache(self):
+    def clear_cache(self, request, **kwargs):
         logger.info('clear screen caches')
-        DbApiResource.clear_cache(self)
+        DbApiResource.clear_cache(self, request, **kwargs)
         caches['screen'].clear()
-        self.get_screenresult_resource().clear_cache()
+        self.get_screenresult_resource().clear_cache(request, **kwargs)
         
     def get_su_resource(self):
         if self.su_resource is None:
@@ -16859,6 +17112,15 @@ class ScreenResource(DbApiResource):
                     '  where sa.serviced_screen_id=screen.screen_id )'
                     '  order by date_of_activity desc LIMIT 1 )'
                     ),
+                'date_of_last_library_screening': literal_column(
+                    '(select date_of_activity '
+                    '  from activity '
+                    '  join lab_activity la using(activity_id) '
+                    '  join library_screening ls using(activity_id) '
+                    '  where la.screen_id=screen.screen_id '
+                    '  and ls.is_for_external_library_plates is not true '
+                    '  order by date_of_activity desc LIMIT 1 )'
+                    ),
                 # FIXME: 20170713 - rework to be performant - 
                 'activity_count': (
                     select([func.count(_activity.c.activity_id)])
@@ -17288,9 +17550,29 @@ class ScreenResource(DbApiResource):
 
         logger.info('new screen facility id to be created: %r', patch_facility_id)
         kwargs['facility_id'] = patch_facility_id
+
+        if 'test_only' in param_hash:
+            logger.info('test_only flag: %r', param_hash.get('test_only'))    
+            raise InformationError(
+                'successful post, "test_only" flag is set, rollback...')
         
         return self.patch_detail(request,**kwargs)
-        
+
+#     @write_authorization
+#     @un_cache
+#     @transaction.atomic
+#     def patch_list(self, request, **kwargs):
+# 
+#         result = super(UserAgreementResource, self).patch_list(request, **kwargs)
+# 
+#         param_hash = self._convert_request_to_dict(request)
+#         if 'test_only' in param_hash:
+#             logger.info('test_only flag: %r', kwargs.get('test_only'))    
+#             raise InformationError('successful patch, "test_only" flag is set, rollback...')
+#         
+#         return result
+
+
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
@@ -17564,8 +17846,13 @@ class StudyResource(ScreenResource):
             url(r"^(?P<resource_name>%s)"
                 r"/create_screened_count_study%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_create_screened_count_study'), 
+                self.wrap_view('dispatch_create_screened_count_study_v2'), 
                 name="api_dispatch_create_screened_count_study"),
+            url(r"^(?P<resource_name>%s)"
+                r"/create_screened_count_study_v1%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_create_screened_count_study_v1'), 
+                name="api_dispatch_create_screened_count_study_v1"),
         ] + urls
         return urls
             
@@ -17585,7 +17872,7 @@ class StudyResource(ScreenResource):
     @write_authorization
     @un_cache
     @transaction.atomic        
-    def dispatch_create_screened_count_study(self, request, **kwargs):
+    def dispatch_create_screened_count_study_v1(self, request, **kwargs):
         '''
         Create/Update the Screened Count Study:
         - Count of positives for each well
@@ -17697,10 +17984,10 @@ class StudyResource(ScreenResource):
         # Collate the number of confirmed positives for each Screen
         with get_engine().connect() as conn:
             
-            logger.info('execute the screened_count_study...')
+            logger.info('execute the screened_count_study query...')
             logger.debug('execute sql: %s', sql)
             result = conn.execute(text(sql))
-            logger.info('executed the confirmed_positive_study')
+            logger.info('executed the confirmed_positive_study query')
             
             def result_value_generator(result):
                 for row in result:
@@ -17711,6 +17998,219 @@ class StudyResource(ScreenResource):
                         'E': _dict['positives_count'],
                         'F': _dict['screened_count'],
                     }
+            logger.info('creating study values for: %r', study_obj)
+            self.get_screenresult_resource().create_screen_result(
+                request, study_obj, result_columns, 
+                result_value_generator(result))
+            logger.info('study values created for: %r', study_obj)
+        
+        if not self._meta.always_return_data:
+            response_message = {'success': {
+                API_MSG_RESULT: 'screen result loaded'}}
+            response = self.build_response(request, response_message, **kwargs)
+            return response
+        else:
+            new_data = self._get_detail_response_internal(facility_id=facility_id)
+            data = { API_RESULT_DATA: [new_data]}
+            response = self.build_response(request, data, status_code=201)
+            return response 
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic        
+    def dispatch_create_screened_count_study_v2(self, request, **kwargs):
+        '''
+        Create/Update the Screened Count Study:
+        - Count of positives for each well
+        - Screening count for each well: 
+        - for small_molecule, create counts based on assay_type
+        '''
+
+        logger.info('create the create_screened_count_study...')
+
+        request_method = request.method.lower()
+        if request_method != 'post':
+            raise BadRequest('Only POST is allowed')
+
+        convert_post_to_put(request)
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs.pop('data')
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+        if 'facility_id' not in deserialized:
+            raise ValidationError(key='facility_id', msg='required')
+        
+        schema = kwargs.get('schema', None)
+        if not schema:
+            schema = self.build_schema()
+        
+        COL_NAME_POSITIVES_COUNT = 'Positives Count'
+        COL_DESC_POSITIVES_COUNT = \
+            'Number of times scored as positive across all %s Screens'
+        COL_NAME_SCREENED_COUNT = 'Screened Count'
+        COL_DESC_SCREENED_COUNT = 'Number of times screened for all %s Screens'
+        
+        COL_NAME_POSITIVES_TYPED_COUNT = 'Positives Count ({assay_type})'
+        COL_DESC_POSITIVES_TYPED_COUNT = \
+            'Number of times scored as positive across all {assay_type} Screens'
+        COL_NAME_SCREENED_TYPED_COUNT = 'Screened Count ({assay_type})'
+        COL_DESC_SCREENED_TYPED_COUNT = \
+            'Number of times screened for all {assay_type} Screens'
+        
+        facility_id = deserialized['facility_id']
+        data_sharing_level = deserialized.get('data_sharing_level', None)
+        if data_sharing_level is None:
+            deserialized['data_sharing_level'] = 0
+        patch = True
+        try: 
+            current_study = Screen.objects.get(facility_id=facility_id)
+        except ObjectDoesNotExist:
+            patch = False    
+        if patch is True:
+            if 'study_type' in deserialized:
+                del deserialized['study_type']
+            if 'screen_type' in deserialized:
+                del deserialized['screen_type']    
+            
+        _data = self.build_patch_detail(request, deserialized, **kwargs)
+        _data = _data[API_RESULT_DATA][0]
+        logger.info('study patched: %r', _data)
+        study_obj = Screen.objects.get(facility_id=_data['facility_id'])
+        logger.info('study created/updated: %r', study_obj)
+        study_obj.date_created = _now()
+        study_obj.study_type = 'in_silico'
+        study_obj.save()
+        
+        col_desc_screened_count = COL_DESC_SCREENED_COUNT
+        col_desc_positives_count = COL_DESC_POSITIVES_COUNT
+        if study_obj.screen_type == 'small_molecule':
+            col_desc_screened_count = col_desc_screened_count % 'Small Molecule'
+            col_desc_positives_count = col_desc_positives_count % 'Small Molecule'
+        elif study_obj.screen_type == 'rnai':
+            col_desc_screened_count = col_desc_screened_count % 'RNAi'
+            col_desc_positives_count = col_desc_positives_count % 'RNAi'
+        else:
+            raise ValidationError(key='screen_type', msg='Unknown type')
+        
+        # Create the Data Columns
+        result_columns = OrderedDict((
+            ('E', {
+                'name': COL_NAME_POSITIVES_COUNT,
+                'data_worksheet_column': 'E',
+                'data_type': 'integer',
+                'description': col_desc_positives_count,
+            }),
+            ('F', {
+                'name': COL_NAME_SCREENED_COUNT,
+                'data_worksheet_column': 'F',
+                'data_type': 'integer',
+                'description': col_desc_screened_count,
+            }),
+        ))
+        sql = '''
+        with aws as (
+            select 
+            well_id,
+            is_positive,
+            assay_type,
+            screen_id
+            from assay_well
+            join well w using(well_id)
+            join screen_result using(screen_result_id)
+            join screen using(screen_id)
+            where screen.screen_type = '{screen_type}'
+            and screen.study_type is null
+            and w.library_well_type = 'experimental'
+        )
+        select
+            well_id,
+            count(*) as screened_count,
+            count(case when is_positive then 1 end ) as positives_count
+        '''
+        columns = ['well_id', 'screened_count', 'positives_count']
+        
+        assay_type_col_to_letter = OrderedDict()
+        if study_obj.screen_type == 'small_molecule':
+            
+            vocab_scope = 'screen.assay_type'
+            assay_type_vocab = \
+                self.get_vocab_resource()._get_vocabularies_by_scope(vocab_scope)
+            
+            if not assay_type_vocab:
+                logger.warn('no vocabulary found for scope: %r, field: %r', 
+                    vocab_scope, 'readout_type')
+            for i,(assay_type, vocab) in enumerate(assay_type_vocab.items()):
+                new_column_letter = chr(ord('F')+i*2+1)
+                result_columns[new_column_letter] = {
+                    'name': COL_NAME_POSITIVES_TYPED_COUNT.format(
+                        assay_type=vocab['title']),
+                    'data_worksheet_column': new_column_letter,
+                    'data_type': 'integer',
+                    'description': COL_DESC_POSITIVES_TYPED_COUNT.format(
+                        assay_type=vocab['title'])
+                    }
+                col_name = 'positive_{assay_type}_count'.format(
+                    assay_type=assay_type)
+                sql_col = ", count(case when is_positive "\
+                    "and assay_type='{assay_type}' then 1 end) as  " + col_name 
+                sql_col = sql_col.format(assay_type=assay_type)
+                sql += sql_col
+                columns.append(col_name)
+                assay_type_col_to_letter[col_name] = new_column_letter
+                
+                new_column_letter = chr(ord('F')+i*2+2)
+                result_columns[new_column_letter] = {
+                    'name': COL_NAME_SCREENED_TYPED_COUNT.format(
+                        assay_type=vocab['title']),
+                    'data_worksheet_column': new_column_letter,
+                    'data_type': 'integer',
+                    'description': COL_DESC_SCREENED_TYPED_COUNT.format(
+                        assay_type=vocab['title'])
+                    }
+                col_name = 'screened_{assay_type}_count'.format(
+                    assay_type=assay_type)
+                sql_col = ", count(case when assay_type='{assay_type}' "\
+                    "then 1 end) as  " + col_name 
+                sql_col = sql_col.format(assay_type=assay_type)
+                sql += sql_col
+                columns.append(col_name)
+                assay_type_col_to_letter[col_name] = new_column_letter
+                
+                
+        sql += '''
+            from aws
+            group by well_id
+            order by well_id '''
+        sql = sql.format(screen_type=study_obj.screen_type)
+        
+        # Create the study by iterating through the report:
+        # Collate the number of confirmed positives for each Screen
+        with get_engine().connect() as conn:
+            
+            logger.info('execute the screened_count_study...')
+            logger.info('execute sql: %s', sql)
+            result = conn.execute(text(sql))
+            logger.info('executed the confirmed_positive_study')
+            
+            def result_value_generator(result):
+                for row in result:
+                    _dict = dict(zip(columns,row))
+                    output = {
+                        'well_id': _dict['well_id'],
+                        'assay_well_control_type': None,
+                        'E': _dict['positives_count'],
+                        'F': _dict['screened_count'],
+                    }
+                    if assay_type_col_to_letter:
+                        for assay_type_col_name, letter \
+                            in assay_type_col_to_letter.items():
+                            output[letter] = _dict[assay_type_col_name]
+                    yield output
             logger.info('creating study values for: %r', study_obj)
             self.get_screenresult_resource().create_screen_result(
                 request, study_obj, result_columns, 
@@ -17893,7 +18393,7 @@ class StudyResource(ScreenResource):
                         result_row[data_worksheet_column_letter] = screens_for_weight
                     if weighted_value_sum > 0:
                         weighted_average = round(weighted_value_sum/(1.0*screen_count), 2)
-                        result_row['E'] = weighted_average
+                    result_row['E'] = weighted_average
                     logger.debug('yield row: %r', result_row)
                     return result_row
                 
@@ -20279,33 +20779,19 @@ class ReagentResource(DbApiResource):
             library_classification)
         schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
         
-#         for library_classification in ('small_molecule', 'rnai'):
-#             sub_data = self.get_reagent_resource(
-#                 library_classification).build_schema(user=user)
-#             logger.debug('sub_schema: %r', sub_data['fields'].keys())
-#             newfields = {}
-#             newfields.update(sub_data['fields'])
-#             newfields.update(schema['fields'])
-#             schema['fields'] = newfields
-#             
-#             for k, v in schema.items():
-#                 if k != 'fields' and k in sub_data:
-#                     schema[k] = sub_data[k]
-            
-#         if library_classification is not None:
-#             sub_data = self.get_reagent_resource(
-#                 library_classification).build_schema(user=user)
-#             logger.debug('sub_schema: %r', sub_data['fields'].keys())
-#             newfields = {}
-#             newfields.update(sub_data['fields'])
-#             newfields.update(schema['fields'])
-#             schema['fields'] = newfields
-#             
-#             for k, v in schema.items():
-#                 if k != 'fields' and k in sub_data:
-#                     schema[k] = sub_data[k]
-#         if 'search' in kwargs:
-        if True:
+        if library_classification is not None:
+            sub_data = self.get_reagent_resource(
+                library_classification).build_schema(user=user)
+            logger.debug('sub_schema: %r', sub_data['fields'].keys())
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            newfields.update(schema['fields'])
+            schema['fields'] = newfields
+             
+            for k, v in schema.items():
+                if k != 'fields' and k in sub_data:
+                    schema[k] = sub_data[k]
+        else:
             # Build the full schema for search
             # FIXME could determine the schema as in ReagentResource.build_list_response
             sub_data = \
@@ -20522,9 +21008,6 @@ class ReagentResource(DbApiResource):
             custom_columns=None):
         sub_columns = self.get_sr_resource().build_sqlalchemy_columns(fields)
         sub_columns.update(self.get_smr_resource().build_sqlalchemy_columns(fields))
-#         sub_columns['plate_number'] = (literal_column(
-#             "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
-#             .label('plate_number'))
         
         if custom_columns is not None:
             sub_columns.update(custom_columns)
@@ -20580,6 +21063,7 @@ class ReagentResource(DbApiResource):
         well_id = param_hash.pop('well_id', None)
         if well_id:
             param_hash['well_id__eq'] = well_id
+            logger.info('well_id: %r', well_id)
             if not library:
                 library = Well.objects.get(well_id=well_id).library
         if library:
@@ -20691,6 +21175,7 @@ class WellResource(DbApiResource):
     def __init__(self, **kwargs):
         self.library_resource = None
         self.reagent_resource = None
+        self.datacolumn_resource = None
         super(WellResource, self).__init__(**kwargs)
 
     def get_reagent_resource(self):
@@ -20702,6 +21187,11 @@ class WellResource(DbApiResource):
         if not self.library_resource:
             self.library_resource = LibraryResource()
         return self.library_resource
+    
+    def get_data_column_resource(self):
+        if self.datacolumn_resource is None:
+            self.datacolumn_resource = DataColumnResource()
+        return self.datacolumn_resource
 
     def set_caching(self,use_cache):
         super(WellResource, self).set_caching(use_cache)
@@ -20771,7 +21261,7 @@ class WellResource(DbApiResource):
                     })
             _screen_data = screens[screen.facility_id]
             (column_name, _dict) = \
-                DataColumnResource._create_datacolumn_from_orm(rv.data_column)
+                self.get_data_column_resource()._create_datacolumn_from_orm(rv.data_column)
             _screen_data['values'][column_name] = rv.value
             if _dict['data_type'] in ['decimal','integer','numeric']:
                 _screen_data['values'][column_name] = rv.numeric_value
@@ -20789,7 +21279,9 @@ class WellResource(DbApiResource):
         
     @read_authorization
     def dispatch_well_duplex_view(self, request, **kwargs):
-        
+        '''
+        Generate a duplex well report for the given pool well
+        '''
         well_id = kwargs.get('well_id', None)
         if not well_id:
             raise NotImplementedError('must provide a well_id parameter')
@@ -20807,7 +21299,7 @@ class WellResource(DbApiResource):
                 .select_from(_aw
                     .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
                     .join(_s, _sr.c.screen_id==_s.c.screen_id))
-                .where(_s.c.study_type != None))
+                .where(_s.c.study_type == None))
         fields = ['facility_id', 'confirmed_positive_value', 'is_positive']
 
         with get_engine().connect()as conn:
@@ -20871,11 +21363,16 @@ class WellResource(DbApiResource):
                 'no library found for short_name: %r' % library_short_name)
                 
     def build_schema(self, library_classification=None, user=None, **kwargs):
-
+        
+        logger.info('build schema for library type: %r', library_classification)
+        
         data = super(WellResource, self).build_schema(user=user)
         if library_classification:
             sub_data = self.get_reagent_resource().build_schema(
                 library_classification=library_classification, user=user)
+            
+            logger.info('sub_resource field visibilities: %r', 
+                [(key,'%r'%fi['visibility']) for key, fi in sub_data['fields'].items()])
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])
@@ -20903,6 +21400,8 @@ class WellResource(DbApiResource):
             # data['content_types'] = sub_data['content_types']
         else:
             pass
+        logger.info('final field visibilities: %r', 
+            [(key,'%r'%fi['visibility']) for key, fi in data['fields'].items()])
         return data
     
     @read_authorization

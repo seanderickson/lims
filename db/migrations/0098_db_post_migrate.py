@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0020_current_work'),
+        ('db', '0030_current_work'),
     ]
 
     operations = [

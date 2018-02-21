@@ -71,9 +71,9 @@ def to_simple(data):
 
 def parse_val(value, key, data_type, options=None):
     """
+    Parse a string value as the given data_type:
     All values are read as strings from the input files, so this function 
     converts them as directed.
-    TODO: validation
     """
     try:
         # FIXME: None should be returned for String
@@ -91,16 +91,14 @@ def parse_val(value, key, data_type, options=None):
             else:  
                 return None
         if data_type == 'string':
-#             if value:
-#                 value = str(value).strip()
-            # FIXME: on bootstrap, non-string array values may be sent as strings
+            # NOTE: on bootstrap, non-string array values may be sent as strings
             # (because the default field schema data_type is string)
             if isinstance(value, six.string_types):
                 value = value.strip()
             return value
         elif data_type == 'integer':
             if isinstance(value, six.string_types):
-                # todo: this is a kludge, create an integer from values like "5.0"
+                # Note: convert an integer from values like "5.0"
                 return int(float(value))
             return int(value)
         elif data_type == 'date':
@@ -136,7 +134,7 @@ def parse_val(value, key, data_type, options=None):
         raise ValidationError(key=key,msg='parse error: %r' % str(e))
 
 def parse_json_field(val, key, json_field_type):
-    'Parse a field nested in the json_obj'
+    'Parse input field values for composing the nested json field'
     logger.debug('parse_json_field: %r, %r, %r', val,key,json_field_type)
     # FIXME: now that tastypie is removed, 
     # json_field_type should equal data_type

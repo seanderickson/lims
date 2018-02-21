@@ -197,6 +197,8 @@ function restoredb_data {
     done          
   fi  
   
+  result_value_cleanup
+  
   echo "vacuum analyze $(ts)"
   psql -h $DBHOST -d $DB -U $DBUSER -c "vacuum analyze;"
   
@@ -392,6 +394,14 @@ function migrate_result_values {
   psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
     -f ./db/migrations/manual/result_value_migration.sql >>"$LOGFILE" 2>&1 \
     || error "manual migrate_result_values failed: $?"
+}
+
+function result_value_cleanup {
+  echo "Result value cleanup: $(ts) ...">> "$LOGFILE"
+  psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+    -f ./db/migrations/manual/result_value_cleanup.sql >>"$LOGFILE" 2>&1 \
+    || error "manual migrate_result_cleanup failed: $?"
+  echo "Result value cleanup completed: $(ts) " >> "$LOGFILE"
 }
 
 function bootstrap {

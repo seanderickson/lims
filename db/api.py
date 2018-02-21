@@ -4162,9 +4162,12 @@ class ScreenResultResource(DbApiResource):
         logger.info('build screenresult query')
         
         # Switch result_value query strategy for performance testing:
+        # NOTE: 20180221 - orchestra testing shows no perf benefit from 
+        # left outer join; however, when filtering, left outer join can yield 
+        # significant benefit 
         RV_JOIN_TYPE_LEFT_OUTER = 'lo'
         RV_JOIN_TYPE_NESTED_SELECT = 'ns'
-        RV_JOIN_TYPE = RV_JOIN_TYPE_LEFT_OUTER
+        RV_JOIN_TYPE = RV_JOIN_TYPE_NESTED_SELECT
         
         manual_field_includes = set(param_hash.get('includes', []))
         if screenresult.screen.study_type is None:
@@ -4210,7 +4213,7 @@ class ScreenResultResource(DbApiResource):
         # - always well_id
         # - any fields that are used in sort or filtering
         base_fields = [ fi for fi in field_hash.values() 
-            if ( # everything except datacolumns
+            if ( # anything filtered or ordered
                  fi['key'] == 'well_id'
                  or fi['key'] in order_params
                  or '-%s' % fi['key'] in order_params
@@ -4218,6 +4221,11 @@ class ScreenResultResource(DbApiResource):
         logger.info('base fields: %r', [
             (fi['key'], fi['scope']) for fi in base_fields])
 
+        # If filtering on result_value columns, the left joins perform better
+        if [fi for fi in base_fields 
+                if fi.get('is_datacolumn', None)
+                    and fi['key'] in filter_hash]:
+            RV_JOIN_TYPE = RV_JOIN_TYPE_LEFT_OUTER
         
         base_clause = _aw
         base_query_tables = ['assay_well',]

@@ -138,17 +138,17 @@ define([
           '  <input type="checkbox">show positive rows only',
           '</label>'
           ].join(''));
-//        var show_mutual_positives_control1 = $([
-//          '<label class="checkbox-inline">',
-//           '  <input type="checkbox">mutual positives',
-//           '</label>'
-//           ].join(''));
         var show_mutual_positives_control = $([
-          '<button class="btn btn-default btn-sm" role="button" ',
-          'id="showMutualPositives" title="Show mutual positive columns" >',
-          'Show mutual positive columns',
-          '</button>'
+          '<label class="checkbox-inline">',
+           '  <input type="checkbox">mutual positives',
+           '</label>'
            ].join(''));
+//        var show_mutual_positives_control = $([
+//          '<button class="btn btn-default btn-sm" role="button" ',
+//          'id="showMutualPositives" title="Show mutual positive columns" >',
+//          'Show mutual positive columns',
+//          '</button>'
+//           ].join(''));
         var show_other_screen_columns_control = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
           'id="showOtherScreenColumns" title="Show other screen columns" >',
@@ -207,11 +207,12 @@ define([
         }
         // 20170905 - removed show_mutual_positives - other screen columns will
         // be added explicitly using treeSelector
-        //if (_.has(initialSearchHash, 'show_mutual_positives')
-        //    && initialSearchHash.show_mutual_positives.toLowerCase()=='true') {
-        //  show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
-        //  view.show_mutual_positives(screen_facility_id, true);
-        //}
+        // 20180220 - reinstated, determine state by included cols
+        if (_.has(initialSearchHash, 'show_mutual_positives')
+            && initialSearchHash.show_mutual_positives.toLowerCase()=='true') {
+          show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
+          self.showMutualPositiveColumns(view, true);
+        }
 
         show_other_screen_columns_control.click(function(e){
           self.showOtherScreenColumnsDialog(view);
@@ -231,20 +232,25 @@ define([
           }
         });
         // 20170905 - removed: mutual pos columns will be selected explicitly
-        //show_mutual_positives_control.click(function(e) {
-        //  if (e.target.checked) {
-        //    window.setTimeout(function() {
-        //      view.show_mutual_positives(screen_facility_id, true);
-        //    });
-        //  } else {
-        //    window.setTimeout(function() {
-        //      view.show_mutual_positives(screen_facility_id, false);
-        //    });
-        //  }
-        //});
+        // 20180220 - reinstated, determine state by included cols
         show_mutual_positives_control.click(function(e) {
-          self.showMutualPositiveColumns(view);
+          if (e.target.checked) {
+            window.setTimeout(function() {
+              self.showMutualPositiveColumns(view, true);
+            });
+          } else {
+            window.setTimeout(function() {
+              self.showMutualPositiveColumns(view, false);
+            });
+          }
         });
+//        show_mutual_positives_control.click(function(e) {
+//          var searchHash = _.clone(view.listModel.get('search'));
+//          searchHash['is_positive__eq'] = 'true';
+//          view.listModel.set('search',searchHash);
+//          show_positives_control.find('input[type="checkbox"]').prop('checked',true);
+//          self.showMutualPositiveColumns(view);
+//        });
         
       }; // createResults
       
@@ -260,6 +266,7 @@ define([
             }
           }
         }
+        dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
         console.log('dc_ids', dc_ids);
         var options = {};
         if (!_.isEmpty(dc_ids)){
@@ -275,7 +282,137 @@ define([
       }
     },
     
-    showMutualPositiveColumns: function(resultView){
+    showMutualPositiveColumns: function(resultView, shown){
+      var self = this;
+
+//      var searchHash = resultView.collection.listModel.get('search');
+//      var dc_ids = _.result(searchHash,'dc_ids', '');
+//      if (!_.isArray(dc_ids)){
+//        dc_ids = dc_ids.split(',')
+//      }
+//      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
+//      console.log('showMutualPositiveColumns', dc_ids);
+      
+      // Retrieve all columns visible for this screen
+      // - check the positive overlapping columns
+      var srResource = self.model.resource;
+      var resource = appModel.getResource('datacolumn');
+      var url = [resource.apiUri, 
+                 'for_screen', self.model.get('facility_id')].join('/');
+      var data_for_get = { 
+        limit: 0,
+        includes: [
+          'screen_facility_id','screen_title','name','description',
+          'assay_data_type','ordinal','vocabulary_scope_ref','edit_type'],
+        order_by: ['-study_type','screen_facility_id', 'ordinal'],
+        use_vocabularies: false
+      };
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url,
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, resource);
+        }
+      });
+      var collection = new CollectionClass();
+      collection.fetch({
+        data: data_for_get,
+        success: function(collection, response) {
+          if (shown==true){
+            collection.each(function(model){
+  //            if(_.contains(dc_ids, model.get('data_column_id'))){
+  //              model.set('checked', true);
+  //            }
+              if (_.contains(self.model.get('overlapping_positive_screens'),
+                    model.get('screen_facility_id'))){
+                if (model.get('positives_count')>0){
+                  model.set('checked',true);
+                }
+              }
+              if (self.model.get('screen_type') == 'rnai'){
+                if (model.get('screen_facility_id') == '200001'){
+                  // Include the study: Reagent counts for Small Molecule screens
+                  model.set('checked', true);
+                }
+                else if (model.get('screen_facility_id') == '200002'){
+                  // Include the study: Reagent counts for RNAi screens
+                  model.set('checked', true);
+                }
+              }
+            });
+            var dcs_selected = collection.where({checked: true});
+            _.each(dcs_selected, function(dc){
+              var key = dc.get('key');
+              var name = dc.get('title');
+              var dc_id = dc.get('data_column_id');
+              var field = dc.attributes;
+              field.description = Iccbl.formatString(
+                '{screen_facility_id}: {screen_title} ({name} - {description})',
+                field);
+              var grid = resultView.grid;
+              
+              if (dc.get('user_access_level_granted') > 1){
+                field['filtering'] = true;
+                field['ordering'] = true;
+              }
+              if (!_.has(srResource.fields, key)){
+                srResource.fields[key] = field;
+              }
+    
+              var column = grid.columns.findWhere({ name: key });
+              if (!column){
+                var index = grid.columns.size();
+                grid.insertColumn(
+                  Iccbl.createBackgridColumn(
+                      key,field,
+                      resultView.listModel.get('order')),
+                      { at: index});
+              } else {
+                console.log('column already included', key)
+              }
+            });
+//          var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
+//            return dcmodel.get('data_column_id');
+//          });
+          
+            var searchHash = _.clone(
+              resultView.collection.listModel.get('search'));
+  //          searchHash['dc_ids'] = dc_ids_selected;
+            searchHash['show_mutual_positives'] = true;
+            resultView.collection.listModel.set('search', searchHash);
+          } else { // not shown
+            collection.each(function(model){
+              if (_.contains(self.model.get('overlapping_positive_screens'),
+                    model.get('screen_facility_id'))){
+                if (model.get('positives_count')>0){
+                  var key = model.get('key');
+                  if (_.has(srResource.fields, key)){
+                    delete srResource.fields[key];
+                    var column = resultView.grid.columns.findWhere({ name: key });
+                    if (!column){
+                      console.log('column already not present', key)
+                    } else {
+                      resultView.grid.removeColumn(column);
+                    }
+                  }
+                }
+              }
+              
+            });
+            var searchHash = _.clone(
+              resultView.collection.listModel.get('search'));
+            searchHash['show_mutual_positives'] = false;
+            resultView.collection.listModel.set('search', searchHash);
+          }          
+        },
+        always: function(){
+          console.log('done: ');
+        }
+      }).fail(function(){ 
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+      });        
+    },
+    
+    showMutualPositiveColumns_bak_by_dc_ids: function(resultView){
       var self = this;
 
       var searchHash = resultView.collection.listModel.get('search');
@@ -283,6 +420,7 @@ define([
       if (!_.isArray(dc_ids)){
         dc_ids = dc_ids.split(',')
       }
+      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
       console.log('showMutualPositiveColumns', dc_ids);
       var srResource = self.model.resource;
       var resource = appModel.getResource('datacolumn');
@@ -363,7 +501,7 @@ define([
         Iccbl.appModel.jqXHRfail.apply(this,arguments); 
       });        
     },
-    
+
     showOtherScreenColumnsDialog: function(resultView){
       var self = this;
       
@@ -372,6 +510,7 @@ define([
       if (!_.isArray(dc_ids)){
         dc_ids = dc_ids.split(',')
       }
+      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
       console.log('showOtherScreenColumnsDialog', dc_ids);
       var resource = appModel.getResource('datacolumn');
       var url = [resource.apiUri, 
@@ -455,7 +594,7 @@ define([
         console.log('showTreeSelector', dc_ids);
         collection.each(function(model){
           var dc_id = model.get('data_column_id');
-          if (_.contains(dc_ids, '' + dc_id)){
+          if (_.contains(dc_ids, dc_id)){
             model.set('checked', true);
           }
           model.set('screen_info',

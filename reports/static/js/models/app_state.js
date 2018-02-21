@@ -1260,7 +1260,11 @@ define([
     },
         
     isEditable: function(resourceId){
-      return _.contains(_.result(this.getResource(resourceId),'visibility'), 'e');
+      try {
+        return _.contains(_.result(this.getResource(resourceId),'visibility'), 'e');
+      } catch (e) {
+        return false;
+      }
     },
     
     /**

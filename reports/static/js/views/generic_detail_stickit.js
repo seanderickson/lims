@@ -392,6 +392,7 @@ define([
       this.stickit(this.schemaFieldsModel, this.schemaBindings);
 
       var btnbindings = {};
+      // FIXME: 20171114 - using stickit to manage the buttons is unnecessary
       var buttonModel = new Backbone.Model();
       _.each(this.buttons, function(button){
         btnbindings['[name="' + button + '"]'] = button;

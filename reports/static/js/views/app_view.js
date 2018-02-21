@@ -18,14 +18,6 @@ define([
       
       initialize: function(args) {
         this.listenTo(appModel, 'change:messages', this.setMessages);
-//
-//        // Pre-fetch options for the search_box
-//        $(this).queue([
-//           appModel.getScreenOptions,
-//           appModel.getUserOptions,
-//           appModel.getLibraryOptions]);
-
-        
         _.bindAll(this,'setMessages');
       },
       
@@ -49,10 +41,6 @@ define([
       afterRender: function() {
         var self = this;
         function postRender() {
-//          self.searchView = new SearchView(),
-//          Backbone.Layout.setupView(self.searchView);
-//          self.setView("#search_box", self.searchView ).render();
-          
           if (appModel.hasPermission('screen','write')){
             var addScreenButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
@@ -96,13 +84,6 @@ define([
         };
         
         postRender();
-//        // Pre-fetch options for the search_box
-//        $(this).queue([
-//           appModel.getScreenOptions,
-//           appModel.getUserOptions,
-//           appModel.getLibraryOptions,
-//           postRender]);
-        
       },
       
       template: _.template(layout)

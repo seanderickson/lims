@@ -263,7 +263,7 @@
       "description": "Well information",
       "options": { 
         "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
+        "rpp": 384,
         "order": []  }
     },
     "reagent": {

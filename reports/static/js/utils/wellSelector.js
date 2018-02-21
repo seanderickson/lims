@@ -364,6 +364,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
       var rowCollection = this.rowCollection = new RowCollection();
       // Hack, store the editable flag here
       rowCollection.editable = self.options.editable;
+      // Initialize all cells to false
       for (var i=0; i<nRows; i++){
         var row = { row: i };
         for (var j=1; j<=nCols; j++){

@@ -17,7 +17,8 @@ define([
 function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, 
          DetailView, DetailLayout, EditView, ListView, LibraryView, layout,
          genericLayout ) {
-  
+
+  // TODO: 20171114 - refactor to TabbedController
   var LibraryWellView = Backbone.Layout.extend({
     
     template: _.template(layout),
@@ -220,19 +221,19 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var AnnotationView = Backbone.Layout.extend({
           template: _.template(genericLayout),
           afterRender: function(){
-            $content = $('<div class="container" id="studies_container"></div>');
+            var $content = $('<div class="container" id="studies_container"></div>');
             $('#resource_content').html($content);
-
+            var $container = $('#studies_container');
             _.each(data, function(studyData){
-
-              var facility_id = data['facility_id']
-              $content = $([
+              var facility_id = studyData['facility_id']
+              var $studyContainer = $([
                 '<div class="row">',
                 '<div class="col-xs-6" id="study_info-'+facility_id + '"></div>',
                 '<div class="col-xs-6" id="annotation_info-'+facility_id + '"></div>',
                 '</div>',
                 ].join(''));
-              $('#studies_container').append($content);
+              console.log('studyData entry', studyData, facility_id, $studyContainer);
+              $container.append($studyContainer);
               var model = new Backbone.Model(studyData);
               model.resource = studyResource;
               view = new DetailView({
@@ -240,7 +241,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 resource: studyResource,
                 buttons: []
               });
-              $content.find('#study_info-'+facility_id + '').append(view.render().$el);
+              $studyContainer.find('#study_info-'+facility_id + '').append(view.render().$el);
               
               // Create a resource schema on the fly for the annotations
               var schema = {
@@ -250,6 +251,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               }
               _.each(_.values(schema.fields), appModel.parseSchemaField );
               schema = _.extend(schema, appModel.schemaClass);
+              console.log('study specific schema', schema);
+              console.log('values', studyData.values);
               var model = new Backbone.Model(studyData.values);
               model.resource = schema;
               view = new DetailView({
@@ -257,7 +260,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 resource: schema,
                 buttons: []
               });
-              $content.find('#annotation_info-'+facility_id + '').append(view.render().$el);
+              $studyContainer.find('#annotation_info-'+facility_id + '').append(view.render().$el);
             });
             
           }
@@ -276,6 +279,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.reportUriStack();
     },
 
+    /** Generate a duplex well report for the given pool well **/
     setDuplexWells: function(delegateStack){
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'duplex_wells'].join('/')
@@ -297,7 +301,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           return;
         }
         var ColoredConfirmationCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell',
           render: function(){
             this.$el.empty();
             var key = this.column.get('name');

@@ -39,13 +39,6 @@ var COL_PATTERN = Iccbl.COL_PATTERN = /^(col:)?\s*(\d{1,2})$/i;
 var ROW_PATTERN = Iccbl.ROW_PATTERN = /^(row:)?\s*([a-zA-Z]{1,2})$/i;
 
 
-/** 
- * COPY_NAME_PATTERN:
- * -must start with an alpha char
- * FIXME: does not support embedded commas
- * - fixme is to clean the copy names in the database to remove commas
- */
-var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+[\w\- :]*$/
 
 var PLATE_RANGE_KEY_SPECIFIER = Iccbl.PLATE_RANGE_KEY_SPECIFIER
   = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
@@ -54,6 +47,13 @@ var PLATE_RANGE_KEY_PATTERN =
 var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
   = /^(([^:]+):)?([\d\-]+)$/;
 var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
+/** 
+ * COPY_NAME_PATTERN:
+ * -must start with an alpha char
+ * FIXME: does not support embedded commas
+ * - fixme is to clean the copy names in the database to remove commas
+ */
+var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+[\w\- :]*$/
 
 // Utility Functions
 
@@ -92,20 +92,6 @@ var getCols = Iccbl.getCols = function(plateSize){
   return parseInt(Math.sqrt(3*plateSize/2));
 };
 
-///**
-// * @param row 0 based index
-// * @param col - 1 based index
-// */
-//var getWellName = Iccbl.getWellName = function(row, col){
-//  var wellName = rowToLetter(row);
-//  if (col < 10){
-//    wellName += '0' + col;
-//  } else {
-//    wellName += col;
-//  }
-//  return wellName
-//};
-
 /**
  * @param row 0 based index
  * @param col - 0 based index
@@ -120,16 +106,6 @@ var getWellName = Iccbl.getWellName = function(row, col){
   }
   return wellName
 };
-
-///**
-// * @return [row, col] 0,1 based row and col indexes
-// */
-//var getWellRowCol = Iccbl.getWellRowCol = function(wellName){
-//  var rowLetter = WELL_PATTERN.exec(wellName)[1];
-//  var row = letterToRow(rowLetter);
-//  var col = parseInt(WELL_PATTERN.exec(wellName)[2]);
-//  return [row,col];
-//}
 
 /**
  * @return [row, col] 0 based row and col indexes
@@ -3259,13 +3235,12 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     if(_.isUndefined(this.tempdirection)){
       this.tempdirection = this.column.get("direction");
     }
-    console.log('tempdirection1: ' + this.tempdirection);
-    if(this.tempdirection == "ascending"){
-      this.tempdirection = "descending";
-    }else if(this.tempdirection == "descending"){
+    if(this.tempdirection == "descending"){
+      this.tempdirection = "ascending";
+    }else if(this.tempdirection == "ascending"){
       this.tempdirection = "none";
     }else{
-      this.tempdirection = "ascending";
+      this.tempdirection = "descending";
     }
     
     this.setCellDirection(
@@ -3285,8 +3260,9 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
           'this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
       }
     };
-    _.debounce(delayedClick, 750)();
-    // FIXME: both throttle and debounce seem to work the same;
+    _.debounce(delayedClick, 1000)();
+    // FIXME: 
+    // Both throttle and debounce seem to work the same;
     // that is they both are working like setTimeout
     // _.throttle(delayedClick, 5000, {leading: false})();
     

@@ -105,7 +105,7 @@ define([
       ///// Well search
       var schema3 = {};
       schema3['well'] = {
-        title: 'Search for Wells',
+        title: 'Search for 384-well Plate Wells',
         key: 'well',
         help: 'enter a comma separated list',
         placeholder: 'e.g. 1000 A08,A09,A10\n1740:D12',

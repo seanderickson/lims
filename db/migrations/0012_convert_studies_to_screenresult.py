@@ -14,7 +14,7 @@ def convert_studies(apps,schema_editor):
     AnnotationValue = apps.get_model('db', 'AnnotationValue')
     DataColumn = apps.get_model('db', 'DataColumn')
     
-    # 1. Create placeholder ScreenResults for all studies
+    logger.info('1. Create placeholder ScreenResults for all studies...')
     for screen in ( Screen.objects.all()
         .filter(project_phase__icontains='annotation')
         .order_by('facility_id')):
@@ -31,7 +31,7 @@ def convert_studies(apps,schema_editor):
             date_publicly_available=screen.date_publicly_available,
             created_by=screen.created_by)
     
-        # 2. Create AssayWells
+        logger.info('2. Create AssayWells...')
         schema_editor.execute(
             'insert into assay_well (well_id, plate_number, screen_result_id) '
             'select distinct(reagent.well_id), plate_number, screen_result_id  '
@@ -44,7 +44,7 @@ def convert_studies(apps,schema_editor):
             'where screen.facility_id = %s order by well_id;',
             params=[screen.facility_id])
     
-        # 3. Migrate AnnotationTypes to DataColumns
+        logger.info('3. Migrate AnnotationTypes to DataColumns')
         for at in AnnotationType.objects.all().filter(study=screen):
             
             logger.info(
@@ -77,6 +77,7 @@ def convert_studies(apps,schema_editor):
                 "select '{data_column_id}', reagent.well_id, {value_column} "
                 "from annotation_value av "
                 "join reagent using(reagent_id) "
+                "join well on (latest_released_reagent_id=reagent_id) "
                 "where av.annotation_type_id=%s "
                 "order by reagent.well_id; ").format(
                     data_column_id=data_column.data_column_id,

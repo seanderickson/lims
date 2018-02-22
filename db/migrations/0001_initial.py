@@ -1311,12 +1311,12 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(to='db.LibraryContentsVersion', null=True),
         ),
         migrations.AddField(
-            model_name='assay_well',
+            model_name='assaywell',
             name='well',
             field=models.ForeignKey(to='db.Well', null=False),
         ),
         migrations.AddField(
-            model_name='assay_well',
+            model_name='assaywell',
             name='screen_result',
             field=models.ForeignKey(to='db.ScreenResult', null=False),
         ),

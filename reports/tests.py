@@ -273,7 +273,7 @@ def equivocal(val1, val2):
         ', val1: %r:%r, val2: %r:%r', type(val1),val1, type(val2), val2)
     return False, ('val1', val1, 'val2', val2)
     
-def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
+def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri']):
     '''
     For testing equality of the (CSV) input to API returned values
     @param obj1 input
@@ -284,7 +284,8 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
     if obj2 is None:
         return False, ('obj2 is None')
     
-    original_keys = set(obj1.keys())
+#     original_keys = set(obj1.keys())
+    original_keys = set([k for k in obj1.keys() if k])
     original_keys = original_keys.difference(excludes)
     updated_keys = set(obj2.keys())
     intersect_keys = original_keys.intersection(updated_keys)
@@ -294,15 +295,15 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
             original_keys-intersect_keys, 
             'original_keys', sorted(original_keys), 
             'updated_keys', sorted(updated_keys))
-    for key in keys:
-        if key not in obj1:
-            continue
-        if key not in obj2:
-            return False, ('key not found',key)  
-        result, msgs =  equivocal(obj1[key], obj2[key])
-        if not result:
-            # don't report for this section, move to the next items to test
-            return False, () 
+#     for key in keys:
+#         if key not in obj1:
+#             continue
+#         if key not in obj2:
+#             return False, ('key not found',key)  
+#         result, msgs =  equivocal(obj1[key], obj2[key])
+#         if not result:
+#             # don't report for this section, move to the next items to test
+#             return False, () 
 
     fkey = 'resource_uri'
     if fkey not in excludes:
@@ -324,7 +325,8 @@ def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
                         'imprecise uri matching, equivocating %r to %r:', 
                         val1, val2)
     
-    keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
+    keys_to_search = original_keys
+    logger.debug('keys to search: %r', keys_to_search)
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:

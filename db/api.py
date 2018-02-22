@@ -5864,14 +5864,19 @@ class DataColumnResource(DbApiResource):
     def __init__(self, **kwargs):
         super(DataColumnResource, self).__init__(**kwargs)
         self.screen_resource = None
-        self.dc_types_vocab = self.get_vocab_resource()\
-            ._get_vocabularies_by_scope('datacolumn.data_type')
+        self.dc_types_vocab = None
         
     def get_screen_resource(self):
         if self.screen_resource is None:
             self.screen_resource = ScreenResource()
         return self.screen_resource
     
+    def get_data_column_types(self):
+        if self.dc_types_vocab is None:
+            self.dc_types_vocab = self.get_vocab_resource()\
+                ._get_vocabularies_by_scope('datacolumn.data_type')
+        return self.dc_types_vocab
+        
     def prepend_urls(self):
 
         return [
@@ -6142,7 +6147,7 @@ class DataColumnResource(DbApiResource):
                 dc_data_type, DataColumnResource.data_type_lookup[dc_data_type])
             _dict.update(DataColumnResource.data_type_lookup[dc_data_type])
             if _dict.get('description',None) is None:
-                vocab = self.dc_types_vocab[dc_data_type]
+                vocab = self.get_data_column_types()[dc_data_type]
                 _dict['description'] = vocab.get('description', None)
         elif dc_data_type in ['string','text']:
             _dict['display_type'] = 'full_string'
@@ -6182,9 +6187,7 @@ class DataColumnResource(DbApiResource):
         _dict['filtering'] = True
         _dict['edit_type'] = None
 
-        dc_types_vocab = self.get_vocab_resource()\
-            ._get_vocabularies_by_scope('datacolumn.data_type')
-
+        dc_types_vocab = self.get_data_column_types()
         # TODO: 20170731: migrate the data_type of the datacolumn:
         # "numeric" has been replaced by "integer" and "decimal";
         # "text" has been replaced by "string"
@@ -8773,7 +8776,7 @@ class CherryPickRequestResource(DbApiResource):
             if len(lcps_created) %100 == 0:
                 logger.info('created %d duplex lcps', len(lcps_created))
         logger.info('created %d duplex lcps', len(lcps_created))
-        self.get_labcherrypick_resource().clear_cache()
+        self.get_labcherrypick_resource().clear_cache(request)
         meta[API_MSG_LCPS_CREATED] = len(lcps_created)
 
         logger.info('Find and assign copies that are fulfillable...')
@@ -8863,7 +8866,7 @@ class CherryPickRequestResource(DbApiResource):
                 source_well=scp.screened_well,
                 screener_cherry_pick=scp)
            lcps_created.append(lab_cherry_pick)
-        self.get_labcherrypick_resource().clear_cache()
+        self.get_labcherrypick_resource().clear_cache(request)
         meta[API_MSG_LCPS_CREATED] = len(lcps_created)
 
         logger.info('Find and assign copies that are fulfillable...')
@@ -9254,7 +9257,7 @@ class ScreenerCherryPickResource(DbApiResource):
         if messages:
             result_message[API_MSG_COMMENTS] = messages
         
-        self.get_cpr_resource().clear_cache()
+        self.get_cpr_resource().clear_cache(request)
         new_cpr_data = self.get_cpr_resource()._get_detail_response_internal(
             **{ 'cherry_pick_request_id': cpr.cherry_pick_request_id })
         logger.debug('old cpr: %r, new cpr: %r', original_cpr_data, new_cpr_data)
@@ -9995,7 +9998,7 @@ class LabCherryPickResource(DbApiResource):
         
         logger.info('result_meta: %r', _meta)
         
-        self.get_cpr_resource().clear_cache()
+        self.get_cpr_resource().clear_cache(request)
         new_cpr = self.get_cpr_resource()._get_detail_response_internal(**{
             'cherry_pick_request_id': cpr_id })
         self.get_cpr_resource().log_patch(
@@ -11084,7 +11087,7 @@ class CherryPickPlateResource(DbApiResource):
             # cplt.log_id = parent_log
             
         # Log
-        self.get_cherry_pick_resource().clear_cache()
+        self.get_cherry_pick_resource().clear_cache(request)
         new_cpr = self.get_cherry_pick_resource()._get_detail_response_internal(**{
             'cherry_pick_request_id': cpr_id })
         new_cpap_data = self._get_list_response_internal(**{
@@ -21053,10 +21056,9 @@ class ReagentResource(DbApiResource):
                     msg='%r' % errors )    
             classifications = set([w.library.classification for w in wells])
             logger.info('classifications: %r', classifications)
-            if wells and len(classifications) == 1:
+            if wells and len(classifications) > 1:
                 for well in wells:
                     library_classification = well.library.classification
-                    logger.info('c: %r', library_classification)
                     break
             logger.info('found wells: %d', len(wells))
         # TODO: eliminate dependency on library (for schema determination)
@@ -21743,10 +21745,6 @@ class WellResource(DbApiResource):
         well_search_data entered by the user
         '''
         
-        logger.info('find wells for patterns: %r', well_search_data)
-        if not isinstance(well_search_data, (list,tuple)):
-            well_search_data = (well_search_data,)
-
         wells = set()
         errors = []
         
@@ -21754,12 +21752,16 @@ class WellResource(DbApiResource):
         parsed_lines = well_search_data
         if isinstance(parsed_lines, basestring):
             parsed_lines = re.split(r'\n+',parsed_lines)
-            logger.info('parsed_lines: %r', parsed_lines)
+            logger.info('found %d lines in search', len(parsed_lines))
+            logger.debug('parsed_lines: %r', parsed_lines)
+        if not isinstance(parsed_lines, (list,tuple)):
+            well_search_data = (parsed_lines,)
+
         for _line in parsed_lines:
             _line = _line.strip()
             if not _line:
                 continue
-            logger.info('find_wells: well pattern line: %r', _line)
+            logger.debug('find_wells: well pattern line: %r', _line)
             
             line_wells = set()
             plate_numbers = set()
@@ -21818,7 +21820,7 @@ class WellResource(DbApiResource):
                     else: 
                         query = query.filter(well_name=well_names[0])
                 line_wells = [w for w in query]
-            logger.info('line: %r, wells: %d', _line, len(line_wells))
+            logger.debug('line: %r, wells: %d', _line, len(line_wells))
             if not line_wells:
                 errors.append('no matches found for line: %r', _line)
             

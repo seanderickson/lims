@@ -47,12 +47,12 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.info('decorator un_cache: %s, %s', self, _func )
+        logger.debug('decorator un_cache: %s, %s', self, _func )
         self.clear_cache(None, **kwargs)
         self.set_caching(False)
         result = _func(self, *args, **kwargs)
         self.set_caching(True)
-        logger.info('decorator un_cache done: %s, %s', self, _func )
+        logger.debug('decorator un_cache done: %s, %s', self, _func )
         return result
 
     return _inner

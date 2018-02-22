@@ -1683,7 +1683,8 @@ class ApiResource(SqlAlchemyResource):
  
         if HEADER_APILOG_COMMENT in request.META:
             log.comment = request.META[HEADER_APILOG_COMMENT]
-            logger.info('log comment: %r', log.comment)
+            if DEBUG_PATCH_LOG is True:
+                logger.info('log comment: %r', log.comment)
         if kwargs:
             for key, value in kwargs.items():
                 if hasattr(log, key):
@@ -2204,7 +2205,7 @@ class FieldResource(ApiResource):
         self.resource_resource = None
 
     def clear_cache(self, request, **kwargs):
-        logger.info('clear_cache: FieldResource...')
+        logger.debug('clear_cache: FieldResource...')
         ApiResource.clear_cache(self, request, **kwargs)
         self.get_resource_resource().clear_cache(request, **kwargs)
         
@@ -2477,6 +2478,7 @@ class FieldResource(ApiResource):
         decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields]
         decorated.sort(key=itemgetter(0,1,2))
         fields = [field for scope,ordinal,key,field in decorated]
+        logger.info('_build_fields: %d', len(fields))
 
         return fields
     
@@ -2615,7 +2617,7 @@ class ResourceResource(ApiResource):
             request, app_data, **kwargs)
 
     def clear_cache(self, request, **kwargs):
-        logger.info('clear_cache ResourceResource ..')
+        logger.debug('clear_cache ResourceResource ..')
         ApiResource.clear_cache(self, request, **kwargs)
         caches['resource_cache'].clear()
         
@@ -2663,7 +2665,6 @@ class ResourceResource(ApiResource):
         logger.info('build_schema for %r: %r', self._meta.resource_name, user)
         resource_fields = self.get_field_resource()._get_list_response_internal(
             scope='fields.resource')
-        logger.info('build a hash out of the fields...')
         field_hash = {}
         for field in resource_fields:
             field_hash[field['key']]=field
@@ -2814,7 +2815,7 @@ class ResourceResource(ApiResource):
                     resource = self.build_schema(user=user)
                     resources = { resource['key']: resource }
                     
-                # get all of the fields
+                logger.debug('Get the field hash...')
                 all_fields = self.get_field_resource()._build_fields()
                 field_hash = {}
                 # build a hash out of the fields
@@ -2823,7 +2824,8 @@ class ResourceResource(ApiResource):
                     _fields[field['key']]=field
                     field_hash[field['scope']] = _fields
                 
-                # For each resource, pull in the fields of the supertype resource
+                logger.debug('For each resource, pull in the fields of the '
+                    'supertype resource')
                 for key,resource in resources.items():
                     logger.debug('resource: %r', key)
                     resource['1'] = resource['key']

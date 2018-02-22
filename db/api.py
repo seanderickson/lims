@@ -230,18 +230,9 @@ class DbApiResource(reports.api.ApiResource):
             ));
             conn.execute(text(
                 'ALTER TABLE well_query_index '
-                'ADD CONSTRAINT well_query_unique UNIQUE(query_id, well_id) '
-                'DEFERRABLE INITIALLY DEFERRED; '))
-        # 20180216 - fk constraints not necessary
-        # conn.execute(text(
-        #     'CREATE TABLE "well_query_index" ('
-        #     '"id" serial NOT NULL,  '
-        #     '"well_id" text NOT NULL REFERENCES "well" ("well_id") '
-        #     '    DEFERRABLE INITIALLY DEFERRED,'
-        #     '"query_id" integer NOT NULL REFERENCES "cached_query" ("id") '
-        #     '    DEFERRABLE INITIALLY DEFERRED'
-        #     ');'
-        # ));
+                'ADD CONSTRAINT well_query_unique UNIQUE(query_id, well_id) '))
+            # 20180222 - Deferrable unique constraints are a new feature in PostgreSQL 9.0
+            #  'DEFERRABLE INITIALLY DEFERRED; '))
             logger.info('the well_query_index table has been created')
         except Exception, e:
             logger.info((
@@ -21410,7 +21401,7 @@ class WellResource(DbApiResource):
             # data['content_types'] = sub_data['content_types']
         else:
             pass
-        logger.info('final field visibilities: %r', 
+        logger.debug('final field visibilities: %r', 
             [(key,'%r'%fi['visibility']) for key, fi in data['fields'].items()])
         return data
     

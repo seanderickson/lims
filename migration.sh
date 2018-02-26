@@ -593,29 +593,47 @@ function create_studies {
   #  wait $server_pid
   sleep 3
   
-  study_file=docs/studies/study_200001.json
+  study_id=200001
+  study_file=docs/studies/study_${study_id}.json
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
     -f ${study_file}
+  # ping the study to test
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
 
-  study_file=docs/studies/study_200002.json
+  study_id=200002
+  study_file=docs/studies/study_${study_id}.json
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
     -f ${study_file}
+  # ping the study to test
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
 
-  study_file=docs/studies/study_200003.json
+  study_id=200003
+  study_file=docs/studies/study_${study_id}.json
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_confirmed_positive_study \
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
     -f ${study_file}
+  # ping the study to test
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
 
   ####
   echo "create in_silico statistical studies finished, stop server ..."

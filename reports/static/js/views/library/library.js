@@ -11,6 +11,7 @@ define([
   'models/app_state',
   'views/library/libraryCopy', 
   'views/library/libraryWell', 
+  'views/library/libraryWells', 
   'views/generic_detail_layout',
   'views/generic_detail_stickit', 
   'views/generic_edit',
@@ -18,7 +19,7 @@ define([
   'utils/uploadDataForm',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, LibraryCopyView, 
-            LibraryWellView, DetailLayout, DetailView, EditView, ListView, 
+            LibraryWellView, LibraryWellsView, DetailLayout, DetailView, EditView, ListView, 
             UploadDataForm, TabbedController ) {
 
   var LibraryView = TabbedController.extend({
@@ -199,9 +200,8 @@ define([
           var url = [self.model.resource.apiUri, 
                      self.model.key,
                      'well'].join('/');
-          view = new ListView({ 
+          view = new LibraryWellsView({ 
             uriStack: _.clone(delegateStack),
-            schemaResult: schemaResult,
             resource: schemaResult,
             url: url
           });

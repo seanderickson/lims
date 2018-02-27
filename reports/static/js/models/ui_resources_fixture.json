@@ -258,6 +258,8 @@
       "header_message": "Wells",
       "title": "Well",
       "route": "list/well",
+      "listView": "libraryWellsView",
+      "detailView": "LibraryWellView",
       "api_resource": "well",
       "url_root": "/db/api/v1",
       "description": "Well information",
@@ -270,14 +272,14 @@
       "header_message": "Wells",
       "title": "Well",
       "route": "list/reagent",
-      "listView": "ListView",
+      "listView": "LibraryWellsView",
       "detailView": "LibraryWellView",
       "api_resource": "reagent",
       "url_root": "/db/api/v1",
       "description": "Reagent Well information",
       "options": { 
         "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
+        "rpp": 384,
         "order": []  }
     },
     "librarycopy": {

@@ -265,7 +265,7 @@ function($, _, Backgrid, Iccbl, appModel,
         // set loading before firing event; single thread blocks dom updates
         $('#treeloading').css( "display", "table" ); 
         window.setTimeout(function(){
-          self.collection.trigger('bulkCheck',chanagedModels);
+          self.collection.trigger('bulkCheck',changedModels);
         }, 100);
       });
 
@@ -283,7 +283,6 @@ function($, _, Backgrid, Iccbl, appModel,
       // Store checked keys on treeChanged for batch update
       var bulkCheck = [];
       function treeChanged(e){
-        console.log('treeChanged event...');
         var id = $(e.target).parent().attr('id');
         var model = self.collection.get(id);
         if (model){
@@ -343,7 +342,6 @@ function($, _, Backgrid, Iccbl, appModel,
       });
       
       self.collection.on('bulkCheck', function(changedModels){
-        console.log('collection bulkCheck', changedModels);
         if (_.isEmpty(changedModels)) return;
         // NOTE: setting display to "block" does not work in modal
         // NOTE2: event processing is single threaded, so "loading" will not 

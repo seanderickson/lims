@@ -149,7 +149,7 @@ define([
 //          'Show mutual positive columns',
 //          '</button>'
 //           ].join(''));
-        var show_other_screen_columns_control = $([
+        var show_other_screen_columns_button = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
           'id="showOtherScreenColumns" title="Show other screen columns" >',
           'Other screen columns',
@@ -182,7 +182,7 @@ define([
         var SRListView = ListView.extend({
           afterRender: function(){
             ListView.prototype.afterRender.apply(this,arguments);
-            this.$('#list_controls').append(show_other_screen_columns_control);
+            this.$('#list_controls').append(show_other_screen_columns_button);
             return this;
           }
         });
@@ -214,11 +214,11 @@ define([
           self.showMutualPositiveColumns(view, true);
         }
 
-        show_other_screen_columns_control.click(function(e){
+        show_other_screen_columns_button.click(function(e){
           self.showOtherScreenColumnsDialog(view);
         });
-        show_positives_control.click(function(e) {
-          if (e.target.checked) {
+        show_positives_control.find('input[type="checkbox"]').change(function(e) {
+          if (this.checked) {
             var searchHash = _.clone(view.listModel.get('search'));
             searchHash['is_positive__eq'] = 'true';
             view.listModel.set('search',searchHash);
@@ -233,8 +233,8 @@ define([
         });
         // 20170905 - removed: mutual pos columns will be selected explicitly
         // 20180220 - reinstated, determine state by included cols
-        show_mutual_positives_control.click(function(e) {
-          if (e.target.checked) {
+        show_mutual_positives_control.find('input[type="checkbox"]').change(function(e) {
+          if (this.checked) {
             window.setTimeout(function() {
               self.showMutualPositiveColumns(view, true);
             });
@@ -282,10 +282,10 @@ define([
       }
     },
     
-    showMutualPositiveColumns: function(resultView, shown){
+    showMutualPositiveColumns: function(listView, shown){
       var self = this;
 
-//      var searchHash = resultView.collection.listModel.get('search');
+//      var searchHash = listView.collection.listModel.get('search');
 //      var dc_ids = _.result(searchHash,'dc_ids', '');
 //      if (!_.isArray(dc_ids)){
 //        dc_ids = dc_ids.split(',')
@@ -348,7 +348,7 @@ define([
               field.description = Iccbl.formatString(
                 '{screen_facility_id}: {screen_title} ({name} - {description})',
                 field);
-              var grid = resultView.grid;
+              var grid = listView.grid;
               
               if (dc.get('user_access_level_granted') > 1){
                 field['filtering'] = true;
@@ -364,7 +364,7 @@ define([
                 grid.insertColumn(
                   Iccbl.createBackgridColumn(
                       key,field,
-                      resultView.listModel.get('order')),
+                      listView.listModel.get('order')),
                       { at: index});
               } else {
                 console.log('column already included', key)
@@ -375,10 +375,10 @@ define([
 //          });
           
             var searchHash = _.clone(
-              resultView.collection.listModel.get('search'));
+              listView.collection.listModel.get('search'));
   //          searchHash['dc_ids'] = dc_ids_selected;
             searchHash['show_mutual_positives'] = true;
-            resultView.collection.listModel.set('search', searchHash);
+            listView.collection.listModel.set('search', searchHash);
           } else { // not shown
             collection.each(function(model){
               if (_.contains(self.model.get('overlapping_positive_screens'),
@@ -387,11 +387,11 @@ define([
                   var key = model.get('key');
                   if (_.has(srResource.fields, key)){
                     delete srResource.fields[key];
-                    var column = resultView.grid.columns.findWhere({ name: key });
+                    var column = listView.grid.columns.findWhere({ name: key });
                     if (!column){
                       console.log('column already not present', key)
                     } else {
-                      resultView.grid.removeColumn(column);
+                      listView.grid.removeColumn(column);
                     }
                   }
                 }
@@ -399,9 +399,9 @@ define([
               
             });
             var searchHash = _.clone(
-              resultView.collection.listModel.get('search'));
+              listView.collection.listModel.get('search'));
             searchHash['show_mutual_positives'] = false;
-            resultView.collection.listModel.set('search', searchHash);
+            listView.collection.listModel.set('search', searchHash);
           }          
         },
         always: function(){
@@ -412,100 +412,100 @@ define([
       });        
     },
     
-    showMutualPositiveColumns_bak_by_dc_ids: function(resultView){
-      var self = this;
+//    showMutualPositiveColumns_bak_by_dc_ids: function(listView){
+//      var self = this;
+//
+//      var searchHash = listView.collection.listModel.get('search');
+//      var dc_ids = _.result(searchHash,'dc_ids', '');
+//      if (!_.isArray(dc_ids)){
+//        dc_ids = dc_ids.split(',')
+//      }
+//      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
+//      console.log('showMutualPositiveColumns', dc_ids);
+//      var srResource = self.model.resource;
+//      var resource = appModel.getResource('datacolumn');
+//      var url = [resource.apiUri, 
+//                 'for_screen', self.model.get('facility_id')].join('/');
+//      var data_for_get = { 
+//        limit: 0,
+//        includes: [
+//          'screen_facility_id','screen_title','name','description',
+//          'assay_data_type','ordinal'],
+//        order_by: ['screen_facility_id', 'ordinal'],
+//        use_vocabularies: true
+//      };
+//      var CollectionClass = Iccbl.CollectionOnClient.extend({
+//        url: url,
+//        modelId: function(attrs) {
+//          return Iccbl.getIdFromIdAttribute( attrs, resource);
+//        }
+//      });
+//      var collection = new CollectionClass();
+//      collection.fetch({
+//        data: data_for_get,
+//        success: function(collection, response) {
+//          collection.each(function(model){
+//            if(_.contains(dc_ids, model.get('data_column_id'))){
+//              model.set('checked', true);
+//            }
+//            if (_.contains(self.model.get('overlapping_positive_screens'),
+//                  model.get('screen_facility_id'))){
+//              if (model.get('positives_count')>0){
+//                model.set('checked',true);
+//              }
+//            }
+//          });
+//          var dcs_selected = collection.where({checked: true});
+//          _.each(dcs_selected, function(dc){
+//            var key = dc.get('key');
+//            var name = dc.get('title');
+//            var dc_id = dc.get('data_column_id');
+//            var field = dc.attributes;
+//            var grid = listView.grid;
+//            
+//            if (dc.get('user_access_level_granted') > 1){
+//              field['filtering'] = true;
+//              field['ordering'] = true;
+//            }
+//            if (!_.has(srResource.fields, key)){
+//              srResource.fields[key] = field;
+//            }
+//  
+//            var column = grid.columns.findWhere({ name: key });
+//            if (!column){
+//              var index = grid.columns.size();
+//              grid.insertColumn(
+//                Iccbl.createBackgridColumn(
+//                    key,field,
+//                    listView.listModel.get('order')),
+//                    { at: index});
+//            } else {
+//              console.log('column already included', key)
+//            }
+//          
+//          });
+//          var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
+//            return dcmodel.get('data_column_id');
+//          });
+//          
+//          var searchHash = _.clone(
+//            listView.collection.listModel.get('search'));
+//          searchHash['dc_ids'] = dc_ids_selected;
+//          listView.collection.listModel.set('search', searchHash);
+//          
+//        },
+//        always: function(){
+//          console.log('done: ');
+//        }
+//      }).fail(function(){ 
+//        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+//      });        
+//    },
 
-      var searchHash = resultView.collection.listModel.get('search');
-      var dc_ids = _.result(searchHash,'dc_ids', '');
-      if (!_.isArray(dc_ids)){
-        dc_ids = dc_ids.split(',')
-      }
-      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
-      console.log('showMutualPositiveColumns', dc_ids);
-      var srResource = self.model.resource;
-      var resource = appModel.getResource('datacolumn');
-      var url = [resource.apiUri, 
-                 'for_screen', self.model.get('facility_id')].join('/');
-      var data_for_get = { 
-        limit: 0,
-        includes: [
-          'screen_facility_id','screen_title','name','description',
-          'assay_data_type','ordinal'],
-        order_by: ['screen_facility_id', 'ordinal'],
-        use_vocabularies: true
-      };
-      var CollectionClass = Iccbl.CollectionOnClient.extend({
-        url: url,
-        modelId: function(attrs) {
-          return Iccbl.getIdFromIdAttribute( attrs, resource);
-        }
-      });
-      var collection = new CollectionClass();
-      collection.fetch({
-        data: data_for_get,
-        success: function(collection, response) {
-          collection.each(function(model){
-            if(_.contains(dc_ids, model.get('data_column_id'))){
-              model.set('checked', true);
-            }
-            if (_.contains(self.model.get('overlapping_positive_screens'),
-                  model.get('screen_facility_id'))){
-              if (model.get('positives_count')>0){
-                model.set('checked',true);
-              }
-            }
-          });
-          var dcs_selected = collection.where({checked: true});
-          _.each(dcs_selected, function(dc){
-            var key = dc.get('key');
-            var name = dc.get('title');
-            var dc_id = dc.get('data_column_id');
-            var field = dc.attributes;
-            var grid = resultView.grid;
-            
-            if (dc.get('user_access_level_granted') > 1){
-              field['filtering'] = true;
-              field['ordering'] = true;
-            }
-            if (!_.has(srResource.fields, key)){
-              srResource.fields[key] = field;
-            }
-  
-            var column = grid.columns.findWhere({ name: key });
-            if (!column){
-              var index = grid.columns.size();
-              grid.insertColumn(
-                Iccbl.createBackgridColumn(
-                    key,field,
-                    resultView.listModel.get('order')),
-                    { at: index});
-            } else {
-              console.log('column already included', key)
-            }
-          
-          });
-          var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
-            return dcmodel.get('data_column_id');
-          });
-          
-          var searchHash = _.clone(
-            resultView.collection.listModel.get('search'));
-          searchHash['dc_ids'] = dc_ids_selected;
-          resultView.collection.listModel.set('search', searchHash);
-          
-        },
-        always: function(){
-          console.log('done: ');
-        }
-      }).fail(function(){ 
-        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-      });        
-    },
-
-    showOtherScreenColumnsDialog: function(resultView){
+    showOtherScreenColumnsDialog: function(listView){
       var self = this;
       
-      var searchHash = resultView.collection.listModel.get('search');
+      var searchHash = listView.collection.listModel.get('search');
       var dc_ids = _.result(searchHash,'dc_ids', '');
       if (!_.isArray(dc_ids)){
         dc_ids = dc_ids.split(',')
@@ -521,7 +521,7 @@ define([
           'screen_facility_id','screen_title','name','description',
           'assay_data_type','ordinal','study_type'],
         order_by: ['screen_facility_id', 'ordinal'],
-        use_vocabularies: true
+        use_vocabularies: false
       };
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url,
@@ -553,7 +553,7 @@ define([
           var name = dc.get('title');
           var dc_id = dc.get('data_column_id');
           var field = dc.attributes;
-          var grid = resultView.grid;
+          var grid = listView.grid;
           
           if (dc.get('user_access_level_granted') > 1){
             field['filtering'] = true;
@@ -570,7 +570,7 @@ define([
             grid.insertColumn(
               Iccbl.createBackgridColumn(
                   key,field,
-                  resultView.listModel.get('order')),
+                  listView.listModel.get('order')),
                   { at: index});
           } else {
             console.log('column already included', key)
@@ -583,9 +583,9 @@ define([
         });
         
         var searchHash = _.clone(
-          resultView.collection.listModel.get('search'));
+          listView.collection.listModel.get('search'));
         searchHash['dc_ids'] = dc_ids_selected;
-        resultView.collection.listModel.set('search', searchHash);
+        listView.collection.listModel.set('search', searchHash);
         
       }; // showColumns
       
@@ -666,21 +666,21 @@ define([
                           show_studies_control]
         });
 
-        show_positives_control.click(function(e) {
+        show_positives_control.find('input[type="checkbox"]').change(function(e) {
           var searchedModels = dcView.search();
-          if (e.target.checked || !_.isEmpty(searchedModels)) {
+          if (this.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });
-        show_mutual_screens_control.click(function(e){
+        show_mutual_screens_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
-          if (e.target.checked || !_.isEmpty(searchedModels)) {
+          if (this.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });
-        show_studies_control.click(function(e){
+        show_studies_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
-          if (e.target.checked || !_.isEmpty(searchedModels)) {
+          if (this.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });

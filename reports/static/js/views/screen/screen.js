@@ -129,7 +129,8 @@ define([
       var title = [
          '<H4 id="title">',
          '<a href="#screen/{facility_id}" >{facility_id}</a>: '];
-      if (this.model.get('screen_type') == 'small_molecule'){
+      if (this.model.get('screen_type') == 'small_molecule'
+        && _.isEmpty(this.model.get('study_type'))){
         title.push('<small>A screen for compounds that... </small>');
       }
       title.push('{title}');

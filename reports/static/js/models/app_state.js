@@ -683,6 +683,7 @@ define([
     
     getScreens: function(callback){
       data_for_get = { 
+        order_by: ['facility_id'],
         exact_fields: ['title','facility_id','data_sharing_level','screen_type'], 
         study_type__is_null: true
       };

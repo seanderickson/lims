@@ -3001,7 +3001,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       if(_.isEmpty("" + val)){
           delete self.queryParams[key];
       }else{
-        val = val.trim();
+        if (_.isString(val)){
+          val = val.trim();
+        }
         // Check if param dne, or if param exists and is a value to be set.
         // The reason for the "isFunction" check is that the Backgrid-filter
         // defined params are function calls to get the current value in the
@@ -3012,9 +3014,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
           self.queryParams[key] = function () {
             var search = self.listModel.get('search');
             if (!_.isEmpty(search)){
-              var val = _.result(search, key, null);
-              // FIXME: better control of whitespace
-              if (!_.isEmpty(val)) return val.trim();
+              return _.result(search, key, null);
             }
             return null;
           };

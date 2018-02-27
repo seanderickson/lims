@@ -2,9 +2,6 @@
  * Application loading script for the Iccbl-lims app.
  */
 
-// workaround for libraries that need jquery $ in webpack
-//window.$ = window.jQuery = require('jquery');  
-
 require('css/external/bootstrap_custom_build/css/bootstrap.css');
 //require('bootstrap/dist/css/bootstrap.css');
 
@@ -15,11 +12,6 @@ require('multiselect/css/multi-select.css');
 require('bootstrap-datepicker/dist/css/bootstrap-datepicker3.css');
 require('jquery-chosen/chosen.css');
 require('bootstrap-chosen/bootstrap-chosen.css');
-//require('select2/dist/css/select2.min.css');
-//require('patternfly-bootstrap-treeview/dist/bootstrap-treeview.css');
-//require('tree-multiselect/dist/jquery.tree-multiselect.min.css');
-//require('css/jquery.tree-multiselect.overrides.css')
-//require('css/bootstrap_treeview.overrides.css')
 require('jquery-bonsai/jquery.bonsai.css');
 require('css/jquery.bonsai.overrides.css');
 require('css/hmsiccbl.css');

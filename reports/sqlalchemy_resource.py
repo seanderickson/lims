@@ -457,6 +457,8 @@ class SqlAlchemyResource(IccblBaseResource):
     def parse_filter_value(value, filter_type):
         if isinstance(value, six.string_types):
             value = urllib.unquote(value).decode('utf-8')
+            if value:
+                value = value.strip()
         if filter_type in ('in', 'range') and len(value):
             if value and hasattr(value, '__iter__'):
                 # value is already a list

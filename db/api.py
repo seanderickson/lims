@@ -42,7 +42,7 @@ from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, alias, Alias, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
-    exists, cast, union_all, union
+    exists, cast, union_all, union, bindparam
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
@@ -1036,7 +1036,7 @@ class LibraryCopyPlateResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/batch_edit%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('batch_edit'), name="api_lcp_batch_edit"),
-            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
@@ -1083,7 +1083,7 @@ class LibraryCopyPlateResource(DbApiResource):
             if not _line:
                 continue
 
-            parts = lims_utils.PLATE_RANGE_SPLITTING_PATTERN.findall(_line)
+            parts = lims_utils.QUOTED_WORD_SPLITTING_PATTERN.findall(_line)
             logger.info('parse plate copy search: line parts: %r', parts)
             
             parsed_search = defaultdict(list)
@@ -4471,7 +4471,7 @@ class ScreenResultResource(DbApiResource):
         
         stmt = stmt.order_by(_wqx.c.id)
 
-        if DEBUG_SCREENRESULT or True: 
+        if DEBUG_SCREENRESULT: 
             logger.info(
                 'stmt: %s',
                 str(stmt.compile(
@@ -6310,7 +6310,7 @@ class CopyWellResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)"
@@ -11144,7 +11144,7 @@ class LibraryCopyResource(DbApiResource):
                  r"/(?P<copy_name>[^/]+)%s$")  
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url((r"^(?P<resource_name>%s)"
@@ -20694,6 +20694,7 @@ class ReagentResource(DbApiResource):
         self.smr_resource = None
         self.npr_resource = None
         self.well_resource = None
+        self.data_column_resource = None
         super(ReagentResource, self).__init__(**kwargs)
     
     def prepend_urls(self):
@@ -20702,9 +20703,13 @@ class ReagentResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
+            url(r"^(?P<resource_name>%s)/csearch_reagent/(?P<search_ID>[\d]+)%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_search_vendor_and_compound'), 
+                name="api_search_vendor_and_compound"),
             url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
@@ -20738,6 +20743,11 @@ class ReagentResource(DbApiResource):
             self.well_resource = WellResource()
         return self.well_resource
     
+    def get_datacolumn_resource(self):
+        if self.data_column_resource is None:
+            self.data_column_resource = DataColumnResource()
+        return self.data_column_resource
+    
     def get_reagent_resource(self, library_classification):
         if library_classification == 'rnai':
             return self.get_sr_resource()
@@ -20757,10 +20767,13 @@ class ReagentResource(DbApiResource):
         param_hash.update(kwargs)
         logger.info('param hash: %r', param_hash)
         
+        extra_dc_ids = param_hash.get('dc_ids', None)
+
         if not 'library_short_name' in kwargs:
             return self.build_response(
                 request, 
-                self.build_schema(user=request.user,**param_hash), **kwargs)
+                self.build_schema(
+                    user=request.user,extra_dc_ids=extra_dc_ids, **param_hash), **kwargs)
         
         library_short_name = kwargs.pop('library_short_name')
         try:
@@ -20768,15 +20781,19 @@ class ReagentResource(DbApiResource):
             return self.build_response(
                 request, 
                 self.build_schema(
-                    user=request.user,library_classification=library.classification), 
+                    user=request.user,
+                    library_classification=library.classification,
+                    extra_dc_ids=extra_dc_ids), 
                 **kwargs)
             
         except Library.DoesNotExist, e:
             raise Http404(
                 'Can not build schema - library def needed'
                 'no library found for short_name: %r' % library_short_name)
+
                 
-    def build_schema(self, library_classification=None, user=None, **kwargs):
+    def build_schema(self, library_classification=None, user=None, 
+        extra_dc_ids=None, **kwargs):
         logger.info('build reagent schema for library_classification: %r',
             library_classification)
         schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
@@ -20818,6 +20835,41 @@ class ReagentResource(DbApiResource):
             
         well_schema = WellResource().build_schema(user=user)
         schema['fields'].update(well_schema['fields'])
+
+        max_ordinal = 0
+        for fi in newfields.values():
+            if fi.get('ordinal', 0) > max_ordinal:
+                max_ordinal = fi['ordinal']
+        logger.info('max ordinal: %d', max_ordinal)
+
+        if extra_dc_ids:
+            logger.info('extra_dc_ids: %r', extra_dc_ids)
+            extra_datacolumns = self.get_datacolumn_resource()\
+                ._get_list_response_internal(
+                    user, 
+                    data_column_id__in=extra_dc_ids)                            
+            decorated = [
+                (dc['study_type'] != None,
+                 dc['screen_facility_id'],dc['ordinal'], dc) 
+                    for dc in extra_datacolumns]
+            decorated.sort(key=itemgetter(0,1,2))
+            extra_datacolumns = [dc for sort_study,fid,ordinal,dc in decorated]
+            logger.info('extra_datacolumns: %r', len(extra_datacolumns))
+            datacolumn_fields = {}
+            for i, dc in enumerate(extra_datacolumns):
+                dc['visibility'] = ['l','d']
+                dc['is_datacolumn'] = True
+                dc['ordinal'] = max_ordinal + i
+                if dc['user_access_level_granted'] > 1:
+                    dc['ordering'] = True
+                    dc['filtering'] = True
+                datacolumn_fields[dc['key']] = dc
+                
+            max_ordinal += len(datacolumn_fields)
+            
+            datacolumn_fields.update(schema['fields'])
+            schema['fields'] = datacolumn_fields
+            
         logger.info('reagent schema built')
         return schema
 
@@ -20826,14 +20878,48 @@ class ReagentResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
+    def _build_result_value_column(self, field_information):
+        '''
+        Each result value will be added to the query as a subquery select:
+        (SELECT <value_field> 
+         FROM result_value
+         WHERE result_value.data_column_id=<id> 
+         AND rv.well_id=well.well_id limit 1) as <data_column_value_alias>
+        '''
+        logger.debug('build result value for field: %r', field_information)
+        key = field_information['key']
+        data_column_id = field_information['data_column_id']
+        data_column_type = field_information.get('data_type') 
+        # TODO: column to select: use controlled vocabulary
+        column_to_select = None
+        if(data_column_type in ['numeric', 'decimal', 'integer']):  
+            column_to_select = 'numeric_value'
+        else:
+            column_to_select = 'value'
+        logger.debug('_build_result_value_column: %r, %r, %r, %r', 
+            key, column_to_select, data_column_id, column_to_select)
+        
+        _rv = self.bridge['result_value']
+        rv_select = select([column(column_to_select)]).select_from(_rv)
+        rv_select = rv_select.where(
+            _rv.c.data_column_id == field_information['data_column_id'])
+        rv_select = rv_select.where(_rv.c.well_id == text('well.well_id'))
+        # FIXME: limit to rv's to 1 - due to the duplicated result value issue
+        rv_select = rv_select.limit(1)  
+        rv_select = rv_select.label(key)
+        return rv_select
+
+    
     def get_query(self, 
         param_hash, user, library_classification=None, library=None,
         cherry_pick_request_id_screener=None,
-        cherry_pick_request_id_lab=None, wells=None
-        ):
+        cherry_pick_request_id_lab=None, well_ids=None, schema=None):
         logger.info('get query for library_classification %r', library_classification )
-        schema = self.build_schema(
-            user=user, library_classification=library_classification)
+        
+        if schema is None:
+            logger.info('schema not specified, rebuilding...')
+            schema = self.build_schema(
+                user=user, library_classification=library_classification)
 
         try:
             
@@ -20847,7 +20933,7 @@ class ReagentResource(DbApiResource):
                     schema, param_hash=param_hash)
             filename = self._get_filename(readable_filter_hash, schema)
             
-            if filter_expression is None and wells is None:
+            if filter_expression is None and well_ids is None:
                 raise InformationError(
                     key='Input filters ',
                     msg='Please enter a filter expression to begin')
@@ -20874,9 +20960,10 @@ class ReagentResource(DbApiResource):
                     default_fields.append('fields.smallmoleculereagent')
                 
                 _temp = { key:field for key, field in field_hash.items() 
-                    if field.get('scope', None) in default_fields }
+                    if ( field.get('scope', None) in default_fields
+                         or field.get('is_datacolumn',False) is True )}
                 field_hash = _temp
-                logger.debug('final field hash: %r', field_hash.keys())
+                logger.info('final field hash: %r', field_hash.keys())
             else:
                 # consider limiting fields available
                 pass
@@ -20942,13 +21029,17 @@ class ReagentResource(DbApiResource):
                 j = j.join(_lcp,
                     _lcp.c.source_well_id==_well.c.well_id)
     
+            for fi in field_hash.values():
+                if fi.get('is_datacolumn',False) is True:
+                    custom_columns[fi['key']] = self._build_result_value_column(fi)
+    
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
             
             stmt = select(columns.values()).select_from(j)
-            if wells is not None:
-                stmt = stmt.where(_well.c.well_id.in_([w.well_id for w in wells]))
+            if well_ids is not None:
+                stmt = stmt.where(_well.c.well_id.in_(well_ids))
             if plate_numbers:
                 stmt = stmt.where(_well.c.plate_number.in_(plate_numbers))
             if library:
@@ -20995,10 +21086,10 @@ class ReagentResource(DbApiResource):
             if not order_clauses:
                 stmt = stmt.order_by("plate_number", "well_name")
 
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
     
             return (field_hash, columns, stmt, count_stmt,filename)
                         
@@ -21017,6 +21108,13 @@ class ReagentResource(DbApiResource):
         return DbApiResource.build_sqlalchemy_columns(self, 
             fields, base_query_tables=base_query_tables, 
             custom_columns=sub_columns)
+    
+    @read_authorization
+    def dispatch_search_vendor_and_compound(self, request, **kwargs):
+        logger.info('dispatch search_vendor_and_compound...')
+        # Set a flag to indicate the search type
+        kwargs['vendor_and_compound_search'] = True
+        return self.search(request, **kwargs)
         
     @read_authorization
     def build_list_response(self, request, **kwargs):
@@ -21037,21 +21135,26 @@ class ReagentResource(DbApiResource):
         
         # well search data is raw line based text entered by the user
         well_search_data = param_hash.pop('raw_search_data', None)
-        wells = None
+        well_ids = None
         if well_search_data is not None:
-            (wells,errors) = WellResource.find_wells(well_search_data)
-            logger.info('well search errors: %r', errors)
+            if param_hash.pop('vendor_and_compound_search', False) is True:
+                (well_ids,errors) = \
+                    WellResource.find_wells_by_vendor_compound_name(well_search_data)
+            else:
+                (wells,errors) = WellResource.find_wells(well_search_data)
+                # classifications = set([w.library.classification for w in wells])
+                # logger.info('classifications: %r', classifications)
+                # if wells and len(classifications) > 1:
+                # for well in wells:
+                #     library_classification = well.library.classification
+                #     break
+                well_ids = [w.well_id for w in wells]
+            logger.info('well search: %d errors: %r', len(well_ids), errors)
             if errors:
                 raise ValidationError(
                     key='well_search',
-                    msg='%r' % errors )    
-            classifications = set([w.library.classification for w in wells])
-            logger.info('classifications: %r', classifications)
-            if wells and len(classifications) > 1:
-                for well in wells:
-                    library_classification = well.library.classification
-                    break
-            logger.info('found wells: %d', len(wells))
+                    msg='%s' % ', '.join([str(err) for err in errors]))    
+            logger.info('found wells: %d', len(well_ids))
         # TODO: eliminate dependency on library (for schema determination)
         library = None
         library_short_name = param_hash.pop('library_short_name', None)
@@ -21095,8 +21198,11 @@ class ReagentResource(DbApiResource):
                 library = Reagent.objects.get(
                     substance_id=substance_id).well.library
 
+        extra_dc_ids = param_hash.get('dc_ids', None)
+        logger.info('build list response: dc_ids: %r', extra_dc_ids)
         # Note: build schema for each request to use the subtype
-        schema = self.build_schema(library_classification=library_classification)
+        schema = self.build_schema(library_classification=library_classification,
+            extra_dc_ids=extra_dc_ids)
 
         manual_field_includes = set(param_hash.get('includes', []))
         content_type = self.get_serializer().get_accept_content_type(
@@ -21112,7 +21218,7 @@ class ReagentResource(DbApiResource):
                 library=library,
                 cherry_pick_request_id_screener=cherry_pick_request_id_screener,
                 cherry_pick_request_id_lab=cherry_pick_request_id_lab,
-                wells = wells)
+                well_ids = well_ids, schema=schema)
         
         rowproxy_generator = None
         if use_vocab is True:
@@ -21731,6 +21837,86 @@ class WellResource(DbApiResource):
         raise NotImplementedError('patch obj must be implemented')
         
     @classmethod
+    def find_wells_by_vendor_compound_name(cls, well_search_data ):
+        ''' 
+        return set() of Well objects matching the line based 
+        compound well_search_data entered by the user:
+            - searches compound name, vendor_id and facility_id
+        '''
+        
+        errors = []
+        well_ids = set()
+                
+        bridge = get_tables()
+        _cn = bridge['small_molecule_compound_name']
+        _smr = bridge['small_molecule_reagent']
+        _r = bridge['reagent']
+        _well = bridge['well']
+        querycn = (
+            select([_well.c.well_id])
+            .select_from(
+                _well.join(_r,_well.c.well_id==_r.c.well_id)
+                    .join(_cn,_r.c.reagent_id==_cn.c.reagent_id))
+            .where(_cn.c.compound_name.ilike(bindparam('_pattern'))))
+        query_vendor = (
+            select([_well.c.well_id])
+            .select_from(
+                _well.join(_r,_well.c.well_id==_r.c.well_id))
+            .where(_r.c.vendor_identifier.ilike(bindparam('_pattern'))))
+        
+        # Legacy search: support for facility-salt-batch; only used with the 
+        # LINCS project: this function must be redesigned - 20180226 - sde
+        # query_facility = (
+        #     select([_well.c.well_id])
+        #     .select_from(
+        #         _well.join(_r,_well.c.well_id==_r.c.well_id)
+        #             .join(_smr,_r.c.reagent_id==_smr.c.reagent_id ))
+        #     .where(text("strpos("
+        #         "well.facility_id || '-' || "
+        #         "coalesce(''||small_molecule_reagent.salt_form_id,'') || '-' || "
+        #         "coalesce(''||reagent.facility_batch_id,''), :_pattern ) > 0")))
+
+        
+        with get_engine().connect() as conn:
+            logger.info('find_wells_by_compounds/vendor_ids: %r', well_search_data)
+            # Process the patterns by line
+            parsed_lines = well_search_data
+            if isinstance(parsed_lines, basestring):
+                parsed_lines = re.split(r'\n+',parsed_lines)
+                logger.info('found %d lines in search', len(parsed_lines))
+                logger.debug('parsed_lines: %r', parsed_lines)
+            if not isinstance(parsed_lines, (list,tuple)):
+                well_search_data = (parsed_lines,)
+            
+            cn_well_ids = set()
+            vendor_well_ids = set()
+            for _line in parsed_lines:
+                _line = _line.strip()
+                if not _line:
+                    continue
+                patterns = lims_utils.QUOTED_WORD_SPLITTING_PATTERN.findall(_line)
+                logger.info('parsed line parts: %r', patterns)
+                for _pattern in patterns:
+                    if not _pattern:
+                        continue
+                    _pattern = re.sub(r'["\']+','',_pattern)
+                    cn_well_ids.update(
+                        [x[0] for x in conn.execute(
+                            querycn,_pattern='%' + _pattern + '%')])
+                    logger.debug('cn_ids: %r', cn_well_ids)
+                    vendor_well_ids.update(
+                        [x[0] for x in conn.execute(
+                            query_vendor,_pattern='%' + _pattern + '%')])
+        # TODO: if only compound names searched, set up for small molecule
+        well_ids.update(cn_well_ids)
+        well_ids.update(vendor_well_ids)
+        logger.info('compound name well ids found: %r', len(cn_well_ids))
+        logger.info('vendor well ids found: %r', len(vendor_well_ids))
+        logger.info('well ids found: %r', len(well_ids))
+        return (well_ids, errors)
+        
+        
+    @classmethod
     def find_wells(cls, well_search_data ):
         ''' return set() of Well objects matching the line based 
         well_search_data entered by the user
@@ -21761,7 +21947,6 @@ class WellResource(DbApiResource):
             for _pattern in patterns:
                 if not _pattern:
                     continue
-                # get rid of quotes
                 _pattern = re.sub(r'["\']+','',_pattern)
                 match = WELL_ID_PATTERN.match(_pattern)
                 if match is not None:
@@ -21772,7 +21957,6 @@ class WellResource(DbApiResource):
                     well_name = match.group(2).upper()
                     search_kwargs['well_name'].add(well_name)
                 elif PLATE_PATTERN.match(_pattern):
-                    logger.info('plate pattern match: verify plates exist: %r', _pattern)
                     plate_query = Plate.objects.all().filter(plate_number=_pattern)
                     if plate_query.exists():
                         logger.info('found %r for %r', plate_numbers, _pattern)
@@ -21782,40 +21966,42 @@ class WellResource(DbApiResource):
                         errors.append(
                             'plate: %r is does not exist' % _pattern) 
                 elif PLATE_RANGE_PATTERN.match(_pattern):
-#                     errors.append('pattern: %r, plate range pattern not supported' % _pattern)
                     match = PLATE_RANGE_PATTERN.match(_pattern)
-                    plate_query = Plate.objects.all().filter(plate_number__range=sorted([
-                        int(match.group(1)), int(match.group(2))]))
-                    search_kwargs['plate_number'].update([p.plate_number for p in plate_query ])
+                    plate_query = Plate.objects.all().filter(
+                        plate_number__range=sorted([
+                            int(match.group(1)), int(match.group(2))]))
+                    search_kwargs['plate_number'].update(
+                        [p.plate_number for p in plate_query ])
                 elif WELL_NAME_PATTERN.match(_pattern):
                     search_kwargs['well_name'].add(_pattern)
                 else:
                     errors.append(
-                        'pattern: %r is not a recognized as a well id, or '
+                        'pattern: "%s" is not a recognized as a well id, or '
                         'a plate number followed by a well name' % _pattern)
             if search_kwargs:
                 query = Well.objects.all()
                 plate_numbers = search_kwargs.get('plate_number', None)
                 if not plate_numbers:
-                    raise Exception('no plate numbers found: %r for %r', search_kwargs, _line)
-                plate_numbers = [p for p in plate_numbers]
-                if len(plate_numbers) > 1:
-                    query = query.filter(plate_number__in=plate_numbers)
+                    errors.append('no plate numbers found for "%s"' %_line)
                 else:
-                    query = query.filter(plate_number=plate_numbers[0])
-                well_names = search_kwargs.get('well_name', None)
-                if well_names:
-                    well_names = [w for w in well_names]
-                    if len(well_names) > 1:
-                        query = query.filter(well_name__in=well_names)
-                    else: 
-                        query = query.filter(well_name=well_names[0])
-                line_wells = [w for w in query]
-            logger.debug('line: %r, wells: %d', _line, len(line_wells))
-            if not line_wells:
-                errors.append('no matches found for line: %r', _line)
+                    plate_numbers = [p for p in plate_numbers]
+                    if len(plate_numbers) > 1:
+                        query = query.filter(plate_number__in=plate_numbers)
+                    else:
+                        query = query.filter(plate_number=plate_numbers[0])
+                    well_names = search_kwargs.get('well_name', None)
+                    if well_names:
+                        well_names = [w for w in well_names]
+                        if len(well_names) > 1:
+                            query = query.filter(well_name__in=well_names)
+                        else: 
+                            query = query.filter(well_name=well_names[0])
+                    line_wells = [w for w in query]
+                    logger.debug('line: %r, wells: %d', _line, len(line_wells))
+                    if not line_wells:
+                        errors.append('no matches found for line: %r' % _line)
             
-            wells.update(line_wells)
+                    wells.update(line_wells)
         return (wells, errors)
         
 class LibraryResource(DbApiResource):

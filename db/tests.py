@@ -104,6 +104,7 @@ class DBResourceTestCase(IResourceTestCase):
         super(DBResourceTestCase, self).__init__(*args,**kwargs)
         self.directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         self.sr_serializer = ScreenResultSerializer()
+        self.test_admin_user = None
 
     def _bootstrap_init_files(self, reinit_pattern=None):
         logger.info( 'bootstrap reinit_pattern: %r', reinit_pattern)
@@ -467,10 +468,11 @@ class DBResourceTestCase(IResourceTestCase):
         '''
         control_wells = control_wells or []
         logger.info('create users...')
-        self.test_admin_user = self.create_staff_user(
-            { 'username': 'adminuser',
-              'permissions': 'resource/cherrypickrequest/write',
-            })
+        if self.test_admin_user is None: 
+            self.test_admin_user = self.create_staff_user(
+                { 'username': 'adminuser',
+                  'permissions': 'resource/cherrypickrequest/write',
+                })
 
         logger.info('create library...')
         self.pool_library1 = self.create_library({
@@ -5383,10 +5385,11 @@ class CherryPickRequestResource(DBResourceTestCase):
     def _setup_data(self):
         # Set up dependencies
         logger.info('create users...')
-        self.test_admin_user = self.create_staff_user(
-            { 'username': 'adminuser',
-              'permissions': 'resource/cherrypickrequest/write',
-            })
+        if self.test_admin_user is None:
+            self.test_admin_user = self.create_staff_user(
+                { 'username': 'adminuser',
+                  'permissions': 'resource/cherrypickrequest/write',
+                })
 
         logger.info('create library...')
         self.library1 = self.create_library({

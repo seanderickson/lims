@@ -7,7 +7,6 @@
   using the default sort order of the result_value table. Presumably these last
   values are the last values that were entered into screensaver for these records. 
 
-  # PRELIMINARY 2018-02-08
 **/
 
 create table result_value_duplicates as 
@@ -38,14 +37,3 @@ delete from result_value where result_value_id in (
   )
 );
 
-/**
-needed?
-alter table result_value
-  add constraint well_id_unique
-  UNIQUE(data_column_id, well_id);
-**/
-
-/**
-not needed?
-alter table result_value add primary key(result_value_id);
-**/

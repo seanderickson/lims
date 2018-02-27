@@ -26,7 +26,7 @@ PLATE_SEARCH_LINE_SPLITTING_PATTERN = re.compile(r'[\n;]+')
 # - numbers separated by (spaces) and dash interpreted as a plate range
 # - quoted strings preserved; to be interpreted as copy names
 # - quoted strings may contain spaces and special chars if quoted
-PLATE_RANGE_SPLITTING_PATTERN = \
+QUOTED_WORD_SPLITTING_PATTERN = \
     re.compile(r'''\'.*?\'|\".*?\"|\w+\s+\-\s+\w+|[^\,\s]+''')
 
 logger = logging.getLogger(__name__)

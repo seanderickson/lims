@@ -9,7 +9,6 @@ PLATE_RANGE_PATTERN = re.compile(r'^(\d+)\s*-\s*(\d+)$$')
 # Copy name pattern:
 # - must start with an ascii alphabetic character
 # - may contain spaces,dashes, and colons
-# FIXME: does not support embedded commas
-# - fixme is to clean the copy names in the database to remove commas
+# FIXME: does not support embedded commas:
+# - clean the copy names in the database to remove commas
 COPY_NAME_PATTERN = re.compile(r'^[A-Za-z]+[\w\- :]*$')
-# COPY_NAME_PATTERN = re.compile(r'^[A-Za-z]+.*')

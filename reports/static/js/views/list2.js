@@ -264,7 +264,6 @@ define([
       }
       _.each(self.LIST_MODEL_ROUTE_KEYS, function(routeKey){
         var routeEntry = self.listModel.get(routeKey);
-        console.log('routeKey', routeKey, routeEntry);
         if ( (!_.isObject(routeEntry) && routeEntry ) || 
              ( _.isObject(routeEntry) && !_.isEmpty(routeEntry))) {
           newStack.push(routeKey);
@@ -273,7 +272,7 @@ define([
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
                 // NOTE: 201705 support for the raw search data
-//                kv[1] = encodeURIComponent(kv[1]);
+                // kv[1] = encodeURIComponent(kv[1]);
                 return kv.join('=');
               }).join(self.SEARCH_DELIMITER));
           }else if (routeKey === 'order') {

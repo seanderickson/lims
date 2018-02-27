@@ -254,6 +254,65 @@ define([
       console.log('getSearch', searchId, obj);
       return obj;
     },
+
+    /** 
+     * Find the search data in the uriStack, if it exists:
+     * - search type: either regular "search" or "search_vendor_and_compound"
+     * - see appModel.API_PARAM_RAW_SEARCH, and
+     * API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH
+     * 
+     * @return {
+     *    search_type: [
+     *      API_PARAM_RAW_SEARCH,
+     *      API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH], 
+     *    raw_search_data: search data - either encoded in the url, or stored in app local storage
+     *    search_id: integer for local storage,
+     *    uriStack: uriStack with the search component removed,
+     *    errors: [] empty if none
+     *  }
+     */
+    findComplexSearch: function(uriStack){
+      var result = {};
+      if (_.isEmpty(uriStack)) return null;
+      var appModel = Iccbl.appModel;
+      
+      var param_search = appModel.API_PARAM_RAW_SEARCH;
+      var param_search1 = appModel.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH;
+      if (_.contains(uriStack,param_search) 
+          || _.contains(uriStack,param_search1)){
+        var index = _.indexOf(uriStack,param_search);
+        if (index < 0) index = _.indexOf(uriStack,param_search1);
+        result['search_type'] = uriStack[index];
+        var searchData = uriStack[index+1];
+        
+        if (_.isEmpty(searchData)){
+          result['errors'] = 'no search data or id found:', uriStack;
+          return result;
+        }
+        else if (searchData.indexOf('raw_search_data') > -1){
+          result['raw_search_data'] = decodeURIComponent(searchData.split('=')[1]);
+        }else if (!_.isNaN(parseInt(searchData))) {
+          var searchId = searchData;
+          var search_data = appModel.getSearch(searchId);
+          if(_.isUndefined(search_data) || _.isEmpty(search_data)){
+            result['errors'] = 'Browser state no longer contains searchId:'+searchId 
+              +'", search must be performed again';
+            return result;
+          }else{
+            result['search_id'] = searchId;
+            result['raw_search_data'] = search_data;
+          }  
+        }else{
+          result['errors'] = 'search ID is not a valid number: ' + searchData;
+          return result;
+        }
+        newStack = uriStack.slice(0,index);
+        newStack1 = uriStack.slice(index+2);
+        result['uriStack'] = newStack.concat(newStack1);
+      }
+      
+      return result;
+    },
     
     getLabAffiliationOptions: function(callBack){
       console.log('getLabAffiliationOptions...', callBack);
@@ -2508,6 +2567,9 @@ define([
     ', number of terms entered: {actual_size}';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
+  
+  appState.API_PARAM_RAW_SEARCH = 'csearch';
+  appState.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH = 'csearch_reagent';
   
   appState.LIST_DELIMITER_SUB_ARRAY = '$';
 

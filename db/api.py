@@ -20831,6 +20831,9 @@ class ReagentResource(DbApiResource):
                 if 'd' in field['visibility']:
                     field['visibility'].remove('d')
             newfields.update(schema['fields'])
+            newfields['compound_name']['visibility'] = ['l','d']
+            
+            
             schema['fields'] = newfields
             
         well_schema = WellResource().build_schema(user=user)
@@ -21203,7 +21206,9 @@ class ReagentResource(DbApiResource):
         # Note: build schema for each request to use the subtype
         schema = self.build_schema(library_classification=library_classification,
             extra_dc_ids=extra_dc_ids)
-
+#         if well_search_data:
+#             schema['fields']['compound_names']['visibility'] = ['l','d']
+            
         manual_field_includes = set(param_hash.get('includes', []))
         content_type = self.get_serializer().get_accept_content_type(
             request, format=kwargs.get('format', None))

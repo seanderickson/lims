@@ -116,7 +116,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
       var self = this;
       console.log('change_to_tab: ' + key);
       appModel.clearErrors();
-      
+      self.$("#tab_container-title").empty();      
       if (_.has(this.tabbed_resources, key)) {
         this.removeView("#tab_container");
         this.$('li').removeClass('active');

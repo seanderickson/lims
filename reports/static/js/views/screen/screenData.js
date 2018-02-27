@@ -545,6 +545,7 @@ define([
       function showColumns(dcs_selected) {
         var srResource = self.model.resource;
         var fields = srResource.fields;
+        var grid = listView.grid;
         
         console.log('show columns', dcs_selected);
         
@@ -553,7 +554,6 @@ define([
           var name = dc.get('title');
           var dc_id = dc.get('data_column_id');
           var field = dc.attributes;
-          var grid = listView.grid;
           
           if (dc.get('user_access_level_granted') > 1){
             field['filtering'] = true;
@@ -580,6 +580,22 @@ define([
         
         var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
           return dcmodel.get('data_column_id');
+        });
+        // remove unselected
+        _.each(dc_ids, function(former_dc_id){
+          if (!_.contains(dc_ids_selected,former_dc_id)){
+            var column = grid.columns.find(function(gridCol){
+              var fi = gridCol.get('fieldinformation');
+              if (fi){
+                return fi['data_column_id'] == former_dc_id;
+              }
+            });
+            if (!column){
+              console.log('column already not present', former_dc_id)
+            } else {
+              grid.removeColumn(column);
+            }
+          }
         });
         
         var searchHash = _.clone(

@@ -83,6 +83,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
       function showColumns(dcs_selected) {
         var fields = self.resource.fields;
+        var grid = listView.grid;
         
         console.log('show columns', dcs_selected);
         
@@ -91,7 +92,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           var name = dc.get('title');
           var dc_id = dc.get('data_column_id');
           var field = dc.attributes;
-          var grid = listView.grid;
           
           if (dc.get('user_access_level_granted') > 1){
             field['filtering'] = true;
@@ -121,7 +121,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
           return dcmodel.get('data_column_id');
         });
-        
+        // remove unselected
+        _.each(dc_ids, function(former_dc_id){
+          if (!_.contains(dc_ids_selected,former_dc_id)){
+            var column = grid.columns.find(function(gridCol){
+              var fi = gridCol.get('fieldinformation');
+              if (fi){
+                return fi['data_column_id'] == former_dc_id;
+              }
+            });
+            if (!column){
+              console.log('column already not present', former_dc_id)
+            } else {
+              grid.removeColumn(column);
+            }
+          }
+        });
         var searchHash = _.clone(
           listView.collection.listModel.get('search'));
         searchHash['dc_ids'] = dc_ids_selected;

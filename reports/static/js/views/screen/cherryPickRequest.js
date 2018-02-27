@@ -616,7 +616,6 @@ define([
               // record user selections in the selectionCollection
               selectionCollection.add(model, {silent: true, merge: true});
               if (model.get('selected')==false){
-                selectAllControl.find('input[type="checkbox"]').prop('checked',false);
               }
               if(!_.isEmpty(selectionCollection.where({selected: true }))){
                 setPlatedButton.removeClass('disabled');                
@@ -1823,9 +1822,9 @@ define([
         }
       });
       
-      showUnfulfilledWellsControl.click(function(e){
+      showUnfulfilledWellsControl.find('input[type="checkbox"]').change(function(e){
         function processClick(){
-          if (e.target.checked) {
+          if (this.checked) {
             var searchHash = _.clone(view.listModel.get('search'));
             showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
             showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',false);
@@ -1850,9 +1849,9 @@ define([
           processClick();
         }
       });
-      showInsufficientWellsControl.click(function(e){
+      showInsufficientWellsControl.find('input[type="checkbox"]').change(function(e){
         function processClick(){
-          if (e.target.checked) {
+          if (this.checked) {
             var searchHash = _.clone(view.listModel.get('search'));
             showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_unfulfilled'];
@@ -1874,9 +1873,9 @@ define([
           processClick();
         }
       });
-      showManuallySelectedWellsControl.click(function(e){
+      showManuallySelectedWellsControl.find('input[type="checkbox"]').change(function(e){
         function processClick(){
-          if (e.target.checked) {
+          if (this.checked) {
             var searchHash = _.clone(view.listModel.get('search'));
             showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_unfulfilled'];
@@ -1944,7 +1943,7 @@ define([
         }
       });
 
-      showAllCopyWellsControl.click(function(e) {
+      showAllCopyWellsControl.find('input[type="checkbox"]').change(function(e) {
         function processClick(){
           if (e.target.checked) {
             var includes = _.clone(view.listModel.get('includes'));
@@ -2563,14 +2562,9 @@ define([
               showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
               
               view.listModel.set('search',searchHash);
-//              if (_.isEqual(originalSearchHash,searchHash)){
-//                view.collection.fetch({ reset: true });
-//              }
               view.collection.fetch({ reset: true }).done(function(){
                 // have to wait for the fetch operation to reset, due to the 
                 // asynchronous event handling
-//                setSelectedButton.hide();
-//                cancelSelectedButton.hide();
                 selectionUpdateCollection.reset(null); // clear
               });
   
@@ -2587,9 +2581,9 @@ define([
       
       var extra_colums = [
         'selected', 'searched_well_id','mg_ml_concentration','molar_concentration'];
-      showAlternateSelectionsControl.click(function(e) {
+      showAlternateSelectionsControl.find('input[type="checkbox"]').change(function(e) {
         function processClick(){
-          if (e.target.checked) {
+          if (this.checked) {
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.union(extra_colums,includes);
             if(self.model.get('total_number_lcps') != 0){
@@ -2633,9 +2627,9 @@ define([
       });
       
       // Display or hide other reagents
-      showOtherReagentsControl.click(function(e) {
+      showOtherReagentsControl.find('input[type="checkbox"]').change(function(e) {
         function processClick(){
-          if (e.target.checked) {
+          if (this.checked) {
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.union(extra_colums,includes);
             if(self.model.get('total_number_lcps') != 0){

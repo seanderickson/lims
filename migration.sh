@@ -601,11 +601,6 @@ function create_studies {
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
     -f ${study_file}
-  # ping the study to test
-  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
-    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
-    --header "HTTP-Accept: application/json" \
-    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
 
   study_id=200002
   study_file=docs/studies/study_${study_id}.json
@@ -615,11 +610,6 @@ function create_studies {
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
     -f ${study_file}
-  # ping the study to test
-  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
-    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
-    --header "HTTP-Accept: application/json" \
-    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
 
   study_id=200003
   study_file=docs/studies/study_${study_id}.json
@@ -629,7 +619,19 @@ function create_studies {
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
     -f ${study_file}
-  # ping the study to test
+
+  # ping the studies to test
+  study_id=200001
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+  study_id=200002
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+  study_id=200003
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
     --header "HTTP-Accept: application/json" \

@@ -521,8 +521,14 @@ class ApiResource(SqlAlchemyResource):
         return self.vocab_resource
     
     def get_schema(self, request, **kwargs):
-    
-        return self.build_response(request, self.build_schema(user=request.user), **kwargs)
+#         param_hash = self._convert_request_to_dict(request)
+#         param_hash.update(kwargs)
+#         
+#         logger.info('get_schema: %r', param_hash)
+        return self.build_response(
+            request, 
+            self.build_schema(user=request.user, full_schema=True, **kwargs ), 
+            **kwargs)
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -549,11 +555,11 @@ class ApiResource(SqlAlchemyResource):
             'build_list_response must be implemented for the SqlAlchemyResource: %r' 
             % self._meta.resource_name)
 
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         
         logger.debug('build schema for: %r: %r', self._meta.resource_name, user)
         schema = self.get_resource_resource()._get_resource_schema(
-            self._meta.resource_name, user)
+            self._meta.resource_name, user, **kwargs)
         if DEBUG_RESOURCES:
             logger.info('schema fields: %r', schema['fields'].keys())
         return schema
@@ -753,7 +759,7 @@ class ApiResource(SqlAlchemyResource):
             }
             logger.info('PATCH list: %r', meta)
             return self.build_response(
-                request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
+                request, { API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
 
         if len(deserialized) == 1 or isinstance(deserialized, dict):
             # send to patch detail to bypass parent log creation
@@ -771,15 +777,21 @@ class ApiResource(SqlAlchemyResource):
         
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
+        # 20180227 - set visibilities to detail and list to make up for removing
+        # includes='*' from get_list_internal
+        includes = set()
+        kwargs_for_log['visibilities'] = ['d','l']
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
             if id_kwargs:
+                includes |= set(_data.keys())
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
                     id_vals = kwargs_for_log.get(id_param, set())
                     id_vals.add(idval)
                     kwargs_for_log[id_param] = id_vals
+        kwargs_for_log['includes'] = list(includes)
         try:
             logger.info('get original state, for logging... %r', kwargs_for_log.keys())
             original_data = self._get_list_response_internal(**kwargs_for_log)
@@ -823,11 +835,14 @@ class ApiResource(SqlAlchemyResource):
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', kwargs.get('test_only'))    
-            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+            raise InformationError({
+                'test_only': 'successful patch, "test_only" flag is set, rollback...',
+                API_RESULT_META: meta 
+            })
 
         if not self._meta.always_return_data:
             return self.build_response(
-                request, { 'meta': meta }, response_class=HttpResponse)
+                request, { API_RESULT_META: meta }, response_class=HttpResponse)
         else:
             logger.debug(
                 'return data with post response: %r, kwargs: %r', 
@@ -921,12 +936,28 @@ class ApiResource(SqlAlchemyResource):
             new_data = []
         
         logger.debug('put list done, new data: %d', len(new_data))
-        self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
+        #self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
+        logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
+        logger.info('put logs created: %d', len(logs) if logs else 0 )
+        put_count = len(deserialized)
+        update_count = len([x for x in logs if x.diffs ])
+        delete_count = len([x for x in logs if x.api_action == API_ACTION_DELETE])
+        meta = { 
+            API_MSG_RESULT: {
+                API_MSG_SUBMIT_COUNT : put_count, 
+                API_MSG_UPDATED: update_count,
+                'Deleted': delete_count,
+                API_MSG_COMMENTS: parent_log.comment
+            }
+        }
 
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', kwargs.get('test_only'))    
-            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+            raise InformationError({
+                'test_only': 'successful patch, "test_only" flag is set, rollback...',
+                API_RESULT_META: meta 
+            })
         
         logger.info('put_list done.')
         if not self._meta.always_return_data:
@@ -971,7 +1002,7 @@ class ApiResource(SqlAlchemyResource):
                 }
             }
             return self.build_response(
-                request, { 'meta': meta }, response_class=HttpResponse, **kwargs)
+                request, { API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
         
         # Post list may actually be a post_detail
         if len(deserialized) == 1 or isinstance(deserialized, dict):
@@ -989,15 +1020,21 @@ class ApiResource(SqlAlchemyResource):
         # Limit the potential candidates for logging to found id_kwargs
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
+        # 20180227 - set visibilities to detail and list to make up for removing
+        # includes='*' from get_list_internal
+        includes = set()
+        kwargs_for_log['visibilities'] = ['d','l']
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
             if id_kwargs:
+                includes |= set(_data.keys())
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
                     id_vals = kwargs_for_log.get(id_param, set())
                     id_vals.add(idval)
                     kwargs_for_log[id_param] = id_vals
+        kwargs_for_log['includes'] = list(includes)
         try:
             logger.debug('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -1050,7 +1087,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('POST list: %r', meta)
         if not self._meta.always_return_data:
             return self.build_response(
-                request, { 'meta': meta }, response_class=HttpResponse)
+                request, { API_RESULT_META: meta }, response_class=HttpResponse)
         else:
             logger.info('return data with post response')
             response = self.get_list(request, meta=meta, **kwargs)             
@@ -1145,8 +1182,14 @@ class ApiResource(SqlAlchemyResource):
 
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
-            logger.info('test_only flag: %r', kwargs.get('test_only'))    
-            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+            logger.info('test_only flag: %r', kwargs.get('test_only'))
+            message = {
+                'test_only': 'successful patch, "test_only" flag is set, rollback...',
+                'patch_log': ApiLog.json_dumps(patched_log)
+            }
+            if API_RESULT_META in patch_result:
+                message[API_RESULT_META] = patch_result[API_RESULT_META]
+            raise InformationError(message)
 
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,] }
@@ -1224,8 +1267,14 @@ class ApiResource(SqlAlchemyResource):
         
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
-            logger.info('test_only flag: %r', kwargs.get('test_only'))    
-            raise InformationError('successful patch, "test_only" flag is set, rollback...')
+            logger.info('test_only flag: %r', kwargs.get('test_only'))
+            message = {
+                'test_only': 'successful patch, "test_only" flag is set, rollback...',
+                'patch_log': ApiLog.json_dumps(patched_log)
+            }
+            if API_RESULT_META in patch_result:
+                message[API_RESULT_META] = patch_result[API_RESULT_META]
+            raise InformationError(message)
 
         # 20170109 - return complex data
         new_data = { API_RESULT_DATA: [new_data,], }
@@ -2153,15 +2202,15 @@ class ApiLogResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
+                title_function=title_function, meta=kwargs.get(API_RESULT_META, None),
                 use_caching=True  )
              
         except Exception, e:
             logger.exception('on get_list')
             raise e  
     
-    def build_schema(self, user=None):
-        schema = super(ApiLogResource,self).build_schema(user=user)
+    def build_schema(self, user=None, **kwargs):
+        schema = super(ApiLogResource,self).build_schema(user=user, **kwargs)
         temp = [ x.key for x in 
             MetaHash.objects.all().filter(scope='resource').distinct('key')]
         schema['extraSelectorOptions'] = { 
@@ -2228,7 +2277,7 @@ class FieldResource(ApiResource):
     def create_fields(self):
         pass
 
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         # start with the default schema for bootstrapping
         default_field = {
             'data_type': 'string',
@@ -2434,15 +2483,15 @@ class FieldResource(ApiResource):
             if limit > 0:
                 fields = fields[:limit]
             
-            if kwargs.get('meta', None):
-                temp = kwargs['meta']
+            if kwargs.get(API_RESULT_META, None):
+                temp = kwargs[API_RESULT_META]
                 logger.debug('meta found in kwargs: %r', temp)
                 temp.update(meta)
                 meta = temp
                 logger.debug('meta: %r', meta)
             logger.debug('meta: %r', meta)
             response_hash = { 
-                'meta': meta, 
+                API_RESULT_META: meta, 
                 self._meta.collection_name: fields 
             }
             logger.info('Field resource rebuilt')
@@ -2605,7 +2654,7 @@ class ResourceResource(ApiResource):
     
     def get_schema(self, request, **kwargs):
         return self.build_response(
-            request, self.build_schema(user=request.user), **kwargs)
+            request, self.build_schema(user=request.user, **kwargs), **kwargs)
 
     def get_app_data(self, request, **kwargs):
         
@@ -2621,7 +2670,7 @@ class ResourceResource(ApiResource):
         ApiResource.clear_cache(self, request, **kwargs)
         caches['resource_cache'].clear()
         
-    def _get_resource_schema(self,resource_key, user):
+    def _get_resource_schema(self,resource_key, user, **kwargs):
         ''' For internal callers
         '''
         if DEBUG_RESOURCES:
@@ -2637,6 +2686,12 @@ class ResourceResource(ApiResource):
                 [(field['key'],field['scope']) 
                     for field in schema['fields'].values()])
         
+        full_schema = kwargs.pop('full_schema',None)
+        if full_schema:
+            vocabularies = self.get_vocabularies(schema['fields'])
+            for key,field in schema['fields'].items():
+                if key in vocabularies:
+                    field['vocabulary'] = vocabularies[key]
         return schema
     
     @read_authorization
@@ -2658,13 +2713,13 @@ class ResourceResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
 
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         '''
         Override resource method - bootstrap the "Resource" resource schema
         '''
         logger.info('build_schema for %r: %r', self._meta.resource_name, user)
         resource_fields = self.get_field_resource()._get_list_response_internal(
-            scope='fields.resource')
+            scope='fields.resource', includes='*')
         field_hash = {}
         for field in resource_fields:
             field_hash[field['key']]=field
@@ -2714,14 +2769,14 @@ class ResourceResource(ApiResource):
             values.sort(key=lambda resource: resource['key'])
             meta = { 'limit': 0, 'offset': 0, 'total_count': len(values) }
 
-            if kwargs.get('meta', None):
-                temp = kwargs['meta']
+            if kwargs.get(API_RESULT_META, None):
+                temp = kwargs[API_RESULT_META]
                 temp.update(meta)
                 meta = temp
             logger.debug('meta: %r', meta)
             
             response_hash = { 
-                'meta': meta, 
+                API_RESULT_META: meta, 
                 self._meta.collection_name: values
             }
         
@@ -2788,7 +2843,7 @@ class ResourceResource(ApiResource):
             
             user_resources = resource_cache.get(user_cache_key)
         if user_resources:
-            logger.info(
+            logger.debug(
                 'user resource retrieved from cache: %r', user_resources.keys())
         else:    
             logger.debug('user resources not cached, build resources')
@@ -3055,8 +3110,8 @@ class VocabularyResource(ApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
 
-    def build_schema(self, user=None):
-        schema = super(VocabularyResource,self).build_schema(user=user)
+    def build_schema(self, user=None, **kwargs):
+        schema = super(VocabularyResource,self).build_schema(user=user, **kwargs)
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
@@ -3290,7 +3345,7 @@ class VocabularyResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=json_field_rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
+                title_function=title_function, meta=kwargs.get(API_RESULT_META, None),
                 use_caching=True  )
              
         except Exception, e:
@@ -3308,7 +3363,8 @@ class VocabularyResource(ApiResource):
         if not vocabularies:
             vocabularies = {}
             kwargs = {
-                'limit': '0'
+                'limit': '0',
+                'includes': '*'
             }
             _data = self._get_list_response_internal(**kwargs)
             for v in _data:
@@ -3574,9 +3630,9 @@ class UserResource(ApiResource):
         return PermissionResource().dispatch('list', request, **kwargs)    
 
 
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         
-        schema = super(UserResource,self).build_schema(user=user)
+        schema = super(UserResource,self).build_schema(user=user, **kwargs)
         try:
             if 'usergroups' in schema['fields']: # may be blank on initiation
                 schema['fields']['usergroups']['choices'] = \
@@ -3822,7 +3878,7 @@ class UserResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
+                title_function=title_function, meta=kwargs.get(API_RESULT_META, None),
                 use_caching=True  )
              
         except Exception, e:
@@ -4652,7 +4708,7 @@ class UserGroupResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
+                title_function=title_function, meta=kwargs.get(API_RESULT_META, None),
                 use_caching=True  )
              
         except Exception, e:
@@ -4893,7 +4949,7 @@ class PermissionResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
+                title_function=title_function, meta=kwargs.get(API_RESULT_META, None),
                 use_caching=True  )
              
         except Exception, e:

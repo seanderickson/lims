@@ -339,7 +339,6 @@ class DbApiResource(reports.api.ApiResource):
         count = 0
         with get_engine().begin() as conn:
             count = int(conn.execute(count_stmt).scalar())        
-            logger.info('well_data_column_positive_index count: %r', count)
         
             if count == 0:
                 
@@ -381,7 +380,6 @@ class DbApiResource(reports.api.ApiResource):
     
     @classmethod
     def get_create_screen_overlap_indexes(cls):
-        logger.info('get_create_screen_overlap_indexes...')
         _wdc = cls.get_create_well_data_column_positive_index()
         _screen_overlap = cls.get_table_def('screen_overlap')
         wdc1 = _wdc.alias('wdc1')
@@ -391,7 +389,6 @@ class DbApiResource(reports.api.ApiResource):
         count = 0
         with get_engine().begin() as conn:
             count = int(conn.execute(count_stmt).scalar())        
-            logger.info('screen_overlap count: %r', count)
         
         if count == 0:
             logger.info('screen_overlap count: %r, recreating', count)
@@ -436,10 +433,10 @@ class DbApiResource(reports.api.ApiResource):
         
         return ScreensaverUser.objects.get(username=request.user.username)
     
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         logger.debug('build schema for: %r', self._meta.resource_name)
         return self.get_resource_resource()._get_resource_schema(
-            self._meta.resource_name, user=user)
+            self._meta.resource_name, user=user, **kwargs)
     
 class PlateLocationResource(DbApiResource):        
     
@@ -4640,7 +4637,7 @@ class ScreenResultResource(DbApiResource):
             logger.info('do not use vocabularies')
 
         with get_engine().connect() as conn:
-            if logger.isEnabledFor(logging.DEBUG):
+            if DEBUG_SCREENRESULT or logger.isEnabledFor(logging.DEBUG):
                 logger.info(
                     'excute stmt %r...',
                     str(stmt.compile(
@@ -4832,7 +4829,7 @@ class ScreenResultResource(DbApiResource):
 
     def build_schema(
             self, screenresult=None, show_mutual_positives=False,
-            user=None, extra_dc_ids=None):
+            user=None, extra_dc_ids=None, **kwargs):
         '''
         '''
 
@@ -4840,7 +4837,7 @@ class ScreenResultResource(DbApiResource):
             raise NotImplementedError(
                 'User must be provided for ScreenResult schema view')
         if screenresult is None:
-            return super(ScreenResultResource, self).build_schema(user=user)
+            return super(ScreenResultResource, self).build_schema(user=user, **kwargs)
             
         screen_facility_id = screenresult.screen.facility_id
         
@@ -4881,7 +4878,7 @@ class ScreenResultResource(DbApiResource):
             logger.info('cached: %s', cache_key)
         else:
             logger.info('not cached: %s', cache_key)
-            data = super(ScreenResultResource, self).build_schema(user=user)
+            data = super(ScreenResultResource, self).build_schema(user=user, **kwargs)
             logger.info('screen_result schema built: %s', cache_key)
             
             newfields = add_well_fields(data['fields'])
@@ -4897,7 +4894,7 @@ class ScreenResultResource(DbApiResource):
             
             datacolumns = self.get_datacolumn_resource()\
                 ._get_list_response_internal(
-                    user, screen_facility_id=screen_facility_id)
+                    user, includes='*', screen_facility_id=screen_facility_id)
             
             datacolumn_fields = {}
             for dc in datacolumns:
@@ -4926,6 +4923,7 @@ class ScreenResultResource(DbApiResource):
                 
                 reference_datacolumns = self.get_datacolumn_resource()\
                     ._get_list_response_internal(
+                        includes='*',
                         screen_type=reported_screen['screen_type'])
                 reference_datacolumns = { dc['data_column_id']:dc 
                     for dc in reference_datacolumns }
@@ -4942,7 +4940,7 @@ class ScreenResultResource(DbApiResource):
                         
                     temp_datacolumns = self.get_datacolumn_resource()\
                         ._get_list_response_internal(
-                            user,
+                            user, includes='*',
                             screen_facility_id__in=overlapping_screens)
                     for dc in temp_datacolumns:
                         reference_dc = reference_datacolumns[dc['data_column_id']]
@@ -4953,7 +4951,7 @@ class ScreenResultResource(DbApiResource):
                 if extra_dc_ids:
                     extra_datacolumns = self.get_datacolumn_resource()\
                         ._get_list_response_internal(
-                            user, 
+                            user, includes='*',
                             data_column_id__in=extra_dc_ids)                            
 
                     if self._meta.authorization.is_restricted_view(user):
@@ -6110,6 +6108,9 @@ class DataColumnResource(DbApiResource):
             'ordering': True,
             'is_datacolumn': True,
         }
+        for k in row_or_dict.keys():
+            if k not in _dict:
+                _dict[k] = row_or_dict[k]
         # TODO: 20170731: migrate the data_type of the datacolumn:
         # "numeric" has been replaced by "integer" and "decimal";
         # "text" has been replaced by "string"
@@ -6133,23 +6134,14 @@ class DataColumnResource(DbApiResource):
                 else:
                     _dict['data_type'] = 'integer'
         elif dc_data_type in DataColumnResource.data_type_lookup:
-            logger.debug(
-                'update data type: %r, %r', 
-                dc_data_type, DataColumnResource.data_type_lookup[dc_data_type])
             _dict.update(DataColumnResource.data_type_lookup[dc_data_type])
-            if _dict.get('description',None) is None:
+            if not _dict.get('description',None):
                 vocab = self.get_data_column_types()[dc_data_type]
                 _dict['description'] = vocab.get('description', None)
         elif dc_data_type in ['string','text']:
             _dict['display_type'] = 'full_string'
-        logger.debug('_create_datacolumn_from_row: %r, %r, %r',
-            key, dc_data_type, _dict )
         if ordinal_override > 0:
             _dict['ordinal'] = ordinal_override                           
-#         _dict['ordinal'] = max_ordinal + row_or_dict['ordinal']
-        for k in row_or_dict.keys():
-            if k not in _dict:
-                _dict[k] = row_or_dict[k]
         logger.debug('created datacolumn from row: %r, %r', key, _dict)
         return _dict
 
@@ -6191,7 +6183,7 @@ class DataColumnResource(DbApiResource):
                 _dict['data_type'] = 'integer'
         elif dc.data_type in DataColumnResource.data_type_lookup:
             _dict.update(DataColumnResource.data_type_lookup[dc.data_type])
-            if _dict.get('description',None) is None:
+            if not _dict.get('description',None):
                 vocab = dc_types_vocab[dc_data_type]
                 _dict['description'] = vocab.get('description', None)
         else:
@@ -7203,7 +7195,8 @@ class CherryPickRequestResource(DbApiResource):
         logger.info('get the cpps: %r', cpr_id) 
         cpps = self.get_cherrypickplate_resource()._get_list_response_internal(
             **{
-                'cherry_pick_request_id': cpr_id
+                'cherry_pick_request_id': cpr_id,
+                'visibilities': ['l','d']
             })
         cpps = {cpp['plate_ordinal']:cpp for cpp in cpps }
         
@@ -9095,6 +9088,7 @@ class ScreenerCherryPickResource(DbApiResource):
             'cherry_pick_request_id': cpr.cherry_pick_request_id })
         
         original_data = self._get_list_response_internal(**{
+            'includes': '*',
             'cherry_pick_request_id': kwargs['cherry_pick_request_id'],
             API_PARAM_SHOW_OTHER_REAGENTS: True })
         if not original_data: 
@@ -9308,23 +9302,23 @@ class ScreenerCherryPickResource(DbApiResource):
                 'Can not build schema - CherryPickRequest ID needed'
                 'no cpr found for cherry_pick_request_id: %r' % cherry_pick_request_id)
 
-    def build_schema(self, library_classification=None, user=None):
+    def build_schema(self, library_classification=None, user=None, **kwargs):
         logger.info('build sreenercherrypick schema for library_classification: %r',
             library_classification)
         schema = deepcopy(
-            super(ScreenerCherryPickResource, self).build_schema(user=user))
+            super(ScreenerCherryPickResource, self).build_schema(user=user, **kwargs))
         original_fields = schema['fields']
         if library_classification:
             # Add in reagent fields
             sub_data = self.get_reagent_resource().build_schema(
-                library_classification=library_classification, user=user)
+                library_classification=library_classification, user=user, **kwargs)
             
             newfields = {}
             newfields.update(sub_data['fields'])
             schema['fields'] = newfields
         
         # Add in well fields    
-        well_schema = WellResource().build_schema(user=user)
+        well_schema = WellResource().build_schema(user=user, **kwargs)
         schema['fields'].update(well_schema['fields'])
         
         # Turn off the visibility of all inherited fields
@@ -10031,7 +10025,7 @@ class LabCherryPickResource(DbApiResource):
                         '(no cherry_pick_request_id provided)')
         try:
             schema = deepcopy(
-                super(LabCherryPickResource, self).build_schema(user=user))
+                super(LabCherryPickResource, self).build_schema(user=user, **kwargs))
             original_fields = schema['fields']
             # 20170516 - keep the well_id field; required for the structure_image field
             # omit_redundant_fields = [
@@ -10043,7 +10037,7 @@ class LabCherryPickResource(DbApiResource):
             if library_classification:
                 # Add in reagent fields
                 sub_data = self.get_reagent_resource().build_schema(
-                    library_classification=library_classification, user=user)
+                    library_classification=library_classification, user=user, **kwargs)
                 newfields = {}
                 sub_fields = {key:field for key,field 
                     in sub_data['fields'].items() 
@@ -10052,7 +10046,7 @@ class LabCherryPickResource(DbApiResource):
                 schema['fields'] = newfields
             
             # Add in well fields    
-            well_schema = WellResource().build_schema(user=user)
+            well_schema = WellResource().build_schema(user=user, **kwargs)
             sub_fields = {key:field for key,field 
                 in well_schema['fields'].items() 
                     if key not in omit_redundant_fields}
@@ -10099,7 +10093,7 @@ class LabCherryPickResource(DbApiResource):
             cherry_pick_request_id=cherry_pick_request_id)
         schema = self.build_schema(
             user=user,
-            library_classification=cpr.screen.screen_type)
+            library_classification=cpr.screen.screen_type, **kwargs)
         
         # modify the schema for the plate mapping view
         
@@ -10940,6 +10934,7 @@ class CherryPickPlateResource(DbApiResource):
             ._get_detail_response_internal(**{
                 'cherry_pick_request_id': cpr_id })
         original_cpap_data = self._get_list_response_internal(**{
+            'includes': '*',
             'cherry_pick_request_id': cpr_id })
         
         plated_cpaps = []
@@ -11082,6 +11077,7 @@ class CherryPickPlateResource(DbApiResource):
         new_cpr = self.get_cherry_pick_resource()._get_detail_response_internal(**{
             'cherry_pick_request_id': cpr_id })
         new_cpap_data = self._get_list_response_internal(**{
+            'includes': '*',
             'cherry_pick_request_id': cpr_id })
         self.get_cherry_pick_resource().log_patch(
             request, original_cpr, new_cpr, log=parent_log)
@@ -12691,9 +12687,9 @@ class ActivityResource(DbApiResource):
             self.screen_resource = ScreenResource()
         return self.screen_resource
 
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
          
-        schema = super(ActivityResource, self).build_schema(user=user)
+        schema = super(ActivityResource, self).build_schema(user=user, **kwargs)
         return schema
 
     @read_authorization
@@ -14820,6 +14816,7 @@ class LibraryScreeningResource(ActivityResource):
             _original_plate_data = \
                 self.get_plate_resource()._get_list_response_internal(
                 plate_ids=all_plate_ids,
+                visibilities = ['l','d'],
                 includes =['-library_comment_array', '-comment_array'])
         
         if not _original_plate_data:
@@ -15092,6 +15089,7 @@ class LibraryScreeningResource(ActivityResource):
                 'log plate volume changes, screening count...')
             _new_plate_data = self.get_plate_resource()._get_list_response_internal(
                 plate_ids=all_plate_ids,
+                visibilities = ['l','d'],
                 includes =['-library_comment_array', '-comment_array'])
             plate_logs = self.get_plate_resource().log_patches(
                 request, _original_plate_data, _new_plate_data,
@@ -15267,8 +15265,9 @@ class RawDataTransformerResource(DbApiResource):
         if cherry_pick_request_id:
             cpr = CherryPickRequest.objects.get(cherry_pick_request_id=cherry_pick_request_id)
             
+        # TODO: 20180227 - verify rebuild of schema
         schema = kwargs.pop('schema')
-        logger.info('get detail: %r', kwargs)
+        logger.info('TODO: 20180227 - verify rebuild of schema for raw data transformer')
         schema = self.build_schema()
 
         _data = {}
@@ -15313,8 +15312,8 @@ class RawDataTransformerResource(DbApiResource):
         
         return self.build_response(request, _data)
         
-    def build_schema(self, user=None):
-        schema = DbApiResource.build_schema(self, user=user)    
+    def build_schema(self, user=None, **kwargs):
+        schema = DbApiResource.build_schema(self, user=user, **kwargs)    
     
         extra_fields = self.get_field_resource()._build_fields(
             scopes=['fields.rawdatainputfile','fields.rawdataoutput'])
@@ -16562,10 +16561,10 @@ class ScreenResource(DbApiResource):
         return self.get_library_screening_resource().\
             dispatch_plate_range_search_view(request, **kwargs)
     
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         
-        logger.info('build screen schema for user: %r', user)
-        schema = DbApiResource.build_schema(self, user=user)
+        logger.info('build screen schema for user: %r, %r', user, kwargs)
+        schema = DbApiResource.build_schema(self, user=user, **kwargs)
         
         if self._meta.authorization.is_restricted_view(user):
             if DEBUG_SCREEN_ACCESS:
@@ -16778,20 +16777,33 @@ class ScreenResource(DbApiResource):
 
     def get_query(self, request, schema, param_hash):
         
-        DEBUG_SCREEN = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_SCREEN = logger.isEnabledFor(logging.DEBUG)
         # screens_for_username = param_hash.get('screens_for_username', None)
         screens_for_userid = param_hash.get('screens_for_userid', None)
         # general setup
 
         facility_id = param_hash.pop('facility_id', None)
+        screen_id = None
         if facility_id:
             param_hash['facility_id__eq'] = facility_id
-        
+            try:
+                screen_id = Screen.objects.get(facility_id=facility_id).screen_id
+            except:
+                logger.info('no such screen: %r', facility_id)
         manual_field_includes = set(param_hash.get('includes', []))
         # for joins
         manual_field_includes.add('screen_id')
         manual_field_includes.add('has_screen_result')
         manual_field_includes.add('data_sharing_level')
+
+        # Excluded fields for performance        
+        default_excludes = ['activity_count','date_of_first_activity',
+            'date_of_last_activity','date_of_last_library_screening',
+            'library_plates_data_loaded']
+        if not facility_id:
+            for key in default_excludes:
+                if key not in manual_field_includes:
+                    manual_field_includes.add('-%s'%key)
         
         extra_params = {}
         if screens_for_userid:
@@ -16869,6 +16881,9 @@ class ScreenResource(DbApiResource):
                 _collaborator.c.screensaver_user_id 
                     == _screen_collaborators.c.screensaveruser_id))
             .order_by(_collaborator.c.username))
+        if screen_id:
+            collaborators = collaborators.where(
+                _screen_collaborators.c.screen_id==screen_id)
         collaborators = collaborators.cte('collaborators')
 
         pin_transfer_approval = (
@@ -16884,6 +16899,9 @@ class ScreenResource(DbApiResource):
                     _screen, 
                     _activity.c.activity_id==_screen.c.pin_transfer_admin_activity_id))
             )
+        if screen_id:
+            pin_transfer_approval = pin_transfer_approval.where(
+                _screen.c.screen_id==screen_id)
         pin_transfer_approval = pin_transfer_approval.cte('pta')
 
         # create a cte for the max screened replicates_per_assay_plate
@@ -16911,6 +16929,9 @@ class ScreenResource(DbApiResource):
             where(_ap.c.library_screening_id != None).\
             group_by(_ap.c.screen_id).\
             order_by(_ap.c.screen_id)
+        if screen_id:
+            aps = aps.where(
+                _ap.c.screen_id==screen_id)
         aps = aps.cte('aps')
 
         # Removed - 20160408 
@@ -16933,6 +16954,9 @@ class ScreenResource(DbApiResource):
                 select_from(_ap).\
                 group_by(_ap.c.screen_id, _ap.c.plate_id).\
                 order_by(_ap.c.screen_id, _ap.c.plate_id)
+        if screen_id:
+            apsrc = apsrc.where(
+                _ap.c.screen_id==screen_id)
         apsrc = apsrc.cte('apsrc')
         
         # Altered - 20160408 
@@ -16983,8 +17007,11 @@ class ScreenResource(DbApiResource):
                 _ap.join(_plate, _ap.c.plate_id == _plate.c.plate_id)
                     .join(_copy, _plate.c.copy_id == _copy.c.copy_id)
                     .join(_library, _copy.c.library_id == _library.c.library_id))
-            .group_by(_ap.c.screen_id).cte('libraries_screened'))
-                
+            .group_by(_ap.c.screen_id))
+        if screen_id:
+            libraries_screened = libraries_screened.where(
+                _ap.c.screen_id==screen_id)
+        libraries_screened = libraries_screened.cte('libraries_screened')
         # FIXME: use cherry_pick_liquid_transfer status vocabulary 
         tplcps = (
             select([
@@ -17004,8 +17031,11 @@ class ScreenResource(DbApiResource):
                     _cplt.c.activity_id 
                         == _cpap.c.cherry_pick_liquid_transfer_id))
             .group_by(_cpr.c.screen_id)
-            .where(_cplt.c.status == 'Successful').cte('tplcps'))
-        
+            .where(_cplt.c.status == 'Successful'))
+        if screen_id:
+            tplcps = tplcps.where(
+                _cpr.c.screen_id==screen_id)
+        tplcps = tplcps.cte('tplcps')
         # Create an inner screen-screen_result query to prompt the  
         # query planner to index join not hash join
         new_screen_result = (select([
@@ -17191,23 +17221,6 @@ class ScreenResource(DbApiResource):
                                 == _lab_activity.c.activity_id))
                     .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
 
-                # Altered - 20160408 
-                # per discussion with JS, no need to try to link presumed assay_plates
-                # from the screen_result to (screening visit) assay_plates;
-                # Instead, we can infer replicate loading from the screen_result import
-                # where the data_column shows the replicate
-                # 'library_plates_data_loaded': (
-                #     select([lpdl.c.count])
-                #     .select_from(lpdl)
-                #     .where(lpdl.c.screen_id == _screen.c.screen_id)),
-                'library_plates_data_loaded': (
-                    select([func.count(distinct(_aw.c.plate_number))])
-                    .select_from(
-                        _aw.join(_screen_result,
-                            _aw.c.screen_result_id
-                                == _screen_result.c.screen_result_id))
-                    .where(_screen_result.c.screen_id == _screen.c.screen_id)
-                    ),
                 'assay_plates_screened': (
                     select([aps.c.count]).select_from(aps)
                     .where(aps.c.screen_id == _screen.c.screen_id)),
@@ -17292,6 +17305,30 @@ class ScreenResource(DbApiResource):
                    .select_from(_attached_file)
                    .where(_attached_file.c.screen_id == _screen.c.screen_id)),
             }
+
+            # Altered - 20160408 
+            # per discussion with JS, no need to try to link presumed assay_plates
+            # from the screen_result to (screening visit) assay_plates;
+            # Instead, we can infer replicate loading from the screen_result import
+            # where the data_column shows the replicate
+            # 'library_plates_data_loaded': (
+            #     select([lpdl.c.count])
+            #     .select_from(lpdl)
+            #     .where(lpdl.c.screen_id == _screen.c.screen_id)),
+            # FIXME: 20180227 - rework to be performant
+            custom_columns['library_plates_data_loaded'] = (
+                select([func.count(distinct(_aw.c.plate_number))])
+                .select_from(
+                    _aw.join(_screen_result,
+                        _aw.c.screen_result_id
+                            == _screen_result.c.screen_result_id))
+                .where(_screen_result.c.screen_id == _screen.c.screen_id)
+                )
+            if screen_id:
+                custom_columns['library_plates_data_loaded'] = \
+                    custom_columns['library_plates_data_loaded']\
+                        .where(_screen_result.c.screen_id==screen_id)
+        
         except Exception, e:
             logger.exception('on custom columns creation')
             raise 
@@ -17858,9 +17895,9 @@ class StudyResource(ScreenResource):
         ] + urls
         return urls
             
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         # Bypass Screen schema
-        schema = DbApiResource.build_schema(self, user=user)
+        schema = DbApiResource.build_schema(self, user=user, **kwargs)
         return schema
 
     
@@ -19207,10 +19244,10 @@ class ScreensaverUserResource(DbApiResource):
         kwargs['screens_for_userid'] = kwargs.pop('screensaver_user_id')
         return ScreenResource().dispatch('list', request, **kwargs)    
 
-    def build_schema(self, user=None):
+    def build_schema(self, user=None, **kwargs):
         
-        schema = super(ScreensaverUserResource, self).build_schema(user=user)
-        sub_schema = self.get_user_resource().build_schema(user=user);
+        schema = super(ScreensaverUserResource, self).build_schema(user=user, **kwargs)
+        sub_schema = self.get_user_resource().build_schema(user=user, **kwargs);
         fields = {}
         fields.update(sub_schema['fields'])
         for key, val in schema['fields'].items():
@@ -20796,11 +20833,11 @@ class ReagentResource(DbApiResource):
         extra_dc_ids=None, **kwargs):
         logger.info('build reagent schema for library_classification: %r',
             library_classification)
-        schema = deepcopy(super(ReagentResource, self).build_schema(user=user))
+        schema = deepcopy(super(ReagentResource, self).build_schema(user=user, **kwargs))
         
         if library_classification is not None:
             sub_data = self.get_reagent_resource(
-                library_classification).build_schema(user=user)
+                library_classification).build_schema(user=user, **kwargs)
             logger.debug('sub_schema: %r', sub_data['fields'].keys())
             newfields = {}
             newfields.update(sub_data['fields'])
@@ -20815,14 +20852,14 @@ class ReagentResource(DbApiResource):
             # FIXME could determine the schema as in ReagentResource.build_list_response
             sub_data = \
                 self.get_reagent_resource(library_classification='small_molecule')\
-                .build_schema(user=user)
+                .build_schema(user=user, **kwargs)
 
             newfields = {}
             newfields.update(sub_data['fields'])
             
             sub_data = \
                 self.get_reagent_resource(library_classification='rnai')\
-                .build_schema(user=user)
+                .build_schema(user=user, **kwargs)
             newfields.update(sub_data['fields'])
             # all sub-fields are set not visible
             for k,field in newfields.items():
@@ -20836,8 +20873,8 @@ class ReagentResource(DbApiResource):
             
             schema['fields'] = newfields
             
-        well_schema = WellResource().build_schema(user=user)
-        schema['fields'].update(well_schema['fields'])
+#         well_schema = WellResource().build_schema(user=user, **kwargs)
+#         schema['fields'].update(well_schema['fields'])
 
         max_ordinal = 0
         for fi in newfields.values():
@@ -20849,7 +20886,7 @@ class ReagentResource(DbApiResource):
             logger.info('extra_dc_ids: %r', extra_dc_ids)
             extra_datacolumns = self.get_datacolumn_resource()\
                 ._get_list_response_internal(
-                    user, 
+                    user, includes='*',
                     data_column_id__in=extra_dc_ids)                            
             decorated = [
                 (dc['study_type'] != None,
@@ -21478,10 +21515,10 @@ class WellResource(DbApiResource):
         
         logger.info('build schema for library type: %r', library_classification)
         
-        data = super(WellResource, self).build_schema(user=user)
+        data = super(WellResource, self).build_schema(user=user, **kwargs)
         if library_classification:
             sub_data = self.get_reagent_resource().build_schema(
-                library_classification=library_classification, user=user)
+                library_classification=library_classification, user=user, **kwargs)
             
             logger.info('sub_resource field visibilities: %r', 
                 [(key,'%r'%fi['visibility']) for key, fi in sub_data['fields'].items()])
@@ -21495,7 +21532,7 @@ class WellResource(DbApiResource):
             # Build the full schema for search
             # FIXME could determine the schema as in ReagentResource.build_list_response
             sub_data = self.get_reagent_resource().build_schema(
-                library_classification='small_molecule', user=user)
+                library_classification='small_molecule', user=user, **kwargs)
             newfields = {}
             newfields.update(sub_data['fields'])
             sub_data = self.get_reagent_resource().build_schema(
@@ -21896,22 +21933,26 @@ class WellResource(DbApiResource):
             cn_well_ids = set()
             vendor_well_ids = set()
             for _line in parsed_lines:
+                if not _line:
+                    continue
                 _line = _line.strip()
                 if not _line:
                     continue
-                patterns = lims_utils.QUOTED_WORD_SPLITTING_PATTERN.findall(_line)
-                logger.info('parsed line parts: %r', patterns)
-                for _pattern in patterns:
-                    if not _pattern:
-                        continue
-                    _pattern = re.sub(r'["\']+','',_pattern)
-                    cn_well_ids.update(
-                        [x[0] for x in conn.execute(
-                            querycn,_pattern='%' + _pattern + '%')])
-                    logger.debug('cn_ids: %r', cn_well_ids)
-                    vendor_well_ids.update(
-                        [x[0] for x in conn.execute(
-                            query_vendor,_pattern='%' + _pattern + '%')])
+                # 20180227 - require each entry on a separate line:
+                # Otherwise, names containing commmas and whitespace must be quoted
+                # patterns = lims_utils.QUOTED_WORD_SPLITTING_PATTERN.findall(_line)
+                # logger.info('parsed line parts: %r', patterns)
+                # for _pattern in patterns:
+                #     if not _pattern:
+                #         continue
+                #    _pattern = re.sub(r'["\']+','',_pattern)
+                cn_well_ids.update(
+                    [x[0] for x in conn.execute(
+                        querycn,_pattern='%' + _line + '%')])
+                logger.debug('cn_ids: %r', cn_well_ids)
+                vendor_well_ids.update(
+                    [x[0] for x in conn.execute(
+                        query_vendor,_pattern='%' + _line + '%')])
         # TODO: if only compound names searched, set up for small molecule
         well_ids.update(cn_well_ids)
         well_ids.update(vendor_well_ids)

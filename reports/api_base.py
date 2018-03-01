@@ -294,7 +294,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             except InformationError as e:
                 logger.exception('Information error: %r', e)
                 response = self.build_error_response(
-                    request, { 'Messages': e.errors }, **kwargs)
+                    request, e.errors, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR

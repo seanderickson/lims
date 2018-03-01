@@ -758,7 +758,7 @@ class SqlAlchemyResource(IccblBaseResource):
         logger.debug('_get_list_response: %r, %r', 
             self._meta.resource_name, 
             {k:v for k,v in kwargs.items() if k !='schema'})
-        includes = kwargs.pop('includes', '*')
+        includes = kwargs.pop('includes', '')
         try:
             kwargs.setdefault('limit', 0)
             response = self.get_list(

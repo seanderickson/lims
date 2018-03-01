@@ -40,6 +40,8 @@ class ValidationError(Exception):
             'ValidationError initialization requires "errors" parameter')
          
         self.errors = errors or {}
+        if not isinstance(errors, dict):
+            self.errors = { 'errors': errors }
          
         if key:
             if not isinstance(msg, (list,tuple,dict)):

@@ -208,7 +208,7 @@ class ApiLog(models.Model):
     def json_dumps(obj):
         return json.dumps(
             obj, skipkeys=False,check_circular=True, allow_nan=True, 
-            default=lambda x: str(x), cls=DjangoJSONEncoder)
+            cls=DjangoJSONEncoder)
     
     def save(self, **kwargs):
         ''' override to convert json fields '''

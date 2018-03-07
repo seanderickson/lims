@@ -67,7 +67,7 @@ library_control,assaywell.control_type,5,,"Library Control","Library Control",
 other,assaywell.control_type,6,,"Other Control",Other,
 0,resultvalue.confirmed_positive_indicator,0,,"Not tested",NT,
 1,resultvalue.confirmed_positive_indicator,1,,Inconclusive,I,
-2,resultvalue.confirmed_positive_indicator,2,,"False positive",FP,
+2,resultvalue.confirmed_positive_indicator,2,"Note: positive determination from a false value","False positive",FP,
 3,resultvalue.confirmed_positive_indicator,3,,"Confirmed positive",CP,
 numeric,datacolumn.data_type,0,"Numeric consists of Integer and Decimal; retained for legacy purposes",Numeric,Numeric,TRUE
 text,datacolumn.data_type,1,"Text is an alias for the String type","Text (string) value",Text,TRUE

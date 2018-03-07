@@ -1,0 +1,17 @@
+Screensaver Alert: Screen Data Privacy Expiration Dates: adjusted {patch_count}, unchanged {unchanged_count}
+This service has identified or adjusted the Data Privacy Expiration Dates for the following screens:
+
+Set to {adjust_expiration_days_from_activity} days from the latest Library Screening Activity: {screens_set_as_usual}
+
+Set to the earliest allowed value: {screens_set_to_min} 
+
+Set to the latest allowed value: {screens_set_to_max}
+
+Screens adjusted during this activity ({patch_count}): 
+
+{screens_patched}
+
+Screens already set to the designated value ({unchanged_count}): 
+
+{screens_unchanged}
+

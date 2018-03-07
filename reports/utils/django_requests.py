@@ -14,6 +14,9 @@ from requests import Request
 import requests
 
 from reports.utils import parse_credentials
+import json
+from reports.api import API_RESULT_DATA, API_RESULT_META
+import reports.schema
 
 DEBUG=False
 LOGIN_FORM = '/db/login/'
@@ -232,6 +235,43 @@ def patch(url,request_or_session,data=None, headers=None ):
         logger.warn("Error: status: %s\n%s\n%s" 
                         % (r.status_code, r.headers, r.content))
     return r
+
+# Reports API specific requests
+
+def get_resource(url, session, headers, params=None):
+    logger.info('GET: %r', url)
+
+    headers['Accept'] = 'application/json'
+
+    r = session.get(url,headers=headers, params=None)
+    if r.status_code not in [200]:
+        raise Exception("Error for %r, status: %s, %s" 
+                        % (url, r.status_code, r.content))
+    data = json.loads(r.content)
+    logger.info('retrieved: %r keys: %r, with params: %r', 
+        url, data.keys(), params)
+    return data
+    
+def get_resource_listing(url, session, headers, params=None):
+    logger.info('GET: %r', url)
+
+    headers['Accept'] = 'application/json'
+    r = session.get(url,headers=headers,params=params)
+    if r.status_code not in [200]:
+        raise Exception("Error: status: %s, %s" % (r.status_code, r.content))
+    content = json.loads(r.content)
+    if API_RESULT_DATA not in content:
+        raise Exception(
+            'Content not recognized, no %r found' % API_RESULT_DATA)
+    listing = content[API_RESULT_DATA]
+    logger.info('retrieved %d items %r with params: %r', 
+        len(listing), url, params)
+    return listing, content.get(API_RESULT_META,None)
+
+# Reports schema convenience method
+def get_resource_schema(url, session, headers, params=None):
+    schema = get_resource(url, session, headers, params)
+    return reports.schema.parse_schema(schema)
 
     
 parser = argparse.ArgumentParser(description='url')

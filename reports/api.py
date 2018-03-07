@@ -54,6 +54,9 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
 from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 
+import reports.schema
+
+RESOURCE = reports.schema.RESOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +564,7 @@ class ApiResource(SqlAlchemyResource):
         schema = self.get_resource_resource()._get_resource_schema(
             self._meta.resource_name, user, **kwargs)
         if DEBUG_RESOURCES:
-            logger.info('schema fields: %r', schema['fields'].keys())
+            logger.info('schema fields: %r', schema[RESOURCE.FIELDS].keys())
         return schema
     
     def get_id(self,deserialized, validate=False, schema=None, **kwargs):
@@ -574,7 +577,7 @@ class ApiResource(SqlAlchemyResource):
             raise ProgrammingError
         
         id_attribute = schema['id_attribute']
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
         logger.debug('get_id: %r, %r', self._meta.resource_name, id_attribute)
         kwargs_for_id = {}
         not_found = []
@@ -650,7 +653,7 @@ class ApiResource(SqlAlchemyResource):
                 logger.info('build raw schema for parse')
                 schema = self.build_schema()
         
-            fields = schema['fields']
+            fields = schema[RESOURCE.FIELDS]
             mutable_fields = {}
             for key,field in fields.items():
                 editability = field.get('editability', None)
@@ -865,7 +868,7 @@ class ApiResource(SqlAlchemyResource):
             self._meta.resource_name, schema['key'])
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
-        logger.debug('schema field keys: %r', schema['fields'].keys())
+        logger.debug('schema field keys: %r', schema[RESOURCE.FIELDS].keys())
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
@@ -1450,7 +1453,7 @@ class ApiResource(SqlAlchemyResource):
         if schema is None:
             logger.info('build raw schema for validate')
             schema = self.build_schema()
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
         id_attribute = schema['id_attribute']
         
         # do validations
@@ -2045,7 +2048,7 @@ class ApiLogResource(ApiResource):
                                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes, 
+                schema[RESOURCE.FIELDS], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -2362,7 +2365,7 @@ class FieldResource(ApiResource):
             'resource_uri': BASE_URI +'/resource/field',
             'api_name': 'reports',
             'supertype': '',
-            'fields': field_schema,
+            RESOURCE.FIELDS: field_schema,
         }
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
@@ -2399,7 +2402,7 @@ class FieldResource(ApiResource):
         
         logger.debug('param_hash: %r', 
             { k:v for k,v in param_hash.items() if k!='schema'})
-        filenames = ['fields']
+        filenames = [RESOURCE.FIELDS]
         
         # Construct filters:
         # TODO: Supporting only limited filters for the Field Resource
@@ -2559,7 +2562,7 @@ class FieldResource(ApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
         initializer_dict = {}
         for key in fields.keys():
             if key in deserialized:
@@ -2684,12 +2687,12 @@ class ResourceResource(ApiResource):
         if DEBUG_RESOURCES:
             logger.info('schema fields: %r',
                 [(field['key'],field['scope']) 
-                    for field in schema['fields'].values()])
+                    for field in schema[RESOURCE.FIELDS].values()])
         
         full_schema = kwargs.pop('full_schema',None)
         if full_schema:
-            vocabularies = self.get_vocabularies(schema['fields'])
-            for key,field in schema['fields'].items():
+            vocabularies = self.get_vocabularies(schema[RESOURCE.FIELDS])
+            for key,field in schema[RESOURCE.FIELDS].items():
                 if key in vocabularies:
                     field['vocabulary'] = vocabularies[key]
         return schema
@@ -2737,7 +2740,7 @@ class ResourceResource(ApiResource):
             'resource_uri': BASE_URI + '/resource/resource',
             'api_name': 'reports',
             'supertype': '',
-            'fields': field_hash
+            RESOURCE.FIELDS: field_hash
         }
         
         return resource_schema
@@ -2796,7 +2799,7 @@ class ResourceResource(ApiResource):
         if user is not None:
             usergroups = set([x.name for x in user.userprofile.get_all_groups()])
         schema = deepcopy(schema)
-        fields = deepcopy(schema['fields'])
+        fields = deepcopy(schema[RESOURCE.FIELDS])
         filtered_fields = {}
         disallowed_fields = {}
         for key, field in fields.items():
@@ -2823,7 +2826,7 @@ class ResourceResource(ApiResource):
             if DEBUG_AUTHORIZATION:
                 logger.info('user: %r, resource: %r, disallowed fields: %r', 
                     user, schema['key'], disallowed_fields.keys())
-        schema['fields'] = filtered_fields
+        schema[RESOURCE.FIELDS] = filtered_fields
         
         return schema
     
@@ -2854,7 +2857,7 @@ class ResourceResource(ApiResource):
                 if DEBUG_RESOURCES:
                     logger.info('using cached resources')
                     for key,r in resources.items():
-                        logger.info('r: %r, fields: %r', key, r['fields'].keys())
+                        logger.info('r: %r, fields: %r', key, r[RESOURCE.FIELDS].keys())
                 
             else:
                 logger.info('rebuilding resources')
@@ -2884,13 +2887,13 @@ class ResourceResource(ApiResource):
                 for key,resource in resources.items():
                     logger.debug('resource: %r', key)
                     resource['1'] = resource['key']
-                    resource['fields'] = field_hash.get('fields.%s'%key, {})
+                    resource[RESOURCE.FIELDS] = field_hash.get('fields.%s'%key, {})
                     resource['resource_uri'] = '/'.join([
                         self._meta.resource_name,resource['key']
                     ])
                     
                     # set the field['table'] 
-                    for field in resource['fields'].values():
+                    for field in resource[RESOURCE.FIELDS].values():
                         if not field.get('table',None):
                             field['table'] = resource.get('table', None)
                     supertype = resource.get('supertype', None)
@@ -2919,8 +2922,8 @@ class ResourceResource(ApiResource):
                                     
                                     inherited_fields[inherited_field['key']] = \
                                         inherited_field
-                                inherited_fields.update(resource['fields'])
-                                resource['fields'] = inherited_fields
+                                inherited_fields.update(resource[RESOURCE.FIELDS])
+                                resource[RESOURCE.FIELDS] = inherited_fields
                         else:
                             logger.error(
                                 'supertype: %r, not found in resources: %r', 
@@ -2928,7 +2931,7 @@ class ResourceResource(ApiResource):
                     
                     update_fields = set()
                     create_fields = set()
-                    for key,field in resource['fields'].items():
+                    for key,field in resource[RESOURCE.FIELDS].items():
                         editability = field.get('editability', None)
                         if editability:
                             if 'u' in editability:
@@ -2961,7 +2964,7 @@ class ResourceResource(ApiResource):
                     user_resources[key] = self._filter_resource(resource, user)
                     if DEBUG_RESOURCES:
                         logger.info(
-                            'resource: %r, %r', key, resource['fields'].keys())
+                            'resource: %r, %r', key, resource[RESOURCE.FIELDS].keys())
                 if user:
                     user_cache_key = 'resources_%s' % user.username
                     resource_cache.set(user_cache_key, user_resources)
@@ -3009,7 +3012,7 @@ class ResourceResource(ApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
         initializer_dict = {}
         for key in fields.keys():
             if key in deserialized:
@@ -3222,7 +3225,7 @@ class VocabularyResource(ApiResource):
                     filter_hash.keys(),kwargs)
             
             
-            original_field_hash = schema['fields']
+            original_field_hash = schema[RESOURCE.FIELDS]
             # Add convenience fields "1" and "2", which aid with json viewers
             original_field_hash['1'] = {
                 'key': '1',
@@ -3387,7 +3390,7 @@ class VocabularyResource(ApiResource):
         if scope in vocabularies:
             return deepcopy(vocabularies[scope])
         else:
-            logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies)
+            logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies.keys())
             return {}
     
     @write_authorization
@@ -3444,7 +3447,7 @@ class VocabularyResource(ApiResource):
         logger.debug('patching: %r', deserialized)
         start_time = time.time()
 
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
         initializer_dict = {}
         for key in fields.keys():
             if key in deserialized:
@@ -3634,8 +3637,8 @@ class UserResource(ApiResource):
         
         schema = super(UserResource,self).build_schema(user=user, **kwargs)
         try:
-            if 'usergroups' in schema['fields']: # may be blank on initiation
-                schema['fields']['usergroups']['choices'] = \
+            if 'usergroups' in schema[RESOURCE.FIELDS]: # may be blank on initiation
+                schema[RESOURCE.FIELDS]['usergroups']['choices'] = \
                     [x.name for x in UserGroup.objects.all()]
         except Exception, e:
             logger.exception('on get_schema')
@@ -3823,7 +3826,7 @@ class UserResource(ApiResource):
             
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes, 
+                schema[RESOURCE.FIELDS], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -3938,7 +3941,7 @@ class UserResource(ApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             schema = self.build_schema(request.user)
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
 
         logger.info('patch_obj UserResource: %r', deserialized )
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
@@ -4165,7 +4168,7 @@ class UserGroupResource(ApiResource):
             raise Exception('schema not initialized')
 
         name = self.find_name(deserialized,**kwargs)
-        fields = schema['fields']
+        fields = schema[RESOURCE.FIELDS]
 
         group_fields = { name:val for name,val in fields.items() 
             if val['table'] and val['table']=='reports_usergroup'}
@@ -4483,7 +4486,7 @@ class UserGroupResource(ApiResource):
               
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes, 
+                schema[RESOURCE.FIELDS], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)
@@ -4874,7 +4877,7 @@ class PermissionResource(ApiResource):
                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes, 
+                schema[RESOURCE.FIELDS], filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields', [])),
                 order_params=order_params)

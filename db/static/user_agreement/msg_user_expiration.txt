@@ -1,8 +1,11 @@
 Notice: Impending Expiration of {screen_type} ICCB-L User Agreement
 Dear Screensaver User:
 
-According to our records, your {screen_type} ICCB-L user agreement will expire on {date_to_expire}. Your current data sharing level is: {data_sharing_level}. 
+According to our records, your {screen_type} ICCB-L user agreement will expire 
+on {date_to_expire}. Your current data sharing level is: {data_sharing_level}. 
 
-If you wish to retain access to Screensaver after the expiration date, please complete and return a new user agreement. The agreement and related information are available online at http://iccb.med.harvard.edu/screening-documents.
+If you wish to retain access to Screensaver after the expiration date, please 
+complete and return a new user agreement. The agreement and related information 
+are available online at http://iccb.med.harvard.edu/screening-documents.
 
 If you have additional questions, please contact: {contact_info}

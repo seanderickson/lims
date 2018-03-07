@@ -78,14 +78,15 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
     LIST_DELIMITER_SUB_ARRAY
 from reports import ValidationError, InformationError, _now
+    
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_RESULT_DATA, \
     API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
-    DEBUG_AUTHORIZATION, FieldResource
+    DEBUG_AUTHORIZATION, write_authorization, read_authorization
 from reports.api import ApiLogResource, UserGroupAuthorization, \
-    VocabularyResource, UserResource, UserGroupResource, ApiLogResource, \
-    write_authorization, read_authorization, UserResourceAuthorization
+    VocabularyResource, UserResource, UserGroupResource, \
+    UserResourceAuthorization, FieldResource
 import reports.api
 from reports.api_base import un_cache, IccblSessionAuthentication
 from reports.models import Vocabulary, ApiLog, UserProfile, \
@@ -17293,10 +17294,25 @@ class ScreenResource(DbApiResource):
                 'publications': (
                     select([
                         func.array_to_string(
-                            func.array_agg(_publication.c.title),
+                            func.array_agg(literal_column('title')),
                             LIST_DELIMITER_SQL_ARRAY)])
-                   .select_from(_publication)
-                   .where(_publication.c.screen_id == _screen.c.screen_id)),
+                    .select_from(
+                        select([_publication.c.title])
+                        .select_from(_publication)
+                        .order_by(_publication.c.publication_id)
+                        .where(_publication.c.screen_id == literal_column('screen.screen_id'))
+                    .alias('inner'))),
+                'publication_ids': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(literal_column('publication_id')),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_publication.c.publication_id])
+                        .select_from(_publication)
+                        .order_by(_publication.c.publication_id)
+                        .where(_publication.c.screen_id == literal_column('screen.screen_id'))
+                    .alias('inner'))),
                 'attached_files': (
                     select([
                         func.array_to_string(
@@ -20872,10 +20888,7 @@ class ReagentResource(DbApiResource):
             
             
             schema['fields'] = newfields
-            
-#         well_schema = WellResource().build_schema(user=user, **kwargs)
-#         schema['fields'].update(well_schema['fields'])
-
+        
         max_ordinal = 0
         for fi in newfields.values():
             if fi.get('ordinal', 0) > max_ordinal:

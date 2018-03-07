@@ -1,0 +1,13 @@
+Screensaver Alert: notifications for {screen_count} screen(s) to be shared in {days_ahead_to_notify} days
+
+All of the following screens will be expiring in {days_ahead_to_notify} days.
+
+Screens not notified {screens_not_notified_count}:
+
+Notification emails have been sent for the following {screens_notified_count} screen(s):
+
+Admins receiving this notification may need to contact the PI to discuss data sharing for these screens. 
+The date for the Data Privacy Expiration has been set based on the latest Library Screening Activity date, 
+and can be overridden using the 'Earliest/Latest Allowed Data Privacy Expiration Date' setting 
+in the Screen admin interface. 
+

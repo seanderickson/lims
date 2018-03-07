@@ -549,24 +549,80 @@ function run_expiration_scripts {
   # Run user and screen privacy expiration scripts
   echo "run user and screen privacy expiration scripts: $(ts) ..." >> "$LOGFILE"
 
-  echo "run user notifications..."
+  # TODO start the bootstrap server
+  
+  echo "1.a Send user data privacy expiration notifications..."
   PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
-  -u 'https://dev.screensaver2.med.harvard.edu/' \
-  -screen_type sm -days_to_expire 730 -days_ahead_to_notify 14 \
+  -u ${SERVER_URL} \
+  -ua_type sm -days_to_expire 730 -days_ahead_to_notify 14 \
   -email_message_directory db/static/user_agreement/ \
   -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_notification.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
+  echo "1.b Expire user agreements ..."
   PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
-  -u 'https://dev.screensaver2.med.harvard.edu/' \
-  -screen_type sm -days_to_expire 730 \
+  -u ${SERVER_URL} \
+  -ua_type sm -days_to_expire 730 \
   -email_message_directory db/static/user_agreement/ \
   -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_expiration.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.a Adjust screen Data Privacy Expiration Dates ..."
+  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -adjust_expiration_days_from_activity 760 \
+  -email_log_filename ../logs/mail_screen_dped_adjust.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.b Notify of screen privacy expirations ..."
+  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -days_ahead_to_notify 60 \
+  -email_log_filename ../logs/mail_screen_dped_notification.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.c Expire screen data sharing levels ..."
+  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -expire \
+  -email_log_filename ../logs/mail_screen_dped_expiration.log \
+  -v -test_only -admin_email_only -no_email 
+
+  echo "2.d Notify admins for screen publications ..."
+  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -notifyofpublications \
+  -email_log_filename ../logs/mail_screen_notifyofpublications.log \
+  -v -test_only -admin_email_only -no_email 
+
 
   echo "Done: user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
 }
@@ -932,8 +988,9 @@ function main {
 
   create_studies
 
-  run_expiration_scripts
-  
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    run_expiration_scripts
+  fi
   # put this here to see if LSF will start reporting results
   # exit 0
     

@@ -63,9 +63,12 @@ logger = logging.getLogger(__name__)
 URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
 
-API_RESULT_OBJ = 'object'
-API_RESULT_DATA = 'objects'
-API_RESULT_META = 'meta'
+# API_RESULT_OBJ = 'object'
+# API_RESULT_DATA = 'objects'
+# API_RESULT_META = 'meta'
+API_RESULT_OBJ = reports.schema.API_RESULT_OBJ
+API_RESULT_DATA = reports.schema.API_RESULT_DATA
+API_RESULT_META = reports.schema.API_RESULT_META
 
 API_PARAM_OVERRIDE = 'override'
 API_MSG_SUBMIT_COUNT = 'Data submitted'

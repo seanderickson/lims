@@ -15,8 +15,8 @@ import requests
 
 from reports.utils import parse_credentials
 import json
-from reports.api import API_RESULT_DATA, API_RESULT_META
 import reports.schema
+from reports.schema import API_RESULT_DATA,API_RESULT_META
 
 DEBUG=False
 LOGIN_FORM = '/db/login/'

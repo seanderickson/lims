@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 VERSION = 'v1'
 REPORTS_API_URI = 'reports/api/%s' % VERSION
 
+API_RESULT_OBJ = 'object'
+API_RESULT_DATA = 'objects'
+API_RESULT_META = 'meta'
+
+
 # Date format for API - time zone is not used for dates
 DATE_FORMAT = "%Y-%m-%d"
 

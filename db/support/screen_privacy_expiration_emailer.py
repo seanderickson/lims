@@ -387,6 +387,38 @@ if __name__ == "__main__":
                 }
             msg_subject = msg_subject.format(**msg_params)
             msg_body_lines = [txt.format(**msg_params) for txt in msg_body_lines]
+            txt_msg_body_lines = msg_body_lines
+            html_msg_body_lines = msg_body_lines[:]
+            
+            # Create the report URL
+            report_title = '%s Screen Publication Report for %s'\
+                % (get_vocab_title(SCREEN.SCREEN_TYPE, screen_type, screen_schema), 
+                    current_time.strftime(DATE_FORMAT))
+            txt_msg_body_lines.append(report_title)
+            report_resource_subtype = { 
+                'small_molecule': 'small_molecule_screens',
+                'rnai': 'rnai_screens' }[screen_type]
+            report_url = '/'.join([
+                settings.APP_PUBLIC_DATA.site_url,'#%s'%report_resource_subtype])
+            
+            report_url += '/includes/' + ','.join([
+                SCREEN.PUBLICATIONS,SCREEN.LAST_LIBRARY_SCREENING_DATE,
+                SCREEN.SCREEN_RESULT_AVAILABILITY,
+                ])
+            search_args = []
+            for k,v in report_args.items():
+                if k in ['includes','limit']:
+                    continue
+                if isinstance(v,(list,tuple)):
+                    search_args.append('%s=%s' % (k,','.join(map(str,v))))
+                else:
+                    search_args.append('%s=%s' % (k,str(v)))
+                    
+            search_args = ';'.join(search_args)
+            report_url += '/search/' + search_args
+            txt_msg_body_lines.append(report_url)
+            html_msg_body_lines.append('<a href="%s">%s</a>' % (
+                report_url, report_title ))
             
             report_fields = [
                 SCREEN.FACILITY_ID, SCREEN.TITLE, FIELD_DSL, FIELD_DPED,
@@ -442,8 +474,6 @@ if __name__ == "__main__":
                 html_screens.append(
                     replace_for_html(screen))
                 
-            txt_msg_body_lines = msg_body_lines
-            html_msg_body_lines = msg_body_lines[:]
             pt = create_prettytable(txt_screens, table_fields)
             txt_msg_body_lines.append(pt.get_string(padding_width=5))
             pt = create_prettytable(html_screens, table_fields)

@@ -12,27 +12,24 @@ from urlparse import urlparse
 from django.conf import settings
 from requests.packages import urllib3
 
+from db.schema import get_href, get_title, get_vocab_title, \
+    replace_vocabularies, replace_html_values, DB_API_URI, DATE_FORMAT
+import db.schema
 from reports import InformationError, HEADER_APILOG_COMMENT_CLIENT
 from reports.api import API_RESULT_DATA, API_RESULT_META
 from reports.utils import parse_credentials
 from reports.utils.admin_emailer import Emailer, read_email_template, \
     create_prettytable, validate_email
+from reports.utils.django_requests import get_resource_listing, get_resource, \
+    get_resource_schema
 import reports.utils.django_requests as django_requests
 
 
 logger = logging.getLogger(__name__)
 
-BASE_URI = 'db/api/v1'
-USERAGREEMENT_RESOURCE = 'useragreement'
-USER_RESOURCE = 'screensaveruser'
-
-TESTING_MODE = True
-
-FIELD_USER_NAME = 'user_name'
-FIELD_USER_EMAIL = 'user_email'
-FIELD_AGREEMENT_TYPE = 'type'
-SCREEN_TYPES = {
-    'sm': 'Small Molecule', 'rnai': 'RNAi' }  
+USER = db.schema.SCREENSAVER_USER
+UA = db.schema.USER_AGREEMENT
+VOCAB = db.schema.VOCAB
 
 DEFAULT_APILOG_COMMENT = 'Automated user agreement action'
 
@@ -53,6 +50,25 @@ parser.add_argument(
     '-email_message_directory', '--email_message_directory', required=True,
     help='Email message directory, contains: %r' 
         % [str(s) for s in EMAIL_MESSAGE_TEMPLATES.values()] )
+parser.add_argument(
+    '-email_log_filename', required=False, 
+    help='print email messages to log file before sending')
+parser.add_argument(
+    '-no_email', '--no_email', action='store_true',
+    help='do not send any email notifications (to users or admins)')
+
+parser.add_argument(
+    '-admin_from_email', required=False,
+    help='If specified, used for the "From:" header; otherwise, defaults to the '
+    '"admin_email_address specified or from the admin\'s user acct.')
+parser.add_argument(
+    '-admin_email', required=False,
+    help='If specified, used for the "To:" header; otherwise, defaults to the '
+    '"admin_email_address specified or from the admin\'s user acct.')
+parser.add_argument(
+    '-mail_recipient_list', nargs='+',
+    help='additional admin recipients, comma separated list of email addresses')
+        
 
 parser.add_argument('-contact_info', '--contact_info', required=True, 
     help='Contact information, e.g. "Administrator user (admin@lims.edu)')
@@ -67,29 +83,24 @@ parser.add_argument(
 parser.add_argument(
     '-c', '--credential_file',
     help = 'credential file containing the username:password for api authentication')
-parser.add_argument(
-    '-mr', '--mail_recipient_list', nargs='+',
-    help='additional admin recipients, comma separated list of email addresses')
 
 # Testing flow options
 parser.add_argument(
     '-test_only', '--test_only', action='store_true',
     help='test run only: no user emails are sent, database changes are rolled back')
 parser.add_argument(
-    '-no_email', '--no_email', action='store_true',
-    help='do not send any email notifications (to users or admins)')
-parser.add_argument(
     '-admin_email_only', '--admin_email_only', action='store_true',
     help='perform actions and send email to the admin account only, no user emails are sent.')
 
 # Query/Expire/Notify Options
 parser.add_argument(
-    '-screen_type', '--screen_type', required=True,
-    choices=('sm', 'rnai'),
+    '-ua_type', '--useragreement_type', required=True,
+    choices=VOCAB.user_agreement.type.get_dict().values(),
     help='User Agreement for Screen Type (sm="Small Molecule", rnai="SiRNA"')
 parser.add_argument(
     '-days_to_expire', '--days_to_expire', type=int, required=True,
-    help='number of days for a user agreement to expire')
+    help='number of days for a user agreement to expire. If set without the'
+    '"days_ahead_to_notify"; will expire the user agreements.')
 parser.add_argument(
     '-days_ahead_to_notify', '--days_ahead_to_notify', type=int,
     help='number of days ahead of expiration to notify users; if this'
@@ -120,10 +131,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
-    CONTENT_TYPES =   { 
-        'json': {'content-type': 'application/json'},
-        'csv':  {'content-type': 'text/csv'},
-        } 
                 
     username = None
     password = None
@@ -149,43 +156,44 @@ if __name__ == "__main__":
             else:
                 EMAIL_MESSAGE_TEMPLATES[k] = read_email_template(f)
 
-    #### log in using django form-based auth, and keep the session
-    url = args.url
-    u = urlparse(url)
+    # Log in using django form-based auth, and keep the session
+    u = urlparse(args.url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
-
     # FIXME: suppressing ssl warnings:
     urllib3.disable_warnings()
-    
     session = django_requests.get_logged_in_session(
         username, password, base_url)
-    # django session based auth requires a csrf token
+    
+    # Get admin user data
     headers ={}
-    headers['X-CSRFToken'] = session.cookies['csrftoken']
     headers['Accept'] = 'application/json'
-    logger.debug('successfully acquired token: %r', headers)
+    admin_user_url = '/'.join([base_url,DB_API_URI, USER.resource_name,username])
+    admin_user_data = get_resource(admin_user_url, session, headers)
+    logger.info('admin user: %r', admin_user_data)
     
-    # Get admin user email
-    admin_user_url = '/'.join([url,BASE_URI, USER_RESOURCE,username])
-    logger.info('GET: %r', admin_user_url)
-    r = session.get(admin_user_url,headers=headers)
-    if r.status_code not in [200]:
-        raise Exception("Error for %r, status: %s, %s" 
-                        % (admin_user_url, r.status_code, r.content))
+    admin_email = admin_user_data[USER.EMAIL]
+    if args.admin_email:
+        admin_email = args.admin_email
     
-    admin_user_data = json.loads(r.content)
-    logger.info('admin_user_data: %r', admin_user_data)
-    admin_from_email = admin_user_data['email']
-    logger.info('admin_from_email: %r', admin_from_email)
-    
-    admin_email_list = [admin_from_email]
+    admin_from_email = admin_email
+    if args.admin_from_email:
+        admin_from_email = args.admin_from_email
+
+    admin_email_list = [admin_email]
     if args.mail_recipient_list:
         admin_email_list.extend(args.mail_recipient_list)
-        
-    emailer = Emailer(admin_from_email, no_email=args.no_email, 
-        admin_email_only=args.admin_email_only, 
-        test_only=args.test_only, html_email_wrapper=html_email_wrapper)
-        
+
+    # Set up the emailer        
+    emailer = Emailer(admin_email, admin_from_email_address=admin_from_email,
+        no_email=args.no_email, admin_email_only=args.admin_email_only, 
+        test_only=args.test_only, html_email_wrapper=html_email_wrapper,
+        email_log_filename=args.email_log_filename)
+    
+    # Get the user agreement schema
+    schema_url = '/'.join([base_url, DB_API_URI, UA.resource_name, 'schema'])
+    ua_schema = get_resource_schema(schema_url, session, headers)
+    ua_type=get_vocab_title(UA.TYPE, args.useragreement_type,ua_schema)
+    
     # Begin processing user agreements
     # Query for the user agreements
     
@@ -197,66 +205,34 @@ if __name__ == "__main__":
             date_active_cutoff + datetime.timedelta(
                 days=args.days_ahead_to_notify)
     
-    date_active_cutoff = date_active_cutoff.strftime("%Y-%m-%d")
+    date_active_cutoff = date_active_cutoff.strftime(DATE_FORMAT)
     logger.info(
         'days_to_expire: %d, days_ahead_to_notify: %r, date_active_cutoff: %s', 
         args.days_to_expire, args.days_ahead_to_notify, date_active_cutoff)
     report_args = {
-        'status__in': 'active',
-        FIELD_AGREEMENT_TYPE: args.screen_type,
-        'date_active__lte': date_active_cutoff,
-        'includes': [FIELD_USER_EMAIL],
+        '%s__in' % UA.STATUS: VOCAB.user_agreement.status.ACTIVE,
+        UA.TYPE: args.useragreement_type,
+        '%s__lte' % UA.DATE_ACTIVE: date_active_cutoff,
+        'includes': [UA.USER_EMAIL],
         'limit': 0
         }
 
     if args.days_ahead_to_notify is not None:
-        report_args['date_notified__is_null'] = True
+        report_args['%s__is_null' % UA.DATE_NOTIFIED] = True
     
-    useragreement_url = '/'.join([url,BASE_URI, USERAGREEMENT_RESOURCE])
-    logger.info('GET: %r', useragreement_url)
-    r = session.get(useragreement_url,headers=headers,params=report_args)
-    if r.status_code not in [200]:
-        raise Exception("Error: status: %s, %s" % (r.status_code, r.content))
-    content = json.loads(r.content)
-    logger.info('url: %r, meta: %r', useragreement_url, content[API_RESULT_META])
-    if API_RESULT_DATA not in content:
-        raise InformationError(
-            'Content not recognized, no %r found' % API_RESULT_DATA)
-    user_agreements = content[API_RESULT_DATA]
-
-    def send_user_notification(user_agreement, date_to_expire):
-        ''' 
-        Send user notifications: 
-        - make sure admin_email_only, test_only checks are met
-        '''
-        (msg_user_expiration_subject, msg_user_expiration_lines) = \
-            EMAIL_MESSAGE_TEMPLATES['msg_user_expiration']
-        msg_user_expiration_lines = msg_user_expiration_lines[:]
-        valid_email = validate_email(ua.get(FIELD_USER_EMAIL, None))
-        if not valid_email:
-            return False, 'Invalid email address'
-        
-        msg_user_expiration_subject = msg_user_expiration_subject.format(
-            screen_type=SCREEN_TYPES[user_agreement['type']])
-        for i,line in enumerate(msg_user_expiration_lines):
-            msg_user_expiration_lines[i] = line.format(
-                screen_type=SCREEN_TYPES[user_agreement['type']],
-                date_to_expire=date_to_expire,
-                data_sharing_level=user_agreement['data_sharing_level'],
-                contact_info=args.contact_info )
-        
-        emailer.send_email([valid_email], msg_user_expiration_subject, 
-            msg_user_expiration_lines)
-        
-        return True, 'Success'
+    useragreement_url = '/'.join([base_url,DB_API_URI, UA.resource_name])
+    
+    user_agreements,meta = \
+        get_resource_listing(useragreement_url, session, headers, report_args)
+    
 
     def fill_parms(txt):
         ''' fill text format parameters for messages '''
         return txt.format(
             count=len(user_agreements), 
-            screen_type=SCREEN_TYPES[args.screen_type],
+            screen_type=ua_type,
             date_active_cutoff=date_active_cutoff,
-            current_date=current_time.strftime("%Y-%m-%d"),
+            current_date=current_time.strftime(DATE_FORMAT),
             days_to_expire=args.days_to_expire,
             days_ahead_to_notify=args.days_ahead_to_notify)
 
@@ -274,10 +250,47 @@ if __name__ == "__main__":
             
             date_to_expire = current_time + datetime.timedelta(
                 days=args.days_ahead_to_notify)
-            date_to_expire = date_to_expire.strftime("%Y-%m-%d")
+            date_to_expire = date_to_expire.strftime(DATE_FORMAT)
             
             user_agreement_notify_success = defaultdict(list)
             user_agreement_notify_fail = defaultdict(list)
+            
+            args.sample_message_subject = None
+            args.sample_message_lines = None
+            args.sample_recipient = None
+            (msg_user_expiration_subject, msg_user_expiration_lines) = \
+                EMAIL_MESSAGE_TEMPLATES['msg_user_expiration']
+            def send_user_notification(user_agreement, date_to_expire):
+                ''' 
+                Send user notifications: 
+                - make sure admin_email_only, test_only checks are met
+                '''
+                text_msg_body_lines = msg_user_expiration_lines[:]
+                valid_email = validate_email(ua.get(UA.USER_EMAIL, None))
+                if not valid_email:
+                    return False, 'Invalid email address'
+                
+                msg_subject = msg_user_expiration_subject.format(
+                    screen_type=ua_type)
+                for i,line in enumerate(text_msg_body_lines):
+                    text_msg_body_lines[i] = line.format(
+                        screen_type=ua_type,
+                        date_to_expire=date_to_expire,
+                        data_sharing_level=get_vocab_title(
+                            UA.DATA_SHARING_LEVEL, 
+                            user_agreement[UA.DATA_SHARING_LEVEL], ua_schema),
+                        contact_info=args.contact_info )
+
+                if args.sample_message_subject is None:
+                    args.sample_message_subject = 'Subject: %s' % msg_subject
+                    args.sample_message_lines = text_msg_body_lines[:]
+                    args.sample_recipient = valid_email
+                                    
+                emailer.send_email([valid_email], msg_subject, 
+                    text_msg_body_lines)
+                
+                return True, 'Success'
+            
             for ua in user_agreements:
                 result, msg = send_user_notification(ua, date_to_expire)
                 if result is True:
@@ -290,39 +303,38 @@ if __name__ == "__main__":
                 logger.info('create updates for %r', msg)
                 for ua in uas:
                     ua_updates.append({
-                        'screensaver_user_id': ua['screensaver_user_id'],
-                        FIELD_AGREEMENT_TYPE: ua[FIELD_AGREEMENT_TYPE],
-                        'date_notified': current_time.strftime("%Y-%m-%d") 
+                        UA.SCREENSAVER_USER_ID: 
+                            ua[UA.SCREENSAVER_USER_ID],
+                        UA.TYPE: ua[UA.TYPE],
+                        UA.DATE_NOTIFIED: current_time.strftime(DATE_FORMAT) 
                     })
-            if ua_updates:
-
-                logger.info('PATCH: user agreement updates: %r', ua_updates)
-                
-                headers = {
-                    'Content-Type': 'application/json',
-                    HEADER_APILOG_COMMENT_CLIENT: args.comment
-                }
-                logger.info('headers: %r', headers)
-                _url = useragreement_url
+            logger.info('PATCH: user agreement updates: %r', ua_updates)
+            
+            headers = {
+                'Content-Type': 'application/json',
+                HEADER_APILOG_COMMENT_CLIENT: args.comment
+            }
+            logger.info('headers: %r', headers)
+            _url = useragreement_url
+            if args.test_only is True:
+                _url += '?test_only=true'
+            r = django_requests.patch(
+                _url, session,
+                data = json.dumps(ua_updates),
+                headers = headers)
+            if r.status_code not in [200]:
+                content = json.loads(r.content)
                 if args.test_only is True:
-                    _url += '?test_only=true'
-                r = django_requests.patch(
-                    _url, session,
-                    data = json.dumps(ua_updates),
-                    headers = headers)
-                if r.status_code not in [200]:
-                    content = json.loads(r.content)
-                    if args.test_only is True:
-                        logger.info('"test_only" run: response: %r', content)
-                    else:
-                        raise Exception("Error: status: %s, %s" 
-                            % (r.status_code, content))
+                    logger.info('"test_only" run: response: %r', content)
                 else:
-                    content = json.loads(r.content)
-                    logger.info('PATCH result: %r', content)
-                    logger.info('content: %r', content.keys())
-                    logger.info('meta: %r', content[API_RESULT_META])
-                    
+                    raise Exception("Error: status: %s, %s" 
+                        % (r.status_code, content))
+            else:
+                content = json.loads(r.content)
+                logger.info('PATCH result: %r', content)
+                logger.info('content: %r', content.keys())
+                logger.info('meta: %r', content[API_RESULT_META])
+                
             # Send the Admin email
             (msg_subject, msg_body_lines) = \
                 EMAIL_MESSAGE_TEMPLATES['msg_admin_notification']
@@ -337,22 +349,21 @@ if __name__ == "__main__":
                 settings.APP_PUBLIC_DATA.site_url,'#useragreement'])
             report_url += '/includes/' + ','.join(report_args.get('includes',''))
             del report_args['includes']
-            del report_args['date_notified__is_null']
+            del report_args['%s__is_null' % UA.DATE_NOTIFIED]
             report_url += '/search/' + ';'.join([
                 '%s=%s'%(k,v) for k,v in report_args.items()])
             msg_body_lines.append(report_url)
             html_msg_body_lines.append('<a href="%s">%s</a>' % (
                 report_url, 
-                '%s User Agreement Report' % SCREEN_TYPES[args.screen_type] ))
+                '%s User Agreement Report' % ua_type ))
             
             # Create the report summary tables
-            user_msg_fields = OrderedDict((
-                (FIELD_USER_NAME, 'User'),
-                ('screensaver_user_id', 'ID'),
-                (FIELD_USER_EMAIL,'Email'),
-                ('data_sharing_level','Data Sharing Level'),
-                ('date_active','Date Active')
-                ))
+            report_fields = [
+                UA.USER_NAME, UA.SCREENSAVER_USER_ID,
+                UA.USER_EMAIL,UA.DATA_SHARING_LEVEL,
+                UA.DATE_ACTIVE]
+            table_fields = OrderedDict(
+                (key,get_title(key, ua_schema)) for key in report_fields)
             html_msg_body_lines.append('<hr>')
             if user_agreement_notify_success:
                 msg_body_lines.append('')
@@ -361,13 +372,20 @@ if __name__ == "__main__":
                 html_msg_body_lines.append('Notification Summary:')
                 html_msg_body_lines.append('<hr>')
                 html_msg_body_lines.append('')
+                
                 for msg, uas in user_agreement_notify_success.items():
                     msg_body_lines.append(msg)
                     html_msg_body_lines.append('<h4>%s:</h4>' % msg)
-                    pt = create_prettytable(uas, user_msg_fields)
+                    pt = create_prettytable(
+                        [replace_vocabularies(ua,ua_schema) for ua in uas], table_fields)
                     msg_body_lines.append(pt.get_string(padding_width=5))
-                    html_msg_body_lines.append(pt.get_html_string(
-                        attributes = {"class": "content-table"}))
+
+                    html_pt = create_prettytable(
+                        [replace_html_values(ua,ua_schema) for ua in uas], 
+                        table_fields)
+                    html_msg_body_lines.append(html_pt.get_html_string(
+                        attributes = {"class": "content-table"})
+                        .replace('&lt;','<').replace('&gt;','>').replace('&amp;','&'))
                     
             if user_agreement_notify_fail:
                 msg_body_lines.append('')
@@ -376,10 +394,30 @@ if __name__ == "__main__":
                 for msg, uas in user_agreement_notify_fail.items():
                     msg_body_lines.append(msg)
                     html_msg_body_lines.append('<h4>%s:</h4>' % msg)
-                    pt = create_prettytable(uas, user_msg_fields)
+                    pt = create_prettytable(
+                        [replace_vocabularies(ua,ua_schema) for ua in uas], table_fields)
                     msg_body_lines.append(pt.get_string(padding_width=5))
-                    html_msg_body_lines.append(pt.get_html_string(
-                        attributes = {"class": "content-table"}))
+
+                    html_pt = create_prettytable(
+                        [replace_html_values(ua,ua_schema) for ua in uas], 
+                        table_fields)
+                    html_msg_body_lines.append(html_pt.get_html_string(
+                        attributes = {"class": "content-table"})
+                        .replace('&lt;','<').replace('&gt;','>').replace('&amp;','&'))
+
+            # Append the sample message
+            if args.sample_message_subject:
+                msg_body_lines.append('[example email]')
+                msg_body_lines.append('To: %s' % args.sample_recipient)
+                msg_body_lines.append(args.sample_message_subject)
+                msg_body_lines.extend(args.sample_message_lines)
+    
+                html_msg_body_lines.append('<hr>[example email]<hr/>')
+                html_msg_body_lines.append('To: %s' % args.sample_recipient)
+                html_msg_body_lines.append('')
+                html_msg_body_lines.append(args.sample_message_subject)
+                html_msg_body_lines.append('')
+                html_msg_body_lines.extend(args.sample_message_lines)
             
             emailer.send_email(admin_email_list, msg_subject, msg_body_lines,
                 html_msg_body_lines=html_msg_body_lines )
@@ -398,9 +436,10 @@ if __name__ == "__main__":
             ua_updates = []
             for ua in user_agreements:
                 ua_updates.append({
-                    'screensaver_user_id': ua['screensaver_user_id'],
-                    FIELD_AGREEMENT_TYPE: ua[FIELD_AGREEMENT_TYPE],
-                    'status': 'expired'
+                    UA.SCREENSAVER_USER_ID: 
+                        ua[UA.SCREENSAVER_USER_ID],
+                    UA.TYPE: ua[UA.TYPE],
+                    UA.STATUS: VOCAB.user_agreement.status.EXPIRED
                 })
 
             logger.info('PATCH: user agreement updates: %r', ua_updates)
@@ -449,23 +488,29 @@ if __name__ == "__main__":
             msg_body_lines.append(report_url)
             html_msg_body_lines.append('<a href="%s">%s</a>' % (
                 report_url, 
-                '%s User Agreement Report' % SCREEN_TYPES[args.screen_type] ))
+                '%s User Agreement Report' % ua_type ))
             
             # Create the report summary tables
-            user_msg_fields = OrderedDict((
-                (FIELD_USER_NAME, 'User'),
-                ('screensaver_user_id', 'ID'),
-                (FIELD_USER_EMAIL,'Email'),
-                ('data_sharing_level','Data Sharing Level'),
-                ('date_active','Date Active')
-                ))
+            report_fields = [
+                UA.USER_NAME, UA.SCREENSAVER_USER_ID,
+                UA.USER_EMAIL,UA.DATA_SHARING_LEVEL,
+                UA.DATE_ACTIVE]
+            table_fields = OrderedDict(
+                (key,get_title(key, ua_schema)) for key in report_fields)
             html_msg_body_lines.append('<hr>')
             msg_body_lines.append('')
-            pt = create_prettytable(user_agreements, user_msg_fields)
+            pt = create_prettytable(
+                [replace_vocabularies(ua,ua_schema) for ua in user_agreements], 
+                table_fields)
             msg_body_lines.append(pt.get_string(padding_width=5))
-            html_msg_body_lines.append(
-                pt.get_html_string(attributes = {"class": "content-table"}))
 
+            html_pt = create_prettytable(
+                [replace_html_values(ua,ua_schema) for ua in user_agreements], 
+                table_fields)
+            html_msg_body_lines.append(html_pt.get_html_string(
+                attributes = {"class": "content-table"})
+                .replace('&lt;','<').replace('&gt;','>').replace('&amp;','&'))
+            
             emailer.send_email(admin_email_list, msg_subject, msg_body_lines,
                 html_msg_body_lines=html_msg_body_lines )
                     

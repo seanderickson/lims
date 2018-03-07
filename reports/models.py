@@ -14,6 +14,8 @@ from tastypie.utils.dict import dict_strip_unicode_keys
 from aldjemy.core import get_engine
 
 from reports import strftime_log
+from _collections import defaultdict
+from reports.serialize import LimsJSONEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +208,19 @@ class ApiLog(models.Model):
     
     @staticmethod   
     def json_dumps(obj):
-        return json.dumps(
-            obj, skipkeys=False,check_circular=True, allow_nan=True, 
-            cls=DjangoJSONEncoder)
+        
+        obj_as_dict = { k:v for k,v in vars(obj).items() if k[0] != '_'}
+        diffs = defaultdict(list)
+        for dl in obj.logdiff_set.all():
+            diffs[dl.field_key] = [dl.before,dl.after]
+        obj_as_dict['diffs'] = dict(diffs)
+        return json.dumps(obj_as_dict, cls=LimsJSONEncoder)
+
+#     @staticmethod   
+#     def json_dumps(obj):
+#         return json.dumps(
+#             obj, skipkeys=False,check_circular=True, allow_nan=True, 
+#             cls=DjangoJSONEncoder)
     
     def save(self, **kwargs):
         ''' override to convert json fields '''

@@ -11,12 +11,6 @@ define([
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
   
-  /**
-   * URIStack search element SEARCH_DELIMITER
-   * NOTE: items on the URIStack avoid looking like URL params; therefore
-   * the "&" separator is not used.
-   */
-  var SEARCH_DELIMITER = ';';
   var DEBUG = false;
   
   var API_RESULT_META = 'meta';
@@ -251,23 +245,18 @@ define([
     getSearch: function(searchId){
       var obj = localStorage.getItem(''+searchId);
       if(obj) obj = JSON.parse(obj);
-      console.log('getSearch', searchId, obj);
       return obj;
     },
 
     /** 
-     * Find the search data in the uriStack, if it exists:
-     * - search type: either regular "search" or "search_vendor_and_compound"
-     * - see appModel.API_PARAM_RAW_SEARCH, and
-     * API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH
+     * Find the search data in the uriStack, if it exists: either in:
+     * URI_PATH_COMPLEX_SEARCH or,
+     * URI_PATH_ENCODED_SEARCH
      * 
      * @return {
-     *    search_type: [
-     *      API_PARAM_RAW_SEARCH,
-     *      API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH], 
-     *    raw_search_data: search data - either encoded in the url, or stored in app local storage
-     *    search_id: integer for local storage,
-     *    uriStack: uriStack with the search component removed,
+     *    API_PARAM_SEARCH: search data - resource specific search data
+     *    search_id: integer for local storage
+     *    uriStack: uriStack with the search component removed
      *    errors: [] empty if none
      *  }
      */
@@ -276,41 +265,41 @@ define([
       if (_.isEmpty(uriStack)) return null;
       var appModel = Iccbl.appModel;
       
-      var param_search = appModel.API_PARAM_RAW_SEARCH;
-      var param_search1 = appModel.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH;
-      if (_.contains(uriStack,param_search) 
-          || _.contains(uriStack,param_search1)){
-        var index = _.indexOf(uriStack,param_search);
-        if (index < 0) index = _.indexOf(uriStack,param_search1);
-        result['search_type'] = uriStack[index];
-        var searchData = uriStack[index+1];
+      // Complex search: uses local storage for large sets of search data
+      if (_.contains(uriStack,appModel.URI_PATH_COMPLEX_SEARCH) ){
+        var index = _.indexOf(uriStack,appModel.URI_PATH_COMPLEX_SEARCH);
+        var searchId = uriStack[index+1];
         
-        if (_.isEmpty(searchData)){
-          result['errors'] = 'no search data or id found:', uriStack;
+        if (_.isEmpty(searchId)){
+          result['errors'] = 'no complex search id found:', uriStack;
           return result;
         }
-        else if (searchData.indexOf('raw_search_data') > -1){
-          result['raw_search_data'] = decodeURIComponent(searchData.split('=')[1]);
-        }else if (!_.isNaN(parseInt(searchData))) {
-          var searchId = searchData;
+        if (!_.isNaN(parseInt(searchId))) {
           var search_data = appModel.getSearch(searchId);
           if(_.isUndefined(search_data) || _.isEmpty(search_data)){
             result['errors'] = 'Browser state no longer contains searchId:'+searchId 
               +'", search must be performed again';
             return result;
           }else{
-            result['search_id'] = searchId;
-            result['raw_search_data'] = search_data;
+            result[appModel.API_PARAM_SEARCH_ID] = searchId;
+            result[appModel.API_PARAM_SEARCH] = search_data;
           }  
         }else{
-          result['errors'] = 'search ID is not a valid number: ' + searchData;
+          result['errors'] = 'search ID is not a valid number: ' + searchId;
           return result;
         }
-        newStack = uriStack.slice(0,index);
-        newStack1 = uriStack.slice(index+2);
-        result['uriStack'] = newStack.concat(newStack1);
-      }
+        var newStack = uriStack.slice(0,index);
+        result['uriStack'] = newStack.concat(uriStack.slice(index+2));
       
+      // Encoded search: search data are encoded as part of the URI
+      } else if (_.contains(uriStack, appModel.URI_PATH_ENCODED_SEARCH)){
+        var index = _.indexOf(uriStack,appModel.URI_PATH_ENCODED_SEARCH);
+        result[appModel.API_PARAM_SEARCH] = uriStack[index+1];
+        var newStack = uriStack.slice(0,index);
+        result['uriStack'] = newStack.concat(uriStack.slice(index+2));
+      } else {
+        console.log('no search data found on the uriStack');
+      }
       return result;
     },
     
@@ -1823,7 +1812,7 @@ define([
           _.zip(_.keys(search_data),_.values(search_data)), 
           function(kv){
             return kv.join('=');
-          }).join(';');        
+          }).join(appModel.SEARCH_DELIMITER);        
         var search_link = $('<a>',{
             text: 'Comments',
             target: '_blank',
@@ -2488,7 +2477,7 @@ define([
       return _.map(_.pairs(searchHash), 
         function(keyval) {
           return keyval.join('=');
-        }).join(SEARCH_DELIMITER)
+        }).join(appModel.SEARCH_DELIMITER)
     }
   });
 
@@ -2545,10 +2534,8 @@ define([
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
   appState.DEBUG = DEBUG;
-  appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
-  appState.SEARCH_DELIMITER = SEARCH_DELIMITER;
+
   appState.HEADER_APILOG_COMMENT = 'X-APILOG-COMMENT';
-  appState.MAX_SEARCH_ARRAY_SIZE = 100;
 
   // Constants shared with the API
   // FIXME: Get shared constants from shared API_CONSTANTS file
@@ -2569,8 +2556,33 @@ define([
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
   
-  appState.API_PARAM_RAW_SEARCH = 'csearch';
-  appState.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH = 'csearch_reagent';
+  /**
+   * URIStack search element SEARCH_DELIMITER
+   * NOTE: items on the URIStack avoid looking like URL params; therefore
+   * the "&" separator is not used.
+   */
+  appState.SEARCH_DELIMITER = ';';
+  /** 
+   * TODO:raw search line encode serves the same purpose as the SEARCH_DELIMITER
+   * - line encoder was created for compound name search; may include semicolon?
+   */
+  appState.UI_PARAM_RAW_SEARCH_LINE_ENCODE = '|';
+
+  appState.MAX_SEARCH_ARRAY_SIZE = 100;
+  appState.MAX_RAW_SEARCHES_IN_URL = 10;
+  
+  // API Param elements are used by the API
+  appState.API_PARAM_SEARCH_ID = 'search_id'
+  appState.API_PARAM_NESTED_SEARCH = 'nested_search';
+  appState.API_PARAM_SEARCH = 'search';
+  appState.API_PARAM_ENCODED_SEARCH = 'esearch';
+  
+  // URI path elements are used to create the URI stack
+  appState.URI_PATH_COMPLEX_SEARCH = 'csearch';
+  appState.URI_PATH_ENCODED_SEARCH = 'esearch';
+  appState.URI_PATH_SEARCH = 'search';
+  appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children',
+                        appState.URI_PATH_SEARCH];      
   
   appState.LIST_DELIMITER_SUB_ARRAY = '$';
 

@@ -436,7 +436,6 @@ define([
           var view = new Backgrid.Grid({
             columns: columns,
             collection: collection,
-            schemaResult: resource,
             resource: resource
           });
           // FIXME: this should work

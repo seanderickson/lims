@@ -227,7 +227,6 @@ define([
                  'plate'].join('/');
       view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: copyPlateResource,
         resource: copyPlateResource,
         url: url
       });
@@ -331,7 +330,6 @@ define([
         
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: copyResource,
           resource: copyResource,
           url: url,
           collection: collection,

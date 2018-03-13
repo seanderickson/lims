@@ -444,7 +444,6 @@ define([
         
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: lsResource,
           resource: lsResource,
           url: url,
           extraControls: extraControls
@@ -493,7 +492,6 @@ define([
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: [],
@@ -582,7 +580,6 @@ define([
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []

@@ -19,26 +19,26 @@ define([
 
         initialize : function(attributes, options) {
             var self = this;
-            Iccbl.requireOptions(options, ['schemaResult', 'router']);
-            Iccbl.assert( !_.isUndefined(options.schemaResult['resource_definition']), 'detail view schemaResult requires a resource_definition');
+            Iccbl.requireOptions(options, ['resource', 'router']);
+            Iccbl.assert( !_.isUndefined(options.resource['resource_definition']), 'detail view resource requires a resource_definition');
 
-            this._schemaResult = options['schemaResult'];
-            this._resource_definition = this._schemaResult['resource_definition'];
+            this.resource = options['resource'];
+            this._resource_definition = this.resource['resource_definition'];
             this._router = options.router;
             this._options = options;
 
-            this._id = Iccbl.getTitleFromTitleAttribute(self.model, this._schemaResult);
+            this._id = Iccbl.getTitleFromTitleAttribute(self.model, this.resource);
             console.log('id: ' + this._id);
 
-            this._keys = Iccbl.sortOnOrdinal(_.keys(this.model.attributes), self._schemaResult.fields);
+            this._keys = Iccbl.sortOnOrdinal(_.keys(this.model.attributes), self.resource.fields);
             this._keys = _(this._keys).filter(function(key){
-                return _.has(self._schemaResult.fields[key], 'visibility') && _.contains(self._schemaResult.fields[key]['visibility'], 'edit');
+                return _.has(self.resource.fields[key], 'visibility') && _.contains(self.resource.fields[key]['visibility'], 'edit');
             });
 
             bindings = {};
             _.each(this._keys, function(key){
-                if( _(self._schemaResult.fields).has(key)){
-                    option = self._schemaResult.fields[key];
+                if( _(self.resource.fields).has(key)){
+                    option = self.resource.fields[key];
                     console.log('option: ' + JSON.stringify(option));
                     if(option.ui_type == 'choice' || option.ui_type == 'multiselect' ){
                         var _optionsCollection = [];
@@ -128,7 +128,7 @@ define([
             console.log('render generic_edit_stickit');
 
             var compiledTemplate = _.template( genericFormTemplate,
-                { 'fieldDefinitions': this._schemaResult.fields ,
+                { 'fieldDefinitions': this.resource.fields ,
                   title: this._resource_definition['title']+ ': ' + this._id,
                   keys: _(this._keys)
                 });

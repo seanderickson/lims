@@ -15,7 +15,6 @@ define([
       Iccbl, appModel, genericSelector, TreeSelector,
       rowsPerPageTemplate, listTemplate, modalTemplate) {
 
-  
   var ListView = Backbone.View.extend({
 
     LIST_MODEL_ROUTE_KEYS: appModel.LIST_ARGS,
@@ -38,11 +37,7 @@ define([
       
       var self = this;
       var _options = self._options = args;
-      // FIXME: remove resource from code, using schemaResult only
       var resource = args.resource;
-      if (!_options.schemaResult){
-        _options.schemaResult = resource;
-      }
       self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
       var uriStack = args.uriStack || [];
@@ -56,7 +51,7 @@ define([
             includes: [] }
         });
 
-      var listInitial = this.parseUriStack(uriStack, _options.schemaResult.options);
+      var listInitial = this.parseUriStack(uriStack, _options.resource.options);
       var listModel = this.listModel = new ListModel(listInitial);
 
       this.objects_to_destroy = _([]);
@@ -93,16 +88,16 @@ define([
       var columns;
       if(!_options.columns){
         columns = Iccbl.createBackgridColModel(
-            this._options.schemaResult.fields, 
+            this._options.resource.fields, 
             listModel.get('order'),
-            listModel.get('search'),
+            listModel.get(appModel.URI_PATH_SEARCH),
             listModel.get('includes'));
       }else{
         columns = _options.columns;
       }
       
       this.listenTo(this.listModel, 'change', this.reportState );
-      this.buildGrid( columns, self._options.schemaResult );
+      this.buildGrid( columns, self._options.resource );
     },
     
     parseUriStack: function(uriStack, initialOptions ){
@@ -110,7 +105,6 @@ define([
       var self = this;
       var listInitial = initialOptions || {};
       listInitial = _.extend({},_.pick(listInitial,self.LIST_MODEL_ROUTE_KEYS));
-      console.log('parseUriStack', uriStack, initialOptions);
       // Update with the uriStack values
       for (var i=0; i<uriStack.length; i++){
         var key = uriStack[i];
@@ -128,7 +122,7 @@ define([
         
         if(_.contains(self.LIST_MODEL_ROUTE_KEYS, key)){
           
-          if(key === 'search') {
+          if(key === appModel.URI_PATH_SEARCH) {
             var searchHash = {};
             var searches = value.split(self.SEARCH_DELIMITER);
             _.each(searches, function(search){
@@ -138,7 +132,6 @@ define([
                 console.log(msg);
                 appModel.error(msg);
               } else if (_.isEmpty(parts[1])) {
-                // pass, TODO: prevent empty searches from notifying
               } else {
                 searchHash[parts[0]] = decodeURIComponent(parts[1]);
               }
@@ -155,7 +148,7 @@ define([
           }
         }
       }
-      
+      console.log('parseUriStack, listInitial', listInitial);
       return listInitial;
     },
     
@@ -170,7 +163,7 @@ define([
         var parts = k.split('__');
         var name = k;
         if(parts.length == 2){
-          var field = self._options.schemaResult.fields[parts[0]];
+          var field = self._options.resource.fields[parts[0]];
           if(field){
             name = field.title;
           }
@@ -182,7 +175,7 @@ define([
       _.each(self.LIST_MODEL_ROUTE_KEYS, function(routeKey){
         var routeEntry = self.listModel.get(routeKey);
         if ( ! _.isEmpty(routeEntry)) {
-          if (routeKey === 'search') {
+          if (routeKey === appModel.URI_PATH_SEARCH) {
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += _.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
@@ -191,6 +184,9 @@ define([
                 kv[1] = encodeURIComponent(kv[1]);
                 return kv.join('=');
               }).join('&');
+            routeEntry = _.extend({},routeEntry);
+            // TODO: dc_ids used for reagent/screen_result views, should not be in search title
+            delete routeEntry['dc_ids'];
             search_title_val += _.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
@@ -205,6 +201,16 @@ define([
           }
         }
       });
+      
+      if (_.has(self._options, appModel.API_PARAM_ENCODED_SEARCH)){
+        if(!_.isEmpty(urlparams)) urlparams += '&';
+        urlparams += appModel.API_PARAM_SEARCH + '=' 
+          + self._options[appModel.API_PARAM_ENCODED_SEARCH];
+        if(search_title_val !== '') search_title_val += '<br>AND ';
+        search_title_val += '[' + self._options[appModel.API_PARAM_ENCODED_SEARCH] + ']';
+      }
+      
+      
       if(_.isUndefined(limit)){
         var limit = self.collection.state.totalRecords;
         if(!_.isNumber(limit)){
@@ -217,10 +223,11 @@ define([
       }
       console.log('collection url: ' + url)
       
-      if(_.has(self._options, 'nested_search_data')){
-        console.log('nested_search_datafound on the self._options: ', self._options.nested_search_data);
+      if(_.has(self._options, appModel.API_PARAM_NESTED_SEARCH)){
+        console.log('nested_search_data found on the self._options: ', 
+          self._options[appModel.API_PARAM_NESTED_SEARCH]);
         var or_clauses = '';
-        var search_list = self._options.nested_search_data;
+        var search_list = self._options[appModel.API_PARAM_NESTED_SEARCH];
         _.each(search_list, function(hash){
           var temp = '';
           _.each(_.keys(hash), function(k){
@@ -237,8 +244,6 @@ define([
         }
       }            
 
-      // NOTE: reagent/well search is implemented server-side; does not support
-      // a search_title suitable interpretation - 201703
       if(search_title_val !== ''){
         self.trigger('update_title', 'Search: ' + search_title_val);
       } else {
@@ -248,6 +253,9 @@ define([
       return url;
     },
     
+    /**
+     * Report the listmodel "state" to the application using the uriStack
+     */
     reportState: function(args) {
       console.log('report state', args);
       var self = this;
@@ -256,7 +264,7 @@ define([
       
       // Note: this is repeated in the specific change listeners
       $('#clear_sorts').toggle(!_.isEmpty(self.listModel.get('order')));
-      $('#clear_searches').toggle(!_.isEmpty(self.listModel.get('search')));
+      $('#clear_searches').toggle(!_.isEmpty(self.listModel.get(appModel.URI_PATH_SEARCH)));
      
       // If a suffix was consumed, then put it back
       if(self.urlSuffix != ""){
@@ -267,7 +275,7 @@ define([
         if ( (!_.isObject(routeEntry) && routeEntry ) || 
              ( _.isObject(routeEntry) && !_.isEmpty(routeEntry))) {
           newStack.push(routeKey);
-          if (routeKey === 'search') {
+          if (routeKey === appModel.URI_PATH_SEARCH) {
             newStack.push(_.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
@@ -371,7 +379,7 @@ define([
           template: _.template(form_template)
         });
         var _form_el = form.render().el;
-        var title = Iccbl.getTitleFromTitleAttribute(model,self._options.schemaResult);
+        var title = Iccbl.getTitleFromTitleAttribute(model,self._options.resource);
         var dialog = appModel.showModal({
             okText: 'confirm',
             ok: function(e){
@@ -390,7 +398,7 @@ define([
                 e.preventDefault();
                 model.collection = self.collection;
                 // Backbone will only send DELETE if the model has an id
-                model.set('id', Iccbl.getIdFromIdAttribute(model,self._options.schemaResult));
+                model.set('id', Iccbl.getIdFromIdAttribute(model,self._options.resource));
                 model.destroy({
                   wait: true,
                   headers: headers,
@@ -437,9 +445,9 @@ define([
         self.collection.getPage(page, {reset: true });
         self.reportState();
       });
-      this.listenTo(this.listModel, 'change:search', function(){
+      this.listenTo(this.listModel, 'change:'+ appModel.URI_PATH_SEARCH, function(){
         // TODO: this listener should be set in the collection initializer
-        var searchHash = _.clone(self.listModel.get('search'));
+        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
         // Note: this is repeated in reportState
         $('#clear_searches').toggle(!_.isEmpty(searchHash));
         if (self.listModel.get('page') !== 1){
@@ -466,7 +474,7 @@ define([
             reset = options.reset;
           }
           
-          var fields = self._options.schemaResult.fields;
+          var fields = self._options.resource.fields;
           var toAdd = [];
           var toRemove = [];
           var previous = self.listModel.previous('includes');
@@ -574,7 +582,7 @@ define([
           
           // trigger an event to notify new header forms to self-display
           self.collection.trigger("MyServerSideFilter:search", 
-            self.listModel.get('search'), self.collection);
+            self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
       });
 
       if(self.collection instanceof Backbone.PageableCollection){
@@ -587,7 +595,7 @@ define([
       
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
-        var searchHash = self.listModel.get('search');
+        var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
         console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
         var extraSelectorModel = new Backbone.Model({ selection: '' });
@@ -613,7 +621,7 @@ define([
         this.objects_to_destroy.push(extraSelectorInstance);
 
         self.listenTo(self.listModel, 'change:search', function(){
-          var searchHash = _.clone(self.listModel.get('search'));
+          var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
           _.each(_.keys(searchHash), function(key){
             if( key === extraSelectorKey || key  === extraSelectorKey+ '__exact'){
                 extraSelectorModel.set({ selection: searchHash[key] });
@@ -621,7 +629,7 @@ define([
           });
         });
         this.listenTo(extraSelectorModel, 'change', function() {
-          var searchHash = _.clone(self.listModel.get('search'));
+          var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
           var val = extraSelectorModel.get('selection');
           var value =  _.isUndefined(val.value) ? val: val.value ;
           delete searchHash[extraSelectorKey + '__exact']
@@ -629,7 +637,7 @@ define([
           delete searchHash[extraSelectorKey]
           
           if(!_.isEmpty(value) && !_.isEmpty(value.trim())){
-            var field = self._options.schemaResult.fields[extraSelectorKey];
+            var field = self._options.resource.fields[extraSelectorKey];
             if(field.data_type=='boolean'){
               searchHash[extraSelectorKey] = value;
             }else{
@@ -643,7 +651,7 @@ define([
             }
           }
           self.collection.setSearch(searchHash);
-//          self.listModel.set('search', searchHash);
+//          self.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
         });
       }
       
@@ -801,7 +809,7 @@ define([
 
       this.delegateEvents();
       
-      var searchHash = self.listModel.get('search');
+      var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
       if(!_.isEmpty(searchHash)){
         self.collection.setSearch(searchHash, {reset: false});
         fetched = true;
@@ -853,9 +861,9 @@ define([
         this.collection.trigger("Iccbl:clearSearches");
       }
 
-      var searchHash = _.clone(this.listModel.get('search'));
+      var searchHash = _.clone(this.listModel.get(appModel.URI_PATH_SEARCH));
       console.log('clear hash', searchHash, fields_to_clear);
-      var fields = this._options.schemaResult.fields;
+      var fields = this._options.resource.fields;
       if (fields_to_clear){
         fields = _.pick(fields,fields_to_clear);
       }
@@ -875,7 +883,7 @@ define([
         }
       });
       console.log('cleared hash', searchHash);
-      this.listModel.set('search', searchHash);
+      this.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
       // FIXME: any call to getFirstPage results in a fetch, disabled for now
       //this.collection.getFirstPage({reset: true, fetch: true});
       //this.collection.getFirstPage();
@@ -894,15 +902,24 @@ define([
       e.preventDefault();
       
       // find any extra search data
-      if(_.has(self._options, 'raw_search_data')){
-        console.log('raw_search_data found on the list._options: ',
-          self._options.raw_search_data);
+      if(_.has(self._options, appModel.API_PARAM_SEARCH)){
         // endcode for the post_data arg; post data elements are sent 
         // as urlencoded values via a POST form for simplicity
+        var data = {};
+        data[appModel.API_PARAM_SEARCH] = 
+                self._options[appModel.API_PARAM_SEARCH];
         appModel.download(
             self.getCollectionUrl(limitForDownload), 
-            self._options.resource, 
-            { raw_search_data: self._options.raw_search_data } ); 
+            self._options.resource, data); 
+      }else if(_.has(self._options, appModel.API_PARAM_NESTED_SEARCH)){
+        // endcode for the post_data arg; post data elements are sent 
+        // as urlencoded values via a POST form for simplicity
+        var data = {};
+        data[appModel.API_PARAM_NESTED_SEARCH] = 
+                self._options[appModel.API_PARAM_NESTED_SEARCH];
+        appModel.download(
+            self.getCollectionUrl(limitForDownload), 
+            self._options.resource,data); 
       }else{
         appModel.download(
             self.getCollectionUrl(limitForDownload), 
@@ -920,7 +937,7 @@ define([
       
       // 1. build a columns collection
       var includes = self.listModel.get('includes') || [];
-      var _fields = this._options.schemaResult.fields;
+      var _fields = this._options.resource.fields;
       
       _fields = _.omit(_fields, function(value, key, object) {
         return _.contains(value.visibility, 'api');
@@ -1073,7 +1090,7 @@ define([
 //        ');
 //      
 //      var includes = self.listModel.get('includes') || [];
-//      var _fields = this._options.schemaResult.fields;
+//      var _fields = this._options.resource.fields;
 //      
 //      _fields = _.omit(_fields, function(value, key, object) {
 //        return _.contains(value.visibility, 'api');
@@ -1355,7 +1372,7 @@ define([
 //            //
 //            //// trigger an event to notify new header forms to self-display
 //            //self.collection.trigger("MyServerSideFilter:search", 
-//            //  self.listModel.get('search'), self.collection);
+//            //  self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
 //          }
 //        },
 //        view: _form_el,
@@ -1383,16 +1400,16 @@ define([
 //          }
 //        });
 //
-//        self._options.schemaResult = newSchema;                
-//        var searchHash = _.clone(self.listModel.get('search'));
+//        self._options.resource = newSchema;                
+//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
 //        searchHash['other_screens'] = other_screens;
-//        self.listModel.set('search',searchHash);
+//        self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
 //        // New 20161213 see listmodel change listener
 //        //self.collection.fetch();
 //        //
 //        //// trigger an event to notify new header forms to self-display
 //        //self.collection.trigger("MyServerSideFilter:search", 
-//        //  self.listModel.get('search'), self.collection);
+//        //  self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
 //        
 //      },
 //      { other_screens: other_screens });
@@ -1405,7 +1422,7 @@ define([
 //     */
 //    show_mutual_positives: function(screen_facility_id, show_mutual_positives){
 //      var self = this;
-//      var _fields = this._options.schemaResult.fields;
+//      var _fields = this._options.resource.fields;
 //      var orderStack = self.listModel.get('order') || [];
 //
 //      if (show_mutual_positives){
@@ -1426,17 +1443,17 @@ define([
 //            }
 //          });
 //  
-//          self._options.schemaResult = newSchema;                
-//          var searchHash = _.clone(self.listModel.get('search'));
+//          self._options.resource = newSchema;                
+//          var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
 //          searchHash['show_mutual_positives'] = 'true';
-//          self.listModel.set('search',searchHash);
+//          self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
 //
 //          // New 20161213 - use listmodel event listener instead            
 //          //self.collection.fetch();
 //          //
 //          //// trigger an event to notify new header forms to self-display
 //          //self.collection.trigger("MyServerSideFilter:search", 
-//          //  self.listModel.get('search'), self.collection);
+//          //  self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
 //          
 //        },
 //        { show_mutual_positives: true});
@@ -1444,7 +1461,7 @@ define([
 //      
 //      
 //      }else{
-//        var searchHash = _.clone(self.listModel.get('search'));
+//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
 //        _.each(_.pairs(_fields), function(pair){
 //          var key = pair[1]['key'];
 //          var prop = pair[1];
@@ -1471,7 +1488,7 @@ define([
 //        });
 //        if(_.has(searchHash,'show_mutual_positives')){
 //          delete searchHash['show_mutual_positives'];
-//          self.listModel.set('search',searchHash);
+//          self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
 //        }        
 //        
 //      }    
@@ -1482,7 +1499,7 @@ define([
 //     */
 //    show_mutual_positives_bak: function(screen_facility_id, show_mutual_positives){
 //      var self = this;
-//      var _fields = this._options.schemaResult.fields;
+//      var _fields = this._options.resource.fields;
 //      var orderStack = self.listModel.get('order') || [];
 //
 //      if (show_mutual_positives){
@@ -1506,11 +1523,11 @@ define([
 //          }
 //        });
 //        
-//        var searchHash = _.clone(self.listModel.get('search'));
+//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
 //        searchHash['show_mutual_positives'] = 'true';
-//        self.listModel.set('search',searchHash);
+//        self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
 //      }else{
-//        var searchHash = _.clone(self.listModel.get('search'));
+//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
 //        _.each(_.pairs(_fields), function(pair){
 //          var key = pair[1]['key'];
 //          var prop = pair[1];
@@ -1537,7 +1554,7 @@ define([
 //        });
 //        if(_.has(searchHash,'show_mutual_positives')){
 //          delete searchHash['show_mutual_positives'];
-//          self.listModel.set('search',searchHash);
+//          self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
 //        }        
 //      }
 //    },

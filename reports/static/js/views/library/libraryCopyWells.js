@@ -327,7 +327,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       var view = new ListView({ 
         uriStack: uriStack,
-        schemaResult: resource,
         resource: resource,
         url: url,
         collection: collection,

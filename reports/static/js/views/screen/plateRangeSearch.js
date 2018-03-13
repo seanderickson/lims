@@ -59,14 +59,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var volumeField = _.result(
         libraryScreeningResource['fields'], 
         'volume_transferred_per_well_from_library_plates', {});
-//      var TextArea2 = Backbone.Form.editors.TextArea.extend({
-//        render: function() {
-//          TextArea2.__super__.render.apply(this,arguments);
-//          this.$el.attr('placeholder', 
-//            'Enter Plate Number ranges, followed by the Copy Name');
-//          return this;
-//        },        
-//      });
 
       function validatePlateSearch(value, formValues){
         var errors = [];
@@ -383,8 +375,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         if (_.isEmpty(plate_searches)){
           console.log('nothing to search! ', self.plate_range_collection);
         }
-        var encodedSearch = encodeURIComponent(plate_searches.join(';'));
-        var route = ['#'+resource.key, 'search', 'raw_search_data=' + encodedSearch];
+//        var encodedSearch = encodeURIComponent(plate_searches.join(';'));
+        var encodedSearch = plate_searches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE);
+        var route = ['#'+resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
+                     encodedSearch];
         self.showPlatesLink.attr("href", route.join('/'));
       } else {
         self.showPlatesLink.attr("href",self.defaultShowPlatesUri);
@@ -402,7 +396,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       // var errors = form.commit({ validate: true }); 
       var post_data = {};
       post_data['volume_required'] = form.getValue('volume_required');
-      post_data['raw_search_data'] = form.getValue('plate_search');
+      post_data[appModel.API_PARAM_SEARCH] = form.getValue('plate_search');
       var show_retired_plates = null;
       if (showRetiredPlatesControl.find('input[type=checkbox]').prop('checked')){
         show_retired_plates = 'true';
@@ -594,11 +588,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
       var data = new FormData();
       var search_value = form.getValue('plate_search');
-      data.append('raw_search_data', search_value);
+      data.append(appModel.API_PARAM_SEARCH, search_value);
       
       // NOTE/TODO: 20170504; 
       // The server API will now support the plate_search mini-language, 
-      // which may be sent as an encoded URI param: e.g. 
+      // (if search is short enough, can use GET),
+      // Searches may be sent as an encoded URI param: e.g. 
       // raw_search_data=1814-1821,J&raw_search_data=1709,%22B%201%3A125%22
       // is a valid "raw_search_data" array param for plate searches
       // returned by:

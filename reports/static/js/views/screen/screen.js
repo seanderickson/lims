@@ -1302,7 +1302,6 @@ define([
         
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: cpResource,
           resource: cpResource,
           url: url,
           collection: collection,
@@ -1478,7 +1477,6 @@ define([
         
         var view = new ActivityListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: extraControls
@@ -1623,7 +1621,6 @@ define([
       var resource = appModel.getResource('librarycopyplate');
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []

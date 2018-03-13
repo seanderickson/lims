@@ -104,6 +104,9 @@
         "reagent":{
           "view": "list"
         },
+        "compound_search":{
+          "view": "list"
+        },
         "labaffiliation": {
           "view": "list"
         },

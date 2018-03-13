@@ -23,6 +23,7 @@ define([
   'utils/uploadDataForm',
   'test/detailTest',
   'utils/wellSelector',
+  'views/search_box',
   'templates/content.html',
   'templates/welcome.html',
   'templates/welcome-screener.html',
@@ -34,7 +35,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          ScreenView, LibraryScreeningView, CherryPickRequestView,
          PlateLocationView, UserAdminView, 
          UserView, UserGroupAdminView, ActivityListView, UploadDataForm, DetailTestView, 
-         WellSelectorView, layout, 
+         WellSelectorView, SearchBox, layout, 
          welcomeLayout, welcomeScreenerLayout, aboutLayout) {
   
   var VIEWS = {
@@ -55,7 +56,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ActivityListView': ActivityListView,
     'LibraryWellsView': LibraryWellsView
   };
-    
+  
   var ContentView = Iccbl.UriContainerView.extend({
     
     template: _.template(layout),
@@ -209,11 +210,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         this.$('#content_title_row').show();
       }
     
-//      if(uriStack.length > 1 && (uriStack[0] == 'search' 
-//         || uriStack[0] == 'search_vendor_and_compound') 
-//         && !_.isNaN(parseInt(uriStack[1]))){
       if (!_.isEmpty(complex_search)){
-        view = self.createListSearchView(resource, viewClass, complex_search);
+        view = self.createListSearchView(resource, uriStack, viewClass, complex_search);
       
       }else{ // normal list view
 
@@ -262,7 +260,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         view = new viewClass({ 
             uriStack: uriStack,
-            schemaResult: resource, 
             resource: resource,
             collection: collection,
             extraControls: extraControls
@@ -288,215 +285,197 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
 
     }, // end showList
-    
-    createListSearchView: function(resource, viewClass, complex_search){
+
+    /**
+     * Prepare the list view to send API_PARAM_SEARCH search data that has 
+     * been encoded in the URI stack, or that is referenced by the 
+     * API_PARAM_SEARCH_ID in localstorage
+     * TODO: 20180312 - refactor this to the list view class.
+     */
+    createListSearchView: function(resource, uriStack, viewClass, complex_search){
       console.log('createListSearchView...')
       var self = this;
-      var resources_supporting_raw_search = ['well','reagent','librarycopyplate'];
+      var resources_supporting_raw_search = [
+        'well','reagent','compound_search','librarycopyplate'];
       if (!_.contains(resources_supporting_raw_search,resource.key)){
         throw "search data not supported for resource: " + resource.key + 
           ', must be one of: ' + resources_supporting_raw_search.join(',');
       }
-      var searchType = complex_search['search_type'];
-      var searchId = complex_search['search_id'];
-      var raw_search_data = complex_search['raw_search_data'];
-
-      this.consumedStack.push(searchType);
-      this.consumedStack.push(searchId);
       
-      var uriStack = _.result(complex_search,'uriStack',[]);
-      
-      url = [resource.apiUri, searchType, searchId].join('/');
-      console.log('search url: ', url, raw_search_data);
-      var Collection = Iccbl.MyCollection.extend({
-        url: url,
-        fetch: function(options){
-          var options = options || {};
-          // Encode for the post_data arg; post data elements are sent 
-          // as urlencoded values via a POST form
-          options.data = _.extend({}, options.data);
-          // NOTE: for future implementation; use JSON.stringify if sending the
-          // structured "search_data" instead of "raw_search_data"
-          options.data['raw_search_data'] = raw_search_data;
-          options.type = 'POST';
-          return Iccbl.MyCollection.prototype.fetch.call(this, options);
+      function showView(schemaResult){
+        // Update the current resource and fields:
+        // TODO: modify the api: sirna, rna resource schema with default visibilities
+        // - current resource prop and field definitions override the new 
+        // definitions, if defined, but the new fields are used if not.
+        var newFields = _.extend({}, schemaResult['fields'], resource['fields'])
+        var newResource = _.extend({}, schemaResult, resource );
+        newResource['fields'] = newFields;
+        
+        var url = newResource.apiUri;
+        
+        var includes = [];
+        if (newResource.key == 'compound_search'){
+          url += '/compound_search';
+          // FIXME: hack to add columns; fix is to implement sirna/smr resource
+          // schema as superset of reagent schema
+          newResource['options']['includes'] = [
+           'inchi','smiles','structure_image','molecular_formula',
+           'molecular_mass','molecular_weight','pubchem_cid','chembank_id',
+           'chembl_id'];
         }
-      });
-      var collection = new Collection();
-      
-      function showView(newResource){
-        console.log('got new resource:', newResource, resource);
+        
+        var viewOptions = {
+          url: url,
+          resource: newResource, 
+          extraControls: extraControls
+        };
+        
+        // If Complex Search, then search data are sent as a post header
+        if (_.has(complex_search, appModel.API_PARAM_SEARCH_ID)){
+          var searchId = complex_search[appModel.API_PARAM_SEARCH_ID];
+          self.consumedStack.push(appModel.URI_PATH_COMPLEX_SEARCH);
+          self.consumedStack.push(searchId);
+          url += '/' + [appModel.URI_PATH_COMPLEX_SEARCH, searchId].join('/');
+          
+          uriStack = _.result(complex_search,'uriStack',[]);
+          viewOptions['uriStack'] = uriStack;
+          // NOTE: setting API_PARAM_SEARCH on the list options:
+          // - for libraryCopyPlate.js
+          // TODO: 20180312 - refactor list.js to process complex search
+          viewOptions[appModel.API_PARAM_SEARCH] = 
+            complex_search[appModel.API_PARAM_SEARCH];
+          // Set up the collection add extra API_PARAM_SEARCH to POST data
+          var Collection = Iccbl.MyCollection.extend({
+            url: url,
+            fetch: function(options){
+              var options = options || {};
+              options.data = _.extend({}, options.data);
+              options.data[appModel.API_PARAM_SEARCH] = 
+                complex_search[appModel.API_PARAM_SEARCH];
+              options.type = 'POST';
+              return Iccbl.MyCollection.prototype.fetch.call(this, options);
+            }
+          });
+          var collection = new Collection();
+          viewOptions['collection'] = collection;
+        } else {
+          self.consumedStack.push(appModel.URI_PATH_ENCODED_SEARCH);
+          self.consumedStack.push(complex_search[appModel.API_PARAM_SEARCH]);
+          viewOptions[appModel.API_PARAM_ENCODED_SEARCH] = 
+            complex_search[appModel.API_PARAM_SEARCH];
+          fetchType = 'GET';
+          uriStack = _.result(complex_search,'uriStack',[]);
+          viewOptions['uriStack'] = uriStack;
+          // Set up the collection to add extra API_PARAM_SEARCH to GET data
+          var Collection = Iccbl.MyCollection.extend({
+            url: url,
+            fetch: function(options){
+              var options = options || {};
+              options.data = _.extend({}, options.data);
+              options.data[appModel.API_PARAM_SEARCH] = 
+                complex_search[appModel.API_PARAM_SEARCH];
+              options.type = 'GET';
+              return Iccbl.MyCollection.prototype.fetch.call(this, options);
+            }
+          });
+          var collection = new Collection();
+          viewOptions['collection'] = collection;
+        }
+  
         
         var extraControls = [];
+        var $modifySearch = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="modify_search_button" ',
+          'href="#">',
+          'Modify Search</a>'
+        ].join(''));
+        extraControls.push($modifySearch);
+        $modifySearch.click(function(e){
+          e.preventDefault();
+          self.showSearch(newResource, complex_search);
+        });
+        viewOptions['extraControls'] = extraControls;
+        var view = new viewClass(viewOptions);
         
-        // Special button to modifiy the reagent search
-        // TODO: implement this for other searches, if raw_search_data is complex/large
-        if (resource.key == 'reagent' || resource.key == 'librarycopyplate'){
-          var $modifySearch = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="modify_search_button" ',
-            'href="#">',
-            'Modify Search</a>'
-          ].join(''));
-          extraControls.push($modifySearch);
-          $modifySearch.click(function(e){
-            e.preventDefault();
-            self.showSearch(resource, searchType, raw_search_data);
-          });
-        }
-        
-        var view = new viewClass({ 
-            uriStack: uriStack,
-            resource: newResource, 
-            collection: collection, 
-            raw_search_data: raw_search_data,
-            extraControls: extraControls
-          });
-        this.$('#content_title_row').show();
-        
+        self.$('#content_title_row').show();
+          
         self.listenTo(view, 'update_title', function(val){
           if(val) {
-            this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+            self.$('#content_title').html(newResource.title + ': <small>' + val + '</small>');
           }else{
-            this.$('#content_title').html(resource.title);
+            self.$('#content_title').html(newResource.title);
           }
         });
-      
+        
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         Backbone.Layout.setupView(view);
         self.setView('#content', view ).render();
         self.objects_to_destroy.push(view);
-        
-      }
-      var schemaUrl = resource.apiUri + '/schema?search='+ searchId;
+      }; // showView
+      
+      var schemaUrl = resource.apiUri + '/schema';
       appModel.getResourceFromUrl(schemaUrl, showView);
-
+      
       // FIXME: should return a deferred call
       //      return null;
-      
     },
-    
-//    /**
-//     * Create a list view using the stateful searchId given on the uriStack.
-//     * Search data will be POSTed as "raw_search_data"
-//     * NOTE: removed "search_data" - (nested_search_data) 20170515;
-//     * - nested_search_data must be sent with each request
-//     * - TODO: support for large nested_search_data via same mechanism
-//     */
-//    createListSearchViewOld: function(resource, viewClass, uriStack){
-//      console.log('createListSearchView...')
-//      var self = this;
-//      var url;
-//      var searchId;
-//      var raw_search_data;
-//
-//      var searchType = uriStack.shift();
-//      this.consumedStack.push(searchType);
-//      searchId = uriStack.shift();
-//      this.consumedStack.push(searchId);
-//      raw_search_data = appModel.getSearch(searchId);
-//      
-//      // NOTE: 20170412 - API client search data is sent as "raw_search_data"; 
-//      // - not structured and parsed
-//      // -- supported for the well and the librarycopyplate (and library screening)
-//      // resources.
-//      // - the API will also support parsed "search_data"; which is in the 
-//      // form [dict1,dict2,dict3...]; where each dictN is a hash of valid 
-//      // field name search specifiers (each dict specifies an AND clause, and 
-//      // each dict is OR'd). See appModel.createCommentTable for an example.
-//      
-//      if(_.isUndefined(raw_search_data) || _.isEmpty(raw_search_data)){
-//        var msg = 'Content List search requires a "raw_search_data:'
-//          +searchId +'" in current browser state';
-//        console.log(msg);
-//        appModel.error(msg);
-//        return;
-//      }
-//      
-//      var resources_supporting_raw_search = ['well','reagent','librarycopyplate'];
-//        
-//      if (!_.contains(resources_supporting_raw_search,resource.key)){
-//        throw "search data not supported for resource: " + resource.key + 
-//          ', must be one of: ' + resources_supporting_raw_search.join(',');
-//      }
-//      
-//      url = [resource.apiUri, searchType, searchId].join('/');
-//      console.log('search url: ', url, raw_search_data);
-//      var Collection = Iccbl.MyCollection.extend({
-//        url: url,
-//        fetch: function(options){
-//          var options = options || {};
-//          // Encode for the post_data arg; post data elements are sent 
-//          // as urlencoded values via a POST form
-//          options.data = _.extend({}, options.data);
-//          // NOTE: for future implementation; use JSON.stringify if sending the
-//          // structured "search_data" instead of "raw_search_data"
-//          options.data['raw_search_data'] = raw_search_data;
-//          options.type = 'POST';
-//          return Iccbl.MyCollection.prototype.fetch.call(this, options);
-//        }
-//      });
-//      var collection = new Collection();
-//      
-//      function showView(newResource){
-//        console.log('got new resource:', newResource, resource);
-//        
-//        var extraControls = [];
-//        
-//        // Special button to modifiy the reagent search
-//        // TODO: implement this for other searches, if raw_search_data is complex/large
-//        if (resource.key == 'reagent' || resource.key == 'librarycopyplate'){
-//          var $modifySearch = $([
-//            '<a class="btn btn-default btn-sm pull-down" ',
-//            'role="button" id="modify_search_button" ',
-//            'href="#">',
-//            'Modify Search</a>'
-//          ].join(''));
-//          extraControls.push($modifySearch);
-//          $modifySearch.click(function(e){
-//            e.preventDefault();
-//            self.showSearch(resource, searchType, raw_search_data);
-//          });
-//        }
-//        
-//        var view = new viewClass({ 
-//            uriStack: uriStack,
-//            resource: newResource, 
-//            collection: collection, 
-//            raw_search_data: raw_search_data,
-//            extraControls: extraControls
-//          });
-//        this.$('#content_title_row').show();
-//        
-//        self.listenTo(view, 'update_title', function(val){
-//          if(val) {
-//            this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
-//          }else{
-//            this.$('#content_title').html(resource.title);
-//          }
-//        });
-//      
-//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//        Backbone.Layout.setupView(view);
-//        self.setView('#content', view ).render();
-//        self.objects_to_destroy.push(view);
-//        
-//      }
-//      var schemaUrl = resource.apiUri + '/schema?search='+ searchId;
-//      appModel.getResourceFromUrl(schemaUrl, showView);
-//
-//      // FIXME: should return a deferred call
-//      //      return null;
-//    },
     
     /** 
      * Show/modify the reagent search list view 
      **/
-    showSearch: function(resource, searchType, raw_search_data) {
+    showSearch: function(resource, complex_search) {
+      console.log('modify search:', resource.key, complex_search);
+
+      function parse(value, errors){
+        var parsedData;
+        if(resource.key == 'well' || resource.key == 'reagent'){
+          parsedData = Iccbl.parseRawWellSearch(value, errors);
+        }else if (resource.key == 'compound_search'){
+          parsedData = Iccbl.parseCompoundVendorIDSearch(value,errors);
+        }else if (resource.key == 'librarycopyplate'){
+          parsedData = Iccbl.parseRawPlateSearch(value,errors);
+        }else{
+          throw 'Unknown search resource: ' + resource.key;
+        }
+          
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        return parsedData;
+      };
+      
+      function validateSearch(value,formValues){
+        var errors = [];
+        var parsedData = parse(value, errors);
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'searchVal',
+            message: errors.join('; ')
+          };
+        }
+      };
+      function processSearch(text_to_search){
+        var errors;
+        if(resource.key == 'well' || resource.key == 'reagent'){
+          errors = SearchBox.prototype.processWellSearch.call(this, text_to_search);
+        }else if (resource.key == 'compound_search'){
+          errors = SearchBox.prototype.processCompoundSearch.call(this, text_to_search);
+        }else if (resource.key == 'librarycopyplate'){
+          errors = SearchBox.prototype.processCopyPlateSearch.call(this,text_to_search);
+        }else{
+          throw 'Unknown search resource: ' + resource.key;
+        }
+        if (errors){
+          throw 'Unexpected error on submit: ' + errors.join(', ');
+        }
+      };
       var schema = {
-        search_data: {
+        searchVal: {
           title: 'Search Data',
-          key: 'search_data',
+          key: 'searchVal',
           type: Backbone.Form.editors.TextArea.extend({
               initialize: function() {
                 Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
@@ -504,23 +483,40 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               }
           }),
           editorClass: 'input-full',
-          validators: ['required'],
+          validators: ['required', validateSearch],
           template: appModel._field_template //altFieldTemplate
         }
       };
+
+      var search_text = complex_search[appModel.API_PARAM_SEARCH];
+      var errors = [];
+      var parsedData = parse(search_text, errors);
+      if (!_.isEmpty(errors)){
+        throw 'errors in parsed search:' + errors.join(', ');
+      } else {
+        search_text = _.map(parsedData, function(parsedLine){
+          if (_.has(parsedLine, 'combined')){
+            return parsedLine.combined.join(' ');
+          }else{
+            return parsedLine;
+          }
+        }).join('\n');
+      }
       var FormFields = Backbone.Model.extend({
         schema: schema
       });
       var formFields = new FormFields({
-        search_data: raw_search_data
+        searchVal: search_text
       });
       var form = new Backbone.Form({
         model: formFields,
-        template: self._form_template //_.template(form_template.join(''))
+        template: appModel._form_template //_.template(form_template.join(''))
       });
       var _form_el = form.render().el;
+      var title = 'Search for ' + resource.title;
+      
       appModel.showModal({
-        title: 'Search for ' + resource.title,
+        title: title,
         view: _form_el,
         ok: function() {
           var errors = form.commit();
@@ -528,12 +524,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             console.log('form errors, abort submit: ' + JSON.stringify(errors));
             return false;
           }
-          var searchId = ( new Date() ).getTime();
-          appModel.setSearch(searchId,form.getValue()['search_data']);
-          this.searchId = searchId;
-          appModel.set('routing_options', {replace: false});  
-          var _route = [resource.key, searchType, searchId].join('/');
-          appModel.router.navigate(_route, {trigger:true});
+          
+          processSearch(form.getValue()['searchVal']);
         } 
       });
     },

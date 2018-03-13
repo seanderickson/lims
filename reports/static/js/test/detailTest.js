@@ -227,7 +227,7 @@ define([
                  'groups'].join('/');
       view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        resource: resource.schema,
         resource: resource,
         url: url
       });

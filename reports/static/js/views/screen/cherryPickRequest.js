@@ -694,7 +694,6 @@ define([
         var view = new ListView({ 
           collection: collection,
           uriStack: _.clone(delegateStack),
-          schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: extraControls
@@ -1318,7 +1317,6 @@ define([
 
       var view = new ListViewSelect({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         row: SelectedLcpRow,
@@ -2335,7 +2333,6 @@ define([
       
       var view = new ListViewSelect({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: schemaResult,
         resource: schemaResult,
         url: url,
         extraControls: extraControls,

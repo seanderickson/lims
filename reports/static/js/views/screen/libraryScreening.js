@@ -184,7 +184,6 @@ define([
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
@@ -229,7 +228,6 @@ define([
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: [],
@@ -583,8 +581,7 @@ define([
               console.log('search_value', search_value);
               
               var data = new FormData();
-              //data.append('raw_search_data', JSON.stringify(search_value));
-              data.append('raw_search_data', search_value);
+              data.append(appModel.API_PARAM_SEARCH, search_value);
               data.append(
                 'volume_required', 
                 self_editform.getValue('volume_transferred_per_well_from_library_plates'));

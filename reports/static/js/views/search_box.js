@@ -11,11 +11,12 @@ define([
 ], function($, _, Backbone, backbone_forms, Iccbl, appModel, EditView, 
     PlateRangeSearchView, searchBoxTemplate) {
     
+//  var PARAM_RAW_SEARCH = appModel.API_PARAM_RAW_SEARCH;
   
   var SearchView = Backbone.Layout.extend({
 
     template: _.template(searchBoxTemplate),
-
+    
     formTemplate: _.template([
         "<form class='iccbl-headerfield-form' ",
         ">",
@@ -51,7 +52,22 @@ define([
       console.log('---- initialize search_box');
 
       var args = args || {};
-
+      function validateWellSearch(value,formValues){
+        var errors = [];
+        var parsedData = Iccbl.parseRawWellSearch(value, errors);
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'searchVal',
+            message: errors.join('; ')
+          };
+        }
+      };
+      
       var schema3 = {};
       function validatePlateSearch(value, formValues){
         var errors = [];
@@ -63,14 +79,14 @@ define([
         }
         if (!_.isEmpty(errors)){
           return {
-            type: 'copyplate',
+            type: 'searchVal',
             message: errors.join('; ')
           };
         }
       };
-      schema3['copyplate'] = {
+      schema3['searchVal'] = {
         title: 'Search for Plate & Copy',
-        key: 'copyplate',
+        key: 'searchVal',
         help: 'enter a comma separated list',
         placeholder: 'e.g. 1000-1005 B\n2000 C',
         validators: ['required',validatePlateSearch],
@@ -96,12 +112,12 @@ define([
       
       ///// Well search
       var schema2 = {};
-      schema2['well'] = {
+      schema2['searchVal'] = {
         title: 'Search for 384-well Plate Wells',
-        key: 'well',
+        key: 'searchVal',
         help: 'enter a comma separated list',
         placeholder: 'e.g. 1000 A08,A09,A10\n1740:D12',
-        validators: ['required'],
+        validators: ['required',validateWellSearch],
         type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
@@ -127,8 +143,8 @@ define([
       schema2a['searchVal'] = {
         title: 'Compound Name or Vendor ID',
         key: 'searchVal',
-        help: 'enter a comma separated list',
-        placeholder: 'enter a comma or newline separated list of identifiers',
+        help: 'enter each compound name or vendor ID on a separate line',
+        placeholder: 'enter each compound name or vendor ID on a separate line',
         validators: ['required'],
         type: EditView.TextArea2,
         template: self.fieldTemplate,
@@ -162,14 +178,14 @@ define([
         }
         if (!_.isEmpty(errors)){
           return {
-            type: 'screening_inquiry',
+            type: 'searchVal',
             message: errors.join('; ')
           };
         }
       };
-      schema5['screening_inquiry'] = {
+      schema5['searchVal'] = {
         title: 'Screening Inquiry',
-        key: 'screening_inquiry',
+        key: 'searchVal',
         help: 'Enter a screening inquiry',
         placeholder: 'e.g. (Screen #) 1000-2000,2015,3017 100 nL x 2',
         validators: ['required',validateScreeningInquiry],
@@ -195,9 +211,9 @@ define([
       
       ///// Cherry Pick Request
       var schema4 = {};
-      schema4['cpr'] = {
+      schema4['searchVal'] = {
         title: 'CPR #',
-        key: 'cpr',
+        key: 'searchVal',
         help: 'enter a Cherry Pick ID',
         placeholder: 'e.g. 44443',
         key:  'search_value', // TODO: "key" not needed>?
@@ -344,16 +360,16 @@ define([
         });
       });
       if (this.form2_data){
-        this.form2.setValue('well', this.form2_data);
+        this.form2.setValue('searchVal', this.form2_data);
       }
       if (this.form2a_data){
         this.form2a.setValue('searchVal', this.form2a_data);
       }
       if (this.form3_data){
-        this.form3.setValue('copyplate', this.form3_data);
+        this.form3.setValue('searchVal', this.form3_data);
       }
       if (this.form5_data){
-        this.form5.setValue('screening_inquiry', this.form5_data);
+        this.form5.setValue('searchVal', this.form5_data);
       }
     },
     
@@ -401,44 +417,16 @@ define([
         e.preventDefault();
         var errors = form3.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          console.log('form3 errors, abort submit: ' + JSON.stringify(errors));
-          $form3.find('[name="copyplate"]').addClass(self.errorClass);
+          $form3.find('[name="searchVal"]').addClass(self.errorClass);
           return;
         }else{
-          $form3.find('[name="copyplate"]').removeClass(self.errorClass);
+          $form3.find('[name="searchVal"]').removeClass(self.errorClass);
         }
-        var text_to_search = self.form3.getValue('copyplate');
-        errors = [];
-        var parsedSearchArray = Iccbl.parseRawPlateSearch(text_to_search,errors);
+        var errors = self.processCopyPlateSearch(self.form3.getValue('searchVal'));
         if (!_.isEmpty(errors)){
-          throw Exception('Unexpected errors after submit:', errors);
+          throw 'Unexpected errors after submit: ' + errors.join(', ');
         }
-        var resource = appModel.getResource('librarycopyplate');
-        if (parsedSearchArray.length <= 5){
-          // encode simple searches as a URL param
-          var encodedPlateSearches = [];
-          _.each(parsedSearchArray, function(parsedPlateSearch){
-            encodedPlateSearches.push(_.map(
-              parsedPlateSearch.combined, encodeURIComponent).join(','));
-          });
-          var uriStack = [resource.key, 'search', 
-            'raw_search_data='+ encodedPlateSearches.join(encodeURIComponent(';'))];
-          console.log('route: ', uriStack);
-          appModel.router.navigate(uriStack.join('/'), {trigger:true});
-        }else{
-          // Send complex search data as a POST
-          // must change the route, and create a post
-          // TODO: key the search data using the searchId: 
-          // this allows for browser "back" in the session
-          // will also need to listen to URIStack changes and grab the data
-          // from the search ID
-          var searchId = ( new Date() ).getTime();
-          appModel.setSearch(searchId,text_to_search);
-          this.searchId = searchId;
-          appModel.set('routing_options', {replace: false});  
-          var _route = resource.key + '/search/'+ searchId;
-          appModel.router.navigate(_route, {trigger:true});
-        }
+          
       });      
       
       ///// Well/Reagent search 2 - perform search on server
@@ -454,31 +442,16 @@ define([
         e.preventDefault();
         var errors = form2.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          console.log('form2 errors, abort submit: ' + JSON.stringify(errors));
-          $form2.find('[name="well"]').addClass(self.errorClass);
-          // FIXME: add errors to the form
+          $form2.find('[name="searchVal"]').addClass(self.errorClass);
           return;
         }else{
-          $form2.find('[name="well"]').removeClass(self.errorClass);
+          $form2.find('[name="searchVal"]').removeClass(self.errorClass);
         }
-        var text_to_search = self.form2.getValue()['well'];
-        // must change the route, and create a post
         
-        var searchId = ( new Date() ).getTime();
-        appModel.setSearch(searchId,text_to_search);
-        this.searchId = searchId;
-        appModel.set('routing_options', {replace: false});  
-        // Use the router to process the search: see content.js for handler
-        var resource = appModel.getResource('reagent');
-        var _route = [
-          resource.key, appModel.API_PARAM_RAW_SEARCH, 
-          searchId].join('/');
-        appModel.router.navigate(_route, {trigger:true});
-        // var newStack = [resource.key,'search',searchId];
-        // NOTE: easier to control the router history using navigate: 
-        // when using uristack, there is the problem of who set appModel.routing_options last:
-        // a race condition is set up between list2.js and search_box.js
-        //        appModel.set({'uriStack': newStack});     
+        var errors = self.processWellSearch(self.form2.getValue('searchVal'));
+        if (!_.isEmpty(errors)){
+          throw 'Unexpected errors after submit: ' + errors.join(', ');
+        }
       });      
 
       ///// Compound name, Vendor ID search- perform search on server
@@ -494,31 +467,15 @@ define([
         e.preventDefault();
         var errors = form2a.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          console.log('form2a errors, abort submit: ' + JSON.stringify(errors));
           $form2a.find('[name="searchVal"]').addClass(self.errorClass);
-          // FIXME: add errors to the form
           return;
         }else{
           $form2a.find('[name="searchVal"]').removeClass(self.errorClass);
         }
-        var text_to_search = self.form2a.getValue()['searchVal'];
-        // must change the route, and create a post
-        
-        var searchId = ( new Date() ).getTime();
-        appModel.setSearch(searchId,text_to_search);
-        this.searchId = searchId;
-        appModel.set('routing_options', {replace: false});  
-        // Use the router to process the search: see content.js for handler
-        var resource = appModel.getResource('reagent');
-        var _route = [
-          resource.key, appModel.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH, 
-          searchId].join('/');
-        appModel.router.navigate(_route, {trigger:true});
-        // var newStack = [resource.key,'search',searchId];
-        // NOTE: easier to control the router history using navigate: 
-        // when using uristack, there is the problem of who set appModel.routing_options last:
-        // a race condition is set up between list2.js and search_box.js
-        //        appModel.set({'uriStack': newStack});     
+        var errors = self.processCompoundSearch(self.form2a.getValue()['searchVal']);
+        if (!_.isEmpty(errors)){
+          throw 'Unexpected errors after submit: ' + errors.join(', ');
+        }
       });      
       
       ///// Screening Inquiry
@@ -535,23 +492,24 @@ define([
           e.preventDefault();
           var errors = form5.commit({ validate: true }); 
           if(!_.isEmpty(errors)){
-            console.log('form5 errors, abort submit: ' + JSON.stringify(errors));
-            $form5.find('[name="screening_inquiry"]').addClass(self.errorClass);
+            $form5.find('[name="searchVal"]').addClass(self.errorClass);
             return;
           }else{
-            $form5.find('[name="screening_inquiry"]').removeClass(self.errorClass);
+            $form5.find('[name="searchVal"]').removeClass(self.errorClass);
           }
   
-          var searchValue = form5.getValue('screening_inquiry');
-          var errorArray = [];
-          var parsedSearch = Iccbl.parseRawScreeningInquiry(searchValue,errorArray);
-          if (!_.isEmpty(errorArray)){
-            throw Exception('Unexpected errors after submit:', errorArray);
+          var searchValue = form5.getValue('searchVal');
+          var errors = [];
+          var parsedSearch = Iccbl.parseRawScreeningInquiry(searchValue,errors);
+          if (!_.isEmpty(errors)){
+            throw 'Unexpected errors after submit: ' + errors.join(', ');
           }
           var urlSearchParts = 
             PlateRangeSearchView.prototype.encodeFormData.call(this,parsedSearch);
+          // TODO: 20180312 - screening inquiry should use URI_PATH_ENCODED_SEARCH:
+          // rework to support list args
           var uriStack = ['screen', parsedSearch.screen_facility_id,
-                          'summary','plateranges','search',
+                          'summary','plateranges',appModel.URI_PATH_SEARCH,
                           urlSearchParts.join(appModel.SEARCH_DELIMITER)]
           console.log('route: ', uriStack);
           appModel.router.navigate(uriStack.join('/'), {trigger:true});
@@ -578,7 +536,7 @@ define([
           }else{
             $form4.find('#cpr').removeClass(self.errorClass);
           }
-          var cpr_id = self.form4.getValue()['cpr'];
+          var cpr_id = self.form4.getValue()['searchVal'];
           var resource = appModel.getResource('cherrypickrequest');
           var _route = ['#', resource.key,cpr_id].join('/');
           appModel.set('routing_options', {replace: false});  
@@ -600,10 +558,12 @@ define([
       var self=this;
       self.cleanup();
       var uriStack = _.clone(appModel.get('uriStack'));
+      
+      console.log('uriStackChange', arguments, uriStack);
       var uiResourceId = uriStack.shift();
 
       var complex_search = appModel.findComplexSearch(uriStack);
-      
+      console.log('complex search', complex_search);
       if (!_.isEmpty(complex_search)){
         if (_.has(complex_search,'search_id') 
             && complex_search['search_id']== this.searchId){
@@ -618,7 +578,7 @@ define([
         console.log('complex search found:', complex_search);
         if (uiResourceId=='librarycopyplate'){
           var errors = [];
-          var search_data = complex_search['raw_search_data'];
+          var search_data = complex_search[appModel.API_PARAM_SEARCH];
           var parsedData = Iccbl.parseRawPlateSearch(search_data,errors);
           if (!_.isEmpty(errors)){
             console.log('Search data not parsed properly', errors);
@@ -627,21 +587,26 @@ define([
           parsedData = _.map(parsedData, function(parsedLine){
             return parsedLine.combined.join(' ');
           }).join('\n');
-          this.form3.setValue('copyplate', parsedData);
+          this.form3.setValue('searchVal', parsedData);
           // form3 may not be rendered yet, store the value
           this.form3_data = parsedData;
         }else if (uiResourceId == 'reagent') {
-          var raw_search_data = complex_search['raw_search_data'];
-          var search_type = complex_search['search_type'];
-          if (search_type== appModel.API_PARAM_RAW_SEARCH){
-            this.form2.setValue('well', raw_search_data);
-            // form2 may not be rendered yet, store the value
-            this.form2_data = raw_search_data;
-          }else if (search_type == appModel.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH){
-            this.form2a.setValue('searchVal', search_data);
-            // form2 may not be rendered yet, store the value
-            this.form2a_data = raw_search_data;
+          var errors = [];
+          var search_data = complex_search[appModel.API_PARAM_SEARCH];
+          var parsedData = Iccbl.parseRawWellSearch(search_data,errors);
+          if (!_.isEmpty(errors)){
+            console.log('Search data not parsed properly', errors);
+            return;
           }
+          parsedData = _.map(parsedData, function(parsedLine){
+            return parsedLine.combined.join(' ');
+          }).join('\n');
+          this.form2.setValue('searchVal', parsedData);
+          // form3 may not be rendered yet, store the value
+          this.form2_data = parsedData;
+        }else if (uiResourceId == 'compound_search') {
+          this.form2a.setValue('searchVal', complex_search[appModel.API_PARAM_SEARCH]);
+          this.form2a_data = complex_search[appModel.API_PARAM_SEARCH];
         } else {
           throw 'unknown resource for search: ' + uiResourceId;
         }
@@ -650,8 +615,10 @@ define([
       else if (self.form5 && uiResourceId == 'screen') {
         var screenId = uriStack.shift();
         if (_.contains(uriStack, 'plateranges')){
-          if (_.contains(uriStack,'search')){
-            var index = _.indexOf(uriStack,'search');
+          // TODO: 20180312 - screening inquiry: using URI_PATH_SEARCH: 
+          // convert to URI_PATH_ENCODED_SEARCH; rework to enable list args
+          if (_.contains(uriStack,appModel.URI_PATH_SEARCH)){
+            var index = _.indexOf(uriStack,appModel.URI_PATH_SEARCH);
             var searchData = uriStack[index+1];
             var search_data = decodeURIComponent(searchData);
             
@@ -667,7 +634,7 @@ define([
             parsedData += plateRangeSearchData.plate_search;
             parsedData += ' ' + si_formatter.fromRaw(plateRangeSearchData.volume_required);
             parsedData += ' x' + plateRangeSearchData.replicate_count;
-            self.form5.setValue('screening_inquiry',parsedData);
+            self.form5.setValue('searchVal',parsedData);
             // form2 may not be rendered yet, store the value
             self.form5_data = parsedData;
           }
@@ -675,135 +642,118 @@ define([
         return;
       } // not screen/plate ranges
 
-    
-    
     },
     
-//    uriStackChangeOld: function(model, val, options) {
-//      var self=this;
-//      self.cleanup();
-//      var uriStack = _.clone(appModel.get('uriStack'));
-//      var uiResourceId = uriStack.shift();
-//
-//      var param_raw_search = appModel.API_PARAM_RAW_SEARCH;
-//      var param_vendor_cn_search = appModel.API_PARAM_RAW_VENDOR_COMPOUND_NAME_SEARCH;
-//      if (_.contains(uriStack,param_raw_search) 
-//          || _.contains(uriStack,param_vendor_cn_search)){
-//        var index = _.indexOf(uriStack,param_raw_search);
-//        if (index < 0) index = _.indexOf(uriStack,param_vendor_cn_search);
-//        var searchType = uriStack[index]
-//        var searchData = uriStack[index+1];
-//        
-//        // Test the search data as a simple search ("raw_search_data" param is
-//        // set as a URI param).
-//        if (searchData.indexOf('raw_search_data') > -1){
-//          var search_data = decodeURIComponent(searchData.split('=')[1]);
-//          console.log('setup search box for search data', search_data);
-//          if (uiResourceId=='librarycopyplate'){
-//            var errors = [];
-//            var parsedData = Iccbl.parseRawPlateSearch(search_data,errors);
-//            if (!_.isEmpty(errors)){
-//              console.log('Search data not parsed properly', errors);
-//              return;
-//            }
-//            parsedData = _.map(parsedData, function(parsedLine){
-//              return parsedLine.combined.join(' ');
-//            }).join('\n');
-//            this.form3.setValue('copyplate', parsedData);
-//            // form3 may not be rendered yet, store the value
-//            this.form3_data = parsedData;
-//          }else if (uiResourceId == 'reagent') {
-//            // TODO: "raw_search_data" not implemented yet for well/reagent 20170516
-//            if (searchType == param_raw_search){
-//              this.form2.setValue('well', search_data);
-//              // form2 may not be rendered yet, store the value
-//              this.form2_data = search_data;
-//            }else if (searchType == param_vendor_cn_search){
-//              this.form2a.setValue('well', search_data);
-//              // form2 may not be rendered yet, store the value
-//              this.form2a_data = search_data;
-//            }
-//          }
-//          return;
-//        } // not raw_search_data
-//        
-//        if (self.form5 && uiResourceId == 'screen') {
-//          var screenId = uriStack.shift();
-//          if (_.contains(uriStack, 'plateranges')){
-//            if (_.contains(uriStack,'search')){
-//              var index = _.indexOf(uriStack,'search');
-//              var searchData = uriStack[index+1];
-//              var search_data = decodeURIComponent(searchData);
-//              
-//              var errors = [];
-//              var plateRangeSearchData = 
-//                Iccbl.parseScreeningInquiryURLParam(search_data, errors);
-//              if (!_.isEmpty(errors)){
-//                console.log('Search data not parsed properly', errors);
-//                return;
-//              }
-//              var si_formatter = new Iccbl.SIUnitsFormatter({ symbol: 'L' });
-//              parsedData = '(' + screenId + ') ';
-//              parsedData += plateRangeSearchData.plate_search;
-//              parsedData += ' ' + si_formatter.fromRaw(plateRangeSearchData.volume_required);
-//              parsedData += ' x' + plateRangeSearchData.replicate_count;
-//              self.form5.setValue('screening_inquiry',parsedData);
-//              // form2 may not be rendered yet, store the value
-//              self.form5_data = parsedData;
-//            }
-//          }
-//          return;
-//        } // not screen/plate ranges
-//        
-//        // Otherwise, test the searchData as a searchId for a complex search.
-//        
-//        if(searchData == this.searchId){
-//          console.log('self generated uristack change');
-//          return;
-//        }
-//        if(searchData && _.isNaN(parseInt(searchData))){
-//          console.log('search ID is not a valid number: ' + searchData);
-//          return;
-//        }
-//        var searchId = searchData;
-//        var search_data = appModel.getSearch(searchId);
-//        if(_.isUndefined(search_data) || _.isEmpty(search_data)){
-//          var msg = 'Search box requires a "search_data:'+searchId +'" in current browser state';
-//          console.log(msg);
-//          return;
-//        }else{
-//          
-//          console.log('setup search box for search data', search_data);
-//          if (uiResourceId=='librarycopyplate'){
-//            this.form3.setValue('copyplate', search_data);
-//            // form3 may not be rendered yet, store the value
-//            this.form3_data = search_data;
-//            this.searchId = searchId;
-//          }else if (uiResourceId == 'reagent') {
-//            if (searchType == param_raw_search){
-//              this.form2.setValue('well', search_data);
-//              // form2 may not be rendered yet, store the value
-//              this.form2_data = search_data;
-//            }else if (searchType == param_vendor_cn_search){
-//              this.form2a.setValue('well', search_data);
-//              // form2 may not be rendered yet, store the value
-//              this.form2a_data = search_data;
-//            }
-//          }
-//        }
-//      }else{
-//        console.log('No search found: Search box requires the "search/[searchId]" param');
-//        return;
-//      }
-//    },
+    processCopyPlateSearch: function(text_to_search){
+      errors = [];
+      var parsedSearchArray = Iccbl.parseRawPlateSearch(text_to_search,errors);
+      if (!_.isEmpty(errors)){
+        return errors;
+      }
+      var resource = appModel.getResource('librarycopyplate');
+      if (parsedSearchArray.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
+        // encode simple searches as a URL param
+        var encodedPlateSearches = [];
+        _.each(parsedSearchArray, function(parsedPlateSearch){
+          encodedPlateSearches.push(_.map(
+            parsedPlateSearch.combined, encodeURIComponent).join(','));
+        });
+        var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
+          encodedPlateSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
+        console.log('route: ', uriStack);
+        appModel.router.navigate(uriStack.join('/'), {trigger:true});
+      }else{
+        // Send complex search data as a POST
+        // must change the route, and create a post
+        // TODO: key the search data using the searchId: 
+        // this allows for browser "back" in the session
+        // will also need to listen to URIStack changes and grab the data
+        // from the search ID
+        var searchId = ( new Date() ).getTime();
+        appModel.setSearch(searchId,text_to_search);
+        this.searchId = searchId;
+        appModel.set('routing_options', {replace: false});  
+        var _route = [
+          resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
+          searchId].join('/');
+        appModel.router.navigate(_route, {trigger:true});
+      }
+    },
+    
+    processWellSearch: function(text_to_search){
+      errors = [];
+      var parsedSearchArray = Iccbl.parseRawWellSearch(text_to_search,errors);
+      if (!_.isEmpty(errors)){
+        return errors;
+      }
+      var resource = appModel.getResource('reagent');
+      if (parsedSearchArray.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
+        // encode simple searches as a URL param
+        var encodedSearches = [];
+        _.each(parsedSearchArray, function(parsedSearch){
+          encodedSearches.push(_.map(
+            parsedSearch.combined, encodeURIComponent).join(','));
+        });
+        var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
+          encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
+        console.log('route: ', uriStack);
+        appModel.router.navigate(uriStack.join('/'), {trigger:true});
+      }else{
+        // must change the route, and create a post
+        var searchId = ( new Date() ).getTime();
+        appModel.setSearch(searchId,text_to_search);
+        this.searchId = searchId;
+        appModel.set('routing_options', {replace: false});  
+        // Use the router to process the search: see content.js for handler
+        var resource = appModel.getResource('reagent');
+        var _route = [
+          resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
+          searchId].join('/');
+        appModel.router.navigate(_route, {trigger:true});
+        // var newStack = [resource.key,'search',searchId];
+        // NOTE: easier to control the router history using navigate: 
+        // when using uristack, there is the problem of who set appModel.routing_options last:
+        // a race condition is set up between list2.js and search_box.js
+        //        appModel.set({'uriStack': newStack});     
+      }
+      
+    },
+    
+    processCompoundSearch: function(text_to_search){
+      errors = [];
+      var parsedSearchArray = Iccbl.parseCompoundVendorIDSearch(text_to_search,errors);
+      if (!_.isEmpty(errors)){
+        return errors;
+      }
+      var resource = appModel.getResource('compound_search');
+      if (parsedSearchArray.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
+        var encodedSearches = _.map(parsedSearchArray,encodeURIComponent);
+        var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
+          encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
+        appModel.router.navigate(uriStack.join('/'), {trigger:true});
+      }else{
+        // must change the route, and create a post
+        var parsedSearches = text_to_search.split('')
+        var searchId = ( new Date() ).getTime();
+        appModel.setSearch(searchId,text_to_search);
+        this.searchId = searchId;
+        appModel.set('routing_options', {replace: false});  
+        // Use the router to process the search: see content.js for handler
+        var resource = appModel.getResource('compound_search');
+        var _route = [
+          resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
+          searchId].join('/');
+        appModel.router.navigate(_route, {trigger:true});
+      }
+    },
     
     // Backbone layoutmanager callback
     cleanup: function(){
-      this.form3.setValue('copyplate', null);
-      this.form2.setValue('well', null);
+      this.form3.setValue('searchVal', null);
+      this.form2.setValue('searchVal', null);
       this.form2a.setValue('searchVal', null);
-      this.form4.setValue('cpr', null);
-      this.form5.setValue('screening_inquiry', null)
+      this.form4.setValue('searchVal', null);
+      this.form5.setValue('searchVal', null)
     },
     
   });

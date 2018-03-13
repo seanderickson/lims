@@ -133,7 +133,7 @@
         "url_root": "/db/api/v1",
         "description": "View small molecule screen information",
         "options": { 
-          "search": { "screen_type__in": "small_molecule",
+          "search": { "screen_type": "small_molecule",
                       "study_type__is_null": true
                     }
         }
@@ -148,7 +148,7 @@
         "url_root": "/db/api/v1",
         "description": "View rnai screen information",
         "options": { 
-          "search": { "screen_type__in": "rnai",
+          "search": { "screen_type": "rnai",
                       "study_type__is_null": true }
         }
     },
@@ -280,6 +280,21 @@
       "options": { 
         "rpp_selections" : [24,96,384,1000],
         "rpp": 384,
+        "order": []  }
+    },
+    "compound_search": {
+      "key": "compound_search",
+      "header_message": "Compound Search",
+      "title": "Compounds",
+      "route": "list/reagent",
+      "listView": "LibraryWellsView",
+      "detailView": "LibraryWellView",
+      "api_resource": "reagent",
+      "url_root": "/db/api/v1",
+      "description": "Search for compounds",
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24,
         "order": []  }
     },
     "librarycopy": {

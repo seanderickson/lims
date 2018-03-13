@@ -20,7 +20,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     initialize: function(args) {
       this.args = args;
-      this.resource = args.resource;
+      this.resource = appModel.cloneResource(args.resource);
+      this.uriStack = args.uriStack;
     },
     
     /**
@@ -247,6 +248,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var self = this;
 
       function createReagentView(schemaResult) {
+        // Update the current resource and fields:
+        // - current resource prop and field definitions override the new 
+        // definitions, if defined, but the new fields are used if not.
+        var newFields = _.extend({}, schemaResult['fields'], self.resource['fields'])
+        var newResource = _.extend({}, schemaResult, self.resource );
+        newResource['fields'] = newFields;
+        
         var extraControls = [];
         var show_data_columns_control = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
@@ -267,9 +275,18 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         
-        var viewArgs = _.extend({},self.args,{resource: schemaResult});
+        var viewArgs = _.extend({},self.args,{resource: newResource});
 
         var view = new WellListView (viewArgs);
+        self.listenTo(view, 'update_title', function(val) {
+          if(val) {
+            self.$('#content_title').html(newResource.title + ': <small>' + val + '</small>');
+            $('#content_title_row').show();
+          } else {
+            self.$('#content_title').html(newResource.title);
+            $('#content_title_row').show();
+          }
+        });
           
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         Backbone.Layout.setupView(view);
@@ -298,7 +315,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var schemaUrl = [self.resource.apiUri,'schema'].join('/');
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
-        createReagentView(self.args.resource);
+        createReagentView(self.resource);
       }
       
     }

@@ -39,6 +39,18 @@
     },
     "activity":{
       "view": "list"
+    },
+    "reports": {
+      "expanded": false,
+      "view": "",
+      "submenus": {
+        "reagent":{
+          "view": "list"
+        },
+        "compound_search":{
+          "view": "list"
+        }
+      }
     }
   }
 }

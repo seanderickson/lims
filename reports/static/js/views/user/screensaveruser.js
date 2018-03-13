@@ -1217,7 +1217,6 @@ define([
       var collection = self.collection = new Collection();
       var view = new ListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: resource,
           resource: resource,
           url: url,
           collection: collection,
@@ -1340,7 +1339,6 @@ define([
                      'activities'].join('/');
           view = new ActivityListView({ 
             uriStack: _.clone(delegateStack),
-            schemaResult: activityResource,
             resource: activityResource,
             url: url,
             extraControls: extraControls
@@ -1454,7 +1452,7 @@ define([
 //                     'serviceactivities'].join('/');
 //          view = new ActivityListView({ 
 //            uriStack: _.clone(delegateStack),
-//            schemaResult: saResource,
+//            resource: saResource,
 //            resource: saResource,
 //            url: url,
 //            extraControls: extraControls
@@ -1522,7 +1520,6 @@ define([
       
       var view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: [uploadAttachedFileButton, showDeleteButton]
@@ -1802,7 +1799,6 @@ define([
       function displayUserChecklist(collection) {
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: resource,
           resource: resource,
           url: url,
           collection: collection,

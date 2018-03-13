@@ -19,7 +19,8 @@ var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 
 
-var PLATE_SEARCH_LINE_SPLITTING_PATTERN = Iccbl.PLATE_SEARCH_LINE_SPLITTING_PATTERN = /[\n;]+/
+var SEARCH_LINE_SPLITTING_PATTERN = 
+  Iccbl.SEARCH_LINE_SPLITTING_PATTERN = /[\n;\|]+/
 /**
  * PLATE_COPY_RANGE_SPLITTING_PATTERN
  * Split a raw plate range input into elements:
@@ -31,14 +32,12 @@ var PLATE_SEARCH_LINE_SPLITTING_PATTERN = Iccbl.PLATE_SEARCH_LINE_SPLITTING_PATT
 var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTERN = 
   /\'.*?\'|\".*?\"|\d+\s*\-\s*\d+|[^\,\s]+/g;
 var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/;
-var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = 
-  /^(\d+)\s*-\s*(\d+)$/;
+var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = /^(\d+)\s*-\s*(\d+)$/;
 
+var WELL_ID_PATTERN = Iccbl.WELL_ID_PATTERN = /^(\d{1,5}):?(([a-zA-Z]{1,2})(\d{1,2}))$/
 var WELL_PATTERN = Iccbl.WELL_PATTERN = /^([a-zA-Z]{1,2})(\d{1,2})$/i;
 var COL_PATTERN = Iccbl.COL_PATTERN = /^(col:)?\s*(\d{1,2})$/i;
 var ROW_PATTERN = Iccbl.ROW_PATTERN = /^(row:)?\s*([a-zA-Z]{1,2})$/i;
-
-
 
 var PLATE_RANGE_KEY_SPECIFIER = Iccbl.PLATE_RANGE_KEY_SPECIFIER
   = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
@@ -875,6 +874,134 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
   return wellBlocks;
 };
 
+var parseCompoundVendorIDSearch = Iccbl.parseCompoundVendorIDSearch = function(rawData,errors){
+  var search_array = []
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    search_array.push(clause);
+  });
+  return search_array;
+};
+
+/**
+ * Parse a Well search by line into an arrary of search lines of the form:
+ * input: 
+ * - lines separated by a newline char 
+ * - space or comma separated values, 
+ * output:
+ * search_line: {
+      plates: [],
+      plate_ranges: [],
+      wellnames: [],
+      errors: []
+    }
+    - errors are pushed into the passed in errors array
+ */
+var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
+  console.log('value', rawData);
+  
+  var search_array = []
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    search_array.push(clause);
+  });
+  
+  console.log('search_array', search_array);
+
+  var final_search_array = [];
+  _.each(search_array, function(line){
+    var parts = line.split(/[\s,]+/);
+    if(!_.isEmpty(parts)){
+      var final_search_line = {
+        plates: [],
+        plate_ranges: [],
+        wellnames: [],
+        errors: [],
+        combined: []
+      };
+      _.each(parts, function(part){
+        if (Iccbl.appModel.DEBUG){
+          console.log('test part', part);
+        }
+        if (PLATE_PATTERN.test(part)){
+          if (Iccbl.appModel.DEBUG){
+            console.log('found plate:', part);
+          }
+          final_search_line.plates.push(part);
+        }else if (PLATE_RANGE_PATTERN.test(part)){
+          var rangeParts = PLATE_RANGE_PATTERN.exec(part);
+          rangeParts = [rangeParts[1],rangeParts[2]];
+          rangeParts.sort();
+          console.log('found plate range match', rangeParts)
+          if (Iccbl.appModel.DEBUG){
+            console.log('found plate range:', rangeParts);
+          }
+          final_search_line.plate_ranges.push(rangeParts[0]+'-'+rangeParts[1]);
+        }else if (WELL_ID_PATTERN.test(part)){
+          var match = WELL_ID_PATTERN.exec(part);
+          var plate = parseInt(match[1]);
+          var wellrow = match[3].toUpperCase();
+          var wellcol = parseInt(match[4]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          if (Iccbl.appModel.DEBUG){
+            console.log('from WELL_ID:', part, 'to', wellname);
+          }
+          final_search_line['plates'].push(plate);
+          final_search_line['wellnames'].push(wellname);
+        }else if (WELL_PATTERN.test(part)) {
+          var match = WELL_PATTERN.exec(part);
+          var wellrow = match[1].toUpperCase();
+          var wellcol = parseInt(match[2]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          if (Iccbl.appModel.DEBUG){
+            console.log('from WELL_NAME:', part, 'to:', wellname);
+          }
+          final_search_line['wellnames'].push(wellname)
+        } else {
+          final_search_line['errors'].push('part not recognized: ' + part);
+          errors.push('part not recognized: ' + part);
+        }
+      });
+      
+      if (Iccbl.appModel.DEBUG){
+        console.log('final_search_line', final_search_line);
+      }
+      // Match wellnames only if plate, plate range is identified
+      if (!_.isEmpty(final_search_line['wellnames'])){
+        if (_.isEmpty(final_search_line['plates'])
+            && _.isEmpty(final_search_line['plate_ranges'])){
+          var errmsg = 'well name found without plate or plate range: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        }
+      }
+      final_search_line.combined = _.union(
+        final_search_line.plates, final_search_line.plate_ranges,
+        final_search_line.wellnames
+      );
+      if (Iccbl.appModel.DEBUG){
+        console.log('final_search_line.combined ',final_search_line.combined );
+      }
+      final_search_array.push(final_search_line);
+    }
+  });
+  console.log('final_search_array', final_search_array);
+  return final_search_array;
+  
+};
+
 
 /**
  * Parse a Copy Plate search by line into an array of search lines of the form:
@@ -892,13 +1019,13 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
       copies: [],
       combined: []
     }
+    - errors are pushed into the passed in errors array
  */
 var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
   
-  console.log('value', rawData);
   var search_array = []
   
-  var or_list = rawData.split(PLATE_SEARCH_LINE_SPLITTING_PATTERN);
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
 
   _.each(or_list, function(clause){
     clause = clause.trim();
@@ -3873,11 +4000,13 @@ var TextFormFilter = CriteriumFormFilter.extend({
     var criteria = self.criterium[values['lower_criteria']];
     var searchKey = self.columnName + '__' + criteria;
     var searchVal = values['form_textarea'];
-    if(criteria == 'not_blank'){
+    if (criteria == 'not_blank'){
       searchKey = self.columnName + '__' + 'is_blank';
       searchVal = 'false'
-    }else if(criteria == 'is_blank'){
+    } else if (criteria == 'is_blank'){
       searchVal = 'true';
+    } else if (criteria == 'in' && searchVal){
+      searchVal = searchVal.split( /\s*[,\n]\s*/);
     }
     var invert = values['invert_field'];
     if(invert) searchKey = '-'+searchKey;
@@ -4527,8 +4656,10 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
   },
   
   getPossibleSearches: function(){
-    return [this.columnName + '__in', '-'+this.columnName + '__in',
+    var possibleSearches = [this.columnName + '__in', '-'+this.columnName + '__in',
             this.columnName + '__is_null'];
+    possibleSearches.push(this.columnName)
+    return possibleSearches;
   },
 });
 

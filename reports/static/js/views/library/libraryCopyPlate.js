@@ -63,12 +63,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       } else {
         // List view
         var url = resource.apiUri;
+        if (self._args.url){
+          url = self._args.url;
+        }
         if (self.library && self.copy) {
           url = [ 
               library.resource.apiUri,library.key,'copy',copy.get('copy_name'),
               'plate'].join('/');
         }
-        console.log('url: ', url);
         this.consumedStack = [];
         this.showList(resource, url);
       }
@@ -107,12 +109,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
 
     showList: function(resource, url) {
       var self = this;
-      var uriStack = _.clone(this.uriStack);
       resource = appModel.cloneResource(resource);
       
       var extraIncludes = [];
       var commentColumns = ['library_comment_array','comment_array','copy_comments'];
-      console.log('uriStack', uriStack);
       var showEditLocationButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="batch_edit_locations_button" href="#">',
@@ -264,14 +264,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             }
           }));
       
-      options = {
-        uriStack: uriStack,
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: extraControls,
-        extraIncludes: extraIncludes
-      };
+      options = 
+      options = _.extend({}, self._args, {
+          resource: resource,
+          url: url,
+          extraControls: extraControls,
+          extraIncludes: extraIncludes
+        });
       
       var view = new ListView(options);
       showEditLocationButton.click(function(e) {
@@ -461,8 +460,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           var post_data = new FormData();
           post_data.append('plate_info', JSON.stringify(values));
 
-          if(_.has(listView._options, 'raw_search_data')) {
-            post_data.append('raw_search_data',listView._options.raw_search_data);  
+          if(_.has(listView._options, appModel.API_PARAM_SEARCH)) {
+            post_data.append(appModel.API_PARAM_SEARCH,listView._options[appModel.API_PARAM_SEARCH]);  
           }
           var nested_search_data = {};
           if (self.library){
@@ -472,7 +471,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             nested_search_data['copy_name'] = self.copy.get('copy_name');
           }
           if (!_.isEmpty(nested_search_data)){
-            post_data.append('nested_search_data', JSON.stringify(nested_search_data));
+            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
           }
           var url = self.resource.apiUri + '/batch_edit';
           
@@ -683,15 +682,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           
           // Batch edit is a POST operation:
           // Instead of sending all plates to be PATCHED:
-          // - send plate search data in the form of (raw_search_data, 
+          // - send plate search data in the form of (appModel.API_PARAM_SEARCH, 
           // nested_search_data, URL params for the sqlalchemy filters);
           // - and send the (plate_location data or plate_info data) with the data
           // to modify for all of the plates matching the search
           var post_data = new FormData();
           post_data.append('plate_location', JSON.stringify(values));
           
-          if(_.has(listView._options, 'raw_search_data')) {
-            post_data.append('raw_search_data',listView._options.raw_search_data);  
+          if(_.has(listView._options, appModel.API_PARAM_SEARCH)) {
+            post_data.append(appModel.API_PARAM_SEARCH,listView._options[appModel.API_PARAM_SEARCH]);  
           }
           var nested_search_data = {};
           if (self.library){
@@ -701,7 +700,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             nested_search_data['copy_name'] = self.copy.get('copy_name');
           }
           if (!_.isEmpty(nested_search_data)){
-            post_data.append('nested_search_data', JSON.stringify(nested_search_data));
+            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
           }
           var url = self.resource.apiUri + '/batch_edit';
           

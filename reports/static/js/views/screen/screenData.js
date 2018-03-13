@@ -189,8 +189,9 @@ define([
         
         view = new SRListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: schemaResult,
-          resource: screenResultResource,
+          resource: schemaResult,
+//          schemaResult: schemaResult,
+//          resource: screenResultResource,
           url: url,
           extraControls: extraControls,
           screen: self.model
@@ -285,14 +286,6 @@ define([
     showMutualPositiveColumns: function(listView, shown){
       var self = this;
 
-//      var searchHash = listView.collection.listModel.get('search');
-//      var dc_ids = _.result(searchHash,'dc_ids', '');
-//      if (!_.isArray(dc_ids)){
-//        dc_ids = dc_ids.split(',')
-//      }
-//      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
-//      console.log('showMutualPositiveColumns', dc_ids);
-      
       // Retrieve all columns visible for this screen
       // - check the positive overlapping columns
       var srResource = self.model.resource;
@@ -319,9 +312,6 @@ define([
         success: function(collection, response) {
           if (shown==true){
             collection.each(function(model){
-  //            if(_.contains(dc_ids, model.get('data_column_id'))){
-  //              model.set('checked', true);
-  //            }
               if (_.contains(self.model.get('overlapping_positive_screens'),
                     model.get('screen_facility_id'))){
                 if (model.get('positives_count')>0){

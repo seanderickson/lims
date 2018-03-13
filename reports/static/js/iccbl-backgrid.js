@@ -52,7 +52,7 @@ var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
  * FIXME: does not support embedded commas
  * - fixme is to clean the copy names in the database to remove commas
  */
-var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^[A-Za-z]+[\w\- :]*$/
+var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^["']?[A-Za-z]+[\w\- :]*["']?$/
 
 // Utility Functions
 
@@ -1035,8 +1035,10 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
     var parts = _.filter(_.map(
       clause.match(PLATE_COPY_RANGE_SPLITTING_PATTERN), 
       function(val){
-        // unquote
-        return val.replace(/["']+/g,'');
+        return val;
+        // 20180313 - do not remove quotes on client; API parser will remove
+        //        // unquote
+        //        return val.replace(/["']+/g,'');
       }),
       function(val){
         val = val.trim();

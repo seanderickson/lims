@@ -2292,7 +2292,6 @@ class LibraryCopyPlateResource(DbApiResource):
                     or not set(plate_location_fields) | set(location_data.keys())):
                 raise ValidationError(
                     key='data', msg='must contain plate location fields')
-    
             logger.info('find or create the location: %r', location_data)
             original_location_data = (
                 self.get_platelocation_resource()
@@ -2352,7 +2351,23 @@ class LibraryCopyPlateResource(DbApiResource):
                 request, 
                 data=location_data,
                 **kwargs)
-            return response
+            
+            # Modify result meta to make specific for LibraryCopyPlate
+            plate_location_name = '-'.join(
+                [str(location_data[k]) for k in plate_location_fields])
+            _data = self.get_serializer().deserialize(
+                LimsSerializer.get_content(response), JSON_MIMETYPE)
+            results = _data[API_RESULT_META][API_MSG_RESULT]
+            meta = { 
+                API_MSG_RESULT: { 
+                    'Plate Location Result: %s' % plate_location_name: results,
+                    'Plate Copy Ranges patched': ','.join(copy_plate_ranges),
+                    'Plate Copy Count': len(original_data)
+                }
+            }
+            return self.build_response(
+                request, {API_RESULT_META: meta }, response_class=HttpResponse, 
+                **kwargs)
     
     def validate(self, _dict, patch=False, schema=None):
         errors = DbApiResource.validate(self, _dict, patch=patch, schema=schema)

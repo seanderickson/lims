@@ -1792,7 +1792,7 @@ class ApiResource(SqlAlchemyResource):
                     # if no comment, no need to save the log
                     log = None
             else:
-                logger.info('PATCH: %r', log.uri) 
+                logger.info('log PATCH for %r', log.uri) 
                 
         else: # creating
             log.api_action = API_ACTION_CREATE

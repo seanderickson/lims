@@ -172,7 +172,11 @@ MAX_WELL_INDEXES_TO_CACHE=3e+08
 
 # maximum rows to cache for the locmemcache of result rowsets
 # see reports/sqlalchemy_resource
-MAX_ROWS_FOR_CACHE_RESULTPROXY=10e+4
+MAX_ROWS_FOR_CACHE_RESULTPROXY=1e6
+
+# minimum wells for insertion into the well_query_index before dropping indexes
+# - for performance tuning on screen result / well queries
+MIN_WELLS_TO_CLEAR_INDEXES = 3e5
 
 # If not True, then only staff may log in to the system
 # see reports/auth.py
@@ -224,9 +228,9 @@ LOGGING = {
         }
     },
     'loggers': {
-        'django.request': {
+        'django': {
             'handlers': ['mail_admins'],
-            'level': 'ERROR',
+            'level': 'WARN',
             'propagate': True,
         },
     }

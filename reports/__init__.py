@@ -39,10 +39,13 @@ class ValidationError(Exception):
         assert errors is not None or (key and msg),( 
             'ValidationError initialization requires "errors" parameter')
          
-        self.errors = errors or {}
-        if not isinstance(errors, dict):
-            self.errors = { 'errors': errors }
-         
+        if errors is not None:
+            if not isinstance(errors, dict):
+                self.errors = { 'errors': errors }
+            else:
+                self.errors = errors
+        else:
+            self.errors = {}
         if key:
             if not isinstance(msg, (list,tuple,dict)):
                 msg = [msg]

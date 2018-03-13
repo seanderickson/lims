@@ -49,7 +49,7 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
     VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
-    VOCAB_LCP_STATUS_PLATED, VOCAB_USER_CLASSIFICATION_PI
+    VOCAB_LCP_STATUS_PLATED, VOCAB_USER_CLASSIFICATION_PI, WellResource
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
@@ -78,6 +78,7 @@ from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
 import copy
 
+import db.schema as SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -841,6 +842,88 @@ class LibraryResource(DBResourceTestCase):
         PlateLocation.objects.all().delete()
         ApiLog.objects.all().delete()
     
+    def test_b_well_search_parser(self):
+        
+        tests = (
+            ('50 A6 A7 A8', [{'plates': [50], 'wellnames': ['A06','A07','A08']}]),
+            ('50a6,b10,c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
+            ('50a6 b10 c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
+            ('50A6', [{'plates': [50], 'wellnames': ['A06']}]),
+            ('00050:A06 A7 c10', [{'plates': [50], 'wellnames': ['A06','A07','C10']}]),
+            (
+            '50    A06\n'
+            '51    C10\n'
+            '53    F22\n', [
+                {'plates': [50], 'wellnames': ['A06']},
+                {'plates': [51], 'wellnames': ['C10']},
+                {'plates': [53], 'wellnames': ['F22']},]
+            ),
+            ('50-60 A1,A2', [{'plate_ranges': [[50,60],], 'wellnames': ['A01','A02']}]),
+            ('50-60 70-75 A1,A2', [{
+                'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02']}]),
+            ('xxxy', {'errors': { SCHEMA.API_PARAM_SEARCH: 'part not recognized' }}),
+            ('A01 A02 ', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 'Must specify a plate or plate range' }}),
+            ('A01 A02 1000', [{'plates':[1000], 'wellnames':['A01','A02']}]),
+            ('A01 A02 1000-1010', [{'plate_ranges':[[1000,1010],], 'wellnames':['A01','A02']}]),
+            ((
+            '00050:A06\n'
+            '00050:A07\n'), [{'plates': [50], 'wellnames': ['A06','A07']}]),
+            ((
+            '00050:A06\n'
+            '00050:A07\n'
+            '00051:A06\n'
+            '00051:A07\n'
+            '00052:A06 A07\n'
+            '00053:A07\n'
+            ), [{'plates': [50,51,52], 'wellnames': ['A06','A07']},
+                {'plates': [53], 'wellnames': ['A07']}]),
+        )
+        
+        for (test_search, expected_searches) in tests:
+            logger.info('test: %r', test_search)
+            try:
+                logger.info('search: %r', test_search)
+                parsed_searches = WellResource.parse_well_search(test_search)
+                logger.info('returns: %r', parsed_searches)
+            except ValidationError, e:
+                logger.exception('e: %r', e)
+                if 'errors' not in expected_searches:
+                    self.fail('Expected search is not an error: %r, %r' 
+                        % (expected_searches,e))
+                else:
+                    expected_errors = expected_searches['errors']
+                    self.assertEqual(
+                        len(expected_errors), 
+                        len(e.errors))
+                    for key,expected_error_string in expected_errors.items():
+                        if key not in e.errors:
+                            self.fail('expected error key: %r, not found in %r'
+                                % (key, e.errors))
+                        parsed_error = e.errors[key]
+                        logger.info('error: %r', parsed_error)
+                        if len(parsed_error) == 1:
+                            parsed_error = parsed_error[0]
+                        logger.info('error: %r', parsed_error)
+                        self.assertTrue(expected_error_string in parsed_error,
+                            'expected: %r not found in %r' 
+                            % (expected_error_string, parsed_error))
+                    continue
+            
+            self.assertTrue(len(parsed_searches),len(expected_searches))
+            for i,expected_search in enumerate(expected_searches):
+                parsed_search = parsed_searches[i]
+                for k,v in expected_search.items():
+                    self.assertTrue(k in parsed_search, 
+                        'k: %r not in %r' % (k, parsed_search))
+                    v2 = parsed_search.get(k)
+                    self.assertEqual(v, v2, 
+                        'k: %r %r != %r' % (k, v,v2))
+            
+    
+    def test_c_reagent_compound_name_vendor_search(self):
+        pass
+    
     def test_a_plate_search_parser(self):
         
         test_search_1 = '''
@@ -884,7 +967,7 @@ class LibraryResource(DBResourceTestCase):
         
         self.assertTrue(len(not_found)==0,
             'expected_searches %r not found in %r' % (not_found, parsed_searches))
-        
+      
     def test1_create_library(self):
 
         logger.info('test1_create_library ...')

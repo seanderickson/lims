@@ -423,7 +423,7 @@ def get_xls_response(
                         sheet = workbook.add_worksheet(sheet_name)
                         file_names_to_zip.append(temp_file)
                         filerow = 0
-                logger.info('wrote rows: %d, filerows: %d file: %r',row, filerow, temp_file)
+                logger.info('wrote filerows: %d file: %r',filerow, temp_file)
                               
         workbook.close()
   

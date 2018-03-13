@@ -19,7 +19,10 @@ from reports import ValidationError
 # Each plate search range is split
 # - on newline
 # - on semicolon (*201705, to support GET request urlencoding)
-PLATE_SEARCH_LINE_SPLITTING_PATTERN = re.compile(r'[\n;]+')
+# - on pipe "|" - 20180312, to support GET request urlencoding for compound names
+# TODO: consider deprecating semicolon
+PLATE_SEARCH_LINE_SPLITTING_PATTERN = re.compile(r'[\n;\|]+')
+
 ## PLATE_RANGE_SPLITTING_PATTERN:
 # Split a raw plate range input into elements:
 # - separated by space or comma, except, 

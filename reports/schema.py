@@ -3,6 +3,7 @@
 Define schema constants
 - Field names used by the API and intended as constant over versions
 - Vocabulary values used by the API and intended as constant over versions
+- Provide a dependency free reference to API fields
 
 Utilities for parsing the schema
  '''
@@ -21,6 +22,11 @@ API_RESULT_OBJ = 'object'
 API_RESULT_DATA = 'objects'
 API_RESULT_META = 'meta'
 
+API_PARAM_SEARCH = 'search'
+# URI_PARAM_RAW_SEARCH = 'raw_search_data'
+# Complex search - a search data structure sent as a POST header 
+API_PARAM_COMPLEX_SEARCH_ID = 'search_id'
+URI_PATH_COMPLEX_SEARCH = 'csearch'
 
 # Date format for API - time zone is not used for dates
 DATE_FORMAT = "%Y-%m-%d"

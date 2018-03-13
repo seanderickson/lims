@@ -165,7 +165,7 @@ class SqlAlchemyResource(IccblBaseResource):
     
     def get_visible_fields(self, 
         schema_fields, filter_fields, manual_field_includes,
-        visibilities, exact_fields=[], order_params=[]):
+        visibilities, exact_fields=None, order_params=None):
         '''
         Construct an ordered dict of schema fields that are visible, based on
         - the field["visibility"] of each field on the resource,
@@ -177,7 +177,15 @@ class SqlAlchemyResource(IccblBaseResource):
         TODO: this method is not SqlAlchemy specific
         '''
         DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
+        
+        if exact_fields is None:
+            exact_fields = []
+        if order_params is None:
+            order_params = []
+        if visibilities is None:
+            raise Exception('No visibilities specified')
         visibilities = set(visibilities)
+        
         if DEBUG_VISIBILITY:
             logger.info(
                 'visibilities: %r, order_params: %r',

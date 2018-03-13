@@ -105,6 +105,8 @@ from reports.sqlalchemy_resource import _concat, _concat_with_sep
 from db.support.plate_matrix_transformer import Collation
 import xlsxwriter
 
+import schema as SCHEMA
+
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
 MAX_SPOOLFILE_SIZE = 1024*1024
@@ -215,7 +217,7 @@ class DbApiResource(reports.api.ApiResource):
 
     def _create_well_query_index_table(self, conn):
         try:
-            conn.execute(text('select * from "well_query_index"  limit 1; '));
+            conn.execute(text('select * from "well_query_index"  limit 1; '))
             logger.debug('The well_query_index table exists')
             return
         except Exception as e:
@@ -228,7 +230,7 @@ class DbApiResource(reports.api.ApiResource):
                 '"well_id" text NOT NULL,'
                 '"query_id" integer NOT NULL'
                 ');'
-            ));
+            ))
             conn.execute(text(
                 'ALTER TABLE well_query_index '
                 'ADD CONSTRAINT well_query_unique UNIQUE(query_id, well_id) '))
@@ -244,7 +246,7 @@ class DbApiResource(reports.api.ApiResource):
     def _create_well_data_column_positive_index_table(self, conn):
         try:
             conn.execute(text(
-                'select * from "well_data_column_positive_index" limit 1; '));
+                'select * from "well_data_column_positive_index" limit 1; '))
             logger.debug('The well_data_column_positive_index table exists')
             return
         except Exception as e:
@@ -257,7 +259,7 @@ class DbApiResource(reports.api.ApiResource):
                 ' "data_column_id" integer NOT NULL, ' 
                 ' "screen_id" integer NOT NULL ' 
                 ');'
-            ));
+            ))
             conn.execute(text(
                 'CREATE INDEX wdc_screen_id '
                 'on well_data_column_positive_index(screen_id);'))
@@ -284,7 +286,7 @@ class DbApiResource(reports.api.ApiResource):
     def _create_screen_overlap_table(self, conn):
         try:
             conn.execute(text(
-                'select * from "screen_overlap" limit 1; '));
+                'select * from "screen_overlap" limit 1; '))
             logger.debug('The screen_overlap table exists')
             return
         except Exception as e:
@@ -296,7 +298,7 @@ class DbApiResource(reports.api.ApiResource):
                 ' "screen_id" integer NOT NULL, '
                 ' "overlap_screen_id" integer NOT NULL '
                 ');'
-            ));
+            ))
             # Note: foreign keys are not needed and complicate delete
             # 'CREATE TABLE screen_overlap ('
             # ' "screen_id" integer NOT NULL '
@@ -565,7 +567,7 @@ class PlateLocationResource(DbApiResource):
                                 .join(_p,_p.c.copy_id==_c.c.copy_id))
                         .where(_p.c.plate_location_id
                             ==literal_column('plate_location.plate_location_id')))
-            };
+            }
 
             base_query_tables = ['plate', 'copy', 'plate_location', 'library']
 
@@ -684,7 +686,7 @@ class PlateLocationResource(DbApiResource):
                                 return True
                             return self.row.has_key(key)
                         def keys(self):
-                            return self.row.keys();
+                            return self.row.keys()
                         def __getitem__(self, key):
                             if key == 'copy_plate_ranges':
                                 return self.entries
@@ -1034,8 +1036,9 @@ class LibraryCopyPlateResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/batch_edit%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('batch_edit'), name="api_lcp_batch_edit"),
-            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+            url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
+                % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
                 r"/(?P<copy_name>[\w.\-\+: ]+)"
@@ -1214,7 +1217,6 @@ class LibraryCopyPlateResource(DbApiResource):
             plates.update(plate_query.all())
         
         if not plates:
-#             raise ValidationError(key='Search', msg='No results found')
             errors.add('No plates found')
         logger.info('plates found: %d, errors: %r', len(plates), errors)
         return (plates, parsed_searches, [x for x in sorted(errors)])
@@ -1491,7 +1493,7 @@ class LibraryCopyPlateResource(DbApiResource):
             
         # construct a limited plate view here 
         # start from the librarycopyplate schema, but limit to plate only fields
-        schema = self.build_schema(user=request.user);
+        schema = self.build_schema(user=request.user)
         
         fields_to_show = [
             'library_short_name', 'library_screening_status', 
@@ -1780,7 +1782,7 @@ class LibraryCopyPlateResource(DbApiResource):
         if plate_ids is not None:
             if isinstance(plate_ids,basestring):
                 plate_ids = [int(x) for x in plate_ids.split(',')]
-        plate_search_data = param_hash.pop('raw_search_data', None)
+        plate_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
         logger.info('plate raw_search_data: %r', plate_search_data)
         
         if len(filter(lambda x: x is not None, 
@@ -2023,7 +2025,7 @@ class LibraryCopyPlateResource(DbApiResource):
                     .select_from(_library_comment_apilogs)
                     .where(_library_comment_apilogs.c.key==_l.c.short_name)
                     ),
-            };
+            }
 
             base_query_tables = ['plate', 'copy', 'plate_location', 'library']
 
@@ -2187,7 +2189,7 @@ class LibraryCopyPlateResource(DbApiResource):
         
         librarycopyplate batch_edit uses a POST form to send both
         the search data (3 types of search filter: "nested_search_data",  
-        "raw_search_data", and GET search params),
+        SCHEMA.API_PARAM_SEARCH, and GET search params),
         as well as the update data (in the form of "plate_info" and "plate_location")
         (Instead of sending all plates to be PATCHED);
         '''
@@ -3535,7 +3537,7 @@ class ScreenAuthorization(UserGroupAuthorization):
                         return True
                     return self.row.has_key(key)
                 def keys(self):
-                    return self.row.keys();
+                    return self.row.keys()
                 def __getitem__(self, key):
                     logger.debug(
                         'key: %r, allowed: %r', key, key in self.allowed_fields)
@@ -3677,7 +3679,7 @@ class ScreenResultAuthorization(ScreenAuthorization):
                 def has_key(self, key):
                     return self.row.has_key(key)
                 def keys(self):
-                    return self.row.keys();
+                    return self.row.keys()
                 def __getitem__(self, key):
                     if self.row[key] is None:
                         return None
@@ -5174,7 +5176,7 @@ class ScreenResultResource(DbApiResource):
                     and column_info['screen_facility_id'] != screen.facility_id ):
                     logger.info('skipping column for screen_facility_id: %r', 
                         column_info.get('screen_facility_id') )
-                    continue;
+                    continue
                 if column_info.get('ordinal',None) is None:
                     column_info['ordinal'] = i
                 try:
@@ -5813,7 +5815,7 @@ class DataColumnAuthorization(ScreenAuthorization):
                         return True
                     return self.row.has_key(key)
                 def keys(self):
-                    return self.row.keys();
+                    return self.row.keys()
                 def __getitem__(self, key):
                     logger.debug(
                         'key: %r, allowed: %r', key, key in self.allowed_fields)
@@ -5969,7 +5971,7 @@ class DataColumnResource(DbApiResource):
                     def has_key(self, key):
                         return key in self._dict
                     def keys(self):
-                        return self._dict.keys();
+                        return self._dict.keys()
                     def __getitem__(self, key):
                         if key in self._dict:
                             return self._dict[key]
@@ -6303,8 +6305,9 @@ class CopyWellResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+            url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
+                % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w.\-\+ ]+)" 
@@ -6370,7 +6373,7 @@ class CopyWellResource(DbApiResource):
         library_short_name = param_hash.pop('library_short_name', None)
         if library_short_name:
             param_hash['library_short_name__eq'] = library_short_name
-        library_screen_type = param_hash.pop('library_screen_type',None);
+        library_screen_type = param_hash.pop('library_screen_type',None)
 
         try:
             
@@ -6562,7 +6565,7 @@ class CopyWellResource(DbApiResource):
             library = well.library
         except ObjectDoesNotExist:
             msg = 'well not found: %r' % well_id
-            logger.info(msg);
+            logger.info(msg)
             raise Http404(msg)
 
         if well.library_well_type != 'experimental':
@@ -6575,7 +6578,7 @@ class CopyWellResource(DbApiResource):
                 name=copy_name, library=library)
         except ObjectDoesNotExist:
             msg = 'copy_name not found: %r' % copy_name
-            logger.info(msg);
+            logger.info(msg)
             raise Http404(msg)
         
         try:
@@ -6583,7 +6586,7 @@ class CopyWellResource(DbApiResource):
                 plate_number=well.plate_number, copy=librarycopy)
         except ObjectDoesNotExist:
             msg = 'plate not found: %r:%r' % (library.short_name,copy_name)
-            logger.info(msg);
+            logger.info(msg)
             raise Http404(msg)
 
         # TODO: wrapper for parsing
@@ -6870,7 +6873,7 @@ class CopyWellResource(DbApiResource):
                 except ObjectDoesNotExist:
                     msg = ('plate not found: %r:%r' 
                         % (lcp.source_well.plate_number, lcp.copy.name))
-                    logger.warn(msg);
+                    logger.warn(msg)
                     raise ValidationError(
                         key='library_plate',
                         msg=msg)
@@ -8079,12 +8082,13 @@ class CherryPickRequestResource(DbApiResource):
             cherry_pick_well_patterns = (cherry_pick_well_patterns,)
 
         wells = set()
-        (wells,errors) = WellResource.find_wells(cherry_pick_well_patterns)
-        if errors:
+        try:
+            wells = WellResource.find_wells(cherry_pick_well_patterns)
+        except ValidationError,e:
+            # re-raise
             raise ValidationError(
-                key='screener_cherry_picks',
-                msg='%r' % errors )    
-        
+                {'screener_cherry_picks':e.errors[SCHEMA.API_PARAM_SEARCH] })
+            
         non_experimental_wells = []
         for well in wells:
             if well.library_well_type != 'experimental':
@@ -8096,7 +8100,8 @@ class CherryPickRequestResource(DbApiResource):
             
         logger.debug('found wells: %r', wells)
         return wells
-
+            
+            
     def validate_cpr_for_plating(self, cpr):
         logger.info('validating: %r', cpr)      
         if not cpr.transfer_volume_per_well_approved:
@@ -11141,8 +11146,9 @@ class LibraryCopyResource(DbApiResource):
                  r"/(?P<copy_name>[^/]+)%s$")  
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+            url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
+                % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w.\-\+: ]+)"
@@ -11449,7 +11455,7 @@ class LibraryCopyResource(DbApiResource):
                 library = Library.objects.get(short_name=short_name)
             except ObjectDoesNotExist:
                 msg = 'library_short_name not found: %r' % short_name
-                logger.info(msg);
+                logger.info(msg)
                 raise Http404(msg)
             
             patch = False
@@ -11936,7 +11942,7 @@ class PublicationResource(DbApiResource):
         parent_log.api_action = API_ACTION_PATCH
         parent_log.key = screen.facility_id
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-        parent_log.diff_keys = ['publications'];
+        parent_log.diff_keys = ['publications']
         current_pubs = _screen_data['publications'] or []
         if is_delete:
             new_pubs = [x for x in current_pubs 
@@ -12137,7 +12143,7 @@ class AttachedFileResource(DbApiResource):
         parent_log.api_action = API_ACTION_PATCH
         parent_log.key = str(screen.facility_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-        parent_log.diff_keys = ['attached_files'];
+        parent_log.diff_keys = ['attached_files']
         current_files = _screen_data['attached_files'] or []
         if is_delete:
             new_files = [x for x in current_files 
@@ -12158,7 +12164,7 @@ class AttachedFileResource(DbApiResource):
         parent_log.api_action = API_ACTION_PATCH
         parent_log.key = str(user.screensaver_user_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-        parent_log.diff_keys = ['attached_files'];
+        parent_log.diff_keys = ['attached_files']
         if is_delete:
             parent_log.diffs =  { 'attached_fiels': [af.filename,None] }
         else:
@@ -13485,7 +13491,7 @@ class LibraryScreeningResource(ActivityResource):
         ''' 
         Find: 
         - plates already asssociated with the libraryscreenings for the screen
-        - plates matched by the "raw_search_data"
+        - plates matched by API_PARAM_SEARCH
         Note: bypasses the "dispatch" framework call
         -- must be authenticated and authorized
         '''
@@ -13508,7 +13514,7 @@ class LibraryScreeningResource(ActivityResource):
         
         facility_id = param_hash.get('facility_id', None)
         activity_id = param_hash.get('activity_id', None)
-        plate_search_data = param_hash.get('raw_search_data', None)
+        plate_search_data = param_hash.get(SCHEMA.API_PARAM_SEARCH, None)
         volume_required = parse_val(param_hash.get('volume_required', None),
             'volume_required', 'decimal')
         show_retired_plates = parse_val(
@@ -14155,6 +14161,7 @@ class LibraryScreeningResource(ActivityResource):
             logger.info('try to grep library_plates_screened_search: %r', 
                 library_plates_screened_search)
             if isinstance(library_plates_screened_search, six.types.StringTypes):
+                # FIXME: lines should be split using the PLATE_SEARCH_LINE_SPLITTING_PATTERN
                 library_plates_screened_search = \
                     re.split(r'[,;]+', library_plates_screened_search)
             if not isinstance(library_plates_screened_search, (list,tuple)):
@@ -14288,7 +14295,7 @@ class LibraryScreeningResource(ActivityResource):
                                 return True
                             return self.row.has_key(key)
                         def keys(self):
-                            return self.row.keys();
+                            return self.row.keys()
                         def __getitem__(self, key):
                             if key == 'library_plates_screened':
                                 return self.entries
@@ -16116,7 +16123,7 @@ class RawDataTransformerResource(DbApiResource):
                         current_col += 1
                         sheet.write_string(output_row,current_col,str(quadrant+1))
                         current_col += 1
-                        sheet.write_string(output_row,current_col,assay_plate_wellname);
+                        sheet.write_string(output_row,current_col,assay_plate_wellname)
                         current_col += 1
                     elif lps > aps:
                         assay_plate_wellname = \
@@ -16125,7 +16132,7 @@ class RawDataTransformerResource(DbApiResource):
                         source_quadrant = lims_utils.deconvolute_quadrant(lps, aps, row, col)
                         sheet.write_string(output_row,current_col,str(source_quadrant+1))
                         current_col += 1
-                        sheet.write_string(output_row,current_col,assay_plate_wellname);
+                        sheet.write_string(output_row,current_col,assay_plate_wellname)
                         current_col += 1
                     
                     control = control_well_hash.get(assay_plate_wellname, None)
@@ -16313,7 +16320,7 @@ class RawDataTransformerResource(DbApiResource):
                         source_wells = lims_utils.convolute_well(lps, aps, wellname)
                         sheet.write_string(output_row,current_col,str(quadrant+1))
                         current_col += 1
-                        sheet.write_string(output_row,current_col,source_wells[quadrant]);
+                        sheet.write_string(output_row,current_col,source_wells[quadrant])
                         current_col += 1
                     elif lps > aps:
                         (row,col) = lims_utils.well_row_col(wellname)
@@ -16321,7 +16328,7 @@ class RawDataTransformerResource(DbApiResource):
                         source_wellname = lims_utils.deconvolute_well(lps, aps, wellname)
                         sheet.write_string(output_row,current_col,str(source_quadrant+1))
                         current_col += 1
-                        sheet.write_string(output_row,current_col,source_wellname);
+                        sheet.write_string(output_row,current_col,source_wellname)
                         current_col += 1
                     
                     sheet.write_string(
@@ -16554,7 +16561,7 @@ class ScreenResource(DbApiResource):
         ''' 
         Find: 
         - plates already asssociated with the libraryscreenings for the screen
-        - plates matched by the "raw_search_data"
+        - plates matched by the SCHEMA.API_PARAM_SEARCH
         Note: bypasses the "dispatch" framework call
         -- must be authenticated and authorized
         '''
@@ -20756,13 +20763,21 @@ class ReagentResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/csearch/(?P<search_ID>[\d]+)%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+            url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
+                % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
-            url(r"^(?P<resource_name>%s)/csearch_reagent/(?P<search_ID>[\d]+)%s$" 
+            
+            url(r"^(?P<resource_name>%s)/compound_search%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_search_vendor_and_compound'), 
+                name="api_search_vendor_and_compound"),            
+            url(r"^(?P<resource_name>%s)/compound_search/%s/(?P<%s>[\d]+)%s$" 
+                % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,trailing_slash()),
+                self.wrap_view('dispatch_search_vendor_and_compound'), 
                 name="api_search_vendor_and_compound"),
+                
             url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
@@ -20926,7 +20941,7 @@ class ReagentResource(DbApiResource):
         logger.info('reagent schema built')
         return schema
 
-    def get_list(self, request, param_hash={}, **kwargs):
+    def get_list(self, request, **kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
@@ -20966,7 +20981,8 @@ class ReagentResource(DbApiResource):
     def get_query(self, 
         param_hash, user, library_classification=None, library=None,
         cherry_pick_request_id_screener=None,
-        cherry_pick_request_id_lab=None, well_ids=None, schema=None):
+        cherry_pick_request_id_lab=None, well_ids=None, 
+        well_base_query=None, schema=None):
         logger.info('get query for library_classification %r', library_classification )
         
         if schema is None:
@@ -21034,11 +21050,16 @@ class ReagentResource(DbApiResource):
             _library = self.bridge['library']
             _scp = self.bridge['screener_cherry_pick']
             _lcp = self.bridge['lab_cherry_pick']
-
-            j = _well.join(
+            
+            j = _well
+            if well_base_query is not None:
+                j = well_base_query
+                j = j.join(_well, _well.c.well_id==well_base_query.c.well_id )
+            j = j.join(
                 _reagent, _well.c.well_id == _reagent.c.well_id, isouter=True)
             j = j.join(_library, _well.c.library_id == _library.c.library_id)
             
+                    
             custom_columns = {}
                         
             if 'pool_well' in field_hash:
@@ -21167,7 +21188,11 @@ class ReagentResource(DbApiResource):
         logger.info('dispatch search_vendor_and_compound...')
         # Set a flag to indicate the search type
         kwargs['vendor_and_compound_search'] = True
-        return self.search(request, **kwargs)
+        
+        if SCHEMA.API_PARAM_COMPLEX_SEARCH_ID in kwargs:
+            return self.search(request, **kwargs)
+        else:
+            return self.get_list(request,**kwargs)
         
     @read_authorization
     def build_list_response(self, request, **kwargs):
@@ -21187,27 +21212,17 @@ class ReagentResource(DbApiResource):
         library_classification = None
         
         # well search data is raw line based text entered by the user
-        well_search_data = param_hash.pop('raw_search_data', None)
+        well_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
         well_ids = None
+        well_base_query = None
         if well_search_data is not None:
             if param_hash.pop('vendor_and_compound_search', False) is True:
-                (well_ids,errors) = \
-                    WellResource.find_wells_by_vendor_compound_name(well_search_data)
+                well_base_query = WellResource.create_vendor_compound_name_base_query(well_search_data)
+                well_base_query = well_base_query.cte('well_base_query')
             else:
-                (wells,errors) = WellResource.find_wells(well_search_data)
-                # classifications = set([w.library.classification for w in wells])
-                # logger.info('classifications: %r', classifications)
-                # if wells and len(classifications) > 1:
-                # for well in wells:
-                #     library_classification = well.library.classification
-                #     break
-                well_ids = [w.well_id for w in wells]
-            logger.info('well search: %d errors: %r', len(well_ids), errors)
-            if errors:
-                raise ValidationError(
-                    key='well_search',
-                    msg='%s' % ', '.join([str(err) for err in errors]))    
-            logger.info('found wells: %d', len(well_ids))
+                
+                well_base_query = WellResource.create_well_base_query(well_search_data)
+                well_base_query = well_base_query.cte('well_base_query')
         # TODO: eliminate dependency on library (for schema determination)
         library = None
         library_short_name = param_hash.pop('library_short_name', None)
@@ -21256,8 +21271,6 @@ class ReagentResource(DbApiResource):
         # Note: build schema for each request to use the subtype
         schema = self.build_schema(library_classification=library_classification,
             extra_dc_ids=extra_dc_ids)
-#         if well_search_data:
-#             schema['fields']['compound_names']['visibility'] = ['l','d']
             
         manual_field_includes = set(param_hash.get('includes', []))
         content_type = self.get_serializer().get_accept_content_type(
@@ -21273,7 +21286,8 @@ class ReagentResource(DbApiResource):
                 library=library,
                 cherry_pick_request_id_screener=cherry_pick_request_id_screener,
                 cherry_pick_request_id_lab=cherry_pick_request_id_lab,
-                well_ids = well_ids, schema=schema)
+                well_ids = well_ids, well_base_query=well_base_query, 
+                schema=schema)
         
         rowproxy_generator = None
         if use_vocab is True:
@@ -21541,7 +21555,7 @@ class WellResource(DbApiResource):
             data['fields'] = newfields
             
             data['content_types'] = sub_data['content_types']
-        elif 'search' in kwargs:
+        elif SCHEMA.API_PARAM_SEARCH in kwargs:
             # Build the full schema for search
             # FIXME could determine the schema as in ReagentResource.build_list_response
             sub_data = self.get_reagent_resource().build_schema(
@@ -21892,176 +21906,262 @@ class WellResource(DbApiResource):
         raise NotImplementedError('patch obj must be implemented')
         
     @classmethod
-    def find_wells_by_vendor_compound_name(cls, well_search_data ):
-        ''' 
-        return set() of Well objects matching the line based 
-        compound well_search_data entered by the user:
-            - searches compound name, vendor_id and facility_id
-        '''
+    def create_vendor_compound_name_base_query(cls, well_search_data):
         
-        errors = []
-        well_ids = set()
-                
+        IS_SMALL_MOLECULE_ONLY = True
+        
+        # Process the patterns by line
+        parsed_lines = well_search_data
+        if isinstance(parsed_lines, basestring):
+            parsed_lines = re.split(
+                lims_utils.PLATE_SEARCH_LINE_SPLITTING_PATTERN,parsed_lines)
+            logger.info('found %d lines in search', len(parsed_lines))
+            logger.debug('parsed_lines: %r', parsed_lines)
+        if not isinstance(parsed_lines, (list,tuple)):
+            well_search_data = (parsed_lines,)
+        
+        search_items = set()
+        for _line in parsed_lines:
+            if not _line:
+                continue
+            _line = _line.strip()
+            if not _line:
+                continue
+            # 20180227 - require each entry on a separate line:
+            # Otherwise, names containing commmas and whitespace must be quoted
+            search_items.add(_line)
+        
+        if not search_items:
+            raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg='no search lines found')
+
+        logger.info('found: %d compound or vendor names in %r', 
+            len(search_items), parsed_lines)
+
         bridge = get_tables()
         _cn = bridge['small_molecule_compound_name']
         _smr = bridge['small_molecule_reagent']
         _r = bridge['reagent']
         _well = bridge['well']
+        
+        clause_cn = []
+        clause_vn = []
+        for term in search_items:
+            clause_cn.append(_cn.c.compound_name.ilike('%{}%'.format(term)))
+            clause_vn.append(_r.c.vendor_identifier.ilike('%{}%'.format(term)))
+        if len(clause_cn) > 1:
+            clause_cn = or_(*clause_cn)
+            clause_vn = or_(*clause_vn)
+        else:
+            clause_cn = clause_cn[0]
+            clause_vn = clause_vn[0]
         querycn = (
             select([_well.c.well_id])
             .select_from(
                 _well.join(_r,_well.c.well_id==_r.c.well_id)
                     .join(_cn,_r.c.reagent_id==_cn.c.reagent_id))
-            .where(_cn.c.compound_name.ilike(bindparam('_pattern'))))
+            .where(clause_cn))
+        vjoin = _well.join(_r,_well.c.well_id==_r.c.well_id)
+        if IS_SMALL_MOLECULE_ONLY is True:
+            vjoin = vjoin.join(_smr, _r.c.reagent_id==_smr.c.reagent_id)
         query_vendor = (
             select([_well.c.well_id])
-            .select_from(
-                _well.join(_r,_well.c.well_id==_r.c.well_id))
-            .where(_r.c.vendor_identifier.ilike(bindparam('_pattern'))))
-        
-        # Legacy search: support for facility-salt-batch; only used with the 
-        # LINCS project: this function must be redesigned - 20180226 - sde
-        # query_facility = (
-        #     select([_well.c.well_id])
-        #     .select_from(
-        #         _well.join(_r,_well.c.well_id==_r.c.well_id)
-        #             .join(_smr,_r.c.reagent_id==_smr.c.reagent_id ))
-        #     .where(text("strpos("
-        #         "well.facility_id || '-' || "
-        #         "coalesce(''||small_molecule_reagent.salt_form_id,'') || '-' || "
-        #         "coalesce(''||reagent.facility_batch_id,''), :_pattern ) > 0")))
-
-        
-        with get_engine().connect() as conn:
-            logger.info('find_wells_by_compounds/vendor_ids: %r', well_search_data)
-            # Process the patterns by line
-            parsed_lines = well_search_data
-            if isinstance(parsed_lines, basestring):
-                parsed_lines = re.split(r'\n+',parsed_lines)
-                logger.info('found %d lines in search', len(parsed_lines))
-                logger.debug('parsed_lines: %r', parsed_lines)
-            if not isinstance(parsed_lines, (list,tuple)):
-                well_search_data = (parsed_lines,)
-            
-            cn_well_ids = set()
-            vendor_well_ids = set()
-            for _line in parsed_lines:
-                if not _line:
-                    continue
-                _line = _line.strip()
-                if not _line:
-                    continue
-                # 20180227 - require each entry on a separate line:
-                # Otherwise, names containing commmas and whitespace must be quoted
-                # patterns = lims_utils.QUOTED_WORD_SPLITTING_PATTERN.findall(_line)
-                # logger.info('parsed line parts: %r', patterns)
-                # for _pattern in patterns:
-                #     if not _pattern:
-                #         continue
-                #    _pattern = re.sub(r'["\']+','',_pattern)
-                cn_well_ids.update(
-                    [x[0] for x in conn.execute(
-                        querycn,_pattern='%' + _line + '%')])
-                logger.debug('cn_ids: %r', cn_well_ids)
-                vendor_well_ids.update(
-                    [x[0] for x in conn.execute(
-                        query_vendor,_pattern='%' + _line + '%')])
-        # TODO: if only compound names searched, set up for small molecule
-        well_ids.update(cn_well_ids)
-        well_ids.update(vendor_well_ids)
-        logger.info('compound name well ids found: %r', len(cn_well_ids))
-        logger.info('vendor well ids found: %r', len(vendor_well_ids))
-        logger.info('well ids found: %r', len(well_ids))
-        return (well_ids, errors)
-        
+            .select_from(vjoin)
+            .where(clause_vn))
+        query = querycn.union_all(query_vendor)
+        return query
         
     @classmethod
-    def find_wells(cls, well_search_data ):
-        ''' return set() of Well objects matching the line based 
-        well_search_data entered by the user
+    def parse_well_search(cls, well_search_data):
         '''
-        
-        wells = set()
+        Parse a Well search by line into an array of search lines of the form:
+        input: 
+        - lines separated by a newline char 
+        - space or comma separated values, 
+        output:
+        search_line: {
+            plates: [],
+            plate_ranges: [],
+            wellnames: [],
+        }
+        '''
+        DEBUG_WELL_PARSE = False or logger.isEnabledFor(logging.DEBUG)
+        # Use unquote to decode form data from a post
+        if not isinstance(well_search_data, (list,tuple)):
+            well_search_data = urllib.unquote(well_search_data)
+        else:
+            well_search_data = [urllib.unquote(x) for x in well_search_data]
+        if DEBUG_WELL_PARSE:
+            logger.info('well_search_data: %r', well_search_data)
+        parsed_searches = []
         errors = []
         
-        # Process the patterns by line
+        # Process the patterns by line; or semicolon (to support URL encoded)
         parsed_lines = well_search_data
         if isinstance(parsed_lines, basestring):
-            parsed_lines = re.split(r'\n+',parsed_lines)
-            logger.info('found %d lines in search', len(parsed_lines))
-            logger.debug('parsed_lines: %r', parsed_lines)
-        if not isinstance(parsed_lines, (list,tuple)):
-            well_search_data = (parsed_lines,)
-
+            parsed_lines = re.split(
+                lims_utils.PLATE_SEARCH_LINE_SPLITTING_PATTERN,parsed_lines)
+            if DEBUG_WELL_PARSE:
+                logger.info('parsed_lines: %r', parsed_lines)
+        
         for _line in parsed_lines:
             _line = _line.strip()
             if not _line:
                 continue
-            logger.debug('find_wells: well pattern line: %r', _line)
             
-            line_wells = set()
-            plate_numbers = set()
-            patterns = re.split(r'[\s,]+', _line)
-            search_kwargs = defaultdict(set)
-            for _pattern in patterns:
-                if not _pattern:
-                    continue
-                _pattern = re.sub(r'["\']+','',_pattern)
-                match = WELL_ID_PATTERN.match(_pattern)
-                if match is not None:
-                    plate_number = int(match.group(1))
-                    search_kwargs['plate_number'].add(plate_number)
+            parts = re.compile('[\s,]+').split(_line)
+            if DEBUG_WELL_PARSE:
+                logger.info('parse well search: line parts: %r', parts)
+            
+            parsed_search = defaultdict(list)
+            parsed_search['line'] = parts
+            for part in parts:
+
+                if PLATE_PATTERN.match(part):
+                    plate_number = int(part)
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from PLATE: %r to %d', part, plate_number)
+                    parsed_search['plates'].append(plate_number)
+                elif PLATE_RANGE_PATTERN.match(part):
+                    match = PLATE_RANGE_PATTERN.match(part)
+                    plate_range = sorted([
+                        int(match.group(1)), int(match.group(2))])
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from PLATE_RANGE: %r, %r', part, plate_range)
+                    parsed_search['plate_ranges'].append(plate_range)
+                elif WELL_ID_PATTERN.match(part):
+                    match = WELL_ID_PATTERN.match(part)
+                    plate = int(match.group(1))
+                    wellrow = match.group(3).upper()
+                    wellcol = match.group(4)
+                    wellname = '%s%s' % (wellrow, str(wellcol).zfill(2))  
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from WELL_ID: %r to %d:%s', part, plate, wellname )  
+                    parsed_search['plates'].append(plate)
+                    parsed_search['wellnames'].append(wellname)
+                elif WELL_NAME_PATTERN.match(part):
+                    match = WELL_NAME_PATTERN.match(part)
+                    wellrow = match.group(1).upper()
+                    wellcol = match.group(2)
+                    wellname = '%s%s' % (wellrow, str(wellcol).zfill(2))
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from WELL_NAME: %r to %s', part, wellname)
+                    parsed_search['wellnames'].append(wellname)
+                else:
+                    errors.append('part not recognized: %r' % part)
                     
-                    plate_numbers.add(plate_number)
-                    well_name = match.group(2).upper()
-                    search_kwargs['well_name'].add(well_name)
-                elif PLATE_PATTERN.match(_pattern):
-                    plate_query = Plate.objects.all().filter(plate_number=_pattern)
-                    if plate_query.exists():
-                        logger.info('found %r for %r', plate_numbers, _pattern)
-                        search_kwargs['plate_number'].add(int(_pattern))
-                        continue
-                    else:
-                        errors.append(
-                            'plate: %r is does not exist' % _pattern) 
-                elif PLATE_RANGE_PATTERN.match(_pattern):
-                    match = PLATE_RANGE_PATTERN.match(_pattern)
-                    plate_query = Plate.objects.all().filter(
-                        plate_number__range=sorted([
-                            int(match.group(1)), int(match.group(2))]))
-                    search_kwargs['plate_number'].update(
-                        [p.plate_number for p in plate_query ])
-                elif WELL_NAME_PATTERN.match(_pattern):
-                    search_kwargs['well_name'].add(_pattern)
-                else:
-                    errors.append(
-                        'pattern: "%s" is not a recognized as a well id, or '
-                        'a plate number followed by a well name' % _pattern)
-            if search_kwargs:
-                query = Well.objects.all()
-                plate_numbers = search_kwargs.get('plate_number', None)
-                if not plate_numbers:
-                    errors.append('no plate numbers found for "%s"' %_line)
-                else:
-                    plate_numbers = [p for p in plate_numbers]
-                    if len(plate_numbers) > 1:
-                        query = query.filter(plate_number__in=plate_numbers)
-                    else:
-                        query = query.filter(plate_number=plate_numbers[0])
-                    well_names = search_kwargs.get('well_name', None)
-                    if well_names:
-                        well_names = [w for w in well_names]
-                        if len(well_names) > 1:
-                            query = query.filter(well_name__in=well_names)
-                        else: 
-                            query = query.filter(well_name=well_names[0])
-                    line_wells = [w for w in query]
-                    logger.debug('line: %r, wells: %d', _line, len(line_wells))
-                    if not line_wells:
-                        errors.append('no matches found for line: %r' % _line)
+            # match wellnames only after plate, plate range is identified
+            if 'plates' not in parsed_search \
+                and 'plate_ranges' not in parsed_search:
+                errors.append(
+                    'Must specify a plate or plate range: %r' % _line)
             
-                    wells.update(line_wells)
-        return (wells, errors)
+            if DEBUG_WELL_PARSE:
+                logger.info('parsed: %r from %r', parsed_search, _line)
+            parsed_searches.append(parsed_search)
+        
+        if errors:
+            raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg=', '.join(errors))
+        if not parsed_searches:
+            raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg='no search lines found')
+
+        # compress if same wellnames for different plates
+        plate_wells = defaultdict(set)
+        compressed_searches = []
+        for parsed_search in parsed_searches:
+            if 'plates' in parsed_search \
+                and 'wellnames' in parsed_search \
+                and 'plate_ranges' not in parsed_search:
+                for plate in parsed_search['plates']:
+                    wellnames = plate_wells[plate]
+                    wellnames.update(parsed_search.get('wellnames',[]))
+                    plate_wells[plate] = wellnames
+            else:
+                compressed_searches.append(parsed_search)
+        
+        if plate_wells:
+            logger.info('found plate_wells: %r', len(plate_wells))
+            # create a reversed dict by wellnames
+            reversed = defaultdict(set)
+            for plate, wellnames in plate_wells.items():
+                reversed[','.join(sorted(wellnames))].add(plate)
+            logger.info('reversed: %r', reversed)
+            
+            for wellnames, plates in reversed.items():
+                compressed_searches.append({
+                    'plates': sorted(plates), 'wellnames': wellnames.split(',') })
+
+        decorated = [(
+            ','.join(map(str,sorted(s.get('plates',[])))),
+            ','.join([','.join(map(str,pr)) for pr in s.get('plate_ranges',[])]),
+            s) 
+            for s in compressed_searches]
+        decorated.sort(key=itemgetter(0,1))
+        compressed_searches = [s for sort_plates,sort_ranges,s in decorated]
+        return compressed_searches
+        
+    @classmethod
+    def create_well_base_query(cls, well_search_data):
+        
+        parsed_searches = cls.parse_well_search(well_search_data)
+        
+        bridge = get_tables()
+        _well = bridge['well']
+
+        well_query = select([_well.c.well_id]).select_from(_well)        
+        clauses = []
+        plates_only = set()
+        wellids = set()
+        for parsed_search in parsed_searches:
+            clause = []
+            
+            # Separate out plates only searches
+            if len(parsed_search)==1 and 'plates' in parsed_search:
+                plates_only.extend(parsed_search['plates'])
+                continue
+            # Separate out wellids only searches
+            if len(parsed_search)==2:
+                if 'plates' in parsed_search and 'wellnames' in parsed_search:
+                    plates = parsed_search['plates']
+                    wellnames = parsed_search['wellnames']
+                    if len(plates)==1 and len(wellnames)==1:
+                        wellids.add('%s:%s' %(str(plates[0]).zfill(5),wellnames[0]))
+                        continue
+                    
+            if 'plates' in parsed_search:
+                clause.append(_well.c.plate_number.in_(parsed_search['plates']))
+            if 'plate_ranges' in parsed_search:
+                for plate_range in parsed_search['plate_ranges']:
+                    clause.append(_well.c.plate_number.between(
+                        *plate_range, symmetric=True))
+            if len(clause) > 1:
+                clause = or_(*clause)
+            else:
+                clause = clause[0]
+            if 'wellnames' in parsed_search:
+                clause = and_(
+                    _well.c.well_name.in_(parsed_search['wellnames']),
+                    clause)
+            clauses.append(clause)
+        if plates_only:
+            clauses.append(_well.c.plate_number.in_(plates_only))
+        if wellids:
+            clauses.append(_well.c.well_id.in_(wellids))
+        if len(clauses) == 0:    
+            well_query = well_query.where(clauses[0])
+        else:
+            well_query = well_query.where(or_(*clauses))
+        
+        return well_query
+    
+    @classmethod
+    def find_wells(cls, well_search_data):
+        
+        query = cls.create_well_base_query(well_search_data)
+        with get_engine().connect() as conn:
+            result = conn.execute(query)
+            well_ids =  [x[0] for x in result ]    
+            return Well.objects.filter(well_id__in=well_ids)
+    
         
 class LibraryResource(DbApiResource):
     

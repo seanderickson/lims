@@ -54,9 +54,9 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
 from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 
-import reports.schema
+import reports.schema as SCHEMA
 
-RESOURCE = reports.schema.RESOURCE
+RESOURCE = SCHEMA.RESOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,10 @@ BASE_URI = '/reports/api/' + URI_VERSION
 # API_RESULT_OBJ = 'object'
 # API_RESULT_DATA = 'objects'
 # API_RESULT_META = 'meta'
-API_RESULT_OBJ = reports.schema.API_RESULT_OBJ
-API_RESULT_DATA = reports.schema.API_RESULT_DATA
-API_RESULT_META = reports.schema.API_RESULT_META
+API_RESULT_OBJ = SCHEMA.API_RESULT_OBJ
+API_RESULT_DATA = SCHEMA.API_RESULT_DATA
+API_RESULT_META = SCHEMA.API_RESULT_META
+
 
 API_PARAM_OVERRIDE = 'override'
 API_MSG_SUBMIT_COUNT = 'Data submitted'
@@ -692,15 +693,15 @@ class ApiResource(SqlAlchemyResource):
          
         DEBUG_SEARCH = False or logger.isEnabledFor(logging.DEBUG)
          
-        search_ID = kwargs['search_ID']
+        if SCHEMA.API_PARAM_COMPLEX_SEARCH_ID not in kwargs:
+            raise BadRequest('param "%s" is required' 
+                % SCHEMA.API_PARAM_COMPLEX_SEARCH_ID)
+        search_ID = kwargs[SCHEMA.API_PARAM_COMPLEX_SEARCH_ID]
          
         all_params = self._convert_request_to_dict(request)
         all_params.update(kwargs)
 
-        # NOTE: remove "nested_search_data" 20170515;
-        # - this data must be sent with each request
-        # nested_search_data = all_params.get('nested_search_data', None)
-        raw_search_data = all_params.get('raw_search_data', None)
+        raw_search_data = all_params.get(SCHEMA.API_PARAM_SEARCH, None)
          
         if raw_search_data:
             raw_search_data = urllib.unquote(raw_search_data)
@@ -712,27 +713,15 @@ class ApiResource(SqlAlchemyResource):
                 raw_search_data = request.session[search_ID]
             else:
                 raise BadRequest(
-                    'raw_search_data for id missing: %r, %r.'
-                    '.search requires a "raw_search_data" param'
-                    % (search_ID, self._meta.resource_name))
+                    'search param: "%s" is missing for Search: %r, %s/%s'
+                    % (SCHEMA.API_PARAM_SEARCH, search_ID, 
+                        self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH))
         
         if DEBUG_SEARCH:
-            logger.info('raw_search_data: %r', raw_search_data)
-        kwargs['raw_search_data'] = raw_search_data
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+            logger.info('complex search: %: %r', SCHEMA.API_PARAM_SEARCH, raw_search_data)
+        kwargs[SCHEMA.API_PARAM_SEARCH] = raw_search_data
  
-        response = self.build_list_response(request,**kwargs)
-        
-        # Because this view bypasses the IccblBaseResource.dispatch method, we
-        # are implementing the downloadID cookie here, for now.
-        downloadID = all_params.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie downloadID: %r', downloadID)
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.info('no downloadID')
-        
-        return response
+        return self.get_list(request,**kwargs)
     
     @write_authorization
     @un_cache

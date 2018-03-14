@@ -901,8 +901,10 @@ var parseCompoundVendorIDSearch = Iccbl.parseCompoundVendorIDSearch = function(r
     - errors are pushed into the passed in errors array
  */
 var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
-  console.log('value', rawData);
-  
+
+  if (Iccbl.appModel.DEBUG){
+    console.log('value', rawData);
+  }
   var search_array = []
   var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
 
@@ -912,8 +914,9 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
     search_array.push(clause);
   });
   
-  console.log('search_array', search_array);
-
+  if (Iccbl.appModel.DEBUG){
+    console.log('search_array', search_array);
+  }
   var final_search_array = [];
   _.each(search_array, function(line){
     var parts = line.split(/[\s,]+/);
@@ -922,25 +925,26 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
         plates: [],
         plate_ranges: [],
         wellnames: [],
+        well_ids: [],
         errors: [],
         combined: []
       };
       _.each(parts, function(part){
         if (Iccbl.appModel.DEBUG){
-          console.log('test part', part);
+          console.log('test part: '+ part);
         }
         if (PLATE_PATTERN.test(part)){
           if (Iccbl.appModel.DEBUG){
-            console.log('found plate:', part);
+            console.log('found plate:' + part);
           }
           final_search_line.plates.push(part);
         }else if (PLATE_RANGE_PATTERN.test(part)){
           var rangeParts = PLATE_RANGE_PATTERN.exec(part);
           rangeParts = [rangeParts[1],rangeParts[2]];
           rangeParts.sort();
-          console.log('found plate range match', rangeParts)
           if (Iccbl.appModel.DEBUG){
-            console.log('found plate range:', rangeParts);
+            console.log('from PLATE_RANGE_PATTERN:' + part 
+              + 'to' + rangeParts.join(','));
           }
           final_search_line.plate_ranges.push(rangeParts[0]+'-'+rangeParts[1]);
         }else if (WELL_ID_PATTERN.test(part)){
@@ -952,11 +956,11 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
             wellcol = '0'+wellcol;
           }
           var wellname = wellrow + wellcol;
+          var wellid = ''+plate+wellname
           if (Iccbl.appModel.DEBUG){
-            console.log('from WELL_ID:', part, 'to', wellname);
+            console.log('from WELL_ID:' + part + 'to' + wellid);
           }
-          final_search_line['plates'].push(plate);
-          final_search_line['wellnames'].push(wellname);
+          final_search_line['well_ids'].push(wellid);
         }else if (WELL_PATTERN.test(part)) {
           var match = WELL_PATTERN.exec(part);
           var wellrow = match[1].toUpperCase();
@@ -966,9 +970,10 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
           }
           var wellname = wellrow + wellcol;
           if (Iccbl.appModel.DEBUG){
-            console.log('from WELL_NAME:', part, 'to:', wellname);
+            console.log('from WELL_PATTERN:' + part + 'to:' + wellname);
           }
-          final_search_line['wellnames'].push(wellname)
+          final_search_line['wellnames'].push(wellname);
+
         } else {
           final_search_line['errors'].push('part not recognized: ' + part);
           errors.push('part not recognized: ' + part);
@@ -976,28 +981,69 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
       });
       
       if (Iccbl.appModel.DEBUG){
-        console.log('final_search_line', final_search_line);
+        console.log('step 1: search_line' + JSON.stringify(final_search_line));
       }
-      // Match wellnames only if plate, plate range is identified
-      if (!_.isEmpty(final_search_line['wellnames'])){
-        if (_.isEmpty(final_search_line['plates'])
-            && _.isEmpty(final_search_line['plate_ranges'])){
-          var errmsg = 'well name found without plate or plate range: ' + line;
+
+      var well_ids = final_search_line['well_ids'];
+      var wellnames = final_search_line['wellnames'];
+      var plates = final_search_line['plates'];
+      var plate_ranges = final_search_line['plate_ranges'];
+
+      if (_.isEmpty(well_ids) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
+          var errmsg = 'Must specify either a plate, plate range, or well_id: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+      }
+      if (!_.isEmpty(well_ids)){
+        if (!_.isEmpty(plates) || !_.isEmpty(plate_ranges)){
+          var errmsg = 'Well ids may not be defined on the same line with '
+            + 'plate or plate ranges: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        }
+      }
+        
+      // Match wellnames only if plate, plate range, or single well_id is identified
+      if (!_.isEmpty(wellnames) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
+        if (well_ids.length > 1){
+          var errmsg = 'Well names may not be defined with multiple '
+            + 'well_ids: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        } else if (well_ids.length == 1){
+          var well_id = well_ids[0];
+          var match = WELL_ID_PATTERN.exec(well_id);
+          var plate = parseInt(match[1]);
+          var wellrow = match[3].toUpperCase();
+          var wellcol = parseInt(match[4]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          final_search_line['wellnames'].push(wellname);
+          final_search_line['plates'].push(plate);
+          final_search_line['well_ids'] = [];
+        } else {
+          var errmsg = 'Must specify a plate, plate_range, or well_id '
+            + 'for wellnames: ' + line;
           final_search_line['errors'].push(errmsg);
           errors.push(errmsg);
         }
       }
       final_search_line.combined = _.union(
         final_search_line.plates, final_search_line.plate_ranges,
-        final_search_line.wellnames
+        final_search_line.wellnames, final_search_line.well_ids
       );
       if (Iccbl.appModel.DEBUG){
-        console.log('final_search_line.combined ',final_search_line.combined );
+        console.log('final_search_line.combined ',
+          JSON.stringify(final_search_line.combined));
       }
       final_search_array.push(final_search_line);
     }
   });
-  console.log('final_search_array', final_search_array);
+  if (Iccbl.appModel.DEBUG){
+    console.log('final_search_array', final_search_array);
+  }
   return final_search_array;
   
 };
@@ -3124,7 +3170,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     // - if the search key is not in the queryParams, then it is not a column
     // - this will add it manually to the queryParams (which are serialized in
     // the fetch to the server).
-    var _data = {};
+//    var _data = {};
     _.each(_.keys(searchHash), function(key) {
       var val = searchHash[key]
       if(_.isEmpty("" + val)){
@@ -3138,7 +3184,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // defined params are function calls to get the current value in the
         // searchbox - so skip those as state is stored there.
         if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
-        	_data[key]=val;
+//        	_data[key]=val;
         	// Make the params persistent (if not a backgrid-filter)
           self.queryParams[key] = function () {
             var search = self.listModel.get('search');

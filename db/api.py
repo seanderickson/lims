@@ -21082,6 +21082,7 @@ class ReagentResource(DbApiResource):
             custom_columns = {}
 
             # 20180314 - is_restricted_sequence, is_restricted_structure
+            # TODO: anti_sense_sequence should be restricted as well?
             if 'sequence' in field_hash:
                 if self._meta.authorization._is_resource_authorized(
                     user, 'read') is not True:

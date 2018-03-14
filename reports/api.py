@@ -117,8 +117,13 @@ class UserGroupAuthorization(Authorization):
         scope = 'resource'
         prefix = 'permission'
         uri_separator = '/'
+        
+        resource_name = kwargs.get('resource_name', None)
+        if resource_name is None:
+            resource_name = self.resource_name
+        
         permission_str =  uri_separator.join([
-            prefix,scope,self.resource_name,permission_type])       
+            prefix,scope,resource_name,permission_type])       
 
         if DEBUG_AUTHORIZATION:
             logger.info('authorization query: %s, user %s, %s' 
@@ -127,7 +132,7 @@ class UserGroupAuthorization(Authorization):
         if user.is_superuser:
             if DEBUG_AUTHORIZATION:
                 logger.info('%s:%s access allowed for super user: %s' 
-                    % (self.resource_name,permission_type,user))
+                    % (resource_name,permission_type,user))
             return True
         
         userprofile = user.userprofile
@@ -135,14 +140,14 @@ class UserGroupAuthorization(Authorization):
         if permission_type == 'read':
             permission_types.append('write')
         query = userprofile.permissions.all().filter(
-            scope=scope, key=self.resource_name, type__in=permission_types)
+            scope=scope, key=resource_name, type__in=permission_types)
         if query.exists():
             if DEBUG_AUTHORIZATION:
                 logger.info(
                     'user %s, auth query: %s, found matching user permissions %s'
                     % (user,permission_str,[str(x) for x in query]))
             logger.info('%s:%s user explicit permission for: %s' 
-                % (self.resource_name,permission_type,user))
+                % (resource_name,permission_type,user))
             return True
         
         if DEBUG_AUTHORIZATION:
@@ -153,14 +158,14 @@ class UserGroupAuthorization(Authorization):
         permissions_group = [ permission 
                 for group in userprofile.usergroup_set.all() 
                 for permission in group.get_all_permissions(
-                    scope=scope, key=self.resource_name, type__in=permission_types)]
+                    scope=scope, key=resource_name, type__in=permission_types)]
         if permissions_group:
             if DEBUG_AUTHORIZATION:
                 logger.info(
                     'user: %r, auth query: %r, found usergroup permissions: %r'
                     ,user, permission_str, permissions_group)
             logger.debug('%s:%s usergroup permission for: %s' 
-                % (self.resource_name,permission_type,user))
+                % (resource_name,permission_type,user))
             return True
         
         logger.info(

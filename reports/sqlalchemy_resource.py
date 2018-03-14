@@ -908,7 +908,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt %d', len(prefetched_result))
                 
-                if len(prefetched_result) < limit & offset == 0:
+                if len(prefetched_result) < new_limit and offset == 0:
                     # Optimize, skip count if first page and less than limit are found.
                     count = len(prefetched_result)
                 else:
@@ -933,6 +933,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     return None
                 
                 # Fill in the cache with the prefetched sets or rows
+                cached_count = 0
                 for y in range(prefetch_number):
                     new_offset = offset + limit*y;
                     _start = limit*y
@@ -961,13 +962,14 @@ class SqlAlchemyResource(IccblBaseResource):
                         cache.set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
+                        cached_count += 1
                     else:
                         logger.info(
-                            'not caching: prefetched length: '
-                            '%s, start: %s, end: %s',
-                            len(prefetched_result), _start, 'end')
+                            'not caching for block %d, total prefetched length: '
+                            '%d, is less than block start: %d',
+                            y+1,len(prefetched_result), _start)
                         break
-                logger.info('store cached iterations: %s', y+1)
+                logger.info('store cached iterations: %s', cached_count)
             else:
                 logger.info('cache hit for key: %r', key)   
                 

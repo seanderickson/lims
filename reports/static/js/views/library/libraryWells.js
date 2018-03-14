@@ -40,7 +40,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showDataColumnsDialog: function(listView){
       var self = this;
       
-      var searchHash = listView.collection.listModel.get('search');
+      var searchHash = listView.collection.listModel.get(appModel.URI_PATH_SEARCH);
       var dc_ids = _.result(searchHash,'dc_ids', '');
       if (!_.isArray(dc_ids)){
         dc_ids = dc_ids.split(',')
@@ -139,9 +139,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         var searchHash = _.clone(
-          listView.collection.listModel.get('search'));
+          listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
         searchHash['dc_ids'] = dc_ids_selected;
-        listView.collection.listModel.set('search', searchHash);
+        listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
         
       }; // showColumns
       
@@ -253,7 +253,18 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // definitions, if defined, but the new fields are used if not.
         var newFields = _.extend({}, schemaResult['fields'], self.resource['fields'])
         var newResource = _.extend({}, schemaResult, self.resource );
+        
         newResource['fields'] = newFields;
+        var url = newResource.apiUri;
+        if (newResource.key == 'compound_search'){
+          url += '/compound_search';
+          // FIXME: hack to add columns; fix is to implement sirna/smr resource
+          // schema as superset of reagent schema
+          newResource['options']['includes'] = [
+           'inchi','smiles','structure_image','molecular_formula',
+           'molecular_mass','molecular_weight','pubchem_cid','chembank_id',
+           'chembl_id'];
+        }
         
         var extraControls = [];
         var show_data_columns_control = $([
@@ -275,7 +286,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         
-        var viewArgs = _.extend({},self.args,{resource: newResource});
+        var viewArgs = _.extend({},self.args,{
+          resource: newResource,
+          url: url});
 
         var view = new WellListView (viewArgs);
         self.listenTo(view, 'update_title', function(val) {
@@ -298,7 +311,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var listOptions = ListView.prototype.parseUriStack(delegateStack);
       console.log('parsed listOptions', listOptions);
       var dc_ids = [];
-      if (_.has(listOptions, 'search')){
+      if (_.has(listOptions, appModel.URI_PATH_SEARCH)){
         if (_.has(listOptions.search,'dc_ids')){
           dc_ids = listOptions.search.dc_ids;
           if (dc_ids.length > 0 && _.isString(dc_ids)){
@@ -315,7 +328,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var schemaUrl = [self.resource.apiUri,'schema'].join('/');
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
-        createReagentView(self.resource);
+        var schemaUrl = [self.resource.apiUri,'schema'].join('/');
+
+        appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
+//        createReagentView(self.resource);
       }
       
     }

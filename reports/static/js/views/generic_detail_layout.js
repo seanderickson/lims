@@ -131,7 +131,7 @@ define([
       event.preventDefault();
       var self = this;
       
-      var newUriStack = ['apilog','order','-date_time', 'search'];
+      var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
 

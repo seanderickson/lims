@@ -292,7 +292,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (show_existing == 'true'){
         url_search_data.push('show_existing');
       }
-      var newStack = ['search', url_search_data.join(appModel.SEARCH_DELIMITER)];
+      var newStack = [appModel.URI_PATH_SEARCH, 
+        url_search_data.join(appModel.SEARCH_DELIMITER)];
       console.log('newStack:', newStack);
       self.reportUriStack(newStack);
     },
@@ -344,7 +345,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         show_existing: false
       };
       if (!_.isEmpty(delegateStack) 
-          && delegateStack[0] == 'search'){
+          && delegateStack[0] == appModel.URI_PATH_SEARCH){
         
         var search_data = delegateStack[1];
         var errors = [];

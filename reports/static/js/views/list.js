@@ -98,7 +98,7 @@ define([
       this.objects_to_destroy.push(collection);
 
       this.listenTo(this.listModel, 'change:search', function(){
-        var searchHash = self.listModel.get('search')
+        var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH)
         var current_options = _.clone(self.model.get('current_options'));
         console.log('===--- list detect: listModel change:search old: ' 
         		+ JSON.stringify(current_options.search) 
@@ -257,7 +257,7 @@ define([
 
       // Extraselector
       if( _.has(resource, 'extraSelectorOptions')){
-          var searchHash = self.listModel.get('search');
+          var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
           console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
           var extraSelectorModel = new Backbone.Model({ selection: '' });
@@ -274,7 +274,7 @@ define([
           this.objects_to_destroy.push(extraSelectorInstance);
 
           this.listenTo(this.listModel, 'change: search', function(){
-              var searchHash = self.listModel.get('search');
+              var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
               console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
               _.each(_.keys(searchHash), function(key){
                   console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
@@ -285,10 +285,10 @@ define([
           });
           this.listenTo(extraSelectorModel, 'change', function() {
               console.log('===--- extraSelectorModel change');
-              var searchHash = _.clone(self.listModel.get('search'));
+              var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
               var value = extraSelectorModel.get('selection');
               searchHash[extraSelectorKey + '__exact'] = value;
-              self.listModel.set('search', searchHash);
+              self.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
               self.collection.setSearch(searchHash);
           });
       }
@@ -409,7 +409,7 @@ define([
       
       var fetched = false;
       
-      var searchHash = self.listModel.get('search');
+      var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
       if(!_.isEmpty(searchHash)){
         self.collection.setSearch(searchHash);
         fetched = true;

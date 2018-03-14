@@ -3157,7 +3157,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   setSearch: function(searchHash, options) {
     var self = this;
     var searchHash = _.clone(searchHash);
-    self.listModel.set('search', searchHash);
+    self.listModel.set(Iccbl.appModel.URI_PATH_SEARCH, searchHash);
     
     // Tell all the header cells
     this.trigger("MyServerSideFilter:search", searchHash, this);
@@ -3170,7 +3170,6 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     // - if the search key is not in the queryParams, then it is not a column
     // - this will add it manually to the queryParams (which are serialized in
     // the fetch to the server).
-//    var _data = {};
     _.each(_.keys(searchHash), function(key) {
       var val = searchHash[key]
       if(_.isEmpty("" + val)){
@@ -3184,10 +3183,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // defined params are function calls to get the current value in the
         // searchbox - so skip those as state is stored there.
         if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
-//        	_data[key]=val;
         	// Make the params persistent (if not a backgrid-filter)
           self.queryParams[key] = function () {
-            var search = self.listModel.get('search');
+            var search = self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH);
             if (!_.isEmpty(search)){
               return _.result(search, key, null);
             }
@@ -3213,28 +3211,12 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     console.log('addSearch: ' + JSON.stringify(searchHash) 
       + ', options: ' + JSON.stringify(options) );
     var self = this;
-    var newSearchHash = _.clone(self.listModel.get('search'));
+    var newSearchHash = _.clone(self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH));
     newSearchHash = _.extend(newSearchHash, searchHash);
     if(options && options.reset && self.state.currentPage != 1){
       self.state.currentPage = 1;
     }
-    self.listModel.set({
-      'search' : newSearchHash
-    });
-// Removed 20170321
-//    _.each(_.keys(searchHash), function(key){
-//      // make the params persistent (if not a backgrid-filter)
-//      self.queryParams[key] = function () {
-//        return self.listModel.get('search')[key] || null;
-//      };
-//    });
-// Removed 20161213, see search listener in list2.js
-//    if(options && options.reset && self.state.currentPage != 1){
-//      console.log('collection.addSearch: reset');
-//      self.getFirstPage({reset: true, fetch: true}).fail(
-//        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-//      );
-//    }
+    self.listModel.set(Iccbl.appModel.URI_PATH_SEARCH, newSearchHash);
   },
 
   /**
@@ -3249,7 +3231,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     var searchHash = {};
     var found = false;
     if (!_.isUndefined(searchKeys)) {
-      searchHash = _.clone(self.listModel.get('search'));
+      searchHash = _.clone(self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH));
       _.each(searchKeys, function(searchKey) {
         if(_.has(searchHash, searchKey)){
           delete searchHash[searchKey];
@@ -3258,18 +3240,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       });
     }
     if(found){
-      
       self.state.currentPage = 1;
-      self.listModel.set({
-        'search' : searchHash
-      }, options);
-// Removed 20161213, see search listener in list2.js
-//      if(options && options.reset){
-//        console.log('collection.clearSearch: reset');
-//        self.getFirstPage({reset: true, fetch: true}).fail(
-//          function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-//        );
-//      }
+      var data = {};
+      data[Iccbl.appModel.URI_PATH_SEARCH] = searchHash;
+      self.listModel.set(data, options);
     }
   },
 

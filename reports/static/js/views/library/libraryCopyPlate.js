@@ -157,7 +157,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       
       showHistoryButton.click(function(e) {
         e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
         var search = {};
         search['ref_resource_name'] = 'librarycopyplate';
         if (self.library && self.copy) {
@@ -459,9 +459,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           // to modify for all of the plates matching the search
           var post_data = new FormData();
           post_data.append('plate_info', JSON.stringify(values));
-
-          if(_.has(listView._options, appModel.API_PARAM_SEARCH)) {
-            post_data.append(appModel.API_PARAM_SEARCH,listView._options[appModel.API_PARAM_SEARCH]);  
+          
+          var search_data_found = false;
+          var search_data = listView.getSearchData();
+          if (!_.isUndefined(search_data)){
+            post_data.append(appModel.API_PARAM_SEARCH, search_data);
+            search_data_found = true;
           }
           var nested_search_data = {};
           if (self.library){
@@ -472,7 +475,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
           if (!_.isEmpty(nested_search_data)){
             post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
+            search_data_found = true;
           }
+          
+          if (search_data_found !== true){
+            appModel.error('Error, no search data for batch edit');
+            return;
+          }
+          
           var url = self.resource.apiUri + '/batch_edit';
           
           var listParamString = listView.getCollectionUrl();
@@ -689,8 +699,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           var post_data = new FormData();
           post_data.append('plate_location', JSON.stringify(values));
           
-          if(_.has(listView._options, appModel.API_PARAM_SEARCH)) {
-            post_data.append(appModel.API_PARAM_SEARCH,listView._options[appModel.API_PARAM_SEARCH]);  
+          var search_data_found = false;
+          var search_data = listView.getSearchData();
+          if (!_.isUndefined(search_data)){
+            post_data.append(appModel.API_PARAM_SEARCH, search_data);
+            search_data_found = true;
           }
           var nested_search_data = {};
           if (self.library){
@@ -701,6 +714,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
           if (!_.isEmpty(nested_search_data)){
             post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
+            search_data_found = true;
+          }
+          
+          if (search_data_found !== true){
+            appModel.error('Error, no search data for batch edit');
+            return;
           }
           var url = self.resource.apiUri + '/batch_edit';
           

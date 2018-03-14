@@ -13,7 +13,7 @@ define([
     genericSelector, listTemplate, modalTemplate ){
 
   var ListView = Backbone.Layout.extend({
-    LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
+    LIST_ROUTE_ORDER: ['rpp', 'page','order',appModel.URI_PATH_SEARCH],
 
     initialize : function(args) {
         var self = this;
@@ -71,7 +71,7 @@ define([
 
         // Extraselector
         if( _.has(schema, 'extraSelectorOptions')){
-            var searchHash = self.model.get('search');
+            var searchHash = self.model.get(appModel.URI_PATH_SEARCH);
             console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
             var extraSelectorModel = new Backbone.Model({ selection: '' });
@@ -87,7 +87,7 @@ define([
             this.objects_to_destroy.push(extraSelectorInstance);
 
             this.listenTo(this.model, 'change: search', function(){
-                var searchHash = self.model.get('search');
+                var searchHash = self.model.get(appModel.URI_PATH_SEARCH);
                 console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
                 _.each(_.keys(searchHash), function(key){
                     console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
@@ -98,10 +98,10 @@ define([
             });
             this.listenTo(extraSelectorModel, 'change', function() {
                 console.log('===--- extraSelectorModel change');
-                var searchHash = _.clone(self.model.get('search'));
+                var searchHash = _.clone(self.model.get(appModel.URI_PATH_SEARCH));
                 var value = extraSelectorModel.get('selection');
                 searchHash[extraSelectorKey] = value;
-                self.model.set('search', searchHash);
+                self.model.set(appModel.URI_PATH_SEARCH, searchHash);
             });
         }
 

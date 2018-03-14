@@ -173,17 +173,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     }, // end showDetail
     
     // Show a listing of a resource, get the parameters from the uriStack
-    showList: function(resource, uriStack, complex_search) {
+    showList: function(resource, uriStack) {
       
-      console.log('showList: resource:', resource, 'uriStack', uriStack, 
-        'complex search', complex_search);
-
+      console.log('showList: resource:', resource, 'uriStack', uriStack); 
       var self = this;
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
       var view;
-      var url = resource.apiUri;
-      
+
       if (_.has(resource, 'listView')){
         if (_.has(VIEWS, resource['listView'])) {
           viewClass = VIEWS[resource['listView']];
@@ -210,326 +207,73 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         this.$('#content_title_row').show();
       }
     
-      if (!_.isEmpty(complex_search)){
-        view = self.createListSearchView(resource, uriStack, viewClass, complex_search);
+      var Collection = Iccbl.MyCollection.extend({
+      });
+      collection = self.collection = new Collection();
+      var extraControls = [];
       
-      }else{ // normal list view
-
-        var Collection = Iccbl.MyCollection.extend({
-          url: url
+      // FIXME: not all types can have an "add"
+      //if (appModel.hasPermission(resource.key, 'write')){
+      
+      if (_.contains(resource.visibility, 'c')){
+        var showAddButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_resource" href="#">',
+            'Add</a>'
+          ].join(''));   
+        showAddButton.click(function(e){
+          e.preventDefault();
+          var route = resource.key + '/+add';
+          appModel.router.navigate(route, {trigger: true});
         });
-        collection = self.collection = new Collection();
-        var extraControls = [];
-        
-        if (false){
-          // FIXME: not all types can have an "add"
-          //if (appModel.hasPermission(resource.key, 'write')){
-          
-          if (_.contains(resource.visibility, 'c')){
-            var showAddButton = $([
-              '<a class="btn btn-default btn-sm pull-down" ',
-                'role="button" id="add_resource" href="#">',
-                'Add</a>'
-              ].join(''));   
-            showAddButton.click(function(e){
-              e.preventDefault();
-              var route = resource.key + '/+add';
-              appModel.router.navigate(route, {trigger: true});
-            });
-            extraControls.push(showAddButton);
-          }
-          if (_.contains(resource.visibility, 'e')){
-            var showUploadButton = $([
-              '<a class="btn btn-default btn-sm pull-down" ',
-                'role="button" id="patch_resource" href="#">',
-                'Upload data</a>'
-              ].join(''));   
-            showUploadButton.click(function(e){
-              e.preventDefault();
-              UploadDataForm.postUploadFileDialog(
-                collection.url, resource.content_types)
-                .done(function(){
-                  collection.fetch({ reset: true });
-                })
-                .fail(function(){
-                  appModel.jqXHRfail.apply(this,arguments); 
-                });
-            });
-            extraControls.push(showUploadButton);
-          }
-        }
-        view = new viewClass({ 
-            uriStack: uriStack,
-            resource: resource,
-            collection: collection,
-            extraControls: extraControls
+        extraControls.push(showAddButton);
+      }
+      if (_.contains(resource.visibility, 'e')){
+        if (resource.key in ['reagent','well','copywell',
+                             'librarycopy','librarycopyplate']){
+          var showUploadButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="patch_resource" href="#">',
+              'Upload data</a>'
+            ].join(''));   
+          showUploadButton.click(function(e){
+            e.preventDefault();
+            UploadDataForm.postUploadFileDialog(
+              collection.url, resource.content_types)
+              .done(function(){
+                collection.fetch({ reset: true });
+              })
+              .fail(function(){
+                appModel.jqXHRfail.apply(this,arguments); 
+              });
           });
+          extraControls.push(showUploadButton);
+        }
       }
-      
-      // FIXME: createListSearchView does not return a view; should return a deferred
-      if (!_.isUndefined(view)){
-        self.listenTo(view, 'update_title', function(val){
-          if(val) {
-            this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
-            this.$('#content_title_row').show();
-          }else{
-            this.$('#content_title').html(resource.title);
-            this.$('#content_title_row').show();
-          }
+      view = new viewClass({ 
+          uriStack: uriStack,
+          resource: resource,
+          collection: collection,
+          extraControls: extraControls
         });
       
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        Backbone.Layout.setupView(view);
-        self.setView('#content', view ).render();
-        self.objects_to_destroy.push(view);
-      }
+      self.listenTo(view, 'update_title', function(val){
+        if(val) {
+          this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+          this.$('#content_title_row').show();
+        }else{
+          this.$('#content_title').html(resource.title);
+          this.$('#content_title_row').show();
+        }
+      });
+    
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
+      self.setView('#content', view ).render();
+      self.objects_to_destroy.push(view);
 
     }, // end showList
 
-    /**
-     * Prepare the list view to send API_PARAM_SEARCH search data that has 
-     * been encoded in the URI stack, or that is referenced by the 
-     * API_PARAM_SEARCH_ID in localstorage
-     * TODO: 20180312 - refactor this to the list view class.
-     */
-    createListSearchView: function(resource, uriStack, viewClass, complex_search){
-      console.log('createListSearchView...')
-      var self = this;
-      var resources_supporting_raw_search = [
-        'well','reagent','compound_search','librarycopyplate'];
-      if (!_.contains(resources_supporting_raw_search,resource.key)){
-        throw "search data not supported for resource: " + resource.key + 
-          ', must be one of: ' + resources_supporting_raw_search.join(',');
-      }
-      
-      function showView(schemaResult){
-        // Update the current resource and fields:
-        // TODO: modify the api: sirna, rna resource schema with default visibilities
-        // - current resource prop and field definitions override the new 
-        // definitions, if defined, but the new fields are used if not.
-        var newFields = _.extend({}, schemaResult['fields'], resource['fields'])
-        var newResource = _.extend({}, schemaResult, resource );
-        newResource['fields'] = newFields;
-        
-        var url = newResource.apiUri;
-        
-        var includes = [];
-        if (newResource.key == 'compound_search'){
-          url += '/compound_search';
-          // FIXME: hack to add columns; fix is to implement sirna/smr resource
-          // schema as superset of reagent schema
-          newResource['options']['includes'] = [
-           'inchi','smiles','structure_image','molecular_formula',
-           'molecular_mass','molecular_weight','pubchem_cid','chembank_id',
-           'chembl_id'];
-        }
-        
-        var viewOptions = {
-          url: url,
-          resource: newResource, 
-          extraControls: extraControls
-        };
-        
-        // If Complex Search, then search data are sent as a post header
-        if (_.has(complex_search, appModel.API_PARAM_SEARCH_ID)){
-          var searchId = complex_search[appModel.API_PARAM_SEARCH_ID];
-          self.consumedStack.push(appModel.URI_PATH_COMPLEX_SEARCH);
-          self.consumedStack.push(searchId);
-          url += '/' + [appModel.URI_PATH_COMPLEX_SEARCH, searchId].join('/');
-          
-          uriStack = _.result(complex_search,'uriStack',[]);
-          viewOptions['uriStack'] = uriStack;
-          // NOTE: setting API_PARAM_SEARCH on the list options:
-          // - for libraryCopyPlate.js
-          // TODO: 20180312 - refactor list.js to process complex search
-          viewOptions[appModel.API_PARAM_SEARCH] = 
-            complex_search[appModel.API_PARAM_SEARCH];
-          // Set up the collection add extra API_PARAM_SEARCH to POST data
-          var Collection = Iccbl.MyCollection.extend({
-            url: url,
-            fetch: function(options){
-              var options = options || {};
-              options.data = _.extend({}, options.data);
-              options.data[appModel.API_PARAM_SEARCH] = 
-                complex_search[appModel.API_PARAM_SEARCH];
-              options.type = 'POST';
-              return Iccbl.MyCollection.prototype.fetch.call(this, options);
-            }
-          });
-          var collection = new Collection();
-          viewOptions['collection'] = collection;
-        } else {
-          self.consumedStack.push(appModel.URI_PATH_ENCODED_SEARCH);
-          self.consumedStack.push(complex_search[appModel.API_PARAM_SEARCH]);
-          viewOptions[appModel.API_PARAM_ENCODED_SEARCH] = 
-            complex_search[appModel.API_PARAM_SEARCH];
-          fetchType = 'GET';
-          uriStack = _.result(complex_search,'uriStack',[]);
-          viewOptions['uriStack'] = uriStack;
-          // Set up the collection to add extra API_PARAM_SEARCH to GET data
-          var Collection = Iccbl.MyCollection.extend({
-            url: url,
-            fetch: function(options){
-              var options = options || {};
-              options.data = _.extend({}, options.data);
-              options.data[appModel.API_PARAM_SEARCH] = 
-                complex_search[appModel.API_PARAM_SEARCH];
-              options.type = 'GET';
-              return Iccbl.MyCollection.prototype.fetch.call(this, options);
-            }
-          });
-          var collection = new Collection();
-          viewOptions['collection'] = collection;
-        }
-  
-        
-        var extraControls = [];
-        var $modifySearch = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="modify_search_button" ',
-          'href="#">',
-          'Modify Search</a>'
-        ].join(''));
-        extraControls.push($modifySearch);
-        $modifySearch.click(function(e){
-          e.preventDefault();
-          self.showSearch(newResource, complex_search);
-        });
-        viewOptions['extraControls'] = extraControls;
-        var view = new viewClass(viewOptions);
-        
-        self.$('#content_title_row').show();
-          
-        self.listenTo(view, 'update_title', function(val){
-          if(val) {
-            self.$('#content_title').html(newResource.title + ': <small>' + val + '</small>');
-          }else{
-            self.$('#content_title').html(newResource.title);
-          }
-        });
-        
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        Backbone.Layout.setupView(view);
-        self.setView('#content', view ).render();
-        self.objects_to_destroy.push(view);
-      }; // showView
-      
-      var schemaUrl = resource.apiUri + '/schema';
-      appModel.getResourceFromUrl(schemaUrl, showView);
-      
-      // FIXME: should return a deferred call
-      //      return null;
-    },
-    
-    /** 
-     * Show/modify the reagent search list view 
-     **/
-    showSearch: function(resource, complex_search) {
-      console.log('modify search:', resource.key, complex_search);
-
-      function parse(value, errors){
-        var parsedData;
-        if(resource.key == 'well' || resource.key == 'reagent'){
-          parsedData = Iccbl.parseRawWellSearch(value, errors);
-        }else if (resource.key == 'compound_search'){
-          parsedData = Iccbl.parseCompoundVendorIDSearch(value,errors);
-        }else if (resource.key == 'librarycopyplate'){
-          parsedData = Iccbl.parseRawPlateSearch(value,errors);
-        }else{
-          throw 'Unknown search resource: ' + resource.key;
-        }
-          
-        if (_.isEmpty(parsedData)){
-          errors.push('no values found for input');
-        } else {
-          console.log('parsedData', parsedData);
-        }
-        return parsedData;
-      };
-      
-      function validateSearch(value,formValues){
-        var errors = [];
-        var parsedData = parse(value, errors);
-        if (!_.isEmpty(errors)){
-          return {
-            type: 'searchVal',
-            message: errors.join('; ')
-          };
-        }
-      };
-      function processSearch(text_to_search){
-        var errors;
-        if(resource.key == 'well' || resource.key == 'reagent'){
-          errors = SearchBox.prototype.processWellSearch.call(this, text_to_search);
-        }else if (resource.key == 'compound_search'){
-          errors = SearchBox.prototype.processCompoundSearch.call(this, text_to_search);
-        }else if (resource.key == 'librarycopyplate'){
-          errors = SearchBox.prototype.processCopyPlateSearch.call(this,text_to_search);
-        }else{
-          throw 'Unknown search resource: ' + resource.key;
-        }
-        if (errors){
-          throw 'Unexpected error on submit: ' + errors.join(', ');
-        }
-      };
-      var schema = {
-        searchVal: {
-          title: 'Search Data',
-          key: 'searchVal',
-          type: Backbone.Form.editors.TextArea.extend({
-              initialize: function() {
-                Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
-                this.$el.attr('rows',12);
-              }
-          }),
-          editorClass: 'input-full',
-          validators: ['required', validateSearch],
-          template: appModel._field_template //altFieldTemplate
-        }
-      };
-
-      var search_text = complex_search[appModel.API_PARAM_SEARCH];
-      var errors = [];
-      var parsedData = parse(search_text, errors);
-      if (!_.isEmpty(errors)){
-        throw 'errors in parsed search:' + errors.join(', ');
-      } else {
-        search_text = _.map(parsedData, function(parsedLine){
-          if (_.has(parsedLine, 'combined')){
-            return parsedLine.combined.join(' ');
-          }else{
-            return parsedLine;
-          }
-        }).join('\n');
-      }
-      var FormFields = Backbone.Model.extend({
-        schema: schema
-      });
-      var formFields = new FormFields({
-        searchVal: search_text
-      });
-      var form = new Backbone.Form({
-        model: formFields,
-        template: appModel._form_template //_.template(form_template.join(''))
-      });
-      var _form_el = form.render().el;
-      var title = 'Search for ' + resource.title;
-      
-      appModel.showModal({
-        title: title,
-        view: _form_el,
-        ok: function() {
-          var errors = form.commit();
-          if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
-            return false;
-          }
-          
-          processSearch(form.getValue()['searchVal']);
-        } 
-      });
-    },
-    
     // Backbone layoutmanager callback
     cleanup: function(){
       console.log('cleanup:', this.objects_to_destroy.length);
@@ -614,17 +358,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.setView('#content', view).render();
         return;
       }
-      var complex_search = appModel.findComplexSearch(uriStack);
-      if (_.has(complex_search,'errors')){
-        var errMsg = complex_search['errors'];
-        console.log(errMsg);
-        appModel.error(errMsg);
-        complex_search = null;
-      }
-      
       if (!_.isEmpty(uriStack) 
-            && !_.contains(appModel.LIST_ARGS, uriStack[0]) 
-            && _.isEmpty(complex_search)) {
+            && !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
@@ -652,7 +387,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       } else {
         // LIST VIEW
-        self.showList(resource, uriStack, complex_search);
+        self.showList(resource, uriStack);
       }
     }
   });

@@ -2581,8 +2581,10 @@ define([
   appState.URI_PATH_COMPLEX_SEARCH = 'csearch';
   appState.URI_PATH_ENCODED_SEARCH = 'esearch';
   appState.URI_PATH_SEARCH = 'search';
-  appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children',
-                        appState.URI_PATH_SEARCH];      
+  appState.LIST_ARGS = [
+    appState.URI_PATH_ENCODED_SEARCH, appState.URI_PATH_COMPLEX_SEARCH,
+    'rpp','page','includes','order','log', 'children',
+    appState.URI_PATH_SEARCH];      
   
   appState.LIST_DELIMITER_SUB_ARRAY = '$';
 

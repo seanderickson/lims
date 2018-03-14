@@ -415,6 +415,7 @@ define([
 
       $form3.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
+        self.$('[data-error]').empty();
         var errors = form3.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
           $form3.find('[name="searchVal"]').addClass(self.errorClass);
@@ -440,6 +441,7 @@ define([
 
       $form2.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
+        self.$('[data-error]').empty();
         var errors = form2.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
           $form2.find('[name="searchVal"]').addClass(self.errorClass);
@@ -452,7 +454,39 @@ define([
         if (!_.isEmpty(errors)){
           throw 'Unexpected errors after submit: ' + errors.join(', ');
         }
-      });      
+      });
+      var $help = $('<a>', {
+        title: 'Help'
+      }).text('?');
+      $help.click(function(e){
+        e.preventDefault();
+        appModel.showModalMessage({
+          title: 'Searching for wells',
+          okText: 'Ok',
+          body: [
+            '<b>Search for single wells:</b>',
+            '50001:P24, 50002:A01, 50002:A23',
+            '<b>Equivalent search:</b>',
+            '50001P24, 50002A1, 50002A23',
+            '<b>Search for multiple wells in a plate:</b>',
+            '50001P24 A1 A23',
+            '50001 P24 A1 A23',
+            '50001 P24,A1,A23',
+            '<b>Search for multiple wells in a plate range:</b>',
+            '50001-50020 A1,A2,A3',
+            '50001-50020 A1 A2 A3',
+            '<b>Search for many wells:</b>',
+            '50001:P21','50001:P22','50001:P23','50001:P24',
+            '<b>Search for all wells in a plate or plate range:</b>',
+            '50001 50002 50003',
+            '50010-50020',
+          ].join('<br/>'),
+          ok: function(e){
+            e.preventDefault();
+          }
+        });
+      });
+      $form2.find('[key="form-group-searchVal"]').find('label').append('&nbsp;').append($help);
 
       ///// Compound name, Vendor ID search- perform search on server
       var form2a = this.form2a;
@@ -465,6 +499,7 @@ define([
 
       $form2a.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
+        self.$('[data-error]').empty();
         var errors = form2a.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
           $form2a.find('[name="searchVal"]').addClass(self.errorClass);
@@ -490,6 +525,7 @@ define([
   
         $form5.find('[ type="submit" ]').click(function(e){
           e.preventDefault();
+          self.$('[data-error]').empty();
           var errors = form5.commit({ validate: true }); 
           if(!_.isEmpty(errors)){
             $form5.find('[name="searchVal"]').addClass(self.errorClass);
@@ -528,6 +564,7 @@ define([
   
         $form4.find('[ type="submit" ]').click(function(e){
           e.preventDefault();
+          self.$('[data-error]').empty();
           var errors = form4.commit({ validate: true }); 
           if(!_.isEmpty(errors)){
             console.log('form4 errors, abort submit: ' + JSON.stringify(errors));
@@ -605,8 +642,15 @@ define([
           // form3 may not be rendered yet, store the value
           this.form2_data = parsedData;
         }else if (uiResourceId == 'compound_search') {
-          this.form2a.setValue('searchVal', complex_search[appModel.API_PARAM_SEARCH]);
-          this.form2a_data = complex_search[appModel.API_PARAM_SEARCH];
+          var search_data = complex_search[appModel.API_PARAM_SEARCH];
+          var parsedData = Iccbl.parseCompoundVendorIDSearch(search_data,errors);
+          if (!_.isEmpty(errors)){
+            console.log('Search data not parsed properly', errors);
+            return;
+          }
+          parsedData = parsedData.join('\n');
+          this.form2a.setValue('searchVal', parsedData);
+          this.form2a_data = parsedData;
         } else {
           throw 'unknown resource for search: ' + uiResourceId;
         }
@@ -710,7 +754,7 @@ define([
           resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
           searchId].join('/');
         appModel.router.navigate(_route, {trigger:true});
-        // var newStack = [resource.key,'search',searchId];
+        // var newStack = [resource.key,appModel.URI_PATH_SEARCH,searchId];
         // NOTE: easier to control the router history using navigate: 
         // when using uristack, there is the problem of who set appModel.routing_options last:
         // a race condition is set up between list2.js and search_box.js

@@ -37,10 +37,14 @@ define([
       
       var self = this;
       var _options = self._options = args;
-      var resource = args.resource;
+      var resource = self.resource = args.resource;
       self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
       var uriStack = args.uriStack || [];
+
+      if (!self._options.extraControls){
+        self._options.extraControls = [];
+      }
 
       var ListModel = Backbone.Model.extend({
         defaults: {
@@ -48,7 +52,9 @@ define([
             page: 1,
             order: [],
             search: {},
-            includes: [] }
+            includes: [],
+            esearch: '',
+            csearch: '' }
         });
 
       var listInitial = this.parseUriStack(uriStack, _options.resource.options);
@@ -83,6 +89,64 @@ define([
         collection = self.collection = _options.collection;
         collection.listModel = listModel;
         collection.state = _state;
+        collection.url = self._options.url;
+      }
+
+      var $modifySearch = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+        'role="button" id="modify_search_button" ',
+        'href="#">',
+        'Modify Search</a>'
+      ].join(''));
+      $modifySearch.click(function(e){
+        e.preventDefault();
+        self.modifySearch();
+      });
+      
+      function setComplexSearch(){
+        var searchId = self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH);
+        if (!_.isUndefined(searchId)){
+          console.log('change: ' + appModel.URI_PATH_COMPLEX_SEARCH, searchId);
+          collection.type = 'POST';
+          var searchData = appModel.getSearch(searchId);
+          var new_url = self._options.url + '/' + appModel.URI_PATH_COMPLEX_SEARCH + '/' + searchId;
+          collection.url = new_url;
+          collection.fetch = function(options){
+            var options = options || {};
+            options.data = _.extend({}, options.data);
+            options.data[appModel.API_PARAM_SEARCH] = searchData;
+            options.type = 'POST';
+            return Iccbl.MyCollection.prototype.fetch.call(this, options);
+          };
+        } else {
+          console.log('no change/unset: ' + appModel.URI_PATH_COMPLEX_SEARCH, null);
+        }
+      };
+      function setEncodedSearch(){
+        var searchData = self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH);
+        if (!_.isUndefined(searchData)){
+          console.log('change: ' + appModel.URI_PATH_ENCODED_SEARCH, searchData);
+          collection.url = self._options.url ;
+          collection.fetch = function(options){
+            var options = options || {};
+            options.data = _.extend({}, options.data);
+            options.data[appModel.API_PARAM_SEARCH] = searchData;
+            options.type = 'GET';
+            return Iccbl.MyCollection.prototype.fetch.call(this, options);
+          };
+        } else {
+          console.log('no change/unset: ' + appModel.URI_PATH_ENCODED_SEARCH, null);
+        }
+      };
+      self.listenTo(self.listModel, 'change:'+appModel.URI_PATH_COMPLEX_SEARCH,setComplexSearch);
+      self.listenTo(self.listModel, 'change:'+appModel.URI_PATH_ENCODED_SEARCH,setEncodedSearch);
+      
+      if (!_.isEmpty(listModel.get(appModel.URI_PATH_COMPLEX_SEARCH))){
+        setComplexSearch();
+        self._options.extraControls.unshift($modifySearch);
+      }else if (! _.isEmpty(listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
+        setEncodedSearch();
+        self._options.extraControls.unshift($modifySearch);
       }
       
       var columns;
@@ -100,6 +164,185 @@ define([
       this.buildGrid( columns, self._options.resource );
     },
     
+    /**
+     * Get the current extra search data for the list view:
+     * appModel.URI_PATH_COMPLEX_SEARCH
+     * appModel.URI_PATH_ENCODED_SEARCH
+     */
+    getSearchData: function() {
+      var self = this;
+      var search_data;
+      var searchId = self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH);
+      if (!_.isUndefined(searchId)  && !_.isEmpty(searchId)){
+        search_data = appModel.getSearch(searchId);
+      }else if (! _.isEmpty(self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
+        search_data = self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH);
+      }
+      return search_data;
+    },
+    
+    /** 
+     * Show/modify the reagent search list view 
+     **/
+    modifySearch: function() {
+      var self = this;
+      var resource = self.resource;
+      var search_data;
+      var search_path;
+      var searchId = self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH);
+      if (!_.isUndefined(searchId)  && !_.isEmpty(searchId)){
+        search_data = appModel.getSearch(searchId);
+        search_path = appModel.URI_PATH_COMPLEX_SEARCH;
+      }else if (! _.isEmpty(self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
+        search_data = self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH);
+        search_path = appModel.URI_PATH_ENCODED_SEARCH;
+      } else {
+        throw "no search found in the listmodel: " + self.listModel.toJSON();
+      }
+      
+      if (_.isEmpty(search_data)){
+        throw "no search found in the listmodel: " + self.listModel.toJSON();
+      }
+      console.log('modify search:', resource.key, search_data);
+      
+      
+      function parse(value, errors){
+        var parsedData;
+        console.log('parse', value);
+        if(resource.key == 'well' || resource.key == 'reagent'){
+          parsedData = Iccbl.parseRawWellSearch(value, errors);
+        }else if (resource.key == 'compound_search'){
+          parsedData = Iccbl.parseCompoundVendorIDSearch(value,errors);
+        }else if (resource.key == 'librarycopyplate'){
+          parsedData = Iccbl.parseRawPlateSearch(value,errors);
+        }else{
+          throw 'Unknown search resource: ' + resource.key;
+        }
+          
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        return parsedData;
+      };
+      
+      function validateSearch(value,formValues){
+        var errors = [];
+        var parsedData = parse(value, errors);
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'searchVal',
+            message: errors.join('; ')
+          };
+        }
+      };
+      function processSearch(text_to_search){
+        var errors =[];
+        var parsedData = parse(text_to_search, errors);
+        if (!_.isEmpty(errors)){
+          throw 'Unexpected error on submit: ' + errors.join(', ');
+        }
+        
+        if (parsedData.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
+          var search_text = _.map(parsedData, function(parsedLine){
+            if (_.has(parsedLine, 'combined')){
+              return parsedLine.combined.join(' ');
+            }else{
+              return parsedLine;
+            }
+          }).join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE);
+          if (search_path != appModel.URI_PATH_ENCODED_SEARCH){
+            appModel.set('routing_options', {replace: false});  
+          }
+          self.listModel.unset(appModel.URI_PATH_COMPLEX_SEARCH, { silent: true});
+          self.listModel.set(appModel.URI_PATH_ENCODED_SEARCH,search_text);
+          
+        }else{
+          // Send complex search data as a POST
+          // must change the route, and create a post
+          // TODO: key the search data using the searchId: 
+          // this allows for browser "back" in the session
+          // will also need to listen to URIStack changes and grab the data
+          // from the search ID
+          var searchId = '' + ( new Date() ).getTime();
+          appModel.setSearch(searchId,text_to_search);
+          
+          if (search_path != appModel.URI_PATH_COMPLEX_SEARCH){
+            appModel.set('routing_options', {replace: false});  
+          }
+          self.listModel.unset(appModel.URI_PATH_ENCODED_SEARCH, { silent: true});
+          self.listModel.set(appModel.URI_PATH_COMPLEX_SEARCH,searchId);
+          
+        }
+        self.collection.getFirstPage({reset: true, fetch: true});
+        
+      };
+      
+      function searchToText(parsedData){
+        search_text = _.map(parsedData, function(parsedLine){
+          if (_.has(parsedLine, 'combined')){
+            return parsedLine.combined.join(' ');
+          }else{
+            return parsedLine;
+          }
+        }).join('\n');
+        return search_text;
+      };
+      var schema = {
+        searchVal: {
+          title: 'Search Data',
+          key: 'searchVal',
+          type: Backbone.Form.editors.TextArea.extend({
+              initialize: function() {
+                Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
+                this.$el.attr('rows',12);
+              }
+          }),
+          editorClass: 'input-full',
+          validators: ['required', validateSearch],
+          template: appModel._field_template //altFieldTemplate
+        }
+      };
+
+      var errors = [];
+      var parsedData = parse(search_data, errors);
+      if (!_.isEmpty(errors)){
+        throw 'errors in parsed search:' + errors.join(', ');
+      } else {
+        search_data = searchToText(parsedData);
+      }
+      var FormFields = Backbone.Model.extend({
+        schema: schema
+      });
+      var formFields = new FormFields({
+        searchVal: search_data
+      });
+      var form = new Backbone.Form({
+        model: formFields,
+        template: appModel._form_template //_.template(form_template.join(''))
+      });
+      var _form_el = form.render().el;
+      var title = 'Search for ' + resource.title;
+      
+      appModel.showModal({
+        title: title,
+        view: _form_el,
+        ok: function() {
+          var errors = form.commit();
+          if(!_.isEmpty(errors)){
+            console.log('form errors, abort submit: ' + JSON.stringify(errors));
+            return false;
+          }
+          
+          processSearch(form.getValue()['searchVal']);
+        } 
+      });
+    },
+    
+    /**
+     * Parse the uriStack and set the listModel state
+     */
     parseUriStack: function(uriStack, initialOptions ){
       console.log('parseUriStack', uriStack, initialOptions);
       var self = this;
@@ -139,6 +382,30 @@ define([
             console.log('searchHash', searchHash);
             
             listInitial[key] = searchHash;
+          } else if (key == appModel.URI_PATH_ENCODED_SEARCH) {
+            listInitial[key] = value;
+          } else if (key == appModel.URI_PATH_COMPLEX_SEARCH){
+            var searchId = '' + value;
+            if (_.isEmpty(searchId)){
+              var msg = 'no complex search id found:' + uriStack.join('/');
+              console.log(msg);
+              appModel.error(msg);
+            }
+            if (!_.isNaN(parseInt(searchId))) {
+              var search_data = appModel.getSearch(searchId);
+              if(_.isUndefined(search_data) || _.isEmpty(search_data)){
+                var msg = 'Browser state no longer contains searchId:'+searchId 
+                  +'", search must be performed again';
+                console.log(msg);
+                appModel.error(msg);
+              }else{
+                listInitial[key] = searchId;
+              }  
+            }else{
+              var msg = 'search ID is not a valid number: ' + searchId;
+              console.log(msg);
+              appModel.error(msg);
+            }
           } else if (key === 'order') {
             listInitial[key] = value.split(',');        
           } else if (key === 'includes') {
@@ -152,6 +419,11 @@ define([
       return listInitial;
     },
     
+    /**
+     * Get the current URL for the collection:
+     * - for downloads
+     * - create a display title
+     */
     getCollectionUrl: function(limit) {
       var self = this;
       var url = self.collection.url;
@@ -187,11 +459,19 @@ define([
             routeEntry = _.extend({},routeEntry);
             // TODO: dc_ids used for reagent/screen_result views, should not be in search title
             delete routeEntry['dc_ids'];
+            if(search_title_val !== '') search_title_val += '<br>AND ';
             search_title_val += _.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
                 return [printFieldAndOperator(kv[0]),kv[1]].join('=');
               }).join(' AND ');
+          } else if (routeKey == appModel.URI_PATH_ENCODED_SEARCH) {
+            if(!_.isEmpty(urlparams)) urlparams += '&';
+            urlparams += appModel.API_PARAM_SEARCH + '=' + routeEntry;
+            if(search_title_val !== '') search_title_val += '<br>AND ';
+            search_title_val += '[' + routeEntry + ']';
+          } else if (routeKey == appModel.URI_PATH_COMPLEX_SEARCH){
+            // nop
           }else if (routeKey === 'order') {
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += 'order_by=' + routeEntry.join('&order_by=');
@@ -202,13 +482,13 @@ define([
         }
       });
       
-      if (_.has(self._options, appModel.API_PARAM_ENCODED_SEARCH)){
-        if(!_.isEmpty(urlparams)) urlparams += '&';
-        urlparams += appModel.API_PARAM_SEARCH + '=' 
-          + self._options[appModel.API_PARAM_ENCODED_SEARCH];
-        if(search_title_val !== '') search_title_val += '<br>AND ';
-        search_title_val += '[' + self._options[appModel.API_PARAM_ENCODED_SEARCH] + ']';
-      }
+//      if (_.has(self._options, appModel.API_PARAM_ENCODED_SEARCH)){
+//        if(!_.isEmpty(urlparams)) urlparams += '&';
+//        urlparams += appModel.API_PARAM_SEARCH + '=' 
+//          + self._options[appModel.API_PARAM_ENCODED_SEARCH];
+//        if(search_title_val !== '') search_title_val += '<br>AND ';
+//        search_title_val += '[' + self._options[appModel.API_PARAM_ENCODED_SEARCH] + ']';
+//      }
       
       
       if(_.isUndefined(limit)){
@@ -283,7 +563,11 @@ define([
                 // kv[1] = encodeURIComponent(kv[1]);
                 return kv.join('=');
               }).join(self.SEARCH_DELIMITER));
-          }else if (routeKey === 'order') {
+          } else if (routeKey == appModel.URI_PATH_ENCODED_SEARCH) {
+            newStack.push(routeEntry);
+          } else if (routeKey == appModel.URI_PATH_COMPLEX_SEARCH){
+            newStack.push(routeEntry);
+          } else if (routeKey === 'order') {
             newStack.push(routeEntry);
           }else if (routeKey === 'includes') {
             newStack.push(routeEntry.join(','));
@@ -426,7 +710,7 @@ define([
           { label: 'Rows', 
             options: rpp_selections });
       this.objects_to_destroy.push(rppSelectorInstance);
-      this.listenTo(this.listModel, 'change: rpp', function(){
+      this.listenTo(this.listModel, 'change:rpp', function(){
           rppModel.set({ selection: String(self.listModel.get('rpp')) });
       });
       this.listenTo(rppModel, 'change', function() {
@@ -446,7 +730,7 @@ define([
         self.reportState();
       });
       this.listenTo(this.listModel, 'change:'+ appModel.URI_PATH_SEARCH, function(){
-        // TODO: this listener should be set in the collection initializer
+        // TODO: this listener should be set in the initializer
         var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
         // Note: this is repeated in reportState
         $('#clear_searches').toggle(!_.isEmpty(searchHash));
@@ -465,7 +749,6 @@ define([
         
       });
       
-      // New 20161213
       this.listenTo(this.listModel, 'change:includes', 
         function(model, changed, options){
           
@@ -651,7 +934,6 @@ define([
             }
           }
           self.collection.setSearch(searchHash);
-//          self.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
         });
       }
       

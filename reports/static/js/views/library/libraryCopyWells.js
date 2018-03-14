@@ -276,7 +276,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       extraControls.push(showHistoryButton);
       showHistoryButton.click(function(e){
         e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
         var search = {};
         search['ref_resource_name'] = 'copywell';
         search['key__icontains'] = [

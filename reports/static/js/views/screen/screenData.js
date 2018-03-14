@@ -116,9 +116,6 @@ define([
       
       
       var screenResultResource = appModel.getResource('screenresult');
-//      if (! _.isEmpty(this.model.get('study_type'))) {
-//        screenResultResource['fields']['assay_well_control_type']['visibility'] = [];
-//      }
 
       var schemaUrl = [appModel.dbApiUri,
                        'screenresult',
@@ -190,8 +187,6 @@ define([
         view = new SRListView({ 
           uriStack: _.clone(delegateStack),
           resource: schemaResult,
-//          schemaResult: schemaResult,
-//          resource: screenResultResource,
           url: url,
           extraControls: extraControls,
           screen: self.model
@@ -200,7 +195,7 @@ define([
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         
-        initialSearchHash = view.listModel.get('search');
+        initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
         
         if (_.has(initialSearchHash, 'is_positive__eq')
             && initialSearchHash.is_positive__eq.toLowerCase()=='true') {
@@ -220,15 +215,15 @@ define([
         });
         show_positives_control.find('input[type="checkbox"]').change(function(e) {
           if (this.checked) {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['is_positive__eq'] = 'true';
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
             // make sure unset
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (_.has(searchHash,'is_positive__eq')) {
               delete searchHash['is_positive__eq'];
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
           }
         });
@@ -246,9 +241,9 @@ define([
           }
         });
 //        show_mutual_positives_control.click(function(e) {
-//          var searchHash = _.clone(view.listModel.get('search'));
+//          var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
 //          searchHash['is_positive__eq'] = 'true';
-//          view.listModel.set('search',searchHash);
+//          view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
 //          show_positives_control.find('input[type="checkbox"]').prop('checked',true);
 //          self.showMutualPositiveColumns(view);
 //        });
@@ -259,7 +254,7 @@ define([
         var listOptions = ListView.prototype.parseUriStack(delegateStack);
         console.log('parsed listOptions', listOptions);
         var dc_ids = [];
-        if (_.has(listOptions, 'search')){
+        if (_.has(listOptions, appModel.URI_PATH_SEARCH)){
           if (_.has(listOptions.search,'dc_ids')){
             dc_ids = listOptions.search.dc_ids;
             if (dc_ids.length > 0 && _.isString(dc_ids)){
@@ -365,10 +360,9 @@ define([
 //          });
           
             var searchHash = _.clone(
-              listView.collection.listModel.get('search'));
-  //          searchHash['dc_ids'] = dc_ids_selected;
+              listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['show_mutual_positives'] = true;
-            listView.collection.listModel.set('search', searchHash);
+            listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
           } else { // not shown
             collection.each(function(model){
               if (_.contains(self.model.get('overlapping_positive_screens'),
@@ -389,9 +383,9 @@ define([
               
             });
             var searchHash = _.clone(
-              listView.collection.listModel.get('search'));
+              listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['show_mutual_positives'] = false;
-            listView.collection.listModel.set('search', searchHash);
+            listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
           }          
         },
         always: function(){
@@ -401,101 +395,11 @@ define([
         Iccbl.appModel.jqXHRfail.apply(this,arguments); 
       });        
     },
-    
-//    showMutualPositiveColumns_bak_by_dc_ids: function(listView){
-//      var self = this;
-//
-//      var searchHash = listView.collection.listModel.get('search');
-//      var dc_ids = _.result(searchHash,'dc_ids', '');
-//      if (!_.isArray(dc_ids)){
-//        dc_ids = dc_ids.split(',')
-//      }
-//      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
-//      console.log('showMutualPositiveColumns', dc_ids);
-//      var srResource = self.model.resource;
-//      var resource = appModel.getResource('datacolumn');
-//      var url = [resource.apiUri, 
-//                 'for_screen', self.model.get('facility_id')].join('/');
-//      var data_for_get = { 
-//        limit: 0,
-//        includes: [
-//          'screen_facility_id','screen_title','name','description',
-//          'assay_data_type','ordinal'],
-//        order_by: ['screen_facility_id', 'ordinal'],
-//        use_vocabularies: true
-//      };
-//      var CollectionClass = Iccbl.CollectionOnClient.extend({
-//        url: url,
-//        modelId: function(attrs) {
-//          return Iccbl.getIdFromIdAttribute( attrs, resource);
-//        }
-//      });
-//      var collection = new CollectionClass();
-//      collection.fetch({
-//        data: data_for_get,
-//        success: function(collection, response) {
-//          collection.each(function(model){
-//            if(_.contains(dc_ids, model.get('data_column_id'))){
-//              model.set('checked', true);
-//            }
-//            if (_.contains(self.model.get('overlapping_positive_screens'),
-//                  model.get('screen_facility_id'))){
-//              if (model.get('positives_count')>0){
-//                model.set('checked',true);
-//              }
-//            }
-//          });
-//          var dcs_selected = collection.where({checked: true});
-//          _.each(dcs_selected, function(dc){
-//            var key = dc.get('key');
-//            var name = dc.get('title');
-//            var dc_id = dc.get('data_column_id');
-//            var field = dc.attributes;
-//            var grid = listView.grid;
-//            
-//            if (dc.get('user_access_level_granted') > 1){
-//              field['filtering'] = true;
-//              field['ordering'] = true;
-//            }
-//            if (!_.has(srResource.fields, key)){
-//              srResource.fields[key] = field;
-//            }
-//  
-//            var column = grid.columns.findWhere({ name: key });
-//            if (!column){
-//              var index = grid.columns.size();
-//              grid.insertColumn(
-//                Iccbl.createBackgridColumn(
-//                    key,field,
-//                    listView.listModel.get('order')),
-//                    { at: index});
-//            } else {
-//              console.log('column already included', key)
-//            }
-//          
-//          });
-//          var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
-//            return dcmodel.get('data_column_id');
-//          });
-//          
-//          var searchHash = _.clone(
-//            listView.collection.listModel.get('search'));
-//          searchHash['dc_ids'] = dc_ids_selected;
-//          listView.collection.listModel.set('search', searchHash);
-//          
-//        },
-//        always: function(){
-//          console.log('done: ');
-//        }
-//      }).fail(function(){ 
-//        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-//      });        
-//    },
 
     showOtherScreenColumnsDialog: function(listView){
       var self = this;
       
-      var searchHash = listView.collection.listModel.get('search');
+      var searchHash = listView.collection.listModel.get(appModel.URI_PATH_SEARCH);
       var dc_ids = _.result(searchHash,'dc_ids', '');
       if (!_.isArray(dc_ids)){
         dc_ids = dc_ids.split(',')
@@ -589,9 +493,9 @@ define([
         });
         
         var searchHash = _.clone(
-          listView.collection.listModel.get('search'));
+          listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
         searchHash['dc_ids'] = dc_ids_selected;
-        listView.collection.listModel.set('search', searchHash);
+        listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
         
       }; // showColumns
       

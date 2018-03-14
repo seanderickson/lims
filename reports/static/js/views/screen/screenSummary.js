@@ -178,7 +178,7 @@ define([
       
       function viewLoadHistory(e) {
         e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
         var search = {};
         search['ref_resource_name'] = 'screenresult';
         search['key'] = self.model.key;
@@ -572,7 +572,7 @@ define([
                 var search_entry = Iccbl.formatString(
                   'library_plates_screened__contains={copy_name}/{plate_number}',
                   this.model);
-                self.uriStack = ['search', search_entry];
+                self.uriStack = [appModel.URI_PATH_SEARCH, search_entry];
                 self.change_to_tab('libraryscreening');
               }
             }));

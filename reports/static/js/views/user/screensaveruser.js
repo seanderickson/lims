@@ -495,7 +495,7 @@ define([
                   this.$el.append(
                     $('<input type="button" class="btn btn-default btn-sm" value="History" />')
                       .on('click', function(){
-                        var newUriStack = ['apilog','order','-date_time', 'search'];
+                        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
                         var search = {};
                         search['ref_resource_name'] = uaResource.key;
                   
@@ -1316,7 +1316,7 @@ define([
           // activities?
           showHistoryButton.click(function(e){
             e.preventDefault();
-            var newUriStack = ['apilog','order','-date_time', 'search'];
+            var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
             var search = {};
             search['ref_resource_name'] = 'serviceactivity';
             search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
@@ -1429,7 +1429,7 @@ define([
 //          });
 //          showHistoryButton.click(function(e){
 //            e.preventDefault();
-//            var newUriStack = ['apilog','order','-date_time', 'search'];
+//            var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
 //            var search = {};
 //            search['ref_resource_name'] = 'serviceactivity';
 //            search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
@@ -1571,7 +1571,7 @@ define([
       ].join(''));
       showHistoryButton.click(function(e){
         e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
         var search = {};
         search['ref_resource_name'] = 'userchecklist';
         search['key__contains'] = self.model.get('screensaver_user_id') + '/';

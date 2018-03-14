@@ -1279,7 +1279,7 @@ define([
         },
         
         _setStyle: function(){
-          var searchHash = this.model.collection.listModel.get('search');
+          var searchHash = this.model.collection.listModel.get(appModel.URI_PATH_SEARCH);
           if (_.result(searchHash,'show_copy_wells')=='true'
             || _.result(searchHash,'show_available_and_retired_copy_wells')=='true' ){
             if (this.model.has('selected_copy_name')) {
@@ -1334,7 +1334,7 @@ define([
         view.$el.find('#list_controls_div').addClass('col-sm-6');
       });
     
-      var initialSearchHash = view.listModel.get('search');
+      var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
       if (_.has(initialSearchHash, 'show_copy_wells')
           && initialSearchHash.show_copy_wells.toLowerCase()=='true') {
         showCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
@@ -1484,8 +1484,8 @@ define([
                 title: 'Lab Cherry Pick copy selection updates'
               });
               // On success, clear all the buttons
-              var originalSearchHash = _.clone(view.listModel.get('search'));
-              var searchHash = _.clone(view.listModel.get('search'));
+              var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
               delete searchHash['show_copy_wells'];
               delete searchHash['show_available_and_retired_copy_wells'];
               delete searchHash['show_unfulfilled'];
@@ -1501,7 +1501,7 @@ define([
 
               showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
               searchHash['show_manual'] = 'true';
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
               //              if (_.isEqual(originalSearchHash,searchHash)){
               //                view.collection.fetch({ reset: true });
               //              }
@@ -1570,8 +1570,8 @@ define([
               });
 
               // On success, clear all the buttons
-              var originalSearchHash = _.clone(view.listModel.get('search'));
-              var searchHash = _.clone(view.listModel.get('search'));
+              var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
               delete searchHash['show_copy_wells'];
               delete searchHash['show_available_and_retired_copy_wells'];
               delete searchHash['show_unfulfilled'];
@@ -1588,7 +1588,7 @@ define([
 
               showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
               showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
               //if (_.isEqual(originalSearchHash,searchHash)){
               //  view.collection.fetch({ reset: true });
               //}
@@ -1823,18 +1823,18 @@ define([
       showUnfulfilledWellsControl.find('input[type="checkbox"]').change(function(e){
         function processClick(){
           if (this.checked) {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
             showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_manual'];
             delete searchHash['show_insufficient'];
             searchHash['show_unfulfilled'] = 'true';
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             
           } else {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             delete searchHash['show_unfulfilled'];
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           }
           view.$('th').removeClass('selected');
           view.$('tr').removeClass('selected');
@@ -1850,15 +1850,15 @@ define([
       showInsufficientWellsControl.find('input[type="checkbox"]').change(function(e){
         function processClick(){
           if (this.checked) {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_unfulfilled'];
             searchHash['show_insufficient'] = 'true';
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             delete searchHash['show_insufficient'];
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           }
           view.$('th').removeClass('selected');
           view.$('tr').removeClass('selected');
@@ -1874,15 +1874,15 @@ define([
       showManuallySelectedWellsControl.find('input[type="checkbox"]').change(function(e){
         function processClick(){
           if (this.checked) {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_unfulfilled'];
             searchHash['show_manual'] = 'true';
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             delete searchHash['show_manual'];
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           }
           view.$('th').removeClass('selected');
           view.$('tr').removeClass('selected');
@@ -1907,15 +1907,15 @@ define([
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.union(extra_columns_for_selection,includes);
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['show_copy_wells'] = 'true';
 
             showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_available_and_retired_copy_wells'];
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
             // make sure unset
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (!_.has(searchHash,'show_copy_wells')) {
               return;
             }
@@ -1924,7 +1924,7 @@ define([
             view.listModel.set({ includes: includes}, {reset: false});
             if (_.has(searchHash,'show_copy_wells')) {
               delete searchHash['show_copy_wells'];
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
           }
           // See note above about removing the 'selected' backgrid th class
@@ -1947,14 +1947,14 @@ define([
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.union(extra_columns_for_selection,includes);
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['show_available_and_retired_copy_wells'] = 'true';
             
             showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash['show_copy_wells'];
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
               return;
             }
@@ -1964,7 +1964,7 @@ define([
             view.listModel.set({ includes: includes}, {reset: false});
             if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
               delete searchHash['show_available_and_retired_copy_wells'];
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
           }
           // See note above about removing the 'selected' backgrid th class
@@ -2288,7 +2288,7 @@ define([
         },
         
         _setStyle: function(){
-          var searchHash = this.model.collection.listModel.get('search');
+          var searchHash = this.model.collection.listModel.get(appModel.URI_PATH_SEARCH);
           if( _.result(searchHash,appModel.API_PARAM_SHOW_OTHER_REAGENTS)=='true'
               || _.result(searchHash,appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)=='true')
           {
@@ -2550,15 +2550,15 @@ define([
                 title: 'Screener Cherry Pick selection updates'
               });
 
-              var originalSearchHash = _.clone(view.listModel.get('search'));
-              var searchHash = _.clone(view.listModel.get('search'));
+              var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
               delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
               searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS] = 'true';
               showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
               showAlternateSelectionsControl.show()
               showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',true);
               
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
               view.collection.fetch({ reset: true }).done(function(){
                 // have to wait for the fetch operation to reset, due to the 
                 // asynchronous event handling
@@ -2591,22 +2591,22 @@ define([
               includes = _.without(includes, 'selected');
             }
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS] = 'true';
 
             showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
             
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
             // make sure unset
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.difference(includes,extra_colums);
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (_.has(searchHash,appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS)) {
               delete searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS];
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
           }
           // see note above about removing the 'selected' backgrid th class
@@ -2637,24 +2637,24 @@ define([
               includes = _.without(includes, 'selected');
             }
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS] = 'true';
 
             showAlternateSelectionsControl.find('input[type="checkbox"]').prop('checked',false);
             delete searchHash[appModel.API_PARAM_SHOW_ALTERNATE_SELECTIONS];
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             
             
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
             // make sure unset
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.difference(includes,extra_colums);
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (_.has(searchHash,appModel.API_PARAM_SHOW_OTHER_REAGENTS)) {
               delete searchHash[appModel.API_PARAM_SHOW_OTHER_REAGENTS];
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
           }
           // see note above about removing the 'selected' backgrid th class
@@ -2671,7 +2671,7 @@ define([
           processClick();
         }
       });
-      var initialSearchHash = view.listModel.get('search');
+      var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
       if (_.has(initialSearchHash, appModel.API_PARAM_SHOW_OTHER_REAGENTS)
           && initialSearchHash.show_other_reagents.toLowerCase()=='true') {
         showOtherReagentsControl.find('input[type="checkbox"]').prop('checked',true);

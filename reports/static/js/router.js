@@ -32,7 +32,7 @@ function($, _, Backbone, appModel) {
     toPath: function(path){
       function popKeys(stack){
         if(!_.isEmpty(stack)){
-          var searchIndex = _.indexOf(stack,'search');
+          var searchIndex = _.indexOf(stack,appModel.URI_PATH_SEARCH);
           if(searchIndex > -1){
             var newStack = stack.slice(0,searchIndex+1);
             var keys = [];

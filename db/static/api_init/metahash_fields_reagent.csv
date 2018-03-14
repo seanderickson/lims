@@ -1,5 +1,5 @@
 key,alias,scope,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,is_restricted,data_type,display_type,display_options,edit_type
-vendor_name,vendor,fields.reagent,/reports/api/v1/field/fields.reagent/vendor_name/,10,,TRUE,"The vendor of the reagent of this well.","Reagent Vendor",TRUE,,,[l;d],[c;u],,string,,,
+vendor_name,vendor,fields.reagent,/reports/api/v1/field/fields.reagent/vendor_name/,10,,TRUE,"The vendor of the reagent of this well.",Vendor,TRUE,,,[l;d],[c;u],,string,,,
 vendor_identifier,vendor_reagent_id,fields.reagent,/reports/api/v1/field/fields.reagent/vendor_identifier/,11,,TRUE,"The vendor-assigned identifier for the reagent in this well.","Vendor Reagent ID",TRUE,,,[l;d],[c;u],,string,,,
 vendor_batch_id,,fields.reagent,/reports/api/v1/field/fields.reagent/vendor_batch_id/,12,,TRUE,"The vendor-assigned batch identifier for the reagent in this well.","Vendor Batch ID",TRUE,,,[d],[c;u],,string,,"{ 'hideIfEmpty': true }",
 substance_id,,fields.reagent,/reports/api/v1/field/fields.reagent/substance_id/,99,,TRUE,"Unique Facility substance ID","Substance ID",TRUE,,,[api],,,string,link,"{ 'hrefTemplate': '#reagent/{substance_id}'  }",

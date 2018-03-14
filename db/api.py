@@ -21063,6 +21063,9 @@ class ReagentResource(DbApiResource):
 
             _well = self.bridge['well']
             _reagent = self.bridge['reagent']
+            _sr = self.bridge['silencing_reagent']
+            _smr = self.bridge['small_molecule_reagent']
+            _molfile = self.bridge['molfile']
             _library = self.bridge['library']
             _scp = self.bridge['screener_cherry_pick']
             _lcp = self.bridge['lab_cherry_pick']
@@ -21077,6 +21080,83 @@ class ReagentResource(DbApiResource):
             
                     
             custom_columns = {}
+
+            # 20180314 - is_restricted_sequence, is_restricted_structure
+            if 'sequence' in field_hash:
+                if self._meta.authorization._is_resource_authorized(
+                    user, 'read') is not True:
+                    custom_columns['sequence'] = (
+                        select([
+                            case([
+                                (_sr.c.is_restricted_sequence,None)],
+                                else_=_sr.c.sequence)])
+                        .select_from(_sr)
+                        .where(_sr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+            smr_restricted_fields = ['smiles', 'inchi', 'molecular_formula',
+                'molecular_weight','molecular_mass','molfile']
+            fields_to_restrict = set(smr_restricted_fields)&set(field_hash.keys())
+            logger.info('fields to restrict: %r', fields_to_restrict)
+            if fields_to_restrict \
+                and self._meta.authorization._is_resource_authorized(user, 'read') \
+                    is not True:
+
+                for field in fields_to_restrict:
+                    if field == 'smiles':
+                        custom_columns['smiles'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.smiles)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'inchi':
+                        custom_columns['inchi'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.inchi)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molecular_weight':
+                        custom_columns['molecular_weight'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.molecular_weight)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molecular_mass':
+                        custom_columns['molecular_mass'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.molecular_mass)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molecular_formula':
+                        custom_columns['molecular_formula'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.molecular_formula)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molfile':
+                        custom_columns['molfile'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_molfile.c.molfile)])
+                            .select_from(_smr.join(
+                                _molfile, _smr.c.reagent_id==_molfile.c.reagent_id))
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
                         
             if 'pool_well' in field_hash:
                 # NOTE: breaks OO inhertance composition

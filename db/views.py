@@ -18,7 +18,7 @@ from django.shortcuts import render
 from db import WELL_ID_PATTERN
 from db.api import AttachedFileAuthorization, PublicationAuthorization
 from db.models import ScreensaverUser, Reagent, AttachedFile, Publication, \
-    RawDataTransform
+    RawDataTransform, SmallMoleculeReagent
 from reports.api import UserGroupAuthorization
 from reports.serialize import XLSX_MIMETYPE
 
@@ -35,7 +35,7 @@ def main(request):
 def well_image(request, well_id):
 
     # TODO: use group authorization - not required at ICCBL
-    # auth = UserGroupAuthorization('well')
+    auth = UserGroupAuthorization('reagent')
     # if auth.has_read_authorization(
     #     request.user, well_id) is not True:
     #     return HttpResponse(status=403)
@@ -47,6 +47,15 @@ def well_image(request, well_id):
     else:
         _plate = match.group(1)
         _well_name = match.group(2)
+        well_id = '%s:%s' % (_plate,_well_name)
+        if auth._is_resource_authorized(
+            request.user, 'read', resource_name='reagent') is not True:
+            smr = SmallMoleculeReagent.objects.get(
+                well_id=well_id)
+            if smr.is_restricted_structure is True:
+                logger.warn('structure is restricted: %s', well_id)
+                raise Http404
+        
         _name = '%s%s.png' % (_plate,_well_name)
         structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
         structure_image_path = os.path.join(

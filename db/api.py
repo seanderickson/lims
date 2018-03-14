@@ -110,6 +110,7 @@ import schema as SCHEMA
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
 MAX_SPOOLFILE_SIZE = 1024*1024
+MAX_WELL_FINDER_COUNT = 384*10000
 
 ##### API CONSTANTS
 # TODO: move to an API-accessible properties file
@@ -21997,6 +21998,7 @@ class WellResource(DbApiResource):
             plates: [],
             plate_ranges: [],
             wellnames: [],
+            well_ids: []
         }
         '''
         DEBUG_WELL_PARSE = False or logger.isEnabledFor(logging.DEBUG)
@@ -22030,7 +22032,8 @@ class WellResource(DbApiResource):
             parsed_search = defaultdict(list)
             parsed_search['line'] = parts
             for part in parts:
-
+                if DEBUG_WELL_PARSE:
+                    logger.info('test part: %r', part)
                 if PLATE_PATTERN.match(part):
                     plate_number = int(part)
                     if DEBUG_WELL_PARSE:
@@ -22048,11 +22051,13 @@ class WellResource(DbApiResource):
                     plate = int(match.group(1))
                     wellrow = match.group(3).upper()
                     wellcol = match.group(4)
-                    wellname = '%s%s' % (wellrow, str(wellcol).zfill(2))  
-                    if DEBUG_WELL_PARSE:
-                        logger.info('from WELL_ID: %r to %d:%s', part, plate, wellname )  
-                    parsed_search['plates'].append(plate)
-                    parsed_search['wellnames'].append(wellname)
+                    wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+                    plate = str(plate).zfill(5)
+                    parsed_search['well_ids'].append('%s:%s' % (plate,wellname)) 
+#                     if DEBUG_WELL_PARSE:
+#                         logger.info('from WELL_ID: %r to %d:%s', part, plate, wellname )  
+#                     parsed_search['plates'].append(plate)
+#                     parsed_search['wellnames'].append(wellname)
                 elif WELL_NAME_PATTERN.match(part):
                     match = WELL_NAME_PATTERN.match(part)
                     wellrow = match.group(1).upper()
@@ -22064,12 +22069,40 @@ class WellResource(DbApiResource):
                 else:
                     errors.append('part not recognized: %r' % part)
                     
-            # match wellnames only after plate, plate range is identified
             if 'plates' not in parsed_search \
-                and 'plate_ranges' not in parsed_search:
+                and 'plate_ranges' not in parsed_search \
+                and 'well_ids' not in parsed_search:
                 errors.append(
-                    'Must specify a plate or plate range: %r' % _line)
-            
+                    'Must specify either a plate, plate range, or well_id: %r' % _line)
+            if 'well_ids' in parsed_search \
+                and ( 'plates' in parsed_search 
+                    or 'plate_ranges' in parsed_search):
+                errors.append(
+                    'Well ids may not be defined on the same line with plate or '
+                    'plate ranges: %r' % _line)
+            # match wellnames only after plate, plate range is identified
+            if 'wellnames' in parsed_search \
+                and 'plates' not in parsed_search \
+                and 'plate_ranges' not in parsed_search:
+                    if 'well_ids' in parsed_search:
+                        well_ids = parsed_search['well_ids']
+                        if len(well_ids) > 1:
+                            errors.append(
+                                'Well names may not be defined with multiple '
+                                'well_ids: %r' % _line)
+                        else:
+                            match = WELL_ID_PATTERN.match(well_ids[0])
+                            plate = int(match.group(1))
+                            wellrow = match.group(3).upper()
+                            wellcol = match.group(4)
+                            wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+                            parsed_search['wellnames'].append(wellname)
+                            parsed_search['plates'].append(plate)
+                            del parsed_search['well_ids']
+                    else:
+                        errors.append(
+                            'Must specify a plate, plate_range, or well_id '
+                            'for wellnames: %r' % _line)
             if DEBUG_WELL_PARSE:
                 logger.info('parsed: %r from %r', parsed_search, _line)
             parsed_searches.append(parsed_search)
@@ -22106,12 +22139,13 @@ class WellResource(DbApiResource):
                     'plates': sorted(plates), 'wellnames': wellnames.split(',') })
 
         decorated = [(
+            ','.join(s.get('well_ids',[])),
             ','.join(map(str,sorted(s.get('plates',[])))),
             ','.join([','.join(map(str,pr)) for pr in s.get('plate_ranges',[])]),
             s) 
             for s in compressed_searches]
-        decorated.sort(key=itemgetter(0,1))
-        compressed_searches = [s for sort_plates,sort_ranges,s in decorated]
+        decorated.sort(key=itemgetter(0,1,2))
+        compressed_searches = [s for sort_well_ids,sort_plates,sort_ranges,s in decorated]
         return compressed_searches
         
     @classmethod
@@ -22141,7 +22175,9 @@ class WellResource(DbApiResource):
                     if len(plates)==1 and len(wellnames)==1:
                         wellids.add('%s:%s' %(str(plates[0]).zfill(5),wellnames[0]))
                         continue
-                    
+            if 'well_ids' in parsed_search:
+                wellids.update(parsed_search['well_ids'])
+                continue
             if 'plates' in parsed_search:
                 clause.append(_well.c.plate_number.in_(parsed_search['plates']))
             if 'plate_ranges' in parsed_search:
@@ -22174,7 +22210,15 @@ class WellResource(DbApiResource):
         query = cls.create_well_base_query(well_search_data)
         with get_engine().connect() as conn:
             result = conn.execute(query)
-            well_ids =  [x[0] for x in result ]    
+            well_ids =  [x[0] for x in result ]
+            if not well_ids:
+                raise ValidationError(
+                    key=SCHEMA.API_PARAM_SEARCH, msg='No wells found')
+            if len(well_ids) > MAX_WELL_FINDER_COUNT:
+                raise ValidationError(
+                    key=SCHEMA.API_PARAM_SEARCH, 
+                    msg='MAX_WELL_FINDER_COUNT: %d exceeded' 
+                        % MAX_WELL_FINDER_COUNT)
             return Well.objects.filter(well_id__in=well_ids)
     
         

@@ -848,7 +848,7 @@ class LibraryResource(DBResourceTestCase):
             ('50 A6 A7 A8', [{'plates': [50], 'wellnames': ['A06','A07','A08']}]),
             ('50a6,b10,c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
             ('50a6 b10 c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
-            ('50A6', [{'plates': [50], 'wellnames': ['A06']}]),
+            ('50A6', [{'well_ids': ['00050:A06']}]),
             ('00050:A06 A7 c10', [{'plates': [50], 'wellnames': ['A06','A07','C10']}]),
             (
             '50    A06\n'
@@ -863,12 +863,12 @@ class LibraryResource(DBResourceTestCase):
                 'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02']}]),
             ('xxxy', {'errors': { SCHEMA.API_PARAM_SEARCH: 'part not recognized' }}),
             ('A01 A02 ', {'errors': { 
-                SCHEMA.API_PARAM_SEARCH: 'Must specify a plate or plate range' }}),
+                SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
             ('A01 A02 1000', [{'plates':[1000], 'wellnames':['A01','A02']}]),
             ('A01 A02 1000-1010', [{'plate_ranges':[[1000,1010],], 'wellnames':['A01','A02']}]),
             ((
-            '00050:A06\n'
-            '00050:A07\n'), [{'plates': [50], 'wellnames': ['A06','A07']}]),
+            '50A06\n'
+            '00050:A07\n'), [{'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']}]),
             ((
             '00050:A06\n'
             '00050:A07\n'
@@ -876,8 +876,22 @@ class LibraryResource(DBResourceTestCase):
             '00051:A07\n'
             '00052:A06 A07\n'
             '00053:A07\n'
-            ), [{'plates': [50,51,52], 'wellnames': ['A06','A07']},
-                {'plates': [53], 'wellnames': ['A07']}]),
+            ), [{'plates': [52], 'wellnames': ['A06','A07']},
+                {'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']},
+                {'well_ids': ['00051:A06']},{'well_ids': ['00051:A07']},
+                {'well_ids': ['00053:A07']},]),
+            ('00050:A06 50:A07 52A6', [{'well_ids': ['00050:A06','00050:A07','00052:A06']}]),
+            ('00050:A06 50:A07 A6', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Well names may not be defined with multiple well_ids' }}),
+            ('50001 50002:A01 A23', {'errors': {
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Well ids may not be defined on the same line with plate '
+                    'or plate ranges'}}),
+            ('50001-50004 50002:A01', {'errors': {
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Well ids may not be defined on the same line with plate '
+                    'or plate ranges'}}),
         )
         
         for (test_search, expected_searches) in tests:

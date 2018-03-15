@@ -228,7 +228,7 @@ def csv_generator(data, title_function=None, list_brackets=None):
     quotechar = b'"' # note that csv under python 2.7 doesn't allow multibyte quote char
     csvwriter = unicodecsv.writer(
         pseudo_buffer, delimiter=CSV_DELIMITER, quotechar=quotechar, 
-        quoting=unicodecsv.QUOTE_ALL, lineterminator="\n")
+        quoting=unicodecsv.QUOTE_MINIMAL, lineterminator="\n")
     try:
         for rownum, row in enumerate(data):
             if rownum == 0:

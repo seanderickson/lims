@@ -2687,6 +2687,8 @@ class ScreenResultSerializerTest(TestCase):
             len(input_fields)==len(output_fields),
             'input/output fields: %r, %r' 
             % (input_fields.keys(), output_fields.keys()))    
+        # Keep track of the boolean_positive_columns for None -> False equivalence
+        boolean_positive_columns = set()
         for colname,input_field in input_fields.items():
             found = None
             for output_field in output_fields.values():
@@ -2697,10 +2699,14 @@ class ScreenResultSerializerTest(TestCase):
                 found is not None, 
                 'input datacolumn not found: %r, output datacolumns: %r'
                 % (input_field, output_fields))
-
+            if input_field['data_type'] == 'boolean_positive_indicator':
+                boolean_positive_columns.add(input_field['data_worksheet_column'])
+            logger.debug('Test datacolumns, input: %r', input_field)
+            logger.debug('Test datacolumns, output: %r', output_field)
             for column_field, val in input_field.items():
                 val = input_field[column_field]
                 val2 = output_field[column_field]
+                logger.info('Test field: %s: %s: %r to %r', colname, column_field, val, val2)
                 if val and column_field == 'derived_from_columns':
                     val = set([x.upper() for x in re.split(r'[,\s]+', val)])
                     val2 = set([x.upper() for x in re.split(r'[,\s]+', val2)])
@@ -2764,7 +2770,8 @@ class ScreenResultSerializerTest(TestCase):
             logger.debug('found_row: %r', found_row)
             for key,val in input_rv.items():
                 if val is not None:
-                    # NOTE: 20170724 - if input values are null, ResultValues are not created
+                    # NOTE: 20170724 - if input values are null, 
+                    # ResultValues are not created
                     testinstance.assertTrue(
                         key in found_row, 
                         ('key: %r, from input: %r,'
@@ -2777,21 +2784,25 @@ class ScreenResultSerializerTest(TestCase):
                             key, val, found_row)
                         continue
                 val2 = found_row[key]
-#                 if val2 == 'NP':
-#                     testinstance.assertTrue(val=='NP' or val==None,
-#                         ('partition positive val: %r, key: %r, %r - %r'
-#                             % (val, key, input_rv, found_row)))
-#                 elif val2 == 'NT':
-#                     testinstance.assertTrue(val=='NT' or val==None,
-#                         ('confirmed positive val: %r, key: %r, %r - %r'
-#                             % (val, key, input_rv, found_row)))
-#                 else:
-                result,msg = equivocal(val, val2)
-                testinstance.assertTrue(
-                    result,
-                    ('meta field not equal: %r %r != %r, %r'
-                         'input: %r, output: %r')
-                    % (key, val, val2, msg, input_rv, found_row))
+                if key in boolean_positive_columns and val2 is False:
+                    testinstance.assertTrue(val is False or val is None,
+                        ('boolean_positive val: %r, key: %r, %r - %r'
+                            % (val, key, input_rv, found_row)))
+                elif val2 == 'NP':
+                    testinstance.assertTrue(val=='NP' or val==None,
+                        ('partition positive val: %r, key: %r, %r - %r'
+                            % (val, key, input_rv, found_row)))
+                elif val2 == 'NT':
+                    testinstance.assertTrue(val=='NT' or val==None,
+                        ('confirmed positive val: %r, key: %r, %r - %r'
+                            % (val, key, input_rv, found_row)))
+                else:
+                    result,msg = equivocal(val, val2)
+                    testinstance.assertTrue(
+                        result,
+                        ('meta field not equal: %r: %r != %r, %r'
+                             'input: %r, output: %r')
+                        % (key, val, val2, msg, input_rv, found_row))
             if i == items_to_test:
                 break
                 
@@ -3017,6 +3028,14 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 5 description',
                 'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
             },
+            'J': {
+                'ordinal': 5,
+                'name': 'Field6',
+                'data_worksheet_column': 'J',
+                'data_type': 'boolean_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
         }
         result_values = [
             { 
@@ -3024,8 +3043,9 @@ class ScreenResultResource(DBResourceTestCase):
                 'E': 'test value 1',
                 'F': 91.19 ,
                 'G': .0011 ,
-                'H': None ,  # should (*NOT 20170724) be interpreted as 'NT' 
-                'I': None , # should (*NOT 20170724) be interpreted as 'NP'
+                'H': None ,  # 20180315 should be interpreted as 'NT' 
+                'I': None , # 20180315should be interpreted as 'NP'
+                'J': None , # 20180315 should be interpreted as False
             },
             { 
                 'well_id': '00001:A02', 
@@ -3034,6 +3054,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'G': 1.0331 ,
                 'H': 'CP',
                 'I': 'W' ,
+                'J': True,
             },
             { 
                 'well_id': '00001:A03', 
@@ -3042,6 +3063,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'G': 1.032 ,
                 'H': 'I',
                 'I': 'M' ,
+                'J': True,
             },
             { 
                 'well_id': '00001:A04', 
@@ -3050,6 +3072,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'G': 1.032 ,
                 'H': 'NT',
                 'I': 'S' ,
+                'J': True,
             },
             { 
                 'well_id': '00001:A05', 
@@ -3058,6 +3081,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'G': 1.1 ,
                 'H': 'CP',
                 'I': 'M' ,
+                'J': None,
             },
             { 
                 'well_id': '00001:A06', 
@@ -3066,6 +3090,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'G': 1.1 ,
                 'H': 'FP',
                 'I': 'M' ,
+                'J': None
             },
             { 
                 'well_id': '00001:A07',
@@ -3075,6 +3100,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'G': 1.1 ,
                 'H': 'FP',
                 'I': 'M' ,
+                'J': False,
             },
             { 
                 'well_id': '00001:%s' % self.control_well1,
@@ -3210,8 +3236,8 @@ class ScreenResultResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         output_data = self.deserialize(resp)
         logger.debug('datacolumn output_data: %r', output_data )
-        self.assertTrue(len(output_data['objects'])==2, 
-            ('should show two positive indicator columns', output_data))
+        self.assertTrue(len(output_data['objects'])==3, 
+            ('should show three positive indicator columns', output_data))
 
         confirmed_positive_col = None
         partion_positive_col = None

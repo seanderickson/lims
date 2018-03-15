@@ -428,6 +428,9 @@ CREATE INDEX "data_column_derived_from_columns_from_dc_idx"
   ON "data_column_derived_from_columns" ("from_datacolumn_id");
 CREATE INDEX "data_column_derived_from_columns_to_dc_idx" 
   ON "data_column_derived_from_columns" ("to_datacolumn_id");
+  
+  
+DROP TABLE data_column_derived_from_link;
 
 /**
 20160408

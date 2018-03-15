@@ -12,6 +12,7 @@ from db.support.data_converter import default_converter
 from reports import MAX_IMAGE_ROWS_PER_XLS_FILE
 from reports.serialize import csvutils
 import reports.serialize
+import six
 
 
 logger = logging.getLogger(__name__)
@@ -178,9 +179,10 @@ def read_string(cell):
             value = ival
         return str(value)
     else:
-        value = str(value).strip()
-        if not value:
-            return None
+        if isinstance(value, six.string_types):
+            value = value.strip()
+            if not value:
+                return None
         return value
 
 def sheet_rows(workbook_sheet):

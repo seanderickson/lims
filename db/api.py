@@ -4646,8 +4646,7 @@ class ScreenResultResource(DbApiResource):
             self._meta.authorization.get_row_property_generator(
                 request.user, field_hash, rowproxy_generator)
         
-        logger.info('use_vocab: %r, content_type: %r', use_vocab, content_type)
-        if ( use_vocab or content_type != JSON_MIMETYPE):
+        if ( use_vocab or content_type in [XLS_MIMETYPE,XLSX_MIMETYPE]):
             # NOTE: xls export uses vocab values
             logger.info('use vocab generator...')
             rowproxy_generator = \
@@ -5228,8 +5227,9 @@ class ScreenResultResource(DbApiResource):
                         parent_column.derived_from_columns.add(
                             sheet_col_to_datacolumn[colname])
                     logger.info(
-                        'parent: %r, derived from columns: %r', parent_column, 
-                        [col for col 
+                        'parent: %d:%s, derived from columns: %s', 
+                        parent_column.data_column_id,parent_column.name, 
+                        ['%d:%s'%(col.data_column_id,col.name) for col 
                             in parent_column.derived_from_columns.all()])
                     parent_column.save()
                 
@@ -5337,12 +5337,17 @@ class ScreenResultResource(DbApiResource):
             # NOTE: the positive values are recorded in all cases, but 
             # will only count if the well is experimental and not excluded
             if well.library_well_type != 'experimental':
-                raise ValidationError(
-                    key=key,
-                    msg = ('non experimental well, not considered for positives:'
-                     'well: %r, %r, col: %r, type: %r, val: %r'
+                msg = ('non experimental well, not considered for positives:'
+                 'well: %r, %r, col: %r, type: %r, val: %r'
                     % ( well_id, well.library_well_type, colname, 
-                        dc.data_type, value)))
+                        dc.data_type, value))
+                logger.info(msg)
+                # raise ValidationError(
+                #     key=key,
+                #     msg = ('non experimental well, not considered for positives:'
+                #      'well: %r, %r, col: %r, type: %r, val: %r'
+                #     % ( well_id, well.library_well_type, colname, 
+                #         dc.data_type, value)))
             elif rv_initializer['is_exclude'] is True:
                 logger.warn(
                     ('excluded col, not considered for positives:'
@@ -5494,7 +5499,7 @@ class ScreenResultResource(DbApiResource):
                             'wrote %d result rows to temp file', rows_created)
 
                 except ValidationError, e:
-                    logger.info('validation error: %r', e)
+                    logger.exception('validation error: %r', e)
                     errors.update(e.errors) 
                 except StopIteration, e:
                     break

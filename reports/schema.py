@@ -11,6 +11,7 @@ Utilities for parsing the schema
 import json
 import logging
 from django.conf import settings
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +32,17 @@ URI_PATH_COMPLEX_SEARCH = 'csearch'
 # Date format for API - time zone is not used for dates
 DATE_FORMAT = "%Y-%m-%d"
 
-class schema_obj():
+class schema_obj(object):
     @classmethod
     def get_dict(cls):
         return { 
             k:v for k,v in vars(cls).items() 
-                if k[0] != '_'}
-
+                if k[0].isupper() }
+    @classmethod    
+    def get_ordered_dict(cls):
+        return OrderedDict((
+            (k,getattr(cls,k)) for k in dir(cls) 
+                if k[0].isupper() and callable(getattr(cls, k)) is not True ))
 
 # Define API resources
 class RESOURCE(schema_obj):

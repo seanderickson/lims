@@ -68,7 +68,6 @@ def fill_email_wrapper(
     <![CDATA[email_content]]>
     <![CDATA[email_footer]]>
     '''
-    logger.info('<![CDATA[email_title]]>' in email_wrapper_as_text)
     if '<![CDATA[email_title]]>' not in email_wrapper_as_text:
         raise Exception('no title...')
     logger.info('email_title: %r', email_title)

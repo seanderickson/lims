@@ -79,11 +79,16 @@ def get_title(key, schema):
     if key not in schema[RESOURCE.FIELDS]:
         logger.warn('no field: %s in schema: %r', key, schema)
         return key
-    return schema[RESOURCE.FIELDS][key]['title']
+    return str(schema[RESOURCE.FIELDS][key]['title'])
     
 
 def get_href(value, key, schema, record):
     ''' Generate the link for the given field, it possible, or return the value'''
+    if value is None:
+        return None
+    if isinstance(value, (list,tuple)):
+        logger.warn('list values are not supported (yet): %s: %r', key, value)
+        return value
     val = value
     if key not in schema[RESOURCE.FIELDS]:
         return value
@@ -106,6 +111,11 @@ def get_href(value, key, schema, record):
 def get_vocab_title(key, value, schema):
     ''' get the vocab "title" for the value if "vocabulary" is available
     for the field in the schema'''
+    if value is None:
+        return None
+    if isinstance(value, (list,tuple)):
+        logger.warn('list values are not supported (yet): %s: %r', key, value)
+        return value
     title = value
     if key in schema[RESOURCE.FIELDS]:
         field = schema[RESOURCE.FIELDS][key]

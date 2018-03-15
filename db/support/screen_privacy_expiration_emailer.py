@@ -401,6 +401,7 @@ if __name__ == "__main__":
             report_url = '/'.join([
                 settings.APP_PUBLIC_DATA.site_url,'#%s'%report_resource_subtype])
             
+            # TODO: refactor report url generation
             report_url += '/includes/' + ','.join([
                 SCREEN.PUBLICATIONS,SCREEN.LAST_LIBRARY_SCREENING_DATE,
                 SCREEN.SCREEN_RESULT_AVAILABILITY,
@@ -859,8 +860,9 @@ if __name__ == "__main__":
             screens = {s[SCREEN.FACILITY_ID]:s for s in screens}
             users = get_users_for_screens(screens)
             
-            screens_notified = defaultdict(list)
-            screens_not_notified = defaultdict(list)
+            screens_notified = set()
+            screens_not_notified = set()
+            user_notification_results = dict()
     
             (msg_subject, msg_body_lines) = \
                 EMAIL_MESSAGE_TEMPLATES['msg_screen_member_notification']
@@ -911,36 +913,40 @@ if __name__ == "__main__":
                     
                     return True, None
                 
-                # Screen is not "notified" unless the PI (lab head) is notified
-                # 20180301 -verified with JAS60
+                # Screen is not "notified" unless the PI (lab head) 
+                # or Lead Screener is notified
+                # 20180312 -verified with JAS60
                 user = users[screen[SCREEN.LAB_HEAD_ID]]
                 is_notified, msg = notify_screen(screen, user)
+                user_notification_results[user[USER.SCREENSAVER_USER_ID]] = msg
                 if is_notified is True:
-                    screens_notified[facility_id].append((user,msg))
+                    screens_notified.add(facility_id)
                 else:
-                    screens_not_notified[facility_id].append((user,msg))
-
+                    logger.info('Could not notify Lab Head for screen #%s: %r',
+                        facility_id, user)
                 user = users[screen[SCREEN.LEAD_SCREENER_ID]]
                 result, msg = notify_screen(screen, user)
-                if is_notified is True:
-                    screens_notified[facility_id].append((user,msg))
+                user_notification_results[user[USER.SCREENSAVER_USER_ID]] = msg
+                if result is True:
+                    screens_notified.add(facility_id)
+                    is_notified = result
                 else:
-                    screens_not_notified[facility_id].append((user,msg))
+                    logger.info('Could not notify Lead Screener for screen #%s: %r',
+                        facility_id, user)
+                if is_notified is not True:
+                    screens_not_notified.add(facility_id)
 
                 if screen.get(SCREEN.COLLABORATORS_ID, None):
                     for user_id in screen[SCREEN.COLLABORATORS_ID]:
                         # FIXME: collaborator_ids is a list of strings, should be ints
                         user = users[int(user_id)]
                         result, msg = notify_screen(screen, user)
-                        if is_notified is True:
-                            screens_notified[facility_id].append((user,msg))
-                        else:
-                            screens_not_notified[facility_id].append((user,msg))
+                        user_notification_results[user[USER.SCREENSAVER_USER_ID]] = msg
 
             # TODO: patch the notification date
             if screens_notified:
                 screen_patches = []
-                for facility_id in screens_notified.keys():
+                for facility_id in screens_notified:
                     screen_patches.append({
                         SCREEN.FACILITY_ID: facility_id,
                         SCREEN.DATA_PRIVACY_EXPIRATION_NOTIFIED_DATE: 
@@ -989,12 +995,17 @@ if __name__ == "__main__":
             
             # Create a copy of the screens in the list, insert display 
             # formatted values (links and vocabularies)
-            def replace_for_text(screen, screen_notifiy_result):
+            def replace_for_text(screen):
                 # Create a copy of the screen and format values as needed
                 screen = replace_vocabularies(screen, screen_schema)
-                members = []
-                for user, msg in screen_notifiy_result:
-                    user = user.copy()
+                member_ids = get_member_ids(screen)
+                members =[]
+                for user_id in member_ids:
+                    if user_id not in users:
+                        logger.warn('user info not retrieved: %s', user_id)
+                        continue
+                    user = users[user_id].copy()
+                    msg = user_notification_results[user_id]
                     user['role'] = get_role(user[USER.SCREENSAVER_USER_ID],screen)
                     text = users_text_format.format(**user)
                     if msg is not None:
@@ -1003,12 +1014,17 @@ if __name__ == "__main__":
                 screen[PSEUDO_FIELD_MEMBERS] = '\n'.join(members)
                 return screen
             
-            def replace_for_html(screen, screen_notifiy_result):
+            def replace_for_html(screen):
                 # Create a copy of the screen and format values as needed
                 screen = replace_html_values(screen, screen_schema)
-                members = []
-                for user, msg in screen_notifiy_result:
-                    user = user.copy()
+                member_ids = get_member_ids(screen)
+                members =[]
+                for user_id in member_ids:
+                    if user_id not in users:
+                        logger.warn('user info not retrieved: %s', user_id)
+                        continue
+                    user = users[user_id].copy()
+                    msg = user_notification_results[user_id]
                     user['role'] = get_role(user[USER.SCREENSAVER_USER_ID],screen)
                     user[USER.SCREENSAVER_USER_ID] = get_href(
                         '#{}'.format(user[USER.SCREENSAVER_USER_ID]), 
@@ -1022,21 +1038,17 @@ if __name__ == "__main__":
             
             txt_notified_screens = []
             html_notified_screens = []
-            for facility_id in sorted(screens_notified.keys()):
+            for facility_id in sorted(screens_notified):
                 screen = screens[facility_id]
-                txt_notified_screens.append(
-                    replace_for_text(screen, screens_notified[facility_id]))
-                html_notified_screens.append(
-                    replace_for_html(screen,screens_notified[facility_id]))
+                txt_notified_screens.append(replace_for_text(screen))
+                html_notified_screens.append(replace_for_html(screen))
                 
             txt_not_notified_screens = []
             html_not_notified_screens = []
-            for facility_id in sorted(screens_not_notified.keys()):
+            for facility_id in sorted(screens_not_notified):
                 screen = screens[facility_id]
-                txt_not_notified_screens.append(
-                    replace_for_text(screen, screens_not_notified[facility_id]))
-                html_not_notified_screens.append(
-                    replace_for_html(screen, screens_not_notified[facility_id]))
+                txt_not_notified_screens.append(replace_for_text(screen))
+                html_not_notified_screens.append(replace_for_html(screen))
             
             msg_parms = {
                 'screen_count': len(screens),

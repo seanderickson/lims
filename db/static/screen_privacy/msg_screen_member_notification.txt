@@ -1,14 +1,14 @@
 IMPORTANT: ICCB-L screen data due to be shared at Level 1
-Dear ICCB-L screener:
+Dear ICCB-L Screener:
 
 According to our records, the data associated with your screen, {screen_title_text}, 
-with the current data sharing level: {data_sharing_level_title}, will convert to 
+with the current data sharing: {data_sharing_level_title}, will convert to 
 {data_sharing_level_1_title} sharing on {data_privacy_expiration_date}, 
-in accordance with the ICCB-L user agreement that you have signed.  
+in accordance with the ICCB-L user agreement you have signed.  
 
 Please note that Level 1 sharing occurs only within the context of the Screensaver 
 database and is not the same as public release. If you wish to delay conversion 
 to Level 1 sharing, you must provide a written request and justification for 
-consideration by the Advisory Committee that is responsible for your screen. 
+consideration by the ICCB-Longwood Advisory Committee. 
 
 For requests or questions relating to screens, please contact {contact_info}.

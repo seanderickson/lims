@@ -266,6 +266,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
            'chembl_id'];
         }
         
+        if (!_.isEmpty(_.intersection(delegateStack, 
+              [appModel.URI_PATH_COMPLEX_SEARCH,appModel.URI_PATH_ENCODED_SEARCH]))){
+          console.log('encoded or complex search found');
+          newResource['options']['rpp'] = '24';
+        }
+        
         var extraControls = [];
         var show_data_columns_control = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
@@ -329,11 +335,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
         var schemaUrl = [self.resource.apiUri,'schema'].join('/');
-
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
-//        createReagentView(self.resource);
       }
-      
     }
     
   });

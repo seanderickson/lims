@@ -1812,7 +1812,7 @@ define([
           _.zip(_.keys(search_data),_.values(search_data)), 
           function(kv){
             return kv.join('=');
-          }).join(appModel.SEARCH_DELIMITER);        
+          }).join(Iccbl.appModel.SEARCH_DELIMITER);        
         var search_link = $('<a>',{
             text: 'Comments',
             target: '_blank',
@@ -2477,7 +2477,7 @@ define([
       return _.map(_.pairs(searchHash), 
         function(keyval) {
           return keyval.join('=');
-        }).join(appModel.SEARCH_DELIMITER)
+        }).join(Iccbl.appModel.SEARCH_DELIMITER)
     }
   });
 

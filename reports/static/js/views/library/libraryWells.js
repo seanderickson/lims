@@ -255,9 +255,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var newResource = _.extend({}, schemaResult, self.resource );
         
         newResource['fields'] = newFields;
-        var url = newResource.apiUri;
-        if (newResource.key == 'compound_search'){
-          url += '/compound_search';
+        var url = self.args.url;
+        if (newResource.key == 'small_molecule'){
+          url += '/small_molecule';
           // FIXME: hack to add columns; fix is to implement sirna/smr resource
           // schema as superset of reagent schema
           newResource['options']['includes'] = [

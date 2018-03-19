@@ -67,7 +67,7 @@ define([
         pageSize: parseInt(self.listModel.get('rpp'))
       };
 
-      if (!_.has(self._options, 'url')) {
+      if (! self._options.url) {
         self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
       }
       

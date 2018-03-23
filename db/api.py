@@ -20400,7 +20400,9 @@ class ReagentResource(DbApiResource):
             filename = self._get_filename(readable_filter_hash, schema)
             
             if filter_expression is None\
-                and well_ids is None and plate_numbers is None:
+                and any([well_ids,plate_numbers,library,
+                    well_base_query is not None, cherry_pick_request_id_lab, 
+                    cherry_pick_request_id_screener]) is False:
                 logger.warn('No filters found: param_hash: %r', param_hash)
                 logger.warn('No filters found: schema: %r, fields: %r',
                     schema['key'], schema['fields'].keys())

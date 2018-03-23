@@ -474,7 +474,7 @@ define([
       }
       
       function libraryForPlate(plate_number){
-        return libaries.find(function(library){
+        return libraries.find(function(library){
           return ( library.get('start_plate') <= plate_number 
               && library.get('end_plate') >= plate_number);
         });

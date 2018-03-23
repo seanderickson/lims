@@ -452,7 +452,9 @@ define([
         
         var errors = self.processWellSearch(self.form2.getValue('searchVal'));
         if (!_.isEmpty(errors)){
-          throw 'Unexpected errors after submit: ' + errors.join(', ');
+          $form2.find('[name="searchVal"]').addClass(self.errorClass);
+          $form2.find('[data-error]').html(errors.join('<br/>'));
+          return;
         }
       });
       var $help = $('<a>', {
@@ -627,7 +629,8 @@ define([
           this.form3.setValue('searchVal', parsedData);
           // form3 may not be rendered yet, store the value
           this.form3_data = parsedData;
-        }else if (uiResourceId == 'reagent') {
+        }else if (_.contains(
+          ['silencingreagent','smallmoleculereagent','reagent'], uiResourceId)) {
           var errors = [];
           var search_data = complex_search[appModel.API_PARAM_SEARCH];
           var parsedData = Iccbl.parseRawWellSearch(search_data,errors);
@@ -730,7 +733,22 @@ define([
       if (!_.isEmpty(errors)){
         return errors;
       }
+      var librariesForSearch = appModel.getLibrariesForSearch(parsedSearchArray, errors);
+      if (!_.isEmpty(errors)){
+        return errors;
+      }
+      
+      var screenType = librariesForSearch[0].get('screen_type');
       var resource = appModel.getResource('reagent');
+      
+      if (screenType == 'small_molecule'){
+        resource = appModel.getResource('smallmoleculereagent');
+      } else if (screenType == 'rnai'){
+        resource = appModel.getResource('silencingreagent')
+      } else {
+        throw 'Unknown library type for search: ' + screenType;
+      }
+      
       if (parsedSearchArray.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
         // encode simple searches as a URL param
         var encodedSearches = [];

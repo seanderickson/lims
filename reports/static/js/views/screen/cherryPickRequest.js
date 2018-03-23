@@ -2006,6 +2006,8 @@ define([
     showScpSearchForm: function(){
       var self = this;
       // create the search form
+      
+      // FIXME: should use the same code as the search_box.js well search
       var TextArea2 = Backbone.Form.editors.TextArea.extend({
         render: function() {
           TextArea2.__super__.render.apply(this,arguments);

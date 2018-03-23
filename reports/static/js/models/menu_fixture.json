@@ -102,10 +102,19 @@
           "view": "list"
         },
         "reagent":{
-          "view": "list"
-        },
-        "compound_search":{
-          "view": "list"
+          "view": "list",
+          "expanded": true,
+          "submenus": {
+            "smallmoleculereagent":{
+              "view": "list"
+            },
+            "compound_search": {
+              "view": "list"
+            },
+            "silencingreagent":{
+              "view": "list"
+            }
+          }
         },
         "labaffiliation": {
           "view": "list"

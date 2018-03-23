@@ -175,9 +175,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           DetailView.prototype.afterRender.apply(this,arguments);
           // TODO: support for generic images
           if(this.model.has('structure_image')){
-            self.$('#content').append(
+            $('#generic-detail-stickit-container').append(
                 '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="' 
-                + self.model.get('structure_image') + '" alt="image" />')
+                + self.model.get('structure_image') + '" alt="image" />');
+            $('#structure_image').closest('tr').remove();
           }
         }
       });

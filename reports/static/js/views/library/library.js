@@ -170,50 +170,47 @@ define([
     
     setWells: function(delegateStack) {
       var self = this;
-      var schemaUrl = [self.model.resource.apiUri,self.model.key,'well',
-                       'schema'].join('/');
-      var wellResource = appModel.getResource('well'); 
-
-      function createWellView(schemaResult){
-        if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
-            !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
-          // Detail view
-          var well_id = delegateStack.shift();
-          self.consumedStack.push(well_id);
-          var _key = [self.model.key,well_id].join('/');
-          appModel.getModel(wellResource.key, well_id, function(model){
-            model.resource = schemaResult;
-            view = new LibraryWellView({
-              model: model, 
-              uriStack: _.clone(delegateStack),
-              library: self.model
-            });
-            Backbone.Layout.setupView(view);
-            self.listenTo(view , 'uriStack:change', self.reportUriStack);
-            self.setView("#tab_container", view ).render();
-            self.$("#tab_container-title").html('Well ' + model.get('well_id'));
       
-          });        
-          return;
-        }else{
-          // List view
-          var url = [self.model.resource.apiUri, 
-                     self.model.key,
-                     'well'].join('/');
-          view = new LibraryWellsView({ 
+      var resource;
+      if( this.model.get('screen_type') == 'rnai') {
+        resource = appModel.getResource('rnaireagent');
+      } else {
+        resource = appModel.getResource('smallmoleculereagent');
+      }
+      
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail view
+        var well_id = delegateStack.shift();
+        self.consumedStack.push(well_id);
+        appModel.getModel(resource.key, well_id, function(model){
+          model.resource = resource;
+          view = new LibraryWellView({
+            model: model, 
             uriStack: _.clone(delegateStack),
-            resource: schemaResult,
-            url: url
+            library: self.model
           });
           Backbone.Layout.setupView(view);
-//          self.reportUriStack([]);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
-        }
-        
+          self.$("#tab_container-title").html('Well ' + model.get('well_id'));
+    
+        });        
+        return;
+      }else{
+        // List view
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'reagent'].join('/');
+        view = new LibraryWellsView({ 
+          uriStack: _.clone(delegateStack),
+          resource: resource,
+          url: url
+        });
+        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
       }
-      appModel.getResourceFromUrl(schemaUrl, createWellView);
-
     },
         
     setPlates: function(delegateStack) {
@@ -231,7 +228,6 @@ define([
         url: url
       });
       Backbone.Layout.setupView(view);
-//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },

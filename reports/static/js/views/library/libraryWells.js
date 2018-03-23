@@ -21,6 +21,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     initialize: function(args) {
       this.args = args;
       this.resource = appModel.cloneResource(args.resource);
+      console.log('LibraryWellsView: ' + args.resource.key);
       this.uriStack = args.uriStack;
     },
     
@@ -42,27 +43,29 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       var searchHash = listView.collection.listModel.get(appModel.URI_PATH_SEARCH);
       var dc_ids = _.result(searchHash,'dc_ids', '');
-      if (!_.isArray(dc_ids)){
-        dc_ids = dc_ids.split(',')
+      if (dc_ids){
+        if (!_.isArray(dc_ids)){
+          dc_ids = dc_ids.split(',')
+        }
+        dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
       }
-      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
       console.log('showDataColumnsDialog', dc_ids);
       var resource = appModel.getResource('datacolumn');
       var data_for_get = { 
         limit: 0,
-        // access level_1 - only granted for level 2 screens that are overlapping,
-        // - or for level 2 users viewing overlapping level 1 screens; this 
-        // class of access is not available on well search because must only be
-        // used in the context of a screen result
-        // access level 2 - shared mutually, and public screens
-        // access level 3 - own screens, or if current user is an admin
-        user_access_level_granted__gt: 1, 
         includes: [
           'screen_facility_id','screen_title','name','description',
           'assay_data_type','ordinal','study_type'],
         order_by: ['screen_facility_id', 'ordinal'],
         use_vocabularies: false
       };
+      
+      if (self.resource.key == 'silencingreagent'){
+        data_for_get['screen_type'] = 'rnai';
+      } else {
+        data_for_get['screen_type'] = 'small_molecule';
+      }
+      
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: resource.apiUri,
         modelId: function(attrs) {
@@ -73,6 +76,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       collection.fetch({
         data: data_for_get,
         success: function(collection, response) {
+          // NOTE: filter for user_access_level_granted > 1; users may only
+          // add other screen columns for mutually shared or full access screens
+          // NOTE: query filtering, e.g. user_access_level_granted__gt=1 
+          // is not available for the DataColumn resource.
+          // NOTES:
+          // access level_1 - only granted for level 2 screens that are overlapping,
+          // - or for level 2 users viewing overlapping level 1 screens; this 
+          // class of access is not available on well search because must only be
+          // used in the context of a screen result
+          // access level 2 - shared mutually, and public screens
+          // access level 3 - own screens, or if current user is an admin
+          
+          collection = new Backbone.Collection(collection.filter(function(dc){
+            return dc.get('user_access_level_granted') > 1;
+          }));
+          
           showTreeSelector(collection);
         },
         always: function(){
@@ -255,15 +274,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var newResource = _.extend({}, schemaResult, self.resource );
         
         newResource['fields'] = newFields;
-        var url = self.args.url;
-        if (newResource.key == 'small_molecule'){
-          url += '/small_molecule';
-          // FIXME: hack to add columns; fix is to implement sirna/smr resource
-          // schema as superset of reagent schema
-          newResource['options']['includes'] = [
-           'inchi','smiles','structure_image','molecular_formula',
-           'molecular_mass','molecular_weight','pubchem_cid','chembank_id',
-           'chembl_id'];
+        var url = self.resource.apiUri;
+        if (self.args.url){
+          url = self.args.url;
+        }
+        console.log('url: ' + url);
+        if (newResource.key == 'compound_search'){
+          url += '/compound_search';
         }
         
         if (!_.isEmpty(_.intersection(delegateStack, 
@@ -291,9 +308,21 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             return this;
           }
         });
-        
+        var collection = new Iccbl.MyCollection();
+        self.listenTo(collection, 'sync', function(e){
+          if (collection.size() == 1 && collection.state.currentPage == 1){
+            // show library well view
+            var well = collection.at(0);
+            var libraryResource = appModel.getResource('library');
+            var _route = ['#', libraryResource.key, well.get('library_short_name'),
+                          'well', well.get('well_id')].join('/');
+            appModel.set('routing_options', {replace: false});  
+            appModel.router.navigate(_route, {trigger:true});
+          }
+        });
         var viewArgs = _.extend({},self.args,{
           resource: newResource,
+          collection: collection,
           url: url});
 
         var view = new WellListView (viewArgs);
@@ -306,7 +335,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             $('#content_title_row').show();
           }
         });
-          
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         Backbone.Layout.setupView(view);
         self.setView('#resource_content', view ).render();
@@ -334,8 +362,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var schemaUrl = [self.resource.apiUri,'schema'].join('/');
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
-        var schemaUrl = [self.resource.apiUri,'schema'].join('/');
-        appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
+        // 20180320 - only get the schema if it is not in the initialize args
+        
+//        var schemaUrl = [self.resource.apiUri,'schema'].join('/');
+//        appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
+        
+        createReagentView(self.resource);
       }
     }
     

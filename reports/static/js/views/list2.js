@@ -36,7 +36,8 @@ define([
     initialize : function(args) {
       
       var self = this;
-      var _options = self._options = args;
+      console.log('list args:', arguments);
+      var _options = self._options = args || {};
       var resource = self.resource = args.resource;
       self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
@@ -160,8 +161,13 @@ define([
         columns = _options.columns;
       }
       
+      _.bindAll(this, 'afterRender');
       this.listenTo(this.listModel, 'change', this.reportState );
       this.buildGrid( columns, self._options.resource );
+    },
+    
+    getListModel: function(){
+      return this.listModel;
     },
     
     /**
@@ -973,6 +979,7 @@ define([
     },
 
     onClose: function(){
+      console.log('close - destroy list view');
       this.$el.empty();
       
       if(_.isObject(this.objects_to_destroy)){
@@ -1103,8 +1110,14 @@ define([
       }
 
       this.listenTo(self.collection, 'sync', function(event){
+        
+        // NOTE: safe check if the stateful vars exist: onClose removes
+        // listeners using view.off(), but not if sync listeners are already
+        // operational
+        if (! self._options || !self.collection) return;
+        
         var msg = ''; 
-        if (self._options.header_message) {
+        if (self._options && self._options.header_message) {
           if (msg) msg += ', ';
           msg += self._options.header_message;
         }

@@ -434,7 +434,6 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
 
     getPlatedLibraryOptions: function(callBack){
@@ -460,9 +459,92 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
 
+    /** 
+		 * Get the libraries covered for search:
+		 * TODO: Test 20180322 
+		 **/
+    getLibrariesForSearch: function(searchArray, errors){
+      var libraries = this.getLibraries();
+      
+      if (!libraries){
+        console.log('libraries are not initialized');
+        return;
+      }
+      
+      function libraryForPlate(plate_number){
+        return libaries.find(function(library){
+          return ( library.get('start_plate') <= plate_number 
+              && library.get('end_plate') >= plate_number);
+        });
+      }; 
+      
+      function librariesForRange(start,end){
+        return libraries.filter(function(library){
+          return ( library.get('start_plate') <= end
+              && library.get('end_plate') >= start);
+        });
+      }
+      
+      var librariesFound = [];
+      
+      _.each(searchArray, function(parsedSearch){
+        if (_.has(parsedSearch, 'well_ids')){
+          _.each(parsedSearch['well_ids'], function(well_id){
+            var plate_number = parseInt(well_id.split(':')[0]);
+            var library = libraryForPlate(plate_number);
+            if (!library){
+              errors.push('No library found for plate: ' + plate_number);
+            } else {
+              librariesFound.unshift(library);
+            }
+          });
+        }
+        if (_.has(parsedSearch, 'plate_ranges')){
+          _.each(parsedSearch['plate_ranges'], function(plate_range){
+            var start_end = plate_range.split('-');
+            var libraries = librariesForRange(
+              parseInt(start_end[0]), parseInt(start_end[1]));
+            if (_.isEmpty(libraries)){
+              errors.push('No libraries found for range: ' + plate_range);
+            }
+            // consider checking that all libraries are same type
+            librariesFound = librariesFound.concat(libraries);
+          });
+        }
+        if (_.has(parsedSearch, 'plates')){
+          _.each(parsedSearch['plates'], function(plate){
+            var library = libraryForPlate(plate);
+            if (!library){
+              errors.push('No libraries found for plate number: ' + plate);
+            }else{
+              librariesFound.unshift(library);
+            }
+          });
+        }
+      });
+      
+      var librariesFound = _.unique(librariesFound);
+      
+      // Check that all libraries are of the same type
+      var screen_types = {};
+      _.each(librariesFound, function(library){
+        var screen_type = library.get('screen_type');
+        var list = _.result(screen_types, screen_type, []);
+        list.push(library.get('short_name'));
+        screen_types[screen_type] = list;
+      });
+      
+      if(_.size(screen_types)>1){
+        errors.push('Well searches may not contain different library types: ' 
+          + _.keys(screen_types).join(', '));
+      }
+      
+      return librariesFound;
+    },
+    
+    
     /**
      * Generate a list of "options" suitable for use in a user multiselect.
      * [ { val: username, label: name:username }, ... ]
@@ -1095,7 +1177,7 @@ define([
     newModelFromResource: function(resource, defaults) {
       
       var finalDefaults = _.extend({},
-        this.get_field_defaults(resource.fields, defaults));
+        this.get_field_defaults(resource.fields), defaults);
       delete finalDefaults['resource_uri']
       delete finalDefaults['id'];
       var NewModel = Backbone.Model.extend({

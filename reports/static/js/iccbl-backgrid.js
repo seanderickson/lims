@@ -956,7 +956,7 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
             wellcol = '0'+wellcol;
           }
           var wellname = wellrow + wellcol;
-          var wellid = ''+plate+wellname
+          var wellid = '' + plate + ':' + wellname;
           if (Iccbl.appModel.DEBUG){
             console.log('from WELL_ID:' + part + 'to' + wellid);
           }

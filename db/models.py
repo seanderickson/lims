@@ -316,7 +316,7 @@ class AttachedFile(models.Model):
     def __repr__(self):
         return (
             '<AttachedFile(attached_file_id=%d, filename=%r, '
-            'type=$r, date_created=%r)>' 
+            'type=%r, date_created=%r)>' 
             % ( self.attached_file_id, self.filename, self.type, 
                 self.date_created) )
 

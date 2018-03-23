@@ -498,7 +498,16 @@ class SqlAlchemyResource(IccblBaseResource):
         (filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filter_hash(schema, param_hash)
         combined_filter_hash = filter_hash
-        filter_expression = and_(*filter_hash.values())
+        filter_expression = None
+        if len(filter_hash) > 0:
+            filter_expression = and_(*filter_hash.values())
+        
+            if DEBUG_FILTERS: 
+                logger.info('Initial filter hash: %r', filter_hash)
+                compiled_stmt = str(filter_expression.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True}))
+                logger.info('Initial compiled filter expression %s', compiled_stmt)
 
         # 20170511 - nested search_data not used 
         # (for well, plate, or screening inquiry)
@@ -523,33 +532,44 @@ class SqlAlchemyResource(IccblBaseResource):
                 (search_filter_hash,readable_search_filter_hash) = \
                     SqlAlchemyResource.\
                         build_sqlalchemy_filter_hash(schema,search_hash)
-                search_expressions.append(and_(*search_filter_hash.values()))
-                
-                # Append search expressions for each field to a combined hash
-                for field,expression in search_filter_hash.items():
-                    logger.info(
-                        'search filter to combine: %r, %r', field, expression)
-                    if field in combined_filter_hash:
-                        combined_filter_hash[field] = \
-                            or_(combined_filter_hash[field], expression)
-                    else:
-                        combined_filter_hash[field] = expression
-            if len(search_expressions) > 1:
-                search_expressions = or_(*search_expressions)
-            else:
-                search_expressions = search_expressions[0]
-            if len(filter_hash) > 0:
-                filter_expression = and_(
-                    search_expressions,
-                    filter_expression)
-            else: 
-                filter_expression = search_expressions
-            readable_filter_hash['search'] = '_'.join(search_hash.keys())    
+                if len(search_filter_hash) > 0:
+                    search_expressions.append(and_(*search_filter_hash.values()))
+                    # Append search expressions for each field to a combined hash
+                    for field,expression in search_filter_hash.items():
+                        logger.info(
+                            'search filter to combine: %r, %r', field, expression)
+                        if field in combined_filter_hash:
+                            combined_filter_hash[field] = \
+                                or_(combined_filter_hash[field], expression)
+                        else:
+                            combined_filter_hash[field] = expression
+            if len(search_expressions) > 0:
+                if len(search_expressions) > 1:
+                    search_expressions = or_(*search_expressions)
+                else:
+                    search_expressions = search_expressions[0]
+                    
+                if DEBUG_FILTERS: 
+                    compiled_stmt = str(search_expressions.compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True}))
+                    logger.info('search expressions %s', compiled_stmt)
+                    
+                if filter_expression is not None:
+                    filter_expression = and_(
+                        search_expressions,
+                        filter_expression)
+                else:
+                    filter_expression = search_expressions
+                readable_filter_hash['search'] = '_'.join(search_hash.keys())    
         if DEBUG_FILTERS: 
-            logger.info('filter_expression: %s, filter_fields: %s',
-                filter_expression, combined_filter_hash.keys())
-            logger.info(
-                'readable_filter_hash: %r', readable_filter_hash)
+            logger.info('filter_fields: %s',combined_filter_hash.keys())
+            logger.info('readable_filter_hash: %r', readable_filter_hash)
+            if filter_expression is not None:
+                compiled_stmt = str(filter_expression.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True}))
+                logger.info('compiled filter expression %s', compiled_stmt)
         
         return (filter_expression,combined_filter_hash, readable_filter_hash)
     
@@ -790,7 +810,7 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         Return the detail response as a dict
         '''
-        logger.info('_get_detail_response: %r, %r', 
+        logger.debug('_get_detail_response: %r, %r', 
             self._meta.resource_name, 
             {k:v for k,v in kwargs.items() if k !='schema'})
         includes = kwargs.pop('includes', '*')
@@ -817,7 +837,7 @@ class SqlAlchemyResource(IccblBaseResource):
         request = self.request_factory.generic(
             'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
         if user is None:
-            logger.info('_get_detail_response_internal, no user')
+            logger.debug('_get_detail_response_internal, no user')
             class User:
                 is_superuser = True
                 username = 'internal_request'

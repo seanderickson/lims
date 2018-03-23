@@ -2152,13 +2152,14 @@ class VocabularyResource(IResourceTestCase):
 class UserUsergroupSharedTest(object):
             
     def test1_create_user_with_permissions(self, test_log=False):
-
+        logger.info('test1_create_user_with_permissions...')
+        
         filename = os.path.join(self.directory,'test_data/users1.csv')
         from datetime import datetime
         data_for_get = { HEADER_APILOG_COMMENT: 
             'patch_test: file: %s, %s' % (filename, datetime.now().isoformat()),
             'includes': '*' }
-        input_data,output_data = self._put_test(
+        input_data,output_data = self._patch_test(
             'user', filename, id_keys_to_check=['username'],
             data_for_get=data_for_get)
         
@@ -2215,7 +2216,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         logger.info('test0_create_user...')
         
         # create some simple users
-        self.bootstrap_items = { API_RESULT_DATA: [   
+        bootstrap_items = [   
             {
                 'username': 'st1',
                 'ecommons_id': 'st1',
@@ -2235,22 +2236,25 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
                 'last_name': 'Tester1',    
                 'email': 'user.tester1@slimstest.com',    
             },
-        ]}
+        ]
         try:       
             uri = BASE_URI + '/user'
-            resp = self.api_client.put(uri, 
-                format='json', data=self.bootstrap_items, 
+            resp = self.api_client.patch(uri, 
+                format='json', data={ API_RESULT_DATA: bootstrap_items}, 
                 authentication=self.get_credentials())
             self.assertTrue(
                 resp.status_code <= 204, 
                 (resp.status_code, self.get_content(resp)))
         except Exception, e:
-            logger.exception('on creating: %r', self.bootstrap_items)
+            logger.exception('on creating: %r', bootstrap_items)
             raise
 
         logger.debug('created users, now GET them')
+        data_for_get = { 'limit': 0 }
+        data_for_get['username__in'] = [u['username'] for u in bootstrap_items]
+        
         resp = self.api_client.get(uri, format='json', 
-            authentication=self.get_credentials(), data={ 'limit': 0 })
+            authentication=self.get_credentials(), data=data_for_get)
         new_obj = self.deserialize(resp)
         self.assertTrue(
             resp.status_code in [200], 
@@ -2258,7 +2262,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         self.assertEqual(
             len(new_obj[API_RESULT_DATA]), 3, (new_obj))
         
-        for i,item in enumerate(self.bootstrap_items[API_RESULT_DATA]):
+        for i,item in enumerate(bootstrap_items):
             result, obj = find_obj_in_list(item, new_obj[API_RESULT_DATA])
             self.assertTrue(
                 result, 
@@ -2303,7 +2307,8 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
 
         test_resource_uri = '/'.join([BASE_URI, 'apilog'])
         resp = self.api_client.get(
-            test_resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={
+                'ref_resource_name': 'user'}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(
             resp.status_code in [403], 
@@ -2327,7 +2332,8 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         # now try again as the updated user:
         
         resp = self.api_client.get(
-            test_resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={
+                'ref_resource_name': 'user'}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(
             resp.status_code in [200], 
@@ -2419,7 +2425,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         # Note: Excluding sub_groups here because the one sub_group is set when 
         # "testGroupX" sets super_groups=['testGroup3']; and thereby testGroup3 
         # gets sub_groups=['testGroupX']; although that's not in the input file.
-        self._put_test('usergroup', filename, id_keys_to_check=['name'],
+        self._patch_test('usergroup', filename, id_keys_to_check=['name'],
             keys_not_to_check=['sub_groups'])
 
     def test3_patch_users_groups(self):
@@ -2456,12 +2462,13 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         # 1 read test - should have permission through group 3
         test_resource_uri = '/'.join([BASE_URI, 'apilog'])
         resp = self.api_client.get(
-            test_resource_uri, format='json', data={}, 
+            test_resource_uri, format='json', data={
+                'ref_resource_name': 'user'}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        
+        logger.debug('api logs: %r', self.get_content(resp))
         # now patch this user's usergroups, 
         # removing the user from the group 'testgroup3,2'
         # which will remove the permissions for the "apilog" resource as well 

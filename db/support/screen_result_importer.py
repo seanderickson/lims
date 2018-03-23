@@ -370,7 +370,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
         field information dicts for the non-result value columns
     @param result_values an iterable containing result_value dicts
     '''
-    logger.info('create screen result output data %r', screen_facility_id)
+    logger.info('create screen result output data for screen %r', screen_facility_id)
 
     data = OrderedDict()
     
@@ -418,7 +418,6 @@ def create_output_data(screen_facility_id, fields, result_values ):
     header_row.extend([
         xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
             for i in range(len(data_column_keys))])
-    logger.info('Data Columns - header_row: %r', header_row)
     for i,(output_label,field_key) in enumerate(
             DATA_COLUMN_FIELD_MAP.items()[1:]):
         row = [output_label]
@@ -440,8 +439,8 @@ def create_output_data(screen_facility_id, fields, result_values ):
                 elif val == 'boolean':
                     newval = DATA_TYPE.BOOLEAN_POSITIVE
                 if newval:
-                    logger.info(
-                        'converted: %r:%r to %r: %r', key, field_key, val, newval)
+                    logger.debug('converted: %r:%r to %r: %r', 
+                        key, field_key, val, newval)
                     val = newval
             if val:
                 if field_key == 'is_follow_up_data':

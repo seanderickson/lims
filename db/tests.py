@@ -570,6 +570,9 @@ class DBResourceTestCase(IResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', 
+            self.pool_library1['short_name'],'reagent'])
         self.pool_wells = self.get_list_resource(resource_uri)
         for pool_well in self.pool_wells:
             self.assertTrue('duplex_wells' in pool_well)
@@ -1055,7 +1058,7 @@ class LibraryResource(DBResourceTestCase):
             ('library: %r'% library1, 'expected', 
                 expected_count, 'found',len(returned_data)))
         
-        specific_schema = self.get_single_resource(resource_uri + '/schema')
+        specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
         fields = specific_schema['fields']
         self.validate_wells(input_data, returned_data, fields)
         
@@ -1701,6 +1704,7 @@ class LibraryResource(DBResourceTestCase):
         data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
+        logger.info('POST new data to the copyplates...')
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
             data=data, 
@@ -1864,11 +1868,17 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        logger.info('meta: %r', meta)
+        plate_location_msg = \
+            'Plate Location Result: {room}-{freezer}-{shelf}-{bin}'\
+                .format(**plate_location_input)
+        self.assertTrue(plate_location_msg in meta[API_MSG_RESULT])
+        plate_location_result = meta[API_MSG_RESULT][plate_location_msg]
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % post_response)
-        self.assertTrue(meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            API_MSG_SUBMIT_COUNT in plate_location_result, '%r' % plate_location_result)
+        self.assertTrue(plate_location_result[API_MSG_SUBMIT_COUNT]==6, 
             'Wrong %r count: %r' 
-            % (API_MSG_SUBMIT_COUNT,meta))
+            % (API_MSG_SUBMIT_COUNT,plate_location_result))
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -2305,7 +2315,7 @@ class LibraryResource(DBResourceTestCase):
                 len(returned_data), 'expected',expected_count,
                 'returned_data',returned_data))
 
-        specific_schema = self.get_single_resource(resource_uri + '/schema')
+        specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
         fields = specific_schema['fields']
         self.validate_wells(input_data, returned_data, fields)
                     
@@ -2407,6 +2417,8 @@ class LibraryResource(DBResourceTestCase):
             new_obj = self.deserialize(resp)
             logs = new_obj[API_RESULT_DATA]
             # (none for create), 4 for update
+            for log in logs:
+                logger.info('log: %r', log)
             expected_count = 4
             self.assertEqual( 
                 len(logs), expected_count , 
@@ -2513,7 +2525,7 @@ class LibraryResource(DBResourceTestCase):
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         
         data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
-        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         xls_serializer = XLSSerializer()
         
         logger.info('Open and PUT file: %r', filename)
@@ -2538,6 +2550,7 @@ class LibraryResource(DBResourceTestCase):
         resource_name = 'reagent'
         reagent_resource_uri = '/'.join([
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         resp = self.api_client.get(
             reagent_resource_uri, format='xlsx', 
             authentication=self.get_credentials(), 
@@ -2553,7 +2566,7 @@ class LibraryResource(DBResourceTestCase):
                 len(returned_data), 'expected',expected_count )))
 
         # 1. test well keys
-        specific_schema = self.get_single_resource(resource_uri + '/schema')
+        specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
         fields = specific_schema['fields']
         
         self.validate_wells(input_data, returned_data, fields)
@@ -2706,7 +2719,8 @@ class ScreenResultSerializerTest(TestCase):
             for column_field, val in input_field.items():
                 val = input_field[column_field]
                 val2 = output_field[column_field]
-                logger.info('Test field: %s: %s: %r to %r', colname, column_field, val, val2)
+                logger.debug('Test field: %s: %s: %r to %r', 
+                    colname, column_field, val, val2)
                 if val and column_field == 'derived_from_columns':
                     val = set([x.upper() for x in re.split(r'[,\s]+', val)])
                     val2 = set([x.upper() for x in re.split(r'[,\s]+', val2)])
@@ -8417,7 +8431,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         try:       
             resource_uri = BASE_REPORTS_URI + '/usergroup/'
-            resp = self.api_client.put(resource_uri, 
+            resp = self.api_client.patch(resource_uri, 
                 format='json', data=group_patch, 
                 authentication=self.get_credentials())
             self.assertTrue(
@@ -9645,6 +9659,8 @@ class DataSharingLevel(DBResourceTestCase):
             authentication=self.get_credentials()
 
         resource_uri = BASE_URI + '/screenresult/' + screen_facility_id
+        logger.info('get screen result %r with extra data: %r', 
+            screen_facility_id, data)
         resp = self.api_client.get(
             resource_uri, format='json', data=data_for_get, 
             authentication=authentication )
@@ -9672,7 +9688,24 @@ class DataSharingLevel(DBResourceTestCase):
         new_obj = self.deserialize(resp)
         new_data = new_obj[API_RESULT_DATA]
         return new_data
+    
+    def get_reagents(self, username=None, data=None):
+        data_for_get = { 'includes': '*' }
+        if data is not None:
+            data_for_get.update(data)
         
+        # Get a general screen listing
+        resource_uri = BASE_URI + '/reagent'
+        resp = self.api_client.get(
+            resource_uri, format='json', data=data_for_get, 
+            authentication=self.create_basic(username, self.general_user_password) )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        new_data = new_obj[API_RESULT_DATA]
+        return new_data
+    
     def get_datacolumns(self, username=None, data=None):
         
         data_for_get = { 'includes': '*' }
@@ -9949,6 +9982,11 @@ class DataSharingLevel(DBResourceTestCase):
     
     def do_data_columns_test(self, user, expected_screens_access_levels,
         expected_positive_count_by_col_title=None):
+        '''
+        Verify that the "user_access_level_granted" for the DataColumns 
+        retrieved for the user have the same level as given in the 
+        expected_screens_access_levels dict.
+        '''
         
         # Retrieve the screens as superuser for reference
         reference_screens = self.get_list_resource(BASE_URI + '/screen') 
@@ -10033,11 +10071,125 @@ class DataSharingLevel(DBResourceTestCase):
             reported_col_ids = reported_dc_by_access_level.get(access_level, None)
             self.assertEqual(col_ids, reported_col_ids)        
 
+    def do_reagent_cols_test(self, user, expected_screens_access_levels,
+        wellids_to_test):
+        ''' 
+        Verify that only DataColumns with "user_access_level_granted" > 1
+        may be viewed or will be present in a well/reagent listing
+        '''
+        # verify filter of datacolumns
+        
+        key = 'has_screen_result'
+        reference_value = reference_screen[key]
+        if reference_value == 3:
+            self.fail('do_screenresult_test: screen: %r reports no screen result: %r'
+                % (screen_facility_id, reference_screen))
+        self.assertEqual(1, reference_value, 
+            'admin user should never see has_screen_result other than (1,2): %r'
+            % reference_value)
+        if user_access_level_granted < 2:
+            self.assertEqual(2, reported_screen[key])
+            
+        expected_cols_access_levels = defaultdict(set)
+        for access_level,facility_ids in expected_screens_access_levels.items():
+            if access_level == 0:
+                continue
+            for facility_id in facility_ids:
+                screen = reference_screens.get(facility_id) 
+                if screen['has_screen_result'] == 3:
+                    continue
+                dcs = dc_by_screen.get(facility_id,None)
+                if not dcs:
+                    self.fail('no datacolumns found: %r' % facility_id)
+                for dc in dcs:
+                    logger.debug(
+                        'access_level: %r, dc: %r', 
+                        access_level, dc['data_column_id'])
+                    if access_level > 1:
+                        expected_cols_access_levels[access_level].add(
+                            dc['data_column_id'])
+                    elif access_level == 1:
+                        # must be a positives column with positive values
+                        if dc.get('positives_count',0) > 0:
+                            logger.info('level 1 pos column: %r, %r, %r', 
+                                dc['key'],dc['title'], dc['positives_count'])
+                            expected_cols_access_levels[access_level].add(
+                                dc['data_column_id'])
+                        else:
+                            logger.info(
+                                'level 1 column not allowed, no positives: %r, %r',
+                                dc['key'], dc['title'])
+                    else:
+                        logger.info(
+                            'access level %r column should not be in reported '
+                            'datacolumns: %r, %r'
+                            % (access_level, dc['key'], dc['title']))
+
+        # 2. compare expected datacolumns by level to reported
+        
+        reported_datacolumns = self.get_datacolumns(username=user['username'])
+        reported_datacolumns = {dc['data_column_id']:dc for dc in reported_datacolumns}
+        
+        dc_by_screen = defaultdict(list)
+        for dc in reported_datacolumns.values():
+            dc_by_screen[dc['screen_facility_id']].append(dc['name'])
+        logger.info('reported dc_by_screen: %r', dc_by_screen)
+        
+        reported_dc_by_access_level = defaultdict(set)
+        for dc in reported_datacolumns.values():
+            reported_dc_by_access_level[dc['user_access_level_granted']]\
+                .add(dc['data_column_id'])
+        logger.info('reported_dc_by_access_level: %r', reported_dc_by_access_level) 
+        
+        for access_level,col_ids in reported_dc_by_access_level.items():
+            expected_col_ids = expected_cols_access_levels.get(access_level, None)
+            logger.info('reported access level: %r, reported: %r expected: %r', 
+                access_level, col_ids, expected_col_ids)
+            self.assertEqual(col_ids, expected_col_ids)        
+
+        level1_datacolums = reported_dc_by_access_level[1]
+        
+        # 3. Verify that a "reagent" query will not allow access level 1 columns
+        # to be added:
+        # - Try to create a reagent query using these datacolumns, verify
+        # that level <=1 columns will not appear in the results
+        
+        data_for_get = {
+            'well_id__in': wellids_to_test,
+            'dc_ids': reported_datacolumns.keys()
+            }
+        reported_reagents = self.get_reagents(
+            username=user['username'], data=data_for_get)
+        
+        reported_reagents = { r['well_id']:r for r in reported_reagents}
+        
+        expected_wells = set(wellids_to_test)
+        reported_wells = set(reported_reagents.keys())
+        self.assertEqual(expected_wells, reported_wells,
+            'not all wells were found: missing: %r, extra: %r' %
+            (expected_wells-reported_wells, reported_wells-expected_wells))
+        for well_id, reagent in reported_reagents.items():
+            logger.info('reported reagent: %s %r', well_id, reagent)
+            for dc_id, dc in reported_datacolumns.items():
+                dc_name = 'dc_{screen_facility_id}_{data_column_id}'.format(**dc)
+                if dc_id in level1_datacolums:
+                    self.assertTrue(dc_name not in reagent,
+                        'found level 1 data column %s, in reagent: %r'
+                        % (dc_name, reagent))
+                else:
+                    self.assertTrue(dc_name in reagent,
+                        'did not find level >1 data column %s, in reagent: %r'
+                        % (dc_name, reagent))
+            
     def do_screenresult_test(self, user, screen_facility_id, 
         expected_access_level, mutual_wells=None):
         '''
-        Test the screen results; after the do_data_columns_test has been run to 
-        verify visibility of columns
+        Test that the user has the expected_access_level visibility for the 
+        screen_facility_id:
+        1 - mutual only
+        2,3 - shared
+        
+        - after the do_data_columns_test has been run to verify visibility of columns
         '''
         logger.info('do_screenresult_test: %r, %r', user, screen_facility_id)
         
@@ -10174,14 +10326,29 @@ class DataSharingLevel(DBResourceTestCase):
                                 % (well_id, key, reference_value, value))
                     else:
                         access_level = dc['user_access_level_granted']
-                        logger.info('test: %r, %r:%r, %r, %r', 
-                            well_id, key, reference_value, value, rv['is_positive'])
+                        dc_type = dc['assay_data_type']
+                        # For the purposes of this test, convert non positive 
+                        # indicator values into None, the screen_result_importer
+                        # does the converse, converting them into "NT", "NP", False
+                        # This test is finding the overlapping positives
+                        # 20180321
+                        logger.info('dc: %r, %r', dc['key'], dc_type)
                         if access_level > 1:
                             self.assertEqual(
                                 reference_value, value,
                                 '%r, key: %r, %r != %r' 
                                     % (well_id, key, reference_value, value))
                         else:
+                            if dc_type in [
+                                SCHEMA.VOCAB.datacolumn.data_type.CONFIRMED_POSITIVE,
+                                SCHEMA.VOCAB.datacolumn.data_type.PARTITIONED_POSITIVE]:
+                                if reference_value in [0,'0']:
+                                    reference_value = None
+                            elif dc_type == SCHEMA.VOCAB.datacolumn.data_type.BOOLEAN_POSITIVE:
+                                if reference_value is False:
+                                    reference_value = None
+                            logger.info('test: %r, %r:%r, %r, %r', 
+                                well_id, key, reference_value, value, rv['is_positive'])
                             if reference_value is not None:
                                 if rv['is_positive'] is True:
                                     self.assertEqual(
@@ -10219,7 +10386,7 @@ class DataSharingLevel(DBResourceTestCase):
         return fields_by_level
     
     def do_level_1_visibility(self):
-        ''' Test level 1 user data visibility '''
+        ''' Test level 1 (mutually sharing) user data visibility '''
 
         user = self.reference_users['lead_screener1a']
         own_screens = self.screens_by_lead[user['username']]
@@ -10311,12 +10478,14 @@ class DataSharingLevel(DBResourceTestCase):
         self.do_data_columns_test(
             user, expected_screens_access_levels,
             expected_positive_count_by_col_title=expected_positive_count_by_col_title)
+
+        self.do_reagent_cols_test(user, expected_screens_access_levels,
+            ['00001:A01','00001:A02','00001:A03'])
+        
         self.do_screenresult_test(user, screen_facility_id, 1) # should be level 1 access
         logger.info('do level 1 user viewing level 2 mutual wells test')
         self.do_screenresult_test(user, own_screens[1], 3,
             mutual_wells=['00001:A02'])
-#         self.do_screen_result_overlapping_test(
-#             user, self.screens1[1]['facility_id'])
 
         logger.info(
             '3 remove screen result')
@@ -10332,7 +10501,7 @@ class DataSharingLevel(DBResourceTestCase):
         self.clear_out_screenresults()
         
     def do_level_2_visibility(self):
-        ''' Test level 2 user data visibility '''
+        ''' Test level 2 user (overlapping sharing) data visibility '''
 
         user = self.reference_users['lead_screener2a']
         own_screens = self.screens_by_lead[user['username']]
@@ -10410,6 +10579,9 @@ class DataSharingLevel(DBResourceTestCase):
         expected_screens_access_levels[3] = set(own_screens)
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
+
+        self.do_reagent_cols_test(user, expected_screens_access_levels,
+            ['00001:A01','00001:A02','00001:A03'])
 
         self.do_data_columns_test(user, expected_screens_access_levels)
 

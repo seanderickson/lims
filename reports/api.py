@@ -911,7 +911,7 @@ class ApiResource(SqlAlchemyResource):
         
         logger.info('PUT: delete queryset: %r, %r', 
             request.user.username, self._meta.resource_name)
-        self._meta.queryset.delete()
+        self.delete_list(request, **kwargs);
         new_objs = []
         logger.info('PUT: create new objs: %d', len(deserialized))
         for _dict in deserialized:
@@ -1157,7 +1157,6 @@ class ApiResource(SqlAlchemyResource):
             # TODO: 20170109, legacy, convert patch_obj to return:
             # { API_RESULT_OBJ, API_RESULT_META }
             obj = patch_result
-        logger.info('build post detail: %r', obj)
         for id_field in id_attribute:
             if id_field not in kwargs_for_log:
                 val = getattr(obj, id_field,None)
@@ -1300,66 +1299,66 @@ class ApiResource(SqlAlchemyResource):
         # TODO: if put_detail is used: rework based on post_detail
         raise NotImplementedError('put_detail must be implemented')
     
-#         schema = kwargs.pop('schema', None)
-#         if not schema:
-#             raise Exception('schema not initialized')
-# 
-#         if kwargs.get('data', None):
-#             # allow for internal data to be passed
-#             deserialized = kwargs['data']
-#         else:
-#             deserialized = self.deserialize(
-#                 request, format=kwargs.get('format', None))
-# 
-#         logger.debug('put detail: %r, %r' % (deserialized,kwargs))
-#         
-#         # cache state, for logging
-#         # Look for id's kwargs, to limit the potential candidates for logging
-#         # Note: this version of PUT cannot be used if the resource must create
-#         # the ID keys on create (use POST/PATCH)
-#         
-#         kwargs_for_log = self.get_id(
-#             deserialized, validate=True, schema=schema, **kwargs)
-#         id_attribute = schema['id_attribute']
-#         # kwargs_for_log = {}
-#         # for id_field in id_attribute:
-#         # if deserialized.get(id_field,None):
-#         #     kwargs_for_log[id_field] = deserialized[id_field]
-#         # elif kwargs.get(id_field,None):
-#         #     kwargs_for_log[id_field] = kwargs[id_field]
-#         logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
-#         try:
-#             logger.info('get original state, for logging...')
-#             logger.debug('kwargs_for_log: %r', kwargs_for_log)
-#             original_data = self._get_list_response_internal(**kwargs_for_log)
-#         except Exception as e:
-#             logger.exception('original state not obtained')
-#             original_data = []
-#         
-#         try:
-#             logger.debug('call put_obj')
-#             obj = self.put_obj(request, deserialized, **kwargs)
-#         except ValidationError as e:
-#             logger.exception('Validation error: %r', e)
-#             raise e
-#                 
-#         if not kwargs_for_log:
-#             for id_field in id_attribute:
-#                 val = getattr(obj, id_field,None)
-#                 kwargs_for_log['%s' % id_field] = val
-# 
-#         # get new state, for logging
-#         new_data = self._get_list_response_internal(**kwargs_for_log)
-#         self.log_patches(request, original_data,new_data,**kwargs)
-#         
-#         # TODO: add "Result" data to meta section, see patch_list
-#         
-#         if not self._meta.always_return_data:
-#             logger.info('put success, no response data')
-#             return HttpResponse(status=200)
-#         else:
-#             response.status_code = 200
-#             return response
+        # schema = kwargs.pop('schema', None)
+        # if not schema:
+        #     raise Exception('schema not initialized')
+        # 
+        # if kwargs.get('data', None):
+        #     # allow for internal data to be passed
+        #     deserialized = kwargs['data']
+        # else:
+        #     deserialized = self.deserialize(
+        #         request, format=kwargs.get('format', None))
+        # 
+        # logger.debug('put detail: %r, %r' % (deserialized,kwargs))
+        #  
+        # # cache state, for logging
+        # # Look for id's kwargs, to limit the potential candidates for logging
+        # # Note: this version of PUT cannot be used if the resource must create
+        # # the ID keys on create (use POST/PATCH)
+        #  
+        # kwargs_for_log = self.get_id(
+        #     deserialized, validate=True, schema=schema, **kwargs)
+        # id_attribute = schema['id_attribute']
+        # # kwargs_for_log = {}
+        # # for id_field in id_attribute:
+        # # if deserialized.get(id_field,None):
+        # #     kwargs_for_log[id_field] = deserialized[id_field]
+        # # elif kwargs.get(id_field,None):
+        # #     kwargs_for_log[id_field] = kwargs[id_field]
+        # logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
+        # try:
+        #     logger.info('get original state, for logging...')
+        #     logger.debug('kwargs_for_log: %r', kwargs_for_log)
+        #     original_data = self._get_list_response_internal(**kwargs_for_log)
+        # except Exception as e:
+        #     logger.exception('original state not obtained')
+        #     original_data = []
+        #  
+        # try:
+        #     logger.debug('call put_obj')
+        #     obj = self.put_obj(request, deserialized, **kwargs)
+        # except ValidationError as e:
+        #     logger.exception('Validation error: %r', e)
+        #     raise e
+        #          
+        # if not kwargs_for_log:
+        #     for id_field in id_attribute:
+        #         val = getattr(obj, id_field,None)
+        #         kwargs_for_log['%s' % id_field] = val
+        # 
+        # # get new state, for logging
+        # new_data = self._get_list_response_internal(**kwargs_for_log)
+        # self.log_patches(request, original_data,new_data,**kwargs)
+        #  
+        # # TODO: add "Result" data to meta section, see patch_list
+        #  
+        # if not self._meta.always_return_data:
+        #     logger.info('put success, no response data')
+        #     return HttpResponse(status=200)
+        # else:
+        #     response.status_code = 200
+        #     return response
 
     @write_authorization
     @un_cache 
@@ -2506,8 +2505,9 @@ class FieldResource(ApiResource):
         ''' Internal callers - build the schema.fields hash
         '''
         if not scopes:
-            scopes = MetaHash.objects.all().filter(
-                scope__icontains='fields.').values_list('scope',flat=True).distinct()
+            scopes = MetaHash.objects.all()\
+                .filter(scope__icontains='fields.')\
+                .values_list('scope',flat=True).distinct()
             if not scopes.exists():
                 # bootstrap case
                 scopes = ['fields.field',]
@@ -2527,7 +2527,6 @@ class FieldResource(ApiResource):
         decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields]
         decorated.sort(key=itemgetter(0,1,2))
         fields = [field for scope,ordinal,key,field in decorated]
-        logger.info('_build_fields: %d', len(fields))
 
         return fields
     
@@ -2879,9 +2878,17 @@ class ResourceResource(ApiResource):
                     _fields[field['key']]=field
                     field_hash[field['scope']] = _fields
                 
-                logger.debug('For each resource, pull in the fields of the '
-                    'supertype resource')
-                for key,resource in resources.items():
+                recursion_test = list()
+                def get_resource(key):
+                    if key not in recursion_test:
+                        recursion_test.append(key)
+                    else:
+                        raise Exception(
+                            'recursive resource relationship for: %r, parents: %r'
+                            % (key, recursion_test))
+                    if DEBUG_RESOURCES:
+                        logger.info('build resource for %r', key)
+                    resource = resources[key]
                     logger.debug('resource: %r', key)
                     resource['1'] = resource['key']
                     resource[RESOURCE.FIELDS] = field_hash.get('fields.%s'%key, {})
@@ -2889,43 +2896,20 @@ class ResourceResource(ApiResource):
                         self._meta.resource_name,resource['key']
                     ])
                     
-                    # set the field['table'] 
                     for field in resource[RESOURCE.FIELDS].values():
                         if not field.get('table',None):
                             field['table'] = resource.get('table', None)
-                    supertype = resource.get('supertype', None)
-                    if supertype:
-                        if supertype in resources:
-                            logger.debug('find the supertype fields: %r for %r', 
-                                supertype, key)
-                            supertype_fields = field_hash.get(
-                                'fields.%s' % supertype, None)
-                            if not supertype_fields:
-                                # ok, if the supertype is not built yet
-                                if DEBUG_RESOURCES:
-                                    logger.warning('no fields for supertype: %r, %r', 
-                                        supertype, field_hash.keys())
-                            else:
-                                # explicitly copy out all supertype fields, then update 
-                                # with fields from the current resource
-                                inherited_fields = {}
-                                for field in supertype_fields.values():
-                                    inherited_field = deepcopy(field)
-                                    inherited_field['scope'] = \
-                                        'fields.%s' % resource['key']
-                                    if not inherited_field.get('table',None):
-                                        inherited_field['table'] = \
-                                            resources[supertype].get('table', None)
-                                    
-                                    inherited_fields[inherited_field['key']] = \
-                                        inherited_field
-                                inherited_fields.update(resource[RESOURCE.FIELDS])
-                                resource[RESOURCE.FIELDS] = inherited_fields
-                        else:
-                            logger.error(
-                                'supertype: %r, not found in resources: %r', 
-                                supertype, resources.keys())
-                    
+                            
+                    supertype_key = resource.get('supertype')
+                    if supertype_key:
+                        
+                        supertype_resource = get_resource(supertype_key)
+                        inherited_fields = deepcopy(supertype_resource[RESOURCE.FIELDS])
+                        if DEBUG_RESOURCES:
+                            logger.info('%r inherits: %r', key, inherited_fields.keys())
+                        inherited_fields.update(resource[RESOURCE.FIELDS])
+                        resource[RESOURCE.FIELDS] = inherited_fields
+
                     update_fields = set()
                     create_fields = set()
                     for key,field in resource[RESOURCE.FIELDS].items():
@@ -2939,10 +2923,18 @@ class ResourceResource(ApiResource):
                     resource['update_fields'] = list(update_fields)
                     resource['create_fields'] = list(create_fields)
                     
+                    # Always support csv (and json)
                     resource.get('content_types',[]).append('csv')
                     
                     # extend resource specific data
                     self.extend_specific_data(resource)
+                    
+                    recursion_test.pop()
+                    
+                    return resource
+
+                for key in resources.keys():
+                    resource = get_resource(key)
                     
                 if use_cache and self.use_cache:
                     logger.debug('caching resources')
@@ -3940,7 +3932,6 @@ class UserResource(ApiResource):
             schema = self.build_schema(request.user)
         fields = schema[RESOURCE.FIELDS]
 
-        logger.info('patch_obj UserResource: %r', deserialized )
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.info('patch user: %r', id_kwargs)
 
@@ -3949,19 +3940,16 @@ class UserResource(ApiResource):
         userprofile_fields = { name:val for name,val in fields.items() 
             if (val['table'] and val['table']=='reports_userprofile'
                 or name in ['username', 'ecommons_id'])}
-        logger.info('userprofile_fields: %r', userprofile_fields.keys())
         is_patch = False
         try:
             # create the auth_user
             username = id_kwargs.get('username', None)
             ecommons_id = id_kwargs.get('ecommons_id', None)
             if not username:
-                logger.info(
-                    'username not specified, setting username to ecommons_id: %s', 
-                    ecommons_id)
+                logger.info('username not specified, setting username to'
+                    ' ecommons_id: %s', ecommons_id)
                 username = ecommons_id
             
-            logger.debug('deserialized: %r', deserialized) 
             try:
                 user = DjangoUser.objects.get(username=username)
                 is_patch = True
@@ -3980,7 +3968,6 @@ class UserResource(ApiResource):
 
             initializer_dict = self.parse(
                 deserialized, schema=schema, create=not is_patch)
-            logger.info('initializer_dict: %r', initializer_dict)
 
             auth_initializer_dict = {
                 k:v for k,v in initializer_dict.items() if k in auth_user_fields}
@@ -4076,8 +4063,7 @@ class UserResource(ApiResource):
                 userprofile.save()
                 logger.info('created/updated userprofile %r', user.username)
             else:
-                logger.info(
-                    'no reports_userprofile fields to update %s', deserialized)
+                logger.info('no reports_userprofile fields to update')
 
             return { API_RESULT_OBJ: userprofile }
             

@@ -121,6 +121,24 @@ CACHES = {
 # if structure image cache directory is available.  see db.api for details.
 WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
 
+BACKGROUND_PROCESSING = True
+BACKGROUND_PROCESSOR = {
+    'post_data_directory': 
+        os.path.join(PROJECT_ROOT,'background','post_data'),
+    'job_output_directory': 
+        os.path.join(PROJECT_ROOT,'background','job_output'),
+    'credential_file': 
+        os.path.join(PROJECT_ROOT, 'lims/static/production_data/sde_credentials.txt'),
+    'python_environ_script':
+        os.path.join(PROJECT_ROOT, 'run_dev.sh'),
+
+    'sbatch_setings': {
+        'partition': 'short',
+        'time': '00:02:00',
+        'mem': '16G',
+        },
+    }
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

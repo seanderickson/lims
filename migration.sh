@@ -51,7 +51,7 @@ DBUSER=${DBUSER:-"screensaver-lims"}
 DB=${DB:-"screensaver-lims"}  
 DBHOST=${DBHOST:-"localhost"}  
 DBPASSWORD=${DBPASSWORD:-""}
-SETENV_SCRIPT=${SETENV_SCRIPT:-""}
+#SETENV_SCRIPT=${SETENV_SCRIPT:-""}
 DEBUG=${DEBUG:-false}
 RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 
@@ -77,14 +77,24 @@ fi
 
 DJANGO_CMD=./manage.py
 
-if [[ -n "$SETENV_SCRIPT" ]]; then
-  AUTH_FILE=${AUTH_FILE:-"/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu" }
-
-  DJANGO_CMD="$SETENV_SCRIPT $AUTH_FILE ./manage.py"
-fi
-
 
 source ./utils.sh
+
+#if [[ -n "$SETENV_SCRIPT" ]]; then
+#  AUTH_FILE=${AUTH_FILE:-"/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu" }
+#
+#  DJANGO_CMD="$SETENV_SCRIPT $AUTH_FILE ./manage.py"
+#fi
+
+if [[ -n $AUTH_FILE ]]; then
+  read_auth_file $AUTH_FILE
+fi
+
+# set an overlay settings.py (overrides logging settings, so we don't 
+# overwrite/or change the perms for the server logs)
+export DJANGO_SETTINGS_MODULE=lims.settings-server-commandline
+
+DJANGO_CMD="./manage.py"
 
 function ts {
   date +%Y%m%dT%H%M%S%z
@@ -554,7 +564,8 @@ function run_expiration_scripts {
   # TODO start the bootstrap server
   
   echo "1.a Send user data privacy expiration notifications..."
-  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \
@@ -566,7 +577,8 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "1.b Expire user agreements ..."
-  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \
@@ -578,7 +590,8 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.a Adjust screen Data Privacy Expiration Dates ..."
-  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \
@@ -590,7 +603,8 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.b Notify of screen privacy expirations ..."
-  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \
@@ -602,7 +616,8 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.c Expire screen data sharing levels ..."
-  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \
@@ -614,7 +629,8 @@ function run_expiration_scripts {
   -v -test_only -admin_email_only -no_email 
 
   echo "2.d Notify admins for screen publications ..."
-  PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \

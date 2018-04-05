@@ -2,8 +2,6 @@
 from __future__ import unicode_literals
 
 import csv
-# from datetime import timedelta
-# import datetime
 import json
 import logging
 import os
@@ -13,8 +11,6 @@ from django.db import migrations, models
 import pytz
 
 from db.support.data_converter import default_converter
-from lims.base_settings import PROJECT_ROOT
-
 
 logger = logging.getLogger(__name__)
 

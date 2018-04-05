@@ -272,7 +272,7 @@ class AssayWell(models.Model):
     
     assay_well_id = models.AutoField(primary_key=True)
     assay_well_control_type = models.TextField(null=True,)
-    is_positive = models.BooleanField(default=False)
+    is_positive = models.BooleanField(default=False, db_index=True)
     screen_result = models.ForeignKey('ScreenResult')
     well = models.ForeignKey('Well')
     confirmed_positive_value = models.TextField(null=True,)

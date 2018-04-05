@@ -1,23 +1,45 @@
 from __future__ import unicode_literals
 
+from _collections import defaultdict
 from collections import OrderedDict
 import json
 import logging
 
+from aldjemy.core import get_engine
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db import transaction
-from tastypie.utils.dict import dict_strip_unicode_keys
-from aldjemy.core import get_engine
+from django.utils import timezone
+from django.utils.encoding import smart_bytes
+import six
 
 from reports import strftime_log
-from _collections import defaultdict
 from reports.serialize import LimsJSONEncoder
 
+import reports.schema as SCHEMA
+
 logger = logging.getLogger(__name__)
+
+def dict_strip_unicode_keys(uni_dict):
+    """
+    Converts a dict of unicode keys into a dict of ascii keys.
+
+    Useful for converting a dict to a kwarg-able format.
+    
+    # Copy of tastypie method, included to remove dependency
+    """
+    if six.PY3:
+        return uni_dict
+
+    data = {}
+
+    for key, value in uni_dict.items():
+        data[smart_bytes(key)] = value
+
+    return data
 
 
 class MetaManager(models.Manager):
@@ -216,12 +238,6 @@ class ApiLog(models.Model):
         obj_as_dict['diffs'] = dict(diffs)
         return json.dumps(obj_as_dict, cls=LimsJSONEncoder)
 
-#     @staticmethod   
-#     def json_dumps(obj):
-#         return json.dumps(
-#             obj, skipkeys=False,check_circular=True, allow_nan=True, 
-#             cls=DjangoJSONEncoder)
-    
     def save(self, **kwargs):
         ''' override to convert json fields '''
         
@@ -561,6 +577,45 @@ class UserProfile(models.Model):
         return self.user.last_name
     
 
+class Job(models.Model):
+
+    user_requesting = models.ForeignKey('UserProfile')
+    
+    # Unique URI for the resource action being serviced
+    uri = models.TextField()
+    method = models.TextField()
+    encoding = models.TextField()
+    content_type = models.TextField()
+    http_accept = models.TextField()
+    # JSON encoded request params
+    params = models.TextField()
+    
+    # user comment on post
+    comment = models.TextField(null=True);
+      
+    # Assigned when the job is running
+    process_id = models.TextField(null=True)
+
+    state = models.TextField(
+        default=SCHEMA.VOCAB.job.state.PENDING, 
+        choices=zip(
+            SCHEMA.VOCAB.job.state.get_ordered_dict().keys(),
+            SCHEMA.VOCAB.job.state.get_ordered_dict().values(),
+            ))
+    date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
+    date_time_submitted = models.DateTimeField(null=True) 
+    date_time_processing = models.DateTimeField(null=True) 
+    date_time_completed = models.DateTimeField(null=True) 
+    
+    response_status_code = models.IntegerField(null=True)
+    response_content = models.TextField(null=True)
+      
+    def __repr__(self):
+        return (
+            '<Job(id=%d, user_id=%d)>'
+            % (self.id, self.user_requesting.id))
+     
+     
 # class ListLog(models.Model):
 #     '''
 #     A model that holds the keys for the items created in a "put_list"
@@ -635,37 +690,3 @@ class UserProfile(models.Model):
 #     value1 = models.TextField(null=True)
 #     value2 = models.TextField(null=True)
 # 
-# class Job(models.Model):
-#     # POC: 20141128
-#     # Version 0.1: for processing large uploaded files
-#     
-#     # Client information
-#     remote_addr = models.TextField(null=True)
-#     request_method = models.TextField(null=True)
-#     
-#     # original path info, used by job process to submit full job to endpoint
-#     path_info = models.TextField(null=True)
-#     
-#     # user comment on post
-#     comment = models.TextField(null=True);
-#     
-#     # 0.1: original POST input is saved to this file
-#     input_filename = models.TextField(null=True)
-#     
-#     date_time_fullfilled = models.DateTimeField(null=True) 
-#     date_time_processing = models.DateTimeField(null=True) 
-#     date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
-# 
-#     # if the response is large, save to a temp file
-#     response_filename = models.TextField(null=True)
-#     
-#     # store response to field
-#     response_content = models.TextField(null=True)
-#     
-#     # HTTP response code, saved from the endpoint job submission on completion
-#     response_code = models.IntegerField();
-#     
-#     def __unicode__(self):
-#         return unicode(str((self.id, self.path_info, self.date_time_requested)))
-#     
-#     

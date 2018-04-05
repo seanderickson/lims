@@ -31,7 +31,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='AbaseTestset',
             fields=[
-                ('abase_testset_id', models.IntegerField(serialize=False, primary_key=True)),
+                ('abase_testset_id', 
+                    models.IntegerField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
                 ('testset_name', models.TextField()),
                 ('comments', models.TextField()),
@@ -45,7 +46,8 @@ class Migration(migrations.Migration):
             name='Activity',
             fields=[
                 ('activity_id', models.AutoField(serialize=False, primary_key=True)),
-                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
+                ('date_created', 
+                    models.DateTimeField(default=django.utils.timezone.now)),
                 ('comments', models.TextField(null=True)),
                 ('date_of_activity', models.DateField()),
                 ('date_loaded', models.DateTimeField(null=True)),
@@ -59,7 +61,9 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ActivityUpdateActivity',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
             ],
             options={
                 'db_table': 'activity_update_activity',
@@ -96,9 +100,9 @@ class Migration(migrations.Migration):
             name='AssayPlate',
             fields=[
                 ('assay_plate_id', models.AutoField(serialize=False, primary_key=True)),
-                ('replicate_ordinal', models.IntegerField()),
+                ('replicate_ordinal', models.IntegerField(db_index=True)),
                 ('version', models.IntegerField()),
-                ('plate_number', models.IntegerField()),
+                ('plate_number', models.IntegerField(db_index=True)),
             ],
             options={
                 'db_table': 'assay_plate',
@@ -110,7 +114,7 @@ class Migration(migrations.Migration):
                 ('assay_well_id', models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
                 ('assay_well_control_type', models.TextField(null=True,)),
-                ('is_positive', models.BooleanField()),
+                ('is_positive', models.BooleanField(db_index=True)),
                 ('confirmed_positive_value', models.TextField(null=True,)),
                 ('plate_number', models.IntegerField()),
             ],
@@ -1812,4 +1816,9 @@ class Migration(migrations.Migration):
             name='assayplate',
             unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
         ),
+        
+        # FIXME: 20180404 - comprehensive review of indexes:
+        # - check that db matches models
+        # - check that models.py matches this file
+        
     ]

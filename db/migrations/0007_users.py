@@ -2,22 +2,21 @@
 from __future__ import unicode_literals
 
 import csv
-# from datetime import timedelta
 import datetime
 import json
 import logging
 import os
+import re
 
 from django.contrib.auth.models import User, UserManager
 from django.db import migrations, models
+from django.db.utils import ProgrammingError
 import pytz
 
-from db.support.data_converter import default_converter
-from lims.base_settings import PROJECT_ROOT
-from reports.models import ApiLog
 from db.api import _now
-from django.db.utils import ProgrammingError
-import re
+from db.support.data_converter import default_converter
+from reports.models import ApiLog
+
 
 RESOURCE_USER_CHECKLIST = 'userchecklist'
 RESOURCE_USER_AGREEMENT = 'useragreement'

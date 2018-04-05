@@ -181,4 +181,11 @@ class Migration(migrations.Migration):
         #     name='project_phase',
         # ),
         
+        # FIXME: not working on orchestra: moved to manual migration 0002
+        # Keep here to convince makemigrations that this is done
+        migrations.AlterUniqueTogether(
+            name='assayplate',
+            unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
+        ),       
+        
     ]

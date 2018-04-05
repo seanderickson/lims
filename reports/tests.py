@@ -74,10 +74,10 @@ from django.utils.encoding import force_text
 from tastypie import fields
 
 from reports import dump_obj, HEADER_APILOG_COMMENT
-from reports.api import compare_dicts, API_RESULT_DATA
+from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE, MetaHash, UserGroup, \
-    UserProfile, ApiLog, Permission
+    UserProfile, ApiLog, Permission, Job
 from reports.serialize import parse_val
 import reports.serialize.csvutils as csvutils
 from reports.serialize.sdfutils import MOLDATAKEY
@@ -86,6 +86,7 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
 from reports.sqlalchemy_resource import SqlAlchemyResource
 import reports.utils.log_utils
 
+import reports.schema as SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +285,6 @@ def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri']):
     if obj2 is None:
         return False, ('obj2 is None')
     
-#     original_keys = set(obj1.keys())
     original_keys = set([k for k in obj1.keys() if k])
     original_keys = original_keys.difference(excludes)
     updated_keys = set(obj2.keys())
@@ -295,15 +295,6 @@ def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri']):
             original_keys-intersect_keys, 
             'original_keys', sorted(original_keys), 
             'updated_keys', sorted(updated_keys))
-#     for key in keys:
-#         if key not in obj1:
-#             continue
-#         if key not in obj2:
-#             return False, ('key not found',key)  
-#         result, msgs =  equivocal(obj1[key], obj2[key])
-#         if not result:
-#             # don't report for this section, move to the next items to test
-#             return False, () 
 
     fkey = 'resource_uri'
     if fkey not in excludes:
@@ -1083,6 +1074,7 @@ class IResourceTestCase(SimpleTestCase):
    
     username = 'testsuper'
     password = 'pass'
+    general_user_password = 'testpass1'
     
     
     """
@@ -1138,6 +1130,15 @@ class IResourceTestCase(SimpleTestCase):
         import base64
         return 'Basic %s' % base64.b64encode(
             ':'.join([username, password]).encode('utf-8')).decode('utf-8')
+
+    def set_user_password(self, username, password):
+        # assign password to the test user
+        # NOTE: may only be done through the Django Model, for now
+        # TODO: superuser should be able to assign password through secure connection
+        userObj = User.objects.get(username=username)
+        userObj.set_password(password)
+        userObj.save()
+        return userObj
 
     def get_credentials(self):
         return self.create_basic(username=self.username, password=self.password)
@@ -1211,7 +1212,7 @@ class IResourceTestCase(SimpleTestCase):
     def get_single_resource(self, resource_uri, data_for_get=None):
         '''
         Retrieve a single item from the resource_uri
-        -- assertion failure if the unsuccessful
+        -- assertion failure if unsuccessful
         '''
         _data_for_get = { 
             'limit': 0,
@@ -1248,22 +1249,6 @@ class IResourceTestCase(SimpleTestCase):
         logger.info('Get the resource schema: %r', resource_uri )
         return self.get_single_resource(resource_uri)
         
-#     def get_from_server(self, resource_uri, data_for_get=None):
-#         ''' should be deprecated, as this essentially does the same thing as 
-#         get_list_resource '''
-#         _data_for_get = { 
-#             'limit': 0,
-#             'includes': '*'
-#         }
-#         if data_for_get:
-#             _data_for_get.update(data_for_get)
-#         resp = self.api_client.get(
-#             resource_uri, format='json', authentication=self.get_credentials(), 
-#             data=_data_for_get)
-#         self.assertTrue(resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         return self.deserialize(resp)
-    
     def _patch_test(
         self,resource_name, filename, keys_not_to_check=['resource_uri'], 
         id_keys_to_check=[], data_for_get={}):
@@ -1519,6 +1504,7 @@ def tearDownModule():
 
 class TestApiClient(object):
 
+
     def __init__(self, serializer=None):
         """
         """
@@ -1527,7 +1513,10 @@ class TestApiClient(object):
 
         if not self.serializer:
             self.serializer = LimsSerializer()
-
+        
+        super(TestApiClient, self).__init__()
+        
+        
     def get(self, uri, format='json', data=None, authentication=None, **kwargs):
         """
         Performs a simulated ``GET`` request to the provided URI.
@@ -2237,17 +2226,13 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
                 'email': 'user.tester1@slimstest.com',    
             },
         ]
-        try:       
-            uri = BASE_URI + '/user'
-            resp = self.api_client.patch(uri, 
-                format='json', data={ API_RESULT_DATA: bootstrap_items}, 
-                authentication=self.get_credentials())
-            self.assertTrue(
-                resp.status_code <= 204, 
-                (resp.status_code, self.get_content(resp)))
-        except Exception, e:
-            logger.exception('on creating: %r', bootstrap_items)
-            raise
+        uri = BASE_URI + '/user'
+        resp = self.api_client.patch(uri, 
+            format='json', data={ API_RESULT_DATA: bootstrap_items}, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code <= 204, 
+            (resp.status_code, self.get_content(resp)))
 
         logger.debug('created users, now GET them')
         data_for_get = { 'limit': 0 }
@@ -2592,7 +2577,6 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
                      testGroup6['all_permissions']))
         
         # 2 read test - user has permissions through inherited permissions,
-#         resource_uri = BASE_URI + '/user'
         resp = self.api_client.get(
             test_resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
@@ -2654,3 +2638,99 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         # TODO: could also test that testGroup2 now has super_group=testGroup5
         
         
+class JobResource(IResourceTestCase):
+    
+    def setUp(self):
+        super(JobResource, self).setUp()
+
+    def tearDown(self):
+        IResourceTestCase.tearDown(self)
+        
+        logger.info('delete users, including: %r', self.username)
+        Job.objects.all().delete()
+        UserGroup.objects.all().delete()
+        UserProfile.objects.all().exclude(username=self.username).delete()
+        User.objects.all().exclude(username=self.username).delete()
+        ApiLog.objects.all().delete()
+    
+    def test1_test_job(self):
+        logger.info('test1_test_job...')
+        JOB = SCHEMA.JOB
+        USER = SCHEMA.USER
+        # Setup: create user
+        
+        username = 'st1'
+        patch_obj = {
+            USER.USERNAME: username,
+            USER.FIRST_NAME: 'Sally',
+            USER.LAST_NAME: 'Tester', 
+            USER.EMAIL: 'sally.tester@limstest.com',    
+            USER.IS_STAFF: True,
+        }
+        resource_uri = '/'.join([BASE_URI, USER.resource_name])
+        test_uri = '/'.join([resource_uri,patch_obj['username']])
+        user_obj = self._create_resource(patch_obj, resource_uri, test_uri)
+        logger.info('created user: %r', user_obj)
+        
+        self.set_user_password(username, self.general_user_password)
+        # Now add the needed permission
+        user_patch = {
+            'resource_uri': 'user/' + username,
+            'permissions': ['resource/job/write'] };
+        uri = BASE_URI + '/user/' + username
+        logger.debug('add permission to user: %r: %r', user_patch, uri)
+        resp = self.api_client.patch( uri, 
+                    format='json', data=user_patch, 
+                    authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code <= 204,
+            (resp.status_code, self.get_content(resp)))  
+        
+        # Setup: create a background job listener
+        
+        # 1. Invoke the "test_job" from the client
+        job_resource_uri = '/'.join([BASE_URI, JOB.resource_name])
+        test_background_job_decorated_uri = '/'.join(
+            [BASE_URI, JOB.resource_name, 'test_job'])
+        patch_obj = {
+            'foo': 'bar',
+        }
+        resp = self.api_client.patch(
+            test_background_job_decorated_uri, 
+            format='json', data={API_RESULT_DATA: [patch_obj] }, 
+            authentication=self.create_basic(username, self.general_user_password))
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        job_response = self.deserialize(resp)
+        logger.info('job created: %r', job_response)
+        job_obj = job_response[API_RESULT_META][JOB.resource_name]
+        logger.info('job created: %r', job_obj)
+        
+        self.assertEqual(SCHEMA.VOCAB.job.state.PENDING,job_obj[JOB.STATE])
+        
+        # 2. Validate state (pending)
+        params = { JOB.ID: job_obj[JOB.ID] }
+        logger.info('get the job at %r for params: %r', job_resource_uri, params)
+        new_job_obj = self.get_single_resource(job_resource_uri, params)
+        
+        self.assertEqual(SCHEMA.VOCAB.job.state.PENDING,new_job_obj[JOB.STATE])
+        
+        
+        # 2.a Try to create a new job using same URI
+        
+        # 3. Start the job processor
+        
+#         job_processor = 
+        
+        # 3.a Set state to (running)
+        
+        # 3.b Check state
+        
+        # 4. Job processor set state to (completed)
+        
+        # 4.a Validate state 
+        
+        # Parse the result when finished
+        
+    

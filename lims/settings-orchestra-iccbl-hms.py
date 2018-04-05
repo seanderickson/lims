@@ -12,7 +12,7 @@ except ImportError:
     del sys
     
 # NOTE: the parent settings file defines the PROJECT_ROOT
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
+print 'PROJECT_ROOT: ', PROJECT_ROOT
     
 # NOTE THAT DEBUG SHOULD NEVER BE True FOR A PUBLIC FACING INSTALLATION
 # - If debugging is required on the Orchestra server, first disable non-HMS
@@ -80,7 +80,7 @@ AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
 # Example: "/var/www/example.com/static/"
-STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', '..', 'docroot', '_static')
+STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', 'docroot', '_static')
 
 # URL prefix for static files.
 # Example: "http://example.com/static/", "http://static.example.com/"

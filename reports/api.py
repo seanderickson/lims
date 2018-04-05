@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from copy import deepcopy
 from collections import defaultdict
+from copy import deepcopy
 from decimal import Decimal
 import decimal
 from functools import wraps
@@ -17,6 +17,7 @@ import urllib
 
 from aldjemy.core import get_tables, get_engine
 from django.conf import settings
+from django.conf.global_settings import DEFAULT_CHARSET
 from django.conf.urls import url
 from django.contrib.auth.models import User as DjangoUser
 from django.contrib.sessions.models import Session
@@ -26,35 +27,43 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.aggregates import Max
+from django.db.utils import ProgrammingError
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse, Http404, HttpResponseBase,\
+from django.http.response import HttpResponse, Http404, HttpResponseBase, \
     HttpResponseNotFound
+from django.test.client import RequestFactory
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct, exists
-from tastypie.authentication import BasicAuthentication, MultiAuthentication
+from sqlalchemy.sql.selectable import Alias
+from tastypie.authentication import MultiAuthentication
 from tastypie.exceptions import BadRequest
+from tastypie.http import HttpNoContent
+from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
-    HTTP_PARAM_DATA_INTERCHANGE, InformationError
+    HTTP_PARAM_DATA_INTERCHANGE, InformationError, API_RESULT_ERROR
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization, \
-    IccblSessionAuthentication
+    IccblSessionAuthentication, IccblBasicAuthentication, \
+    BackgroundJobImmediateResponse
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
-                           UserGroup, UserProfile, API_ACTION_DELETE, \
+                           UserGroup, UserProfile, Job, API_ACTION_DELETE, \
                            API_ACTION_CREATE
-from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
-    SDF_MIMETYPE, XLS_MIMETYPE
-from reports.serializers import LimsSerializer
-from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
-
 import reports.schema as SCHEMA
+from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
+    SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE
+from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
+from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
+import reports.utils.background_processor as background_processor
+import reports.utils.background_client_util as background_client_util
+
 
 RESOURCE = SCHEMA.RESOURCE
 
@@ -368,6 +377,182 @@ def read_authorization(_func):
 
     return _inner
 
+def background_job(_func):
+    '''
+    Wrapper function to defer request to offline background job processor
+    ''' 
+    @wraps(_func)
+    def _inner(self, *args, **kwargs):
+        request = args[0]
+        
+        if settings.BACKGROUND_PROCESSING is not True:
+            return _func(self, *args, **kwargs)
+        else:
+           
+            job_resource = JobResource()
+            JOB = SCHEMA.JOB
+            post_data_directory = \
+                settings.BACKGROUND_PROCESSOR['post_data_directory']
+            if not os.path.exists(post_data_directory):
+                os.makedirs(post_data_directory)
+            
+#             if kwargs:
+#                 logger.info('kwargs: %r', kwargs.keys())
+#                 for k,v in kwargs.items():
+#                     if k == 'schema':
+#                         continue
+#                     logger.info('k: %r, v: %r', k, v)
+#             logger.info('request.GET: %r', request.GET)
+
+            # Check for the JOB_PROCESSING_FLAG: if set this request is to
+            # service the job
+            job_id = request.GET.get(JOB.JOB_PROCESSING_FLAG, None)
+            if job_id is None:
+                job_id = request.POST.get(JOB.JOB_PROCESSING_FLAG, None)
+            
+            # 1. If JOB_PROCESSING_FLAG (job_id) is set, 
+            # then this is a request to process the job.
+            if job_id is not None:
+                query_params = { JOB.ID: job_id }
+                job_data = job_resource._get_detail_response_internal()
+                if not job_data:
+                    raise ValidationError(key=JOB.ID, msg='no such job: %r' % job_id)
+                
+                raw_data = ''
+                post_data_filename = \
+                    os.path.join(post_data_directory, str(job_data[JOB.ID]))
+                logger.info(
+                    'look for request multipart raw_post_data at %r', 
+                    post_data_filename)
+                if os.path.exists(post_data_filename):
+                    logger.info(
+                        'found request multipart raw_post_data at %r', 
+                        post_data_filename)
+                    with open(post_data_filename,'r') as job_file:
+                        raw_data = job_file.read()
+                
+                request = background_processor.create_request_from_job(
+                    job_data, request.user, raw_data)
+                
+                # TODO: set job state to processing, time processing
+                job_patch = {
+                    JOB.ID: job_id,
+                    JOB.STATE: SCHEMA.VOCAB.job.state.PROCESSING,
+                    JOB.DATE_TIME_PROCESSING: _now().isoformat() }
+                job_patch_result = job_resource._patch_internal(job_patch)
+                logger.info('processing job patch result: %r', job_patch_result)
+                
+                # FIXME: func call must be wrapped in try block like api_base
+                # to capture fail conditions
+                # FIXME: wrap in transactional
+                # Note: use the original kwargs to capture url processing kwargs
+                response = _func(self, request, **kwargs)
+                
+                if response.status_code > 300:
+                    logger.info('error processing job: %r!', response.status_code)
+                    
+                    content = job_resource._meta.serializer.deserialize(
+                        LimsSerializer.get_content(response), JSON_MIMETYPE)
+                    logger.warn('fail content: %r', content)
+                    # TODO: set time completed
+                    job_patch = {
+                        JOB.ID: job_id,
+                        JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
+                        JOB.RESPONSE_CONTENT: json.dumps(content),
+                        JOB.DATE_TIME_COMPLETED: _now().isoformat() }
+                    job_patch_result = job_resource._patch_internal(job_patch)
+                    logger.info('job patch result: %r', job_patch_result)
+                    new_job = job_patch_result[API_RESULT_DATA][0]
+                    meta = { 'job': new_job }
+                    data = { API_RESULT_META: meta }
+                    job_response = self.build_response(request, data, status_code=201)
+                                    
+                    raise BackgroundJobImmediateResponse(job_response)
+                else:
+                    logger.info('success processing job: %r!', response.status_code)
+                    content = job_resource._meta.serializer.deserialize(
+                        LimsSerializer.get_content(response), JSON_MIMETYPE)
+                    logger.warn('success content: %r', content)
+                    job_patch = {
+                        JOB.ID: job_id,
+                        JOB.STATE: SCHEMA.VOCAB.job.state.COMPLETED,
+                        JOB.RESPONSE_CONTENT: json.dumps(content),
+                        JOB.RESPONSE_STATUS_CODE: response.status_code,
+                        JOB.DATE_TIME_COMPLETED: _now().isoformat(), #strftime(SCHEMA.DATE_TIME_FORMAT)}
+                        }
+                    job_patch_result = job_resource._patch_internal(job_patch)
+                    logger.info('job patch result: %r', job_patch_result)
+                    new_job = job_patch_result[API_RESULT_DATA][0]
+                    meta = { JOB.resource_name: new_job }
+                    data = { API_RESULT_META: meta }
+                    job_response = self.build_response(request, data, status_code=200)
+                                    
+                    raise BackgroundJobImmediateResponse(job_response)
+            else:
+            # 2. Otherwise, this is a request to create a new job
+                with transaction.atomic():
+                    
+                    job_data, raw_post_data = \
+                        background_processor.get_django_request_job_params(request)
+                    
+                    # Store the request to reinvoke from the job processing client
+                    # see: django.test.client.generic
+                    try:
+                        logger.info('create a new job...')
+                        job_patch_result = job_resource._patch_internal(job_data)
+                        
+                        logger.info('job patch result: %r', job_patch_result)
+                        
+                        new_job = job_patch_result[API_RESULT_DATA][0]
+                    except ValidationError, e:
+                        response = self.build_error_response(
+                            request, { API_RESULT_ERROR: e.errors }, **kwargs)
+                        raise BackgroundJobImmediateResponse(response)
+                    except Exception, e:
+                        logger.exception('Job create error: %r, job: %r', e, job_data)
+                        raise ProgrammingError('Job create error', e) 
+        
+                    if raw_post_data:
+                        logger.info('store request multipart raw_post_data...')
+                        logger.info('raw post data length: %d', len(raw_post_data))
+                        
+                        post_data_filename = \
+                            os.path.join(post_data_directory, str(new_job[JOB.ID]))
+                        
+                        with open(post_data_filename,'w') as job_file:
+                            logger.info('write request body to file: %r', job_file)
+                            
+                            job_file.write(raw_post_data)
+                            job_file.close()
+                            logger.info('write completed')
+                    else:
+                        logger.info('no raw_post_data/body found for request...')
+                    
+                    # TODO: spawn a SLURM job here to process the request
+                    use_sbatch = 'sbatch_settings' in settings.BACKGROUND_PROCESSOR
+                    
+                    output = background_client_util.execute_from_python(
+                        new_job[JOB.ID],sbatch=use_sbatch)
+                    if output:
+                        # TODO: set job state to submitted
+                        job_patch = {
+                            JOB.ID: job_id,
+                            JOB.STATE: SCHEMA.VOCAB.job.state.SUBMITTED,
+                            JOB.PROCESS_ID: output,
+                            JOB.DATE_TIME_SUBMITTED: _now().isoformat() }
+                        job_patch_result = job_resource._patch_internal(job_patch)
+                        logger.info('submitted job: %r', job_patch_result)
+                        
+                meta = { 'job': new_job }
+                data = { API_RESULT_META: meta }
+                response = self.build_response(request, data, status_code=201)
+                                
+                raise BackgroundJobImmediateResponse(response)
+            
+    return _inner
+
+
+
 
 class SuperUserAuthorization(Authorization):
 
@@ -521,6 +706,9 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('initialize ApiResource for %r', self._meta.resource_name)
         self.resource_resource = None
         self.vocab_resource = None
+        
+        self.request_factory = RequestFactory()
+        
 
     def get_resource_resource(self):
         if self.resource_resource is None:
@@ -533,10 +721,6 @@ class ApiResource(SqlAlchemyResource):
         return self.vocab_resource
     
     def get_schema(self, request, **kwargs):
-#         param_hash = self._convert_request_to_dict(request)
-#         param_hash.update(kwargs)
-#         
-#         logger.info('get_schema: %r', param_hash)
         return self.build_response(
             request, 
             self.build_schema(user=request.user, full_schema=True, **kwargs ), 
@@ -567,6 +751,127 @@ class ApiResource(SqlAlchemyResource):
             'build_list_response must be implemented for the SqlAlchemyResource: %r' 
             % self._meta.resource_name)
 
+    def _get_list_response(self,request,**kwargs):
+        '''
+        Return a deserialized list of dicts
+        '''
+        logger.debug('_get_list_response: %r, %r', 
+            self._meta.resource_name, 
+            {k:v for k,v in kwargs.items() if k !='schema'})
+        includes = kwargs.pop('includes', '')
+        try:
+            kwargs.setdefault('limit', 0)
+            response = self.get_list(
+                request,
+                format='json',
+                includes=includes,
+                **kwargs)
+            _data = self.get_serializer().deserialize(
+                LimsSerializer.get_content(response), JSON_MIMETYPE)
+            if self._meta.collection_name in _data:
+                _data = _data[self._meta.collection_name]
+            logger.debug(' data: %r', _data)
+            return _data
+        except Http404:
+            return []
+        except Exception as e:
+            logger.exception('on get list: %r', e)
+            raise
+        
+    def _get_detail_response(self,request,**kwargs):
+        '''
+        Return the detail response as a dict
+        '''
+        logger.debug('_get_detail_response: %r, %r', 
+            self._meta.resource_name, 
+            {k:v for k,v in kwargs.items() if k !='schema'})
+        includes = kwargs.pop('includes', '*')
+        try:
+            response = self.get_detail(
+                request,
+                format='json',
+                includes=includes,
+                **kwargs)
+            _data = {}
+            if response.status_code == 200:
+                _data = self._meta.serializer.deserialize(
+                    LimsSerializer.get_content(response), JSON_MIMETYPE)
+            else:
+                logger.info(
+                    'no data found for %r, %r, %r', 
+                    self._meta.resource_name, kwargs, response.status_code)
+            return _data
+        except Http404:
+            return {}
+        
+    #@un_cache
+    def _get_detail_response_internal(self, user=None, **kwargs):
+        request = self.request_factory.generic(
+            'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
+        if user is None:
+            logger.debug('_get_detail_response_internal, no user')
+            class User:
+                is_superuser = True
+                username = 'internal_request'
+                def is_authenticated(self):
+                    return True
+            request.user = User()
+        else:
+            request.user = user
+        result = self._get_detail_response(request, **kwargs)
+        return result
+
+    def _get_list_response_internal(self, user=None, **kwargs):
+        request = self.request_factory.generic(
+            'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
+        if user is None:
+            logger.debug('_get_list_response_internal, no user')
+            class User:
+                is_superuser = True
+                username = 'internal_request'
+                def is_authenticated(self):
+                    return True
+            request.user = User()
+        else:
+            request.user = user
+        result = self._get_list_response(request, **kwargs)
+        return result
+
+    def _patch_internal(self, data, user=None, **kwargs):
+        '''
+        Note: requires the target resource to support the "data" kwarg; this
+        bypasses deserialization for this request.
+        '''
+
+        request = self.request_factory.generic(
+            'PATCH', '.', HTTP_ACCEPT=JSON_MIMETYPE )
+        if user is None:
+            logger.debug('_patch_internal, no user')
+            class User:
+                id = 0
+                is_superuser = True
+                username = 'internal_request'
+                def is_authenticated(self):
+                    return True
+            request.user = User()
+        else:
+            request.user = user
+        
+        logger.info('execute internal patch: %r', kwargs)
+        
+        if 'schema' not in kwargs:
+            kwargs['schema'] = self.build_schema(user=user)
+        
+        kwargs['data'] = data
+        
+        response = self.patch_detail(
+            request,
+            format='json',
+            **kwargs)
+        _data = self.get_serializer().deserialize(
+            LimsSerializer.get_content(response), JSON_MIMETYPE)
+        return _data
+    
     def build_schema(self, user=None, **kwargs):
         
         logger.debug('build schema for: %r: %r', self._meta.resource_name, user)
@@ -1898,7 +2203,7 @@ class ApiLogResource(ApiResource):
         queryset = ApiLog.objects.all().order_by(
             'ref_resource_name', 'username','date_time')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name='apilog' 
         authorization= ApiLogAuthorization(resource_name) #Authorization()        
         ordering = []
@@ -2239,7 +2544,7 @@ class FieldResource(ApiResource):
         queryset = MetaHash.objects.filter(
             scope__startswith="fields.").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'field'
         authorization= AllAuthenticatedReadAuthorization(resource_name)
         ordering = []
@@ -2616,7 +2921,7 @@ class ResourceResource(ApiResource):
         queryset = MetaHash.objects.filter(
             scope="resource").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'resource'
         authorization= AllAuthenticatedReadAuthorization(resource_name)
         ordering = []
@@ -3063,7 +3368,7 @@ class VocabularyResource(ApiResource):
         queryset = Vocabulary.objects.all().order_by(
             'scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'vocabulary'
         authorization= AllAuthenticatedReadAuthorization(resource_name)
         serializer = LimsSerializer()
@@ -3569,7 +3874,7 @@ class UserResource(ApiResource):
     class Meta:
         queryset = UserProfile.objects.all().order_by('username') 
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         
         # TODO: implement field filtering: users can only see other users details
         # if in readEverythingAdmin group
@@ -4078,7 +4383,7 @@ class UserGroupResource(ApiResource):
         queryset = UserGroup.objects.all();        
         
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         authorization = UserGroupAuthorization('usergroup') #SuperUserAuthorization()        
 
         ordering = []
@@ -4756,7 +5061,7 @@ class PermissionResource(ApiResource):
     class Meta:
         queryset = Permission.objects.all().order_by('scope', 'key')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         authorization= UserGroupAuthorization('permission')         
         object_class = object
         
@@ -4948,3 +5253,286 @@ class PermissionResource(ApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj is not implemented for Permission')
     
+
+class JobResource(ApiResource):
+    
+    class Meta:
+        authentication = MultiAuthentication(
+            IccblBasicAuthentication(), IccblSessionAuthentication())
+        resource_name = 'job'
+        authorization= AllAuthenticatedReadAuthorization(resource_name)
+        ordering = []
+        filtering = {} 
+        serializer = LimsSerializer()
+        excludes = [] 
+        always_return_data = True 
+
+    def __init__(self, **kwargs):
+        super(JobResource,self).__init__(**kwargs)
+    
+    def prepend_urls(self):
+
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<job_id>(\d+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/test_job%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('test_job'), name="api_test_job"),
+        ]
+    
+    @read_authorization
+    def get_detail(self, request, **kwargs):
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail'] = True
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def get_list(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+    def build_list_response(self, request, **kwargs):
+        
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        if is_data_interchange:
+            use_vocab = False
+            use_titles = False
+        
+        logger.info('params: %r', param_hash.keys())
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        screen_facility_id = param_hash.pop('screen_facility_id', None)
+        if screen_facility_id:
+            param_hash['screen_facility_id__eq'] = screen_facility_id
+        publication_id = param_hash.pop('publication_id', None)
+        if publication_id:
+            param_hash['publication_id__eq'] = publication_id
+        
+        # general setup
+      
+        manual_field_includes = set(param_hash.get('includes', []))
+        
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
+
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
+
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+             
+        rowproxy_generator = None
+        if use_vocab is True:
+            rowproxy_generator = \
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = \
+           self._meta.authorization.get_row_property_generator(
+               request.user, field_hash, rowproxy_generator)
+ 
+        # specific setup
+        _job = self.bridge['reports_job']
+        _user = self.bridge['reports_userprofile']
+        
+        j = _job
+        j = j.join(
+            _user, _job.c.user_requesting_id==_user.c.id)
+            
+        custom_columns = {}
+
+        base_query_tables = ['reports_job', 'reports_userprofile' ] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+            
+        stmt = select(columns.values()).select_from(j)
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        if not order_clauses and filter_expression is None:
+            _alias = Alias(stmt)
+            stmt = select([text('*')]).select_from(_alias)
+        stmt = stmt.order_by('-id')
+            
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
+    
+
+    @write_authorization
+    @un_cache  
+    @transaction.atomic      
+    def patch_detail(self, request, **kwargs):
+        '''
+        '''
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            schema = self.build_schema(user=request.user)
+#             raise Exception('schema not initialized')
+        deserialized = kwargs.pop('data', None)
+        # allow for internal data to be passed
+        if deserialized is None:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+        
+        if API_RESULT_DATA in deserialized:
+            deserialized = deserialized[API_RESULT_DATA][0]
+            
+        logger.info('patch detail %s, %s', deserialized,kwargs)
+
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        id_attribute = schema['id_attribute']
+        kwargs_for_log = self.get_id(
+            deserialized, schema=schema, validate=False,**kwargs)
+
+        original_data = None
+        if kwargs_for_log:
+            try:
+                logger.info('patch job: %r, get original state...', kwargs_for_log)
+                original_data = self._get_detail_response_internal(**kwargs_for_log)
+                kwargs['original_data'] = original_data
+            except Exception, e: 
+                logger.exception('exception when querying for existing obj: %s', 
+                    kwargs_for_log)
+        try:
+            parent_log = kwargs.get('parent_log', None)
+            log = self.make_log(request)
+            log.parent_log = parent_log
+            log.save()
+            kwargs['parent_log'] = log
+            patch_response = self.patch_obj(request, deserialized, **kwargs)
+            
+            obj = patch_response[API_RESULT_OBJ]
+            for id_field in id_attribute:
+                if id_field not in kwargs_for_log:
+                    val = getattr(obj, id_field,None)
+                    if val is not None:
+                        kwargs_for_log['%s' % id_field] = val
+            
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise e
+
+        # get new state, for logging
+        new_data = self._get_detail_response_internal(**kwargs_for_log)
+        logger.debug('original: %r, new: %r', original_data, new_data)
+        log = self.log_patch(
+            request, original_data,new_data,log=log, full_create_log=True, 
+            **kwargs_for_log)
+        if log:
+            log.save()
+        meta = {}
+        if API_RESULT_META in patch_response:
+            meta = patch_response[API_RESULT_META]
+        return self.build_response(
+            request,  { API_RESULT_META: meta, API_RESULT_DATA: [new_data,] }, 
+            response_class=HttpResponse, **kwargs)
+            
+    
+    @write_authorization
+    @transaction.atomic
+    def patch_obj(self, request, deserialized, **kwargs):
+        
+        logger.info('patch job')
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        id_kwargs = self.get_id(deserialized, schema=schema, validate=False, **kwargs)
+
+        create = not bool(id_kwargs)
+        
+        initializer_dict = self.parse(deserialized, schema=schema, create=create)
+        errors = self.validate(initializer_dict, schema=schema,patch=not create)
+        if errors:
+            raise ValidationError(errors)
+        
+        if create is False:
+            job = Job.objects.get(**id_kwargs)
+        else:
+            if SCHEMA.JOB.USERNAME not in initializer_dict:
+                raise ValidationError(
+                    key=SCHEMA.JOB.USERNAME, msg='required')
+            username = initializer_dict[SCHEMA.JOB.USERNAME]
+            try:
+                user = UserProfile.objects.get(username=username)
+                logger.info('Job does not exist, creating: %r',initializer_dict)
+                job = Job(user_requesting=user)
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=SCHEMA.JOB.USERNAME, msg='user: %r does not exist' % username)
+            
+            # Enforce business rule: only one job per URI for mutating methods
+            method = initializer_dict[SCHEMA.JOB.METHOD]
+            if method != 'GET':
+                uri = initializer_dict[SCHEMA.JOB.URI]
+                query = Job.objects.all().filter(
+                    uri=uri, 
+                    state__in=[
+                        SCHEMA.VOCAB.job.state.PENDING,
+                        SCHEMA.VOCAB.job.state.PROCESSING,
+                        ])
+                if query.exists():
+                    raise ValidationError(
+                        key=SCHEMA.JOB.URI,
+                        msg=('Pending jobs exist for method: %s uri: %s: '
+                            'job ids: %s' % ( method, uri, 
+                                ', '.join(map(str,[job.id for job in query])))))
+            
+        for key, val in initializer_dict.items():
+            if hasattr(job, key):
+                setattr(job, key, val)
+        job.save()
+        
+        return { API_RESULT_OBJ: job }
+        
+        
+    @write_authorization
+    @background_job
+    @un_cache        
+    @transaction.atomic    
+    def test_job(self, request, **kwargs):
+        '''
+        Create a test job as a POST operation:
+        '''
+        schema = kwargs.pop('schema', None)
+        if not schema:
+            raise Exception('schema not initialized')
+        
+        return self.build_response(request, { 'test_job': 'created!' })
+        

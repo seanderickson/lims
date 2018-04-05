@@ -191,7 +191,6 @@ class DBResourceTestCase(IResourceTestCase):
     def create_screen(self, data=None, uri_params=None, resource_uri=None):
         ''' Create a test Screen through the API'''
         
-        
         input_data = ScreenFactory.attributes()
         logger.info('input_data: %r', input_data)
         
@@ -2169,6 +2168,14 @@ class LibraryResource(DBResourceTestCase):
         # plate - one for each plate
         # plate_location - one for each plate addition to the range
         
+    def test3_restricted_sequence(self):
+        # 20180327
+        pass
+    
+    def test3a_restricted_structure(self):
+        # 20180327
+        pass
+    
     def test4_create_library_invalids(self):
         ''' Test Library schema "required" validations'''
          
@@ -2964,7 +2971,7 @@ class ScreenResultResource(DBResourceTestCase):
                         [[str(y) for y in x] 
                             for x in self.serializer.from_xlsx(content)])
             self.assertTrue(
-                resp.status_code in [200, 204], 
+                resp.status_code in [200,201,204], 
                 (resp.status_code))
             input_file.seek(0)
             input_data = self.sr_serializer.from_xlsx(input_file.read())            
@@ -9129,7 +9136,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         self.assertEqual(
             user_data['is_active'], False)
-
         
         # 4. Reset the User Agreement:
         # Requires a new POST, with attached file
@@ -9247,10 +9253,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         # - date active (checklist item event)
         # - dsl level
         # - date expired
-
-
-
-    
     # TODO: test expire dsl: create a "UserAgreementResource.expire"
         
     def test12_service_activity(self):
@@ -9416,7 +9418,7 @@ class DataSharingLevel(DBResourceTestCase):
     
     def __init__(self, *args, **kwargs):
         DBResourceTestCase.__init__(self, *args, **kwargs)
-        self.general_user_password = 'testpass1'
+#         self.general_user_password = 'testpass1'
 
     def tearDown(self):
         logger.info('=== tearDown...')
@@ -9451,12 +9453,14 @@ class DataSharingLevel(DBResourceTestCase):
         self.setup_library()
         # Create 2 labs for each level
         def set_user_password(user):
-            # assign password to the test user
-            # NOTE: may only be done through the Django Model, for now
-            # TODO: superuser should be able to assign password through secure connection
-            userObj = User.objects.get(username=user['username'])
-            userObj.set_password(self.general_user_password)
-            userObj.save()
+            super(DataSharingLevel, self).set_user_password(
+                user['username'], self.general_user_password)
+#             # assign password to the test user
+#             # NOTE: may only be done through the Django Model, for now
+#             # TODO: superuser should be able to assign password through secure connection
+#             userObj = User.objects.get(username=user['username'])
+#             userObj.set_password(self.general_user_password)
+#             userObj.save()
             return user
 
         # Store extant users so that they will not have to be recreated if 
@@ -9474,9 +9478,6 @@ class DataSharingLevel(DBResourceTestCase):
         for dsl in range(1,4):
             for lab in ['a','b']:
                 _data = {}
-#                 _data = dict(
-#                     user_data,
-#                     sm_data_sharing_level=dsl)
                 lab_head_username = 'lab_head%d%s' % (dsl,lab)
                 lab_head = reference_users.get(lab_head_username, None)
                 if lab_head is None:
@@ -9491,7 +9492,8 @@ class DataSharingLevel(DBResourceTestCase):
                 if lead_screener is None:
                     _data = dict(_data, username=lead_screener_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    lead_screener = set_user_password(self.create_screening_user(_data))
+                    lead_screener = set_user_password(
+                        self.create_screening_user(_data))
                     self.set_screening_user_data_sharing_level(
                         lead_screener['screensaver_user_id'], 'sm', dsl)
                     
@@ -9500,7 +9502,8 @@ class DataSharingLevel(DBResourceTestCase):
                 if collaborator is None:
                     _data = dict(_data, username=collaborator_username)
                     logger.info('setup: user not found; creating %r...', _data)
-                    collaborator = set_user_password(self.create_screening_user(_data))
+                    collaborator = set_user_password(
+                        self.create_screening_user(_data))
                     self.set_screening_user_data_sharing_level(
                         collaborator['screensaver_user_id'], 'sm', dsl)
                 
@@ -10658,7 +10661,8 @@ class RawDataTransformer(DBResourceTestCase):
                 logger.info('output_range: %r', output_range)
                 if expected_range['ordinal'] == output_range['ordinal']:
                     parsed_range = output_range
-            self.assertIsNotNone(parsed_range, 'expected range not found: %r' % expected_range)
+            self.assertIsNotNone(
+                parsed_range, 'expected range not found: %r' % expected_range)
             
             self.assertEqual(expected_range['label'], parsed_range['label'])
             
@@ -10666,7 +10670,8 @@ class RawDataTransformer(DBResourceTestCase):
             wells_parsed = set(parsed_range['wells'])
             self.assertEqual(wells_expected, wells_parsed,
                 '%r: input != output: %r, %r' 
-                % (expected_range['label'], sorted(wells_expected), sorted(wells_parsed)))
+                % (expected_range['label'], sorted(wells_expected), 
+                    sorted(wells_parsed)))
             
                 
     def test1_collation(self):
@@ -10892,9 +10897,11 @@ class RawDataTransformer(DBResourceTestCase):
                 csv_writer.writerow([random_text, random_text, random_text])
             csv_writer.writerow(['','','',''])
         
-            excel_sheet.write_row(excel_row,0,[random_text, random_text, random_text])
+            excel_sheet.write_row(
+                excel_row,0,[random_text, random_text, random_text])
             excel_row += 1
-            excel_sheet.write_row(excel_row,0,[random_text, random_text, random_text])
+            excel_sheet.write_row(
+                excel_row,0,[random_text, random_text, random_text])
             excel_row += 1
             excel_sheet.write_row(excel_row,0,['',''])
             excel_row += 1
@@ -10946,7 +10953,8 @@ class RawDataTransformer(DBResourceTestCase):
         excel_buffer.seek(0)
 
         logger.info('text test...')
-        (read_matrices,errors) = db.support.raw_data_reader.read(text_buffer, 'test.txt')
+        (read_matrices,errors) = \
+            db.support.raw_data_reader.read(text_buffer, 'test.txt')
         
         if errors:
             raise Exception('Parse errors: %r', errors)
@@ -10982,7 +10990,8 @@ class RawDataTransformer(DBResourceTestCase):
                     % (i,r,len(row), len(expected_row), expected_row, row))
         
         logger.info('xlsx test...')
-        (read_matrices,errors) = db.support.raw_data_reader.read(excel_buffer, 'test.xlsx')
+        (read_matrices,errors) = \
+            db.support.raw_data_reader.read(excel_buffer, 'test.xlsx')
 
         if errors:
             raise Exception('Parse errors: %r', errors)
@@ -11042,13 +11051,13 @@ class RawDataTransformer(DBResourceTestCase):
                         input_matrices[input_matrix_number][input_row][input_col]
                         
                     logger.debug('test %d,386[%d,%d] (%r) != [%d]96[%d:%d] (%r)'
-                        % (count, rownum,colnum,val, input_matrix_number, input_row, 
-                            input_col, input_val))
+                        % (count, rownum,colnum,val, input_matrix_number, 
+                            input_row, input_col, input_val))
                     
                     self.assertEqual(input_val, val, 
                         '%d,386[%d,%d] (%r) != [%d]96[%d:%d] (%r)'
-                        % (count, rownum,colnum,val, input_matrix_number, input_row, 
-                            input_col, input_val))
+                        % (count, rownum,colnum,val, input_matrix_number, 
+                            input_row, input_col, input_val))
 
         # 2. Test by converting output matrices back to input matrices
         new_input_matrices = lims_utils.deconvolute_matrices(

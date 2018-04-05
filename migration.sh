@@ -476,6 +476,8 @@ function frontend_deploy {
   npm run build 2>&1 || error "npm run build failed: $?"
   
   # TODO: frontend tests
+  rm bundle.*.js
+  rm 1.bundle.*.js
   
   cd ../..
   

@@ -1612,31 +1612,6 @@ define([
       self.$("#tab_container-title").hide();
     },
 
-    /**
-     * Library Copy Plates Loaded view is a sub-view of Summary
-     */
-    showCopyPlatesLoaded: function(delegateStack) {
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        resource: resource,
-        url: url,
-        extraControls: []
-      });
-      Backbone.Layout.setupView(view);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event) {
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-      self.$("#tab_container-title").hide();
-    },
-    
     afterRender: function(){
       var self = this;
       TabbedController.prototype.afterRender.apply(this,arguments);

@@ -46,7 +46,7 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
-from tastypie.authentication import BasicAuthentication, MultiAuthentication
+from tastypie.authentication import MultiAuthentication
 from tastypie.exceptions import BadRequest
 from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
@@ -83,12 +83,14 @@ from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_RESULT_DATA, \
     API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
-    DEBUG_AUTHORIZATION, write_authorization, read_authorization
+    DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
+    background_job
 from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, \
     UserResourceAuthorization, FieldResource
 import reports.api
-from reports.api_base import un_cache, IccblSessionAuthentication
+from reports.api_base import un_cache, IccblBasicAuthentication, \
+    IccblSessionAuthentication
 from reports.models import Vocabulary, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH, API_ACTION_CREATE
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
@@ -468,7 +470,7 @@ class PlateLocationResource(DbApiResource):
     
     class Meta:
         queryset = PlateLocation.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'platelocation'
         authorization = UserGroupAuthorization(resource_name)
@@ -1009,7 +1011,7 @@ class LibraryCopyPlateResource(DbApiResource):
 
     class Meta:
         queryset = Plate.objects.all() 
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'librarycopyplate'
         authorization = UserGroupAuthorization(resource_name)
@@ -1527,7 +1529,7 @@ class LibraryCopyPlateResource(DbApiResource):
         fields_to_show = [
             'library_short_name', 'library_screening_status', 
             'library_comment_array','plate_number','comment_array', 
-            'screening_count','assay_plate_count',
+            'screening_count','assay_plate_count','copies_screened', 
             'last_date_screened','first_date_screened']
         
         new_fields = {}
@@ -2509,7 +2511,7 @@ class UserAgreementResource(DbApiResource):
     
     class Meta:
 
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'useragreement'
         authorization = UserGroupAuthorization(resource_name)
@@ -3756,7 +3758,7 @@ class ScreenResultResource(DbApiResource):
     class Meta:
     
         queryset = ScreenResult.objects.all()  # .order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'screenresult'
         authorization = ScreenResultAuthorization(resource_name)
@@ -4505,7 +4507,6 @@ class ScreenResultResource(DbApiResource):
 
     def build_list_response(self, request, **kwargs):
 
-        logger.info('build_list_response: %r', kwargs)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -5091,6 +5092,7 @@ class ScreenResultResource(DbApiResource):
         return HttpResponse(status=204)
             
     @write_authorization
+    @background_job
     @un_cache 
     @transaction.atomic       
     def patch_detail(self, request, **kwargs):
@@ -5114,8 +5116,10 @@ class ScreenResultResource(DbApiResource):
         self.create_screen_result(request, screen, columns, result_values)
              
         if not self._meta.always_return_data:
-            response_message = {'success': {
-                API_MSG_RESULT: 'screen result loaded'}}
+            response_message = {
+                'success': {
+                    API_MSG_RESULT: 'screen result loaded' }
+                }
             response = self.build_response(request, response_message, **kwargs)
             response['Content-Disposition'] = (
                 'attachment; filename=screen_result_loading_success-%s.xlsx' 
@@ -5128,8 +5132,8 @@ class ScreenResultResource(DbApiResource):
     
     def create_screen_result(self, request, screen, columns, result_values, **kwargs):
         '''
-        Create a screen results for the given screen (internal callers):
-        - if results exist, replaces
+        Create screen results for the given screen (internal callers):
+        - if results exist, replaces them
         '''
         
         schema = self.build_schema(user=request.user)
@@ -5408,7 +5412,6 @@ class ScreenResultResource(DbApiResource):
             'well_id', 'data_column_id',  # 'result_value_id',
             'value', 'numeric_value', 'is_positive',
             'is_exclude', 'assay_well_control_type',
-            
         ]
         assay_well_fieldnames = [
             'screen_result_id', 'well_id', 'plate_number', 'is_positive',
@@ -5876,7 +5879,7 @@ class DataColumnResource(DbApiResource):
 
         queryset = DataColumn.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'datacolumn'
         authorization = DataColumnAuthorization(resource_name)
         ordering = []
@@ -6307,7 +6310,7 @@ class CopyWellResource(DbApiResource):
     class Meta:
         
         queryset = CopyWell.objects.all().order_by('well_id')
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'copywell'
         authorization = UserGroupAuthorization(resource_name)
@@ -7005,7 +7008,7 @@ class CherryPickRequestResource(DbApiResource):
     class Meta:
     
         queryset = CherryPickRequest.objects.all().order_by('well_id')
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'cherrypickrequest'
         authorization = CherryPickRequestAuthorization(resource_name)
@@ -9012,7 +9015,7 @@ class ScreenerCherryPickResource(DbApiResource):
 
     class Meta:
 
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'screenercherrypick'
         authorization = CherryPickRequestAuthorization(resource_name)
@@ -9617,7 +9620,7 @@ class LabCherryPickResource(DbApiResource):
 
     class Meta:
 
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'labcherrypick'
         authorization = CherryPickRequestAuthorization(resource_name)
@@ -9685,7 +9688,9 @@ class LabCherryPickResource(DbApiResource):
             raise Exception('schema not initialized')
         cw_formatter = LabCherryPickResource.LCP_COPYWELL_KEY
         
+        # TODO: only needed for POST
         convert_post_to_put(request)
+        
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         param_override = parse_val(
@@ -10681,7 +10686,7 @@ class CherryPickPlateResource(DbApiResource):
     class Meta:
 
         queryset = CherryPickAssayPlate.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'cherrypickassayplate'
         authorization = CherryPickRequestAuthorization(resource_name)
@@ -11124,7 +11129,7 @@ class LibraryCopyResource(DbApiResource):
     class Meta:
 
         queryset = Copy.objects.all().order_by('name')
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'librarycopy'
         authorization = UserGroupAuthorization(resource_name)
@@ -11656,7 +11661,7 @@ class PublicationResource(DbApiResource):
     class Meta:
 
         queryset = Publication.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'publication'
         authorization = PublicationAuthorization(resource_name)
@@ -11733,91 +11738,85 @@ class PublicationResource(DbApiResource):
         if publication_id:
             param_hash['publication_id__eq'] = publication_id
         
-        try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+        # general setup
+      
+        manual_field_includes = set(param_hash.get('includes', []))
+        
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
 
-            filter_expression = \
-                self._meta.authorization.filter(request.user,filter_expression)
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
 
-                  
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
+              
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
              
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = None
+        if use_vocab is True:
             rowproxy_generator = \
-               self._meta.authorization.get_row_property_generator(
-                   request.user, field_hash, rowproxy_generator)
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = \
+           self._meta.authorization.get_row_property_generator(
+               request.user, field_hash, rowproxy_generator)
  
-            # specific setup
-            _publication = self.bridge['publication']
-            _af = self.bridge['attached_file']
-            _screen = self.bridge['screen']
+        # specific setup
+        _publication = self.bridge['publication']
+        _af = self.bridge['attached_file']
+        _screen = self.bridge['screen']
+        
+        j = _publication
+        j = j.join(
+            _af, _publication.c.publication_id==_af.c.publication_id, 
+            isouter=True)
+        j = j.join(
+            _screen, _publication.c.screen_id==_screen.c.screen_id,
+            isouter=True)
             
-            j = _publication
-            j = j.join(
-                _af, _publication.c.publication_id==_af.c.publication_id, 
-                isouter=True)
-            j = j.join(
-                _screen, _publication.c.screen_id==_screen.c.screen_id,
-                isouter=True)
-            
-            custom_columns = {
-                'lookup_pmid': literal_column("'lookup_pmid'"),
-                }
+        custom_columns = {
+            'lookup_pmid': literal_column("'lookup_pmid'"),
+            }
 
-            base_query_tables = ['publication', 'attached_file', 'screen' ] 
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
+        base_query_tables = ['publication', 'attached_file', 'screen' ] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
             
-            stmt = select(columns.values()).select_from(j)
-            # general setup
+        stmt = select(columns.values()).select_from(j)
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        if not order_clauses and filter_expression is None:
+            _alias = Alias(stmt)
+            stmt = select([text('*')]).select_from(_alias)
+        stmt = stmt.order_by('-publication_id')
+            
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
              
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            if not order_clauses and filter_expression is None:
-                _alias = Alias(stmt)
-                stmt = select([text('*')]).select_from(_alias)
-            stmt = stmt.order_by('-publication_id')
-            
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-             
-        except Exception, e:
-            logger.exception('on get_list %s' % self._meta.resource_name)
-            raise e  
-
     def put_list(self, request, **kwargs):
         raise NotImplementedError(
             "Put list is not implemented for Publications")
@@ -12075,7 +12074,7 @@ class AttachedFileResource(DbApiResource):
     class Meta:
 
         queryset = AttachedFile.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'attachedfile'
         authorization = AttachedFileAuthorization(resource_name)
@@ -12663,7 +12662,7 @@ class ActivityResource(DbApiResource):
     class Meta:
 
         queryset = Activity.objects.all()  # .order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'activity'
         authorization = ActivityResourceAuthorization(resource_name)
@@ -13097,7 +13096,7 @@ class ServiceActivityResource(ActivityResource):
     class Meta:
 
         queryset = ServiceActivity.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'serviceactivity'
         authorization = ActivityResourceAuthorization(resource_name)
@@ -13398,7 +13397,7 @@ class LibraryScreeningResource(ActivityResource):
     class Meta:
 
         queryset = LibraryScreening.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'libraryscreening'
         alt_resource_name = 'externallibraryscreening'
@@ -15212,7 +15211,7 @@ class RawDataTransformerResource(DbApiResource):
 
     class Meta:
 
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'rawdatatransform'
         authorization = UserGroupAuthorization(resource_name)
@@ -16396,7 +16395,7 @@ class ScreenResource(DbApiResource):
     class Meta:
 
         queryset = Screen.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'screen'
         authorization = ScreenAuthorization(resource_name)
@@ -16764,6 +16763,7 @@ class ScreenResource(DbApiResource):
         kwargs['visibilities'] = 'billing'
         return self.dispatch('detail', request, **kwargs)    
 
+#     @background_job
     @read_authorization
     def get_detail(self, request, **kwargs):
         facility_id = kwargs.get('facility_id', None)
@@ -16981,10 +16981,18 @@ class ScreenResource(DbApiResource):
         #         order_by(_ap.c.screen_id, _ap.c.plate_number)
         # apdlrc = apdlrc.cte('apdlrc')
         
+        # FIXME: see #196 20180403
+        # https://github.com/hmsiccbl/screensaver/issues/196
+        # Library Plates Screened: 
+        # (1) total number of times library plates were screened (not counting replicates), 
+        # TODO: this requires a new query: sum(count(ap.plate_number)) - probably
+        # requires a double nesting
+        # (2) unique library plates screened
+        # FIXME: see #196: should be distinct lps count?
         lps = (
             select([
                 _ap.c.screen_id,
-                func.count(distinct(_ap.c.plate_id)).label('count')
+                func.count(distinct(_ap.c.plate_number)).label('count')
             ])
             .select_from(_ap.join(_screen,_ap.c.screen_id==_screen.c.screen_id))
             .where(_ap.c.library_screening_id != None)
@@ -16992,6 +17000,18 @@ class ScreenResource(DbApiResource):
         if facility_id:
             lps = lps.where(_screen.c.facility_id == facility_id )
         lps = lps.cte('lps')    
+        lps2 = (
+            select([
+                _ap.c.screen_id,
+                func.count(_ap.c.plate_number).label('count')
+            ])
+            .select_from(_ap.join(_screen,_ap.c.screen_id==_screen.c.screen_id))
+            .where(_ap.c.library_screening_id != None)
+            .where(_ap.c.replicate_ordinal == 0)
+            .group_by(_ap.c.screen_id))
+        if facility_id:
+            lps2 = lps2.where(_screen.c.facility_id == facility_id )
+        lps2 = lps2.cte('lps2')    
         # Altered - 20160408 
         # per discussion with JS, no need to try to link presumed assay_plates
         # from the screen_result to (screening visit) assay_plates;
@@ -17207,9 +17227,14 @@ class ScreenResource(DbApiResource):
                     '        where screen_id=screen.screen_id'
                     "        and (assay_readout_type = '') is false  ) as f1 ) " 
                     % LIST_DELIMITER_SQL_ARRAY),
+                
+                # FIXME: see #196: should be distinct lps count?
                 'library_plates_screened': (
                     select([lps.c.count])
                     .select_from(lps).where(lps.c.screen_id == _screen.c.screen_id)),
+                'library_plates_total_screened': (
+                    select([lps2.c.count])
+                    .select_from(lps2).where(lps2.c.screen_id == _screen.c.screen_id)),
                 'library_screenings': (
                     select([func.count(_library_screening.c.activity_id)])
                     .select_from(
@@ -17618,21 +17643,6 @@ class ScreenResource(DbApiResource):
         
         return self.patch_detail(request,**kwargs)
 
-#     @write_authorization
-#     @un_cache
-#     @transaction.atomic
-#     def patch_list(self, request, **kwargs):
-# 
-#         result = super(UserAgreementResource, self).patch_list(request, **kwargs)
-# 
-#         param_hash = self._convert_request_to_dict(request)
-#         if 'test_only' in param_hash:
-#             logger.info('test_only flag: %r', kwargs.get('test_only'))    
-#             raise InformationError('successful patch, "test_only" flag is set, rollback...')
-#         
-#         return result
-
-
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
@@ -17884,7 +17894,7 @@ class StudyResource(ScreenResource):
         resource_name = 'study'
         max_limit = 10000
         always_return_data = True
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         authorization = ScreenAuthorization(resource_name)
         serializer = LimsSerializer()
@@ -18605,7 +18615,7 @@ class UserChecklistResource(DbApiResource):
 
     class Meta:
         
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'userchecklist'
         authorization = UserChecklistAuthorization(resource_name)
@@ -18909,7 +18919,7 @@ class LabAffiliationResource(DbApiResource):
 
     class Meta:
 
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'labaffiliation'
         authorization = UserGroupAuthorization(resource_name)
@@ -19119,7 +19129,7 @@ class ScreensaverUserResource(DbApiResource):
     class Meta:
 
         # queryset = ScreensaverUser.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'screensaveruser'
         authorization = ScreensaverUserResourceAuthorization(resource_name)
@@ -20161,7 +20171,7 @@ class ReagentResource(DbApiResource):
     class Meta:
 
         queryset = Reagent.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'reagent'
         authorization = LibraryResourceAuthorization(resource_name)
@@ -20451,22 +20461,35 @@ class ReagentResource(DbApiResource):
             custom_columns = {}
 
             # 20180314 - is_restricted_sequence, is_restricted_structure
-            # TODO: anti_sense_sequence should be restricted as well?
-            if 'sequence' in field_hash:
-                if self._meta.authorization._is_resource_authorized(
-                    user, 'read') is not True:
-                    custom_columns['sequence'] = (
-                        select([
-                            case([
-                                (_sr.c.is_restricted_sequence,None)],
-                                else_=_sr.c.sequence)])
-                        .select_from(_sr)
-                        .where(_sr.c.reagent_id==_reagent.c.reagent_id)
-                        )
+            rna_restricted_fields = ['sequence','anti_sense_sequence']
+            fields_to_restrict = set(rna_restricted_fields)&set(field_hash.keys())
+            logger.info('RNAi fields to restrict: %r', fields_to_restrict)
+            if fields_to_restrict \
+                and self._meta.authorization._is_resource_authorized(user, 'read') \
+                    is not True:
+                    for field in fields_to_restrict:
+                        if field == 'sequence':
+                            custom_columns['sequence'] = (
+                                select([
+                                    case([
+                                        (_sr.c.is_restricted_sequence,None)],
+                                        else_=_sr.c.sequence)])
+                                .select_from(_sr)
+                                .where(_sr.c.reagent_id==_reagent.c.reagent_id)
+                                )
+                        if field == 'anti_sense_sequence':
+                            custom_columns['anti_sense_sequence'] = (
+                                select([
+                                    case([
+                                        (_sr.c.is_restricted_sequence,None)],
+                                        else_=_sr.c.anti_sense_sequence)])
+                                .select_from(_sr)
+                                .where(_sr.c.reagent_id==_reagent.c.reagent_id)
+                                )
             smr_restricted_fields = ['smiles', 'inchi', 'molecular_formula',
                 'molecular_weight','molecular_mass','molfile']
             fields_to_restrict = set(smr_restricted_fields)&set(field_hash.keys())
-            logger.info('fields to restrict: %r', fields_to_restrict)
+            logger.info('SM fields to restrict: %r', fields_to_restrict)
             if fields_to_restrict \
                 and self._meta.authorization._is_resource_authorized(user, 'read') \
                     is not True:
@@ -20757,7 +20780,7 @@ class SilencingReagentResource(ReagentResource):
     
         queryset = Reagent.objects.all()
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'silencingreagent'
         authorization = LibraryResourceAuthorization(resource_name)
         ordering = []
@@ -21100,7 +21123,7 @@ class SmallMoleculeReagentResource(ReagentResource):
 
     class Meta:
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'smallmoleculereagent' 
         authorization = LibraryResourceAuthorization(resource_name)
         ordering = []
@@ -21230,7 +21253,7 @@ class NaturalProductReagentResource(ReagentResource):
     
     class Meta:
         
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'naturalproductreagent'
         authorization = LibraryResourceAuthorization(resource_name)
@@ -21293,7 +21316,7 @@ class WellResource(DbApiResource):
     class Meta:
 
         queryset = Well.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(),
+        authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'well'
         authorization = LibraryResourceAuthorization(resource_name)
@@ -22146,7 +22169,7 @@ class LibraryResource(DbApiResource):
 
         queryset = Library.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(
-            BasicAuthentication(), IccblSessionAuthentication())
+            IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'library'
         authorization = LibraryResourceAuthorization(resource_name)
         

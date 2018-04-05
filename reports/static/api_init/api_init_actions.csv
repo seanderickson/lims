@@ -11,3 +11,4 @@ put,vocabulary,vocabulary_data.csv
 patch,field,metahash_fields_user.csv
 patch,field,metahash_fields_usergroup.csv
 patch,field,metahash_fields_permission.csv
+patch,field,metahash_fields_job.csv

@@ -475,7 +475,9 @@ class Migration(migrations.Migration):
             name='copywell',
             unique_together=set([('copy', 'plate', 'well')]),
         ),
-        # TODO: moved to 102, not working
+        # FIXME: not working on orchestra: moved to manual migration 0002
+        # NOTE: moved to post_migrate, kept in migrations to convince 
+        # makemigrations that this is done
         # migrations.AlterUniqueTogether(
         #     name='assayplate',
         #     unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),

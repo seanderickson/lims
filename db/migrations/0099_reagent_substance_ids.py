@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-import unicodecsv as csv
 import logging
 import os
 
 from django.db import migrations, models
 
+import db.models
 from lims.base_settings import PROJECT_ROOT
 from reports.utils.gray_codes import create_substance_id
-import db.models
+import unicodecsv as csv
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def create_substance_ids1(apps, schema_editor):
     # SQL method - takes 14 min on laptop
     # so 5x faster
 
-    filename = os.path.join(PROJECT_ROOT, '..','new_substance_ids.csv')
+    filename = os.path.join(PROJECT_ROOT,'new_substance_ids.csv')
     import csv
     
     _count = 0

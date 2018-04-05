@@ -4,5 +4,6 @@ field,resource,/reports/api/v1/resource/field/,reports_metahash,[scope;key],[sco
 vocabulary,resource,/reports/api/v1/resource/vocabulary/,reports_vocabulary,[scope;key],[scope;/;title],0,,"Vocabularies describe controlled vocabularies",Vocabularies,[l;d;e;c],,,reports,[xls],
 apilog,resource,/reports/api/v1/resource/apilog/,reports_apilog,[ref_resource_name;key;date_time],[ref_resource_name;/;key;/;date_time],0,,"The Change log resource","Change log",[l;d],,,reports,[xls],
 user,resource,/reports/api/v1/resource/user/,reports_userprofile,[username],"[first_name;' ';last_name;' (';username;)]",0,,"The admin user view",Users,[l;d;e;c],,,reports,[xls],
-usergroup,resource,/reports/api/v1/resource/usergroup/,reports_usergroup,[name],[name],0,,"The Django group",Groups,[l;d;e;c],,,reports,[xls],
-permission,resource,/reports/api/v1/resource/permission/,reports_permission,[scope;key;type],[scope;/;key;:;type],0,,"The Django permission",Permissions,[l;d;e;c],,,reports,[xls],
+usergroup,resource,/reports/api/v1/resource/usergroup/,reports_usergroup,[name],[name],0,,UserGroup,Groups,[l;d;e;c],,,reports,[xls],
+permission,resource,/reports/api/v1/resource/permission/,reports_permission,[scope;key;type],[scope;/;key;:;type],0,,Permission,Permissions,[l;d;e;c],,,reports,[xls],
+job,resource,/reports/api/v1/resource/job/,reports_job,[id],[id;-;uri],0,,"Job Executed in offline task",Job,[l;d;e;c],,,reports,[xls],

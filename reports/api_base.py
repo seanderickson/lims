@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import base64
 from functools import wraps
 import logging
 import re
 
 from django.conf import settings
 from django.conf.urls import url, patterns
+from django.contrib.auth import authenticate
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 import django.core.exceptions
@@ -60,12 +62,12 @@ def un_cache(_func):
 class Authorization(object):
     pass
 
-#     def _is_resource_authorized(
-#         self, request, resource_name, user, permission_type, *args, **kwargs):
-#         
-#         raise NotImplementedError(
-#             '_is_resource_authorized must be implemented for %s, %s, %s',
-#             resource_name, user, permission_type)
+    # def _is_resource_authorized(
+    #     self, request, resource_name, user, permission_type, *args, **kwargs):
+    #      
+    #     raise NotImplementedError(
+    #         '_is_resource_authorized must be implemented for %s, %s, %s',
+    #         resource_name, user, permission_type)
 
 
 
@@ -107,12 +109,17 @@ class ResourceOptions(object):
 class DeclarativeMetaclass(type):
 
     def __new__(cls, name, bases, attrs):
-        new_class = super(DeclarativeMetaclass, cls).__new__(cls, name, bases, attrs)
+        new_class = \
+            super(DeclarativeMetaclass, cls).__new__(cls, name, bases, attrs)
         opts = getattr(new_class, 'Meta', None)
         new_class._meta = ResourceOptions(opts)
 
         return new_class
 
+class BackgroundJobImmediateResponse(Exception):
+    
+    def __init__(self, httpresponse):
+        self.httpresponse = httpresponse
 
 class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     """
@@ -247,11 +254,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                         msg = [ (key,str(kwargs[key])[:100]) 
                             for key in kwargs.keys() ]
                     logger.info(
-                        'wrap_view: %r, method: %r, user: %r, request: %r, kwargs: %r', 
+                        'wrap_view: %r, method: %r, user: %r, request: %r, '
+                        'kwargs: %r', 
                         view, request.method, request.user, request, msg)
                 else:
                     logger.info('wrap_view: %r, %r', view, request)
-                
+
                 self.is_authenticated(request)
         
                 response = callback(request, *args, **kwargs)
@@ -267,18 +275,26 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     if self._meta.cache.cache_control():
                         # If the request is cacheable and we have a
                         # ``Cache-Control`` available then patch the header.
-                        patch_cache_control(response, **self._meta.cache.cache_control())
+                        patch_cache_control(
+                            response, **self._meta.cache.cache_control())
 
-                if request.is_ajax() and not response.has_header("Cache-Control"):
+                if request.is_ajax() \
+                    and not response.has_header("Cache-Control"):
                     # IE excessively caches XMLHttpRequests, so we're disabling
                     # the browser cache here.
                     # See http://www.enhanceie.com/ie/bugs.asp for details.
                     patch_cache_control(response, no_cache=True)
 
+            except BackgroundJobImmediateResponse as e:
+                logger.info('BackgroundJobImmediateResponse returned: %r', 
+                    e.httpresponse)
+                return e.httpresponse
+            
             except BadRequest as e:
                 # The message is the first/only arg
                 logger.exception('Bad request exception: %r', e)
-                data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
+                data = {
+                    "error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
                 response = self.build_error_response(request, data, **kwargs)
             except InformationError as e:
                 logger.exception('Information error: %r', e)
@@ -454,10 +470,13 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     def build_response(self, request, data, response_class=HttpResponse, 
                        format=None, **kwargs):
         if format is not None:
-            content_type = self.get_serializer().get_content_type_for_format(format)
+            content_type = \
+                self.get_serializer().get_content_type_for_format(format)
         else:
-            content_type = self.get_serializer().get_accept_content_type(request)
-        logger.debug('build response for data: %r, content type: %r', data, content_type)
+            content_type = \
+                self.get_serializer().get_accept_content_type(request)
+        logger.debug(
+            'build response for data: %r, content type: %r', data, content_type)
         logger.info('build_response: %r, serializing...', content_type)
         serialized = self.serialize(data, content_type)
         response = response_class(
@@ -512,7 +531,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 "error_message": sanitize(six.text_type(exception)),
                 "traceback": the_trace,
             }
-            return self.build_error_response(request, data, response_class=response_class)
+            return self.build_error_response(
+                request, data, response_class=response_class)
 
         # When DEBUG is False, send an error message to the admins (unless it's
         # a 404, in which case we check the setting).
@@ -533,8 +553,102 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 'TASTYPIE_CANNED_ERROR', 
                 "Sorry, this request could not be processed. Please try again later."),
         }
-        return self.build_error_response(request, data, response_class=response_class)
+        return self.build_error_response(
+            request, data, response_class=response_class)
+      
+class IccblBasicAuthentication(Authentication):
+    """
+    Handles HTTP Basic auth against a specific auth backend if provided,
+    or against all configured authentication backends using the
+    ``authenticate`` method from ``django.contrib.auth``.
+
+    Optional keyword arguments:
+
+    ``backend``
+        If specified, use a specific ``django.contrib.auth`` backend instead
+        of checking all backends specified in the ``AUTHENTICATION_BACKENDS``
+        setting.
+    ``realm``
+        The realm to use in the ``HttpUnauthorized`` response.  Default:
+        ``screensaver``.
+    NOTE: modified from tastypie.authentication.BasicAuthentication:
+    - modified to support the format <superuser_username>:<username>:<password>
+    format used by the LIMS to support login "as user" by the superuser.
+    """
+    def __init__(self, backend=None, realm='screensaver', **kwargs):
+        super(IccblBasicAuthentication, self).__init__(**kwargs)
+        self.backend = backend
+        self.realm = realm
+
+    def _unauthorized(self):
+        response = HttpResponse(status=401)
+        # FIXME: Sanitize realm.
+        response['WWW-Authenticate'] = 'Basic Realm="%s"' % self.realm
+        return response
+
+    def is_authenticated(self, request, **kwargs):
+        """
+        Checks a user's basic auth credentials against the current
+        Django auth backend.
+
+        Should return either ``True`` if allowed, ``False`` if not or an
+        ``HttpResponse`` if you need something custom.
+        """
+        if not request.META.get('HTTP_AUTHORIZATION'):
+            return False
+            # return self._unauthorized()
+
+        try:
+            (auth_type, data) = request.META['HTTP_AUTHORIZATION'].split()
+            if auth_type.lower() != 'basic':
+                return self._unauthorized()
+            user_pass = base64.b64decode(data).decode('utf-8')
+        except Exception,e:
+            logger.exception('auth fail: %r', e)
+            return self._unauthorized()
         
+        bits = user_pass.split(':')
+        if len(bits) > 3:
+            logger.error('user-pass split returns > 3 strings: %d', len(bits))
+            return self._unauthorized()
+        elif len(bits) == 3:
+            # Special case, supports proxy login by superuser "as" user using format:
+            # <superuser_username>:<username>:<password>
+            # recombine the <superuser_username>:<username> and allow the 
+            # reports.auth backend to process using the 
+            # reports.auth.USER_PROXY_LOGIN_PATTERN 
+            username = '%s:%s' % (bits[0],bits[1])
+            password = bits[2]
+        elif len(bits) == 2:
+            username = bits[0]
+            password = bits[1]
+        else:
+            logger.error('user-pass split returns only one element')
+            return self._unauthorized()
+
+        if self.backend:
+            user = self.backend.authenticate(username=username, password=password)
+        else:
+            user = authenticate(username=username, password=password)
+
+        if user is None:
+            logger.info('no user found for: %s', username)
+            return self._unauthorized()
+
+        if not self.check_active(user):
+            logger.info('user is not active: %s', username)
+            return False
+
+        request.user = user
+        return True
+
+    def get_identifier(self, request):
+        """
+        Provides a unique string identifier for the requestor.
+
+        This implementation returns the user's basic auth username.
+        """
+        return request.META.get('REMOTE_USER', 'nouser')
 
 class IccblSessionAuthentication(Authentication):
     """

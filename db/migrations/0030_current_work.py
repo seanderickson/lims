@@ -4,16 +4,15 @@ from __future__ import unicode_literals
 import csv
 import logging
 import os
+import re
 
 from django.db import migrations, models
 
-import lims
-from lims.base_settings import PROJECT_ROOT
 from db.support.data_converter import default_converter
+import lims
 
 
 logger = logging.getLogger(__name__)
-import re
 
 
 class Migration(migrations.Migration):

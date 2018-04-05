@@ -10,7 +10,8 @@ except ImportError:
     print >>sys.stderr, '''app_data.py file not found.'''
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),'..')
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -66,6 +67,9 @@ MEDIA_ROOT = ''
 # trailing slash.
 # Examples: "http://example.com/media/", "http://media.example.com/"
 MEDIA_URL = ''
+
+# /accounts/login is the default
+LOGIN_URL = '/accounts/login/'
 
 # Absolute path to the directory static files should be collected to.
 # Don't put anything in this directory yourself; store your static files
@@ -128,7 +132,10 @@ WSGI_APPLICATION = 'lims.wsgi.application'
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-TEMPLATE_DIRS = [os.path.join(PROJECT_ROOT, 'templates')]
+TEMPLATE_DIRS = [
+    os.path.join(PROJECT_ROOT, 'lims','templates'),
+    os.path.join(PROJECT_ROOT, 'reports','templates'),
+    ]
 
 INSTALLED_APPS = (
     'django.contrib.auth',

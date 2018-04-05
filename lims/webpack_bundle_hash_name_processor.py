@@ -35,7 +35,7 @@ def bundle_context_processor(request):
     
     bundle_filename = 'bundle_name.json'
     filename = os.path.join(
-        settings.PROJECT_ROOT, '..','reports','static',bundle_filename)
+        settings.PROJECT_ROOT, 'reports','static',bundle_filename)
     try:
         with open(filename) as f:
         

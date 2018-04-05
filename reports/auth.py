@@ -20,6 +20,17 @@ class CustomAuthenticationBackend():
     """
 
     def authenticate(self, username=None, password=None):
+        '''
+        Authenticate the user given by the username and password.
+        
+        @return the user object.
+        
+        Note: Special superuser login as another user:
+        if the syntax <some_superuser-username>:<username> is used, 
+        then log in using the <superuser-username> and superuser password,
+        but return the user for the subordinate <username> given.
+        '''
+        
         logger.info('find and authenticate the user: %s', username)
 
         # Proxy Login 

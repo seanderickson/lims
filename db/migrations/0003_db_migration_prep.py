@@ -90,8 +90,7 @@ def create_simple_vocabularies(apps):
     # simple vocab cases: update without linked tables
     
     vocab_file = os.path.join(
-        lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
+        PROJECT_ROOT, 'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
 
     logger.info('write vocabularies to %s' % vocab_file)
     
@@ -165,8 +164,7 @@ def create_simple_vocabularies(apps):
             create_vocab(vocab_writer, *arg_list)
 
     api_init_actions_file = os.path.join(
-        lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'api_init_actions.csv')
+        PROJECT_ROOT, 'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
         new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
@@ -192,8 +190,8 @@ def create_simple_vocabularies(apps):
 def create_attached_file_type_vocab(apps):
     
     vocab_file = os.path.join(
-        lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabulary_attachedfiletype_data.csv')
+        PROJECT_ROOT, 'db', 'static', 'api_init', 
+        'vocabulary_attachedfiletype_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
 
     replace_map = {
@@ -243,8 +241,7 @@ def create_attached_file_type_vocab(apps):
                 .filter(attached_file_type=obj).update(type=key))
 
     api_init_actions_file = os.path.join(
-        lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'api_init_actions.csv')
+        PROJECT_ROOT,'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
         new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
@@ -266,8 +263,8 @@ def create_attached_file_type_vocab(apps):
 def create_checklist_vocabularies(apps):
     
     vocab_file = os.path.join(
-        PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabulary_checklists_data.csv')
+        PROJECT_ROOT,'db', 'static', 'api_init', 
+        'vocabulary_checklists_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
     with open(vocab_file, 'w') as _file:
         vocab_writer = csv.writer(_file)

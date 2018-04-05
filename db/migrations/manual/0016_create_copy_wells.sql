@@ -308,6 +308,35 @@ alter table copy_well
   references well;
 
 /**
+ TODO: 20180404 - Verify that all indexes match to 0001_initial and models.py
+alter table assay_well
+  add constraint fk_assay_well_to_well
+  foreign key (well_id)
+  references well;
+alter table assay_well
+  add constraint fk_assay_well_screen_result
+  foreign key (screen_result_id)
+  references screen_result;
+
+create index assay_well_well_id on assay_well(well_id);
+
+create index assay_well_confirmed_positives_data_only_index
+  btree (confirmed_positive_value) 
+  WHERE confirmed_positive_value IS NOT NULL;
+
+alter table result_value
+  add constraint fk_result_value_to_data_column
+  FOREIGN KEY (data_column_id) REFERENCES data_column(data_column_id);
+
+alter table result_value
+  add constraint fk_result_value_to_well
+  FOREIGN KEY (well_id) REFERENCES well(well_id);
+
+## not shown to help: create index well_id_idx on result_value(well_id);
+  
+**/  
+
+/**
 vacuum analyze;
 **/
 select current_time;

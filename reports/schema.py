@@ -31,6 +31,8 @@ URI_PATH_COMPLEX_SEARCH = 'csearch'
 
 # Date format for API - time zone is not used for dates
 DATE_FORMAT = "%Y-%m-%d"
+# Date Time format to use for serialized date times
+DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 class schema_obj(object):
     @classmethod
@@ -48,8 +50,83 @@ class schema_obj(object):
 class RESOURCE(schema_obj):
     ''' Constants for the Resource resource: constant field names'''
     resource_name = 'resource'
-
+    
+    KEY = 'key'
+    SCOPE = 'scope'
+    ORDINAL = 'ordinal'
+    TITLE = 'title'
+    DESCRIPTION = 'description'
+    COMMENT = 'comment'
+    RESOURCE_URI = 'resource_uri'
+    ID_ATTRIBUTE = 'id_attribute'
+    TITLE_ATTRIBUTE = 'title_attribute'
+    
     FIELDS = 'fields'
+    
+class FIELD(schema_obj):
+    
+    KEY = 'key'
+    SCOPE = 'scope'
+    ORDINAL = 'ordinal'
+    TITLE = 'title'
+    DESCRIPTION = 'description'
+    COMMENT = 'comment'
+    DATA_TYPE = 'data_type'
+    DISPLAY_TYPE = 'display_type'
+    DISPLAY_OPTIONS = 'display_options'
+    EDIT_TYPE = 'edit_type'
+    VISIBILITY = 'visibility'
+    EDITABILITY = 'editability'
+    ORDERING = 'ordering'
+    FILTERING = 'filtering'
+    VOCAB_SCOPE_REF = 'vocabulary_scope_ref'
+    RESOURCE_URI = 'resource_uri'    
+
+class USER(schema_obj):
+    resource_name = 'user'
+    
+    USERNAME = 'username'
+    FIRST_NAME = 'first_name'
+    LAST_NAME = 'last_name'
+    EMAIL = 'email'
+    PERMISSIONS = 'permissions'
+    USERGROUPS = 'usergroups'
+    IS_ACTIVE = 'is_active'
+    IS_STAFF = 'is_staff'
+    IS_SUPERUSER = 'is_superuser'
+    
+class PERMISSION(schema_obj):
+    resource_name = 'permission'
+    
+    SCOPE = 'scope'
+    KEY = 'key'
+    TYPE = 'type'
+    
+class JOB(schema_obj):
+    resource_name = 'job'
+    
+    ID = 'id'
+
+    USERNAME = 'username'
+    URI = 'uri'
+    METHOD = 'method'
+    ENCODING = 'encoding'
+    CONTENT_TYPE = 'content_type'
+    HTTP_ACCEPT = 'http_accept'
+    PARAMS = 'params'
+    COMMENT = 'comment'
+    
+    PROCESS_ID = 'process_id'
+    STATE = 'state'
+    DATE_TIME_REQUESTED = 'date_time_requested'
+    DATE_TIME_SUBMITTED = 'date_time_submitted'
+    DATE_TIME_PROCESSING = 'date_time_processing'
+    DATE_TIME_COMPLETED = 'date_time_completed'
+    
+    RESPONSE_CONTENT = 'response_content'
+    RESPONSE_STATUS_CODE = 'response_status_code'
+    
+    JOB_PROCESSING_FLAG = 'job_id'
     
 class VOCAB(schema_obj):
     
@@ -60,7 +137,55 @@ class VOCAB(schema_obj):
             EDIT = 'e'
             CREATE = 'c'
             UPDATE = 'u'
-    
+    class field(schema_obj):
+        class data_type(schema_obj):
+            STRING = 'string'
+            BOOLEAN = 'boolean'
+            DATe = 'date'
+            DATETIME = 'datetime'
+            LIST = 'list'
+            FLOAT = 'float'
+            DECIMAL = 'decimal'
+            INTEGER = 'integer'
+        class display_type(schema_obj):
+            LINK = 'link'
+            IMAGE = 'image'
+            SIUNIT = 'siunit'
+            COMMENT_ARRAY = 'comment_array'
+            FULL_STRING = 'full_string'
+        class edit_type(schema_obj):
+            SELECT = 'select'
+            MULTISELECT = 'multiselect'
+            MULTISELECT2 = 'multiselect2'
+            MULTISELECT3 = 'multiselect3'
+            TEXTAREA = 'textarea'
+            TYPEAHEAD = 'typeahead'
+            CUSTOM = 'custom'
+        class visibility(schema_obj):
+            LIST = 'l'
+            DETAIL = 'd'
+            EDIT = 'e'
+            SUMMARY = 'summary'
+            BILLING = 'billing'
+            PROTOCOL = 'protocol'
+            API = 'api'
+        class editability(schema_obj):
+            CREATE = 'c'
+            UPDATE = 'u'
+            LIST_UPDATE = 'l'
+            
+    class permission(schema_obj):
+        class type(schema_obj):
+            READ = 'read'
+            WRITE = 'write'
+            
+    class job(schema_obj):
+        class state(schema_obj):
+            PENDING = 'pending'
+            SUBMITTED = 'submitted'
+            PROCESSING = 'processing'
+            COMPLETED = 'completed'
+            FAILED = 'failed'
 
 def parse_schema(schema):
 

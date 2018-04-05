@@ -11,7 +11,7 @@ except ImportError:
 import os.path
 
 # NOTE: the parent settings file defines the PROJECT_ROOT
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
+print 'PROJECT_ROOT: ', PROJECT_ROOT
     
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -69,7 +69,7 @@ STATICFILES_DIRS = (
     # Put strings here, like "/home/html/static" or "C:/www/django/static".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-    os.path.join(PROJECT_ROOT, "static"),
+    os.path.join(PROJECT_ROOT, 'lims','static'),
 )
 
 # List of finder classes that know how to find static files in
@@ -131,7 +131,7 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver-migration.log",
+            'filename': os.path.join(PROJECT_ROOT,'logs','screensaver-migration.log'),
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',

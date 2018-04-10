@@ -191,22 +191,23 @@ IS_PRODUCTION_READY = False
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-#         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
-        'LOCATION': 'unique-snowflake'
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'default_cache'
     },
     'screen': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake'
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'screen_cache'
     },
     'resource_cache': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake'
     },
-    'default1': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'my_cache_table',
-    }
+#     'default1': {
+#         'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+#         'LOCATION': 'my_cache_table',
+#     }
 }
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing

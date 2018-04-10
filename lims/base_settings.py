@@ -9,9 +9,8 @@ try:
 except ImportError:
     print >>sys.stderr, '''app_data.py file not found.'''
 
-
-PROJECT_ROOT = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),'..')
+PROJECT_ROOT = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),'..'))
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG

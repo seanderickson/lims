@@ -134,6 +134,8 @@ define([
 
     initialize : function() {
       var self = this;
+      
+      
       self.userProps = {};
       this.on('change:users', function(){
         _.each(_.keys(self.userProps), function(prop){
@@ -175,11 +177,44 @@ define([
           self.setCurrentUser(function(){
             self.getVocabularies(function(vocabularies){
               self.set('vocabularies', vocabularies);
+              self.initialized();
               callBack();
             });
           });
         });
       });
+    },
+    
+    initialized: function() {
+      var self = this;
+      var jobResource = self.getResource('job');
+      var JobCollection = Iccbl.CollectionOnClient.extend({
+        // explicitly define the id so that collection compare & equals work
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, jobResource);
+        },
+        url: jobResource.apiUri
+      })
+      self.jobCollection = new JobCollection();
+      
+      var currentUser = self.getCurrentUser();
+      if (currentUser.is_staff || currentUser.is_superuser ){
+        // fetch pending jobs
+        data_for_fetch = {
+          limit:0,
+          username: currentUser.username,
+          'state__in': ['pending','processing']
+        };
+        
+        self.jobCollection.fetch({
+          data: data_for_fetch
+        }).done(function(data, textStatus, jqXHR){
+          console.log('initial job fetch', arguments);
+        }).fail(function(){ 
+          Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+        });
+      }
+
     },
     
     readCookie: function(name) {
@@ -1584,34 +1619,40 @@ define([
       if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
         Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
       } else {
-        Iccbl.appModel.error(msg);
+        // Iccbl.appModel.error(msg);
+        Iccbl.appModel.showModalMessage({
+          buttons_on_top: false,
+          body: msg,
+          title: 'Error'
+        });
       }
     },
   
     /**
      * Process an error dict into single string for display to the end user.
      */
-    print_dict: function(dict){
+    print_dict: function(dict, sep){
+      var sep = sep || '<br/>';
       var self = this;
       var output = '';
       if (_.isObject(dict) && !_.isArray(dict)){
         output = _.map(_.keys(dict), function(key){
           var err = key + ': ';
-          var parts = self.print_dict(dict[key]);
+          var parts = self.print_dict(dict[key], sep);
           if (parts.length > 40){
-            err += '<br/>' + parts;
+            err += sep + parts;
           } else {
             err += parts;
           }
           return err;
-        }).join('<br/>');
+        }).join(sep);
         
       } else if (_.isArray(dict)){
         var cumulative = '';
         dict = _.map(dict, function(val){
           cumulative += val;
           if (cumulative.length > 40 && cumulative != val){
-            val = '<br/>' + val;
+            val = sep + val;
             cumulative = val;
           }
           return val;
@@ -1747,18 +1788,18 @@ define([
         title = title.charAt(0).toUpperCase() + title.slice(1);
       }
       var buttons_on_top = false;
-//      var msg_rows = this.dict_to_rows(jsonObj);
-//      console.log('msg_rows: ', msg_rows);
-//      var bodyMsg = msg_rows;
-//      if (_.isArray(msg_rows)){
-//        if (msg_rows.length > 40){
-//          buttons_on_top = true;
-//        }
-//        bodyMsg = _.map(msg_rows, function(msg_row){
-//          if (_.isArray(msg_row)) return msg_row.join(': ');
-//          else return '' + msg_row;
-//        }).join('<br>');
-//      }
+      //var msg_rows = this.dict_to_rows(jsonObj);
+      //console.log('msg_rows: ', msg_rows);
+      //var bodyMsg = msg_rows;
+      //if (_.isArray(msg_rows)){
+      //  if (msg_rows.length > 40){
+      //    buttons_on_top = true;
+      //  }
+      //  bodyMsg = _.map(msg_rows, function(msg_row){
+      //    if (_.isArray(msg_row)) return msg_row.join(': ');
+      //    else return '' + msg_row;
+      //  }).join('<br>');
+      //}
       var bodyMsg = this.print_dict(jsonObj);
       Iccbl.appModel.showModalMessage({
         buttons_on_top: buttons_on_top,
@@ -1788,6 +1829,26 @@ define([
         this.set('messages', [msg]);
       }
     }, 
+    
+    addBackgroundJob: function(jobData){
+      console.log('set job', jobData);
+      var jobResource = this.getResource('job');
+      var url = jobResource.apiUri + '/' + jobData['id'];
+      var ModelClass = Backbone.Model.extend({
+        url : url,
+        defaults : { },
+        parse: function(resp, options){
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+        }
+      });
+      var job = new ModelClass(jobData);
+      this.jobCollection.add(job);
+      return job;
+    },
+    
+    getJobCollection: function(){
+      return this.jobCollection;
+    },
     
     setUriStack: function(value){
       if(this.get('uriStack') == value ){

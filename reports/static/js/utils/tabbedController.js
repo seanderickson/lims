@@ -196,12 +196,13 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
       
     },    
     
-    onClose: function() {
-      // TODO: is this necessary when using Backbone LayoutManager
+    /** Backbone.layoutmanager callback **/
+    cleanup: function(){
+      console.log('cleanup...')
       this.tabViews = {};
-      this.remove();
+      this.isClosed = true;
     }
-
+    
   });
   
   return TabbedController;

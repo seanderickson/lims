@@ -8,17 +8,18 @@ define([
     'views/menu',
     'views/content',
     'views/message',
+    'views/backgroundJobPanel',
     'views/search_box',
     'templates/app_layout.html'
 ], function($, _, Backbone, layoutmanager, Iccbl, appModel, MenuView, 
-            ContentView, MessageView, SearchView, layout) {
+            ContentView, MessageView, BackgroundJobPanel, SearchView, layout) {
 
     var AppView = Backbone.Layout.extend({
       el: '#application_div',
       
       initialize: function(args) {
         this.listenTo(appModel, 'change:messages', this.setMessages);
-        _.bindAll(this,'setMessages');
+        _.bindAll(this,'setMessages','setBackgroundJobs');
       },
       
       views: {
@@ -36,6 +37,20 @@ define([
         }else if(this.messageView){
           this.messageView.remove();
         }
+      },
+      
+      setBackgroundJobs: function() {
+        var jobs = appModel.getJobCollection();
+        console.log('set background jobs', jobs);
+        
+        $jobsEl = this.$('#background_jobs');
+        $jobsEl.empty();
+        jobs.each(function(job){
+          console.log('process job', job);
+          var jobView = new BackgroundJobPanel({model: job});
+          $jobsEl.append(jobView.render().$el)
+        });
+        
       },
       
       afterRender: function() {
@@ -80,7 +95,8 @@ define([
             });
             $('#additional_buttons_box').append(addLibraryButton);
           }
-          
+          self.listenTo(
+            appModel.getJobCollection(), 'add remove', self.setBackgroundJobs);
         };
         
         postRender();

@@ -165,11 +165,13 @@ class BaseSerializer(object):
         
     def get_content_type(self, request):    
 
-        DEBUG_CONTENT_TYPE = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_CONTENT_TYPE = True or logger.isEnabledFor(logging.DEBUG)
 
         if DEBUG_CONTENT_TYPE:
             logger.info('get_content_type: %r, %r', request, format)
-
+            logger.info('%r', dir(request))
+            logger.info('request.META: %r', request.META)
+            
         content_type = None
         
         if request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':

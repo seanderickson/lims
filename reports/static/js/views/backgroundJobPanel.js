@@ -8,16 +8,17 @@ define([
     'templates/background_job_panel.html'
 ], function($, _, Backbone, layoutmanager,Iccbl, appModel, layout ) {
  
-  // alert classes alert-warning alert-dismissible
-  //  <button type="button" class="close" id="close" 
-  //    data-dismiss="alert" aria-hidden="true">&times;</button>
-
-  
   var BackgroundJobPanelView = Backbone.Layout.extend({
 
       template: _.template(layout),
       
       JOB_CHECK_INTERVAL_MS: 10000, // 10 seconds
+      
+      // NOTE: it is good to synchronize the ellipsis interval with the 
+      // JOB_CHECK_INTERVAL; see hmsiccbl.css .loading-ellipsis
+      animated_ellipsis: [
+        '&nbsp;<span class="loading-ellipsis"></span>'
+      ].join(''),
       
       events: {
         'click button#close': 'close'
@@ -44,9 +45,7 @@ define([
       },
       
       serialize: function() {
-        return {
-//          messages: _.chain(this.model.get('messages'))
-        }
+        return {}
       },
       
       update: function(){
@@ -66,12 +65,52 @@ define([
           var interpolatedVal = Iccbl.formatString(hrefTemplate,self.model);
           var title = 'Job: ' + jobId;
           try{ 
-            var jobJson = self.model.toJSON();
-            jobJson['response_content'] = JSON.parse(jobJson['response_content']);
-            jobJson['context_data'] = JSON.parse(jobJson['context_data']);
-            title = appModel.print_dict(jobJson, '\n');
+            var jobJson = self.model.pick('username','id','process_id',
+              'uri','params','method','comment','state',
+              'date_time_requested','date_time_submitted','date_time_processing',
+              'date_time_completed','response_status_code');
+            
+            var sep = '\n';
+            var sepRegex = new RegExp(sep, "g");
+            
+            function truncateLongElement(obj){
+              // Truncate response if too long
+              var testString = appModel.print_dict(obj, sep);
+              var rowCount = (testString.match(sepRegex) || []).length;
+              if (rowCount > appModel.MAX_ROWS_IN_DIALOG_MSG){
+                testString = testString.split(sepRegex).slice(0,10);
+                testString.push('-- truncated --');
+                return testString.join('\n');
+              }else{
+                return obj;
+              }
+            }
+            var response_content = JSON.parse(self.model.get('response_content'));
+            if (!_.isEmpty(response_content)){
+               var temp = truncateLongElement(response_content);
+               if (temp !== response_content){
+                 jobJson['response_content'] = temp;
+               }else{
+                 jobJson['response_content'] = response_content;
+               }
+            }
+            var context_data = JSON.parse(self.model.get('context_data'));
+            if (!_.isEmpty(context_data)){
+               var temp = truncateLongElement(context_data);
+               if (temp !== context_data){
+                 jobJson['context_data'] = temp;
+               }else{
+                 jobJson['context_data'] = context_data;
+               }
+            }
+            var finalJobJson = {};
+            _.each(_.keys(jobJson), function(key){
+              var title = self.jobResource['fields'][key].title;
+              finalJobJson[title] = jobJson[key];
+            });
+            title = appModel.print_dict(finalJobJson, sep);
           }catch(e){
-            console.log('error parsing job data', self.model.toJSON());
+            console.log('error parsing job data', e, self.model.toJSON());
           }
           var link = $('<a>', {
             tabIndex : -1,
@@ -90,7 +129,7 @@ define([
             try{
               responseJSON = JSON.parse(response_content);
               responseJSON['Status Code'] = self.model.get('response_status_code');
-              appModel.showJsonMessages(responseJSON);
+              appModel.showJsonMessages(responseJSON, { title: 'Job Response'});
             }catch(e){
               console.log(
                 'Error, unable to parse response as JSON: ', response_content);
@@ -102,11 +141,15 @@ define([
             }
           };
           var state = self.model.get('state');
+          if (_.contains(['pending', 'processing'], state)){
+            state += self.animated_ellipsis;
+          }
           if (_.contains(['failed','completed'], state)){
-            state = $('<a>', {
+            var stateEl = $('<a>', {
               href: '#', title: 'show response', class: 'alert-link'
             }).text(state);
-            state.click(showResponse);
+            stateEl.click(showResponse);
+            state = stateEl;
           }
           return state;
         };          

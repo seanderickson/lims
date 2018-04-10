@@ -648,9 +648,9 @@ define([
       
       var formSchema = {};
       formSchema['comments'] = {
-        title: 'Comments',
+        title: 'Comments (optional)',
         key: 'comments',
-        validators: ['required'],
+        validators: [],
         editorClass: 'input-full',
         type: 'TextArea',
         template: fieldTemplate
@@ -674,7 +674,7 @@ define([
       });
       var _form_el = form.render().el;
 
-      function saveFile() {
+      function loadScreenResultFile() {
 
         var errors = form.commit({ validate: true }); // runs schema and model validation
         if (!_.isEmpty(errors)) {
@@ -713,20 +713,8 @@ define([
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data, resp) {
             console.log('screen result submit result', data, resp);
-            var jobData = data[appModel.API_RESULT_META]['job'];
-            var jobModel = appModel.addBackgroundJob(jobData);
-            
-            self.listenTo(jobModel, 'change:state', jobStateChanged);
-            // TODO: Create a listener to update screen from any browser instance
-            function jobStateChanged(){
-              console.log('jobStateChanged:', arguments);
-              if (jobModel.get('state') != 'completed'){
-                return;
-              }
-              if (self.isClosed == true){
-                console.log('screen data view has been closed already');
-                return;
-              }
+
+            function refreshOnUpdate(){
               // Must refetch and render, once for the containing tabbed layout,
               // and then (during render), will refetch again for the table view
               self.model.fetch({
@@ -744,158 +732,41 @@ define([
               });
             };
             
-            
-//            appModel.error('success');
-//            // Must refetch and render, once for the containing tabbed layout,
-//            // and then (during render), will refetch again for the table view
-//            self.model.fetch({
-//              success: function() {
-//                if (!isStudy) {
-//                  self.uriStack = ['detail'];
-//                  // remove the child view before calling render, to prevent
-//                  // it from being rendered twice, and calling afterRender twice
-//                  self.removeView('#tab_container');
-//                }
-//                self.render();
-//              }
-//            }).fail(function() { 
-//              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-//            });
+            if (appModel.getAppData().get('BACKGROUND_PROCESSING') == true){
+              data = _.result(data,appModel.API_RESULT_META, data);
+              if (!_.has(data, 'job')){
+                appModel.error('Job response does not contain job data');
+                return;
+              }
+              var jobModel = appModel.addBackgroundJob(data['job']);
+              
+              self.listenTo(jobModel, 'change:state', jobStateChanged);
+              
+              // TODO: Create a listener to update screen from any browser instance
+              function jobStateChanged(){
+                console.log('jobStateChanged:', arguments);
+                if (jobModel.get('state') != 'completed'){
+                  return;
+                }
+                if (self.isClosed == true){
+                  console.log('screen data view has been closed already');
+                  return;
+                }
+                refreshOnUpdate();
+              };
+            } else {
+              refreshOnUpdate();
+            }
           });
         }        
       }
       
       var dialog = appModel.showModal({
-          ok: saveFile,
+          ok: loadScreenResultFile,
           view: _form_el,
           title: 'Select a Screen Result (xlsx workbook) file to upload'
       });
     },
-
-//    /**
-//     * Loads the screen results using ajax to post the file.
-//     * - because ajax cannot handle post response attachments (easily), set
-//     * the response type to 'application/json' and display the errors in a 
-//     * modal dialog.
-//     * 
-//     * NOTE: a "POST" form cannot be used - there is no standard way to signal
-//     * the result of the post to JavaScript.
-//     */
-//    loadScreenResults: function() {
-//      var self = this;
-//      var isStudy = self.model.get('project_phase') == 'annotation';
-//      var form_template = [
-//         "<div class='form-horizontal container' id='screenresult_form' >",
-//         "<form data-fieldsets class='form-horizontal container' >",
-//         "<div class='form-group' ><input type='file' name='fileInput' /></div>",
-//         "</form>",
-//         "</div>"].join('');      
-//      
-//      var fieldTemplate = _.template([
-//        '<div class="form-group" >',
-//        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
-//        '    <div class="" >',
-//        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
-//        '      <div data-error class="text-danger" ></div>',
-//        '      <div><%= help %></div>',
-//        '    </div>',
-//        '  </div>',
-//      ].join(''));
-//      
-//      var formSchema = {};
-//      formSchema['comments'] = {
-//        title: 'Comments',
-//        key: 'comments',
-//        validators: ['required'],
-//        editorClass: 'input-full',
-//        type: 'TextArea',
-//        template: fieldTemplate
-//      };
-//
-//      var FormFields = Backbone.Model.extend({
-//        schema: formSchema,
-//        validate: function(attrs) {
-//          var errs = {};
-//          var file = $('input[name="fileInput"]')[0].files[0]; 
-//          if (! file) {
-//            errs.fileInput = 'Must specify a file';
-//          }
-//          if (!_.isEmpty(errs)) return errs;
-//        }
-//      });
-//      var formFields = new FormFields();
-//      var form = new Backbone.Form({
-//        model: formFields,
-//        template: _.template(form_template)
-//      });
-//      var _form_el = form.render().el;
-//
-//      function saveFile() {
-//
-//        var errors = form.commit({ validate: true }); // runs schema and model validation
-//        if (!_.isEmpty(errors)) {
-//          console.log('form errors, abort submit: ',errors);
-//          _.each(_.keys(errors), function(key) {
-//            $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-//            if ( key == '_others') {
-//              _.each(errors[key], function(otherError) {
-//                // TODO: display file req'd msg
-//              });
-//            }
-//          });
-//          return false;
-//        } else {
-//          var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
-//          var values = form.getValue();
-//          var file = $('input[name="fileInput"]')[0].files[0]; 
-//          var data = new FormData();
-//          // NOTE: 'xls' is sent as the key to the FILE object in the upload.
-//          // Use this as a non-standard way to signal the upload type to the 
-//          // serializer. 
-//          data.append('xls', file);
-//          var headers = {
-//            'Accept': 'application/json'
-//          };
-//          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-//          $.ajax({
-//            url: url,    
-//            data: data,
-//            cache: false,
-//            contentType: false,
-//            processData: false,
-//            type: 'POST',
-//            headers: headers
-//          })
-//          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-//          .done(function(model, resp) {
-//            // FIXME: should be showing a regular message
-//            appModel.error('success');
-//            // Must refetch and render, once for the containing tabbed layout,
-//            // and then (during render), will refetch again for the table view
-//            self.model.fetch({
-//              success: function() {
-//                if (!isStudy) {
-//                  self.uriStack = ['detail'];
-//                  // remove the child view before calling render, to prevent
-//                  // it from being rendered twice, and calling afterRender twice
-//                  self.removeView('#tab_container');
-//                }
-//                self.render();
-//              }
-//            }).fail(function() { 
-//              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-//            });
-//          });
-//        }        
-//      }
-//      
-//      var dialog = appModel.showModal({
-//          ok: saveFile,
-//          view: _form_el,
-//          title: 'Select a Screen Result (xlsx workbook) file to upload'
-//      });
-//    },
-    
     
     deleteScreenResults: function() {
       var self = this;

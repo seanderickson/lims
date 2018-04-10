@@ -522,3 +522,31 @@ table.backgrid.left-align td{
 .textarea-noscroll::-webkit-scrollbar {
   display: none;
 }
+
+.loading-ellipsis {
+/*   font-size: 30px; */
+}
+
+.loading-ellipsis:after {
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: bottom;
+  /** NOTE: it is good to synchronize this animation with loading refresh rate **/
+  -webkit-animation: ellipsis steps(4,end) 5000ms infinite;      
+  animation: ellipsis steps(4,end) 5000ms infinite;
+  content: "\2026"; /* ascii code for the ellipsis character */
+  width: 0px;
+}
+
+@keyframes ellipsis {
+  to {
+    width: 1.25em;    
+  }
+}
+
+@-webkit-keyframes ellipsis {
+  to {
+    width: 1.25em;    
+  }
+}
+

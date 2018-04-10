@@ -203,7 +203,8 @@ define([
         data_for_fetch = {
           limit:0,
           username: currentUser.username,
-          'state__in': ['pending','processing']
+          'state__in': ['pending','processing'],
+//          'id': 152 // testing
         };
         
         self.jobCollection.fetch({
@@ -1627,7 +1628,7 @@ define([
         });
       }
     },
-  
+
     /**
      * Process an error dict into single string for display to the end user.
      */
@@ -1664,78 +1665,6 @@ define([
       return output;
     },
     
-//    /**
-//     * Process an error dict into an array for display to the end user.
-//     */
-//    dict_to_rows: function(dict){
-//      var self = this;
-//      var rows = [];
-//      console.log('dict_to_rows', dict);
-//      if (_.isObject(dict) && !_.isArray(dict)){
-//        console.log('dict to rows: dict', dict);
-//        _.each(_.keys(dict), function(key){
-//          console.log('error key', key,dict[key]);
-////          rows.push(key);
-//          var keyrow = [key];
-//          _.each(self.dict_to_rows(dict[key]),function(row){
-//            if (!_.isUndefined(row)){
-////              var keyrow = [];
-//              if (!_.isArray(row)){
-//                row = '' + row;
-//                row = row.replace(/(\r\n|\n|\r)/gm,"<br/>\n"); 
-//                keyrow.push(row);
-//              }else{
-//                keyrow = keyrow.concat(_.map(row, function(rowval){
-//                  rowval = '' + rowval;
-//                  return rowval.replace(/(\r\n|\n|\r)/gm,"<br/>\n");
-//                }));
-//              }
-//            }
-//          });
-//          rows.push(keyrow);
-//        });
-//      }else{
-//        console.log('non-dict: ', dict);
-//        if (_.isArray(dict)){
-//          return dict;
-//        }else{
-//          return [dict];
-//        }
-//      }
-//      return rows;
-//    },
-    
-//    dict_to_rows_old: function(dict){
-//      var self = this;
-//      var rows = [];
-//      console.log('dict_to_rows', dict);
-//      if (_.isObject(dict) && !_.isArray(dict)){
-//        _.each(_.keys(dict), function(key){
-//          _.each(self.dict_to_rows(dict[key]),function(row){
-//            if (_.isUndefined(row)){
-//              rows.push(key);
-//            }else{
-//              var keyrow = [key];
-//              if (!_.isArray(row)){
-//                keyrow.push(row);
-//              }else{
-//                keyrow = keyrow.concat(row);
-//              }
-//              rows.push(keyrow);
-//            }
-//          });
-//        });
-//      }else{
-//        console.log('obj: ', dict);
-//        if (_.isArray(dict)){
-//          return dict;
-//        }else{
-//          return [dict];
-//        }
-//      }
-//      return rows;
-//    },
-    
     /**
      * Parse connection result (sent as a JSON object)
      * 
@@ -1748,20 +1677,15 @@ define([
       if (_.isObject(data) && !_.isString(data)){
         data = _.result(data,API_MSG_RESULT,data);
         data = _.result(data,API_RESULT_META,data);
-//        var msg_rows = this.dict_to_rows(data);
-//        var bodyMsg = msg_rows;
-//        if (_.isArray(msg_rows) && msg_rows.length > 1){
-//          bodyMsg = _.map(msg_rows, function(msg_row){
-//            return msg_row.join(': ');
-//          }).join('<br>');
-//        }
-        var bodyMsg = this.print_dict(data);
-        this.showModalMessage(
-          _.extend({}, options, {
-            body: bodyMsg,
-            buttons_on_top: true,
-            buttons_on_bottom: false
-          }));
+        
+        this.showJsonMessages(data, options);
+        //var bodyMsg = this.print_dict(data);
+        //this.showModalMessage(
+        //  _.extend({}, options, {
+        //    body: bodyMsg,
+        //    buttons_on_top: true,
+        //    buttons_on_bottom: false
+        //  }));
       }else{
         console.log('Warn: data should have been parsed as json]', data);
         this.showModalMessage(
@@ -1778,34 +1702,59 @@ define([
      * - transform the object into a table using a depth-first traversal:
      * - each row contains the nodes traversed to each leaf node.
      */
-    showJsonMessages: function(jsonObj){
+    showJsonMessages: function(jsonObj, options){
       
       console.log('showJsonMessages: ', jsonObj);
-      var title = "Messages";
-      if(_.keys(jsonObj).length == 1){
-        title = _.keys(jsonObj)[0];
-        jsonObj = jsonObj[title];
-        title = title.charAt(0).toUpperCase() + title.slice(1);
+      var options = _.extend({
+          buttons_on_top: false,
+        }, options);
+      
+      if (!_.has(options,'title')){
+        var title = "Messages";
+        if(_.keys(jsonObj).length == 1){
+          title = _.keys(jsonObj)[0];
+          jsonObj = jsonObj[title];
+          title = title.charAt(0).toUpperCase() + title.slice(1);
+        }
+        options['title'] = title;
       }
-      var buttons_on_top = false;
-      //var msg_rows = this.dict_to_rows(jsonObj);
-      //console.log('msg_rows: ', msg_rows);
-      //var bodyMsg = msg_rows;
-      //if (_.isArray(msg_rows)){
-      //  if (msg_rows.length > 40){
-      //    buttons_on_top = true;
-      //  }
-      //  bodyMsg = _.map(msg_rows, function(msg_row){
-      //    if (_.isArray(msg_row)) return msg_row.join(': ');
-      //    else return '' + msg_row;
-      //  }).join('<br>');
-      //}
-      var bodyMsg = this.print_dict(jsonObj);
-      Iccbl.appModel.showModalMessage({
-        buttons_on_top: buttons_on_top,
-        body: bodyMsg,
-        title: title  
-      });
+      var sep = '<br/>';
+      var bodyMsg = this.print_dict(jsonObj, sep);
+      var rowCount = (bodyMsg.match(new RegExp(sep, "g")) || []).length;
+      if (rowCount > Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG){
+        bodyMsg = this.print_dict(jsonObj, '\n');
+        body = $('<textarea class="input-full" rows=' 
+          + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+        body.val(bodyMsg);
+        options['buttons_on_top'] = true;
+        options['view'] = body;
+      } else {
+        options['body'] = bodyMsg;
+      }
+      Iccbl.appModel.showModalMessage(options);
+    },
+    
+    showJsonDirect: function(jsonObj, options){
+      console.log('showJsonMessages: ', jsonObj);
+      var options = _.extend({
+          buttons_on_top: false,
+        }, options);
+      if (!_.has(options,'title')){
+        var title = "Messages";
+        if(_.keys(jsonObj).length == 1){
+          title = _.keys(jsonObj)[0];
+          jsonObj = jsonObj[title];
+          title = title.charAt(0).toUpperCase() + title.slice(1);
+        }
+        options['title'] = title;
+      }
+      var str = JSON.stringify(jsonObj, null, 2); // spacing level = 2
+      var body = $('<textarea class="input-full" rows=' 
+        + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+      body.val(str);
+      options['buttons_on_top'] = true;
+      options['view'] = body;
+      Iccbl.appModel.showModalMessage(options);
     },
    
     clearErrors: function(){
@@ -1926,7 +1875,7 @@ define([
       }
 
       // Clear out error messages after navigating away from page
-//      self.unset('messages');
+      //      self.unset('messages');
     },
 
     /**
@@ -2713,6 +2662,7 @@ define([
 
   appState.MAX_SEARCH_ARRAY_SIZE = 100;
   appState.MAX_RAW_SEARCHES_IN_URL = 10;
+  appState.MAX_ROWS_IN_DIALOG_MSG = 20;
   
   // API Param elements are used by the API
   appState.API_PARAM_SEARCH_ID = 'search_id'

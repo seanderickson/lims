@@ -592,6 +592,8 @@ class Job(models.Model):
     
     # user comment on post
     comment = models.TextField(null=True);
+    # Extra context data (filenames, etc.); JSON encoded
+    context_data = models.TextField(null=True)
       
     # Assigned when the job is running
     process_id = models.TextField(null=True)
@@ -608,6 +610,7 @@ class Job(models.Model):
     date_time_completed = models.DateTimeField(null=True) 
     
     response_status_code = models.IntegerField(null=True)
+    #JSON encoded response content
     response_content = models.TextField(null=True)
       
     def __repr__(self):

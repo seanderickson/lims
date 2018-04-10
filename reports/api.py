@@ -58,7 +58,7 @@ from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            API_ACTION_CREATE
 import reports.schema as SCHEMA
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
-    SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE
+    SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE
 from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 import reports.utils.background_processor as background_processor
@@ -90,6 +90,7 @@ API_MSG_CREATED = 'Created'
 API_MSG_UNCHANGED = 'Unchanged'
 API_MSG_COMMENTS = 'Comments'
 API_MSG_ACTION = 'Action'
+API_MSG_SUCCESS = 'Success'
 
 DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
@@ -396,57 +397,79 @@ def background_job(_func):
             if not os.path.exists(post_data_directory):
                 os.makedirs(post_data_directory)
             
-#             if kwargs:
-#                 logger.info('kwargs: %r', kwargs.keys())
-#                 for k,v in kwargs.items():
-#                     if k == 'schema':
-#                         continue
-#                     logger.info('k: %r, v: %r', k, v)
-#             logger.info('request.GET: %r', request.GET)
-
-            # Check for the JOB_PROCESSING_FLAG: if set this request is to
-            # service the job
+            # JOB_PROCESSING_FLAG: indicates the job_id to service
             job_id = request.GET.get(JOB.JOB_PROCESSING_FLAG, None)
             if job_id is None:
                 job_id = request.POST.get(JOB.JOB_PROCESSING_FLAG, None)
             
-            # 1. If JOB_PROCESSING_FLAG (job_id) is set, 
-            # then this is a request to process the job.
             if job_id is not None:
-                query_params = { JOB.ID: job_id }
-                job_data = job_resource._get_detail_response_internal()
-                if not job_data:
-                    raise ValidationError(key=JOB.ID, msg='no such job: %r' % job_id)
                 
-                raw_data = ''
-                post_data_filename = \
-                    os.path.join(post_data_directory, str(job_data[JOB.ID]))
-                logger.info(
-                    'look for request multipart raw_post_data at %r', 
-                    post_data_filename)
-                if os.path.exists(post_data_filename):
+                # 1. JOB_PROCESSING_FLAG is set - service the job.
+                
+                logger.info('1. Process request for job: %r', job_id)
+                
+                with transaction.atomic():
+                
+                    query_params = { JOB.ID: job_id }
+                    job_data = job_resource._get_detail_response_internal(**query_params)
+                    logger.info('job_data: %r', job_data)
+                    if not job_data:
+                        raise ValidationError(key=JOB.ID, msg='no such job: %r' % job_id)
+                    
+                    if job_data[JOB.STATE] != SCHEMA.VOCAB.job.state.PENDING:
+                        logger.warn('NOTICE: job state is not pending: %r', job_data)
+                        
+                        if job_data[JOB.STATE] == SCHEMA.VOCAB.job.state.PROCESSING:
+                            raise ValidationError(key=JOB.STATE,
+                                msg='Job: %r is in state: %r,  processing not allowed'
+                                    % (job_id, job_data[JOB.STATE]))
+                    raw_data = ''
+                    post_data_filename = \
+                        os.path.join(post_data_directory, str(job_data[JOB.ID]))
                     logger.info(
-                        'found request multipart raw_post_data at %r', 
+                        'look for request multipart raw_post_data at %r', 
                         post_data_filename)
-                    with open(post_data_filename,'r') as job_file:
-                        raw_data = job_file.read()
-                
-                request = background_processor.create_request_from_job(
-                    job_data, request.user, raw_data)
-                
-                # TODO: set job state to processing, time processing
-                job_patch = {
-                    JOB.ID: job_id,
-                    JOB.STATE: SCHEMA.VOCAB.job.state.PROCESSING,
-                    JOB.DATE_TIME_PROCESSING: _now().isoformat() }
-                job_patch_result = job_resource._patch_internal(job_patch)
-                logger.info('processing job patch result: %r', job_patch_result)
-                
-                # FIXME: func call must be wrapped in try block like api_base
-                # to capture fail conditions
-                # FIXME: wrap in transactional
-                # Note: use the original kwargs to capture url processing kwargs
-                response = _func(self, request, **kwargs)
+                    if os.path.exists(post_data_filename):
+                        logger.info(
+                            'found request multipart raw_post_data at %r', 
+                            post_data_filename)
+                        with open(post_data_filename,'r') as job_file:
+                            raw_data = job_file.read()
+                    else:
+                        logger.info('no raw data found at: %r', post_data_filename)
+                        if MULTIPART_MIMETYPE in job_data[JOB.CONTENT_TYPE]:
+                            raise ValidationError(
+                                key=JOB.CONTENT_TYPE,
+                                msg='content_type: %r, requires raw data not found at: %r' 
+                                    % (job_data[JOB.CONTENT_TYPE], post_data_filename))
+                    
+                    original_request = background_processor.create_request_from_job(
+                        job_data, request.user, raw_data)
+                    
+                    job_patch = {
+                        JOB.ID: job_id,
+                        JOB.STATE: SCHEMA.VOCAB.job.state.PROCESSING,
+                        JOB.DATE_TIME_PROCESSING: _now().isoformat() }
+                    job_patch_result = job_resource._patch_internal(job_patch)
+                    logger.debug('done setting job state to processing: %r', 
+                        job_patch_result)
+
+                # NOTE: end transaction to commit Job state = PROCESSING
+                                    
+                logger.info('--- process the original job request now ---')
+                # NOTE: perform the exception handling, as in api_base.wrap_view
+                def _inner(*args, **kwargs):
+                    # Note: wrap the _func because the exception_handler 
+                    # wrapper expects the func to be bound to "self" already, 
+                    # and the _func expects "self" to be passed
+                    logger.info('self: %r', self)
+                    logger.info('args: %r', args)
+                    return _func(self,*args, **kwargs)
+                response = self.exception_handler(_inner)(
+                    self, original_request, **kwargs)  
+                # response = _func(self, original_request, **kwargs)
+                logger.info('--- processing done: response: %r', 
+                    response.status_code)
                 
                 if response.status_code > 300:
                     logger.info('error processing job: %r!', response.status_code)
@@ -454,11 +477,11 @@ def background_job(_func):
                     content = job_resource._meta.serializer.deserialize(
                         LimsSerializer.get_content(response), JSON_MIMETYPE)
                     logger.warn('fail content: %r', content)
-                    # TODO: set time completed
                     job_patch = {
                         JOB.ID: job_id,
                         JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
                         JOB.RESPONSE_CONTENT: json.dumps(content),
+                        JOB.RESPONSE_STATUS_CODE: response.status_code,
                         JOB.DATE_TIME_COMPLETED: _now().isoformat() }
                     job_patch_result = job_resource._patch_internal(job_patch)
                     logger.info('job patch result: %r', job_patch_result)
@@ -478,18 +501,21 @@ def background_job(_func):
                         JOB.STATE: SCHEMA.VOCAB.job.state.COMPLETED,
                         JOB.RESPONSE_CONTENT: json.dumps(content),
                         JOB.RESPONSE_STATUS_CODE: response.status_code,
-                        JOB.DATE_TIME_COMPLETED: _now().isoformat(), #strftime(SCHEMA.DATE_TIME_FORMAT)}
+                        JOB.DATE_TIME_COMPLETED: _now().isoformat(),
                         }
                     job_patch_result = job_resource._patch_internal(job_patch)
                     logger.info('job patch result: %r', job_patch_result)
                     new_job = job_patch_result[API_RESULT_DATA][0]
                     meta = { JOB.resource_name: new_job }
                     data = { API_RESULT_META: meta }
+                    
                     job_response = self.build_response(request, data, status_code=200)
                                     
                     raise BackgroundJobImmediateResponse(job_response)
             else:
-            # 2. Otherwise, this is a request to create a new job
+                
+                # 2. JOB_PROCESSING_FLAG is not set: create a new job
+                
                 with transaction.atomic():
                     
                     job_data, raw_post_data = \
@@ -510,7 +536,7 @@ def background_job(_func):
                         raise BackgroundJobImmediateResponse(response)
                     except Exception, e:
                         logger.exception('Job create error: %r, job: %r', e, job_data)
-                        raise ProgrammingError('Job create error', e) 
+                        raise ProgrammingError('Job create error: %r' % e) 
         
                     if raw_post_data:
                         logger.info('store request multipart raw_post_data...')
@@ -550,8 +576,6 @@ def background_job(_func):
                 raise BackgroundJobImmediateResponse(response)
             
     return _inner
-
-
 
 
 class SuperUserAuthorization(Authorization):
@@ -1042,11 +1066,12 @@ class ApiResource(SqlAlchemyResource):
             % ( request.user.username, self._meta.resource_name))
         logger.debug('patch list: %r' % kwargs)
 
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         if self._meta.collection_name in deserialized:
@@ -1136,6 +1161,8 @@ class ApiResource(SqlAlchemyResource):
                 API_MSG_COMMENTS: parent_log.comment
             }
         }
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
@@ -1171,11 +1198,12 @@ class ApiResource(SqlAlchemyResource):
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
         logger.debug('schema field keys: %r', schema[RESOURCE.FIELDS].keys())
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         if self._meta.collection_name in deserialized:
@@ -1255,7 +1283,9 @@ class ApiResource(SqlAlchemyResource):
                 API_MSG_COMMENTS: parent_log.comment
             }
         }
-
+        if deserialize_meta:
+            meta.update(deserialize_meta)
+        
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', kwargs.get('test_only'))    
@@ -1269,7 +1299,7 @@ class ApiResource(SqlAlchemyResource):
             logger.info('put success, no data')
             return HttpResponse(status=202)
         else:
-            response = self.get_list(request, **kwargs)             
+            response = self.get_list(request, meta=meta, **kwargs)             
             response.status_code = 200
             return response 
 
@@ -1286,11 +1316,12 @@ class ApiResource(SqlAlchemyResource):
             % ( request.user.username, self._meta.resource_name))
         logger.debug('post list: %r' % kwargs)
 
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         if self._meta.collection_name in deserialized:
@@ -1389,12 +1420,16 @@ class ApiResource(SqlAlchemyResource):
                 API_MSG_COMMENTS: parent_log.comment
             }
         }
+        if deserialize_meta:
+            meta.update(deserialize_meta)
+        
         logger.info('POST list: %r', meta)
         if not self._meta.always_return_data:
             return self.build_response(
                 request, { API_RESULT_META: meta }, response_class=HttpResponse)
         else:
             logger.info('return data with post response')
+            
             response = self.get_list(request, meta=meta, **kwargs)             
             response.status_code = 200
             return response
@@ -1409,11 +1444,12 @@ class ApiResource(SqlAlchemyResource):
         - Error if the resource exists
         '''
         
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('post detail %s, %s', 
@@ -1509,13 +1545,14 @@ class ApiResource(SqlAlchemyResource):
         PATCH is used to create or update a resource; not idempotent
         '''
         
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
-        _data = self.build_patch_detail(request, deserialized, **kwargs)
+        _data = self.build_patch_detail(request, deserialized, meta=deserialize_meta, **kwargs)
 
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
@@ -2982,7 +3019,7 @@ class ResourceResource(ApiResource):
         resources = self._build_resources_internal(user)
         
         if resource_key not in resources:
-            raise BadRequest('Resource is not initialized: %r', resource_key)
+            raise BadRequest('Resource is not initialized: %r' % resource_key)
         
         schema =  resources[resource_key]
         if DEBUG_RESOURCES:
@@ -4428,11 +4465,12 @@ class UserGroupResource(ApiResource):
     @un_cache 
     @transaction.atomic       
     def delete_detail(self,deserialized, **kwargs):
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         try:
             self.delete_obj(request, deserialized, **kwargs)
@@ -5254,13 +5292,47 @@ class PermissionResource(ApiResource):
         raise NotImplementedError('patch obj is not implemented for Permission')
     
 
+class JobResourceAuthorization(UserGroupAuthorization):
+    
+    def _is_resource_authorized(
+            self, user, permission_type, **kwargs):
+        authorized = super(JobResourceAuthorization, self)._is_resource_authorized(
+            user, permission_type, **kwargs)
+        logger.debug('is JobResource authorized: user: %r: %r', user, authorized)
+        if authorized is True:
+            return True
+        # Allow active staff users
+        return user.is_active and user.is_staff
+
+    def is_restricted_view(self, user):
+        restricted =  super(JobResourceAuthorization, self).is_restricted_view(user)
+        logger.debug('is restricted: %r: %r', user, restricted)
+        return restricted 
+    
+    def filter(self, user, filter_expression):
+        if self.is_restricted_view(user):
+            logger.info('create job_authorized_user_filter for %r', user.username)
+            auth_filter = column('username') == user.username
+            if filter_expression is not None:
+                filter_expression = and_(filter_expression, auth_filter)
+            else:
+                filter_expression = auth_filter
+        return filter_expression
+
+    def get_row_property_generator(self, user, fields, extant_generator):
+        '''
+        Filter result properties based on authorization rules
+        '''
+        return extant_generator
+
+
 class JobResource(ApiResource):
     
     class Meta:
         authentication = MultiAuthentication(
             IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'job'
-        authorization= AllAuthenticatedReadAuthorization(resource_name)
+        authorization= JobResourceAuthorization(resource_name)
         ordering = []
         filtering = {} 
         serializer = LimsSerializer()
@@ -5406,8 +5478,9 @@ class JobResource(ApiResource):
 #             raise Exception('schema not initialized')
         deserialized = kwargs.pop('data', None)
         # allow for internal data to be passed
+        deserialize_meta = None
         if deserialized is None:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         
         if API_RESULT_DATA in deserialized:
@@ -5458,6 +5531,8 @@ class JobResource(ApiResource):
         if log:
             log.save()
         meta = {}
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         if API_RESULT_META in patch_response:
             meta = patch_response[API_RESULT_META]
         return self.build_response(

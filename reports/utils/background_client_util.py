@@ -17,7 +17,7 @@ from django.conf import settings
 
 from reports.utils import parse_credentials
 import reports.utils.background_processor
-from reports import InformationError
+from reports import InformationError, ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -32,26 +32,39 @@ def execute_from_python(job_id, sbatch=False):
     @param sbatch if true, requires "sbatch_settings" in the 
     BACKGROUND_PROCESSOR settings
     '''
+    logger.info('using settings.BACKGROUND_PROCESSOR: %r', 
+        settings.BACKGROUND_PROCESSOR)
+    
+    check_settings = set(['post_data_directory','job_output_directory',
+        'credential_file', 'python_environ_script', 'background_process_script'])
+    
+    if not check_settings.issubset(
+        set(settings.BACKGROUND_PROCESSOR.keys())):
+        raise ValidationError(
+            key='settings.BACKGROUND_PROCESSOR', 
+            msg='missing required entries: %s' 
+                % (check_settings-set(settings.BACKGROUND_PROCESSOR.keys())))
     
     job_output_dir = settings.BACKGROUND_PROCESSOR['job_output_directory']
     if not os.path.exists(job_output_dir):
         os.makedirs(job_output_dir)
     credential_file = settings.BACKGROUND_PROCESSOR['credential_file']
     python_environ_script = settings.BACKGROUND_PROCESSOR['python_environ_script']
-    logger.info('python run script: %r', python_environ_script)
-
+    background_process_script = settings.BACKGROUND_PROCESSOR['background_process_script']
+    
     output_stdout = '%d.stdout'%job_id
     output_stdout = os.path.abspath(os.path.join(job_output_dir,output_stdout))
     output_stderr = '%d.stderr'%job_id
     output_stderr = os.path.abspath(os.path.join(job_output_dir,output_stderr))
 
     run_sh_args = [
-        python_environ_script, 'python', 'reports/utils/background_client_util.py', 
+        python_environ_script, background_process_script, 
         '--job_id', str(job_id), '--c', credential_file, '-vv']
     full_args = []
     
     if sbatch is True:
-        full_args = full_args.append('sbatch')
+        os.putenv('USER', 'sde4')
+        full_args.append('/usr/local/bin/sbatch')
 
         sbatch_settings = settings.BACKGROUND_PROCESSOR.get('sbatch_settings')
         if sbatch_settings is None:
@@ -64,8 +77,9 @@ def execute_from_python(job_id, sbatch=False):
         sbatch_settings['job-name'] = 'ss_{}'.format(job_id)
         sbatch_args = []
         for k,v in sbatch_settings.items():
-            sbatch_args.extend(['--%s'%k, '%s'%str(v)])
+            sbatch_args.extend(['--%s=%s' % (k, '%s'%str(v))])
         full_args.extend(sbatch_args)
+        full_args.append('-vvv')
 
     full_args.extend(run_sh_args)
     
@@ -73,11 +87,16 @@ def execute_from_python(job_id, sbatch=False):
     
     if sbatch is True:
         logger.info('sbatch specified, invoke sbatch and wait for output...')
-        output = \
-            subprocess.check_output(full_args, stderr=subprocess.STDOUT)
-        logger.info('ran, output: %r', output)
-        # TODO: parse the SLURM process ID from the output
-        return output
+        logger.info('full command %s: ', ' '.join(full_args))
+        try:
+            output = \
+                subprocess.check_output(full_args, stderr=subprocess.STDOUT)
+            logger.info('ran, output: %r', output)
+            # TODO: parse the SLURM process ID from the output
+            return output
+        except subprocess.CalledProcessError, e:
+            logger.error('subprocess.CalledProcessError: output: %r', e.output)
+            raise
     else:
         logger.info('sbatch not specified, run directly in the shell, asynchronously')
         # NOTE for testing only
@@ -115,6 +134,17 @@ parser.add_argument(
     help='Job ID to process')
 
 parser.add_argument(
+    '-run_sbatch', '--run_sbatch', action='store_true',
+    help='calls this script using sbatch settings (for testing)'
+        'Note: either "run_sbatch" or "run_subprocess" may be specified')
+
+parser.add_argument(
+    '-run_subprocess', '--run_subprocess', action='store_true',
+    help='calls this script using a subprocess (for testing). '
+        'Note: either "run_sbatch" or "run_subprocess" may be specified')
+
+
+parser.add_argument(
     '-v', '--verbose', dest='verbose', action='count',
     help="Increase verbosity (specify multiple times for more)")    
     
@@ -142,17 +172,26 @@ if __name__ == "__main__":
         if not password:
             password = getpass.getpass()
 
-    print 'Process the background job', args.job_id
-    try:
-        django.setup()
-        
-        api_client = reports.utils.background_processor.ApiClient(username, password)
-        background_client = \
-            reports.utils.background_processor.BackgroundClient(api_client)
-        response = background_client.service(args.job_id)    
+    if args.run_sbatch is True:
+        print 'Send the job to sbatch...'
+        output = execute_from_python(args.job_id, sbatch=True)
+        print 'job output:', output
+    elif args.run_subprocess is True:
+        print 'run the job in a subprocess...'
+        output = execute_from_python(args.job_id, sbatch=True)
+        print 'job output:', output
+    else:
+        print 'Process the background job...', args.job_id
+        try:
+            django.setup()
             
-    except Exception, e:
-        logger.exception('in background service method')
-        raise e
-    print 'exit background processing service', datetime.datetime.now()
+            api_client = reports.utils.background_processor.ApiClient(username, password)
+            background_client = \
+                reports.utils.background_processor.BackgroundClient(api_client)
+            response = background_client.service(args.job_id)    
+                
+        except Exception, e:
+            logger.exception('in background service method')
+            raise e
+        print 'exit background processing service', datetime.datetime.now()
     

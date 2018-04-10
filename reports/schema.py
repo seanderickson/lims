@@ -115,6 +115,7 @@ class JOB(schema_obj):
     HTTP_ACCEPT = 'http_accept'
     PARAMS = 'params'
     COMMENT = 'comment'
+    CONTEXT_DATA = 'context_data'
     
     PROCESS_ID = 'process_id'
     STATE = 'state'

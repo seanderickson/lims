@@ -81,7 +81,7 @@ from reports import ValidationError, InformationError, _now
     
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
-    API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_RESULT_DATA, \
+    API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_SUCCESS, API_RESULT_DATA, \
     API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
     DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
     background_job
@@ -766,8 +766,9 @@ class PlateLocationResource(DbApiResource):
             raise Exception('schema not initialized')
         deserialized = kwargs.pop('data', None)
         # allow for internal data to be passed
+        deserialize_meta = None
         if deserialized is None:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
@@ -816,14 +817,11 @@ class PlateLocationResource(DbApiResource):
                 API_MSG_COMMENTS: log.comment
             }
         }
-        if not self._meta.always_return_data:
-            return self.build_response(
-                request, {API_RESULT_META: meta }, response_class=HttpResponse, 
-                **kwargs)
-        else:
-            return self.build_response(
-                request,  {API_RESULT_META: meta }, response_class=HttpResponse, 
-                **kwargs)
+        if deserialize_meta:
+            meta.update(deserialize_meta)
+        return self.build_response(
+            request,  {API_RESULT_META: meta }, response_class=HttpResponse, 
+            **kwargs)
             
     @write_authorization
     @transaction.atomic
@@ -3932,6 +3930,7 @@ class ScreenResultResource(DbApiResource):
     @read_authorization
     def get_list(self, request, **kwargs):
         logger.info('get_list: %r', kwargs)
+#         raise InformationError('just some test error')
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
         
@@ -5097,12 +5096,14 @@ class ScreenResultResource(DbApiResource):
     @transaction.atomic       
     def patch_detail(self, request, **kwargs):
         
+#         raise InformationError('just some test error')
         if 'screen_facility_id' not in kwargs:
             raise BadRequest('screen_facility_id is required')
         screen_facility_id = kwargs['screen_facility_id']
         screen = Screen.objects.get(facility_id=screen_facility_id)
 
-        data = self.deserialize(request)
+        data, deserialize_meta = self.deserialize(request)
+        logger.info('data: %r', data)
         meta = data[API_RESULT_META]
         columns = data['fields']
         result_values = data[API_RESULT_DATA]
@@ -5113,22 +5114,22 @@ class ScreenResultResource(DbApiResource):
                 'screen_facility_id in file %r does not match url: %r'
                 % (meta['screen_facility_id'], screen_facility_id))
         
-        self.create_screen_result(request, screen, columns, result_values)
+        screen_result_meta = \
+            self.create_screen_result(request, screen, columns, result_values)
              
-        if not self._meta.always_return_data:
-            response_message = {
-                'success': {
-                    API_MSG_RESULT: 'screen result loaded' }
-                }
-            response = self.build_response(request, response_message, **kwargs)
-            response['Content-Disposition'] = (
-                'attachment; filename=screen_result_loading_success-%s.xlsx' 
-                % screen_facility_id )
-            return response
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response 
+        meta = {
+            API_MSG_RESULT: API_MSG_SUCCESS
+        }
+        meta.update(screen_result_meta)
+        if deserialize_meta:
+            meta.update(deserialize_meta)
+        
+        response = self.build_response(request, meta, **kwargs)
+        response.status_code = 200
+        response['Content-Disposition'] = (
+            'attachment; filename=screen_result_loading_success-%s.xlsx' 
+            % screen_facility_id )
+        return response
     
     def create_screen_result(self, request, screen, columns, result_values, **kwargs):
         '''
@@ -5143,7 +5144,8 @@ class ScreenResultResource(DbApiResource):
         self.clear_cache(request, all=True)
         
         id_attribute = schema['id_attribute']
-
+        meta = { 'columns': len(columns) }
+        
         try:
             adminuser = ScreensaverUser.objects.get(username=request.user.username)
         except ObjectDoesNotExist as e:
@@ -5177,6 +5179,7 @@ class ScreenResultResource(DbApiResource):
                 }
                 screen_result.date_loaded = screen_log.date_time
                 screen_result.created_by = adminuser
+                meta[API_MSG_ACTION] = 'replaced'
             else:
                 screen_result = ScreenResult.objects.create(
                     screen=screen,
@@ -5187,6 +5190,7 @@ class ScreenResultResource(DbApiResource):
                 screen_log.diffs = {
                     'last_data_loading_date': [None, screen_log.date_time] }
                 logger.info('created screen result: %r', screen_result)
+                meta[API_MSG_ACTION] = 'created'
             
             screen_log.save()
             screenresult_log.parent_log = screen_log
@@ -5219,7 +5223,8 @@ class ScreenResultResource(DbApiResource):
                         derived_from_columns_map[sheet_column] = \
                             derived_from_columns
                 except ValidationError, e:
-                    errors.update({ sheet_column: e.errors }) 
+                    errors.update({ sheet_column: e.errors })
+            meta['derived_columns'] = len(derived_from_columns_map)
             logger.info(
                 'create derived_from_columns: %r',derived_from_columns_map)
             logger.debug(
@@ -5251,9 +5256,10 @@ class ScreenResultResource(DbApiResource):
             logger.debug(
                 'sheet_col_to_datacolumn: %r', sheet_col_to_datacolumn.keys())
             try:
-                self.create_result_values(
+                result_meta = self.create_result_values(
                     screen_result, result_values, sheet_col_to_datacolumn,
                     screenresult_log)
+                meta.update(result_meta)
             except ValidationError, e:
                 logger.exception('Validation error: %r', e)
                 raise e
@@ -5272,6 +5278,8 @@ class ScreenResultResource(DbApiResource):
             'channel_count': [None,screen_result.channel_count],
         })
         screenresult_log.save()
+        meta['experimental_well_count'] = screen_result.experimental_well_count
+        
         
         if screen.study_type is None:
             logger.info('pre-generate the mutual positives index...')
@@ -5279,6 +5287,7 @@ class ScreenResultResource(DbApiResource):
             logger.info('done - pre-generate the mutual positives index')
         else:
             logger.info('screen is a study, do not pre-generate mutual positives index')
+        return meta
     
     def create_result_value(
             self, colname, value, dc, well, initializer_dict, 
@@ -5418,6 +5427,7 @@ class ScreenResultResource(DbApiResource):
             'confirmed_positive_value','assay_well_control_type',
         ]
         meta_columns = ['well_id', 'assay_well_control_type', 'exclude']
+        meta = {}
         
         with SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as f,\
             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as assay_well_file:
@@ -5525,7 +5535,9 @@ class ScreenResultResource(DbApiResource):
 
             logger.info('result_values: rows: %d, result_values to create: %d',
                 rows_created, rvs_to_create)
-
+            meta['assay_wells'] = rows_created
+            meta['result_values'] = rvs_to_create
+            
             logger.info(
                 'use copy_from to create %d assay_wells...', rows_created)
             assay_well_file.seek(0)
@@ -5568,78 +5580,79 @@ class ScreenResultResource(DbApiResource):
         #     screen_result.screen.max_data_loaded_replicate_count)
         
         logger.info('create_result_values - done.')
-
-    # REMOVED - find or create assay plates for screenresult load wells
-    # This is removed because the only reason for creating these "assay_plates"
-    # is to find the min/max replicates loaded for assay plates with data loaded.
-    # NOTE 1: This stat could be calculated during load time instead - see: 
-    # "plates_max_replicate_loaded" tracking hash in screen_result load process
-    # NOTE 2: Per discussion, this stat will be dropped in SS2 - 201612, per
-    # discussion with JenS   
-    # def find_or_create_assay_plates_data_loaded(self,screen_result):
-    # 
-    #     # FIXME: create stats needed without creating assay_plates
-    #     
-    #     # Create assay plates if the don't exist
-    #     # SS1 strategy:
-    #     # see ScreenResult.findOrCreateAssayPlatesDataLoaded(plate_number, replicates_loaded)
-    #     # a. find the max replicate for each plate in the result_values
-    #     # 1. find most recent library screening for that plate
-    #     # 2. find the assay plates (all replicates) for only that library screening
-    #     # 3. if assay plate count < max replicate screened for that plate, then create ap's
-    #     # 3.a in this case create the assay plates sans copy information
-    #     # 4. re-run the stat to determine how many assay plates have data loaded:
-    #     # - ap.replicate_ordinal in distinct(data_column.replicate_ordinal) for dc join assay_wells  
-    #     
-    #     sql = (
-    #         'with replicates_plate_loaded as ( '
-    #         'select plate_number, max(replicate_ordinal) plate_max '
-    #         '  from screen  '
-    #         '  join screen_result sr using(screen_id) '
-    #         '  join data_column dc using(screen_result_id)'
-    #         '  join result_value using(data_column_id)'
-    #         '  join well using(well_id)'
-    #         '  where screen.facility_id = %(facility_id)s '
-    #         '  group by well.plate_number order by well.plate_number),'
-    #         'replicates_assay_plate_screened as ( '
-    #         'select plate_number, count(*) '
-    #         '  from assay_plate ap '
-    #         '  join library_screening ls on(ap.library_screening_id=ls.activity_id) ' 
-    #         '  join screen using(screen_id) '
-    #         '  where screen.facility_id = %(facility_id)s '
-    #         '  group by plate_number order by plate_number )'
-    #         'select '
-    #         'rp.plate_number, '
-    #         'rp.plate_max, '
-    #         'rps.count '
-    #         'from replicates_plate_loaded rp '
-    #         'left join replicates_assay_plate_screened rps using(plate_number) '
-    #         'where rp.plate_max > rps.count or rps.count is null; '
-    #         )
-    #     conn = self.bridge.get_engine().connect()
-    #     result_proxy = conn.execute(
-    #         sql, { 'facility_id': screen_result.screen.facility_id })
-    #     
-    #     assay_plates_created = []
-    #     for (plate_number, replicates_needed, replicates_extant ) in result_proxy:
-    #         if not replicates_extant:
-    #             replicates_extant = 0
-    #         replicates_to_create = (replicates_needed-replicates_extant)
-    #         logger.info('plate_number: %r, replicates_to_create: %d', 
-    #             plate_number, replicates_to_create)
-    #         for i in range(replicates_extant, replicates_extant+replicates_needed):
-    #             assay_plates_created.append(
-    #                 AssayPlate.objects.create(
-    #                     screen=screen_result.screen,
-    #                     plate_number=plate_number,
-    #                     replicate_ordinal=(i)))
-    #     
-    #     logger.info('TODO: create user message: created assay plates: %d, %r', 
-    #         len(assay_plates_created), 
-    #         [ap.plate_number for ap in assay_plates_created])
-    #     
-    #     # step two: set the new 'is_loaded' flag for all assay plates loaded 
-    #     # in this screen result
+        return meta
+        
+        # REMOVED - find or create assay plates for screenresult load wells
+        # This is removed because the only reason for creating these "assay_plates"
+        # is to find the min/max replicates loaded for assay plates with data loaded.
+        # NOTE 1: This stat could be calculated during load time instead - see: 
+        # "plates_max_replicate_loaded" tracking hash in screen_result load process
+        # NOTE 2: Per discussion, this stat will be dropped in SS2 - 201612, per
+        # discussion with JenS   
+        # def find_or_create_assay_plates_data_loaded(self,screen_result):
+        # 
+        # # FIXME: create stats needed without creating assay_plates
+        #  
+        # # Create assay plates if the don't exist
+        # # SS1 strategy:
+        # # see ScreenResult.findOrCreateAssayPlatesDataLoaded(plate_number, replicates_loaded)
+        # # a. find the max replicate for each plate in the result_values
+        # # 1. find most recent library screening for that plate
+        # # 2. find the assay plates (all replicates) for only that library screening
+        # # 3. if assay plate count < max replicate screened for that plate, then create ap's
+        # # 3.a in this case create the assay plates sans copy information
+        # # 4. re-run the stat to determine how many assay plates have data loaded:
+        # # - ap.replicate_ordinal in distinct(data_column.replicate_ordinal) for dc join assay_wells  
+        #  
+        # sql = (
+        #     'with replicates_plate_loaded as ( '
+        #     'select plate_number, max(replicate_ordinal) plate_max '
+        #     '  from screen  '
+        #     '  join screen_result sr using(screen_id) '
+        #     '  join data_column dc using(screen_result_id)'
+        #     '  join result_value using(data_column_id)'
+        #     '  join well using(well_id)'
+        #     '  where screen.facility_id = %(facility_id)s '
+        #     '  group by well.plate_number order by well.plate_number),'
+        #     'replicates_assay_plate_screened as ( '
+        #     'select plate_number, count(*) '
+        #     '  from assay_plate ap '
+        #     '  join library_screening ls on(ap.library_screening_id=ls.activity_id) ' 
+        #     '  join screen using(screen_id) '
+        #     '  where screen.facility_id = %(facility_id)s '
+        #     '  group by plate_number order by plate_number )'
+        #     'select '
+        #     'rp.plate_number, '
+        #     'rp.plate_max, '
+        #     'rps.count '
+        #     'from replicates_plate_loaded rp '
+        #     'left join replicates_assay_plate_screened rps using(plate_number) '
+        #     'where rp.plate_max > rps.count or rps.count is null; '
+        #     )
+        # conn = self.bridge.get_engine().connect()
+        # result_proxy = conn.execute(
+        #     sql, { 'facility_id': screen_result.screen.facility_id })
+        #  
+        # assay_plates_created = []
+        # for (plate_number, replicates_needed, replicates_extant ) in result_proxy:
+        #     if not replicates_extant:
+        #         replicates_extant = 0
+        #     replicates_to_create = (replicates_needed-replicates_extant)
+        #     logger.info('plate_number: %r, replicates_to_create: %d', 
+        #         plate_number, replicates_to_create)
+        #     for i in range(replicates_extant, replicates_extant+replicates_needed):
+        #         assay_plates_created.append(
+        #             AssayPlate.objects.create(
+        #                 screen=screen_result.screen,
+        #                 plate_number=plate_number,
+        #                 replicate_ordinal=(i)))
+        #  
+        # logger.info('TODO: create user message: created assay plates: %d, %r', 
+        #     len(assay_plates_created), 
+        #     [ap.plate_number for ap in assay_plates_created])
+        #  
+        # # step two: set the new 'is_loaded' flag for all assay plates loaded 
+        # # in this screen result
         
 
     @transaction.atomic
@@ -7800,8 +7813,9 @@ class CherryPickRequestResource(DbApiResource):
             raise Exception('schema not initialized')
         deserialized = kwargs.pop('data', None)
         # allow for internal data to be passed
+        deserialize_meta = None
         if deserialized is None:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         
         if API_RESULT_DATA in deserialized:
@@ -7852,6 +7866,9 @@ class CherryPickRequestResource(DbApiResource):
         meta = {}
         if API_RESULT_META in patch_response:
             meta = patch_response[API_RESULT_META]
+        if deserialize_meta:
+            meta.update(deserialize_meta)
+        
         return self.build_response(
             request,  { API_RESULT_META: meta }, 
             response_class=HttpResponse, **kwargs)
@@ -9104,7 +9121,7 @@ class ScreenerCherryPickResource(DbApiResource):
                 API_MSG_LCPS_MUST_BE_DELETED: cpr.lab_cherry_picks.count()
             })
             
-        deserialized = self.deserialize(request)
+        deserialized, deserialize_meta = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
@@ -9287,6 +9304,8 @@ class ScreenerCherryPickResource(DbApiResource):
             original_cpr_data['screener_cherry_pick_count'],
             new_cpr_data['screener_cherry_pick_count']]
         log.save()
+        if deserialize_meta:
+            result_message.update(deserialize_meta)
         
         _data = { API_RESULT_META: result_message }
         return self.build_response(
@@ -9720,7 +9739,7 @@ class LabCherryPickResource(DbApiResource):
         #             'includes': '*'
         #         })
          
-        deserialized = self.deserialize(request)
+        deserialized, deserialize_meta = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
         
@@ -10003,6 +10022,8 @@ class LabCherryPickResource(DbApiResource):
         }
         if result_meta_allocate:
             _meta.update(result_meta_allocate)
+        if deserialize_meta:
+            _meta.update(deserialize_meta)
         
         logger.info('result_meta: %r', _meta)
         
@@ -10930,7 +10951,7 @@ class CherryPickPlateResource(DbApiResource):
         logger.info(
             'patch_list: cpr: %r, screen: %r...', cpr, cpr.screen.facility_id)
          
-        deserialized = self.deserialize(request)
+        deserialized,deserialize_meta = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
         logger.debug('patch cpaps: %r', deserialized)
@@ -11117,6 +11138,8 @@ class CherryPickPlateResource(DbApiResource):
         if screened_changed_count > 0:
             meta[API_MSG_CPR_PLATES_SCREENED] = screened_changed_count
 
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         parent_log.json_field = meta
         parent_log.save()
         
@@ -15802,7 +15825,7 @@ class RawDataTransformerResource(DbApiResource):
             rdt.save()
             logger.info('wrote temp file: %r', temp_file.name)
         
-        _meta[API_MSG_RESULT] = 'success'
+        _meta[API_MSG_RESULT] = API_MSG_SUCCESS
         
         return self.build_response(
             request, {API_RESULT_META: _meta }, response_class=HttpResponse, **kwargs)
@@ -17591,11 +17614,12 @@ class ScreenResource(DbApiResource):
         - The LIMS client will use POST to create exclusively
         '''
         logger.info('post_detail, screen')
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
@@ -17640,7 +17664,7 @@ class ScreenResource(DbApiResource):
             logger.info('test_only flag: %r', param_hash.get('test_only'))    
             raise InformationError(
                 'successful post, "test_only" flag is set, rollback...')
-        
+        # FIXME: deserialize_meta is not used
         return self.patch_detail(request,**kwargs)
 
     @write_authorization
@@ -17959,11 +17983,12 @@ class StudyResource(ScreenResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized,deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         if 'facility_id' not in deserialized:
             raise ValidationError(key='facility_id', msg='required')
@@ -18069,19 +18094,24 @@ class StudyResource(ScreenResource):
                         'F': _dict['screened_count'],
                     }
             logger.info('creating study values for: %r', study_obj)
-            self.get_screenresult_resource().create_screen_result(
-                request, study_obj, result_columns, 
-                result_value_generator(result))
+            screen_result_meta = \
+                self.get_screenresult_resource().create_screen_result(
+                    request, study_obj, result_columns, 
+                    result_value_generator(result))
             logger.info('study values created for: %r', study_obj)
         
+        meta = {
+            API_MSG_RESULT: API_MSG_SUCCESS
+        }
+        meta.update(screen_result_meta)
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         if not self._meta.always_return_data:
-            response_message = {'success': {
-                API_MSG_RESULT: 'screen result loaded'}}
-            response = self.build_response(request, response_message, **kwargs)
+            response = self.build_response(request, { API_RESULT_META: meta }, **kwargs)
             return response
         else:
             new_data = self._get_detail_response_internal(facility_id=facility_id)
-            data = { API_RESULT_DATA: [new_data]}
+            data = { API_RESULT_META: meta, API_RESULT_DATA: [new_data]}
             response = self.build_response(request, data, status_code=201)
             return response 
 
@@ -18106,11 +18136,12 @@ class StudyResource(ScreenResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         if 'facility_id' not in deserialized:
             raise ValidationError(key='facility_id', msg='required')
@@ -18282,19 +18313,24 @@ class StudyResource(ScreenResource):
                             output[letter] = _dict[assay_type_col_name]
                     yield output
             logger.info('creating study values for: %r', study_obj)
-            self.get_screenresult_resource().create_screen_result(
-                request, study_obj, result_columns, 
-                result_value_generator(result))
+            screen_result_meta = \
+                self.get_screenresult_resource().create_screen_result(
+                    request, study_obj, result_columns, 
+                    result_value_generator(result))
             logger.info('study values created for: %r', study_obj)
+        meta = {
+            API_MSG_RESULT: API_MSG_SUCCESS
+        }
+        meta.update(screen_result_meta)
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         
         if not self._meta.always_return_data:
-            response_message = {'success': {
-                API_MSG_RESULT: 'screen result loaded'}}
-            response = self.build_response(request, response_message, **kwargs)
+            response = self.build_response(request, {API_RESULT_META: meta }, **kwargs)
             return response
         else:
             new_data = self._get_detail_response_internal(facility_id=facility_id)
-            data = { API_RESULT_DATA: [new_data]}
+            data = { API_RESULT_META: meta, API_RESULT_DATA: [new_data]}
             response = self.build_response(request, data, status_code=201)
             return response 
 
@@ -18324,11 +18360,12 @@ class StudyResource(ScreenResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized,deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         if 'facility_id' not in deserialized:
             raise ValidationError(key='facility_id', msg='required')
@@ -18490,19 +18527,24 @@ class StudyResource(ScreenResource):
                         current_pool_well, screens, screen_confirmed_positives)
 
             logger.info('creating study values for: %r', study_obj)
-            self.get_screenresult_resource().create_screen_result(
-                request, study_obj, result_columns, 
-                result_value_generator(result))
+            screen_result_meta = \
+                self.get_screenresult_resource().create_screen_result(
+                    request, study_obj, result_columns, 
+                    result_value_generator(result))
             logger.info('study values created for: %r', study_obj)
         
+        meta = {
+            API_MSG_RESULT: API_MSG_SUCCESS
+        }
+        meta.update(screen_result_meta)
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         if not self._meta.always_return_data:
-            response_message = {'success': {
-                API_MSG_RESULT: 'screen result loaded'}}
-            response = self.build_response(request, response_message, **kwargs)
+            response = self.build_response(request, {API_RESULT_META: meta }, **kwargs)
             return response
         else:
             new_data = self._get_detail_response_internal(facility_id=facility_id)
-            data = { API_RESULT_DATA: [new_data]}
+            data = { API_RESULT_META: meta, API_RESULT_DATA: [new_data]}
             response = self.build_response(request, data, status_code=201)
             return response 
 
@@ -18515,11 +18557,12 @@ class StudyResource(ScreenResource):
         - The LIMS client will use POST to create exclusively
         '''
         logger.info('post_detail, study')
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs['data']
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
@@ -18541,17 +18584,17 @@ class StudyResource(ScreenResource):
         PATCH is used to create or update a resource; not idempotent
         '''
         
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         data_sharing_level = deserialized.get('data_sharing_level', None)
         if data_sharing_level is None:
             deserialized['data_sharing_level'] = 0
         _data = self.build_patch_detail(request, deserialized, **kwargs)
-
         return self.build_response(
             request, _data, response_class=HttpResponse, **kwargs)
 
@@ -19701,11 +19744,12 @@ class ScreensaverUserResource(DbApiResource):
         Special POST to allow for screensaver_user_id generation
         '''
         logger.info('post_detail, screensaveruser')
+        deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
             deserialized = kwargs.pop('data')
         else:
-            deserialized = self.deserialize(
+            deserialized, deserialize_meta = self.deserialize(
                 request, format=kwargs.get('format', None))
         schema = kwargs.pop('schema', None)
         if not schema:
@@ -21605,7 +21649,7 @@ class WellResource(DbApiResource):
         logger.info(
             'patch_list: WellResource: library: %r...', library.short_name)
          
-        deserialized = self.deserialize(request)
+        deserialized, deserialize_meta = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
@@ -21783,6 +21827,9 @@ class WellResource(DbApiResource):
                 API_MSG_COMMENTS: library_log.comment
             }
         }
+        if deserialize_meta:
+            meta.update(deserialize_meta)
+        
         if not self._meta.always_return_data:
             return self.build_response(
                 request, {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)

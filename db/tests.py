@@ -43,7 +43,7 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED, \
     API_MSG_LCPS_MUST_BE_DELETED, API_MSG_CPR_PLATES_PLATED, \
     API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED, \
-    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, \
+    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, API_MSG_SUCCESS, \
     API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
@@ -11612,7 +11612,7 @@ class RawDataTransformer(DBResourceTestCase):
         
             logger.info('response: %r', post_response )
             
-            self.assertEqual(post_response[API_RESULT_META][API_MSG_RESULT],'success')
+            self.assertEqual(post_response[API_RESULT_META][API_MSG_RESULT],API_MSG_SUCCESS)
             
         download_url = '/db/screen_raw_data_transform/' + test_screen['facility_id']
 

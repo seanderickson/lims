@@ -144,6 +144,7 @@ class Migration(migrations.Migration):
                 ('http_accept', models.TextField()),
                 ('params', models.TextField()),
                 ('comment', models.TextField(null=True)),
+                ('context_data', models.TextField(null=True)),
                 ('process_id', models.TextField(null=True)),
                 ('state', models.TextField(default=b'pending', 
                     choices=[

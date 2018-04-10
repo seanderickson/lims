@@ -49,7 +49,8 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.debug('decorator un_cache: %s, %s', self, _func )
+        logger.info('decorator un_cache: %r, %r, %r', 
+            self, _func,args )
         self.clear_cache(None, **kwargs)
         self.set_caching(False)
         result = _func(self, *args, **kwargs)
@@ -58,6 +59,7 @@ def un_cache(_func):
         return result
 
     return _inner
+
 
 class Authorization(object):
     pass
@@ -237,59 +239,24 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         
         return response
 
-    def wrap_view(self, view):
-        """
-        Override the tastypie implementation to handle our own ValidationErrors.
-        """
-
-        @csrf_exempt
-        def wrapper(request, *args, **kwargs):
-            DEBUG_WRAPPER = True
-            response = None
-            try:
-                callback = getattr(self, view)
-                if DEBUG_WRAPPER:
-                    msg = ()
-                    if kwargs:
-                        msg = [ (key,str(kwargs[key])[:100]) 
-                            for key in kwargs.keys() ]
-                    logger.info(
-                        'wrap_view: %r, method: %r, user: %r, request: %r, '
-                        'kwargs: %r', 
-                        view, request.method, request.user, request, msg)
-                else:
-                    logger.info('wrap_view: %r, %r', view, request)
-
-                self.is_authenticated(request)
+    def exception_handler(self,_func):
+        '''
+        Exception handler wrapper for IccblBaseResource classes
+        '''
         
-                response = callback(request, *args, **kwargs)
-                # Our response can vary based on a number of factors, use
-                # the cache class to determine what we should ``Vary`` on so
-                # caches won't return the wrong (cached) version.
-                varies = getattr(self._meta.cache, "varies", [])
-
-                if varies:
-                    patch_vary_headers(response, varies)
-
-                if self._meta.cache.cacheable(request, response):
-                    if self._meta.cache.cache_control():
-                        # If the request is cacheable and we have a
-                        # ``Cache-Control`` available then patch the header.
-                        patch_cache_control(
-                            response, **self._meta.cache.cache_control())
-
-                if request.is_ajax() \
-                    and not response.has_header("Cache-Control"):
-                    # IE excessively caches XMLHttpRequests, so we're disabling
-                    # the browser cache here.
-                    # See http://www.enhanceie.com/ie/bugs.asp for details.
-                    patch_cache_control(response, no_cache=True)
-
+        @wraps(_func)
+        def _inner(self, *args, **kwargs):
+            logger.debug('self: %r, func: %r, args: %r, kwargs: %r', 
+                self, _func, args, kwargs)
+            
+            request = args[0]
+            try:
+                response = _func(*args, **kwargs)
+            
             except BackgroundJobImmediateResponse as e:
                 logger.info('BackgroundJobImmediateResponse returned: %r', 
                     e.httpresponse)
-                return e.httpresponse
-            
+                response = e.httpresponse
             except BadRequest as e:
                 # The message is the first/only arg
                 logger.exception('Bad request exception: %r', e)
@@ -323,15 +290,17 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     'Permission Denied: ': '%r'%e }
                 response = self.build_error_response(
                     request, data, response_class=HttpResponseForbidden, **kwargs)
-
+    
             except ObjectDoesNotExist as e:
                 logger.info('not found: %r', e)
                 response = self.build_error_response(
-                    request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
+                    request, { 'msg': '%r' % e }, 
+                    response_class=HttpResponseNotFound, **kwargs)
             except Http404 as e:
                 logger.info('not found: %r', e)
                 response = self.build_error_response(
-                    request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
+                    request, { 'msg': '%r' % e }, 
+                    response_class=HttpResponseNotFound, **kwargs)
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):
@@ -343,8 +312,10 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     # A real, non-expected exception.
                     # Handle the case where the full traceback is more helpful
                     # than the serialized error.
-                    if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-                        logger.warn('raise tastypie full exception for %r', e)
+                    if settings.DEBUG \
+                        and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+                        
+                        logger.warn('raise full exception for %r', e)
                         raise
     
                     # Rather than re-raising, we're going to things similar to
@@ -352,7 +323,62 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     # error message.
                     logger.exception('handle 500 error %r...', str(e))
                     response = self._handle_500(request, e)
+            
+            return response
+        return _inner
 
+    
+    
+    def wrap_view(self, view):
+        """
+        Override the tastypie implementation to handle our own ValidationErrors.
+        """
+
+        # NOTE: csrf enforced when SessionAuthentication is used    
+        @csrf_exempt
+        def wrapper(request, *args, **kwargs):
+            DEBUG_WRAPPER = True
+            response = None
+            callback = getattr(self, view)
+            if DEBUG_WRAPPER:
+                msg = ()
+                if kwargs:
+                    msg = [ (key,str(kwargs[key])[:100]) 
+                        for key in kwargs.keys() ]
+                logger.info(
+                    'wrap_view: %r, method: %r, user: %r, request: %r, '
+                    'kwargs: %r', 
+                    view, request.method, request.user, request, msg)
+            else:
+                logger.info('wrap_view: %r, %r', view, request)
+            
+            self.is_authenticated(request)
+
+            response = self.exception_handler(callback)(self,request, *args, **kwargs)
+            # From Tastypie:
+            # Our response can vary based on a number of factors, use
+            # the cache class to determine what we should ``Vary`` on so
+            # caches won't return the wrong (cached) version.
+            varies = getattr(self._meta.cache, "varies", [])
+ 
+            if varies:
+                patch_vary_headers(response, varies)
+ 
+            if self._meta.cache.cacheable(request, response):
+                if self._meta.cache.cache_control():
+                    # If the request is cacheable and we have a
+                    # ``Cache-Control`` available then patch the header.
+                    patch_cache_control(
+                        response, **self._meta.cache.cache_control())
+ 
+            if request.is_ajax() \
+                and not response.has_header("Cache-Control"):
+                # IE excessively caches XMLHttpRequests, so we're disabling
+                # the browser cache here.
+                # See http://www.enhanceie.com/ie/bugs.asp for details.
+                patch_cache_control(response, no_cache=True)
+             
+             
             # Custom ICCB parameter: set cookie to tell the browser javascript
             # UI that the download request is finished
             downloadID = request.GET.get('downloadID', None)
@@ -361,10 +387,135 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 response.set_cookie('downloadID', downloadID)
             else:
                 logger.debug('no downloadID: %s' % request.GET )
-            
+             
             return response
-
         return wrapper
+    
+        # NOTE: csrf enforced when SessionAuthentication is used    
+
+#         @csrf_exempt
+#         def wrapper(request, *args, **kwargs):
+#             DEBUG_WRAPPER = True
+#             response = None
+#             try:
+#                 callback = getattr(self, view)
+#                 if DEBUG_WRAPPER:
+#                     msg = ()
+#                     if kwargs:
+#                         msg = [ (key,str(kwargs[key])[:100]) 
+#                             for key in kwargs.keys() ]
+#                     logger.info(
+#                         'wrap_view: %r, method: %r, user: %r, request: %r, '
+#                         'kwargs: %r', 
+#                         view, request.method, request.user, request, msg)
+#                 else:
+#                     logger.info('wrap_view: %r, %r', view, request)
+#  
+#                 self.is_authenticated(request)
+#
+#                 response = callback(request, *args, **kwargs)
+#                 # Our response can vary based on a number of factors, use
+#                 # the cache class to determine what we should ``Vary`` on so
+#                 # caches won't return the wrong (cached) version.
+#                 varies = getattr(self._meta.cache, "varies", [])
+#  
+#                 if varies:
+#                     patch_vary_headers(response, varies)
+#  
+#                 if self._meta.cache.cacheable(request, response):
+#                     if self._meta.cache.cache_control():
+#                         # If the request is cacheable and we have a
+#                         # ``Cache-Control`` available then patch the header.
+#                         patch_cache_control(
+#                             response, **self._meta.cache.cache_control())
+#  
+#                 if request.is_ajax() \
+#                     and not response.has_header("Cache-Control"):
+#                     # IE excessively caches XMLHttpRequests, so we're disabling
+#                     # the browser cache here.
+#                     # See http://www.enhanceie.com/ie/bugs.asp for details.
+#                     patch_cache_control(response, no_cache=True)
+#  
+#             except BackgroundJobImmediateResponse as e:
+#                 logger.info('BackgroundJobImmediateResponse returned: %r', 
+#                     e.httpresponse)
+#                 return e.httpresponse
+#              
+#             except BadRequest as e:
+#                 # The message is the first/only arg
+#                 logger.exception('Bad request exception: %r', e)
+#                 data = {
+#                     "error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
+#                 response = self.build_error_response(request, data, **kwargs)
+#             except InformationError as e:
+#                 logger.exception('Information error: %r', e)
+#                 response = self.build_error_response(
+#                     request, e.errors, **kwargs)
+#                 if 'xls' in response['Content-Type']:
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+#             except ValidationError as e:
+#                 logger.exception('Validation error: %r', e)
+#                 response = self.build_error_response(
+#                     request, { API_RESULT_ERROR: e.errors }, **kwargs)
+#                 if 'xls' in response['Content-Type']:
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+#             except django.core.exceptions.ValidationError as e:
+#                 logger.exception('Django validation error: %s', e)
+#                 response = self.build_error_response(
+#                     request, { API_RESULT_ERROR: e.message_dict }, **kwargs)
+#                 if 'xls' in response['Content-Type']:
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+#             except PermissionDenied as e:
+#                 logger.info('PermissionDenied ex: %r', e)
+#                 data = {
+#                     'Permission Denied: ': '%r'%e }
+#                 response = self.build_error_response(
+#                     request, data, response_class=HttpResponseForbidden, **kwargs)
+#  
+#             except ObjectDoesNotExist as e:
+#                 logger.info('not found: %r', e)
+#                 response = self.build_error_response(
+#                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
+#             except Http404 as e:
+#                 logger.info('not found: %r', e)
+#                 response = self.build_error_response(
+#                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
+#             except Exception as e:
+#                 logger.exception('Unhandled exception: %r', e)
+#                 if hasattr(e, 'response'):
+#                     # A specific response was specified
+#                     response = e.response
+#                 else:
+#                     logger.exception('Unhandled exception: %r', e)
+#      
+#                     # A real, non-expected exception.
+#                     # Handle the case where the full traceback is more helpful
+#                     # than the serialized error.
+#                     if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+#                         logger.warn('raise full exception for %r', e)
+#                         raise
+#      
+#                     # Rather than re-raising, we're going to things similar to
+#                     # what Django does. The difference is returning a serialized
+#                     # error message.
+#                     logger.exception('handle 500 error %r...', str(e))
+#                     response = self._handle_500(request, e)
+#  
+#             # Custom ICCB parameter: set cookie to tell the browser javascript
+#             # UI that the download request is finished
+#             downloadID = request.GET.get('downloadID', None)
+#             if downloadID:
+#                 logger.info('set cookie "downloadID" %r', downloadID )
+#                 response.set_cookie('downloadID', downloadID)
+#             else:
+#                 logger.debug('no downloadID: %s' % request.GET )
+#              
+#             return response
+# 
+#         return wrapper
 
     def clear_cache(self, request, **kwargs):
         logger.info('clearing the cache from resource: %s' 
@@ -376,26 +527,36 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
     def deserialize(self, request, format=None):
         
+        # TODO: refactor to use delegate deserialize to the serializer class:
+        # - allow Resource classes to compose functionality vs. inheritance
+        
         if format is not None:
             content_type = self.get_serializer() \
                                .get_content_type_for_format(format)
         else:
             content_type = self.get_serializer().get_content_type(request)
-        logger.debug('deserialize for content_type: %r', content_type)
-        if content_type.startswith('multipart') and len(request.FILES) > 0:
+        logger.info('deserialize for content_type: %r', content_type)
+        if content_type.startswith('multipart'):
+            if not request.FILES:
+                logger.error('No "FILES" found with multipart content.')
+                raise BadRequest(
+                    'No "FILES" found with multipart content: %r', content_type)
                 
-            logger.debug('request.Files.keys: %r', request.FILES.keys())
-            # process *only* one attached file
+            logger.info('request.Files.keys: %r', request.FILES.keys())
+            
+            # NOTE: may process *only* one attached file per upload
             if len(request.FILES.keys()) != 1:
                 raise BadRequest({ 
                     'FILES': 'File upload supports only one file at a time',
                     'filenames': request.FILES.keys(),
                 })
              
+            # FIXME: rework to use the multipart Content-Type here
             if 'sdf' in request.FILES:  
                 file = request.FILES['sdf']
                 return self.get_serializer().deserialize(
-                    file.read(), SDF_MIMETYPE)
+                    file.read(), SDF_MIMETYPE), {
+                        'filename': file.name }
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
                 
@@ -403,7 +564,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 list_keys = [x for x,y in schema['fields'].items() 
                     if y.get('data_type') == 'list']
                 return self.get_serializer().deserialize(
-                    file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys})
+                    file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys}), {
+                        'filename': file.name }
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
 
@@ -412,7 +574,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     if y.get('data_type') == 'list']
                 
                 return self.get_serializer().deserialize(
-                    file.read(), CSV_MIMETYPE, **{ 'list_keys': list_keys})
+                    file.read(), CSV_MIMETYPE, **{ 'list_keys': list_keys}), { 
+                        'filename': file.name }
             else:
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
@@ -427,9 +590,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if y.get('data_type') == 'list']
             return self.get_serializer().deserialize(
                 request.body,content_type,
-                **{ 'list_keys': list_keys})
+                **{ 'list_keys': list_keys}), None
         else:
-            return self.get_serializer().deserialize(request.body,content_type)
+            return self.get_serializer().deserialize(request.body,content_type), None
             
     def serialize(self, data, content_type):
         logger.debug('serialize to: %r', content_type)

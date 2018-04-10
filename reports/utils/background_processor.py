@@ -26,8 +26,12 @@ logger = logging.getLogger(__name__)
 
 JOB = SCHEMA.JOB
 
+DEBUG_BACKGROUND = True or logger.isEnabledFor(logging.DEBUG)
+
 def create_request_from_job(job_data, user, raw_data=''):
-    logger.info('create request from job: %r', job_data)
+    if DEBUG_BACKGROUND is True:
+        logger.info('create_request_from_job: %r', job_data)
+    
     request_factory = RequestFactory()
     
     path = job_data[JOB.URI]
@@ -45,6 +49,8 @@ def create_request_from_job(job_data, user, raw_data=''):
         params = {}
     
     if raw_data:
+        if DEBUG_BACKGROUND is True:
+            logger.info('add raw data: %d', len(raw_data))
         if MULTIPART_MIMETYPE not in content_type:
             msg = 'content type must contain %r for raw data post: found: %r'\
                  % (MULTIPART_MIMETYPE, content_type)
@@ -54,10 +60,19 @@ def create_request_from_job(job_data, user, raw_data=''):
             errmsg = 'method %r is not %r, required for raw data post' % (
                 method, 'POST')
             raise ValidationError(key=JOB.METHOD, msg=errmsg)
-    
+    else:
+        if DEBUG_BACKGROUND is True:
+            logger.info('no raw data to add')
+        
+    if DEBUG_BACKGROUND is True:
+        logger.info('create_request_from_job content type: %r', content_type)
     request = request_factory.generic(
         method, path, data=raw_data, HTTP_ACCEPT=accept,
         content_type=content_type,**params )
+    
+    if DEBUG_BACKGROUND is True:
+        logger.info('create_request_from_job: META: %r', request.META )
+        logger.info('create_request_from_job: FILES: %r', request.FILES )
     
     request.user = user
     
@@ -82,7 +97,7 @@ def get_django_request_job_params(request):
     accept = request.META.get(DJANGO_ACCEPT_PARAM, '*/*')
     username = request.user.username
     comment = request.META.get(HEADER_APILOG_COMMENT, '')
-    
+    context_data = {}
     # Note: cookies are not stored -- yet 20180402
     
     # query_string
@@ -91,29 +106,29 @@ def get_django_request_job_params(request):
         for k,v in request.GET.items():
             query_params[k] = v
     
-    logger.info('user: %r, path: %r, method: %r, encoding: %r, '
-        'content_type: %r, accept: %r, params: %r',
-        username, path, method, encoding, content_type, 
-        accept, query_params)
+    if DEBUG_BACKGROUND is True:
+        logger.info('user: %r, path: %r, method: %r, encoding: %r, '
+            'content_type: %r, accept: %r, params: %r',
+            username, path, method, encoding, content_type, 
+            accept, query_params)
     
     post_data = {}
     if request.POST:
         if MULTIPART_MIMETYPE not in content_type:
             logger.warn('background processor POST data, content_type '
                 'does not contain %r, %r', MULTIPART_MIMETYPE, content_type)
-            
-#         content_type = MULTIPART_MIMETYPE
         for key,val in request.POST.items():
             logger.info('found post param: %r: %r', key, val)
             post_data[key] = val
     if request.FILES:
+        context_data['filenames'] = []
         if MULTIPART_MIMETYPE not in content_type:
             logger.warn('background processor POST data, content_type '
                 'does not contain %r, %r', MULTIPART_MIMETYPE, content_type)
-#         content_type = MULTIPART_MIMETYPE
         for key,_file in request.FILES.items():
-            logger.info('set post form file: %r', key)
+            logger.info('set post form file: %r, %r', key, _file)
             post_data[key] = _file
+            context_data['filenames'].append(_file.name)
 
     raw_post_data = None
     if post_data:
@@ -122,17 +137,6 @@ def get_django_request_job_params(request):
         # 'multipart/form-data; boundary=BoUnDaRyStRiNg'
         raw_post_data = django.test.client.encode_multipart(
             django.test.client.BOUNDARY, post_data)
-    #     raw_post_data = None   
-    #     if request._read_started and not hasattr(request, '_body'):
-    #         logger.info('request._read_started: %r but no body!!!', request._read_started) 
-    #     if hasattr(request, '_body'):
-    #         # Use already read data
-    #         raw_post_data = BytesIO(request._body)
-    #     else:
-    #         # trigger read of the body; note - this invalidates request for 
-    #         # further processing (Django flag is set, body may be a read-once
-    #         # stream
-    #         raw_post_data = request.body
 
     job_data = {
         JOB.USERNAME: username,
@@ -143,6 +147,7 @@ def get_django_request_job_params(request):
         JOB.HTTP_ACCEPT:  urllib.quote(accept),
         JOB.PARAMS: json.dumps(query_params),
         JOB.COMMENT: comment,
+        JOB.CONTEXT_DATA: json.dumps(context_data)
     }
     
     return job_data, raw_post_data

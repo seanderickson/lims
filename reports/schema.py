@@ -118,6 +118,7 @@ class JOB(schema_obj):
     CONTEXT_DATA = 'context_data'
     
     PROCESS_ID = 'process_id'
+    PROCESS_ENV = 'process_env'
     STATE = 'state'
     DATE_TIME_REQUESTED = 'date_time_requested'
     DATE_TIME_SUBMITTED = 'date_time_submitted'

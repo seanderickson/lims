@@ -141,7 +141,7 @@ define([
             }
           };
           var state = self.model.get('state');
-          if (_.contains(['pending', 'processing'], state)){
+          if (_.contains(['pending', 'submitted', 'processing'], state)){
             state += self.animated_ellipsis;
           }
           if (_.contains(['failed','completed'], state)){

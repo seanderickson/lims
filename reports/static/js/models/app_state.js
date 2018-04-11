@@ -203,7 +203,7 @@ define([
         data_for_fetch = {
           limit:0,
           username: currentUser.username,
-          'state__in': ['pending','processing'],
+          'state__in': ['pending','submitted', 'processing'],
 //          'id': 152 // testing
         };
         

@@ -592,12 +592,14 @@ class Job(models.Model):
     
     # user comment on post
     comment = models.TextField(null=True);
-    # Extra context data (filenames, etc.); JSON encoded
+    # Extra posted context data (filenames, etc.); JSON encoded
     context_data = models.TextField(null=True)
       
     # Assigned when the job is running
     process_id = models.TextField(null=True)
-
+    # Extra runtime information, json encoded
+    process_env = models.TextField(null=True)
+    
     state = models.TextField(
         default=SCHEMA.VOCAB.job.state.PENDING, 
         choices=zip(

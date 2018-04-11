@@ -1055,9 +1055,6 @@ define([
           choiceHash = _.sortBy(choiceHash, function(choice){
             return choice.ordinal;
           });
-//          if (fi.edit_type == 'select' && !fi.required ) {
-//            choiceHash.unshift({ val: '', label: ''});
-//          }
         }catch(e) {
           var msg = 'Vocabulary unavailable: field: ' + fi.key +  
             ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
@@ -1139,17 +1136,21 @@ define([
           var that = this,
               $selectableSearch = that.$selectableUl.prev(),
               $selectionSearch = that.$selectionUl.prev(),
-              selectableSearchString = '#'+that.$container.attr('id')+' .ms-elem-selectable:not(.ms-selected)',
-              selectionSearchString = '#'+that.$container.attr('id')+' .ms-elem-selection.ms-selected';
+              selectableSearchString = '#'+that.$container.attr('id')
+                +' .ms-elem-selectable:not(.ms-selected)',
+              selectionSearchString = '#'+that.$container.attr('id')
+                +' .ms-elem-selection.ms-selected';
 
-          that.qs1 = $selectableSearch.quicksearch(selectableSearchString).on('keydown', function(e) {
+          that.qs1 = $selectableSearch.quicksearch(selectableSearchString)
+            .on('keydown', function(e) {
             if (e.which === 40) {
               that.$selectableUl.focus();
               return false;
             }
           });
 
-          that.qs2 = $selectionSearch.quicksearch(selectionSearchString).on('keydown', function(e) {
+          that.qs2 = $selectionSearch.quicksearch(selectionSearchString)
+            .on('keydown', function(e) {
             if (e.which == 40) {
               that.$selectionUl.focus();
               return false;
@@ -1339,7 +1340,8 @@ define([
           var error = errors[key];
           if (_.has(self.fields, key)) {
             $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-            console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
+            console.log('added error for: "', key, '", val: "', 
+              self.fields[key].getValue(), '"');
           } else if (key=='_others') {
             var other_errors = errors[key];
             _.each(other_errors, function(error_obj) {
@@ -1351,7 +1353,8 @@ define([
                     .find('[data-error]').append('<br/>' + other_error);
                 } else {
                   self.$el.append(
-                  '<div data-error class="text-danger">' + other_key + ': ' + other_error + '</div>');
+                  '<div data-error class="text-danger">' + other_key 
+                    + ': ' + other_error + '</div>');
                 }
               });
             });
@@ -1401,12 +1404,16 @@ define([
       var headers = options['headers'] = {};
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {
-        var title = 'Enter a comment'
-        appModel.showOkCommentForm( title, function(values) {
-          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+        appModel.showOkCommentForm({
+          title: 'Enter a comment',
+          ok: function(values) {
+            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+            self.save(changedAttributes, options);
+          }
         });
+      }else{
+        self.save(changedAttributes, options);
       }
-      self.save(changedAttributes, options);
     },      
       
     /**

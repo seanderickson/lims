@@ -63,6 +63,7 @@ from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 import reports.utils.background_processor as background_processor
 import reports.utils.background_client_util as background_client_util
+import importlib
 
 
 RESOURCE = SCHEMA.RESOURCE
@@ -363,7 +364,8 @@ def read_authorization(_func):
         request = args[0]
         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if DEBUG_AUTHORIZATION:
-            logger.info('read auth for: %r using: %r', resource_name, self._meta.authorization)
+            logger.info('read auth for: %r using: %r', 
+                resource_name, self._meta.authorization)
         if not self._meta.authorization._is_resource_authorized(
                 request.user,'read', **kwargs):
             msg = 'read auth failed for: %r, %r' % (request.user, resource_name)
@@ -380,7 +382,14 @@ def read_authorization(_func):
 
 def background_job(_func):
     '''
-    Wrapper function to defer request to offline background job processor
+    Wrapper function to defer request to offline background job processor:
+    
+    - if SCHEMA.JOB.JOB_PROCESSING_FLAG is set, service the job_id indicated,
+    - else create a new [pending, submitted] Job
+    
+    @see reports.api.JobResource
+    
+    raises BackgroundJobImmediateResponse with result job_data
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
@@ -392,11 +401,7 @@ def background_job(_func):
            
             job_resource = JobResource()
             JOB = SCHEMA.JOB
-            post_data_directory = \
-                settings.BACKGROUND_PROCESSOR['post_data_directory']
-            if not os.path.exists(post_data_directory):
-                os.makedirs(post_data_directory)
-            
+
             # JOB_PROCESSING_FLAG: indicates the job_id to service
             job_id = request.GET.get(JOB.JOB_PROCESSING_FLAG, None)
             if job_id is None:
@@ -404,175 +409,30 @@ def background_job(_func):
             
             if job_id is not None:
                 
-                # 1. JOB_PROCESSING_FLAG is set - service the job.
-                
-                logger.info('1. Process request for job: %r', job_id)
-                
-                with transaction.atomic():
-                
-                    query_params = { JOB.ID: job_id }
-                    job_data = job_resource._get_detail_response_internal(**query_params)
-                    logger.info('job_data: %r', job_data)
-                    if not job_data:
-                        raise ValidationError(key=JOB.ID, msg='no such job: %r' % job_id)
-                    
-                    if job_data[JOB.STATE] != SCHEMA.VOCAB.job.state.PENDING:
-                        logger.warn('NOTICE: job state is not pending: %r', job_data)
-                        
-                        if job_data[JOB.STATE] == SCHEMA.VOCAB.job.state.PROCESSING:
-                            raise ValidationError(key=JOB.STATE,
-                                msg='Job: %r is in state: %r,  processing not allowed'
-                                    % (job_id, job_data[JOB.STATE]))
-                    raw_data = ''
-                    post_data_filename = \
-                        os.path.join(post_data_directory, str(job_data[JOB.ID]))
-                    logger.info(
-                        'look for request multipart raw_post_data at %r', 
-                        post_data_filename)
-                    if os.path.exists(post_data_filename):
-                        logger.info(
-                            'found request multipart raw_post_data at %r', 
-                            post_data_filename)
-                        with open(post_data_filename,'r') as job_file:
-                            raw_data = job_file.read()
-                    else:
-                        logger.info('no raw data found at: %r', post_data_filename)
-                        if MULTIPART_MIMETYPE in job_data[JOB.CONTENT_TYPE]:
-                            raise ValidationError(
-                                key=JOB.CONTENT_TYPE,
-                                msg='content_type: %r, requires raw data not found at: %r' 
-                                    % (job_data[JOB.CONTENT_TYPE], post_data_filename))
-                    
-                    original_request = background_processor.create_request_from_job(
-                        job_data, request.user, raw_data)
-                    
-                    job_patch = {
-                        JOB.ID: job_id,
-                        JOB.STATE: SCHEMA.VOCAB.job.state.PROCESSING,
-                        JOB.DATE_TIME_PROCESSING: _now().isoformat() }
-                    job_patch_result = job_resource._patch_internal(job_patch)
-                    logger.debug('done setting job state to processing: %r', 
-                        job_patch_result)
+                # 1. JOB_PROCESSING_FLAG is set - Service the job
+                job_data = \
+                    job_resource.service_job(job_id, self, _func, **kwargs)
 
-                # NOTE: end transaction to commit Job state = PROCESSING
-                                    
-                logger.info('--- process the original job request now ---')
-                # NOTE: perform the exception handling, as in api_base.wrap_view
-                def _inner(*args, **kwargs):
-                    # Note: wrap the _func because the exception_handler 
-                    # wrapper expects the func to be bound to "self" already, 
-                    # and the _func expects "self" to be passed
-                    logger.info('self: %r', self)
-                    logger.info('args: %r', args)
-                    return _func(self,*args, **kwargs)
-                response = self.exception_handler(_inner)(
-                    self, original_request, **kwargs)  
-                # response = _func(self, original_request, **kwargs)
-                logger.info('--- processing done: response: %r', 
-                    response.status_code)
-                
-                if response.status_code > 300:
-                    logger.info('error processing job: %r!', response.status_code)
-                    
-                    content = job_resource._meta.serializer.deserialize(
-                        LimsSerializer.get_content(response), JSON_MIMETYPE)
-                    logger.warn('fail content: %r', content)
-                    job_patch = {
-                        JOB.ID: job_id,
-                        JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
-                        JOB.RESPONSE_CONTENT: json.dumps(content),
-                        JOB.RESPONSE_STATUS_CODE: response.status_code,
-                        JOB.DATE_TIME_COMPLETED: _now().isoformat() }
-                    job_patch_result = job_resource._patch_internal(job_patch)
-                    logger.info('job patch result: %r', job_patch_result)
-                    new_job = job_patch_result[API_RESULT_DATA][0]
-                    meta = { 'job': new_job }
-                    data = { API_RESULT_META: meta }
-                    job_response = self.build_response(request, data, status_code=201)
-                                    
-                    raise BackgroundJobImmediateResponse(job_response)
-                else:
-                    logger.info('success processing job: %r!', response.status_code)
-                    content = job_resource._meta.serializer.deserialize(
-                        LimsSerializer.get_content(response), JSON_MIMETYPE)
-                    logger.warn('success content: %r', content)
-                    job_patch = {
-                        JOB.ID: job_id,
-                        JOB.STATE: SCHEMA.VOCAB.job.state.COMPLETED,
-                        JOB.RESPONSE_CONTENT: json.dumps(content),
-                        JOB.RESPONSE_STATUS_CODE: response.status_code,
-                        JOB.DATE_TIME_COMPLETED: _now().isoformat(),
-                        }
-                    job_patch_result = job_resource._patch_internal(job_patch)
-                    logger.info('job patch result: %r', job_patch_result)
-                    new_job = job_patch_result[API_RESULT_DATA][0]
-                    meta = { JOB.resource_name: new_job }
-                    data = { API_RESULT_META: meta }
-                    
-                    job_response = self.build_response(request, data, status_code=200)
-                                    
-                    raise BackgroundJobImmediateResponse(job_response)
+                meta = { JOB.resource_name: job_data }
+                data = { API_RESULT_META: meta }
+                job_response = self.build_response(
+                    request, data, status_code=200)
+                                
+                raise BackgroundJobImmediateResponse(job_response)
             else:
                 
                 # 2. JOB_PROCESSING_FLAG is not set: create a new job
+                new_job_data = \
+                    job_resource.create_new_job_from_request(request, **kwargs)
+                job_id = new_job_data[JOB.ID]
+                logger.info(
+                    'job created: %r, submit to background processor...', job_id)
                 
-                with transaction.atomic():
-                    
-                    job_data, raw_post_data = \
-                        background_processor.get_django_request_job_params(request)
-                    
-                    # Store the request to reinvoke from the job processing client
-                    # see: django.test.client.generic
-                    try:
-                        logger.info('create a new job...')
-                        job_patch_result = job_resource._patch_internal(job_data)
-                        
-                        logger.info('job patch result: %r', job_patch_result)
-                        
-                        new_job = job_patch_result[API_RESULT_DATA][0]
-                    except ValidationError, e:
-                        response = self.build_error_response(
-                            request, { API_RESULT_ERROR: e.errors }, **kwargs)
-                        raise BackgroundJobImmediateResponse(response)
-                    except Exception, e:
-                        logger.exception('Job create error: %r, job: %r', e, job_data)
-                        raise ProgrammingError('Job create error: %r' % e) 
-        
-                    if raw_post_data:
-                        logger.info('store request multipart raw_post_data...')
-                        logger.info('raw post data length: %d', len(raw_post_data))
-                        
-                        post_data_filename = \
-                            os.path.join(post_data_directory, str(new_job[JOB.ID]))
-                        
-                        with open(post_data_filename,'w') as job_file:
-                            logger.info('write request body to file: %r', job_file)
-                            
-                            job_file.write(raw_post_data)
-                            job_file.close()
-                            logger.info('write completed')
-                    else:
-                        logger.info('no raw_post_data/body found for request...')
-                    
-                    # TODO: spawn a SLURM job here to process the request
-                    use_sbatch = 'sbatch_settings' in settings.BACKGROUND_PROCESSOR
-                    
-                    output = background_client_util.execute_from_python(
-                        new_job[JOB.ID],sbatch=use_sbatch)
-                    if output:
-                        # TODO: set job state to submitted
-                        job_patch = {
-                            JOB.ID: job_id,
-                            JOB.STATE: SCHEMA.VOCAB.job.state.SUBMITTED,
-                            JOB.PROCESS_ID: output,
-                            JOB.DATE_TIME_SUBMITTED: _now().isoformat() }
-                        job_patch_result = job_resource._patch_internal(job_patch)
-                        logger.info('submitted job: %r', job_patch_result)
-                        
-                meta = { 'job': new_job }
+                new_job_data = job_resource.submit_job(new_job_data)
+                meta = { 'job': new_job_data }
                 data = { API_RESULT_META: meta }
                 response = self.build_response(request, data, status_code=201)
-                                
+                                 
                 raise BackgroundJobImmediateResponse(response)
             
     return _inner
@@ -5349,7 +5209,7 @@ class JobResource(ApiResource):
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<job_id>(\d+))%s$") 
+                 r"(?P<id>(\d+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/test_job%s$" 
@@ -5447,6 +5307,11 @@ class JobResource(ApiResource):
             _alias = Alias(stmt)
             stmt = select([text('*')]).select_from(_alias)
         stmt = stmt.order_by('-id')
+
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
             
         title_function = None
         if use_titles is True:
@@ -5493,7 +5358,10 @@ class JobResource(ApiResource):
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, schema=schema, validate=False,**kwargs)
-
+        if not kwargs_for_log:
+            for k in id_attribute:
+                if k in kwargs:
+                    kwargs_for_log[k] = kwargs[k] 
         original_data = None
         if kwargs_for_log:
             try:
@@ -5549,7 +5417,7 @@ class JobResource(ApiResource):
         if not schema:
             raise Exception('schema not initialized')
         id_kwargs = self.get_id(deserialized, schema=schema, validate=False, **kwargs)
-
+        logger.info('id_kwargs: %r, %r', id_kwargs, kwargs)
         create = not bool(id_kwargs)
         
         initializer_dict = self.parse(deserialized, schema=schema, create=create)
@@ -5595,7 +5463,234 @@ class JobResource(ApiResource):
         job.save()
         
         return { API_RESULT_OBJ: job }
+    
+    @transaction.atomic
+    def create_new_job_from_request(self, request, **kwargs):
+        ''' 
+        Create a Job instance from the original request that is wrapped
+        by the background_job wrapper:
+        - Stores the request data to reinvoke later from the 
+        background job processing client
+        @see reports.utils.background_processor
+        '''
+
+        JOB = SCHEMA.JOB
+        post_data_directory = \
+            settings.BACKGROUND_PROCESSOR['post_data_directory']
+        if not os.path.exists(post_data_directory):
+            os.makedirs(post_data_directory)
+
+        job_data, raw_post_data = \
+            background_processor.get_django_request_job_params(request)
         
+        try:
+            logger.info('create a new job...')
+            job_patch_result = self._patch_internal(job_data)
+            logger.info('job patch result: %r', job_patch_result)
+            new_job_data = job_patch_result[API_RESULT_DATA][0]
+        except ValidationError, e:
+            response = self.build_error_response(
+                request, { API_RESULT_ERROR: e.errors }, **kwargs)
+            raise BackgroundJobImmediateResponse(response)
+        except Exception, e:
+            logger.exception('Job create error: %r, job: %r', e, job_data)
+            raise ProgrammingError('Job create error: %r' % e) 
+
+        if raw_post_data:
+            logger.info('store request multipart raw_post_data...')
+            logger.info('raw post data length: %d', len(raw_post_data))
+            
+            post_data_filename = \
+                os.path.join(post_data_directory, str(new_job_data[JOB.ID]))
+            
+            with open(post_data_filename,'w') as job_file:
+                logger.info('write request body to file: %r', job_file)
+                
+                job_file.write(raw_post_data)
+                job_file.close()
+                logger.info('write completed')
+        else:
+            logger.info('no raw_post_data/body found for request...')
+            
+        return new_job_data
+    
+    def service_job(
+        self, job_id, wrapped_resource_instance, wrapped_function, **kwargs):
+        '''
+        Service the job:
+        @param wrapped_resource_instance - Resource instance 
+        @param wrapped_function - function on the Resource instance that has 
+        been decorated with the background_job
+        @param kwargs sent with the wrapped function from the dispatcher: 
+        - @see reports.api_base.IccblBaseResource.wrap_view
+        '''
+        
+        JOB = SCHEMA.JOB
+
+        logger.info('1. Service the request for job: %r', job_id)
+        try:
+            recreated_job_request, job_patch_result = \
+                self.setup_job_processing_request(job_id)
+        except Exception, e:
+            logger.exception(
+                'on setting job state to processing: %r', job_id)
+            job_patch = {
+                JOB.ID: job_id,
+                JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
+                JOB.RESPONSE_CONTENT: 'Exception created: %r'% e 
+                }
+            job_patch_result = self._patch_internal(job_patch)
+            logger.info('job setup exception patched: %r', 
+                job_patch_result)
+            raise
+                            
+        logger.info('--- process the original job request now ---')
+        # Perform the exception handling, 
+        # as in reports.api_base.IccblBaseResource.wrap_view
+        def _inner(*args, **kwargs):
+            # Note: wrap the _func because the exception_handler 
+            # wrapper expects the func to be bound to "self" already, 
+            # and the _func expects "self" to be passed
+            logger.info('wrapped_resource_instance: %r', wrapped_resource_instance)
+            logger.info('args: %r', args)
+            return wrapped_function(wrapped_resource_instance,*args, **kwargs)
+        response = wrapped_resource_instance.exception_handler(_inner)(
+            wrapped_resource_instance, recreated_job_request, **kwargs)  
+        # response = _func(self, recreated_job_request, **kwargs)
+        logger.info('--- processing done: response: %r', 
+            response.status_code)
+        
+        if response.status_code >= 300:
+            logger.info('error processing job: %r!', 
+                response.status_code)
+            
+            content = self._meta.serializer.deserialize(
+                LimsSerializer.get_content(response), JSON_MIMETYPE)
+            logger.warn('fail content: %r', content)
+            job_patch = {
+                JOB.ID: job_id,
+                JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
+                JOB.RESPONSE_CONTENT: json.dumps(content),
+                JOB.RESPONSE_STATUS_CODE: response.status_code,
+                JOB.DATE_TIME_COMPLETED: _now().isoformat() }
+            job_patch_result = self._patch_internal(job_patch)
+            logger.info('job patch result: %r', job_patch_result)
+            new_job_data = job_patch_result[API_RESULT_DATA][0]
+        else:
+            logger.info('success processing job: %r!', 
+                response.status_code)
+            content = self._meta.serializer.deserialize(
+                LimsSerializer.get_content(response), JSON_MIMETYPE)
+            logger.warn('success content: %r', content)
+            job_patch = {
+                JOB.ID: job_id,
+                JOB.STATE: SCHEMA.VOCAB.job.state.COMPLETED,
+                JOB.RESPONSE_CONTENT: json.dumps(content),
+                JOB.RESPONSE_STATUS_CODE: response.status_code,
+                JOB.DATE_TIME_COMPLETED: _now().isoformat(),
+                }
+            job_patch_result = self._patch_internal(job_patch)
+            logger.info('job patch result: %r', job_patch_result)
+            new_job_data = job_patch_result[API_RESULT_DATA][0]
+        return new_job_data
+    
+    @transaction.atomic
+    def submit_job(self, job_data):
+        '''
+        Send a pending job to the background_process_script defined in
+        settings.BACKGROUND_PROCESSOR['background_process_script']
+        '''
+
+        JOB = SCHEMA.JOB
+
+        job_id = job_data[JOB.ID]
+        use_sbatch = 'sbatch_settings' in settings.BACKGROUND_PROCESSOR
+        background_client_module_name = \
+            settings.BACKGROUND_PROCESSOR['background_process_script']
+        logger.info('import background_process_script: %r ', 
+            background_client_module_name)
+        background_client_module = \
+            importlib.import_module(background_client_module_name)
+        output = background_client_module.execute_from_python(
+            job_id, sbatch=use_sbatch)
+        logger.info('submitted job: %r, output: %r', 
+            job_id, output)
+        if output:
+            job_patch = {
+                JOB.ID: job_id,
+                JOB.STATE: SCHEMA.VOCAB.job.state.SUBMITTED,
+                JOB.PROCESS_ID: output,
+                JOB.DATE_TIME_SUBMITTED: _now().isoformat() }
+            job_patch_result = self._patch_internal(job_patch)
+            logger.info('submitted job: %r', job_patch_result)
+            job_data = job_patch_result[API_RESULT_DATA][0]
+            
+        return job_data
+    
+    @transaction.atomic    
+    def setup_job_processing_request(self, job_id, ):
+        JOB = SCHEMA.JOB
+        post_data_directory = \
+            settings.BACKGROUND_PROCESSOR['post_data_directory']
+        if not os.path.exists(post_data_directory):
+            os.makedirs(post_data_directory)
+    
+        query_params = { JOB.ID: job_id }
+        job_data = self._get_detail_response_internal(**query_params)
+        logger.info('job_data: %r', job_data)
+        if not job_data:
+            raise ValidationError(key=JOB.ID, msg='no such job: %r' % job_id)
+        
+        if job_data[JOB.STATE] != SCHEMA.VOCAB.job.state.PENDING:
+            logger.warn('NOTICE: job state is not pending: %r', job_data)
+            
+            if job_data[JOB.STATE] == SCHEMA.VOCAB.job.state.PROCESSING:
+                raise ValidationError(key=JOB.STATE,
+                    msg='Job: %r is in state: %r,  processing not allowed'
+                        % (job_id, job_data[JOB.STATE]))
+            
+        raw_data = ''
+        post_data_filename = \
+            os.path.join(post_data_directory, str(job_data[JOB.ID]))
+        logger.info(
+            'look for request multipart raw_post_data at %r', 
+            post_data_filename)
+        if os.path.exists(post_data_filename):
+            logger.info(
+                'found request multipart raw_post_data at %r', 
+                post_data_filename)
+            with open(post_data_filename,'r') as job_file:
+                raw_data = job_file.read()
+        else:
+            logger.info('no raw data found at: %r', post_data_filename)
+            if MULTIPART_MIMETYPE in job_data[JOB.CONTENT_TYPE]:
+                raise ValidationError(
+                    key=JOB.CONTENT_TYPE,
+                    msg='content_type: %r, requires raw data not found at: %r' 
+                        % (job_data[JOB.CONTENT_TYPE], post_data_filename))
+        
+        recreated_job_request = background_processor.create_request_from_job(
+            job_data, raw_data)
+        try:
+            recreated_job_request.user = \
+                DjangoUser.objects.get(username=job_data[JOB.USERNAME])
+        except ObjectDoesNotExist:
+            logger.error('Job user %s not found: %r', 
+                job_data[JOB.USERNAME], job_data)
+            raise
+        
+        process_env = background_processor.get_process_env()
+        logger.info('process_env: %r', process_env)
+        job_patch = {
+            JOB.ID: job_id,
+            JOB.STATE: SCHEMA.VOCAB.job.state.PROCESSING,
+            JOB.DATE_TIME_PROCESSING: _now().isoformat(),
+            JOB.PROCESS_ENV: json.dumps(process_env)
+         }
+        job_patch_result = self._patch_internal(job_patch)
+        logger.debug('done setting job state to processing: %r', 
+            job_patch_result)
+        return recreated_job_request, job_patch_result
         
     @write_authorization
     @background_job

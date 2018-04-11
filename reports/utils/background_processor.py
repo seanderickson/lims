@@ -1,9 +1,11 @@
 import argparse
 import datetime
-from io import BytesIO
+import getpass
 import json
 import logging
 from multiprocessing.process import Process
+import os
+import socket
 import time
 import urllib
 
@@ -28,7 +30,8 @@ JOB = SCHEMA.JOB
 
 DEBUG_BACKGROUND = True or logger.isEnabledFor(logging.DEBUG)
 
-def create_request_from_job(job_data, user, raw_data=''):
+def create_request_from_job(job_data, raw_data=''):
+    
     if DEBUG_BACKGROUND is True:
         logger.info('create_request_from_job: %r', job_data)
     
@@ -73,8 +76,6 @@ def create_request_from_job(job_data, user, raw_data=''):
     if DEBUG_BACKGROUND is True:
         logger.info('create_request_from_job: META: %r', request.META )
         logger.info('create_request_from_job: FILES: %r', request.FILES )
-    
-    request.user = user
     
     return request
     
@@ -151,6 +152,24 @@ def get_django_request_job_params(request):
     }
     
     return job_data, raw_post_data
+
+def get_process_env():
+    ''' Information about the current process environment '''
+    
+    data = {}
+    try:
+        os_props = ['pid', 'uid', 'uname']
+        for prop in os_props:
+            func = getattr(os, 'get%s'%prop, None)
+            logger.info('get os prop: %s, %r', prop, func)
+            if func is not None:
+                data[prop] = func()
+        data['user'] = getpass.getuser()
+        data['hostname'] = socket.gethostname()
+    except Exception, e:
+        logger.exception('on get_process_env')
+        
+    return data
 
 class ApiClient(django.test.client.Client):
     
@@ -241,22 +260,6 @@ class BackgroundClient(object):
         
         return job_service_response
         
-# class DirectClientProcessor(BackgroundClient):
-#     ''' Process the background jobs directly in this process '''
-#     
-#     def __init__(self, api_client, post_data_dir=None):
-#         BackgroundClient.__init__(self, api_client, post_data_dir)
-#     
-#     def service(self, job_id):
-#         logger.info('direct client processor service: %r', job_id)
-#         p = Process(target=self._service,args=(job_id,) )
-#         # make the parent process wait: 
-#         # p.daemon = True
-#         # if set to true, then the parent process won't wait.  
-#         logger.info('start')
-#         p.start();
-#         logger.info('started...')
-        
     
 class BackgroundProcessor(object):
     ''' 
@@ -265,10 +268,8 @@ class BackgroundProcessor(object):
     - manage state of jobs
     '''
     
-#     def __init__(self, api_client, client_processor_class):
     def __init__(self, api_client):
         self.api_client = api_client
-#         self.client_processor_class = client_processor_class
         self.client_processor = BackgroundClient(api_client)
     
     def service_background_jobs(self):
@@ -293,13 +294,6 @@ class BackgroundProcessor(object):
         for job in job_listing:
             logger.info('found job: %r', job)
             job_id =job[JOB.ID]
-#             # Create a separate processor instance for each job, so that the 
-#             # user assigned to the job is used
-#             as_user = '%s:%s' % (job[JOB.USERNAME], self.api_client.username)
-#             logger.info('process job: %r for user: %s', job_id, as_user )
-#             client_api_client = ApiClient(as_user, self.api_client.password)
-#             client_processor = self.client_processor_class(client_api_client)
-#             client_processor.service(job_id)
             logger.info('Process the job: %r', job_id)
             p = Process(target=self.client_processor.service,args=(job_id,) )
             # make the parent process wait: 

@@ -79,7 +79,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       var newModel = appModel.createNewModel(resource.key);
       newModel.resource = resource;
-      this.$('#content_title').html('Create a new ' + resource.title );
+      this.$('#content_title').html('Create ' + resource.title );
       this.$('#content_title_row').show();
       
       if (_.has(resource, 'detailView')){

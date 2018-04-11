@@ -49,9 +49,9 @@ define([
       var access_level = this.model.get('user_access_level_granted');
       if (access_level > 1 && _.isEmpty(self.model.get('study_type'))) {
         this.tabbed_resources['summary'] = this.screen_tabbed_resources['summary'];
-        if (this.model.get('has_screen_result') != 1){
-          delete this.tabbed_resources['data']
-        }
+//        if (this.model.get('has_screen_result') != 1){
+//          delete this.tabbed_resources['data']
+//        }
         this.tabbed_resources['protocol'] = this.screen_tabbed_resources['protocol'];
       } 
       if (access_level > 2 && _.isEmpty(self.model.get('study_type'))){

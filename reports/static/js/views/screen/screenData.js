@@ -250,7 +250,7 @@ define([
         
       }; // createResults
       
-      if (self.model.get('has_screen_result')) {
+      if (self.model.get('has_screen_result') == 1) {
         var listOptions = ListView.prototype.parseUriStack(delegateStack);
         console.log('parsed listOptions', listOptions);
         var dc_ids = [];

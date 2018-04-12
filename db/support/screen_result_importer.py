@@ -223,8 +223,12 @@ def parse_result_row(i,parsed_columns,result_row):
     val = result_row[meta_key]
     logger.debug('plate value to parse: %r', val)
     plate_number = parse_val(val, meta_key, 'integer')
+    if plate_number is None:
+        raise ValidationError(key='row %d'%i, msg='%r is required' % meta_key)
     meta_key = 'well_name'
     val = result_row[meta_key]
+    if not val:
+        raise ValidationError(key='row %d'%i, msg='%r is required' % meta_key)
     if WELL_NAME_PATTERN.match(val):
         wellname = val
     else:

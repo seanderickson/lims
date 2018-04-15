@@ -563,7 +563,7 @@ function run_expiration_scripts {
 
   # TODO start the bootstrap server
   
-  echo "1.a Send user data privacy expiration notifications..."
+  echo "1.a Send user data privacy expiration notifications..." >>"$LOGFILE"
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
@@ -576,7 +576,7 @@ function run_expiration_scripts {
   -email_log_filename ../logs/mail_user_agreement_notification.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
-  echo "1.b Expire user agreements ..."
+  echo "1.b Expire user agreements ..." >>"$LOGFILE" 2>&1
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
@@ -589,7 +589,7 @@ function run_expiration_scripts {
   -email_log_filename ../logs/mail_user_agreement_expiration.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
-  echo "2.a Adjust screen Data Privacy Expiration Dates ..."
+  echo "2.a Adjust screen Data Privacy Expiration Dates ..." >>"$LOGFILE" 2>&1
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
@@ -602,7 +602,7 @@ function run_expiration_scripts {
   -email_log_filename ../logs/mail_screen_dped_adjust.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
-  echo "2.b Notify of screen privacy expirations ..."
+  echo "2.b Notify of screen privacy expirations ..." >>"$LOGFILE" 2>&1
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
@@ -615,7 +615,7 @@ function run_expiration_scripts {
   -email_log_filename ../logs/mail_screen_dped_notification.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
-  echo "2.c Expire screen data sharing levels ..."
+  echo "2.c Expire screen data sharing levels ..." >>"$LOGFILE" 2>&1
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
@@ -626,9 +626,10 @@ function run_expiration_scripts {
   -email_message_directory db/static/screen_privacy/ \
   -screen_type sm -expire \
   -email_log_filename ../logs/mail_screen_dped_expiration.log \
-  -v -test_only -admin_email_only -no_email 
+  -v -test_only -admin_email_only -no_email >>"$LOGFILE" 2>&1
 
-  echo "2.d Notify admins for screen publications ..."
+  echo "2.d Notify admins for screen publications ..." >>"$LOGFILE" 2>&1
+  echo "Using pass file: ${credential_file}" >>"$LOGFILE"
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
@@ -639,7 +640,7 @@ function run_expiration_scripts {
   -email_message_directory db/static/screen_privacy/ \
   -screen_type sm -notifyofpublications \
   -email_log_filename ../logs/mail_screen_notifyofpublications.log \
-  -v -test_only -admin_email_only -no_email 
+  -v -test_only -admin_email_only -no_email >>"$LOGFILE" 2>&1
 
 
   echo "Done: user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
@@ -650,7 +651,7 @@ function create_studies {
   # Create in_silico statistical studies
   echo "create in_silico statistical studies: $(ts) ..." >> "$LOGFILE"
 
-  echo "create in_silico statistical studies using a local dev server on port $BOOTSTRAP_PORT..."
+  echo "create in_silico statistical studies using a local dev server on port $BOOTSTRAP_PORT..." >>"$LOGFILE" 2>&1
   
   # FIXME: using the local server may not be necessary as the server has been bootstrapped
    
@@ -674,7 +675,7 @@ function create_studies {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
-    -f ${study_file}
+    -f ${study_file} >>"$LOGFILE" 2>&1
 
   study_id=200002
   study_file=docs/studies/study_${study_id}.json
@@ -683,7 +684,7 @@ function create_studies {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
-    -f ${study_file}
+    -f ${study_file} >>"$LOGFILE" 2>&1
 
   study_id=200003
   study_file=docs/studies/study_${study_id}.json
@@ -692,14 +693,14 @@ function create_studies {
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_confirmed_positive_study \
     --header "Content-type: application/json" \
     --header "HTTP-Accept: application/json" \
-    -f ${study_file}
+    -f ${study_file} >>"$LOGFILE" 2>&1
 
   # ping the studies to test
   study_id=200001
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
     --header "HTTP-Accept: application/json" \
-    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com 
   study_id=200002
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \

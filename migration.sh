@@ -483,11 +483,11 @@ function frontend_deploy {
   echo "frontend_deploy: $(ts) ..." >> "$LOGFILE"
 
   cd reports/static >>"$LOGFILE" 2>&1
+  rm bundle.*.js
+  rm 1.bundle.*.js
   npm run build 2>&1 || error "npm run build failed: $?"
   
   # TODO: frontend tests
-  rm bundle.*.js
-  rm 1.bundle.*.js
   
   cd ../..
   

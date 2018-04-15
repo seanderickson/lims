@@ -365,6 +365,9 @@ if __name__ == "__main__":
         report_args = default_report_args.copy()
         # Query for the screens with attached publications that are listed as private
         report_args['%s__is_null' % SCREEN.PUBLICATION_IDS] = False
+        # Find DSL > 0
+        report_args['%s__in' % FIELD_DSL] = \
+            [VOCAB_DSL.MUTUAL_POSITIVES,VOCAB_DSL.PRIVATE, VOCAB_DSL.MUTUAL]
 
         screens,meta = get_resource_listing(screen_url, session, headers, report_args)
         screens = { s[SCREEN.FACILITY_ID]:s for s in screens }

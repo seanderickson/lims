@@ -172,7 +172,9 @@ class Emailer(object):
         msg['To'] = ', '.join(address_to_list)
 
         # Record the MIME types of both parts - text/plain and text/html.
-        part1 = MIMEText('\n'.join(msg_body_lines), 'plain')
+        # NOTE: ensure utf-8 encoding
+        plaintext = '\n'.join(msg_body_lines).encode('utf-8')
+        part1 = MIMEText(plaintext, 'plain',  'utf-8')
         
         if self.html_email_wrapper:
             if not html_msg_body_lines:
@@ -184,12 +186,15 @@ class Emailer(object):
                 else:
                     lines.append('</p><p>')
             lines.append('</p>')
+            email_content = ''.join(lines) #.encode('utf-8')
             html_email_body = fill_email_wrapper(
                 self.html_email_wrapper, 
-                msg_subject, ''.join(lines), msg_footer)
-            part2 = MIMEText(html_email_body, 'html')
+                msg_subject, email_content, msg_footer)
+            html_email_body = html_email_body.encode('utf-8')
+            part2 = MIMEText(html_email_body, 'html', 'utf-8')
         else:
-            part2 = MIMEText('<br/>'.join(msg_body_lines), 'html')
+            email_content = '<br/>'.join(msg_body_lines).encode('utf-8')
+            part2 = MIMEText(email_content, 'html', 'utf-8')
         
         logger.debug('send message to: %r msg_subject: %r, msg_body_lines: %r', 
             address_to_list, msg_subject, msg_body_lines)

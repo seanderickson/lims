@@ -561,9 +561,9 @@ function run_expiration_scripts {
   # Run user and screen privacy expiration scripts
   echo "run user and screen privacy expiration scripts: $(ts) ..." >> "$LOGFILE"
 
-  # TODO start the bootstrap server
+  # TODO: move these to cron jobs on deployment
   
-  echo "1.a Send user data privacy expiration notifications..." >>"$LOGFILE"
+  echo "1.a Send SM user data privacy expiration notifications..." >>"$LOGFILE"
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
@@ -576,13 +576,39 @@ function run_expiration_scripts {
   -email_log_filename ../logs/mail_user_agreement_notification.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
-  echo "1.b Expire user agreements ..." >>"$LOGFILE" 2>&1
+  echo "1.b Expire SM user agreements ..." >>"$LOGFILE" 2>&1
   #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
   -u ${SERVER_URL} \
   -ua_type sm -days_to_expire 730 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_expiration.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "1.c Send RNAi user data privacy expiration notifications..." >>"$LOGFILE"
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -ua_type rnai -days_to_expire 730 -days_ahead_to_notify 14 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_notification.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "1.d Expire RNAi user agreements ..." >>"$LOGFILE" 2>&1
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -ua_type rnai -days_to_expire 730 \
   -email_message_directory db/static/user_agreement/ \
   -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
   -admin_from_email screensaver-feedback@hms.harvard.edu \
@@ -626,7 +652,7 @@ function run_expiration_scripts {
   -email_message_directory db/static/screen_privacy/ \
   -screen_type sm -expire \
   -email_log_filename ../logs/mail_screen_dped_expiration.log \
-  -v -test_only -admin_email_only -no_email >>"$LOGFILE" 2>&1
+  -v -test_only -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.d Notify admins for screen publications ..." >>"$LOGFILE" 2>&1
   echo "Using pass file: ${credential_file}" >>"$LOGFILE"
@@ -640,7 +666,7 @@ function run_expiration_scripts {
   -email_message_directory db/static/screen_privacy/ \
   -screen_type sm -notifyofpublications \
   -email_log_filename ../logs/mail_screen_notifyofpublications.log \
-  -v -test_only -admin_email_only -no_email >>"$LOGFILE" 2>&1
+  -v -test_only -admin_email_only >>"$LOGFILE" 2>&1
 
 
   echo "Done: user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
@@ -1031,7 +1057,7 @@ function main {
 }
 
 
-echo "start migration: $(ts) ..."
+echo "start migration: $(ts) ..." >>"$LOGFILE"
 
 main "$@"
 
@@ -1069,5 +1095,5 @@ main "$@"
 
 
 
-echo "migration finished: $(ts)"
+echo "migration finished: $(ts)" >>"$LOGFILE"
 

@@ -161,6 +161,9 @@ function restoredb {
       `ls -1 ${D}/screensaver*${filespec}.schema.pg_dump` >>"$LOGFILE" 2>&1 
   fi
 
+  # clear out the job directory on db rebuild
+  rm -rf ${SUPPORTDIR}/logs/background
+  
   echo "restoredb completed: $(ts) " >> "$LOGFILE"
 
 }

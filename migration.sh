@@ -627,7 +627,7 @@ function run_expiration_scripts {
   -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
   -admin_from_email screensaver-feedback@hms.harvard.edu \
   -email_message_directory db/static/screen_privacy/ \
-  -screen_type sm -adjust_expiration_days_from_activity 760 \
+  -screen_type sm -adjust_expiration_days_from_activity 790 \
   -email_log_filename ../logs/mail_screen_dped_adjust.log \
   -v -admin_email_only >>"$LOGFILE" 2>&1
 

@@ -59,12 +59,12 @@ define([
         invoke : 'setLabCherryPicks',
         permission: 'cherrypickrequest'
       },
-//      platemapping: {
-//        description : 'Plate Mapping',
-//        title : 'Plate Mapping',
-//        invoke : 'setPlateMapping',
-//        permission: 'cherrypickrequest'
-//      },
+      //platemapping: {
+      //  description : 'Plate Mapping',
+      //  title : 'Plate Mapping',
+      //  invoke : 'setPlateMapping',
+      //  permission: 'cherrypickrequest'
+      //},
       sourceplates: {
         description : 'Source Plates',
         title : 'Source Plates',
@@ -2111,9 +2111,7 @@ define([
                 contentType: 'application/json', 
                 processData: false,
                 dataType: 'json', // what is expected back from the server
-                // Note: json not needed for unstructured search data
-                //data: JSON.stringify(data), 
-                data: data,
+                data: JSON.stringify(data), 
                 type: 'PATCH',
                 headers: headers
               }).done(function(data, textStatus, jqXHR){

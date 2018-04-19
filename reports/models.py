@@ -123,9 +123,6 @@ class MetaManager(models.Manager):
             for field_key in [ x.key for x in field_definition_table]:
                 parsed_object[field_key] = unparsed_object.get_field(field_key)
                 
-#                 parsed_object.update(
-#                     { field_key : unparsed_object.get_field(field_key) })
-            
             # NOTE: choices for the "vocabulary_scope_ref" are being stored 
             # here for convenience
             
@@ -599,6 +596,7 @@ class Job(models.Model):
     process_id = models.TextField(null=True)
     # Extra runtime information, json encoded
     process_env = models.TextField(null=True)
+    process_messages = models.TextField(null=True)
     
     state = models.TextField(
         default=SCHEMA.VOCAB.job.state.PENDING, 

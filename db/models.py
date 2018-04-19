@@ -873,15 +873,27 @@ class ScreenResult(models.Model):
             % (self.screen.facility_id, self.date_created))
 
 
-#### Result Value Notes ####
-# - Legacy data structure
+# FIXME: 20180419 - Correct legacy errors with Result Value table:
+# - enforce unique(data_column,well) constraint
+# - result_value_id_seq is not needed
+# - the database is currently  inconsistent, with multiple values for some 
+# result value id's (see db.migrations.manual.result_value_cleanup.sql)
 # - ResultValues will not be created with the ORM, so this definition
 # is for proper database schema creation.
-# Legacy from SS1:
-# - no primary key (natural key: [well_id,data_column_id]), although there
-# is a auto generated sequence result_value_id - the database is currently 
-# inconsistent, with multiple values for some result value id's
-# - no default sequence (fixed in migrations)
+# 
+# Indexes to create manually:
+#     create index result_value_is_excluded_index 
+#         on result_value(data_column_id, is_exclude);
+#     create index "result_value_data_column_and_numeric_value_index" 
+#         on result_value(data_column_id, numeric_value);
+#     create index "result_value_data_column_and_value_index" 
+#         on result_value(data_column_id, value);
+#     create index "result_value_data_column_and_well_index" 
+#         on result_value(data_column_id, well_id);
+# NOTE: this constraint will replace the result_value_data_column_and_well_index
+#     alter table result_value 
+#        ADD constraint data_column_well_id_unique(data_column_id, well_id);
+
 class ResultValue(models.Model):
     
     result_value_id = models.AutoField(primary_key=True)
@@ -898,6 +910,7 @@ class ResultValue(models.Model):
     class Meta:
         # FIXME: no primary key defined:
         # - the natural primary key is the (well,datacolumn)
+        # unique_together = (('data_column','well'))
         db_table = 'result_value'
 
 class DataColumn(models.Model):

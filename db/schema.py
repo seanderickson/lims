@@ -39,6 +39,10 @@ class SCREEN(schema_obj):
     LAST_LIBRARY_SCREENING_DATE = 'date_of_last_library_screening'
     PUBLICATIONS = 'publications'
     PUBLICATION_IDS = 'publication_ids'
+    
+    # Virtual columns (calculated by API)
+    OVERLAPPING_POSITIVE_SCREENS = 'overlapping_positive_screens'
+    USER_ACCESS_LEVEL_GRANTED = 'user_access_level_granted'
 
 class DATA_COLUMN(schema_obj):
     resource_name = 'datacolumn'
@@ -69,6 +73,8 @@ class DATA_COLUMN(schema_obj):
     TITLE = 'title'
     KEY = 'key'
 
+    USER_ACCESS_LEVEL_GRANTED = 'user_access_level_granted'
+
 class SCREEN_RESULT(schema_obj):
     resource_name = 'screenresult'
     
@@ -88,13 +94,10 @@ class SCREEN_RESULT(schema_obj):
     EXCLUDE = 'exclude'
 
 
-class SCREENSAVER_USER(schema_obj):
+class SCREENSAVER_USER(USER):
     resource_name = 'screensaveruser'
     
     SCREENSAVER_USER_ID = 'screensaver_user_id'
-    FIRST_NAME = 'first_name'
-    LAST_NAME = 'last_name'
-    EMAIL = 'email'
 
 class USER_AGREEMENT(schema_obj):
     resource_name = 'useragreement'
@@ -170,6 +173,8 @@ class VOCAB(reports.schema.VOCAB):
             TEXT = 'text'
             
             numeric_types = (INTEGER, DECIMAL, NUMERIC)
+            positive_types = (
+                BOOLEAN_POSITIVE, CONFIRMED_POSITIVE, PARTITIONED_POSITIVE)
     
     class resultvalue(schema_obj):
         class partitioned_positive(schema_obj):
@@ -212,7 +217,21 @@ class VOCAB(reports.schema.VOCAB):
             AVAILABLE = 1
             NOT_SHARED = 2
             NONE = 3
-    
+            
+        class user_access_level_granted(schema_obj):
+            '''
+            LIMITED_ONLY - user has access only to fields designated as public
+            OVERLAPPING_ONLY - user may access screen datacolumns that are
+                overlapping, and only when viewing own screen results
+            MUTUALLY_SHARED - user is mutually sharing with this screen and may
+                view datacolums and data, but not positives summaries
+            ALL - user may view all data for own screens and public screens
+            '''
+            LIMITED_ONLY = 0
+            OVERLAPPING_ONLY = 1
+            MUTUALLY_SHARED = 2
+            ALL = 3
+            
     class user_agreement(schema_obj):
         
         class type(schema_obj):

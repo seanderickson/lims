@@ -80,7 +80,10 @@ class FIELD(schema_obj):
     ORDERING = 'ordering'
     FILTERING = 'filtering'
     VOCAB_SCOPE_REF = 'vocabulary_scope_ref'
-    RESOURCE_URI = 'resource_uri'    
+    RESOURCE_URI = 'resource_uri'
+    
+    DATA_ACCESS_LEVEL = 'data_access_level'
+    VIEW_GROUPS = 'view_groups' 
 
 class USER(schema_obj):
     resource_name = 'user'
@@ -119,6 +122,7 @@ class JOB(schema_obj):
     
     PROCESS_ID = 'process_id'
     PROCESS_ENV = 'process_env'
+    PROCESS_MESSAGES = 'process_messages'
     STATE = 'state'
     DATE_TIME_REQUESTED = 'date_time_requested'
     DATE_TIME_SUBMITTED = 'date_time_submitted'

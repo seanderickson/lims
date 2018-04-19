@@ -18,3 +18,4 @@ date_time_completed,fields.job,,,16,,TRUE,"Date Time Completed","Date Time Compl
 response_content,fields.job,,,17,,TRUE,"Response message(s) reported from the system (JSON encoded)","Response Content",TRUE,,,[d],[u],,string,,,,,,
 response_status_code,fields.job,,,18,,TRUE,"Http Response Status Code for the internal job","Response Status Code",TRUE,,,[l;d],[u],,integer,,,,,,
 process_env,fields.job,,,19,,TRUE,"Information about the runtime process env (login id, hostname, pid); JSON encoded","Process Environment",TRUE,,,[d],[u],,string,,,,,,
+process_messages,fields.job,,,20,,TRUE,"Process Messages","Process Messages",TRUE,,,[d],[u],,string,,,,,,

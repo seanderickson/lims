@@ -25,9 +25,9 @@ DEBUG_IMPORTER = False or logger.isEnabledFor(logging.DEBUG)
 
 PARTITION_POSITIVE_MAPPING = \
     SCHEMA.VOCAB.resultvalue.partitioned_positive.get_dict()
-
 CONFIRMED_POSITIVE_MAPPING = \
     SCHEMA.VOCAB.resultvalue.confirmed_positive.get_dict()
+
 ASSAY_WELL_CONTROL_TYPES = {
     'p': SCHEMA.VOCAB.assaywell.control_type.ASSAY_POSITIVE_CONTROL,
     'n': SCHEMA.VOCAB.assaywell.control_type.ASSAY_CONTROL,
@@ -80,6 +80,10 @@ REPORTING_NON_RV_COLUMNS = [
 ]
 
 def data_column_field_mapper(fields):
+    '''
+    Parse the first column of the Screen Result input file Data Columns sheet
+    into valid API Data Column field names using the DATA_COLUMN_FIELD_MAP.
+    '''
     mapped_keys = []
     for key in fields:
         key = key.lower()
@@ -99,9 +103,11 @@ def data_column_field_mapper(fields):
         mapped_keys.append(mapped_key)
     return mapped_keys
 
-def parse_columns(columns_sheet):
-    logger.info('parsing columns sheet: %r', columns_sheet.name)
-    columns = data_column_generator(sheet_cols(columns_sheet))
+def parse_columns(columns):
+    '''
+    Parse the Screen Result input file Data Columns sheet into valid API 
+        Data Columns input.
+    '''
     parsed_cols = OrderedDict()
     errors = {}
     for i,column in enumerate(columns):
@@ -111,6 +117,11 @@ def parse_columns(columns_sheet):
             'ordinal': i
         }
         logger.debug('parsing column: %r', column['data_worksheet_column'])
+        if column['data_worksheet_column'] in parsed_cols:
+            raise ValidationError(
+                key='data_worksheet_column', 
+                msg='%r is listed more than once' 
+                    % column['data_worksheet_column'])
         parsed_cols[column['data_worksheet_column']] = parsed_col
         for key,val in column.items():
             if key == 'is_follow_up_data':
@@ -145,6 +156,10 @@ def parse_columns(columns_sheet):
     return parsed_cols
         
 def result_value_field_mapper(header_row, parsed_columns):
+    '''
+    Parse the Screen Result input file result sheet headers into the valid API 
+        result value input headers using the RESULT_VALUE_FIELD_MAP
+    '''
     if DEBUG_IMPORTER:
         logger.info('map result value header row... %r', parsed_columns.keys())
     mapped_row = []
@@ -170,9 +185,20 @@ def result_value_field_mapper(header_row, parsed_columns):
     return mapped_row
         
 def parse_result_values(parsed_columns, sheets):
+    '''
+    Parse the Screen Result input file format into a valid API input format:
+        - Create a row generator from the result value sheets
+    '''
+    
     logger.info('parse_result_values...')
     well_ids = set()
-    parse_error = None
+    parse_error = ParseError(errors={})
+    def add_parse_error(sheet_name, validation_error):
+        sheet_name = str(sheet_name)
+        if not sheet_name in parse_error.errors:
+            parse_error.errors[sheet_name] = {}
+        parse_error.errors[sheet_name].update(validation_error.errors)
+    
     for sheet in sheets:
         logger.info('parse result values sheet: %r...', sheet.name)
     
@@ -181,11 +207,7 @@ def parse_result_values(parsed_columns, sheets):
             header_row = result_value_field_mapper(rows.next(), parsed_columns)
         except ValidationError, e:
             logger.exception('error: %r', e)
-            if not parse_error:
-                parse_error = ParseError(errors={})
-            if not sheet.name in parse_error.errors:
-                parse_error.errors[str(sheet.name)] = {}
-            parse_error.errors[sheet.name] = e.errors
+            add_parse_error(sheet.name, e)
             continue
         logger.info('output result values...')
         for i,row in enumerate(rows):
@@ -202,40 +224,52 @@ def parse_result_values(parsed_columns, sheets):
                 yield result
             except ValidationError,e:
                 logger.exception('parse error: %r', e)
-                if not parse_error:
-                    parse_error = ParseError(errors={})
-                if not sheet.name in parse_error.errors:
-                    parse_error.errors[sheet.name] = {}
-                parse_error.errors[sheet.name].update(e.errors)
-    if parse_error:
+                add_parse_error(sheet.name, e)
+    if parse_error.errors:
         raise parse_error
-    
+
 def parse_result_row(i,parsed_columns,result_row):    
-    
+    '''
+    Parse the Screen Result input file format into a valid API input format:
+    - Convert plate_number and well_name into a well_id
+    - Convert the assay_well_control_type input:
+        use the ASSAY_WELL_CONTROL_TYPES to map api schema assaywell.control_type
+    - Convert the exclude column specifiers into known column letters:
+        "all" is converted to a list of all column letters
+    - Parse value columns according to the data_type specified:
+        - Create default values for positive columns
+        - (TODO: validation rules can be moved to API)
+        - Verify that PARTITION_POSITIVE_MAPPING values are used
+        - Verify that CONFIRMED_POSITIVE_MAPPING values are used
+        - Verify that integer values are integers
+        - Verify that decimal values can be parsed as float
+    '''
     logger.debug(
         'parse result row: %d, %r:  %r', i, parsed_columns.keys(), result_row)
     
     meta_columns = RESULT_VALUE_FIELD_MAP.values()
     parsed_row = {}
     excluded_cols = []
-    
+
+    well_id_errors = []
     meta_key = 'plate_number'
     val = result_row[meta_key]
     logger.debug('plate value to parse: %r', val)
     plate_number = parse_val(val, meta_key, 'integer')
     if plate_number is None:
-        raise ValidationError(key='row %d'%i, msg='%r is required' % meta_key)
+        well_id_errors.append('%s is required' % meta_key)
     meta_key = 'well_name'
     val = result_row[meta_key]
     if not val:
-        raise ValidationError(key='row %d'%i, msg='%r is required' % meta_key)
-    if WELL_NAME_PATTERN.match(val):
+        well_id_errors.append('%s is required' % meta_key)
+    elif WELL_NAME_PATTERN.match(val):
         wellname = val
     else:
-        raise ParseError(
-            key=i, 
-            msg=('Well_name val %r does not follow the pattern: %r'
-            % (val, WELL_NAME_PATTERN.pattern))) 
+        well_id_errors.append('Well_name val %r does not follow the pattern: %r'
+            % (val, WELL_NAME_PATTERN.pattern))
+    if well_id_errors:
+        raise ParseError(errors={ 'row: %d'%i: well_id_errors })
+    
     parsed_row['well_id'] = \
         '%s:%s' % (str(plate_number).zfill(5), wellname)
     
@@ -295,7 +329,6 @@ def parse_result_row(i,parsed_columns,result_row):
         key = '%s-%s' % (parsed_row['well_id'],colname)
         parsed_row[colname] = raw_val
         
-#         if column['data_type']  in ['numeric','decimal','integer']:
         if column['data_type']  in DATA_TYPE.numeric_types:
             if  column['decimal_places'] > 0:
                 # parse, to validate only; use decimal for final parsing
@@ -323,14 +356,23 @@ def parse_result_row(i,parsed_columns,result_row):
             val = parse_val(raw_val,key,'boolean')
             parsed_row[colname] = val
         logger.debug('parsed_row: %r', parsed_row)
+    
     return parsed_row
 
 def data_column_generator(data_columns):
+    ''' Read the Screen Result load file "Data Columns" sheet
+    '''
+    
+    # Read column 1 in as the field names
     fields = [x for x in data_column_field_mapper(data_columns.next())]
+    # Read subsequent columns as data
     for col_def in data_columns:
         yield dict(zip(fields,col_def))
 
 def read_workbook(wb):
+    ''' 
+    Parse the Screen Result load file into valid API input format
+    '''
     try:
         logger.info('read screen result file sheets...')
         sheets = workbook_sheets(wb)
@@ -344,7 +386,7 @@ def read_workbook(wb):
         
         sheet = sheets.next()
         logger.info('read Data Columns sheet: %r...', sheet.name)
-        columns = parse_columns(sheet)
+        columns = parse_columns(data_column_generator(sheet_cols(sheet)))
         
         result_values = parse_result_values(columns,sheets)
         return OrderedDict((
@@ -358,13 +400,16 @@ def read_workbook(wb):
    
     
 def write_workbook(file, screen_facility_id, fields, result_values):
+    ''' 
+    Write API API Screen Result data to the Screen Result load file format
+    '''
     generic_xls_write_workbook(
         file, 
         create_output_data(screen_facility_id, fields, result_values ))
     
 def create_output_data(screen_facility_id, fields, result_values ):
     '''
-    Translate Screen Result data into a data structure ready for Serialization:
+    Translate API Screen Result data into Screen Result load file format:
     {
        'Screen Info': [ [ row1 ], [ row2 ]...].
        'Data Columns': [ [ row1 ], [ row2 ]...].
@@ -382,7 +427,6 @@ def create_output_data(screen_facility_id, fields, result_values ):
     data['Screen Info'] = { 'Screen Number': screen_facility_id }
     
     # 2. Data Columns
-    
     data_column_structure = []
     data_column_keys = []
     non_data_column_keys = []
@@ -482,8 +526,14 @@ def create_output_data(screen_facility_id, fields, result_values ):
     data['Data Columns'] = data_column_structure
 
     # 3. Result Values sheet 
-            
     def result_value_generator(result_values):
+        '''
+        Generate the Screen Result load file format from an API generated 
+            result value list:
+        - Split the well_id into the plate_number and well_name columns
+        - Convert the API schema assaywell.control_type to the load file format
+            values using the ASSAY_WELL_CONTROL_TYPES mapping
+        '''
         
         logger.info('Write the result values sheet')
         header_row = []

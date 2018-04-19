@@ -49,7 +49,6 @@ $ ./manage.py test --settings=lims.test_settings
 
 from __future__ import unicode_literals
 
-import cStringIO
 from decimal import Decimal
 import json
 import logging
@@ -57,7 +56,6 @@ import os
 import re
 import sys
 import unittest
-from unittest.util import safe_repr
 import urlparse
 
 import dateutil.parser
@@ -70,23 +68,21 @@ from django.test import TestCase
 from django.test.client import Client, FakePayload
 from django.test.runner import DiscoverRunner
 from django.test.testcases import SimpleTestCase
-from django.utils.encoding import force_text
-from tastypie import fields
 
-from reports import dump_obj, HEADER_APILOG_COMMENT
+from reports import HEADER_APILOG_COMMENT
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE, MetaHash, UserGroup, \
     UserProfile, ApiLog, Permission, Job
-from reports.serialize import parse_val
+import reports.schema as SCHEMA
+from reports.serialize import parse_val, JSON_MIMETYPE
 import reports.serialize.csvutils as csvutils
 from reports.serialize.sdfutils import MOLDATAKEY
 from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
-from reports.sqlalchemy_resource import SqlAlchemyResource
+import reports.utils.background_processor
 import reports.utils.log_utils
 
-import reports.schema as SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -2654,9 +2650,13 @@ class JobResource(IResourceTestCase):
         ApiLog.objects.all().delete()
     
     def test1_test_job(self):
+        '''
+        Basic test of the background_job wrapper and the Job Resource
+        '''
         logger.info('test1_test_job...')
         JOB = SCHEMA.JOB
         USER = SCHEMA.USER
+        JOB_STATE = SCHEMA.VOCAB.job.state
         # Setup: create user
         
         username = 'st1'
@@ -2686,8 +2686,6 @@ class JobResource(IResourceTestCase):
             resp.status_code <= 204,
             (resp.status_code, self.get_content(resp)))  
         
-        # Setup: create a background job listener
-        
         # 1. Invoke the "test_job" from the client
         job_resource_uri = '/'.join([BASE_URI, JOB.resource_name])
         test_background_job_decorated_uri = '/'.join(
@@ -2706,31 +2704,35 @@ class JobResource(IResourceTestCase):
         logger.info('job created: %r', job_response)
         job_obj = job_response[API_RESULT_META][JOB.resource_name]
         logger.info('job created: %r', job_obj)
-        
-        self.assertEqual(SCHEMA.VOCAB.job.state.PENDING,job_obj[JOB.STATE])
+        self.assertEqual(JOB_STATE.SUBMITTED,job_obj[JOB.STATE])
+        job_id = job_obj[JOB.ID]
         
         # 2. Validate state (pending)
-        params = { JOB.ID: job_obj[JOB.ID] }
-        logger.info('get the job at %r for params: %r', job_resource_uri, params)
-        new_job_obj = self.get_single_resource(job_resource_uri, params)
+        params = { JOB.ID: job_id }
+        job_data = self.get_single_resource(job_resource_uri, params)
         
-        self.assertEqual(SCHEMA.VOCAB.job.state.PENDING,new_job_obj[JOB.STATE])
+        self.assertEqual(JOB_STATE.SUBMITTED,job_data[JOB.STATE])
+
+        # 2. Invoke the job using the background processor
+        api_client = \
+            reports.utils.background_processor.ApiClient(self.username, self.password)
+        background_client = \
+            reports.utils.background_processor.BackgroundClient(api_client)
+        job_service_response = background_client.service(job_id)
         
+        logger.info('job_service_response: %r', job_service_response)
+        self.assertTrue(API_RESULT_META in job_service_response)
+        new_job_data = job_service_response[API_RESULT_META]
+        self.assertTrue(JOB.resource_name in new_job_data)
+        new_job_data = new_job_data[JOB.resource_name]
         
-        # 2.a Try to create a new job using same URI
+        self.assertEqual(new_job_data[JOB.RESPONSE_STATUS_CODE], 200)
+        self.assertTrue(new_job_data[JOB.STATE], JOB_STATE.COMPLETED)
+        self.assertIsNotNone(new_job_data[JOB.DATE_TIME_PROCESSING])
+        self.assertIsNotNone(new_job_data[JOB.DATE_TIME_COMPLETED])
+        self.assertTrue(JOB.RESPONSE_CONTENT in new_job_data)
+        response_content = json.loads(new_job_data[JOB.RESPONSE_CONTENT])
+        self.assertEquals(response_content, { 'test_job': 'created!'})
         
-        # 3. Start the job processor
-        
-#         job_processor = 
-        
-        # 3.a Set state to (running)
-        
-        # 3.b Check state
-        
-        # 4. Job processor set state to (completed)
-        
-        # 4.a Validate state 
-        
-        # Parse the result when finished
-        
+    
     

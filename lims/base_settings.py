@@ -190,23 +190,25 @@ IS_PRODUCTION_READY = False
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'default_cache'
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',        
     },
-    'screen': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'screen_cache'
+    'reports_cache': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'reports_cache'
     },
     'resource_cache': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake'
+        'LOCATION': 'resource_cache'
     },
-#     'default1': {
-#         'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-#         'LOCATION': 'my_cache_table',
-#     }
+    'db_cache': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'db_cache'
+    },
+    'screen_cache': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'screen_cache'
+    },
 }
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
@@ -214,11 +216,6 @@ CACHES = {
 # import sqlalchemy.pool
 # SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
 
-# A sample logging configuration. The only tangible logging
-# performed by this configuration is to send an email to
-# the site admins on every HTTP 500 error when DEBUG=False.
-# See http://docs.djangoproject.com/en/dev/topics/logging for
-# more details on how to customize your logging configuration.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

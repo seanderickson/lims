@@ -99,7 +99,6 @@ def get_django_request_job_params(request):
     username = request.user.username
     comment = request.META.get(HEADER_APILOG_COMMENT, '')
     context_data = {}
-    # Note: cookies are not stored -- yet 20180402
     
     # query_string
     query_params = {}
@@ -204,6 +203,7 @@ class ApiClient(django.test.client.Client):
 
     def request(self, **request):
         
+        # Default to JSON for background client requests
         if DJANGO_ACCEPT_PARAM not in request:
             request[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
@@ -218,7 +218,7 @@ class BackgroundClient(object):
         self.api_client = api_client
     
     def service(self, job_id):
-        self._service(job_id)
+        return self._service(job_id)
         
     def _service(self, job_id):
         
@@ -370,9 +370,10 @@ if __name__ == "__main__":
         
         client = ApiClient(username, password)
         background_processor = BackgroundProcessor(client)
-        background_processor.service(loop_time_seconds=args.service_loop_time_s, 
+        response = background_processor.service(
+            loop_time_seconds=args.service_loop_time_s, 
             time_to_run=args.run_time_s);  
-        
+        logger.info('response: %r', response)
     except Exception, e:
         logger.exception('in background service method')
         raise e

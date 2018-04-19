@@ -147,6 +147,7 @@ class Migration(migrations.Migration):
                 ('context_data', models.TextField(null=True)),
                 ('process_id', models.TextField(null=True)),
                 ('process_env', models.TextField(null=True)),
+                ('process_messages',models.TextField(null=True)),
                 ('state', models.TextField(default=b'pending', 
                     choices=[
                         (b'COMPLETED', b'completed'), 

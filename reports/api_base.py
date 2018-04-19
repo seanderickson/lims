@@ -49,7 +49,7 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.info('decorator un_cache: %r, %r, %r', 
+        logger.debug('decorator un_cache: %r, %r, %r', 
             self, _func,args )
         self.clear_cache(None, **kwargs)
         self.set_caching(False)
@@ -62,15 +62,16 @@ def un_cache(_func):
 
 
 class Authorization(object):
-    pass
 
-    # def _is_resource_authorized(
-    #     self, request, resource_name, user, permission_type, *args, **kwargs):
-    #      
-    #     raise NotImplementedError(
-    #         '_is_resource_authorized must be implemented for %s, %s, %s',
-    #         resource_name, user, permission_type)
+    def _is_resource_authorized(
+        self, user, permission_type, resource_name=None, **kwargs):
 
+        if resource_name is None:
+            resource_name = self.resource_name
+          
+        raise NotImplementedError(
+            '_is_resource_authorized must be implemented for %s, %s, %s',
+            resource_name, user, permission_type)
 
 
 class ResourceOptions(object):
@@ -331,7 +332,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     
     def wrap_view(self, view):
         """
-        Override the tastypie implementation to handle our own ValidationErrors.
+        Handle common operations for views:
+        - authentication
+        - exception handling
+        - client side cache headers
+        - download cookie
+        
         """
 
         # NOTE: csrf enforced when SessionAuthentication is used    
@@ -391,139 +397,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             return response
         return wrapper
     
-        # NOTE: csrf enforced when SessionAuthentication is used    
-
-#         @csrf_exempt
-#         def wrapper(request, *args, **kwargs):
-#             DEBUG_WRAPPER = True
-#             response = None
-#             try:
-#                 callback = getattr(self, view)
-#                 if DEBUG_WRAPPER:
-#                     msg = ()
-#                     if kwargs:
-#                         msg = [ (key,str(kwargs[key])[:100]) 
-#                             for key in kwargs.keys() ]
-#                     logger.info(
-#                         'wrap_view: %r, method: %r, user: %r, request: %r, '
-#                         'kwargs: %r', 
-#                         view, request.method, request.user, request, msg)
-#                 else:
-#                     logger.info('wrap_view: %r, %r', view, request)
-#  
-#                 self.is_authenticated(request)
-#
-#                 response = callback(request, *args, **kwargs)
-#                 # Our response can vary based on a number of factors, use
-#                 # the cache class to determine what we should ``Vary`` on so
-#                 # caches won't return the wrong (cached) version.
-#                 varies = getattr(self._meta.cache, "varies", [])
-#  
-#                 if varies:
-#                     patch_vary_headers(response, varies)
-#  
-#                 if self._meta.cache.cacheable(request, response):
-#                     if self._meta.cache.cache_control():
-#                         # If the request is cacheable and we have a
-#                         # ``Cache-Control`` available then patch the header.
-#                         patch_cache_control(
-#                             response, **self._meta.cache.cache_control())
-#  
-#                 if request.is_ajax() \
-#                     and not response.has_header("Cache-Control"):
-#                     # IE excessively caches XMLHttpRequests, so we're disabling
-#                     # the browser cache here.
-#                     # See http://www.enhanceie.com/ie/bugs.asp for details.
-#                     patch_cache_control(response, no_cache=True)
-#  
-#             except BackgroundJobImmediateResponse as e:
-#                 logger.info('BackgroundJobImmediateResponse returned: %r', 
-#                     e.httpresponse)
-#                 return e.httpresponse
-#              
-#             except BadRequest as e:
-#                 # The message is the first/only arg
-#                 logger.exception('Bad request exception: %r', e)
-#                 data = {
-#                     "error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-#                 response = self.build_error_response(request, data, **kwargs)
-#             except InformationError as e:
-#                 logger.exception('Information error: %r', e)
-#                 response = self.build_error_response(
-#                     request, e.errors, **kwargs)
-#                 if 'xls' in response['Content-Type']:
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
-#             except ValidationError as e:
-#                 logger.exception('Validation error: %r', e)
-#                 response = self.build_error_response(
-#                     request, { API_RESULT_ERROR: e.errors }, **kwargs)
-#                 if 'xls' in response['Content-Type']:
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
-#             except django.core.exceptions.ValidationError as e:
-#                 logger.exception('Django validation error: %s', e)
-#                 response = self.build_error_response(
-#                     request, { API_RESULT_ERROR: e.message_dict }, **kwargs)
-#                 if 'xls' in response['Content-Type']:
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
-#             except PermissionDenied as e:
-#                 logger.info('PermissionDenied ex: %r', e)
-#                 data = {
-#                     'Permission Denied: ': '%r'%e }
-#                 response = self.build_error_response(
-#                     request, data, response_class=HttpResponseForbidden, **kwargs)
-#  
-#             except ObjectDoesNotExist as e:
-#                 logger.info('not found: %r', e)
-#                 response = self.build_error_response(
-#                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
-#             except Http404 as e:
-#                 logger.info('not found: %r', e)
-#                 response = self.build_error_response(
-#                     request, { 'msg': '%r' % e }, response_class=HttpResponseNotFound, **kwargs)
-#             except Exception as e:
-#                 logger.exception('Unhandled exception: %r', e)
-#                 if hasattr(e, 'response'):
-#                     # A specific response was specified
-#                     response = e.response
-#                 else:
-#                     logger.exception('Unhandled exception: %r', e)
-#      
-#                     # A real, non-expected exception.
-#                     # Handle the case where the full traceback is more helpful
-#                     # than the serialized error.
-#                     if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-#                         logger.warn('raise full exception for %r', e)
-#                         raise
-#      
-#                     # Rather than re-raising, we're going to things similar to
-#                     # what Django does. The difference is returning a serialized
-#                     # error message.
-#                     logger.exception('handle 500 error %r...', str(e))
-#                     response = self._handle_500(request, e)
-#  
-#             # Custom ICCB parameter: set cookie to tell the browser javascript
-#             # UI that the download request is finished
-#             downloadID = request.GET.get('downloadID', None)
-#             if downloadID:
-#                 logger.info('set cookie "downloadID" %r', downloadID )
-#                 response.set_cookie('downloadID', downloadID)
-#             else:
-#                 logger.debug('no downloadID: %s' % request.GET )
-#              
-#             return response
-# 
-#         return wrapper
-
-    def clear_cache(self, request, **kwargs):
-        logger.info('clearing the cache from resource: %s' 
-            % self._meta.resource_name)
-        cache.clear()
-
     def set_caching(self,use_cache):
+        logger.debug('set_caching: %r, %r', use_cache, self._meta.resource_name)
         self.use_cache = use_cache
+
+    def get_cache(self):
+        raise NotImplementedError('get_cache must be implemented: %r', self._meta.resource_name)
 
     def deserialize(self, request, format=None):
         
@@ -640,7 +519,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 self.get_serializer().get_accept_content_type(request)
         logger.debug(
             'build response for data: %r, content type: %r', data, content_type)
-        logger.info('build_response: %r, serializing...', content_type)
         serialized = self.serialize(data, content_type)
         response = response_class(
             content=serialized, 
@@ -680,8 +558,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
     def _handle_500(self, request, exception):
         ''' 
-        Override Tastypie for serialization
-        FIXME: copied from Tastypie, needs cleanup to simplify
         '''
         import traceback
         import sys
@@ -696,25 +572,15 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             }
             return self.build_error_response(
                 request, data, response_class=response_class)
-
-        # When DEBUG is False, send an error message to the admins (unless it's
-        # a 404, in which case we check the setting).
-        send_broken_links = getattr(settings, 'SEND_BROKEN_LINK_EMAILS', False)
-
-        if not response_code == 404 or send_broken_links:
-            log = logging.getLogger('django.request.tastypie')
-            log.error('Internal Server Error: %s' % request.path, exc_info=True,
-                      extra={'status_code': response_code, 'request': request})
+        
+        # TODO: configure logging email on errors
 
         # Send the signal so other apps are aware of the exception.
         got_request_exception.send(self.__class__, request=request)
 
-        # Prep the data going out.
         data = {
-            "error_message": getattr(
-                settings, 
-                'TASTYPIE_CANNED_ERROR', 
-                "Sorry, this request could not be processed. Please try again later."),
+            "SERVER_ERROR": 
+                "Sorry, this request could not be processed. Please try again later.",
         }
         return self.build_error_response(
             request, data, response_class=response_class)

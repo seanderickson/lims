@@ -34,7 +34,7 @@ DATABASES = {
         'NAME': 'devscreensaver2', 
         'USER': 'devscreensaver2web',
         'PASSWORD': '',
-        'HOST': 'dev.pgsql.orchestra:',
+        'HOST': 'dev.pgsql.orchestra',
         'PORT': '',                      # Set to empty string for default.
     },
 }
@@ -112,9 +112,37 @@ CACHES = {
             'MAX_ENTRIES': 50000 
         },
     },
-    'screen': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'uniq222#@'
+    'reports_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'reports_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
+    },
+    'resource_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'resource_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
+    },
+    'db_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'db_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
+    },
+    'screen_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'screen_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
     },
 }
 

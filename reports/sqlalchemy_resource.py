@@ -8,7 +8,7 @@ import re
 
 from aldjemy.core import get_engine, get_tables
 from django.conf import settings
-from django.core.cache import cache
+# from django.core.cache import cache
 import django.db.models.constants
 from django.http.request import HttpRequest
 from django.http.response import StreamingHttpResponse, HttpResponse, Http404
@@ -76,10 +76,7 @@ class SqlAlchemyResource(IccblBaseResource):
     def __init__(self, *args, **kwargs):
         # store the Aldjemy tables in a "bridge" object, for legacy reasons
         self.bridge = get_tables()
-        
         self.use_cache = True
-#         self.request_factory = RequestFactory()
-        
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
     
     
@@ -874,8 +871,6 @@ class SqlAlchemyResource(IccblBaseResource):
         NOTE: limit and offset are included because this version of sqlalchemy
         does not support printing of them with the select.compile() function.
         
-        TODO: cache clearing on database writes
-        TODO: using locmemcache; cache service should be configurable
         '''
         DEBUG_CACHE = False or logger.isEnabledFor(logging.DEBUG)
         # Limit check removed with the use of "use_caching" flag
@@ -905,7 +900,7 @@ class SqlAlchemyResource(IccblBaseResource):
             key = m.hexdigest()
             logger.debug('hash key: digest: %s, key: %s, limit: %s, offset: %s', 
                 key_digest, key, limit, offset)
-            cache_hit = cache.get(key)
+            cache_hit = self.get_cache().get(key)
             if cache_hit is not None:
                 if ('stmt' not in cache_hit or
                         cache_hit['stmt'] != compiled_stmt):
@@ -979,7 +974,7 @@ class SqlAlchemyResource(IccblBaseResource):
                             logger.info(
                                 'add to cache, key: %s, limit: %s, offset: %s',
                                 key, limit, new_offset)
-                        cache.set( key, _cache, None)
+                        self.get_cache().set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
                         cached_count += 1

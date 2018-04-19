@@ -25,6 +25,7 @@ from django.db.utils import ProgrammingError
 from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
+from django.conf import settings
 from tastypie.test import ResourceTestCase, TestApiClient
 import xlrd
 import xlsxwriter
@@ -80,6 +81,16 @@ import copy
 
 import db.schema as SCHEMA
 
+
+FIELD = SCHEMA.FIELD
+
+ACCESS_LEVEL = SCHEMA.VOCAB.screen.user_access_level_granted
+DSL = SCHEMA.VOCAB.screen.data_sharing_level
+DC = SCHEMA.DATA_COLUMN
+SCREEN = SCHEMA.SCREEN
+SCREEN_AVAILABILITY = SCHEMA.VOCAB.screen.screen_result_availability
+SU = SCHEMA.SCREENSAVER_USER
+
 logger = logging.getLogger(__name__)
 
 
@@ -106,6 +117,7 @@ class DBResourceTestCase(IResourceTestCase):
         self.directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         self.sr_serializer = ScreenResultSerializer()
         self.test_admin_user = None
+        settings.BACKGROUND_PROCESSING = False
 
     def _bootstrap_init_files(self, reinit_pattern=None):
         logger.info( 'bootstrap reinit_pattern: %r', reinit_pattern)
@@ -135,7 +147,7 @@ class DBResourceTestCase(IResourceTestCase):
     @staticmethod
     def create_small_molecule_test_well(
         plate, well_index, platesize=384, **kwargs):
-        ''' Generate a test well for library initialization'''
+        ''' Generate a Small Molecule test well for library initialization'''
         
         library_well_types = [
             'empty','experimental','dmso','library_control' ]
@@ -157,6 +169,44 @@ class DBResourceTestCase(IResourceTestCase):
                 'H%dC%dN%d' % (well_index%10,well_index%11,well_index%12)
             _data['compound_name'] = \
                 ['name-%d'%well_index, 'name-%d'%((well_index+11)%100)]
+    
+        for k,v in kwargs.items():
+            _data[k] = v
+        return _data
+
+    @staticmethod
+    def create_rnai_test_well(
+        plate, well_index, platesize=384, **kwargs):
+        ''' Generate a RNAi test well for library initialization'''
+        
+        library_well_types = [
+            'empty','experimental','dmso','library_control' ]
+        well_name = lims_utils.well_name_from_index(well_index, platesize)
+        library_well_type = kwargs.get(
+            'library_well_type',library_well_types[well_index%3])
+        _data = {
+            'plate_number': plate, 
+            'well_name': well_name,
+            'well_id': '%s:%s' % (str(plate).zfill(5),well_name),
+            'library_well_type' : library_well_type,
+        }
+        
+        if library_well_type == 'experimental':
+            _data['molar_concentration'] = '0.00%d' % (well_index+1)
+            _data['vendor_name'] = 'vendorX'
+            _data['vendor_identifier'] = 'ID-%d' % well_index
+            _data['vendor_batch_id'] = 2
+
+            _data['sequence'] = ['ACTG','CATG','TACG','GACT','ATCG'][well_index%5]
+            _data['anti_sense_sequence'] = ['ACTG','CATG','TACG','GACT','ATCG'][-well_index%5]
+            vendor_gene_name = ['v_gene_name%d'%well_index]
+            vendor_entrezgene_id = ['vendor_gene_%d'%well_index]
+            vendor_entrezgene_symbols = ['vendor_entrezgene_sym_%d'%well_index]
+            vendor_genbank_accession_numbers = ['v_acc_no_%d'%well_index]
+            vendor_gene_species = ['v_gene_species_%d'%well_index]
+            facility_gene_name = ['f_gene_name_%d'%well_index]
+
+            _data['silencing_reagent_type'] = ['mirna','sirna'][well_index%2]         
     
         for k,v in kwargs.items():
             _data[k] = v
@@ -405,7 +455,8 @@ class DBResourceTestCase(IResourceTestCase):
             attributes.update(data)
         
         resource_uri = '/'.join([
-            BASE_REPORTS_URI, 'vocabulary','labaffiliation.category',attributes['category']])
+            BASE_REPORTS_URI, 'vocabulary','labaffiliation.category',
+            attributes['category']])
         lab_affiliation_category = self.get_single_resource(resource_uri)
         if lab_affiliation_category is None:
             lab_affiliation_category = {
@@ -413,8 +464,11 @@ class DBResourceTestCase(IResourceTestCase):
                 'key': attributes['category'],
                 'ordinal': attributes['ordinal'],
                 'title': 'Lab Affiliation Category ' + attributes['category'],
-                'description': 'Lab Affiliation Category desc: ' + attributes['category']}
-            
+                'description': 'Lab Affiliation Category desc %s' 
+                    % attributes['category']
+            }
+            logger.info('lab affiliation category not found, creating: %r', 
+                lab_affiliation_category)
             resp = self.api_client.post(
                 resource_uri, 
                 format='json', 
@@ -594,11 +648,6 @@ class DBResourceTestCase(IResourceTestCase):
         self.duplex_library_copy1 = self.create_copy(duplex_library_copy1_input)
         logger.info(
             'created duplex_library_copy1: %r', self.duplex_library_copy1)
-#  
-#         logger.info('create rnai screen...')        
-#         self.rnai_screen = self.create_screen({
-#             'screen_type': 'rnai'
-#             })   
 
     @staticmethod
     def _create_screen_result_test_data(
@@ -658,7 +707,6 @@ class DBResourceTestCase(IResourceTestCase):
         ))
         return input_data
 
-
     def create_screen_result_for_test(
             self, screen_facility_id,well_ids, 
             confirmed_positive_wells=None, false_positive_wells=None,
@@ -693,9 +741,7 @@ class DBResourceTestCase(IResourceTestCase):
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(
             resp.status_code in [200, 204], resp.status_code)
 
@@ -787,7 +833,7 @@ def setUpModule():
                 temp_test_case.get_single_resource(resource_uri)
             if new_admin_user:
                 DBResourceTestCase.admin_user = new_admin_user
-                logger.info('got admin user: %r', DBResourceTestCase.admin_user)
+                logger.debug('got admin user: %r', DBResourceTestCase.admin_user)
             else:
                 # If the resource DNE, remove the screensaver_user entry:
                 # - this entry is invalid:
@@ -984,9 +1030,9 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(len(not_found)==0,
             'expected_searches %r not found in %r' % (not_found, parsed_searches))
       
-    def test1_create_library(self):
+    def test1_create_sm_library(self):
 
-        logger.info('test1_create_library ...')
+        logger.info('test1_create_sm_library ...')
         
         resource_uri = BASE_URI_DB + '/library'
         
@@ -1060,8 +1106,87 @@ class LibraryResource(DBResourceTestCase):
         specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
         fields = specific_schema['fields']
         self.validate_wells(input_data, returned_data, fields)
+
+    def test1a_create_rnai_library(self):
+
+        logger.info('test1a_create_rnai_library ...')
         
-    def test1a_create_library_comments(self):
+        resource_uri = BASE_URI_DB + '/library'
+        
+        library1 = self.create_library({ 
+            'screen_type': 'rnai',
+            'short_name': 'testlibrary1rnai','start_plate': '1534', 
+            'end_plate': '1534', 'plate_size': '384' })
+        library2 = self.create_library({ 
+            'screen_type': 'rnai',
+            'short_name': 'testlibrary2rnai','start_plate': '1535', 
+            'end_plate': '1537', 'plate_size': '384' })
+        
+        logger.info('Find the <undefined> library2 wells that were created...')
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library',library2['short_name'],'well'])
+        data_for_get={ 'limit': 0, 'includes': ['*', '-structure_image'] }
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        self.assertTrue(resp['Content-Type'].startswith('application/json'))
+        new_obj = self.deserialize(resp)
+        expected_count = 384*3
+        self.assertEqual(
+            len(new_obj[API_RESULT_DATA]), expected_count, 
+            'wrong number of wells: %d, expected: %d' 
+                % (len(new_obj[API_RESULT_DATA]), expected_count))
+        
+        index = 0
+        platesize = 384
+        plate = 1535        
+        substance_ids = set()
+        # Examine wells - first plate only for speed
+        for j in range(384):
+            well_name = lims_utils.well_name_from_index(j, platesize)
+            well_id = lims_utils.well_id(plate,well_name)
+            well_search = {'well_id': well_id}
+            result, well = find_obj_in_list(
+                well_search, new_obj[API_RESULT_DATA])
+            self.assertTrue(result, well)
+            
+        logger.info('Load wells to the library1...')
+        plate = 1534
+        input_data = [
+            self.create_rnai_test_well(plate,i) 
+                for i in range(0,384)]
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), **data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # Examine Well/Reagents created:
+        # NOTE: the well resource is not the linked resource type, and does not
+        # have the reagent fields.  
+        resource_name = 'reagent'
+        reagent_resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        returned_data = \
+            self.get_list_resource(reagent_resource_uri, data_for_get)
+        expected_count = 384
+        self.assertEqual(
+            len(returned_data), expected_count, 
+            ('library: %r'% library1, 'expected', 
+                expected_count, 'found',len(returned_data)))
+        
+        specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
+        fields = specific_schema['fields']
+        self.validate_wells(input_data, returned_data, fields)
+        
+    def test1b_create_library_comments(self):
 
         logger.info('test1a_create_library_comments ...')
         
@@ -2687,7 +2812,187 @@ class ScreenResultSerializerTest(TestCase):
                     len(e.errors.keys())==3, 
                     'should be 3 errors, one for each plate sheet without '
                     'a "plate" field')
-                
+    
+    def test3_column_read_errors(self):
+        
+        # NOTE: Data Column validation is handled in the API. Validation on 
+        # parse is simply whether the column names are are read, and also
+        # a check on duplicated column names.
+        
+        # 1. Simulate a spreadsheet data structure
+        input_cols = [
+            ('"Data" Worksheet Column','name', 'title', 'data_type',
+             'decimal places', 'description', 'replicate number', 'time point',
+             'assay readout type', 'if derived, how?', 'if derived, from which columns?', 
+             'primary or follow up?', 'which assay phenotype does it belong to?', 
+             'comments','channel', 'time point ordinal','zdepth ordinal'),
+            ('E','test_e','Test Column E', 'numeric',
+             '', 'test column e description',1, '0:10',
+             'luminescence','','',
+             '','Phenotype1'
+             'test comment e','channel 1',1, 1),
+            ('F','test f','Test Column F','decimal',
+             2,'description f',1,'0:10',
+             'luminescence','derived from e','e',
+             'Follow Up','Phenotye1',
+             'test comment f','channel 1',2,2),
+        ]
+        
+        try:
+            columns = screen_result_importer.parse_columns(
+                screen_result_importer.data_column_generator(
+                    (col for col in input_cols)))
+            logger.info('parsed columns: %r', columns)
+            self.assertEqual(len(input_cols)-1, len(columns))
+        except Exception, e:
+            logger.exception('on parsing: %r', e)
+        
+        # Test for a repeated column
+        input_cols.append(
+            ('F','test f','Test Column F','decimal',
+             2,'description f',1,'0:10',
+             'luminescence','derived from e','e',
+             'Follow Up','Phenotye1',
+             'test comment f','channel 1',2,2))
+        try:
+            columns = screen_result_importer.parse_columns(
+                screen_result_importer.data_column_generator(
+                    (col for col in input_cols)))
+            logger.info('parsed columns: %r', columns)
+            self.fail('expected failure for repeated column...')
+        except ValidationError, e:
+            logger.info('error: %r', e)
+    
+    def test4_result_row_parse_well_plate(self):
+        '''
+        Note: testing screen_result_importer.parse_result_row:
+        - well and plate fields
+        - the parser converts the well & plate into a well_id
+        '''
+        
+        # 1. Test plate or well values missing
+        
+        parsed_columns = {
+            'E': {
+                'ordinal': 0,
+                'name': 'Field1',
+                'data_worksheet_column': 'E',
+                'data_type': 'text', 
+                'description': 'field 1 description',
+                'replicate_ordinal': 1,
+            },
+            'F': {
+                'ordinal': 1,
+                'name': 'Field2',
+                'data_worksheet_column': 'F',
+                'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': 'field 2 description',
+                'replicate_ordinal': 1,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'luminescence',
+            },
+        }
+        
+        row = 0
+        result_row = { 'plate_number': '', 'well_name': '', 'type': '', 'exclude': '' }
+        
+        try:
+            screen_result_importer.parse_result_row(row, parsed_columns, result_row)
+        except ValidationError, e:
+            logger.info('validation error: %r', e.errors)
+            self.assertTrue('row: 0' in e.errors)
+            error = e.errors['row: 0']
+            self.assertTrue('plate_number is required' in error)
+            self.assertTrue('well_name is required' in error)
+
+    def test5_duplicate_wells(self):
+        '''
+        '''
+        
+        parsed_columns = {
+            'E': {
+                'ordinal': 0,
+                'name': 'Field1',
+                'data_worksheet_column': 'E',
+                'data_type': 'text', 
+                'description': 'field 1 description',
+                'replicate_ordinal': 1,
+            },
+            'F': {
+                'ordinal': 1,
+                'name': 'Field2',
+                'data_worksheet_column': 'F',
+                'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': 'field 2 description',
+                'replicate_ordinal': 1,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'luminescence',
+            },
+        }
+        
+        row = 0
+        result_values = [
+            { 
+                'well_id': '00001:A01', 
+                'E': 'test value 1',
+                'F': 91.19 ,
+            },
+            { 
+                'well_id': '00001:A02', 
+                'E': 'test value 2',
+                'F': 0.99 ,
+            },
+            { # duplicate well
+                'well_id': '00001:A02', 
+                'E': 'test value 2',
+                'F': 0.99 ,
+            },
+            { 
+                'well_id': '00001:A03', 
+                'E': 'test value 2',
+                'F': 1.99 ,
+            },
+            { 
+                'well_id': '00001:A04', 
+                'E': 'test value 2',
+                'F': 1.99 ,
+            },
+            { 
+                'well_id': '00001:A05', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+            },
+            { 
+                'well_id': '00001:A06', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+            },
+            { 
+                'well_id': '00001:A07',
+                'exclude': ['E','F','G','H','I'], 
+                'E': 'test value 2',
+                'F': 1.1 ,
+            },
+            { 
+                'well_id': '00001:%s' % self.control_well1,
+                'assay_well_control_type': 'assay_control', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+            },
+        ]
+        result_row = { 'plate_number': '', 'well_name': '', 'type': '', 'exclude': '' }
+        
+        try:
+            screen_result_importer.parse_result_row(row, parsed_columns, result_row)
+        except ValidationError, e:
+            logger.info('validation error: %r', e.errors)
+            self.assertTrue('row: 0' in e.errors)
+            error = e.errors['row: 0']
+            self.assertTrue('plate_number is required' in error)
+            self.assertTrue('well_name is required' in error)
+            
     @staticmethod
     def validate(testinstance,input_data,output_data):
         ''' Validate ScreenResult serialization round trip '''
@@ -2836,7 +3141,6 @@ class ScreenResultResource(DBResourceTestCase):
         self.sr_api_client = TestApiClient(serializer=self.sr_serializer)       
 
     def setUp(self):
-
         super(ScreenResultResource, self).setUp()
 
     def tearDown(self):
@@ -2967,12 +3271,14 @@ class ScreenResultResource(DBResourceTestCase):
             if resp.status_code not in [200, 204]:
                 content = self.get_content(resp)
                 if content:
-                    logger.info('resp: %r', 
-                        [[str(y) for y in x] 
-                            for x in self.serializer.from_xlsx(content)])
+                    logger.info('resp: %r', self.serializer.from_xlsx(content))
             self.assertTrue(
                 resp.status_code in [200,201,204], 
                 (resp.status_code))
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', self.serializer.from_xlsx(content))
+            
             input_file.seek(0)
             input_data = self.sr_serializer.from_xlsx(input_file.read())            
 
@@ -2988,9 +3294,13 @@ class ScreenResultResource(DBResourceTestCase):
         resp = self.django_client.get(
             resource_uri, authentication=self.get_credentials(), 
             **data_for_get)
+        if resp.status_code not in [200]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(
-            resp.status_code in [200,201,202], 
-            (resp.status_code, self.get_content(resp)))
+            resp.status_code in [200], 
+            (resp.status_code, self.serializer.from_xlsx(content)))
         output_data = self.sr_serializer.deserialize(
             self.get_content(resp), XLSX_MIMETYPE)
         
@@ -3182,9 +3492,7 @@ class ScreenResultResource(DBResourceTestCase):
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(
             resp.status_code in [200, 204], resp.status_code)
 
@@ -3193,9 +3501,7 @@ class ScreenResultResource(DBResourceTestCase):
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
         output_data = self.sr_serializer.deserialize(
             self.get_content(resp), XLSX_MIMETYPE)
@@ -3346,9 +3652,7 @@ class ScreenResultResource(DBResourceTestCase):
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(
             resp.status_code in [200, 204], resp.status_code)
 
@@ -3357,9 +3661,7 @@ class ScreenResultResource(DBResourceTestCase):
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
         output_data = self.sr_serializer.deserialize(
             self.get_content(resp), XLSX_MIMETYPE)
@@ -3370,8 +3672,8 @@ class ScreenResultResource(DBResourceTestCase):
             self.screen1['facility_id'], { 'includes': '*' })
         self.screen2 = self.get_screen(
             self.screen2['facility_id'], { 'includes': '*' })
-        overlapping1 = self.screen1.get('overlapping_positive_screens', None)
-        overlapping2 = self.screen2.get('overlapping_positive_screens', None)
+        overlapping1 = self.screen1.get(SCREEN.OVERLAPPING_POSITIVE_SCREENS, None)
+        overlapping2 = self.screen2.get(SCREEN.OVERLAPPING_POSITIVE_SCREENS, None)
         self.assertTrue(
             self.screen2['facility_id'] in overlapping1,
             '%r not found in %r' % (self.screen2['facility_id'], overlapping1) )
@@ -3397,9 +3699,7 @@ class ScreenResultResource(DBResourceTestCase):
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
-                logger.info('resp: %r', 
-                    [[str(y) for y in x] 
-                        for x in self.serializer.from_xlsx(content)])
+                logger.info('get resp: %r', self.serializer.from_xlsx(content))
         self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
         logger.info('deserialize to json and check mutual positives columns...')
         # use generic deserialization to show all of the fields
@@ -3668,6 +3968,337 @@ class ScreenResultResource(DBResourceTestCase):
             'derived_from_columns' in str(col_errors),
             'error should be a "derived_from_columns" error: %r, %r' 
                 % (key,col_errors) )
+        
+    def test6_duplicate_wells(self):
+        '''
+        See test_duplicate_wells in the ScreenResultSerializer test
+        - Note that the result_value constraint for (data_column_id, well_id) 
+        must be implemented for this test to work, see result_value_cleanup.sql
+        '''
+        self._setup_test_config()
+        logger.info('test6_duplicate_wells...')
+
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        
+        fields = {
+            'E': {
+                'ordinal': 0,
+                'name': 'Field1',
+                'data_worksheet_column': 'E',
+                'data_type': 'text', 
+                'description': 'field 1 description',
+                'replicate_ordinal': 1,
+            },
+            'F': {
+                'ordinal': 1,
+                'name': 'Field2',
+                'data_worksheet_column': 'F',
+                'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': 'field 2 description',
+                'replicate_ordinal': 1,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'luminescence',
+            },
+            'G': {
+                'ordinal': 2,
+                'name': 'Field3',
+                'data_worksheet_column': 'G',
+                'data_type': 'numeric',
+                'decimal_places': 4, 
+                'description': 'field 3 description',
+                'replicate_ordinal': 2,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'flourescence_intensity',
+            },
+            'H': {
+                'ordinal': 3,
+                'name': 'Field4',
+                'data_worksheet_column': 'H',
+                'data_type': 'confirmed_positive_indicator',
+                'description': 'field 4 description',
+                'how_derived': 'z-score > 1 for Field3'
+            },
+            'I': {
+                'ordinal': 4,
+                'name': 'Field5',
+                'data_worksheet_column': 'I',
+                'data_type': 'partition_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+            'J': {
+                'ordinal': 5,
+                'name': 'Field6',
+                'data_worksheet_column': 'J',
+                'data_type': 'boolean_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+        }
+        result_values = [
+            { 
+                'well_id': '00001:A01', 
+                'E': 'test value 1',
+                'F': 91.19 ,
+                'G': .0011 ,
+                'H': None ,  # 20180315 should be interpreted as 'NT' 
+                'I': None , # 20180315should be interpreted as 'NP'
+                'J': None , # 20180315 should be interpreted as False
+            },
+            { 
+                'well_id': '00001:A02', 
+                'E': 'test value 2',
+                'F': 0.99 ,
+                'G': 1.0331 ,
+                'H': 'CP',
+                'I': 'W' ,
+                'J': True,
+            },
+            { # duplicate well
+                'well_id': '00001:A02', 
+                'E': 'test value 2',
+                'F': 0.99 ,
+                'G': 1.0331 ,
+                'H': 'CP',
+                'I': 'W' ,
+                'J': True,
+            },
+            { 
+                'well_id': '00001:A03', 
+                'E': 'test value 2',
+                'F': 1.99 ,
+                'G': 1.032 ,
+                'H': 'I',
+                'I': 'M' ,
+                'J': True,
+            },
+            { 
+                'well_id': '00001:A03', 
+                'E': 'test value 2',
+                'F': 1.99 ,
+                'G': 1.032 ,
+                'H': 'NT',
+                'I': 'S' ,
+                'J': True,
+            },
+            { 
+                'well_id': '00001:A06', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'CP',
+                'I': 'M' ,
+                'J': None,
+            },
+            { 
+                'well_id': '00001:A06', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'FP',
+                'I': 'M' ,
+                'J': None
+            },
+            { 
+                'well_id': '00001:A07',
+                'exclude': ['E','F','G','H','I'], 
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'FP',
+                'I': 'M' ,
+                'J': False,
+            },
+            { 
+                'well_id': '00001:%s' % self.control_well1,
+                'assay_well_control_type': 'assay_control', 
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+            },
+        ]
+        expected_duplicates = ['00001:A02','00001:A03','00001:A06']
+        # The ScreenResultSerializer only recognizes the XLSX format:
+        # So serialize the input data into an XLSX file
+        input_data_put = screen_result_importer.create_output_data(
+            screen[SCHEMA.SCREEN.FACILITY_ID], 
+            fields, 
+            result_values )
+        input_data_put = self.sr_serializer.serialize(
+            input_data_put, XLSX_MIMETYPE)
+        data_for_get = {}
+        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
+        logger.info('PUT screen result to the server...')
+        screen_facility_id = screen['facility_id']
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        logger.info('PUT the second screen result to the server...')
+        resp = self.django_client.put(
+            resource_uri, data=input_data_put, **data_for_get )
+        
+        self.assertTrue(
+            resp.status_code == 400, resp.status_code)
+        content = self.deserialize(resp)
+        logger.info('content; %r', content)
+        
+        self.assertTrue('errors' in content)
+        errors = content['errors']
+        self.assertTrue('data' in errors)
+        data_sheet_errors = errors['data']
+        for expected_duplicate in expected_duplicates:
+            self.assertTrue(expected_duplicate in data_sheet_errors)
+            self.assertTrue('duplicate' in data_sheet_errors[expected_duplicate])
+        
+    def test7_empty_wells_not_allowed_positive(self):
+        '''
+        '''
+        self._setup_test_config()
+        logger.info('test6_duplicate_wells...')
+
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        
+        fields = {
+            'E': {
+                'ordinal': 0,
+                'name': 'Field1',
+                'data_worksheet_column': 'E',
+                'data_type': 'text', 
+                'description': 'field 1 description',
+                'replicate_ordinal': 1,
+            },
+            'F': {
+                'ordinal': 1,
+                'name': 'Field2',
+                'data_worksheet_column': 'F',
+                'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': 'field 2 description',
+                'replicate_ordinal': 1,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'luminescence',
+            },
+            'G': {
+                'ordinal': 2,
+                'name': 'Field3',
+                'data_worksheet_column': 'G',
+                'data_type': 'numeric',
+                'decimal_places': 4, 
+                'description': 'field 3 description',
+                'replicate_ordinal': 2,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'flourescence_intensity',
+            },
+            'H': {
+                'ordinal': 3,
+                'name': 'Field4',
+                'data_worksheet_column': 'H',
+                'data_type': 'confirmed_positive_indicator',
+                'description': 'field 4 description',
+                'how_derived': 'z-score > 1 for Field3'
+            },
+            'I': {
+                'ordinal': 4,
+                'name': 'Field5',
+                'data_worksheet_column': 'I',
+                'data_type': 'partition_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+            'J': {
+                'ordinal': 5,
+                'name': 'Field6',
+                'data_worksheet_column': 'J',
+                'data_type': 'boolean_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+        }
+        result_values = [
+            { 
+                'well_id': '00001:A01', 
+                'E': 'test value 1',
+                'F': 91.19 ,
+                'G': .0011 ,
+                'H': 'CP',
+                'I': None , # 20180315should be interpreted as 'NP'
+                'J': None , # 20180315 should be interpreted as False
+            },
+            { 
+                'well_id': '00001:A20', 
+                'E': 'test value 1',
+                'F': 91.19 ,
+                'G': .0011 ,
+                'H': None ,  # 20180315 should be interpreted as 'NT' 
+                'I': None , # 20180315should be interpreted as 'NP'
+                'J': None , # 20180315 should be interpreted as False
+            },
+            { 
+                'well_id': '00001:A21', 
+                'E': 'test value 2',
+                'F': 0.99 ,
+                'G': 1.0331 ,
+                'H': 'CP',
+                'I': None ,
+                'J': None,
+            },
+            { 
+                'well_id': '00001:A22', 
+                'E': 'test value 2',
+                'F': 0.99 ,
+                'G': 1.0331 ,
+                'H': None,
+                'I': 'S' ,
+                'J': None,
+            },
+            { 
+                'well_id': '00001:A23', 
+                'E': 'test value 2',
+                'F': 1.99 ,
+                'G': 1.032 ,
+                'H': None,
+                'I': None ,
+                'J': True,
+            },
+        ]
+        expected_empties = ['00001:A21-H','00001:A22-I','00001:A23-J',]
+        # The ScreenResultSerializer only recognizes the XLSX format:
+        # So serialize the input data into an XLSX file
+        input_data_put = screen_result_importer.create_output_data(
+            screen[SCHEMA.SCREEN.FACILITY_ID], 
+            fields, 
+            result_values )
+        input_data_put = self.sr_serializer.serialize(
+            input_data_put, XLSX_MIMETYPE)
+        data_for_get = {}
+        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
+        logger.info('PUT screen result to the server...')
+        screen_facility_id = screen['facility_id']
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        logger.info('PUT the second screen result to the server...')
+        resp = self.django_client.put(
+            resource_uri, data=input_data_put, **data_for_get )
+        
+        self.assertTrue(
+            resp.status_code == 400, resp.status_code)
+        content = self.deserialize(resp)
+        logger.info('content; %r', content)
+        
+        self.assertTrue('errors' in content)
+        errors = content['errors']
+        for expected_empty_error_well in expected_empties:
+            self.assertTrue(expected_empty_error_well in errors)
+            self.assertTrue('non experimental well, not considered for positives' 
+                in errors[expected_empty_error_well][0])
         
 
 class ScreenResource(DBResourceTestCase):
@@ -4219,10 +4850,6 @@ class ScreenResource(DBResourceTestCase):
                 
         # Set up dependencies
         logger.info('create users...')
-#         # (Single users must have a lab head - or be a lab head)
-#         self.screening_user = self.create_lab_head({ 
-#             'username': 'screening1'
-#         })
         
         # FIXME: create an "LibraryScreeningPerformers" admin group
         performed_by_user = self.admin_user
@@ -4314,6 +4941,7 @@ class ScreenResource(DBResourceTestCase):
                 start_plate=library2['start_plate'],
                 end_plate=int(library2['start_plate']+10))
         library_plates_screened = [ plate_range1, plate_range2 ]
+        expected_plate_count = 6 + 11 # 1000-1005, 2000-2010
         
         library_screening_input = {
             'screen_facility_id': screen['facility_id'],
@@ -4418,7 +5046,7 @@ class ScreenResource(DBResourceTestCase):
         # 10 - "valid" test
         
         logger.info('10. Create valid library screening input...')
-        logger.info('Patch batch_edit: cred: %r', self.username)
+        logger.info('Patch batch_edit: %r: cred: %r',resource_uri, self.username)
         resp = self.api_client.post(
             resource_uri,format='json', 
             data=library_screening_input, 
@@ -4436,11 +5064,11 @@ class ScreenResource(DBResourceTestCase):
         
         actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
         expected_result_meta = {
-            API_MSG_SCREENING_PLATES_UPDATED: 17,
-            API_MSG_SCREENING_ADDED_PLATE_COUNT: 17, 
+            API_MSG_SCREENING_PLATES_UPDATED: expected_plate_count,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: expected_plate_count, 
             API_MSG_SCREENING_DELETED_PLATE_COUNT: 0,
             API_MSG_SCREENING_EXTANT_PLATE_COUNT: 0,
-            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 17
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: expected_plate_count
         }
         for k,v in expected_result_meta.items():
             self.assertEqual(v,actual_result_meta[k], 
@@ -4502,12 +5130,12 @@ class ScreenResource(DBResourceTestCase):
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
         key = 'library_plates_screened'
-        expected_value = 17 # 6 in library1, 11 in library2
+        expected_value = expected_plate_count # 6 in library1, 11 in library2
         self.assertTrue(screen[key] == expected_value,
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
         key = 'assay_plates_screened'
-        expected_value = 34 # lps * 2 replicates
+        expected_value = expected_plate_count*2 # lps * 2 replicates
         self.assertTrue(screen[key] == expected_value,
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
@@ -4535,7 +5163,7 @@ class ScreenResource(DBResourceTestCase):
             'plate_range1: %r not in diffs: %r'
             % (plate_range1, apilog['diffs']))
         
-        self.assertTrue(apilog['child_logs'] == 17, 
+        self.assertTrue(apilog['child_logs'] == expected_plate_count, 
             'wrong child_logs count: %r' % apilog)
         data_for_get={ 
             'limit': 0, 
@@ -4546,9 +5174,13 @@ class ScreenResource(DBResourceTestCase):
             BASE_REPORTS_URI + '/apilog', 
             data_for_get=data_for_get )
         self.assertTrue(
-            len(apilogs) == 17, 
+            len(apilogs) == expected_plate_count, 
             'wrong number of child logs returned: %d: %r' 
             % (len(apilogs), apilogs))
+        
+        for i,log in enumerate(apilogs):
+            logger.info('%d: %r, %r', i, log['key'],log['diffs'])
+        
         apilog = apilogs[0]
         logger.info('apilog: %r', apilog)
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
@@ -4558,7 +5190,7 @@ class ScreenResource(DBResourceTestCase):
                 'volume_transferred_per_well_from_library_plates']))
         self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
         diffs = json.loads(apilog['diffs'])
-        logger.debug('diffs: %r', diffs)
+        logger.info('diffs: %r', diffs)
         self.assertEqual(
             expected_remaining_volume, 
             Decimal(diffs['remaining_well_volume'][1]))
@@ -4576,6 +5208,11 @@ class ScreenResource(DBResourceTestCase):
         # add 6 more plates
         added_plate_range_start = library2['start_plate']+15
         added_plate_range_end = library2['start_plate']+20
+        
+        expected_updated_plate_count = 6
+        extant_plate_count = expected_plate_count
+        expected_total_plate_count = expected_plate_count + expected_updated_plate_count
+        
         added_plate_range = lps_format.format(**library_copy2).format(
                 start_plate=added_plate_range_start,
                 end_plate=added_plate_range_end )
@@ -4600,11 +5237,11 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
         expected_result_meta = {
-            API_MSG_SCREENING_PLATES_UPDATED: 6,
-            API_MSG_SCREENING_ADDED_PLATE_COUNT: 6, 
+            API_MSG_SCREENING_PLATES_UPDATED: expected_updated_plate_count,
+            API_MSG_SCREENING_ADDED_PLATE_COUNT: expected_updated_plate_count, 
             API_MSG_SCREENING_DELETED_PLATE_COUNT: 0,
-            API_MSG_SCREENING_EXTANT_PLATE_COUNT: 17,
-            API_MSG_SCREENING_TOTAL_PLATE_COUNT: 23,
+            API_MSG_SCREENING_EXTANT_PLATE_COUNT: extant_plate_count,
+            API_MSG_SCREENING_TOTAL_PLATE_COUNT: expected_total_plate_count,
         }
         for k,v in expected_result_meta.items():
             self.assertEqual(v,actual_result_meta[k], 
@@ -4652,7 +5289,7 @@ class ScreenResource(DBResourceTestCase):
             BASE_REPORTS_URI + '/apilog', 
             data_for_get=data_for_get )
         self.assertTrue(
-            len(apilogs) == 6, 
+            len(apilogs) == expected_updated_plate_count, 
             'wrong number of child logs returned: %d: %r' 
             % (len(apilogs), apilogs))
         apilog = apilogs[0]
@@ -4867,10 +5504,6 @@ class ScreenResource(DBResourceTestCase):
 
         logger.info('test3_create_publication ...')
         
-#         # (Single users must have a lab head - or be a lab head)
-#         self.screening_user = self.create_lab_head({ 
-#             'username': 'screening1'
-#         })
         logger.info('create screen...')        
         screen = self.create_screen({
             'screen_type': 'small_molecule'
@@ -9418,7 +10051,6 @@ class DataSharingLevel(DBResourceTestCase):
     
     def __init__(self, *args, **kwargs):
         DBResourceTestCase.__init__(self, *args, **kwargs)
-#         self.general_user_password = 'testpass1'
 
     def tearDown(self):
         logger.info('=== tearDown...')
@@ -9455,12 +10087,6 @@ class DataSharingLevel(DBResourceTestCase):
         def set_user_password(user):
             super(DataSharingLevel, self).set_user_password(
                 user['username'], self.general_user_password)
-#             # assign password to the test user
-#             # NOTE: may only be done through the Django Model, for now
-#             # TODO: superuser should be able to assign password through secure connection
-#             userObj = User.objects.get(username=user['username'])
-#             userObj.set_password(self.general_user_password)
-#             userObj.save()
             return user
 
         # Store extant users so that they will not have to be recreated if 
@@ -9552,7 +10178,9 @@ class DataSharingLevel(DBResourceTestCase):
         self.screens_by_lead = {}
         for username, screens in screens_by_lead.items():
             self.screens_by_lead[username] = sorted(
-                screens, key=lambda facility_id: reference_screens[facility_id]['data_sharing_level'])
+                screens, 
+                key=lambda facility_id: 
+                    reference_screens[facility_id]['data_sharing_level'])
         logger.info('screens_by_lead: %r', self.screens_by_lead)
         self.screens_by_level = defaultdict(set)
         for facility_id,screen in reference_screens.items():
@@ -9798,13 +10426,14 @@ class DataSharingLevel(DBResourceTestCase):
         screen1_2 = self.get_screen(facility1)
         screen2_2 = self.get_screen(facility2)
  
+        OVERLAPPING_FIELD = SCREEN.OVERLAPPING_POSITIVE_SCREENS
         # 1.A before data upload, no overlapping of result values
         self.assertIsNone(
-            screen1_2['overlapping_positive_screens'],
-            screen1_2['overlapping_positive_screens'])
+            screen1_2[OVERLAPPING_FIELD],
+            screen1_2[OVERLAPPING_FIELD])
         self.assertIsNone(
-            screen2_2['overlapping_positive_screens'],
-            screen2_2['overlapping_positive_screens'])
+            screen2_2[OVERLAPPING_FIELD],
+            screen2_2[OVERLAPPING_FIELD])
          
         # 2. create overlapping data
         well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
@@ -9819,13 +10448,13 @@ class DataSharingLevel(DBResourceTestCase):
         screen2_2 = self.get_screen(facility2)
          
         self.assertTrue(
-            screen2_2['facility_id'] in screen1_2['overlapping_positive_screens'],
+            screen2_2['facility_id'] in screen1_2[OVERLAPPING_FIELD],
             '%r not found in %r' 
-                % (screen2_2['facility_id'],screen1_2['overlapping_positive_screens']))
+                % (screen2_2['facility_id'],screen1_2[OVERLAPPING_FIELD]))
         self.assertTrue(
-            screen1_2['facility_id'] in screen2_2['overlapping_positive_screens'],
+            screen1_2['facility_id'] in screen2_2[OVERLAPPING_FIELD],
             '%r not found in %r' 
-                % (screen1_2['facility_id'],screen2_2['overlapping_positive_screens']))
+                % (screen1_2['facility_id'],screen2_2[OVERLAPPING_FIELD]))
         # 3. Remove screen results
         delete_url = '/'.join([BASE_URI, 'screenresult/%s'])
         self.api_client.delete(delete_url % facility1, authentication=self.get_credentials())
@@ -9835,11 +10464,11 @@ class DataSharingLevel(DBResourceTestCase):
         screen2_2 = self.get_screen(facility2)
 
         self.assertIsNone(
-            screen1_2['overlapping_positive_screens'],
-            screen1_2['overlapping_positive_screens'])
+            screen1_2[OVERLAPPING_FIELD],
+            screen1_2[OVERLAPPING_FIELD])
         self.assertIsNone(
-            screen2_2['overlapping_positive_screens'],
-            screen2_2['overlapping_positive_screens'])
+            screen2_2[OVERLAPPING_FIELD],
+            screen2_2[OVERLAPPING_FIELD])
         
     def test3_visibility(self):
         '''
@@ -9847,23 +10476,23 @@ class DataSharingLevel(DBResourceTestCase):
         
         General Screen visibility Rules:
         
-        before deposit: Own Screens and Level 0 Screens
-        after deposit: Own Screens and Levels 0,1,2 Screens
+        before deposit: Own Screens and DSL Level 0 SHARED Screens
+        after deposit: Own Screens and DSL Levels 0,1,2 Screens
         (level 3 users may only ever see Own Screens and Level 0 Screens)
         
         Field Access Level Rules:
         
-        User-Screen Access Level 0:
+        User-Screen Access Level 0 LIMITED_ONLY:
         - for any Screen the User is authorized to see
-        User-Screen Access Level 1:
+        User-Screen Access Level 1 OVERLAPPING_ONLY:
         - Level 1 or 2 Users viewing Level 0 Screens
         - Level 1 Users viewing Level 1 Screens
         - Level 1 Users viewing overlapping level 2 Screens
         - Level 2 Users viewing overlapping level 1 or 2 Screens
-        User-Screen Access Level 2 :
+        User-Screen Access Level 2 MUTUALLY_SHARED:
         - Level 1 or 2 Users viewing Level 0 Screens
         - Level 1 Users viewing Level 1 Screens
-        User-Screen Access Level 3:
+        User-Screen Access Level 3 ALL:
         - When viewing own screens
         
         '''
@@ -9873,8 +10502,8 @@ class DataSharingLevel(DBResourceTestCase):
         
     def do_visibility_test(
             self, fields, user, expected_screens_access_levels):
-
-        logger.info('do_visibility_test for: %r', user['username'])
+        
+        logger.info('do_visibility_test for: %r', user[SU.USERNAME])
 
         # Retrieve the screens as superuser for reference
         reference_screens = self.get_list_resource(BASE_URI + '/screen') 
@@ -9882,13 +10511,13 @@ class DataSharingLevel(DBResourceTestCase):
             for screen in reference_screens}
 
         # Retrieve screens as the user        
-        reported_screens = self.get_screens(user['username'])
+        reported_screens = self.get_screens(user[SU.USERNAME])
         reported_screens = { screen['facility_id']:screen 
             for screen in reported_screens}
 
         reported_screens_access_levels = defaultdict(set)
         for facility_id, screen in reported_screens.items():
-            reported_level = screen['user_access_level_granted']
+            reported_level = screen[SCREEN.USER_ACCESS_LEVEL_GRANTED]
             reported_screens_access_levels[reported_level].add(facility_id)
         logger.info('expected_screens_access_levels: %r', 
             expected_screens_access_levels)
@@ -9912,10 +10541,10 @@ class DataSharingLevel(DBResourceTestCase):
                 reference_screen = reference_screens[facility_id]
                 self.assertEqual(
                     access_level_expected, 
-                    reported_screen['user_access_level_granted'])
+                    reported_screen[SCREEN.USER_ACCESS_LEVEL_GRANTED])
                 
                 for key, value in reported_screen.items():
-                    if key == 'user_access_level_granted':
+                    if key == SCREEN.USER_ACCESS_LEVEL_GRANTED:
                         continue
                     if key not in fields:
                         if value is None:
@@ -9930,43 +10559,44 @@ class DataSharingLevel(DBResourceTestCase):
                         continue
                     logger.debug('screen: %r, test value: %r: %r', 
                         facility_id, key, reference_value)
-                    if field['data_access_level'] > access_level_expected:
+                    if field[FIELD.DATA_ACCESS_LEVEL] > access_level_expected:
                         self.assertIsNone(
                             value, '%r - %r:%r' % (facility_id, key,value))
                         continue
-                    if field.get('view_groups', None):
+                    if field.get(FIELD.VIEW_GROUPS, None):
                         usergroups = user.get('usergroups')
                         
                         if ( not usergroups
-                             or not set(field['view_groups']) & set(usergroups)):
+                             or not set(field[FIELD.VIEW_GROUPS]) & set(usergroups)):
                             logger.info('view group restricted field: %r: %r', 
-                                key, user['username'])
+                                key, user[SU.USERNAME])
                             logger.debug(
                                 'view group restricted field: '
                                 '%r, user %r, usergroups: %r, view_groups: %r', 
-                                key, user, user.get('usergroups'), field['view_groups'])
+                                key, user, user.get('usergroups'), field[FIELD.VIEW_GROUPS])
                             continue
                     if key == 'has_screen_result':
-                        if reference_value == 1:
-                            if access_level_expected in [2,3]:
-                                self.assertEqual(value, 1)
+                        if reference_value == SCREEN_AVAILABILITY.AVAILABLE: #1:
+                            if access_level_expected in [
+                                    ACCESS_LEVEL.MUTUALLY_SHARED, ACCESS_LEVEL.ALL]: #[2,3]:
+                                self.assertEqual(value, SCREEN_AVAILABILITY.AVAILABLE) #1)
                             else:
-                                self.assertEqual(value, 2) # "not shared"
+                                self.assertEqual(value, SCREEN_AVAILABILITY.NOT_SHARED) #2) # "not shared"
                         else:
-                            self.assertEqual(value, 3) # "none"
-                    elif key == 'overlapping_positive_screens':
-                        if access_level_expected == 2:
+                            self.assertEqual(value, SCREEN_AVAILABILITY.NONE) #3) # "none"
+                    elif key == SCREEN.OVERLAPPING_POSITIVE_SCREENS:
+                        if access_level_expected == ACCESS_LEVEL.MUTUALLY_SHARED: #2:
                             expected_overlapping = set(reference_value)
                             expected_overlapping &= (
-                                expected_screens_access_levels[2]
-                                | expected_screens_access_levels[3])
+                                expected_screens_access_levels[ACCESS_LEVEL.MUTUALLY_SHARED] #[2]
+                                | expected_screens_access_levels[ACCESS_LEVEL.ALL]) # [3])
                             self.assertEqual(expected_overlapping, set(value))
-                        elif access_level_expected == 3:
+                        elif access_level_expected == ACCESS_LEVEL.ALL: #3:
                             expected_overlapping = set(reference_value)
                             expected_overlapping &= (
-                                expected_screens_access_levels[1]
-                                | expected_screens_access_levels[2]
-                                | expected_screens_access_levels[3])
+                                expected_screens_access_levels[ACCESS_LEVEL.OVERLAPPING_ONLY] # [1]
+                                | expected_screens_access_levels[ACCESS_LEVEL.MUTUALLY_SHARED] #[2]
+                                | expected_screens_access_levels[ACCESS_LEVEL.ALL]) # [3])
                             self.assertEqual(expected_overlapping, set(value))
                         else:
                             self.assertIsNone(value)
@@ -10021,11 +10651,11 @@ class DataSharingLevel(DBResourceTestCase):
             
         expected_cols_access_levels = defaultdict(set)
         for access_level,facility_ids in expected_screens_access_levels.items():
-            if access_level == 0:
+            if access_level == ACCESS_LEVEL.LIMITED_ONLY: #0:
                 continue
             for facility_id in facility_ids:
                 screen = reference_screens.get(facility_id) 
-                if screen['has_screen_result'] == 3:
+                if screen['has_screen_result'] == SCREEN_AVAILABILITY.NONE: #3:
                     continue
                 dcs = dc_by_screen.get(facility_id,None)
                 if not dcs:
@@ -10034,10 +10664,10 @@ class DataSharingLevel(DBResourceTestCase):
                     logger.debug(
                         'access_level: %r, dc: %r', 
                         access_level, dc['data_column_id'])
-                    if access_level > 1:
+                    if access_level > ACCESS_LEVEL.OVERLAPPING_ONLY: #1:
                         expected_cols_access_levels[access_level].add(
                             dc['data_column_id'])
-                    elif access_level == 1:
+                    elif access_level == ACCESS_LEVEL.OVERLAPPING_ONLY: #1:
                         # must be a positives column with positive values
                         if dc.get('positives_count',0) > 0:
                             logger.info('level 1 pos column: %r, %r, %r', 
@@ -10058,11 +10688,6 @@ class DataSharingLevel(DBResourceTestCase):
         
         reported_datacolumns = self.get_datacolumns(username=user['username'])
         
-        dc_by_screen = defaultdict(list)
-        for dc in reported_datacolumns:
-            dc_by_screen[dc['screen_facility_id']].append(dc['name'])
-        logger.info('reported dc_by_screen: %r', dc_by_screen)
-        
         reported_dc_by_access_level = defaultdict(set)
         for dc in reported_datacolumns:
             reported_dc_by_access_level[dc['user_access_level_granted']]\
@@ -10074,69 +10699,15 @@ class DataSharingLevel(DBResourceTestCase):
             reported_col_ids = reported_dc_by_access_level.get(access_level, None)
             self.assertEqual(col_ids, reported_col_ids)        
 
-    def do_reagent_cols_test(self, user, expected_screens_access_levels,
-        wellids_to_test):
+    def do_reagent_cols_test(self, user, wellids_to_test):
         ''' 
         Verify that only DataColumns with "user_access_level_granted" > 1
         may be viewed or will be present in a well/reagent listing
         '''
-        # verify filter of datacolumns
-        
-        key = 'has_screen_result'
-        reference_value = reference_screen[key]
-        if reference_value == 3:
-            self.fail('do_screenresult_test: screen: %r reports no screen result: %r'
-                % (screen_facility_id, reference_screen))
-        self.assertEqual(1, reference_value, 
-            'admin user should never see has_screen_result other than (1,2): %r'
-            % reference_value)
-        if user_access_level_granted < 2:
-            self.assertEqual(2, reported_screen[key])
-            
-        expected_cols_access_levels = defaultdict(set)
-        for access_level,facility_ids in expected_screens_access_levels.items():
-            if access_level == 0:
-                continue
-            for facility_id in facility_ids:
-                screen = reference_screens.get(facility_id) 
-                if screen['has_screen_result'] == 3:
-                    continue
-                dcs = dc_by_screen.get(facility_id,None)
-                if not dcs:
-                    self.fail('no datacolumns found: %r' % facility_id)
-                for dc in dcs:
-                    logger.debug(
-                        'access_level: %r, dc: %r', 
-                        access_level, dc['data_column_id'])
-                    if access_level > 1:
-                        expected_cols_access_levels[access_level].add(
-                            dc['data_column_id'])
-                    elif access_level == 1:
-                        # must be a positives column with positive values
-                        if dc.get('positives_count',0) > 0:
-                            logger.info('level 1 pos column: %r, %r, %r', 
-                                dc['key'],dc['title'], dc['positives_count'])
-                            expected_cols_access_levels[access_level].add(
-                                dc['data_column_id'])
-                        else:
-                            logger.info(
-                                'level 1 column not allowed, no positives: %r, %r',
-                                dc['key'], dc['title'])
-                    else:
-                        logger.info(
-                            'access level %r column should not be in reported '
-                            'datacolumns: %r, %r'
-                            % (access_level, dc['key'], dc['title']))
-
-        # 2. compare expected datacolumns by level to reported
+        # 1. Collate the datacolumns reported by expected access level
         
         reported_datacolumns = self.get_datacolumns(username=user['username'])
         reported_datacolumns = {dc['data_column_id']:dc for dc in reported_datacolumns}
-        
-        dc_by_screen = defaultdict(list)
-        for dc in reported_datacolumns.values():
-            dc_by_screen[dc['screen_facility_id']].append(dc['name'])
-        logger.info('reported dc_by_screen: %r', dc_by_screen)
         
         reported_dc_by_access_level = defaultdict(set)
         for dc in reported_datacolumns.values():
@@ -10145,12 +10716,13 @@ class DataSharingLevel(DBResourceTestCase):
         logger.info('reported_dc_by_access_level: %r', reported_dc_by_access_level) 
         
         for access_level,col_ids in reported_dc_by_access_level.items():
-            expected_col_ids = expected_cols_access_levels.get(access_level, None)
-            logger.info('reported access level: %r, reported: %r expected: %r', 
-                access_level, col_ids, expected_col_ids)
-            self.assertEqual(col_ids, expected_col_ids)        
+            logger.info('reported access level: %r, reported: %r', 
+                access_level, col_ids)
+            if access_level == ACCESS_LEVEL.LIMITED_ONLY: #0:
+                self.fail('Access level %r columns should not appear: %r', 
+                    access_level, col_ids)
 
-        level1_datacolums = reported_dc_by_access_level[1]
+        level1_datacolums = reported_dc_by_access_level[ACCESS_LEVEL.OVERLAPPING_ONLY] #[1]
         
         # 3. Verify that a "reagent" query will not allow access level 1 columns
         # to be added:
@@ -10196,30 +10768,28 @@ class DataSharingLevel(DBResourceTestCase):
         '''
         logger.info('do_screenresult_test: %r, %r', user, screen_facility_id)
         
-        
         reference_screen = self.get_screen(screen_facility_id)
         
         reported_screen = self.get_screen(screen_facility_id, user['username'])
         
-        user_access_level_granted = reported_screen['user_access_level_granted']
+        user_access_level_granted = reported_screen[SCREEN.USER_ACCESS_LEVEL_GRANTED]
         logger.info('screen: %r, user accessing: %r, access_level: %r',
             screen_facility_id, user['username'], user_access_level_granted )
         self.assertEqual(user_access_level_granted, expected_access_level)
         
-        key = 'has_screen_result'
+        key = SCREEN.SCREEN_RESULT_AVAILABILITY
         reference_value = reference_screen[key]
-        if reference_value == 3:
+        if reference_value == SCREEN_AVAILABILITY.NONE:
             self.fail('do_screenresult_test: screen: %r reports no screen result: %r'
                 % (screen_facility_id, reference_screen))
-        self.assertEqual(1, reference_value, 
+        self.assertEqual(SCREEN_AVAILABILITY.AVAILABLE, reference_value, 
             'admin user should never see has_screen_result other than (1,2): %r'
             % reference_value)
-        if user_access_level_granted < 2:
-            self.assertEqual(2, reported_screen[key])
-            
+        if user_access_level_granted < ACCESS_LEVEL.MUTUALLY_SHARED:
+            self.assertEqual(SCREEN_AVAILABILITY.NOT_SHARED, reported_screen[key])
             # TODO: verify that the screen result can not be directly accessed
         else:
-            self.assertEqual(1, reported_screen[key])
+            self.assertEqual(SCREEN_AVAILABILITY.AVAILABLE, reported_screen[key])
             
             data = { 'screen_type': reference_screen['screen_type'] }
             reference_datacolumns = self.get_datacolumns(data=data)
@@ -10240,7 +10810,7 @@ class DataSharingLevel(DBResourceTestCase):
             
             reported_dc_by_access_level = defaultdict(set)
             for dc_id,dc in reported_datacolumns.items():
-                reported_dc_by_access_level[dc['user_access_level_granted']]\
+                reported_dc_by_access_level[dc[DC.USER_ACCESS_LEVEL_GRANTED]]\
                     .add(dc_id)
             logger.info('reported_dc_by_access_level: %r', reported_dc_by_access_level) 
             
@@ -10271,17 +10841,17 @@ class DataSharingLevel(DBResourceTestCase):
             for dc_id, dc in reported_datacolumns.items():
                 # Note: positives_count is a level 2 field, so must use ref col
                 reference_dc = reference_datacolumns[dc_id]
-                if dc_id in reported_dc_by_access_level[3]:
+                if dc_id in reported_dc_by_access_level[ACCESS_LEVEL.ALL]:
                     expected_dc_keys.add(dc['key'])
-                elif dc_id in reported_dc_by_access_level[2]:
+                elif dc_id in reported_dc_by_access_level[ACCESS_LEVEL.MUTUALLY_SHARED]:
                     expected_dc_keys.add(dc['key'])
-                elif dc_id in reported_dc_by_access_level[1]:
+                elif dc_id in reported_dc_by_access_level[ACCESS_LEVEL.OVERLAPPING_ONLY]:
                     logger.info('level 1 column: %r, %r, %r, %r, %r', 
                         dc['key'],dc['title'], reference_dc['positives_count'], 
                         dc['screen_facility_id'],
-                        reported_screen['overlapping_positive_screens'])
+                        reported_screen[SCREEN.OVERLAPPING_POSITIVE_SCREENS])
                     if ( dc['screen_facility_id'] 
-                            in reported_screen['overlapping_positive_screens']):
+                            in reported_screen[SCREEN.OVERLAPPING_POSITIVE_SCREENS]):
                         if reference_dc['positives_count'] > 0:
                             logger.info('allowed')
                             expected_dc_keys.add(dc['key'])    
@@ -10328,7 +10898,7 @@ class DataSharingLevel(DBResourceTestCase):
                             '%r, key: %r, %r != %r' 
                                 % (well_id, key, reference_value, value))
                     else:
-                        access_level = dc['user_access_level_granted']
+                        access_level = dc[DC.USER_ACCESS_LEVEL_GRANTED]
                         dc_type = dc['assay_data_type']
                         # For the purposes of this test, convert non positive 
                         # indicator values into None, the screen_result_importer
@@ -10336,7 +10906,7 @@ class DataSharingLevel(DBResourceTestCase):
                         # This test is finding the overlapping positives
                         # 20180321
                         logger.info('dc: %r, %r', dc['key'], dc_type)
-                        if access_level > 1:
+                        if access_level > ACCESS_LEVEL.OVERLAPPING_ONLY:
                             self.assertEqual(
                                 reference_value, value,
                                 '%r, key: %r, %r != %r' 
@@ -10369,17 +10939,18 @@ class DataSharingLevel(DBResourceTestCase):
                                     well_id, key, reference_value, value)
     
     def get_fields_by_level(self, fields):
+
         fields_by_level = defaultdict(set)
         restricted_fields = set()
         view_group_restricted_fields = set()
         for key,field in fields.items():
-            if field.get('view_groups'):
+            if field.get(FIELD.VIEW_GROUPS):
                view_group_restricted_fields.add(key)
                continue 
             for level in range(0,4):
-                if field['data_access_level'] == level:
+                if field[FIELD.DATA_ACCESS_LEVEL] == level:
                     fields_by_level[level].add(key)
-                elif not field['data_access_level']:
+                elif not field[FIELD.DATA_ACCESS_LEVEL]:
                     fields_by_level[0].add(key)
                 else:
                     restricted_fields.add(key)
@@ -10389,7 +10960,7 @@ class DataSharingLevel(DBResourceTestCase):
         return fields_by_level
     
     def do_level_1_visibility(self):
-        ''' Test level 1 (mutually sharing) user data visibility '''
+        ''' Test Data Sharing Level 1 (mutually sharing) user data visibility '''
 
         user = self.reference_users['lead_screener1a']
         own_screens = self.screens_by_lead[user['username']]
@@ -10482,8 +11053,7 @@ class DataSharingLevel(DBResourceTestCase):
             user, expected_screens_access_levels,
             expected_positive_count_by_col_title=expected_positive_count_by_col_title)
 
-        self.do_reagent_cols_test(user, expected_screens_access_levels,
-            ['00001:A01','00001:A02','00001:A03'])
+        self.do_reagent_cols_test(user, ['00001:A01','00001:A02','00001:A03'])
         
         self.do_screenresult_test(user, screen_facility_id, 1) # should be level 1 access
         logger.info('do level 1 user viewing level 2 mutual wells test')
@@ -10583,8 +11153,9 @@ class DataSharingLevel(DBResourceTestCase):
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
 
-        self.do_reagent_cols_test(user, expected_screens_access_levels,
-            ['00001:A01','00001:A02','00001:A03'])
+#         self.do_reagent_cols_test(user, screen_facility_id, expected_screens_access_levels,
+#             ['00001:A01','00001:A02','00001:A03'])
+        self.do_reagent_cols_test(user, ['00001:A01','00001:A02','00001:A03'])
 
         self.do_data_columns_test(user, expected_screens_access_levels)
 

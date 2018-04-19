@@ -21,7 +21,7 @@ from django.conf.global_settings import DEFAULT_CHARSET
 from django.conf.urls import url
 from django.contrib.auth.models import User as DjangoUser
 from django.contrib.sessions.models import Session
-from django.core.cache import cache, caches
+from django.core.cache import caches
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
@@ -64,6 +64,7 @@ from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 import reports.utils.background_processor as background_processor
 import reports.utils.background_client_util as background_client_util
 import importlib
+import subprocess
 
 
 RESOURCE = SCHEMA.RESOURCE
@@ -120,7 +121,7 @@ class UserGroupAuthorization(Authorization):
         return set(resources_user) | set(resources_group)
     
     def _is_resource_authorized(
-        self, user, permission_type, **kwargs):
+        self, user, permission_type, resource_name=None, **kwargs):
         
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
@@ -129,7 +130,6 @@ class UserGroupAuthorization(Authorization):
         prefix = 'permission'
         uri_separator = '/'
         
-        resource_name = kwargs.get('resource_name', None)
         if resource_name is None:
             resource_name = self.resource_name
         
@@ -452,18 +452,15 @@ class SuperUserAuthorization(Authorization):
         return False
     
 
-def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None):
+def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None, 
+    log_empty_strings=False):
     '''
-    @param full (default False) 
-    - a full compare shows added keys as well as diff keys
-    
-    Note: "full" logs would log all of the created data in the resource;
-    whereas "not full" only logs the creation; with this strategy, logs 
-    must be played backwards to recreate an entity state.
+    @param log_empty_strings if set, then log when a field is changed from
+    None to an empty string, or vice versa
     '''
     if DEBUG_PATCH_LOG:
-        logger.info('compare dicts: %r, %r, excludes: %r, %r', 
-            dict1, dict2, excludes, exclude_patterns)
+        logger.info('compare dicts: %r, %r, excludes: %r, %r, log_empty_strings: %r', 
+            dict1, dict2, excludes, exclude_patterns, log_empty_strings)
     
     _excludes = set(['resource_uri'])
     if excludes:
@@ -477,13 +474,24 @@ def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None):
     logger.debug('compare dicts, updated keys: %r', updated_keys)
     
     union_keys = original_keys.union(updated_keys)
+    if DEBUG_PATCH_LOG:
+        logger.info('union keys to check: %r', union_keys)
     diffs = {}
     for key in union_keys:
         v1 = dict1.get(key, None)
         v2 = dict2.get(key, None)
-        if v1 is not None or v2 is not None:
+        
+        if log_empty_strings is True:
             if v1 != v2:
                 diffs[key] = [v1,v2]
+        else:
+            if v1 != v2:
+                if v1 is None and str(v2) != '':
+                    diffs[key] = [v1, v2]
+                elif v2 is None and str(v1) != '':
+                    diffs[key] = [v1, v2]
+                else:
+                    diffs[key] = [v1, v2]
     if DEBUG_PATCH_LOG:
         logger.info('diffs: %r', diffs)
     return diffs
@@ -593,6 +601,13 @@ class ApiResource(SqlAlchemyResource):
         
         self.request_factory = RequestFactory()
         
+    def clear_cache(self, request, **kwargs):
+        logger.debug('clearing the cache from resource: %s' 
+            % self._meta.resource_name)
+        ApiResource.get_cache(self).clear()
+    
+    def get_cache(self):
+        return caches['reports_cache']
 
     def get_resource_resource(self):
         if self.resource_resource is None:
@@ -1246,8 +1261,6 @@ class ApiResource(SqlAlchemyResource):
             parent_log.save()
             kwargs['parent_log'] = parent_log
         
-        for _dict in deserialized:
-            self.patch_obj(request, _dict, **kwargs)
         new_objs = []
         for _dict in deserialized:
             new_objs.append(self.patch_obj(request, _dict))
@@ -1636,7 +1649,7 @@ class ApiResource(SqlAlchemyResource):
     def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
-    def validate(self, _dict, patch=False, schema=None):
+    def validate(self, _dict, patch=False, schema=None, fields=None):
         '''
         Perform declarative validations according the the field schema:
         @param patch if False then check all fields (for required); not just the 
@@ -1648,11 +1661,16 @@ class ApiResource(SqlAlchemyResource):
         DEBUG_VALIDATION = False or logger.isEnabledFor(logging.DEBUG)
         if DEBUG_VALIDATION:
             logger.info('validate: %r, %r', patch, schema is not None)
-        if schema is None:
-            logger.info('build raw schema for validate')
-            schema = self.build_schema()
-        fields = schema[RESOURCE.FIELDS]
-        id_attribute = schema['id_attribute']
+        
+        if fields is None:
+            if schema is None:
+                logger.info('build raw schema for parse')
+                schema = self.build_schema()
+            fields = schema[RESOURCE.FIELDS]
+        
+        id_attribute = None
+        if schema is not None:
+            id_attribute = schema['id_attribute']
         
         # do validations
         errors = {}
@@ -1668,7 +1686,7 @@ class ApiResource(SqlAlchemyResource):
                 if name not in _dict:
                     continue
                 else: 
-                    if name in id_attribute:
+                    if id_attribute and name in id_attribute:
                         continue
                     editability = field.get('editability',None)
                     if editability and 'u' not in editability:
@@ -1741,7 +1759,9 @@ class ApiResource(SqlAlchemyResource):
 
     @staticmethod
     def datainterchange_title_function(field_hash, id_attribute=[]):
-        
+        logger.debug(
+            'get datainterchange_title_function: id_attribute: %r, keys: %r', 
+            id_attribute, field_hash.keys())
         def title_function(key):
             new_title = '%s (not updatable)' % key
             # editable_flags = set(['c','u'])
@@ -1749,7 +1769,6 @@ class ApiResource(SqlAlchemyResource):
             if key in field_hash:
                 fi = field_hash[key]
                 editability = fi.get('editability',[])
-                logger.info('editability: %r', editability)
                 if ( (editability and 'u' in editability)
                     or key in id_attribute):
                     new_title = key
@@ -1965,7 +1984,9 @@ class ApiResource(SqlAlchemyResource):
     def log_patch(self, request, prev_dict, new_dict, log=None, 
             id_attribute=None, excludes=None, exclude_patterns=None, 
             full_create_log=False, **kwargs):
-
+        '''
+        @param full_create_log - create a diff log showing initial state on create
+        '''
         default_exclude_patterns = ['comment_array']
         if exclude_patterns is None:
             exclude_patterns = default_exclude_patterns
@@ -2007,7 +2028,7 @@ class ApiResource(SqlAlchemyResource):
                     key: [None,val] for key,val in new_dict.items() 
                         if val is not None }
             if DEBUG_PATCH_LOG:
-                logger.info('create, api log: %r', log)
+                logger.info('create, api log: %r: %r', log, log.diffs)
             else:
                 logger.info('CREATE: %r', log.uri) 
     
@@ -2016,7 +2037,8 @@ class ApiResource(SqlAlchemyResource):
         return log
 
     @transaction.atomic
-    def log_patches(self,request, original_data, new_data, schema=None, **kwargs):
+    def log_patches(self,request, original_data, new_data, schema=None, 
+        full_create_log=False, **kwargs):
         '''
         log differences between dicts having the same identity in the arrays:
         @param original_data - data from before the API action
@@ -2063,7 +2085,7 @@ class ApiResource(SqlAlchemyResource):
                 
             log = self.log_patch(
                 request, prev_dict, new_dict, id_attribute=id_attribute, 
-                schema=schema, **kwargs)  
+                schema=schema, full_create_log=full_create_log, **kwargs)  
             if DEBUG_PATCH_LOG:
                 logger.info('patch log: %r', log)          
             if log:
@@ -2102,11 +2124,11 @@ class ApiLogResource(ApiResource):
         authentication = MultiAuthentication(
             IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name='apilog' 
-        authorization= ApiLogAuthorization(resource_name) #Authorization()        
+        authorization= ApiLogAuthorization(resource_name)
         ordering = []
         serializer = LimsSerializer()
-        excludes = [] #['json_field']
-        always_return_data = True # this makes Backbone happy
+        excludes = []
+        always_return_data = True
         max_limit = 100000
     
     def __init__(self, **kwargs):
@@ -2421,15 +2443,16 @@ class ApiLogResource(ApiResource):
     
     def dispatch_apilog_childview(self, request, **kwargs):
         kwargs['parent_log_id'] = kwargs.pop('id')
+        logger.info('dispatch_apilog_childview for %r', kwargs['parent_log_id'])
         return ApiLogResource().dispatch('list', request, **kwargs)    
 
     def dispatch_apilog_childview2(self, request, **kwargs):
         parent_log = self._get_detail_response_internal(**kwargs)
-
+        logger.info('dispatch_apilog_childview2 for parent log: %r', parent_log)
+        
         ref_resource_name = kwargs.pop('ref_resource_name')
         key = kwargs.pop('key')
         date_time = kwargs.pop('date_time')
-
         kwargs['parent_log_id'] = parent_log['id']
         return ApiLogResource().dispatch('list', request, **kwargs)    
 
@@ -2475,9 +2498,6 @@ class FieldResource(ApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
     
-    def create_fields(self):
-        pass
-
     def build_schema(self, user=None, **kwargs):
         # start with the default schema for bootstrapping
         default_field = {
@@ -2588,7 +2608,6 @@ class FieldResource(ApiResource):
         # NOTE: current implementation creates the fields hash in memory:
         # TODO: sort
         # TODO: limit
-        logger.info('build field resource response...')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
@@ -2620,13 +2639,13 @@ class FieldResource(ApiResource):
         key_in = param_hash.get('key__in', None)
             
         if not scope and not scopes:
-            logger.info('get all scopes...')
+            logger.debug('get all scopes...')
             scopes = MetaHash.objects.all().filter(
                 scope__icontains='fields.').values_list('scope',flat=True).distinct()
             if not scopes.exists():
                 # bootstrap case
                 scopes = ['fields.field',]
-            logger.info('scopes retrieved')
+            logger.debug('scopes retrieved')
         else:
             if scope:
                 filenames=[scope]
@@ -2695,12 +2714,11 @@ class FieldResource(ApiResource):
                 API_RESULT_META: meta, 
                 self._meta.collection_name: fields 
             }
-            logger.info('Field resource rebuilt')
+            logger.debug('Field resource rebuilt')
         kwargs['filename'] = '_'.join(filenames)
         logger.debug('FieldResource build response: %r, %r, %r', 
             self._meta.resource_name, request, 
             {k:v for k,v in kwargs.items() if k!='schema'})
-        logger.info('Field resource built')
         return self.build_response(request, response_hash, **kwargs)
 
     def _build_fields(self, scopes=None):
@@ -2850,9 +2868,6 @@ class ResourceResource(ApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
         
-    def create_fields(self):
-        pass
-    
     def get_schema(self, request, **kwargs):
         return self.build_response(
             request, self.build_schema(user=request.user, **kwargs), **kwargs)
@@ -2918,7 +2933,7 @@ class ResourceResource(ApiResource):
         '''
         Override resource method - bootstrap the "Resource" resource schema
         '''
-        logger.info('build_schema for %r: %r', self._meta.resource_name, user)
+        logger.debug('build_schema for %r: %r', self._meta.resource_name, user)
         resource_fields = self.get_field_resource()._get_list_response_internal(
             scope='fields.resource', includes='*')
         field_hash = {}
@@ -3041,22 +3056,22 @@ class ResourceResource(ApiResource):
             and user is not None and user.is_superuser is not True):
             
             user_cache_key = 'resources_%s' % user.username
-            
             user_resources = resource_cache.get(user_cache_key)
         if user_resources:
             logger.debug(
                 'user resource retrieved from cache: %r', user_resources.keys())
         else:    
-            logger.debug('user resources not cached, build resources')
-            if use_cache and self.use_cache:
+            logger.debug('user resources not cached, building')
+            if use_cache is True and self.use_cache is True:
                 resources = resource_cache.get('resources')
                 
             if resources:
-                if DEBUG_RESOURCES:
-                    logger.info('using cached resources')
+                if DEBUG_RESOURCES is True:
+                    logger.info('building user resources from cached resources')
                     for key,r in resources.items():
-                        logger.info('r: %r, fields: %r', key, r[RESOURCE.FIELDS].keys())
-                
+                        logger.info('r: %r, fields: %r', 
+                            key, r[RESOURCE.FIELDS].keys())
+                    
             else:
                 logger.info('rebuilding resources')
             
@@ -3112,21 +3127,10 @@ class ResourceResource(ApiResource):
                         inherited_fields.update(resource[RESOURCE.FIELDS])
                         resource[RESOURCE.FIELDS] = inherited_fields
 
-                    update_fields = set()
-                    create_fields = set()
-                    for key,field in resource[RESOURCE.FIELDS].items():
-                        editability = field.get('editability', None)
-                        if editability:
-                            if 'u' in editability:
-                                update_fields.add(key)
-                                create_fields.add(key)
-                            if 'c' in editability:
-                                create_fields.add(key)
-                    resource['update_fields'] = list(update_fields)
-                    resource['create_fields'] = list(create_fields)
-                    
                     # Always support csv (and json)
-                    resource.get('content_types',[]).append('csv')
+                    content_types = set(resource.get('content_types',[]))
+                    content_types.add('csv')
+                    resource['content_types'] = sorted(content_types)
                     
                     # extend resource specific data
                     self.extend_specific_data(resource)
@@ -3138,8 +3142,8 @@ class ResourceResource(ApiResource):
                 for key in resources.keys():
                     resource = get_resource(key)
                     
-                if use_cache and self.use_cache:
-                    logger.debug('caching resources')
+                if use_cache is True and self.use_cache is True:
+                    logger.info('caching resources')
                     resource_cache.set('resources', resources)
                 if DEBUG_RESOURCES:
                     logger.info('all unfiltered resources: %r', 
@@ -3156,7 +3160,8 @@ class ResourceResource(ApiResource):
                     if DEBUG_RESOURCES:
                         logger.info(
                             'resource: %r, %r', key, resource[RESOURCE.FIELDS].keys())
-                if user:
+                if (use_cache is True and self.use_cache is True
+                    and user is not None):
                     user_cache_key = 'resources_%s' % user.username
                     resource_cache.set(user_cache_key, user_resources)
                 
@@ -3331,10 +3336,10 @@ class VocabularyResource(ApiResource):
         ''' For internal callers '''
         
         # FIXME: check request params for caching
-        vocabularies = cache.get('vocabularies')
+        vocabularies = self.get_cache().get('vocabularies')
         if not vocabularies  or not self.use_cache:
             vocabularies =  ApiResource._get_list_response(self, request, **kwargs)
-            cache.set('vocabularies', vocabularies)
+            self.get_cache().set('vocabularies', vocabularies)
         
         if key:
             return [vocabularies for vocabularies in vocabularies if vocabularies['key']==key]
@@ -3348,27 +3353,10 @@ class VocabularyResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
          
-#         # FIXME - need to check and cache on kwargs
-#         # Ok for the time being, because vocabularies are not filtered
-#         cached_content = cache.get('vocabulary_listing')
-#         if not cached_content or not self.use_cache:
-#             response = self.build_list_response(request, format='json',
-#                 visibilities=['l'])
-#             cached_content = self._meta.serializer.from_json(
-#                 self._meta.serializer.get_content(response))
-#             cache.set('vocabulary_listing', cached_content)
-#         else:
-#             logger.info('using cached vocabularies')
-#         desired_format = self.get_format(request, **kwargs)
-#         return HttpResponse(
-#             content=self.serialize(request, cached_content, desired_format), 
-#             content_type=build_content_type(desired_format))
-# 
-    
     def clear_cache(self, request, **kwargs):
+        logger.info('clear vocabulary caches')
         super(VocabularyResource,self).clear_cache(request, **kwargs)
-        cache.delete('vocabularies');
-
+        caches['resource_cache'].clear()
         
     def build_list_response(self,request, **kwargs):
         schema = kwargs.pop('schema', None)
@@ -3450,7 +3438,7 @@ class VocabularyResource(ApiResource):
                 if field.get('json_field_type',None) }
             
             order_params = param_hash.get('order_by',[])
-            logger.info('VocabularyResource, build field hash...')
+            logger.debug('VocabularyResource, build field hash...')
             field_hash = self.get_visible_fields(
                 fields_for_sql, filter_hash.keys(), manual_field_includes, 
                 param_hash.get('visibilities',[]), 
@@ -3515,14 +3503,13 @@ class VocabularyResource(ApiResource):
                 'json_field' : literal_column('json_field')
                 }
             base_query_tables = ['reports_vocabulary'] 
-            logger.info('VocabularyResource, build_sqlalchemy_columns...')
+            logger.debug('VocabularyResource, build_sqlalchemy_columns...')
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
             j = _vocab
             stmt = select(columns.values()).select_from(j)
 
-            logger.info('VocabularyResource, wrap_statement...')
             # general setup
             (stmt,count_stmt) = self.wrap_statement(
                 stmt,order_clauses,filter_expression )
@@ -3532,7 +3519,6 @@ class VocabularyResource(ApiResource):
                 def title_function(key):
                     return field_hash[key]['title']
             
-            logger.info('vocabularies done, stream response...')
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
                 field_hash=original_field_hash, 
@@ -3553,8 +3539,9 @@ class VocabularyResource(ApiResource):
         Note: caches all of the vocabularies in a two level dict
         - keyed by [scope][key]
         '''
-        vocabularies = cache.get('vocabularies');
+        vocabularies = self.get_cache().get('vocabularies');
         if not vocabularies:
+            logger.debug('vocabularies not cached, rebuilding')
             vocabularies = {}
             kwargs = {
                 'limit': '0',
@@ -3577,9 +3564,12 @@ class VocabularyResource(ApiResource):
                 vocabularies['activity.type'].update(
                     deepcopy(vocabularies['activity.class']))
             
-            cache.set('vocabularies', vocabularies);
+            self.get_cache().set('vocabularies', vocabularies);
         if scope in vocabularies:
-            return deepcopy(vocabularies[scope])
+            vocab = vocabularies[scope]
+            logger.debug(
+                'found vocabulary, scope: %r, result: %r', scope, vocab)
+            return deepcopy(vocab)
         else:
             logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies.keys())
             return {}
@@ -3619,8 +3609,55 @@ class VocabularyResource(ApiResource):
         logger.info('VocabularyResource.patch_list ...')
         self.get_debug_times()
         result = super(VocabularyResource, self).patch_list(request, **kwargs)
+        # Clear cache to make sure that resource cache is also cleared
+        self.clear_cache(request)
         logger.info('VocabularyResource.patch_list done.')
         self.get_debug_times()
+        return result
+    
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def post_list(self, request, schema=None, **kwargs):
+        result = ApiResource.post_list(self, request, schema=schema, **kwargs)
+        # Clear cache to make sure that resource cache is also cleared
+        self.clear_cache(request)
+        return result
+    
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def patch_detail(self, request, **kwargs):
+        result = ApiResource.patch_detail(self, request, **kwargs)
+        # Clear cache to make sure that resource cache is also cleared
+        self.clear_cache(request)
+        return result
+    
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def post_detail(self, request, **kwargs):
+        result = ApiResource.post_detail(self, request, **kwargs)
+        # Clear cache to make sure that resource cache is also cleared
+        self.clear_cache(request)
+        return result
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def put_detail(self, request, **kwargs):
+        result = ApiResource.put_detail(self, request, **kwargs)
+        # Clear cache to make sure that resource cache is also cleared
+        self.clear_cache(request)
+        return result
+
+    @write_authorization
+    @un_cache
+    @transaction.atomic
+    def put_list(self, request, **kwargs):
+        result = ApiResource.put_list(self, request, **kwargs)
+        # Clear cache to make sure that resource cache is also cleared
+        self.clear_cache(request)
         return result
     
     def validate(self, _dict, patch=False, schema=None):
@@ -3690,6 +3727,7 @@ class VocabularyResource(ApiResource):
             vocab.json_field = json.dumps(json_obj)
             logger.debug('save: %r, as %r', deserialized, vocab)
             vocab.save()
+            
             self.patch_elapsedtime4 += (time.time() - start_time)
             logger.debug('patch vocab done: %r', id_kwargs)        
             return { API_RESULT_OBJ: vocab }
@@ -5448,6 +5486,7 @@ class JobResource(ApiResource):
                     uri=uri, 
                     state__in=[
                         SCHEMA.VOCAB.job.state.PENDING,
+                        SCHEMA.VOCAB.job.state.SUBMITTED,
                         SCHEMA.VOCAB.job.state.PROCESSING,
                         ])
                 if query.exists():
@@ -5600,33 +5639,58 @@ class JobResource(ApiResource):
         Send a pending job to the background_process_script defined in
         settings.BACKGROUND_PROCESSOR['background_process_script']
         '''
-
         JOB = SCHEMA.JOB
-
         job_id = job_data[JOB.ID]
-        use_sbatch = 'sbatch_settings' in settings.BACKGROUND_PROCESSOR
-        background_client_module_name = \
-            settings.BACKGROUND_PROCESSOR['background_process_script']
-        logger.info('import background_process_script: %r ', 
-            background_client_module_name)
-        background_client_module = \
-            importlib.import_module(background_client_module_name)
-        output = background_client_module.execute_from_python(
-            job_id, sbatch=use_sbatch)
-        logger.info('submitted job: %r, output: %r', 
-            job_id, output)
-        if output:
+        try:
+            use_sbatch = 'sbatch_settings' in settings.BACKGROUND_PROCESSOR
+            background_client_module_name = \
+                settings.BACKGROUND_PROCESSOR['background_process_script']
+            logger.info('import background_process_script: %r ', 
+                background_client_module_name)
+            background_client_module = \
+                importlib.import_module(background_client_module_name)
+            output = background_client_module.execute_from_python(
+                job_id, sbatch=use_sbatch)
+            logger.info('submitted job: %r, output: %r', 
+                job_id, output)
+            if output:
+                job_patch = {
+                    JOB.ID: job_id,
+                    JOB.STATE: SCHEMA.VOCAB.job.state.SUBMITTED,
+                    JOB.PROCESS_ID: output,
+                    JOB.DATE_TIME_SUBMITTED: _now().isoformat() }
+                job_patch_result = self._patch_internal(job_patch)
+                logger.info('submitted job: %r', job_patch_result)
+                job_data = job_patch_result[API_RESULT_DATA][0]
+                
+            return job_data
+        except subprocess.CalledProcessError, e:
+            logger.exception('unexpected exception on job %r submission: %r', 
+                job_id, e)
             job_patch = {
                 JOB.ID: job_id,
-                JOB.STATE: SCHEMA.VOCAB.job.state.SUBMITTED,
-                JOB.PROCESS_ID: output,
-                JOB.DATE_TIME_SUBMITTED: _now().isoformat() }
+                JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
+                JOB.DATE_TIME_COMPLETED: _now().isoformat(),
+                JOB.PROCESS_MESSAGES: e.output 
+            }
             job_patch_result = self._patch_internal(job_patch)
             logger.info('submitted job: %r', job_patch_result)
             job_data = job_patch_result[API_RESULT_DATA][0]
+            return job_data
+        except Exception, e:
+            logger.exception('unexpected exception on job %r submission: %r', 
+                job_id, e)
+            job_patch = {
+                JOB.ID: job_id,
+                JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
+                JOB.DATE_TIME_COMPLETED: _now().isoformat(),
+                JOB.PROCESS_MESSAGES: str(e) 
+            }
+            job_patch_result = self._patch_internal(job_patch)
+            logger.info('submitted job: %r', job_patch_result)
+            job_data = job_patch_result[API_RESULT_DATA][0]
+            return job_data
             
-        return job_data
-    
     @transaction.atomic    
     def setup_job_processing_request(self, job_id, ):
         JOB = SCHEMA.JOB

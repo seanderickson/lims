@@ -169,6 +169,11 @@ def write_xls_image(worksheet, filerow, col, val, request):
         logger.info('no image at: %r, %r', val,e)
 
 def read_string(cell):
+    '''
+    Read the cell as a string. 
+    - empty strings are convervted to None
+    - integer cells are read as strings
+    '''
     value = cell.value
     logger.debug('read string: %r: %r', cell, value)
     if value is None:

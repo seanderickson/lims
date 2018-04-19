@@ -37,3 +37,7 @@ delete from result_value where result_value_id in (
   )
 );
 
+drop index result_value_data_column_and_well_index;
+alter table result_value 
+  ADD constraint data_column_well_id_unique(data_column_id, well_id);
+

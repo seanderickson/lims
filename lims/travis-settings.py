@@ -13,7 +13,8 @@ import os.path
 # NOTE: the parent settings file defines the PROJECT_ROOT
 PROJECT_ROOT = '.'
 print 'PROJECT_ROOT: ', PROJECT_ROOT
-    
+
+print 'CACHES', '%r'%CACHES    
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 # TASTYPIE_FULL_DEBUG is less useful than it seems.  

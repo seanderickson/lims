@@ -493,17 +493,19 @@ if __name__ == "__main__":
     if args.adjust_expiration_days_from_activity:
         
         report_args = default_report_args.copy()
+        
+        # 20180419 - fixed; consider all screens for adjustment; not just:
         # Query for the screens with a data_privacy_expiration date less than
         # the cutoff specified by days from last library screening
-        date_of_last_activity_cutoff = current_time + datetime.timedelta(
-            days=-args.adjust_expiration_days_from_activity)
-        report_args['%s__lt' % SCREEN.LAST_LIBRARY_SCREENING_DATE] = \
-            date_of_last_activity_cutoff.strftime(DATE_FORMAT)
+        # date_of_last_activity_cutoff = current_time + datetime.timedelta(
+        #    days=-args.adjust_expiration_days_from_activity)
+        # report_args['%s__lt' % SCREEN.LAST_LIBRARY_SCREENING_DATE] = \
+        #     date_of_last_activity_cutoff.strftime(DATE_FORMAT)
 
         screens,meta = get_resource_listing(screen_url, session, headers, report_args)
-
         if not screens:
-            
+            # TODO: this condition should not happen; consider checking for 
+            # no patches and no overrides to send this message
             (msg_subject, msg_body_lines) = \
                 EMAIL_MESSAGE_TEMPLATES[
                     'msg_admin_adjust_data_privacy_expiration_no_action']
@@ -591,7 +593,7 @@ if __name__ == "__main__":
                 logger.info('PATCH result: %r', content)
                 logger.info('content: %r', content.keys())
                 logger.info('meta: %r', content.get(API_RESULT_META,None))
-                    
+
             # send admin email
             def fill_parms(txt):
                 ''' fill text format parameters for messages '''
@@ -622,8 +624,11 @@ if __name__ == "__main__":
             report_url = '/'.join([
                 settings.APP_PUBLIC_DATA.site_url,'#screen'])
             report_url += '/includes/' + ','.join(report_args.get('includes',''))
+            report_screens = set([screen[SCREEN.FACILITY_ID] for screen 
+                in screen_patches + screens_set_as_usual + screens_set_to_max
+                    + screens_set_to_min])
             report_url += '/search/facility_id__in='\
-                 + ','.join([screen[SCREEN.FACILITY_ID] for screen in screens])
+                 + ','.join(report_screens)
             msg_body_lines.append(report_url)
             html_msg_body_lines.append('<a href="%s">%s</a>' % (
                 report_url, report_title ))
@@ -718,6 +723,7 @@ if __name__ == "__main__":
             screen_url, session, headers, report_args)
 
         if not screens_to_expire:
+            logger.info('No screens found to expire, send email for no expirations...')
             (msg_subject, msg_body_lines) = \
                 EMAIL_MESSAGE_TEMPLATES['msg_admin_no_expirations']
             emailer.send_email(admin_email_list, msg_subject, msg_body_lines)

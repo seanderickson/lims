@@ -1,6 +1,6 @@
-Screensaver Alert: notifications for {screen_count} screen(s) to be shared in {days_ahead_to_notify} days
+Screensaver Alert: {screen_count} screen(s) notified for privacy expiration in {days_ahead_to_notify} days
 
-The following screens will expire in {days_ahead_to_notify} days.
+The data sharing agreement for the following screens will expire in {days_ahead_to_notify} days.
 
 Notification emails could not be sent to either the Principal Investigator or the Lead Screener (email address is not available) for {screens_not_notified_count} Screens:
 

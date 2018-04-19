@@ -1,1 +1,1 @@
-Screensaver Notification: Screen Data Privacy Expiration Dates: no new Screens expiring in the next {days_ahead_to_notify} days
+Screensaver Notification: no new Screens expiring in the next {days_ahead_to_notify} days

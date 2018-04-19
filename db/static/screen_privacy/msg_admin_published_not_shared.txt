@@ -1,1 +1,1 @@
-Screensaver Alert: found {count} published {screen_type} screen(s) that are not shared
+Screensaver Alert: {count} published {screen_type} screen(s) that are not shared

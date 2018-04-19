@@ -192,13 +192,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
-      
+      var url = resource.apiUri;
       if(uriStack.length > 1 && uriStack[0] == 'children'){
         
         self.consumedStack.push(uriStack.shift());
         
         var _key = Iccbl.popKeyFromStack(resource, uriStack, self.consumedStack);
-        url += '/children/' + _key;
+//        url += '/children/' + _key;
+        url = [resource.apiUri, 'children', _key].join('/');
+        
         
         this.$('#content_title').html('Child logs for: ' + _key);
         this.$('#content_title_row').show();
@@ -206,10 +208,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         this.$('#content_title').html(resource.title + ' listing');
         this.$('#content_title_row').show();
       }
-    
+      
+      console.log('collection url', url);
       var Collection = Iccbl.MyCollection.extend({
+        url: url
       });
-      collection = self.collection = new Collection();
+      var collection = new Collection();
       var extraControls = [];
       
       // FIXME: not all types can have an "add"

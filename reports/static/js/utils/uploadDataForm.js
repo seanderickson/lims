@@ -160,11 +160,11 @@ function($, _, Iccbl, appModel, EditView) {
               type: 'POST',
               headers: headers
             }).done(function(data, textStatus, jqXHR){ 
-              console.log('success', data);
-              appModel.showConnectionResult(data, {
-                title: 'Upload success, File: "' + file.name + '"'
-              });
-              
+//              console.log('success', data);
+//              appModel.showConnectionResult(data, {
+//                title: 'Upload success, File: "' + file.name + '"'
+//              });
+//              
               promise.resolveWith(this,arguments); 
             }).fail(function(jqXHR, textStatus, errorThrown){
               promise.rejectWith(this,arguments);

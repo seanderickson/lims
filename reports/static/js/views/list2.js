@@ -68,18 +68,19 @@ define([
         pageSize: parseInt(self.listModel.get('rpp'))
       };
 
-      if (! self._options.url) {
-        self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
-      }
+//      if (! self._options.url) {
+//        self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
+//      }
       
       var collection;
-      if( !_options.collection){  
+      if( !_options.collection){
+        var url = self._options.url || resource.apiUri;
         var Collection = Iccbl.MyCollection.extend({
           state: _state,  
           modelId: function(attrs) {
             return Iccbl.getIdFromIdAttribute( attrs, resource);
           },
-          'url': self._options.url,
+          'url': url,
           listModel: listModel,
           extraIncludes: _.result(args,'extraIncludes')
         });
@@ -90,7 +91,10 @@ define([
         collection = self.collection = _options.collection;
         collection.listModel = listModel;
         collection.state = _state;
-        collection.url = self._options.url;
+        if (self._options.url){
+          // TODO: options.url and collection.url should not both be set
+          collection.url = self._options.url;
+        }
       }
 
       var $modifySearch = $([

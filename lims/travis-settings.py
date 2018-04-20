@@ -14,7 +14,6 @@ import os.path
 PROJECT_ROOT = '.'
 print 'PROJECT_ROOT: ', PROJECT_ROOT
 
-print 'CACHES', '%r'%CACHES    
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 # TASTYPIE_FULL_DEBUG is less useful than it seems.  
@@ -87,21 +86,6 @@ STATICFILES_FINDERS = (
 # Make this unique, and don't share it with anybody.
 SECRET_KEY = 'x-=2g@c)#_z_1xxn0fpxj+y)v%n7&e#xpm+coo0(5^*@l___%8i*0travis-only'
 
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake'
-    },
-    'resource_cache': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake'
-    },
-    'screen': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'uniq222#@@!^^1`~'
-    },
-}
 
 BACKGROUND_PROCESSING = False
 

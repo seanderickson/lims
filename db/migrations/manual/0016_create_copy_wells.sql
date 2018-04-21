@@ -56,6 +56,7 @@ from temp_well_volume_adjustment_summary;
   2. create copy_wells for wells having specific concentration values:
   - create a temp table with wells with unique concentration values
 */
+/**
 create temp table temp_libraries_with_concentrations as (
   select 
     library_id, short_name, 
@@ -65,6 +66,18 @@ create temp table temp_libraries_with_concentrations as (
   having count(distinct(molar_concentration)) > 1
   order by count desc
 );
+**/
+create temp table temp_libraries_with_concentrations as (
+  select 
+    library_id, short_name, 
+    count(distinct(molar_concentration)) count_molar,count(distinct(mg_ml_concentration)) 
+  from library join well using (library_id) 
+  group by library_id, short_name 
+  having count(distinct(molar_concentration)) > 1 or count(distinct(mg_ml_concentration)) > 1 
+    or (count(distinct(molar_concentration)) > 0 and count(distinct(mg_ml_concentration)) > 0 )
+  order by count_molar desc
+);
+
 
 create temp table temp_well_concentrations as (
   select
@@ -80,7 +93,8 @@ create temp table temp_well_concentrations as (
   join temp_libraries_with_concentrations tl using(library_id)
   join (
   select plate_id, copy_id, library_id, plate_number, well_volume
-  from plate join copy using(copy_id) ) cp on(well.plate_number=cp.plate_number and cp.library_id=tl.library_id)
+  from plate join copy using(copy_id) ) cp 
+    on(well.plate_number=cp.plate_number and cp.library_id=tl.library_id)
   where well.library_well_type = 'experimental');
 
 /*
@@ -113,6 +127,29 @@ update copy_well
   molar_concentration = tw.molar_concentration
   from temp_well_concentrations tw
   where tw.copy_id=copy_well.copy_id and tw.well_id=copy_well.well_id;
+
+/** 
+  2.c Update the copy well concentrations using the dilution factor
+**/
+
+update copy_well
+  set mg_ml_concentration 
+    = round(mg_ml_concentration/copy.well_concentration_dilution_factor,9) 
+    /** 9 dec places = nano liter **/
+  from copy
+  where copy.copy_id = copy_well.copy_id
+  and copy.well_concentration_dilution_factor != 1
+  and mg_ml_concentration is not null;
+
+update copy_well
+  set molar_concentration 
+    = round(molar_concentration/copy.well_concentration_dilution_factor,9) 
+    /** 9 dec places = nano liter **/
+  from copy
+  where copy.copy_id = copy_well.copy_id
+  and copy.well_concentration_dilution_factor != 1
+  and molar_concentration is not null;
+
 
 /*
   3a. Set plate.remaining_well_volume:

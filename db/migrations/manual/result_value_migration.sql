@@ -3,7 +3,7 @@
   
   - divide small_molecule and rnai 
 
-  # PRELIMINARY 2017-12-18
+  # PRELIMINARY 2017-12-18 - May not be necessary with result_value_cleanup.sql
 **/
 
 create table result_value_sm as (
@@ -64,4 +64,4 @@ create index result_value_rnai_data_column_and_well_index
 /** new **/
 create index result_value_rnai_is_excluded 
   on result_value_rnai(well_id, data_column_id, is_exclude);
-    
+

@@ -11,8 +11,6 @@ define([
 ], function($, _, Backbone, backbone_forms, Iccbl, appModel, EditView, 
     PlateRangeSearchView, searchBoxTemplate) {
     
-//  var PARAM_RAW_SEARCH = appModel.API_PARAM_RAW_SEARCH;
-  
   var SearchView = Backbone.Layout.extend({
 
     template: _.template(searchBoxTemplate),

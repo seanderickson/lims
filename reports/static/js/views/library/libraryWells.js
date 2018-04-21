@@ -323,7 +323,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var viewArgs = _.extend({},self.args,{
           resource: newResource,
           collection: collection,
-          url: url});
+          url: url
+        });
 
         var view = new WellListView (viewArgs);
         self.listenTo(view, 'update_title', function(val) {

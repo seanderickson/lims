@@ -25,6 +25,12 @@ define([
       self.args = args;
       this._classname = 'CherryPickRequestView';
       
+      var wellsToLeaveEmpty = self.model.get('wells_to_leave_empty');
+      if (!_.isEmpty(wellsToLeaveEmpty)){
+        wellsToLeaveEmpty = wellsToLeaveEmpty.split(',').join(', ');
+        self.model.set('wells_to_leave_empty', wellsToLeaveEmpty);
+      }
+      
       TabbedController.prototype.initialize.apply(this,arguments);
       
       if (_.isUndefined(this.screen)){

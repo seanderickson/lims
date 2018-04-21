@@ -12,14 +12,15 @@ function error () {
 function read_auth_file() {
   auth_file=$1
   if [[ ! -e $auth_file ]]; then
-    error "apache auth file not found at: \"$auth_file\""
-  fi
+     warn "apache auth file not found at: \"$auth_file\""
+  else 
 
 #set -x
 
   for x in `sed  's/SetEnv\s\+\(\S\+\)\s\+\(.*\)$/\1=\2/;tx;d;:x' $auth_file `; do
     export $x  
   done
+  fi
 }
 
 function invenv {
@@ -44,9 +45,11 @@ function maybe_activate_virtualenv {
 
   if invenv; then return; fi
 
-  module load gcc/6.2.0
-  module load python/2.7.12
-  module load perl
+  if type "module" > /dev/null; then
+    module load gcc/6.2.0
+    module load python/2.7.12
+    module load perl
+  fi
 
   source "$VENV/bin/activate" || error "failed to activate virtualenv: $?"
 

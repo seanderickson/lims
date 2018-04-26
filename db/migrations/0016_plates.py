@@ -27,6 +27,29 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name='copy',name='max_mg_ml_concentration'),
         migrations.RemoveField(model_name='copy',name='primary_well_molar_concentration'),
         migrations.RemoveField(model_name='copy',name='primary_well_mg_ml_concentration'),
+
+        migrations.RemoveField(
+            model_name='copy',
+            name='well_concentration_dilution_factor',
+        ),
+        migrations.RemoveField(
+            model_name='copy',
+            name='primary_plate_status',
+        ),
+        migrations.RemoveField(
+            model_name='copy',
+            name='primary_plate_location_id',
+        ),
+        migrations.RemoveField(
+            model_name='copy',
+            name='plate_locations_count',
+        ),
+        migrations.RemoveField(
+            model_name='copy',
+            name='plates_available',
+        ),
+        
+        
         migrations.AddField(
             model_name='labcherrypick',
             name='is_manually_selected',

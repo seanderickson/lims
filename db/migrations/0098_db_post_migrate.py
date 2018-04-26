@@ -140,11 +140,8 @@ class Migration(migrations.Migration):
             name='StudyReagentLink',
         ),
         
+        # TODO: migration may not remove if already removed from the model        
         
-        migrations.RemoveField(
-            model_name='copy',
-            name='well_concentration_dilution_factor',
-        ),
         migrations.RemoveField(
             model_name='plate',
             name='plated_activity_id',

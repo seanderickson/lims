@@ -56,21 +56,11 @@ from temp_well_volume_adjustment_summary;
   2. create copy_wells for wells having specific concentration values:
   - create a temp table with wells with unique concentration values
 */
-/**
 create temp table temp_libraries_with_concentrations as (
   select 
     library_id, short_name, 
-    count(distinct(molar_concentration)) 
-  from library join well using (library_id) 
-  group by library_id, short_name 
-  having count(distinct(molar_concentration)) > 1
-  order by count desc
-);
-**/
-create temp table temp_libraries_with_concentrations as (
-  select 
-    library_id, short_name, 
-    count(distinct(molar_concentration)) count_molar,count(distinct(mg_ml_concentration)) 
+    count(distinct(molar_concentration)) count_molar,
+    count(distinct(mg_ml_concentration)) count_mg_ml
   from library join well using (library_id) 
   group by library_id, short_name 
   having count(distinct(molar_concentration)) > 1 or count(distinct(mg_ml_concentration)) > 1 
@@ -79,23 +69,44 @@ create temp table temp_libraries_with_concentrations as (
 );
 
 
+/**
+ Note: 20180423 - ICCBL workflow will not support libraries with 
+ heterogeneous concentrations AND individual copy-plates or copy-wells with 
+ concentration values set differently. In the old system, this was accomplished
+ using the well_concentration_dilution_factor (but it did not support
+ heterogeneous libraries).
+ For migration purposes, identify this case (only XuTan7) and support it.
+ Note 2: ICCBL new policy is that copy-plate concentrations will NOT be set;
+ the library will always reflect the concentration of the wells for screening. 
+ For legacy data,  current copy-plate concentrations; as reflected by the 
+ setting of the plate.mg_ml/molar concentrations, will be supported, but we 
+ will migrate any copy-plates having dilution factor == 1 to be "stock" plates.
+**/
 create temp table temp_well_concentrations as (
   select
+    tl.short_name,
     copy_id,
     plate_id,
     well.plate_number,
     well_id,
     well_volume,
     well_volume as well_remaining_volume,
-    mg_ml_concentration,
-    molar_concentration
+    well.mg_ml_concentration,
+    cp.mg_ml_concentration cp_mg_ml,
+    well.molar_concentration,
+    cp.molar_concentration cp_molar,
+    cp.well_concentration_dilution_factor df
   from well 
   join temp_libraries_with_concentrations tl using(library_id)
   join (
-  select plate_id, copy_id, library_id, plate_number, well_volume
-  from plate join copy using(copy_id) ) cp 
+  select plate_id, copy_id, library_id, plate_number, well_volume, 
+  mg_ml_concentration, molar_concentration, well_concentration_dilution_factor
+  from plate join copy using(copy_id) 
+  where well_concentration_dilution_factor != null and well_concentration_dilution_factor != 1
+  ) cp 
     on(well.plate_number=cp.plate_number and cp.library_id=tl.library_id)
-  where well.library_well_type = 'experimental');
+  where well.library_well_type = 'experimental'
+  );
 
 /*
   2a. Create/Set copy_well.mg_ml_concentration, copy_well.molar_concentration:

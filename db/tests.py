@@ -1505,11 +1505,12 @@ class LibraryResource(DBResourceTestCase):
                 Decimal(copy_input_data['initial_plate_well_volume']),
                 Decimal(plate_data['well_volume']))
             self.assertEqual(
-                Decimal(plate_data['molar_concentration']),
-                Decimal(single_molar_concentration))
+                Decimal(single_molar_concentration),
+                Decimal(plate_data['min_molar_concentration']))
             self.assertEqual(
-                plate_data['molar_concentration'],
-                plate_data['min_molar_concentration'])
+                Decimal(single_molar_concentration),
+                Decimal(plate_data['max_molar_concentration']))
+            self.assertTrue(plate_data['molar_concentration'] is None)
             self.assertTrue(plate_data['mg_ml_concentration'] is None)
             self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
 
@@ -4158,7 +4159,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'F': 0.99 ,
                 'G': 1.0331 ,
                 'H': 'CP',
-                'I': None ,
+                'I': 'S' ,
                 'J': None,
             },
             { 
@@ -4180,7 +4181,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'J': True,
             },
         ]
-        expected_empties = ['00001:A21-H','00001:A22-I','00001:A23-J',]
+        expected_empties = ['00001:A21-H','00001:A21-I','00001:A22-I','00001:A23-J',]
         # The ScreenResultSerializer only recognizes the XLSX format:
         # So serialize the input data into an XLSX file
         input_data_put = screen_result_importer.create_output_data(

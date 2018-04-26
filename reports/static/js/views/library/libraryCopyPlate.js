@@ -186,18 +186,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             });
           
           if (_.contains(concentration_types, 'mg_ml')){
-            resource.fields['mg_ml_concentration']['visibility'] = ['l','d'];
-            if (self.copy && self.copy.get('has_copywell_concentrations')) {
-              resource.fields['min_mg_ml_concentration']['visibility'] = ['l','d'];
-              resource.fields['max_mg_ml_concentration']['visibility'] = ['l','d'];
-            }
+            resource.fields['min_mg_ml_concentration']['visibility'] = ['l','d'];
+            resource.fields['max_mg_ml_concentration']['visibility'] = ['l','d'];
           }
           if (_.contains(concentration_types, 'molar')){
-            resource.fields['molar_concentration']['visibility'] = ['l','d'];
-            if (self.copy && self.copy.get('has_copywell_concentrations')) {
-              resource.fields['min_molar_concentration']['visibility'] = ['l','d'];
-              resource.fields['max_molar_concentration']['visibility'] = ['l','d'];
-            }
+            resource.fields['min_molar_concentration']['visibility'] = ['l','d'];
+            resource.fields['max_molar_concentration']['visibility'] = ['l','d'];
           }
         }
         _.each(_.pick(resource['fields'], 
@@ -210,7 +204,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             } else {
               field['visibility'] = [];
             }
-        });
+        });        
+        if(self.copy && self.copy.get('has_copywell_volumes')){
+          resource['fields']['remaining_well_volume']['visibility'] = [];
+        }
         
       }  
       if (!_.isEmpty(self.library) || !_.isEmpty(self.copy)){

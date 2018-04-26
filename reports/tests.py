@@ -1102,6 +1102,7 @@ class IResourceTestCase(SimpleTestCase):
         # Tastypie PUT/POST requires that the data be serialized before posting,
         # and does not create the multipart/form-data header
         self.django_client = Client()
+        settings.BACKGROUND_PROCESSING = False
             
     def setUp(self):
         super(IResourceTestCase, self).setUp()
@@ -2638,7 +2639,8 @@ class JobResource(IResourceTestCase):
     
     def setUp(self):
         super(JobResource, self).setUp()
-
+        settings.BACKGROUND_PROCESSING = True
+        
     def tearDown(self):
         IResourceTestCase.tearDown(self)
         
@@ -2648,6 +2650,7 @@ class JobResource(IResourceTestCase):
         UserProfile.objects.all().exclude(username=self.username).delete()
         User.objects.all().exclude(username=self.username).delete()
         ApiLog.objects.all().delete()
+        settings.BACKGROUND_PROCESSING = False
     
     def test1_test_job(self):
         '''

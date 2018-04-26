@@ -694,6 +694,14 @@ class PlateLocationResource(DbApiResource):
                             copy = None
                             start_plate = None
                             end_plate = None
+                            def create_entry(library, copy, start_plate, end_plate):
+                                if start_plate != end_plate:
+                                    return '%s:%s:%s-%s' % (
+                                        library, copy, start_plate, end_plate)
+                                else:
+                                    return '%s:%s:%s' % (
+                                        library, copy, start_plate)
+                                
                             for x in query:
                                 if not copy:
                                     copy = x[1]
@@ -704,20 +712,16 @@ class PlateLocationResource(DbApiResource):
                                     or x[1] != copy 
                                     or x[2] > end_plate + 1):
                                     # start a new range, save old range
-                                    if start_plate != end_plate:
-                                        self.entries.append('%s:%s:%s-%s'
-                                            % (library, copy, start_plate, end_plate))
-                                    else:
-                                        self.entries.append('%s:%s:%s'
-                                            % (library, copy, start_plate))
+                                    self.entries.append(create_entry(
+                                        library, copy, start_plate, end_plate))
                                     start_plate = end_plate = x[2]
                                     copy = x[1]
                                     library = x[0]
                                 else:
                                     end_plate = x[2]
                             if copy: 
-                                self.entries.append('%s:%s:%s-%s'
-                                    % (library, copy, start_plate, end_plate))
+                                self.entries.append(create_entry(
+                                    library, copy, start_plate, end_plate))
                                     
                         def has_key(self, key):
                             if key == 'copy_plate_ranges': 
@@ -1334,12 +1338,14 @@ class LibraryCopyPlateResource(DbApiResource):
     def get_plate_copywell_statistics_cte(cls, 
         filter_hash=None, library_id=None, copy_id=None, plate_ids=None):  
         bridge = get_tables()
+        _w = bridge['well']
+        _l = bridge['library']
         _p = bridge['plate']
         _cw = bridge['copy_well']
         _c = bridge['copy']
         
         j = _cw
-        if library_id is not None or copy_id is not None:
+        if copy_id is not None:
             j = j.join(_c, _cw.c.copy_id==_c.c.copy_id)
         cw_vols = (
             select([
@@ -1364,11 +1370,29 @@ class LibraryCopyPlateResource(DbApiResource):
         #     cw_vols = cw_vols.where(_p.c.plate_id.in_(plate_ids))
         cw_vols = cw_vols.cte('copy_well_volumes')
         
+        well_c = (
+            select([
+                _w.c.plate_number,
+                func.min(_w.c.molar_concentration).label('min_well_molar'),
+                func.max(_w.c.molar_concentration).label('max_well_molar'),
+                func.min(_w.c.mg_ml_concentration).label('min_well_mg_ml'),
+                func.max(_w.c.mg_ml_concentration).label('max_well_mg_ml'),
+                ])
+            .select_from(_w)
+            .group_by(_w.c.plate_number))
+        if library_id is not None:
+            well_c = well_c.where(_w.c.library_id==library_id)
+        if copy_id is not None:
+            well_c = well_c.where(_w.c.library_id==
+                (select([distinct(_c.c.library_id)]).where(_c.c.copy_id==copy_id).as_scalar()))
+        well_c = well_c.cte('well_concentrations')
+
         # NOTE: this method of calculating plate volumes requires that plates
         # are never screened as "library_screenings" after being screened as
         # cherry pick screenings: (copy well statistics are set on the first
         # cherry pick screening, and are not reset on subsequent library_screenings)
         j2 = _p.outerjoin(cw_vols,_p.c.plate_id==cw_vols.c.plate_id)
+        j2 = j2.join(well_c, _p.c.plate_number==well_c.c.plate_number)
         j2 = j2.join(_c, _p.c.copy_id==_c.c.copy_id)
         query = (
             select([
@@ -1378,50 +1402,36 @@ class LibraryCopyPlateResource(DbApiResource):
                 _c.c.name.label('copy_name'),
                 case([
                     (_p.c.experimental_well_count > 0,
-                    ( func.coalesce(_p.c.remaining_well_volume,_p.c.well_volume) 
-                        * (_p.c.experimental_well_count-cw_vols.c.count)
+                    ( ( func.coalesce(_p.c.remaining_well_volume,_p.c.well_volume) 
+                        * (_p.c.experimental_well_count-cw_vols.c.count) )
                         + cw_vols.c.cum_well_vol ) / _p.c.experimental_well_count)],
                     else_=None).label('avg_well_remaining_volume'),
                 func.coalesce(_p.c.remaining_well_volume,_p.c.well_volume)
                     .label('remaining_well_volume'),
                 func.coalesce(cw_vols.c.min_well_vol,
                     _p.c.remaining_well_volume,).label('min_well_remaining_volume'),
-                func.coalesce(cw_vols.c.max_well_vol,
-                    _p.c.remaining_well_volume).label('max_well_remaining_volume'),
+                case([
+                    (_p.c.experimental_well_count == cw_vols.c.count,
+                    func.coalesce(cw_vols.c.min_well_vol,
+                        _p.c.remaining_well_volume))],
+                    else_=func.coalesce(_p.c.remaining_well_volume,_p.c.well_volume)
+                    ).label('max_well_remaining_volume'),
                 func.coalesce(cw_vols.c.min_well_mg_ml,
-                    _p.c.mg_ml_concentration).label('min_mg_ml_concentration'),
+                    _p.c.mg_ml_concentration,
+                    well_c.c.min_well_mg_ml
+                    ).label('min_mg_ml_concentration'),
                 func.coalesce(cw_vols.c.max_well_mg_ml,
-                    _p.c.mg_ml_concentration).label('max_mg_ml_concentration'),
+                    _p.c.mg_ml_concentration,
+                    well_c.c.max_well_mg_ml
+                    ).label('max_mg_ml_concentration'),
                 func.coalesce(cw_vols.c.min_well_molar,
-                    _p.c.molar_concentration).label('min_molar_concentration'),
+                    _p.c.molar_concentration,
+                    well_c.c.min_well_molar
+                    ).label('min_molar_concentration'),
                 func.coalesce(cw_vols.c.max_well_molar,
-                    _p.c.molar_concentration).label('max_molar_concentration'),
-                # (select([func.min(_cw.c.volume)])
-                #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
-                #     .label('min_well_remaining_volume')),
-                # (select([func.max(_cw.c.volume)])
-                #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
-                #     .label('max_well_remaining_volume')),
-                # (select([func.coalesce(
-                #     func.min(_cw.c.mg_ml_concentration),
-                #     _p.c.mg_ml_concentration)])
-                #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
-                #     .label('min_mg_ml_concentration')),
-                # (select([func.coalesce(
-                #     func.max(_cw.c.mg_ml_concentration),
-                #     _p.c.mg_ml_concentration)])
-                #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
-                #     .label('max_mg_ml_concentration')),
-                # (select([func.coalesce(
-                #     func.min(_cw.c.molar_concentration),
-                #     _p.c.molar_concentration)])
-                #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
-                #     .label('min_molar_concentration')),
-                # (select([func.coalesce(
-                #     func.max(_cw.c.molar_concentration),
-                #     _p.c.molar_concentration)])
-                #     .select_from(_cw).where(_cw.c.plate_id==_p.c.plate_id)
-                #     .label('max_molar_concentration')),
+                    _p.c.molar_concentration,
+                    well_c.c.max_well_molar
+                    ).label('max_molar_concentration'),
                 ])
             .select_from(j2)
             )
@@ -2021,9 +2031,6 @@ class LibraryCopyPlateResource(DbApiResource):
                 'max_molar_concentration': _plate_statistics.c.max_molar_concentration,
                 'min_mg_ml_concentration': _plate_statistics.c.min_mg_ml_concentration,
                 'max_mg_ml_concentration': _plate_statistics.c.max_mg_ml_concentration,
-#                 'plate_number': (literal_column(
-#                     "to_char(plate.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
-#                     .label('plate_number')),
                 'first_date_screened': _plate_screening_statistics.c.first_date_screened,
                 'last_date_screened': _plate_screening_statistics.c.last_date_screened,
                 'status_date': _status_apilogs.c.date_time,
@@ -5523,26 +5530,29 @@ class ScreenResultResource(DbApiResource):
                                 colname)
                             continue      
                         dc = sheet_col_to_datacolumn[colname]
-                        rv_initializer = self.create_result_value(
-                            colname, val, dc, well, initializer_dict, 
-                            assay_well_initializer)
+                        try:
+                            rv_initializer = self.create_result_value(
+                                colname, val, dc, well, initializer_dict, 
+                                assay_well_initializer)
+                            
+                            # 20170424 - remove data loading replicate tracking - per JAS
+                            # if (dc.is_derived is False
+                            #     and well.library_well_type == 'experimental'
+                            #     and rv_initializer['is_exclude'] is not True):
+                            #     max_replicate = \
+                            #         plates_max_replicate_loaded.get(well.plate_number, 0)
+                            #     if dc.replicate_ordinal > max_replicate:
+                            #         plates_max_replicate_loaded[well.plate_number] = \
+                            #             dc.replicate_ordinal
+                            # else:
+                            #     logger.debug(('not counted for replicate: well: %r, '
+                            #         'type: %r, initializer: %r'), 
+                            #         well.well_id, well.library_well_type, rv_initializer)   
+                            writer.writerow(rv_initializer)
+                            rvs_to_create += 1
+                        except ValidationError,e1:
+                            errors.update(e1.errors)
                         
-                        # 20170424 - remove data loading replicate tracking - per JAS
-                        # if (dc.is_derived is False
-                        #     and well.library_well_type == 'experimental'
-                        #     and rv_initializer['is_exclude'] is not True):
-                        #     max_replicate = \
-                        #         plates_max_replicate_loaded.get(well.plate_number, 0)
-                        #     if dc.replicate_ordinal > max_replicate:
-                        #         plates_max_replicate_loaded[well.plate_number] = \
-                        #             dc.replicate_ordinal
-                        # else:
-                        #     logger.debug(('not counted for replicate: well: %r, '
-                        #         'type: %r, initializer: %r'), 
-                        #         well.well_id, well.library_well_type, rv_initializer)   
-                        writer.writerow(rv_initializer)
-                        rvs_to_create += 1
-                
                     assay_well_writer.writerow(assay_well_initializer)
                     rows_created += 1
                     if rows_created % 10000 == 0:
@@ -6538,12 +6548,14 @@ class CopyWellResource(DbApiResource):
                 'mg_ml_concentration': case([
                     (_w.c.library_well_type=='experimental', 
                         func.coalesce(
-                            _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration) )],
+                            _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration,
+                            _w.c.mg_ml_concentration ) )],
                     else_=None),
                 'molar_concentration': case([
                     (_w.c.library_well_type=='experimental', 
                         func.coalesce(
-                            _cw.c.molar_concentration,_p.c.molar_concentration) )],
+                            _cw.c.molar_concentration,_p.c.molar_concentration,
+                            _w.c.molar_concentration ) )],
                     else_=None),
                 'cumulative_freeze_thaw_count': (
                     (func.coalesce(_p.c.screening_count,0) 
@@ -11291,7 +11303,7 @@ class LibraryCopyResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             if is_for_detail:
-                manual_field_includes.add('has_copywell_concentrations')
+#                 manual_field_includes.add('has_copywell_concentrations')
                 manual_field_includes.add('has_copywell_volumes')
 
             (filter_expression, filter_hash, readable_filter_hash) = \
@@ -11334,6 +11346,7 @@ class LibraryCopyResource(DbApiResource):
             _p = self.bridge['plate']
             _cw = self.bridge['copy_well']
             _ls = self.bridge['library_screening']
+            _pl = self.bridge['plate_location']
             _plate_statistics = (
                 LibraryCopyPlateResource.get_plate_copywell_statistics_cte(
                     filter_hash=filter_hash)
@@ -11384,6 +11397,25 @@ class LibraryCopyResource(DbApiResource):
                 .group_by(_plate_screening_statistics.c.copy_id)
                 ).cte('copy_screening_statistics')
             
+            _plate_status_counts = (
+                select([_p.c.copy_id, _p.c.status, func.count(None).label('count')])
+                .select_from(_p)
+                .group_by(_p.c.copy_id, _p.c.status)
+                .order_by(nullslast(desc(literal_column('count'))))
+                ).cte('plate_status_counts')
+
+            _plate_location_counts = (
+                select([
+                    _p.c.copy_id, 
+                    _concat_with_sep(
+                        (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-').label('location'),
+                    func.count(None).label('count')])
+                .select_from(_pl.join(
+                    _p, _pl.c.plate_location_id==_p.c.plate_location_id))
+                .group_by(_p.c.copy_id, _pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin)
+                .order_by(nullslast(desc(literal_column('count'))))
+                ).cte('plate_location_counts')
+                
             custom_columns = {
                 'copy_plate_count': (
                     select([func.count(None)])
@@ -11407,14 +11439,14 @@ class LibraryCopyResource(DbApiResource):
                 
                 'first_date_screened': _copy_screening_statistics.c.first_date_screened,
                 'last_date_screened': _copy_screening_statistics.c.last_date_screened,
-
+                'primary_plate_status': (
+                    select([_plate_status_counts.c.status])
+                    .where(_plate_status_counts.c.copy_id == _c.c.copy_id)
+                    .limit(1)),
                 'primary_plate_location': (
-                    literal_column('\n'.join([
-                    "( select room || '-' || freezer || '-' || shelf || '-' || bin ",
-                    '    from plate_location pl ' ,
-                    '    where pl.plate_location_id',
-                    '=copy.primary_plate_location_id) ']))
-                    .label('primary_plate_location')),
+                    select([_plate_location_counts.c.location])
+                    .where(_plate_location_counts.c.copy_id == _c.c.copy_id)
+                    .limit(1)),
                 'plate_locations': literal_column('\n'.join([
                     '(select count(distinct(plate_location_id)) ',
                     '    from plate p',
@@ -11526,6 +11558,8 @@ class LibraryCopyResource(DbApiResource):
 
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         
+        warnings = []
+        meta = {}
         try:
             short_name = id_kwargs['library_short_name']
             try:
@@ -11591,6 +11625,9 @@ class LibraryCopyResource(DbApiResource):
                     raise ValidationError(
                         key='initial_plate_well_volume',
                         msg='required')
+
+                # Validation of concentration settings
+                
                 initial_plate_mg_ml_concentration = \
                     deserialized.get('initial_plate_mg_ml_concentration', None)
                 if initial_plate_mg_ml_concentration:
@@ -11613,40 +11650,48 @@ class LibraryCopyResource(DbApiResource):
                         'initial_plate_molar_concentration': msg })     
                 
                 library = librarycopy.library
+                mg_mls = ( 
+                    library.well_set.all()
+                        .filter(library_well_type='experimental')
+                        .distinct('mg_ml_concentration')
+                        .values_list('mg_ml_concentration', flat=True))
+                molars = ( 
+                    library.well_set.all()
+                        .filter(library_well_type='experimental')
+                        .distinct('molar_concentration')
+                        .values_list('molar_concentration', flat=True))
                 
-                if ( initial_plate_molar_concentration is None and 
-                     initial_plate_mg_ml_concentration is None ):
-                    # use the well concentrations to set the values
-                    # case 1: all wells use the same concentration value
-                    
-                    mg_mls = ( 
-                        library.well_set.all()
-                            .filter(library_well_type='experimental')
-                            .distinct('mg_ml_concentration')
-                            .values_list('mg_ml_concentration', flat=True))
-                    if len(mg_mls) == 1:
-                        initial_plate_mg_ml_concentration = mg_mls[0]
-                    molars = ( 
-                        library.well_set.all()
-                            .filter(library_well_type='experimental')
-                            .distinct('molar_concentration')
-                            .values_list('molar_concentration', flat=True))
-                    if len(molars) == 1:
-                        initial_plate_molar_concentration = molars[0]
                 
-                    if ( initial_plate_molar_concentration is not None and
-                         initial_plate_mg_ml_concentration is not None ):
-                        msg = ('Invalid library well concentrations: both '
-                            '["mg_ml_concentration",'
-                            '"molar_concentration"] are set')
-                        logger.warn(msg)
-                        initial_plate_molar_concentration = None
-                        initial_plate_mg_ml_concentration = None
+                if ( initial_plate_molar_concentration is not None and
+                     initial_plate_mg_ml_concentration is not None ):
+                    msg = 'Can not set both: molar and mg/ml concentration'
+                    raise ValidationError({
+                        'initial_plate_molar_concentration': msg,
+                        'initial_plate_mg_ml_concentration': msg
+                        })
+                if len(mg_mls)>1 or len(molars)>1 or \
+                    (len(mg_mls)==1 and len(molars)==1):
+                    msg = ('May not set plate concentration if the library '
+                           'definition contains multiple well concentrations: '
+                           '(Use the copy well interface to set individual '
+                           'copy well concentrations)')
+                    if initial_plate_mg_ml_concentration is not None:
+                        raise ValidationError(
+                            key='initial_plate_mg_ml_concentration',
+                            msg=msg)
+                    if initial_plate_molar_concentration is not None:
+                        raise ValidationError(
+                            key='initial_plate_molar_concentration',
+                            msg=msg)
+                if len(mg_mls)==0 and len(molars) == 0:
+                    if initial_plate_mg_ml_concentration is None \
+                        and initial_plate_molar_concentration is None:
+                        warnings.append(
+                            'No concentration specified')
                         
                 logger.debug('create plates start: %d, end: %d',
                     library.start_plate, library.end_plate)
                 plates_created = 0
-                copywells_created = 0
                 for x in range(library.start_plate, library.end_plate + 1):
                     p = Plate.objects.create(
                         copy=librarycopy, 
@@ -11665,24 +11710,16 @@ class LibraryCopyResource(DbApiResource):
                             # TODO: set retired if retired status
                     p.save()
                     plates_created += 1
-                    if len(mg_mls)>1 or len(molars)>1:
-                        # Library contains specific well concentrations, must 
-                        # create copy_wells to reflect these concentrations
-                        logger.info('creating copywells for plate: %r', p)
-                        for well in library.well_set.all().filter(
-                                plate_number=p.plate_number):
-                            CopyWell.objects.create(
-                                well=well, copy=librarycopy, plate=p,
-                                mg_ml_concentration=well.mg_ml_concentration,
-                                molar_concentration=well.molar_concentration)
-                            copywells_created += 1
                     logger.debug('saved plate: %r', p.plate_number)
-                logger.info('created %d plates, %d copywells', 
-                    plates_created, copywells_created)
+                logger.info('created %d plates', plates_created)
+                logger.info('patch_obj done for librarycopy: %r', librarycopy)
+                meta[API_MSG_RESULT] = {
+                    'plates created': plates_created,
+                }
+                if warnings:
+                    meta[API_MSG_WARNING] = warnings
             
-            # TODO: return Result meta for # plates, copies created
-            logger.info('patch_obj done for librarycopy: %r', librarycopy)
-            return { API_RESULT_OBJ: librarycopy }
+            return { API_RESULT_META: meta, API_RESULT_OBJ: librarycopy }
             
         except Exception, e:
             logger.exception('on patch detail')
@@ -20468,6 +20505,73 @@ class ReagentResource(DbApiResource):
         rv_select = rv_select.label(key)
         return rv_select
 
+    def get_screening_concentration_cte(self, 
+            well_base_query=None, well_ids=None, plate_numbers=None, library=None,
+            cherry_pick_request_id_screener=None, 
+            cherry_pick_request_id_lab=None, alias_qualifier=None):
+        _well = self.bridge['well']
+        _copy = self.bridge['copy']
+        _p = self.bridge['plate']
+        _cw = self.bridge['copy_well']
+        pc_join = (_well.join(
+                    _copy,_well.c.library_id==_copy.c.library_id)
+                .join(_p, _copy.c.copy_id==_p.c.copy_id)
+                .join(_cw,
+                      and_(_cw.c.well_id==_well.c.well_id, 
+                           _cw.c.copy_id==_copy.c.copy_id),isouter=True))
+        if well_base_query is not None:
+            pc_join = pc_join.join(well_base_query, _well.c.well_id==well_base_query.c.well_id )
+        if cherry_pick_request_id_screener is not None:
+            pc_join = pc_join.join(_scp,
+                _scp.c.screened_well_id==_well.c.well_id)
+        if cherry_pick_request_id_lab is not None:
+            pc_join = pc_join.join(_lcp,
+                _lcp.c.source_well_id==_well.c.well_id)
+        _plate_concentrations = (
+            select([
+                _well.c.well_id,
+                _copy.c.name,
+                _copy.c.usage_type,
+                _copy.c.copy_id,
+                func.coalesce(
+                    _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration,
+                    _well.c.mg_ml_concentration).label('mg_ml_concentration'),
+                func.coalesce(
+                    _cw.c.molar_concentration,_p.c.molar_concentration,
+                    _well.c.molar_concentration).label('molar_concentration'),
+                _p.c.status    
+                ])
+            .select_from(pc_join)
+            )
+        if well_ids is not None:
+            _plate_concentrations= _plate_concentrations.where(_well.c.well_id.in_(well_ids))
+        if plate_numbers:
+            _plate_concentrations = _plate_concentrations.where(_well.c.plate_number.in_(plate_numbers))
+        if library:
+            _plate_concentrations = _plate_concentrations.where(_well.c.library_id == library.library_id) 
+        if cherry_pick_request_id_screener is not None:
+            _plate_concentrations = stmt.where(
+                _scp.c.cherry_pick_request_id
+                    ==cherry_pick_request_id_screener)
+        if cherry_pick_request_id_lab is not None:
+            _plate_concentrations = stmt.where(
+                _plate_concentrations.c.cherry_pick_request_id
+                    ==cherry_pick_request_id_lab)
+        
+        spcs = _plate_concentrations.where(_copy.c.usage_type== 'library_screening_plates')
+        alias_name = 'spcs'
+        if alias_qualifier:
+            alias_name += '_'+ alias_qualifier
+        spcs = spcs.cte(alias_name)
+
+        # compiled_stmt = str(spcs.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)            
+        
+        return spcs
+        
+        
     def get_query(self, 
         param_hash, user, library=None,
         cherry_pick_request_id_screener=None,
@@ -20542,6 +20646,40 @@ class ReagentResource(DbApiResource):
                     
             custom_columns = {}
 
+            # screening copy concentrations
+            
+            spcs = self.get_screening_concentration_cte(
+                well_base_query, well_ids, plate_numbers, library, 
+                cherry_pick_request_id_screener, cherry_pick_request_id_lab)
+            custom_columns['screening_mg_ml_concentration'] = case([
+                (_well.c.library_well_type=='experimental', 
+                    select([spcs.c.mg_ml_concentration])
+                        .select_from(spcs)
+                        .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
+                else_=None)
+            custom_columns['screening_mg_ml_concentrations'] = case([
+                (_well.c.library_well_type=='experimental', 
+                    select([func.array_to_string(
+                        func.array_agg(cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
+                        LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(spcs)
+                        .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
+                else_=None)
+            custom_columns['screening_molar_concentration'] = case([
+                (_well.c.library_well_type=='experimental', 
+                    select([spcs.c.molar_concentration])
+                        .select_from(spcs)
+                        .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
+                else_=None)
+            custom_columns['screening_molar_concentrations'] = case([
+                (_well.c.library_well_type=='experimental', 
+                    select([func.array_to_string(
+                        func.array_agg(distinct(spcs.c.molar_concentration)),
+                        LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(spcs)
+                        .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
+                else_=None)
+            
             # 20180314 - is_restricted_sequence, is_restricted_structure
             rna_restricted_fields = ['sequence','anti_sense_sequence']
             fields_to_restrict = set(rna_restricted_fields)&set(field_hash.keys())
@@ -22468,7 +22606,7 @@ class LibraryResource(DbApiResource):
             _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
                 self._meta.resource_name)
             _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
-
+            _well = self.bridge['well']
             custom_columns = {
                 'comment_array': (
                     select([func.array_to_string(
@@ -22532,22 +22670,9 @@ class LibraryResource(DbApiResource):
                     '  where well.library_id=library.library_id '
                     "  and well.molar_concentration is not null limit 1) then 'molar' end "
                     "], '%s' ) )" % LIST_DELIMITER_SQL_ARRAY
-                    )
+                    ),
+                
                 }
-            ##### FIXME: 20171106 unused
-#             concentration_sql = (
-#                 'select short_name, '
-#                 'exists(select null from well '
-#                 '  where well.library_id=l.library_id '
-#                 '  and well.mg_ml_concentration is not null limit 1) mg_ml_measure, '
-#                 'exists(select null from well '
-#                 '  where well.library_id=l.library_id '
-#                 '  and well.molar_concentration is not null limit 1) molar_measure '
-#                 'from library l;')
-#             with get_engine().connect() as conn:
-#                 result = conn.execute(text(concentration_sql))
-#                 cached_ids =  [x[0] for x in result ]
-            
                      
             base_query_tables = ['library']
 

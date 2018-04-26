@@ -65,6 +65,7 @@ import reports.utils.background_processor as background_processor
 import reports.utils.background_client_util as background_client_util
 import importlib
 import subprocess
+from reports.schema import API_RESULT_META
 
 
 RESOURCE = SCHEMA.RESOURCE
@@ -74,9 +75,6 @@ logger = logging.getLogger(__name__)
 URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
 
-# API_RESULT_OBJ = 'object'
-# API_RESULT_DATA = 'objects'
-# API_RESULT_META = 'meta'
 API_RESULT_OBJ = SCHEMA.API_RESULT_OBJ
 API_RESULT_DATA = SCHEMA.API_RESULT_DATA
 API_RESULT_META = SCHEMA.API_RESULT_META
@@ -1378,6 +1376,9 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log['%s' % id_field] = val
                 else:
                     logger.warn('id field: %r not found in new obj: %r', id_field, obj)
+        meta = {}
+        if API_RESULT_META in patch_result:
+            meta = patch_result[API_RESULT_META]
 
         # get new state, for logging
         logger.debug('get new state, for logging, kwargs: %r', kwargs_for_log)
@@ -1400,14 +1401,14 @@ class ApiResource(SqlAlchemyResource):
                 'test_only': 'successful patch, "test_only" flag is set, rollback...',
                 'patch_log': ApiLog.json_dumps(patched_log)
             }
-            if API_RESULT_META in patch_result:
-                message[API_RESULT_META] = patch_result[API_RESULT_META]
-            raise InformationError(message)
+            meta.update(message)
+            raise InformationError({API_RESULT_META: meta})
 
         # 20170109 - return complex data
-        new_data = { API_RESULT_DATA: [new_data,] }
-        if API_RESULT_META in patch_result:
-            new_data[API_RESULT_META] = patch_result[API_RESULT_META]
+        new_data = { 
+            API_RESULT_META: meta,
+            API_RESULT_DATA: [new_data,] 
+        }
         return new_data
     
     @write_authorization
@@ -1455,11 +1456,12 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log)
         log.save()
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
+        meta = {}
+        if API_RESULT_META in patch_result:
+            meta = patch_result[API_RESULT_META]
         if API_RESULT_OBJ in patch_result:
             obj = patch_result[API_RESULT_OBJ]
         else:
-            # TODO: 20170109, legacy, convert patch_obj to return:
-            # { API_RESULT_OBJ, API_RESULT_META }
             obj = patch_result
         logger.debug('build patch detail: %r', obj)
         
@@ -1478,7 +1480,7 @@ class ApiResource(SqlAlchemyResource):
             logger.debug('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
-        
+            meta[API_MSG_WARNING] = 'No Changes were detected'
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', kwargs.get('test_only'))
@@ -1486,14 +1488,14 @@ class ApiResource(SqlAlchemyResource):
                 'test_only': 'successful patch, "test_only" flag is set, rollback...',
                 'patch_log': ApiLog.json_dumps(patched_log)
             }
-            if API_RESULT_META in patch_result:
-                message[API_RESULT_META] = patch_result[API_RESULT_META]
-            raise InformationError(message)
+            meta.update(message)
+            raise InformationError({ API_RESULT_META: meta })
 
         # 20170109 - return complex data
-        new_data = { API_RESULT_DATA: [new_data,], }
-        if API_RESULT_META in patch_result:
-            new_data[API_RESULT_META] = patch_result[API_RESULT_META]
+        new_data = { 
+            API_RESULT_META: meta,
+            API_RESULT_DATA: [new_data,], 
+            }
             
         return new_data
 

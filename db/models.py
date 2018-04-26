@@ -1434,10 +1434,10 @@ class Copy(models.Model):
     date_plated = models.DateField(null=True)
     
     # Deprecated - verify removal once UI is approved - Jen
-    primary_plate_status = models.TextField()
-    primary_plate_location_id = models.IntegerField(null=True)
-    plates_available = models.IntegerField(null=True)
-    plate_locations_count = models.IntegerField(null=True)
+#     primary_plate_status = models.TextField(null=True)
+#     primary_plate_location_id = models.IntegerField(null=True)
+#     plate_locations_count = models.IntegerField(null=True)
+#     plates_available = models.IntegerField(null=True)
     
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)

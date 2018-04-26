@@ -131,6 +131,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
         var method = this[this.tabbed_resources[key]['invoke']];
         if (_.isFunction(method)) {
           method.apply(this,[delegateStack]);
+//          self.reportUriStack([]);          
         } else {
           throw ( 
             "Tabbed resources refers to a non-function: "

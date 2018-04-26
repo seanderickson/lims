@@ -34,7 +34,7 @@ define([
        */
       uriStackChange: function(model, val, options) {
         if(options.source === this){
-          console.log('self generated uristack change');
+          console.log('menu: self generated uristack change');
           return;
         }else{
           this.changeUri();

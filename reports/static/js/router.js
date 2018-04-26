@@ -9,6 +9,7 @@ function($, _, Backbone, appModel) {
   var AppRouter = Backbone.Router.extend({
 
     initialize : function() {
+      var self = this;
       // send all routes to URIstack processing function
       this.route(/(.*)/, "toPath", this.toPath);
       this.routesHit = 0;
@@ -16,9 +17,9 @@ function($, _, Backbone, appModel) {
         'route', 
         function(router, route, params)
         {
-          this.routesHit++;
+          self.routesHit++;
           console.log('detected route: ' + route + ', params: ' 
-              + JSON.stringify(params) + ', routesHit:' + this.routesHit);
+              + JSON.stringify(params) + ', routesHit:' + self.routesHit);
         }, this);
 
       this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
@@ -30,8 +31,16 @@ function($, _, Backbone, appModel) {
      * recursive to grab multiple search terms 
      **/
     toPath: function(path){
-      function popKeys(stack){
+      function popKeysAndDecode(stack){
         if(!_.isEmpty(stack)){
+          // 20180425 - fix: window location automatically encodes the hash url,
+          // and backbone router generates a second route change with the 
+          // encoded url; so clean it so that the final uriStack is the same.
+          stack = _.map(stack, function(fragment){
+            fragment = decodeURIComponent(fragment);
+            fragment = ''+fragment;
+            return fragment;
+          });
           var searchIndex = _.indexOf(stack,appModel.URI_PATH_SEARCH);
           if(searchIndex > -1){
             var newStack = stack.slice(0,searchIndex+1);
@@ -56,9 +65,9 @@ function($, _, Backbone, appModel) {
       }
       var uriStack = [];
       if (path){
-        uriStack = popKeys(path.split('/'));
+        uriStack = popKeysAndDecode(path.split('/'));
       }
-      appModel.set({ uriStack: uriStack}, { source: this });
+      appModel.set({ uriStack: uriStack }, { source: this });
     },
     
     back: function() {  

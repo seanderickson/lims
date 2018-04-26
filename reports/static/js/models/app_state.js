@@ -1367,11 +1367,17 @@ define([
         defaults : { },
         parse: function(resp, options){
           return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
-        }
+        },
+        fetch: function(options) {
+          var options = options || {};
+          if (!_.contains(options,'data')){
+            options['data'] = data_for_get;
+          }
+          return Backbone.Model.prototype.fetch.apply(this, [options]);
+        }        
       });
       var instance = new ModelClass();
       instance.fetch({
-        data: data_for_get,
         success : function(model) {
           model.resource = resource;
           model.key = key;
@@ -1800,6 +1806,14 @@ define([
     },
     
     setUriStack: function(value){
+      
+      // 20180425 - fix: window location automatically encodes the hash url,
+      // and backbone router generates a second route change with the 
+      // encoded url; ensure that uriStack contains only strings so that all
+      // iterations match.
+      value = _.map(value, function(fragment){
+        return '' + fragment;
+      });
       if(this.get('uriStack') == value ){
         // signal a change event if this method was called with the same value
         // - for the menu signaling
@@ -1809,24 +1823,6 @@ define([
       }
     },
 
-    //    setUriStack: function(value){
-    //      var self = this;
-    //      var _deferred = function(){
-    //       self.set({ uriStack: value });
-    //      };
-    //      
-    //      // TODO: push the requestPageChange method up the call stack to the client code:
-    //      // - this will allow us to prevent other actions on the client side.
-    //      
-    //      if(self.isPagePending()){
-    //        self.showModal({
-    //          ok: _deferred
-    //        });
-    //      }else{
-    //        _deferred();
-    //      }
-    //    },
-        
     /**
      * Set flag to signal that the current page has pending changes;
      * (see setUriStack; modal confirm dialog will be triggered).

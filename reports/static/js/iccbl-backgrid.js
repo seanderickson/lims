@@ -187,6 +187,23 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
 };
 
 
+/** 
+ * Round by first converting to whole number, to avoid floating point number
+ * arithmetic errors:
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round
+ */
+var round = Iccbl.round = function round(number, precision) {
+  var shift = function (number, precision, reverseShift) {
+    if (reverseShift) {
+      precision = -precision;
+    }  
+    var numArray = ("" + number).split("e");
+  return +(numArray[0] + "e" + (numArray[1] ? (+numArray[1] + precision) : precision));
+  };
+  return shift(Math.round(shift(number, precision, false)), precision, true);
+}    
+
+
 /**
  * Parse a string date value, ignoring the time and timezone.
  * 
@@ -2092,8 +2109,16 @@ DecimalFormatter.prototype = new Backgrid.NumberFormatter();
  
 _.extend(DecimalFormatter.prototype, {
  
+  defaults: _.extend({}, NumberFormatter.prototype.defaults, {
+    // If True, allow trailing zeros, only relevant if not using rounding
+    trailing_zeros: false, 
+    use_rounding: true
+  }),
+
   /**
-   * Modified to pass non-numbers through.
+   * Modified to:
+   * - pass non-numbers through
+   * - use rounding instead of fixed decimal truncation by default
    */
   fromRaw: function (number, model) {
     var args = [].slice.call(arguments, 1);
@@ -2111,9 +2136,23 @@ _.extend(DecimalFormatter.prototype, {
         return number;
       }
     }
-     
-    args.unshift(number);
-    return (NumberFormatter.prototype.fromRaw.apply(this, args) || "0");
+    
+    if (this.use_rounding == true){
+      number = round(number, this.decimals);
+    } else {
+      number = number.toFixed(~~this.decimals);
+      if (this.trailing_zeros == false){
+        number = number*1;
+      }
+    }
+    number = ''+number;
+    
+    var parts = number.split('.');
+    var integerPart = parts[0];
+    var decimalPart = parts[1] ? (this.decimalSeparator || '.') + parts[1] : '';
+
+    return integerPart.replace(this.HUMANIZED_NUM_RE, '$1' + this.orderSeparator) + decimalPart;
+    
   }
 });  
 
@@ -2159,7 +2198,9 @@ _.extend(SIUnitsFormatter.prototype, {
       ['n', 1e-9 ],
       ['p', 1e-12 ]
       ],
-    multiplier: 1
+    multiplier: 1,
+    trailing_zeros: false, // If True, allow trailing zeros
+    use_rounding: true
   }),
 
   SI_UNIT_PATTERN: /([\d\.]+)\s*((\w|\xB5|\x{03BC})\w)?/i,
@@ -2198,8 +2239,6 @@ _.extend(SIUnitsFormatter.prototype, {
   
   /**
    * Convert the number to a siunit value
-   * 
-   * @return Math.round(number*multiplier,decimals) + symbol
    */
   getUnit: function(rawNumber, multiplier, symbol, decimals) {
     var self = this;
@@ -2207,23 +2246,13 @@ _.extend(SIUnitsFormatter.prototype, {
       try{
         number = parseFloat(rawNumber);
       }catch(e){
-        console.log('not a number: ' + number + ', ex:' + e);
-        return number;
+        console.log('not a number: ' + rawNumber+ ', ex:' + e);
+        return rawNumber;
       }
     }else{
       number = rawNumber;
     }
     if(number == 0 ) return number;
-    var zeroPadding = 0;
-    if (number<1){
-      for (i=1; i<=rawNumber.length; i++) {
-        var c = rawNumber.charAt(rawNumber.length-i);
-        if (c=='.' || c!= '0'){
-          break;
-        }
-        zeroPadding += 1;
-      }
-    }
     if(!_.isNumber(multiplier)){
       try{
         multiplier = parseFloat(multiplier);
@@ -2238,9 +2267,17 @@ _.extend(SIUnitsFormatter.prototype, {
     }
     
     var pairUnit = self.getSIUnit(number);
-//    pairUnit = _.find(this.siunits, function(pair){
-//      return pair[1] <= Math.abs(number); 
-//    });
+    // 20180423 - If defaultUnit is set, use it by default:
+    // Test the SIUnit to make sure it does not result in a 0 display value;
+    // if it does, then find an appropriate SIUnit
+    if (_.isNumber(self.defaultUnit)){
+      var test_pairUnit = self.getSIUnit(self.defaultUnit);
+      var test_val = (1/test_pairUnit[1])*number;
+      test_val = test_val.toFixed(decimals)*1;
+      if (test_val != 0){
+        pairUnit = test_pairUnit;
+      }
+    }
      
     if(_.isUndefined(pairUnit)){
       console.log('could not find units for the input number: ' + number);
@@ -2248,34 +2285,20 @@ _.extend(SIUnitsFormatter.prototype, {
     }
      
     var val = (1/pairUnit[1])*number;
-    val = val.toFixed(decimals)*1;
-    // val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
-
-    var finalValue = '' + val;
-    if (zeroPadding!=0){
-      var newZeroPadding = 0;
-      for (i=1; i<=finalValue.length; i++) {
-        var c = finalValue.charAt(finalValue.length-i);
-        if (c=='.' || c!= '0'){
-          break;
-        }
-        newZeroPadding += 1;
+    
+    if (self.use_rounding == false){
+      // NOTE: use truncate to match current Screensaver functionality
+      val = val.toFixed(~~decimals);
+      if( self.trailing_zeros == false){
+        val = val*1;
       }
-      var newDecimals = 0;
-      if (finalValue.indexOf('.')>-1){
-        newDecimals = finalValue.split('.')[1].length;
-      }
-      if (newZeroPadding < zeroPadding){
-        if (newDecimals < decimals){
-          newDecimals += zeroPadding;
-        }
-        if (newDecimals > decimals){
-          newDecimals = decimals;
-        }
-        finalValue = val.toFixed(newDecimals);
-      }
+    } else {
+      val = round(val, decimals);
+      //      val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
     }
-    return finalValue + ' ' + pairUnit[0] + symbol;
+
+    var formattedValue = '' + finalValue + ' ' + pairUnit[0] + symbol;
+    return formattedValue;
   },
  
   
@@ -2310,31 +2333,10 @@ _.extend(SIUnitsFormatter.prototype, {
         return pair[0] == unit;
       });
     }
-    
-//    tokens = formattedValue.split(' ');
-//
-//    rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
-//
-//    if (_.isUndefined(rawValue)) return rawValue;
-//
-//    var unit = '';
-//    if (tokens.length == 2 ) {
-//      unit = tokens[1].trim().charAt(0).toLowerCase();
-//    }
-//    var pairUnit = _.find(self.siunits, function(pair){
-//      return pair[0] == unit;
-//    });
-//    if (_.isUndefined(pairUnit)){
-//      console.log('unknown unit: ' + unit);
-//      // FIXME: indicate error to the user
-//      return null;
-//    }
-    unitMultiplier = pairUnit[1];
+     
+   unitMultiplier = pairUnit[1];
     
     var originalPrecision = 0;
-//    if (tokens[0].indexOf('.')>-1){
-//      originalPrecision = (tokens[0] + "").split(".")[1].length;
-//    }
     if (originalNumberPart.indexOf('.')>-1){
       originalPrecision = (originalNumberPart + "").split(".")[1].length;
     }
@@ -2442,6 +2444,7 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
     formatter.multiplier = this.multiplier;
     formatter.decimals = this.decimals;
     formatter.symbol = this.symbol;
+    formatter.defaultUnit = this.defaultUnit;
   }
 
 });  
@@ -2972,6 +2975,7 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
 });
 
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
+  
   initialize: function(args) {
     console.log('initialize UriContainerView');
     var model = this.model = args.model;
@@ -2988,8 +2992,15 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
     var options = options || {source: this};
     var consumedStack = this.consumedStack || [];
     var actualStack = consumedStack.concat(reportedUriStack);
+    // 20180425 - fix: window location automatically encodes the hash url,
+    // and backbone router generates a second route change with the 
+    // encoded url; ensure that uriStack contains only strings so that all
+    // iterations match.
+    actualStack = _.map(actualStack, function(fragment){
+      return '' + fragment;
+    });
     console.log('reportUriStack:', actualStack, options);
-    this.model.set({'uriStack': actualStack}, options);     
+    this.model.set({ 'uriStack': actualStack }, options);     
   },
   
   /**
@@ -3000,7 +3011,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
    */
   uriStackChange: function(model, val, options) {
     if(options.source === this){
-      console.log('self generated uristack change');
+      console.log('UriContainerView: self generated uristack change');
       return;
     }else{
       var uriStack = _.clone(this.model.get('uriStack'));
@@ -5122,8 +5133,8 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     }
     
     var val = (1/pair[1])*number;
-    val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
-    
+    //val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
+    val = round(val,decimals);
     return {number:val, unit: pair[1]};
   },
   

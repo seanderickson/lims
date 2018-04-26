@@ -2297,7 +2297,7 @@ _.extend(SIUnitsFormatter.prototype, {
       //      val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
     }
 
-    var formattedValue = '' + finalValue + ' ' + pairUnit[0] + symbol;
+    var formattedValue = '' + val + ' ' + pairUnit[0] + symbol;
     return formattedValue;
   },
  

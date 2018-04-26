@@ -313,7 +313,6 @@ define([
               appModel.router.navigate(route, {trigger: true});
             }
             else if(library_short_name){
-//              var route = 'library/' + encodeURIComponent(library_short_name);
               var route = 'library/' + library_short_name;
               self.form1.setValue('library_short_name',null);
               self.form1.$el.find('[key="library_short_name"]')
@@ -595,7 +594,9 @@ define([
     uriStackChange: function(model, val, options) {
       var self=this;
       self.cleanup();
-      var uriStack = _.clone(appModel.get('uriStack'));
+      var uriStack = appModel.get('uriStack');
+      if (!uriStack) return;
+      var uriStack = _.clone(uriStack);
       
       console.log('search_box: uriStackChange', arguments, uriStack);
       var uiResourceId = uriStack.shift();

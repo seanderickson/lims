@@ -57,7 +57,7 @@ function($, _, Backbone, appModel) {
             }
             temp = [keys.join('/')];
             newStack = newStack.concat(temp);
-            newStack = newStack.concat(popKeys(stack));
+            newStack = newStack.concat(popKeysAndDecode(stack));
             return newStack;
           }
         }

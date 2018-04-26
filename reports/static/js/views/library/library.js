@@ -348,7 +348,7 @@ define([
       var fieldTemplate = appModel._field_template;
       var formTemplate = appModel._form_template;
       var copyResource = appModel.getResource('librarycopy');
-      var copyNameField = _.result(copyResource['fields'], 'name', {});
+      var copyNameField = _.result(copyResource['fields'], 'copy_name', {});
       var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
       var plateResource = appModel.getResource('librarycopyplate');
       var plateStatusField = _.result(plateResource['fields'],'status',{});
@@ -366,9 +366,9 @@ define([
         template: fieldTemplate 
       };
       
-      formSchema['name'] = {
+      formSchema['copy_name'] = {
         title: 'Name',
-        key: 'name',
+        key: 'copy_name',
         type: Backbone.Form.editors.Text,
         editorClass: 'form-control',
         validators: [
@@ -387,7 +387,7 @@ define([
         template: fieldTemplate 
       };
       if(_.has(copyNameField,'regex') ){
-        formSchema['name']['validators'].push(
+        formSchema['copy_name']['validators'].push(
           { type: 'regexp', 
             regexp: new RegExp(copyNameField['regex']),
             message: _.result(
@@ -465,17 +465,6 @@ define([
         formSchema['initial_plate_molar_concentration'],
         plateMolarConcentrationField['display_options']);
       
-// TODO:
-//      formSchema['initial_plate_status'] = {
-//        title: 'Initial Plate Status',
-//        key: 'initial_plate_status',
-//        type: EditView.ChosenSelect,
-//        editorClass: 'chosen-select',
-//        editorAttrs: { widthClass: 'col-sm-5'},
-//        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
-//        template: fieldTemplate 
-//      };
-      
       formSchema['comments'] = {
         title: 'Comments',
         key: 'comments',
@@ -519,7 +508,6 @@ define([
         .find('input, select').prop('disabled', true);
 
       form.listenTo(form, "change", function(e){
-        console.log('change');
         var set_initial_plate_concentration = 
             form.getValue('set_initial_plate_concentration');
         if(set_initial_plate_concentration){
@@ -583,6 +571,7 @@ define([
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data) {
+            self.model.fetch();
             appModel.showConnectionResult(data, {
               title: 'Copy Created'
             });

@@ -25,6 +25,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             start_plate: match[4],
             end_plate: match[6]
           };
+          if (!temp.end_plate){
+            temp.end_plate = temp.start_plate;
+          }
           return temp;
         }else{
           appModel.error('entry does not match pattern: ' 

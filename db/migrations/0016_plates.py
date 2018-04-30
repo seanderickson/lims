@@ -27,11 +27,8 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name='copy',name='max_mg_ml_concentration'),
         migrations.RemoveField(model_name='copy',name='primary_well_molar_concentration'),
         migrations.RemoveField(model_name='copy',name='primary_well_mg_ml_concentration'),
-
-        migrations.RemoveField(
-            model_name='copy',
-            name='well_concentration_dilution_factor',
-        ),
+        
+        # These fields are replaced with sql queries in the api
         migrations.RemoveField(
             model_name='copy',
             name='primary_plate_status',

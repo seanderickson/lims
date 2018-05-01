@@ -8,10 +8,6 @@ current_timestamp,
 
 select current_time;
 
-/**
-  Create copywell entries as needed for:
-  - well volume adjustments
-**/
 
 /** 
   1. Create copy_wells for well_volume_adjustments:
@@ -53,8 +49,93 @@ select
 from temp_well_volume_adjustment_summary;
 
 /*
-  2. create copy_wells for wells having specific concentration values:
-  - create a temp table with wells with unique concentration values
+  2. Adjust library well canonical concentrations to the current screening copy
+    concentrations.
+  NOTE: ICCBL Specific: 
+    - Set the concentration for screening as the "canonical" concentration 
+      on the wells.   
+    - Stock copies will be adjusted by reversing any "dilution_factor" ( e.g.
+      if the dilution was 2, then the new stock concentration will be the 
+      original well concentration / 2 ).
+    - Screening and Cherry Pick Request copies will have no concentration set.
+      (and dilution factor is not used any more).
+    - Any library with heterogeneous well concentrations AND dilution factors
+      will need to have copy wells created for the stock copies that were 
+      diluted (only XuTan7).
+*/
+
+/** 
+  Store the original well concentrations -
+**/
+create table original_well_concentrations as (
+  select library_id, well_id, mg_ml_concentration, molar_concentration 
+  from well
+  where (mg_ml_concentration is not null or molar_concentration is not null) );
+/** 
+  Store the original copy dilution factors -  
+**/
+create table original_copy_dilution_factors as (
+  select copy_id, library_id, name, well_concentration_dilution_factor from copy );
+  
+/**
+  2.a Use the (min) screening copy dilution factor 
+    to adjust the well canonical concentration to that of the (max) screening 
+    concentration.
+*/
+/* 
+  For reference: copies with multiple screening concentrations:
+    - these should be cleaned up before final migration, for now choose the 
+    max concentration (minimum dilution) and use that as the new copy screening
+    concentration.
+    20180430:
+ short_name  |  screen_type   |   df   |           copies           |        usage_type         |     molar      | molar_scaled | mgml  | mgml_scaled 
+-------------+----------------+--------+----------------------------+---------------------------+----------------+--------------+-------+-------------
+ ICCBBio1    | small_molecule |  1.000 | N;A;O;E;B;D;T;C            | library_screening_plates  |                |              | 5.000 |        5.00
+ ICCBBio1    | small_molecule |  4.550 | H;P, R;P;G;F;Q;I           | library_screening_plates  |                |              | 5.000 |        1.10
+ ICCBBio1    | small_molecule | 16.670 | J;L;M;K                    | library_screening_plates  |                |              | 5.000 |        0.30
+ ICCBBio1    | small_molecule | 20.000 | R;S                        | library_screening_plates  |                |              | 5.000 |        0.25
+ BiomolICCB1 | small_molecule |  1.000 | HA;C;A                     | cherry_pick_source_plates |                |              | 5.000 |        5.00
+ BiomolICCB1 | small_molecule |  4.550 | MA                         | cherry_pick_source_plates |                |              | 5.000 |        1.10
+ BiomolICCB1 | small_molecule |  1.000 | HF;HI;HC;HH;HG;HB;HE;HD;HJ | library_screening_plates  |                |              | 5.000 |        5.00
+ BiomolICCB1 | small_molecule |  4.550 | MF;MG;MD;ME;MB;MC          | library_screening_plates  |                |              | 5.000 |        1.10
+ BiomolICCB1 | small_molecule |  1.000 | H St A                     | stock_plates              |                |              | 5.000 |        5.00
+ BiomolICCB1 | small_molecule |  4.550 | MSA                        | stock_plates              |                |              | 5.000 |        1.10
+ HumanDUbs1  | rnai           |  1.000 | K;L                        | library_screening_plates  | 0.000010000000 |    0.0000100 |       |            
+ HumanDUbs1  | rnai           | 10.000 | J;D;E;F;I;H;G;C            | library_screening_plates  | 0.000010000000 |    0.0000010 |       |            
+ HumanDUbs1  | rnai           |  1.000 | Stock A;Stock B            | stock_plates              | 0.000010000000 |    0.0000100 |       |            
+(13 rows)
+    
+**/
+create table copies_with_multiple_screening_concentrations as (
+  select
+  short_name, screen_type,
+  well_concentration_dilution_factor df,
+  array_to_string(array_agg(name),';') as copies, 
+  usage_type,
+  (select array_to_string(array_agg(distinct(well.molar_concentration)),';') from well 
+      where library_id = library.library_id ) molar,
+  (select round((well.molar_concentration/well_concentration_dilution_factor),7) from well 
+      where molar_concentration is not null and library.library_id = library_id limit 1) molar_scaled,
+  (select array_to_string(array_agg(distinct(well.mg_ml_concentration)),';') from well 
+      where library_id = library.library_id) mgml,
+  (select round(well.mg_ml_concentration/well_concentration_dilution_factor,2) from well 
+      where mg_ml_concentration is not null and library.library_id = library_id limit 1) mgml_scaled
+  from copy
+  join library using(library_id)
+  join (
+      select
+      library_id
+      from copy c join library using(library_id)
+      where
+      c.usage_type in ('cherry_pick_source_plates','library_screening_plates')
+      group by library_id
+      having count(distinct(well_concentration_dilution_factor))>1 
+  ) lcs using(library_id)
+  group by library.library_id, short_name, screen_type, usage_type, well_concentration_dilution_factor
+);
+
+/*
+  Store the libraries with concentrations
 */
 create temp table temp_libraries_with_concentrations as (
   select 
@@ -68,54 +149,308 @@ create temp table temp_libraries_with_concentrations as (
   order by count_molar desc
 );
 
+/* 
+  Save the concentration for homogeneous libraries 
+**/
+
+create temp table homogeneous_library_original_concentrations as (
+  select
+    library_id,
+    max(mg_ml_concentration) as mg_ml_concentration,
+    max(molar_concentration) as molar_concentration
+  from library
+  join well using (library_id)
+  where library_id not in (
+    select library_id from temp_libraries_with_concentrations)
+  group by library_id);
+
+
+
+/* 
+  2.a Perform the canonical well update to the (max) screening concentration:
+  - using min dilution because some libraries have multiple screening 
+    concentrations (to be removed by prod time).
+*/
+
+create temp table screening_copy_min_dilutions as (
+  select 
+    library_id, min(well_concentration_dilution_factor) min_screening_dilution
+  from copy
+  where usage_type in ('library_screening_plates','cherry_pick_source_plates')
+  group by library_id
+);
+create temp table screening_copy_max_dilutions as (
+  select 
+    library_id, max(well_concentration_dilution_factor) max_screening_dilution
+  from copy
+  where usage_type in ('library_screening_plates','cherry_pick_source_plates')
+  group by library_id
+);
 
 /**
- Note: 20180423 - ICCBL workflow will not support libraries with 
- heterogeneous concentrations AND individual copy-plates or copy-wells with 
- concentration values set differently. In the old system, this was accomplished
- using the well_concentration_dilution_factor (but it did not support
- heterogeneous libraries).
- For migration purposes, identify this case (only XuTan7) and support it.
- Note 2: ICCBL new policy is that copy-plate concentrations will NOT be set;
- the library will always reflect the concentration of the wells for screening. 
- For legacy data,  current copy-plate concentrations; as reflected by the 
- setting of the plate.mg_ml/molar concentrations, will be supported, but we 
- will migrate any copy-plates having dilution factor == 1 to be "stock" plates.
+  NOTE: showing only 3 libraries where max/min are different (will be cleaned up)
+
+select 
+  short_name, 
+  screen_type, 
+  max_screening_dilution, min_screening_dilution,
+  mg_ml_concentration, molar_concentration 
+from homogeneous_library_original_concentrations 
+join library using(library_id) 
+join screening_copy_max_dilutions using(library_id)
+join screening_copy_min_dilutions using(library_id)
+where max_screening_dilution != min_screening_dilution;
+ short_name  |  screen_type   | max_screening_dilution | min_screening_dilution | mg_ml_concentration | molar_concentration 
+-------------+----------------+------------------------+------------------------+---------------------+---------------------
+ HumanDUbs1  | rnai           |                 10.000 |                  1.000 |                     |      0.000010000000
+ ICCBBio1    | small_molecule |                 20.000 |                  1.000 |               5.000 |                    
+ BiomolICCB1 | small_molecule |                  4.550 |                  1.000 |               5.000 |                    
+(3 rows)
+
+
+  Other tests:
+
+** shows 99 copies with min molar adjustments
+  
+select 
+  short_name, 
+  screen_type, 
+  min_screening_dilution, 
+  mg_ml_concentration, molar_concentration 
+from homogeneous_library_original_concentrations 
+join library using(library_id) 
+join screening_copy_min_dilutions using(library_id) 
+where molar_concentration is not null;
+
+** shows 99 with max molar adjustments **
+
+select 
+  short_name, 
+  screen_type, 
+  max_screening_dilution, 
+  mg_ml_concentration, molar_concentration 
+from homogeneous_library_original_concentrations 
+join library using(library_id) 
+join screening_copy_max_dilutions using(library_id) 
+where molar_concentration is not null;
+
+** shows no records for (min) mg_ml concentration adjustments 
+select 
+  short_name, 
+  screen_type, 
+  min_screening_dilution, 
+  mg_ml_concentration, molar_concentration 
+from homogeneous_library_original_concentrations 
+join library using(library_id) 
+join screening_copy_min_dilutions using(library_id) 
+where mg_ml_concentration is not null;
+
+** shows only one for (max) mg_ml concentration adjustments - ICCBBio1 **
+select 
+  short_name, 
+  screen_type, 
+  max_screening_dilution, 
+  mg_ml_concentration, molar_concentration 
+from homogeneous_library_original_concentrations 
+join library using(library_id) 
+join screening_copy_max_dilutions using(library_id) 
+where mg_ml_concentration is not null;
+
+
 **/
-create temp table temp_well_concentrations as (
+
+create temp table new_well_concentrations as (
   select
-    tl.short_name,
-    copy_id,
-    plate_id,
-    well.plate_number,
-    well_id,
-    well_volume,
-    well_volume as well_remaining_volume,
-    well.mg_ml_concentration,
-    cp.mg_ml_concentration cp_mg_ml,
-    well.molar_concentration,
-    cp.molar_concentration cp_molar,
-    cp.well_concentration_dilution_factor df
-  from well 
-  join temp_libraries_with_concentrations tl using(library_id)
-  join (
-  select plate_id, copy_id, library_id, plate_number, well_volume, 
-  mg_ml_concentration, molar_concentration, well_concentration_dilution_factor
-  from plate join copy using(copy_id) 
-  where well_concentration_dilution_factor != null and well_concentration_dilution_factor != 1
-  ) cp 
-    on(well.plate_number=cp.plate_number and cp.library_id=tl.library_id)
-  where well.library_well_type = 'experimental'
-  );
+    library_id, 
+    well_id, 
+    round(mg_ml_concentration/min_screening_dilution, 3) as mg_ml_concentration,
+    round(molar_concentration/min_screening_dilution, 9) as molar_concentration
+  from original_well_concentrations
+  join screening_copy_min_dilutions using(library_id)
+);
+
+/** shows that no mg_ml adjustments will be made **/
+select 
+  count(*)
+  from original_well_concentrations o 
+  join new_well_concentrations n using(well_id) 
+  where o.mg_ml_concentration is not null 
+  and o.mg_ml_concentration != n.mg_ml_concentration;
+
+/** shows 311,101 molar well adjustments (out of 629,232) **/
+select 
+  count(*)
+  from original_well_concentrations o 
+  join new_well_concentrations n using(well_id) 
+  where o.molar_concentration is not null 
+  and o.molar_concentration != n.molar_concentration;
+
+
+update well set
+    mg_ml_concentration = round(mg_ml_concentration/min_screening_dilution, 3),
+    molar_concentration = round(molar_concentration/min_screening_dilution, 9)
+  from screening_copy_min_dilutions 
+  where screening_copy_min_dilutions.library_id = well.library_id
+  and (well.mg_ml_concentration is not null or well.molar_concentration is not null);
+
+/** check counts again **/
+select 
+  count(*)
+  from original_well_concentrations o 
+  join well n using(well_id) 
+  where o.mg_ml_concentration is not null 
+  and o.mg_ml_concentration != n.mg_ml_concentration;
+select 
+  count(*)
+  from original_well_concentrations o 
+  join well n using(well_id) 
+  where o.molar_concentration is not null 
+  and o.molar_concentration != n.molar_concentration;
+/**
+  2.b Create stock copy concentrations: 
+  Find the stock copies with dilution factors and reverse this dilution factor
+  so that the stock copies reflect the well concentration (for homogeneous libraries).
+*/
 
 /*
-  2a. Create/Set copy_well.mg_ml_concentration, copy_well.molar_concentration:
-  - for concentration-specific wells if they don't exist -
-  (leaving volume null, since the volume will default to the plate volume if
-   not set),
+  2.b-1 Find the heterogeneous libraries with unique concentrations for wells:
 */
+
+/*
+  2.b-2 Set the new stock copy concentrations (homogeneous) for diluted stock
+*/
+
+create temp table new_stock_concentrations1 as (
+  select library_id, copy_id,
+    round(mg_ml_concentration/well_concentration_dilution_factor, 3) as mg_ml_concentration,
+    round(molar_concentration/well_concentration_dilution_factor, 9) as molar_concentration
+  from copy
+  join homogeneous_library_original_concentrations using (library_id)
+  where usage_type in ('stock_plates', '96_stock_plates')
+  and well_concentration_dilution_factor !=1 and well_concentration_dilution_factor is not null
+);
+
+/** Shows (20180430) 17 copies/82 plates (one mg_ml) **/
+select 
+  short_name,
+  hl.mg_ml_concentration, ns.mg_ml_concentration,
+  hl.molar_concentration, ns.molar_concentration
+  from homogeneous_library_original_concentrations hl 
+  join library using (library_id)
+  join new_stock_concentrations1 ns using(library_id);
+
+update plate set
+  mg_ml_concentration = nsc.mg_ml_concentration,
+  molar_concentration = nsc.molar_concentration
+  from new_stock_concentrations1 nsc
+  where nsc.copy_id=plate.copy_id;
+
+/**
+  2.b-3 Set the new stock copy concentrations (homogeneous) for non-diluted stock
+  - iff the screening_copy_min_dilution is != 1
+**/
+create temp table new_stock_concentrations2 as (
+  select library_id, copy_id,
+  hl.mg_ml_concentration,
+  hl.molar_concentration
+  from copy
+  join screening_copy_min_dilutions scmin using(library_id)
+  join homogeneous_library_original_concentrations hl using (library_id)
+  where usage_type in ('stock_plates', '96_stock_plates')
+  and scmin.min_screening_dilution != 1
+  and well_concentration_dilution_factor=1 or well_concentration_dilution_factor is null
+);
+
+/** using SS1 data (imported), this shows (correctly) that there will be no 
+  change from the ss1 values for these after migration ***
+
+select
+  copy.library_id,
+  c.copy_id,
+  copy.name,
+  short_name,
+  c.primary_well_mg_ml_concentration/copy.well_concentration_dilution_factor, ns.mg_ml_concentration,
+  c.primary_well_molar_concentration/copy.well_concentration_dilution_factor, ns.molar_concentration
+  from original_copy_concentrations c
+  join copy using(copy_id) 
+  join new_stock_concentrations1 ns using(copy_id)
+  join library on copy.library_id=library.library_id
+  where ( 
+    round(primary_well_molar_concentration/copy.well_concentration_dilution_factor,9) != ns.molar_concentration
+  or round(primary_well_mg_ml_concentration/copy.well_concentration_dilution_factor,3) != ns.mg_ml_concentration )
+  and copy.usage_type in ('stock_plates', '96_stock_plates');
+ 
+select 
+  short_name,
+  c.primary_well_mg_ml_concentration, ns.mg_ml_concentration,
+  c.primary_well_molar_concentration, ns.molar_concentration
+  from original_copy_concentrations c
+  join copy using(copy_id) 
+  join library using (library_id)
+  join new_stock_concentrations2 ns using(library_id)
+  where primary_well_mg_ml_concentration != ns.mg_ml_concentration;
+
+select 
+  short_name,
+  c.primary_well_mg_ml_concentration, ns.mg_ml_concentration,
+  c.primary_well_molar_concentration, ns.molar_concentration
+  from original_copy_concentrations c
+  join copy using(copy_id) 
+  join library using (library_id)
+  join new_stock_concentrations2 ns using(library_id)
+  where primary_well_molar_concentration != ns.molar_concentration;
+
+
+** are there any plates left after this that should have concentration set?
+** this (correctly) shows only XuTan7; 
+
+select 
+  short_name,copy.name,
+  copy_id, well_concentration_dilution_factor
+  from copy
+  join library using (library_id)
+  where copy_id not in (select copy_id from new_stock_concentrations1) 
+  and copy_id not in (select copy_id from new_stock_concentrations2)
+  and well_concentration_dilution_factor != 1
+  and usage_type in ('stock_plates', '96_stock_plates');
+
+**/
+/** Shows (20180430) 79 copies/ 2326 plates (no mg_ml) **/
+select 
+  short_name,
+  hl.mg_ml_concentration, ns.mg_ml_concentration,
+  hl.molar_concentration, ns.molar_concentration
+  from homogeneous_library_original_concentrations hl 
+  join library using (library_id)
+  join new_stock_concentrations2 ns using(library_id);
+
+update plate set
+  mg_ml_concentration = nsc.mg_ml_concentration,
+  molar_concentration = nsc.molar_concentration
+  from new_stock_concentrations2 nsc
+  where nsc.copy_id=plate.copy_id;
+  
+/**
+  2.d Set the stock copy-well concentrations for non-homogeneous libraries:
+    - create copy wells on the stock copies that match the original well / dilution
+    concentration: NOTE: this is only XuTan7 for ICCB-L
+**/
+
+create temp table temp_copywell_concentrations as (
+  select
+    copy_id, plate_id, well_id,
+    round(oc.mg_ml_concentration/well_concentration_dilution_factor, 3) as mg_ml_concentration,
+    round(oc.molar_concentration/well_concentration_dilution_factor, 9) as molar_concentration
+    from original_well_concentrations oc
+    join temp_libraries_with_concentrations using(library_id)
+    join copy using(library_id) 
+    join plate using (copy_id)
+    where well_concentration_dilution_factor != 1
+    and (oc.mg_ml_concentration is not null or oc.molar_concentration is not null)
+);
+
 insert into copy_well
-    ( id, copy_id, plate_id, well_id, mg_ml_concentration, molar_concentration)  
+  ( id, copy_id, plate_id, well_id, mg_ml_concentration, molar_concentration )
   select 
     nextval('copy_well_id_seq'), 
     copy_id, 
@@ -123,7 +458,7 @@ insert into copy_well
     well_id, 
     mg_ml_concentration, 
     molar_concentration
-  from temp_well_concentrations tw
+  from temp_copywell_concentrations tw
   where not exists (
     select null from temp_well_volume_adjustment_summary twvas
     where twvas.copy_id=tw.copy_id and twvas.well_id=tw.well_id);
@@ -135,32 +470,11 @@ insert into copy_well
 
 update copy_well
   set mg_ml_concentration = tw.mg_ml_concentration,
-  molar_concentration = tw.molar_concentration
-  from temp_well_concentrations tw
-  where tw.copy_id=copy_well.copy_id and tw.well_id=copy_well.well_id;
-
-/** 
-  2.c Update the copy well concentrations using the dilution factor
-**/
-
-update copy_well
-  set mg_ml_concentration 
-    = round(mg_ml_concentration/copy.well_concentration_dilution_factor,9) 
-    /** 9 dec places = nano liter **/
-  from copy
-  where copy.copy_id = copy_well.copy_id
-  and copy.well_concentration_dilution_factor != 1
-  and mg_ml_concentration is not null;
-
-update copy_well
-  set molar_concentration 
-    = round(molar_concentration/copy.well_concentration_dilution_factor,9) 
-    /** 9 dec places = nano liter **/
-  from copy
-  where copy.copy_id = copy_well.copy_id
-  and copy.well_concentration_dilution_factor != 1
-  and molar_concentration is not null;
-
+      molar_concentration = tw.molar_concentration
+  from temp_copywell_concentrations tw 
+  where copy_well.copy_id = tw.copy_id
+  and copy_well.plate_id = tw.plate_id
+  and copy_well.well_id = tw.well_id;
 
 /*
   3a. Set plate.remaining_well_volume:
@@ -188,52 +502,6 @@ update plate
   from temp_plate_remaining_volume 
   where temp_plate_remaining_volume.plate_id = plate.plate_id;
 
-/*
-  3b. Set plate concentration fields:
-  - for all libraries having a single concentration value.
-  -- NOTE: the min/max/primary concentration values will differ because they do 
-  -- not reflect the multiplication by the well_concentration_dilution_factor.
-  -- (verified: this operation matches current values).
-*/
-
-create temp table current_library_mg_ml_concentrations as (
-  select 
-  library_id, max(mg_ml_concentration) as mg_ml_concentration 
-  from well 
-  where library_well_type = 'experimental' 
-  and mg_ml_concentration is not null 
-  and not exists (
-    select null from temp_libraries_with_concentrations 
-    where library_id = well.library_id) 
-  group by library_id );
-
-create temp table current_library_molar_concentrations as (
-  select 
-  library_id, max(molar_concentration) as molar_concentration 
-  from well 
-  where library_well_type = 'experimental' 
-  and molar_concentration is not null 
-  and not exists (
-    select null from temp_libraries_with_concentrations 
-    where library_id = well.library_id) 
-  group by library_id );
-
-update plate
-  set mg_ml_concentration 
-    = round(l.mg_ml_concentration/copy.well_concentration_dilution_factor,9) 
-    /** 9 dec places = nano liter **/
-  from current_library_mg_ml_concentrations l
-  join copy using(library_id)
-  where plate.copy_id=copy.copy_id;
-
-update plate
-  set molar_concentration 
-    = round(l.molar_concentration/copy.well_concentration_dilution_factor,9) 
-    /** 9 dec places = nano liter **/
-  from current_library_molar_concentrations l
-  join copy using(library_id)
-  where plate.copy_id=copy.copy_id;
- 
 
 /** 
   3.c Set plate.remaining_well_volume = plate.well_volume (initial volume) for anything left

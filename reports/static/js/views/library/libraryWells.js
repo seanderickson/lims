@@ -88,7 +88,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           // access level 2 - shared mutually, and public screens
           // access level 3 - own screens, or if current user is an admin
           
-          collection = new Backbone.Collection(collection.filter(function(dc){
+          collection = new CollectionClass(collection.filter(function(dc){
             return dc.get('user_access_level_granted') > 1;
           }));
           
@@ -228,13 +228,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
         show_positives_control.find('input[type="checkbox"]').change(function(e) {
           var searchedModels = dcView.search();
-          if (this.checked || !_.isEmpty(searchedModels)) {
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });
         show_studies_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
-          if (this.checked || !_.isEmpty(searchedModels)) {
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });

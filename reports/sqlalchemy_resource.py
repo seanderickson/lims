@@ -345,15 +345,16 @@ class SqlAlchemyResource(IccblBaseResource):
                         join_stmt = select([link_table_def.c[field_name]]).\
                             where(text('{link_table}.{link_field}='
                                     '{parent_table}.{link_field}'.format(**join_args)))
-                        if field.get('linked_field_meta_field', None):
-                            # TODO: test - the linked meta field is the "datacolumn type"
-                            linked_field_meta_field = field['linked_field_meta_field']
-                            meta_field_obj = MetaHash.objects.get(
-                                key=field['key'], scope=field['scope'])
-                            meta_table_def = get_tables()['metahash']
-                            join_stmt.join(meta_table_def, 
-                                link_table_def.c[linked_field_meta_field]==
-                                    getattr(meta_field_obj,'pk') )
+                        # 20180426 - not used
+                        # if field.get('linked_field_meta_field', None):
+                        #     # TODO: test - the linked meta field is the "datacolumn type"
+                        #     linked_field_meta_field = field['linked_field_meta_field']
+                        #     meta_field_obj = MetaHash.objects.get(
+                        #         key=field['key'], scope=field['scope'])
+                        #     meta_table_def = get_tables()['metahash']
+                        #     join_stmt.join(meta_table_def, 
+                        #         link_table_def.c[linked_field_meta_field]==
+                        #             getattr(meta_field_obj,'pk') )
                         join_stmt = join_stmt.label(key)
                         columns[key] = join_stmt
                     elif field['linked_field_type'] == 'fields.ListField':
@@ -361,15 +362,15 @@ class SqlAlchemyResource(IccblBaseResource):
                             where(text('{link_table}.{link_field}='
                                     '{parent_table}.{link_field}'.format(**join_args)))
     
-                        if field.get('linked_field_meta_field', None):
-                            # the linked meta field is the "datacolumn type"
-                            linked_field_meta_field = field['linked_field_meta_field']
-                            meta_field_obj = MetaHash.objects.get(
-                                key=field['key'], scope=field['scope'])
-                            meta_table_def = get_tables()['metahash']
-                            join_stmt.join(meta_table_def, 
-                                link_table_def.c[linked_field_meta_field]==
-                                    getattr(meta_field_obj,'pk') )
+                        # if field.get('linked_field_meta_field', None):
+                        #     # the linked meta field is the "datacolumn type"
+                        #     linked_field_meta_field = field['linked_field_meta_field']
+                        #     meta_field_obj = MetaHash.objects.get(
+                        #         key=field['key'], scope=field['scope'])
+                        #     meta_table_def = get_tables()['metahash']
+                        #     join_stmt.join(meta_table_def, 
+                        #         link_table_def.c[linked_field_meta_field]==
+                        #             getattr(meta_field_obj,'pk') )
                         
                         ordinal_field = field.get('ordinal_field', None)
                         if ordinal_field:
@@ -877,6 +878,7 @@ class SqlAlchemyResource(IccblBaseResource):
         # if limit == 0:
         #    raise Exception('limit for caching must be >0')
         
+        max_cache_count = settings.MAX_ROWS_FOR_CACHE_RESULTPROXY
         prefetch_number = 5
         if limit <= 1:
             prefetch_number = 1
@@ -910,7 +912,12 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info('no cache hit for key: %r, executing stmt', key)
                 # Note: if no cache hit, then retrive limit*n results, and 
                 # cache several iterations at once.
-                new_limit = limit * prefetch_number 
+                new_limit = limit * prefetch_number
+                if new_limit > max_cache_count:
+                    if limit >= max_cache_count:
+                        new_limit = max_cache_count
+                    else:
+                        new_limit = (max_cache_count/limit) * limit
                 if DEBUG_CACHE:
                     logger.info(
                         'no cache hit, create cache, limit: %s, '

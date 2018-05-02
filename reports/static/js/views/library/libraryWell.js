@@ -97,12 +97,19 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
      * Layoutmanager hook
      */
     serialize: function() {
-      console.log('serialize called...');
       var self = this;
-      return {
-        'base_url': [
+      var base_url;
+      if (self.library){
+        base_url = [
            self.library.resource.key,self.library.key,self.model.resource.key,
-           self.model.key].join('/'),
+           self.model.key].join('/');
+      }else{
+        base_url = [
+           'library', self.model.get('library_short_name'),self.model.resource.key,
+           self.model.key].join('/');
+      }
+      return {
+        'base_url': base_url,
         'tab_resources': self.tabbed_resources
       }      
     }, 

@@ -12,6 +12,7 @@ define([
   'views/library/libraryCopy',
   'views/library/libraryCopyPlate',
   'views/library/libraryWells',
+  'views/library/libraryWell',
   'views/screen/screen',
   'views/screen/libraryScreening',
   'views/screen/cherryPickRequest',
@@ -31,7 +32,7 @@ define([
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView,
-         LibraryWellsView,
+         LibraryWellsView, LibraryWellView,
          ScreenView, LibraryScreeningView, CherryPickRequestView,
          PlateLocationView, UserAdminView, 
          UserView, UserGroupAdminView, ActivityListView, UploadDataForm, DetailTestView, 
@@ -54,7 +55,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'DetailTestView': DetailTestView,
     'WellSelectorView': WellSelectorView,
     'ActivityListView': ActivityListView,
-    'LibraryWellsView': LibraryWellsView
+    'LibraryWellsView': LibraryWellsView,
+    'LibraryWellView': LibraryWellView
   };
   
   var ContentView = Iccbl.UriContainerView.extend({
@@ -295,6 +297,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.$('#content_title_message').empty();
       this.$('#content_title').empty();
       this.objects_to_destroy = [];
+      this.off();
     },
 
     // Main view control method

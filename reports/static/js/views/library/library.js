@@ -61,9 +61,14 @@ define([
     
     events: {
       'click ul.nav-tabs >li': 'click_tab',
-      'click button#upload': 'upload'        
+      'click button#upload': 'upload',
+      'click button#download': 'download',
     },
 
+    /**
+     * Note: for library, upload and download operate on the library contents, 
+     * (reagents) and not on the library entity itself.
+     */
     upload: function(event){
       var self = this;
       event.preventDefault();
@@ -73,13 +78,37 @@ define([
         content_types.push('sdf');
       }
       UploadDataForm.postUploadFileDialog(url, content_types)
-        .done(function(){
+        .done(function(data, textStatus, jqXHR){
           self.model.fetch();
+          appModel.showConnectionResult(data, {
+            title: 'Upload success'
+          });
         })
         .fail(function(){
           appModel.jqXHRfail.apply(this,arguments); 
         }
       );
+    },
+
+    /**
+     * Note: for library, upload and download operate on the library contents, 
+     * (reagents) and not on the library entity itself.
+     */
+    download: function(e){
+      var self = this;
+      e.preventDefault();
+      var resource;
+      if( this.model.get('screen_type') == 'rnai') {
+        resource = appModel.getResource('silencingreagent');
+      } else {
+        resource = appModel.getResource('smallmoleculereagent');
+      }
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'reagent'].join('/');
+      url += '?limit=0&includes=*';
+      
+      appModel.download(url, resource);
     },
     
     /**
@@ -173,7 +202,7 @@ define([
       
       var resource;
       if( this.model.get('screen_type') == 'rnai') {
-        resource = appModel.getResource('rnaireagent');
+        resource = appModel.getResource('silencingreagent');
       } else {
         resource = appModel.getResource('smallmoleculereagent');
       }

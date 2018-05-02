@@ -358,9 +358,13 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             else:
                 logger.info('wrap_view: %r, %r', view, request)
             
-            self.is_authenticated(request)
-
-            response = self.exception_handler(callback)(self,request, *args, **kwargs)
+            # 20180426 re-wrap to include authentication (tbd: testing)
+            def _inner(*args, **kwargs):
+                self.is_authenticated(request)
+                return callback(*args,**kwargs)
+            
+            response = self.exception_handler(_inner)(self,request, *args, **kwargs)
+#             response = self.exception_handler(callback)(self,request, *args, **kwargs)
             # From Tastypie:
             # Our response can vary based on a number of factors, use
             # the cache class to determine what we should ``Vary`` on so

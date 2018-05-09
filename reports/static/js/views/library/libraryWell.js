@@ -213,7 +213,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     setAnnotations: function(delegateStack){
       console.log('set annotations...');
       var self = this;
-      var url = [self.model.resource.apiUri,
+      var wellResource = appModel.getResource('well');
+      var url = [wellResource.apiUri,
                  self.model.get('well_id'), 'annotations'].join('/');
       var studyResource = appModel.getResource('study'); 
       studyResource['fields'] = _.pick(studyResource['fields'],

@@ -214,7 +214,7 @@ define([
           self.showOtherScreenColumnsDialog(view);
         });
         show_positives_control.find('input[type="checkbox"]').change(function(e) {
-          if (this.checked) {
+          if (e.target.checked) {
             var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['is_positive__eq'] = 'true';
             view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
@@ -230,7 +230,7 @@ define([
         // 20170905 - removed: mutual pos columns will be selected explicitly
         // 20180220 - reinstated, determine state by included cols
         show_mutual_positives_control.find('input[type="checkbox"]').change(function(e) {
-          if (this.checked) {
+          if (e.target.checked) {
             window.setTimeout(function() {
               self.showMutualPositiveColumns(view, true);
             });
@@ -575,19 +575,19 @@ define([
 
         show_positives_control.find('input[type="checkbox"]').change(function(e) {
           var searchedModels = dcView.search();
-          if (this.checked || !_.isEmpty(searchedModels)) {
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });
         show_mutual_screens_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
-          if (this.checked || !_.isEmpty(searchedModels)) {
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });
         show_studies_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
-          if (this.checked || !_.isEmpty(searchedModels)) {
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
           }
         });

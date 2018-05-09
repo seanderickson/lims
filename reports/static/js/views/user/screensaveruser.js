@@ -1209,7 +1209,7 @@ define([
       resource.options['includes'] = extraIncludes;
       resource.options['order'] = ['facility_id'];
       var url = [self.model.resource.apiUri, 
-                 self.model.key,
+                 self.model.get('screensaver_user_id'),
                  'screens'].join('/');
       var Collection = Iccbl.MyCollection.extend({
         url: url

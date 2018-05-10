@@ -243,3 +243,14 @@ class VOCAB(reports.schema.VOCAB):
             EXPIRED = 'expired'
             INACTIVE = 'inactive'
 
+    class lab_cherry_pick(schema_obj):
+
+        class status(schema_obj):
+        
+            SELECTED = 'selected'
+            NOT_SELECTED = 'not_selected'
+            UNFULFILLED = 'unfulfilled'
+            PLATED = 'plated'
+
+
+

@@ -454,7 +454,9 @@ def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None,
     log_empty_strings=False):
     '''
     @param log_empty_strings if set, then log when a field is changed from
-    None to an empty string, or vice versa
+    None to an empty string, or vice versa:
+    NOTE: results from 1) default fields in the DB (should be cleaned up),
+    2) API string None fields returning string (should be cleaned up)
     '''
     if DEBUG_PATCH_LOG:
         logger.info('compare dicts: %r, %r, excludes: %r, %r, log_empty_strings: %r', 
@@ -478,16 +480,15 @@ def compare_dicts(dict1, dict2, excludes=None, exclude_patterns=None,
     for key in union_keys:
         v1 = dict1.get(key, None)
         v2 = dict2.get(key, None)
-        
-        if log_empty_strings is True:
-            if v1 != v2:
+
+        if v1 != v2:
+            if log_empty_strings is True:
                 diffs[key] = [v1,v2]
-        else:
-            if v1 != v2:
-                if v1 is None and str(v2) != '':
-                    diffs[key] = [v1, v2]
-                elif v2 is None and str(v1) != '':
-                    diffs[key] = [v1, v2]
+            else:
+                if v1 is None and str(v2) == '':
+                    pass
+                elif v2 is None and str(v1) == '':
+                    pass
                 else:
                     diffs[key] = [v1, v2]
     if DEBUG_PATCH_LOG:
@@ -2022,6 +2023,7 @@ class ApiResource(SqlAlchemyResource):
                     log = None
             else:
                 logger.info('log PATCH for %r', log.uri) 
+                logger.info('log diffs for %r: %r', log.uri, log.diffs) 
                 
         else: # creating
             log.api_action = API_ACTION_CREATE
@@ -2664,6 +2666,8 @@ class FieldResource(ApiResource):
                 keys_in = key_in.split(LIST_DELIMITER_URL_PARAM)
             fields = [x for x in fields if x['key'] in keys_in ]
             
+        # Implement limited filtering by scope
+        
         # logger.info('fields: %r', [(field['key'],field['scope']) for field in fields ])
         response_hash = None
         if scope and key:
@@ -2726,6 +2730,8 @@ class FieldResource(ApiResource):
     def _build_fields(self, scopes=None):
         ''' Internal callers - build the schema.fields hash
         '''
+        
+        logger.info('build_fields: %r', scopes)
         if not scopes:
             scopes = MetaHash.objects.all()\
                 .filter(scope__icontains='fields.')\
@@ -2734,19 +2740,62 @@ class FieldResource(ApiResource):
                 # bootstrap case
                 scopes = ['fields.field',]
 
-        fields = []
+        fields = {}
+        field_key = '{scope}/{key}'
         for scope in scopes:
             field_hash = deepcopy(
                 MetaHash.objects.get_and_parse(
                     scope=scope, field_definition_scope='fields.field', 
                     clear=True))
-            fields.extend(field_hash.values())
             
-        for field in fields:
+            for field in field_hash.values():
+                key = field_key.format(**field)
+#                 logger.info('key: %r', key)
+                if key in fields:
+                    raise Exception('field key is already defined: %r', key)
+                fields[key] = field
+            
+#             fields.extend(field_hash.values())
+
+        recursion_test = list()
+        def fill_field_refs(key):
+            if DEBUG_RESOURCES:
+                logger.info('fill field for %r', key)
+            
+            if key not in fields:
+                logger.info('key: %r not found in %r', key, fields.keys())
+            
+            else:
+                field = fields[key]
+                logger.debug('field: %r', key)
+                
+                ref_field_key = field.get('ref', None)
+                if ref_field_key:
+                    if key not in recursion_test:
+                        recursion_test.append(key)
+                    else:
+                        raise Exception(
+                            'recursive field ref relationship for: %r, parents: %r'
+                            % (key, recursion_test))
+                    ref_field = fill_field_refs(ref_field_key)
+                    logger.info('ref_key: %r found ref field: %r', 
+                                ref_field_key, ref_field)
+                    if ref_field:
+                        temp = deepcopy(ref_field)
+                        for k,v in field.items():
+                            if v is not None and v != '':
+                                temp[k] = v
+                        recursion_test.pop()
+                        return temp
+                return field
+            
+        for key,field in fields.items():
             field['1'] = field['scope']
             field['2'] = field['key']
+            
+            fields[key] = fill_field_refs(key)
         
-        decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields]
+        decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields.values()]
         decorated.sort(key=itemgetter(0,1,2))
         fields = [field for scope,ordinal,key,field in decorated]
 
@@ -3088,7 +3137,7 @@ class ResourceResource(ApiResource):
                     resource = self.build_schema(user=user)
                     resources = { resource['key']: resource }
                     
-                logger.debug('Get the field hash...')
+                logger.info('Get the field hash...')
                 all_fields = self.get_field_resource()._build_fields()
                 field_hash = {}
                 # build a hash out of the fields

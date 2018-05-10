@@ -112,6 +112,7 @@ import schema as SCHEMA
 SCREEN_AVAILABILITY = SCHEMA.VOCAB.screen.screen_result_availability
 ACCESS_LEVEL = SCHEMA.VOCAB.screen.user_access_level_granted
 DSL = SCHEMA.VOCAB.screen.data_sharing_level
+LCP_STATUS = SCHEMA.VOCAB.lab_cherry_pick.status
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
@@ -154,10 +155,10 @@ API_MSG_PLATING_CANCELED = 'Plating canceled'
 API_MSG_CPR_PLATES_PLATED = 'Plates plated'
 API_MSG_CPR_PLATES_SCREENED = 'Plates screened'
 API_MSG_CPR_PLATED_CANCEL_DISALLOWED = 'Plating reservation may not be canceled after plates are plated'
-VOCAB_LCP_STATUS_SELECTED = 'selected'
-VOCAB_LCP_STATUS_NOT_SELECTED = 'not_selected'
-VOCAB_LCP_STATUS_UNFULFILLED = 'unfulfilled'
-VOCAB_LCP_STATUS_PLATED = 'plated'
+# VOCAB_LCP_STATUS_SELECTED = 'selected'
+# VOCAB_LCP_STATUS_NOT_SELECTED = 'not_selected'
+# VOCAB_LCP_STATUS_UNFULFILLED = 'unfulfilled'
+# VOCAB_LCP_STATUS_PLATED = 'plated'
 VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator'
 VOCAB_SCREEN_TYPE_SM = 'small_molecule'
 VOCAB_SCREEN_TYPE_RNAI = 'rnai'
@@ -10433,11 +10434,11 @@ class LabCherryPickResource(DbApiResource):
                 'status': case([
                     (and_(_lcp.c.copy_id==_copy.c.copy_id,
                           _lcp.c.cherry_pick_assay_plate_id==None,), 
-                        text("'%s'"%VOCAB_LCP_STATUS_SELECTED) ),
+                        text("'%s'"%LCP_STATUS.SELECTED) ),
                     (and_(_lcp.c.copy_id==_copy.c.copy_id,
                           _lcp.c.cherry_pick_assay_plate_id!=None,), 
-                        text("'%s'"%VOCAB_LCP_STATUS_PLATED) )],
-                    else_=text("'%s'"%VOCAB_LCP_STATUS_UNFULFILLED)),
+                        text("'%s'" % LCP_STATUS.PLATED ) )],
+                    else_=text("'%s'" % LCP_STATUS.UNFULFILLED)),
                 'destination_well': (
                     case([
                         (_lcp.c.assay_plate_row!=None,
@@ -10617,11 +10618,11 @@ class LabCherryPickResource(DbApiResource):
                     'status': case([
                         (and_(_lcp.c.copy_id==_copy.c.copy_id,
                               _lcp.c.cherry_pick_assay_plate_id==None,), 
-                            text("'%s'"%VOCAB_LCP_STATUS_SELECTED) ),
+                            text("'%s'" % LCP_STATUS.SELECTED) ),
                         (and_(_lcp.c.copy_id==_copy.c.copy_id,
                               _lcp.c.cherry_pick_assay_plate_id!=None,), 
-                            text("'%s'"%VOCAB_LCP_STATUS_PLATED) )],
-                        else_=text("'%s'"%VOCAB_LCP_STATUS_NOT_SELECTED)),
+                            text("'%s'" % LCP_STATUS.PLATED) )],
+                        else_=text("'%s'" % LCP_STATUS.NOT_SELECTED)),
                 })
 
             custom_columns['library_plate_comment_array'] = (
@@ -10642,22 +10643,6 @@ class LabCherryPickResource(DbApiResource):
                     _library.c.short_name,'/',_copy.c.name,'/', 
                     cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)))
                 )
-#             custom_columns['library_plate_comment_array'] = (
-#                 select([func.array_to_string(
-#                     func.array_agg(
-#                         _concat(                            
-#                             cast(_plate_comment_apilogs.c.username,
-#                                 sqlalchemy.sql.sqltypes.Text),
-#                             LIST_DELIMITER_SUB_ARRAY,
-#                             cast(_plate_comment_apilogs.c.date_time,
-#                                 sqlalchemy.sql.sqltypes.Text),
-#                             LIST_DELIMITER_SUB_ARRAY,
-#                             _plate_comment_apilogs.c.comment)
-#                     ), 
-#                     LIST_DELIMITER_SQL_ARRAY) ])
-#                 .select_from(_plate_comment_apilogs)
-#                 .where(_plate_comment_apilogs.c.key==_p.c.key)
-#                 )
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
@@ -10725,10 +10710,10 @@ class LabCherryPickResource(DbApiResource):
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
            
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if use_titles is True:
@@ -20328,9 +20313,9 @@ class ReagentResource(DbApiResource):
                 self.wrap_view('dispatch_search_vendor_and_compound'), 
                 name="api_search_vendor_and_compound"),
                 
-            url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            # url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
+            #         % (self._meta.resource_name, trailing_slash()),
+            #     self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<well_id>\d{1,5}\:?[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -20459,10 +20444,10 @@ class ReagentResource(DbApiResource):
 
     @read_authorization
     def get_detail(self, request, **kwargs):
-        substance_id = kwargs.get('substance_id')
+        # substance_id = kwargs.get('substance_id')
         well_id = kwargs.get('well_id')
-        if well_id is None and substance_id is None:
-            raise NotImplementedError('must provide a well_id/substance_id parameter')
+        if well_id is None: # and substance_id is None:
+            raise NotImplementedError('must provide a well_id parameter')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -20515,10 +20500,10 @@ class ReagentResource(DbApiResource):
         _cw = self.bridge['copy_well']
         pc_join = (_well.join(
                     _copy,_well.c.library_id==_copy.c.library_id)
-                .join(_p, _copy.c.copy_id==_p.c.copy_id)
-                .join(_cw,
-                      and_(_cw.c.well_id==_well.c.well_id, 
-                           _cw.c.copy_id==_copy.c.copy_id),isouter=True))
+                .join(_p, _copy.c.copy_id==_p.c.copy_id))
+                # .join(_cw,
+                #       and_(_cw.c.well_id==_well.c.well_id, 
+                #            _cw.c.copy_id==_copy.c.copy_id),isouter=True))
         if well_base_query is not None:
             pc_join = pc_join.join(well_base_query, _well.c.well_id==well_base_query.c.well_id )
         if cherry_pick_request_id_screener is not None:
@@ -20542,7 +20527,12 @@ class ReagentResource(DbApiResource):
                 _p.c.status    
                 ])
             .select_from(pc_join)
+            .where(_cw.c.well_id==_well.c.well_id)
+            .where(_cw.c.copy_id==_copy.c.copy_id)
+            .where(_cw.c.plate_id==_p.c.plate_id)
             )
+        
+        
         if well_ids is not None:
             _plate_concentrations= _plate_concentrations.where(_well.c.well_id.in_(well_ids))
         if plate_numbers:
@@ -20680,7 +20670,8 @@ class ReagentResource(DbApiResource):
                         .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
                 else_=None)
             
-            # 20180314 - is_restricted_sequence, is_restricted_structure
+            # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
+
             rna_restricted_fields = ['sequence','anti_sense_sequence']
             fields_to_restrict = set(rna_restricted_fields)&set(field_hash.keys())
             if fields_to_restrict \
@@ -20921,12 +20912,12 @@ class ReagentResource(DbApiResource):
                 cherry_pick_request_id=cherry_pick_request_id_lab)
             # NOTE: breaks for viewing natural product reagents
         
-        substance_id = param_hash.pop('substance_id', None)
-        if substance_id:
-            param_hash['substance_id__eq'] = substance_id
-            if not library:
-                library = Reagent.objects.get(
-                    substance_id=substance_id).well.library
+        # substance_id = param_hash.pop('substance_id', None)
+        # if substance_id:
+        #     param_hash['substance_id__eq'] = substance_id
+        #     if not library:
+        #         library = Reagent.objects.get(
+        #             substance_id=substance_id).well.library
 
         extra_dc_ids = param_hash.get('dc_ids', None)
         logger.info('build list response: dc_ids: %r', extra_dc_ids)
@@ -20934,11 +20925,14 @@ class ReagentResource(DbApiResource):
         schema = self.build_schema(request.user, extra_dc_ids=extra_dc_ids)
             
         manual_field_includes = set(param_hash.get('includes', []))
+        # 20180426 - eliminate substance_id from viewing (TODO: remove from api?)
+        manual_field_includes.add('-substance_id')
+        
         content_type = self.get_serializer().get_accept_content_type(
             request, format=kwargs.get('format', None))
         if content_type == SDF_MIMETYPE:
             manual_field_includes.add('molfile')
-            param_hash['includes'] = manual_field_includes
+        param_hash['includes'] = manual_field_includes
             
         (field_hash, columns, stmt, count_stmt, filename) = \
             self.get_query(
@@ -21033,6 +21027,10 @@ class SilencingReagentResource(ReagentResource):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
+        
+        TODO: 20180426 - reimplement to remove "linked" fields from the schema:
+        - sequence, anti_sense_sequence, is_restricted_sequence, 
+        silencing_reagent_type
         
         '''
         logger.debug(
@@ -21370,6 +21368,21 @@ class SmallMoleculeReagentResource(ReagentResource):
         
         SmallMoleculeReagent.objects.all().filter(well__library=library).delete()
 
+    def build_sqlalchemy_columns(
+        self, fields, base_query_tables=None, custom_columns=None):
+        '''
+        @return an array of sqlalchemy.sql.schema.Column objects
+        @param fields - field definitions, from the resource schema
+        
+        TODO: 20180426 - replace the "linked" fields with custom joins here; as
+        in SilencingReagentResource
+        
+        '''
+        return SqlAlchemyResource.build_sqlalchemy_columns(
+            self, fields, base_query_tables=base_query_tables, 
+            custom_columns=custom_columns)  
+
+    
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
         - deserialized has been loaded with the wells
@@ -21970,6 +21983,7 @@ class WellResource(DbApiResource):
             % (len(original_data_patches_only), len(new_data_patches_only)))
         logs = self.log_patches(
             request, original_data_patches_only, new_data_patches_only,
+            excludes=['substance_id'] #, 'is_restricted_structure']
             **kwargs)
 
         patch_count = len(deserialized)

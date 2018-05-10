@@ -469,7 +469,9 @@ define([
             routeEntry = _.extend({},routeEntry);
             // TODO: dc_ids used for reagent/screen_result views, should not be in search title
             delete routeEntry['dc_ids'];
-            if(search_title_val !== '') search_title_val += '<br>AND ';
+            if(!_.isEmpty(routeEntry) && search_title_val !== ''){
+              search_title_val += '<br>AND ';
+            }
             search_title_val += _.map(
               _.zip(_.keys(routeEntry),_.values(routeEntry)), 
               function(kv){
@@ -491,15 +493,6 @@ define([
           }
         }
       });
-      
-//      if (_.has(self._options, appModel.API_PARAM_ENCODED_SEARCH)){
-//        if(!_.isEmpty(urlparams)) urlparams += '&';
-//        urlparams += appModel.API_PARAM_SEARCH + '=' 
-//          + self._options[appModel.API_PARAM_ENCODED_SEARCH];
-//        if(search_title_val !== '') search_title_val += '<br>AND ';
-//        search_title_val += '[' + self._options[appModel.API_PARAM_ENCODED_SEARCH] + ']';
-//      }
-      
       
       if(_.isUndefined(limit)){
         var limit = self.collection.state.totalRecords;
@@ -830,7 +823,7 @@ define([
           
           _.each(toAdd, function(key){
             var field = fields[key];
-            console.log('add column', key, field['ordinal']);
+            if (appModel.DEBUG) console.log('add column', key, field['ordinal']);
             var column = self.grid.columns.findWhere({ name: key });
             if (!column){
               // find out where it goes
@@ -988,7 +981,7 @@ define([
       
       if(_.isObject(this.objects_to_destroy)){
           this.objects_to_destroy.each(function(view_obj){
-            console.log('destroy: ' + view_obj);
+            console.log('destroy: ', view_obj);
               view_obj.remove();
               view_obj.off();
               view_obj.stopListening();
@@ -1202,7 +1195,7 @@ define([
       
       // find any extra search data
       if(_.has(self._options, appModel.API_PARAM_SEARCH)){
-        // endcode for the post_data arg; post data elements are sent 
+        // encode for the post_data arg; post data elements are sent 
         // as urlencoded values via a POST form for simplicity
         var data = {};
         data[appModel.API_PARAM_SEARCH] = 
@@ -1270,13 +1263,35 @@ define([
       });
       
       var columnCollection = new ColumnCollection();
+      
+      columnCollection.comparator = function(model){
+        return '' + model.get('resource') + '-' + model.get('key');
+      }
       _.each(_fields, function(field){
         var key = field['key'];
         var model = new Backbone.Model(field);
-        if (model.has('scope')){
+        var category = model.get('category');
+        var ref = model.get('ref');
+        if (category){
+          var resourceLabel = category.charAt(0).toUpperCase() + category.slice(1);
+          model.set('resource', resourceLabel);
+        }
+        else if (ref){
+          // If set, use the field ref to categorize it
+          // ref has the form {scope}/{key}
+          // scope has the form {resource_type ("field")}.{resource}
+          var refScope = ref.split('/')[0];
+          var fieldType = refScope.split('.')[0];
+          var fieldResource = refScope.split('.')[1];
+          if (appModel.DEBUG) console.log('ref fieldResource', fieldResource);
+          fieldResource = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
+          model.set('resource', fieldResource);
+        }
+        else if (model.has('scope')){
           var scope = model.get('scope');
-          var fieldType = scope.split('.')[0]
+          var fieldType = scope.split('.')[0];
           var fieldResource = scope.split('.')[1];
+          if (appModel.DEBUG) console.log('key', key, 'fieldResource', fieldResource);
           fieldResource = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
           
           model.set('resource', fieldResource);

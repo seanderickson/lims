@@ -190,7 +190,23 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
       });
       
-      view = new DetailLayout({ 
+      var DetailLayoutWell = DetailLayout.extend({
+        history: function(event) {
+          event.preventDefault();
+          var self = this;
+          
+          var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
+          var search = {};
+          search['ref_resource_name'] = 'well';
+          search['key'] = encodeURIComponent(this.model.key);
+          newUriStack.push(appModel.createSearchString(search));
+          var route = newUriStack.join('/');
+          console.log('history route: ' + route);
+          appModel.router.navigate(route, {trigger: true});
+        }
+      });
+      
+      view = new DetailLayoutWell({ 
         model: this.model,
         uriStack: delegateStack, 
         buttons: ['download', 'history'],

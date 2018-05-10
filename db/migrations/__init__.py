@@ -50,26 +50,26 @@ def create_log_time(key,input_date):
     return date_time
 
 
-def _create_generic_log(activity):
-    
-    log = ApiLog()
-
-    log.comment = activity.comments
-    log.date_time = create_log_time(activity.date_of_activity)
-    activity_user = activity.created_by
-    # NOTE: if activity.date_performed < 2010-01-15, the "created_by" field
-    # is empty
-    if activity_user is None:
-        activity_user = activity.performed_by
-    log.username = activity_user.username
-    if not log.username:
-        log.username = '%s: %s' % (
-            activity_user.screensaver_user_id,
-            activity_user.email)
-    
-    log.user_id = activity_user.screensaver_user_id
-    
-    return log
+# def _create_generic_log(activity):
+#     
+#     log = ApiLog()
+# 
+#     log.comment = activity.comments
+#     log.date_time = create_log_time(activity.date_of_activity)
+#     activity_user = activity.created_by
+#     # NOTE: if activity.date_performed < 2010-01-15, the "created_by" field
+#     # is empty
+#     if activity_user is None:
+#         activity_user = activity.performed_by
+#     log.username = activity_user.username
+#     if not log.username:
+#         log.username = '%s: %s' % (
+#             activity_user.screensaver_user_id,
+#             activity_user.email)
+#     
+#     log.user_id = activity_user.screensaver_user_id
+#     
+#     return log
 
 def _child_log_from(parent_log):
     child_log = ApiLog()

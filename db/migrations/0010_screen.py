@@ -15,31 +15,12 @@ import pytz
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
 
-from db.migrations import create_log_time, _create_generic_log, \
-    _child_log_from
+from db.migrations import create_log_time
 
 
 logger = logging.getLogger(__name__)
 
 DB_API_URI = '/db/api/v1'
-
-# times_seen = set()
-# def create_log_time(key,input_date):
-#     date_time = pytz.timezone('US/Eastern').localize(
-#         datetime.combine(input_date, datetime.min.time()))
-#     i = 0
-#     
-#     timekey = '%r:%r'
-#     _timekey = timekey % (key,date_time)
-#     while _timekey in times_seen:
-#         i += 1
-#         logger.info('key: %s, adjust time: %s to %s', 
-#             key,
-#             date_time.isoformat(), (date_time + timedelta(0,i)))
-#         date_time += timedelta(0,i)
-#         _timekey = timekey % (key,date_time)
-#     times_seen.add(_timekey)
-#     return date_time
 
 def make_log(
     apps, input_date, ref_resource_name, key, 
@@ -209,18 +190,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # moved to 0002:
-        # migrations.AddField(
-        #     model_name='screen',
-        #     name='parent_screen',
-        #     field=models.ForeignKey(
-        #         related_name='follow_up_screen', to='db.Screen', null=True),
-        # ),
-        # migrations.AlterField(
-        #     model_name='screen',
-        #     name='study_type',
-        #     field=models.TextField(null=True),
-        # ),
         
         migrations.RunPython(migrate_screen_status),
         migrations.RunPython(migrate_pin_transfer_approval),

@@ -5,8 +5,6 @@ from collections import OrderedDict, defaultdict
 
 from django.db import migrations, models
 
-from db.migrations import create_log_time, _create_generic_log, \
-    _child_log_from
 import json
 import logging
 import re

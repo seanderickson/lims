@@ -1130,9 +1130,9 @@ class Well(models.Model):
     facility_id = models.TextField(null=True)
     library_well_type = models.TextField()
     library = models.ForeignKey('Library')
-    deprecation_admin_activity = \
-        models.ForeignKey('AdministrativeActivity', null=True)
     is_deprecated = models.BooleanField(default=False)
+    deprecation_reason = models.TextField(null=True)
+    
     # latest_released_reagent = models.ForeignKey(
     #     'Reagent', null=True, related_name='reagent_well')
     # Removed - relationship from reagent
@@ -1144,6 +1144,12 @@ class Well(models.Model):
         models.DecimalField(null=True, max_digits=5, decimal_places=3)
     
     barcode = models.TextField(null=True, unique=True)
+
+    # TODO: remove
+    deprecation_admin_activity = \
+        models.ForeignKey('AdministrativeActivity', null=True)
+
+
     
     class Meta:
         db_table = 'well'

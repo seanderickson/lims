@@ -130,6 +130,10 @@ class Migration(migrations.Migration):
             model_name='well',
             name='latest_released_reagent',
         ),
+        
+        migrations.RemoveField(
+            model_name='well', name='deprecation_admin_activity'),
+        
         migrations.DeleteModel(
             name='AnnotationValue',
         ),

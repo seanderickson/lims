@@ -207,14 +207,14 @@ define([
                 self.consumedStack = ['libraries'];
                 self.showLibraries(delegateStack);
               });
-              this.$el.find('#library_plates_screened').click(function(e) {
-                e.preventDefault();
-                self.consumedStack = ['copyplates'];
-                self.showCopyPlates(delegateStack);
-              });
+//              this.$el.find('#library_plate_screening_count').click(function(e) {
+//                e.preventDefault();
+//                self.consumedStack = ['plates'];
+//                self.showCopyPlates(delegateStack);
+//              });
               this.$el.find('#library_plates_data_loaded').click(function(e) {
                 e.preventDefault();
-                self.consumedStack = ['copyplates'];
+                self.consumedStack = ['plates'];
                 self.showCopyPlatesLoaded(delegateStack);
               });
 
@@ -232,57 +232,6 @@ define([
         },{ data_for_get: { visibilities: ['summary']} }
       );
     },
-
-    /**
-     * Library Copy Plates Loaded view is a sub-view of Summary
-     */
-    showCopyPlates: function(delegateStack) {
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'plates_screened'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      
-      // FIXME: create new column "copies screened"
-      var fields_to_show = [
-          'library_short_name', 'library_screening_status', 
-          'library_comment_array','plate_number','comment_array', 
-          'screening_count','assay_plate_count','copies_screened', 
-          'last_date_screened','first_date_screened']
-
-      var copies_screened_field = _.clone(resource.fields['copy_name']);
-      copies_screened_field['visibility'] = ['l'];
-      copies_screened_field['data_type'] = 'list'
-      copies_screened_field['key'] = 'copies_screened';
-      copies_screened_field['title'] = 'Copies Screened';
-      copies_screened_field['description'] = 'Copies screened for this plate';
-      delete resource.fields['copy_name']
-      resource.fields['copies_screened'] = copies_screened_field;
-      
-      _.each(resource['fields'], function(field){
-        if (!_.contains(fields_to_show, field['key'])){
-          field['visibility'] = [];
-        }else{
-          field['visibility'] = ['l','d'];
-        }
-      });
-      
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        resource: resource,
-        url: url,
-        extraControls: []
-      });
-      Backbone.Layout.setupView(view);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event) {
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates Screened for: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-      self.$("#tab_container-title").hide();
-    },
-    
 
     /**
      * Library Copy Plates Loaded view is a sub-view of Summary
@@ -608,6 +557,59 @@ define([
       
     },
 
+//    /**
+//     * Show the Library Plates for library_plate_screening_count:
+//     * - The total number of times that library plates have been screened 
+//     * (not including replicates)
+//     */
+//    showCopyPlates: function(delegateStack) {
+//      var self = this;
+//      var url = [self.model.resource.apiUri,self.model.key,'plates_screened'].join('/');
+//      var resource = appModel.getResource('librarycopyplate');
+//      
+//      // FIXME: create new column "copies screened"
+//      var fields_to_show = [
+//          'library_short_name', 'library_screening_status','copy_name', 
+//          'library_comment_array','plate_number','comment_array', 
+//          'screening_count','assay_plate_count','copies_screened', 
+//          'last_date_screened','first_date_screened']
+//
+//      var copies_screened_field = _.clone(resource.fields['copy_name']);
+//      copies_screened_field['visibility'] = ['l'];
+//      copies_screened_field['data_type'] = 'list'
+//      copies_screened_field['key'] = 'copies_screened';
+//      copies_screened_field['title'] = 'Copies Screened';
+//      copies_screened_field['description'] = 'Copies screened for this plate';
+//      delete resource.fields['copy_name']
+//      resource.fields['copies_screened'] = copies_screened_field;
+//      
+//      _.each(resource['fields'], function(field){
+//        if (!_.contains(fields_to_show, field['key'])){
+//          field['visibility'] = [];
+//        }else{
+//          field['visibility'] = ['l','d'];
+//        }
+//      });
+//      
+//      var view = new ListView({ 
+//        uriStack: _.clone(delegateStack),
+//        resource: resource,
+//        url: url,
+//        extraControls: []
+//      });
+//      Backbone.Layout.setupView(view);
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      self.setView("#tab_container", view ).render();
+//      self.listenTo(view, 'afterRender', function(event) {
+//        view.$el.find('#list-title').show().append(
+//          '<H4 id="title">Library Copy Plates Screened for: ' + self.model.key + '</H4>');
+//      });
+//      this.$('li').removeClass('active');
+//      this.$('#summary').addClass('active');
+//      self.$("#tab_container-title").hide();
+//      self.reportUriStack([]);
+//    },
+    
     /**
      * Plates screened
      */
@@ -618,9 +620,11 @@ define([
       
       var fields_to_show = [
             'library_short_name', 'library_screening_status',
-            'library_comment_array','plate_number',
-            'copies_screened', 'comment_array', 'screening_count','assay_plate_count',
+            'plate_number','screening_count', 'assay_plate_count', 'copies_screened',
             'first_date_screened','last_date_screened'];
+      
+      // NOTE: API LibraryCopyPlateResource.build_screened_plate_response
+      // generates a custom resource with default field visibilities for this view
       
       var copies_screened_field = _.clone(resource.fields['copy_name']);
       copies_screened_field['visibility'] = ['l'];
@@ -630,17 +634,14 @@ define([
       copies_screened_field['description'] = 'Copies screened for this plate';
       delete resource.fields['copy_name']
       resource.fields['copies_screened'] = copies_screened_field;
-
-      _.each(_.keys(resource.fields), function(key){
-        var field = resource.fields[key];
-        if (_.contains(fields_to_show, key)){
-          field.ordinal = -fields_to_show.length + _.indexOf(fields_to_show,key);
-        } else {
-          delete resource.fields[key];
+      
+      _.each(resource['fields'], function(field){
+        if (!_.contains(fields_to_show, field['key'])){
+          field['visibility'] = [];
+        }else{
+          field['visibility'] = ['l','d'];
         }
       });
-      resource.id_attribute = ['plate_number'];
-      resource.title = 'Plates Screened';
       
       resource.fields['library_short_name']['backgridCellType'] =
         Iccbl.CommentArrayLinkCell.extend({
@@ -650,14 +651,39 @@ define([
           }
         });
       
+      resource.fields['copies_screened']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'copy_comments',
+          get_href: function() {
+            var self = this;
+            var template = '#library/{library_short_name}/copy'
+            var href = Iccbl.formatString(template,self.model);
+            href += '/search/copy_name__in=' + self.model.get('copies_screened').join(',')
+            return href;
+          },
+          title_function: function(model){
+            return 'Comments for Copies: ' + model.get('copies_screened').join(', ');
+          }
+        });
+      
       resource.fields['plate_number']['backgridCellType'] =
         Iccbl.CommentArrayLinkCell.extend({
           comment_attribute: 'comment_array',
           title_function: function(model){
-            return 'Comments for Plate: ' 
+            return 'Comments for all Plate: ' 
               + model.get('library_short_name') + '/' 
-              + model.get('copy_name')  + '/'
-              + model.get('plate_number');
+              + model.get('plate_number') 
+              + ', Copies: ' + model.get('copies_screened').join(',')
+          },
+          get_href: function(){
+            var self = this;
+            var template = '#library/{library_short_name}/plate'
+            var href = Iccbl.formatString(template,self.model);
+            
+            href += '/search/plate_number__eq=' + self.model.get('plate_number');
+            href += ';copy_name__in=' + self.model.get('copies_screened').join(',')
+            
+            return href;
           }
         });
       
@@ -667,12 +693,25 @@ define([
           Iccbl.LinkCell.extend(_.extend({},
             resource.fields['screening_count'].display_options,
             {
+              get_search_entry: function(){
+                var search_entries = [];
+                var plate_number = this.model.get('plate_number');
+                console.log('copies_screened', this.model.get('copies_screened'));
+                _.each(this.model.get('copies_screened'), function(copy_name){
+                  search_entries.push(copy_name + '/' + plate_number);
+                });
+                var search_entry = 'library_plates_screened__contains=' + search_entries.join(',');
+                return search_entry;
+              },
+              get_href: function(){
+                return ['#screen', self.model.get('facility_id'),
+                  'summary/libraryscreening',appModel.URI_PATH_SEARCH, 
+                  this.get_search_entry()].join('/');
+              },
+              // implement linkCallBack for better UI response
               linkCallback: function(e){
                 e.preventDefault();
-                var search_entry = Iccbl.formatString(
-                  'library_plates_screened__contains={copy_name}/{plate_number}',
-                  this.model);
-                self.uriStack = [appModel.URI_PATH_SEARCH, search_entry];
+                self.uriStack = [appModel.URI_PATH_SEARCH, this.get_search_entry()];
                 self.change_to_tab('libraryscreening');
               }
             }));

@@ -21,10 +21,15 @@ define([
   var CherryPickView = TabbedController.extend({
     
     initialize: function(args) {
+      
+      console.log('initialize cpr view...');
+      
       var self = this;
       self.args = args;
       this._classname = 'CherryPickRequestView';
       
+      // FIXME: wells_to_leave_empty is a string; should be a list
+      // - This is a workaround to produces proper wrapping in the display
       var wellsToLeaveEmpty = self.model.get('wells_to_leave_empty');
       if (!_.isEmpty(wellsToLeaveEmpty)){
         wellsToLeaveEmpty = wellsToLeaveEmpty.split(',').join(', ');
@@ -32,17 +37,6 @@ define([
       }
       
       TabbedController.prototype.initialize.apply(this,arguments);
-      
-      if (_.isUndefined(this.screen)){
-        appModel.getModel('screen', this.model.get('screen_facility_id'), 
-          function(screen){
-            self.screen = screen;
-          });
-      } else {
-        if (this.screen.get('facility_id') != this.model.get('screen_facility_id')){
-          throw "Wrong screen: " + this.screen.get('facility_id') + " for this Cherry Pick Request";
-        }
-      }
       _.bindAll(this, 'createScpView','createLcpView',
                 'showScpSearchForm','showWellsToLeaveEmptyDialog');
     },
@@ -122,7 +116,179 @@ define([
         'base_url': self.model.resource.key + '/' + self.model.key,
         'tab_resources': this.tabbed_resources
       }      
-    }, 
+    },
+    setWarnings: function() {
+      var self = this;
+      if (!appModel.hasGroup('readEverythingAdmin')){
+        // Warnings are only for admin users
+        return;
+      }
+      if (self.model.isNew()){
+        return;
+      }
+      console.log('setWarnings...')
+      var $target_el = $('#tab_container-title');
+      var mouseTitle = 'Administrative warnings have been detected for the screener cherry picks';
+      var warning_div = $('<span id="warning-div" class=""></span>');
+      var loading_div = $('<span id="warning-loading-div" class="loading-ellipsis"></span>');
+      var warningsButton = $(
+        '<button id="cpr-warnings" type="button" class="btn btn-sm btn-danger" '
+        + ' title="' + mouseTitle + '" >'
+        +'<span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>'
+        +' Warnings</button>');
+      
+      $target_el.find('#warning-div').remove();
+      $target_el.find('#title').append(warning_div);
+      warning_div.append('&nbsp;&nbsp;')
+      warning_div.append(loading_div);
+      
+      var url = [self.model.resource.apiUri,self.model.key,'warnings'].join('/');
+      var ModelClass = Backbone.Model.extend({
+        url : url,
+        defaults : { },
+        parse: function(resp, options){
+          return _.result(resp, Iccbl.appModel.API_RESULT_META, resp);
+        }
+      });
+      var instance = new ModelClass();
+      instance.fetch({
+        // prevent triggering global event handler: ajaxStart loading gif
+        global: false
+      }).done(function(){
+        
+        warning_div.empty();
+        $target_el.find('#title').append(warning_div);
+        
+        var fields_to_show = [
+          'cherry_pick_allowance_warning','restricted_libraries',
+          'concentration_warnings','copyplates_not_found','screener_picks_not_screened',
+          'duplicate_screener_cherry_picks'
+        ];
+        var shownFields = instance.pick(fields_to_show);
+        if (!_.isEmpty(shownFields)){
+          
+          var comments = [];
+          var body = $('<div class="panel"></div>');
+          
+          _.each(_.keys(shownFields), function(key){
+            var val = shownFields[key];
+            if (!val || _.isEmpty(val)) return;
+            if (key=='cherry_pick_allowance_warning'){
+              comments.push(val);
+              body.append(val + '<br>');
+            }
+            else if (key=='restricted_libraries'){
+              // TODO: convert library.screening_status vocab
+              comments.push('Restricted Libraries:');
+              body.append(comments[comments.length-1]+'<br>');
+              comments = comments.concat(val);
+              body.append(val.join('<br>'));
+              body.append('<br>');
+            }
+            else if (key=='concentration_warnings'){
+              comments.push('The following picked wells are not at the maximal '
+                + 'concentration found for the reagent:');
+              body.append(comments[comments.length-1]+'<br>');
+              _.each(_.keys(val), function(well_id){
+                console.log('formatting', well_id, val[well_id]);
+                var message = 
+                  'Selected Well: {well_id} ({selected_concentration}) '
+                  + 'Alternate: {alternate_well} ({alternate_concentration})';
+                comments.push(Iccbl.formatString(message, 
+                  _.extend({well_id: well_id}, val[well_id])));
+                var selectedWellLink = $('<a>', {
+                  tabIndex : -1,
+                  href : Iccbl.formatString('#library/{library_short_name}/well/{well_id}',
+                    { library_short_name: val[well_id]['library_short_name'], well_id: well_id }),
+                  target : '_blank',
+                }).text(well_id);
+                var alternateWellLink = $('<a>', {
+                  tabIndex : -1,
+                  href : Iccbl.formatString('#library/{library_short_name}/well/{well_id}',
+                    { library_short_name: val[well_id]['library_short_name'], 
+                      well_id: val[well_id]['alternate_well'] }),
+                  target : '_blank',
+                }).text(val[well_id]['alternate_well']);
+                body.append([
+                  'Selected: ', selectedWellLink, ' (', val[well_id]['selected_concentration'] ,'), ', 
+                  'Alternate: ', alternateWellLink, ' (', val[well_id]['alternate_concentration'] ,'), '
+                ]);
+                body.append('<br>');
+                
+              });
+            }
+            else if (key=='copyplates_not_found'){
+              
+              var platesEsearch = _.keys(val).join(appModel.SEARCH_DELIMITER);
+              var link  = $('<a>', {
+                tabIndex : -1,
+                href : ['#librarycopyplate', appModel.API_PARAM_ENCODED_SEARCH,
+                  platesEsearch].join('/'),
+                target : '_blank',
+              }).text('No (available) Cherry Pick Screening copies found for the plates:');
+              body.append(link);
+              body.append('<br>');
+              comments.push('No (available) Cherry Pick Screening plates found:');
+              _.each(_.keys(val), function(plate){
+                comments.push(plate + ': ' + val[plate].join(', '));
+                body.append(comments[comments.length-1] + '<br>');
+              });
+              
+            }
+            else if (key=='screener_picks_not_screened'){
+              comments.push('Screener Picks that have not been screened:');
+              body.append(comments[comments.length-1] + '<br>');
+              comments.push(val.join(', '));
+              body.append(val.join(', ') + '<br>');
+            }
+            else if (key=='duplicate_screener_cherry_picks'){
+              comments.push(
+                'The following wells have already been cherry picked '
+                + 'for this Screen, which is against policy:');
+              body.append(comments[comments.length-1] + '<br>');
+              comments.push(val.join(', '));
+              body.append(val.join(', ')+ '<br>');
+            }
+
+          });
+          
+          warningsButton.attr({'title': comments.join('\n')});
+          
+          warningsButton.click(function(e){
+            e.preventDefault();
+            Iccbl.appModel.showModalMessage({
+              title: 'Administrative warnings for Screener Cherry Picks',
+              view: body,
+              buttons_on_top: true,
+            });
+          });
+          
+          warning_div.append('&nbsp;&nbsp;')
+          warning_div.append(warningsButton);
+          
+        }
+      }).fail(function(jqXHR, textStatus, errorThrown){
+        console.log('fail', arguments);
+        appModel.jqXHRfail.apply(this,arguments); 
+      });
+      
+    },
+    
+    afterRender: function(){
+      var self = this;
+      TabbedController.prototype.afterRender.apply(this,arguments);
+      if (_.isUndefined(this.screen)
+          ||  this.screen.get('facility_id') != this.model.get('screen_facility_id') ){
+        appModel.getModel('screen', this.model.get('screen_facility_id'), 
+          function(screen){
+            self.screen = screen;
+            self.setWarnings();
+          });
+      } else {
+        self.setWarnings();
+      }
+      
+    },
     
     setDetail: function(delegateStack) {
       console.log('detail view');
@@ -193,11 +359,13 @@ define([
               .find('div[data-editor]').append(wellsToLeaveEmptyButton);
           }          
           EditView.prototype.afterRender.apply(this,arguments);
+
         }
       });
       detailView = DetailView.extend({
         afterRender: function() {
           DetailView.prototype.afterRender.apply(this,arguments);
+      
           var detail_self = this;
           var empty_wells_link = $(
             '<a href="#">' + self.model.get('wells_to_leave_empty') + '</a>');
@@ -360,7 +528,6 @@ define([
         extraControls: extraControls
       });
       Backbone.Layout.setupView(view);
-//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {
@@ -2132,6 +2299,8 @@ define([
                   self.removeView('#tab_container');
                   self.render();
                 });
+                self.setWarnings();
+                
               }).fail(function(jqXHR, textStatus, errorThrown) { 
                 console.log('errors', arguments);
                 
@@ -2413,6 +2582,8 @@ define([
             // it from being rendered twice, and calling afterRender twice
             self.removeView('#tab_container');
             self.render();
+            self.setWarnings();
+            
           });
         }).fail(function(jqXHR, textStatus, errorThrown) { 
           appModel.jqXHRfail.apply(this,arguments); 
@@ -2438,6 +2609,7 @@ define([
             // it from being rendered twice, and calling afterRender twice
             self.removeView('#tab_container');
             self.render();
+            self.setWarnings();
           });
         }).fail(function(jqXHR, textStatus, errorThrown){
           appModel.jqXHRfail.apply(this,arguments); 
@@ -2570,6 +2742,7 @@ define([
                 // asynchronous event handling
                 selectionUpdateCollection.reset(null); // clear
               });
+              self.setWarnings();
   
             }).fail(function(jqXHR, textStatus, errorThrown){
               appModel.jqXHRfail.apply(this,arguments); 

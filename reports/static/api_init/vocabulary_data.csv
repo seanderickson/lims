@@ -6,6 +6,7 @@ summary,field.visibility,4,,"Visible in summary views (if available)","Visible i
 billing,field.visibility,5,,"Visible in billing views","Visible in billing views"
 protocol,field.visibility,6,,"Visible in protocol views (Screens)","Visible in protocol views"
 api,field.visibility,7,,"Visible at the API, but not in the UI","Visible on the API only"
+none,field.visibility,8,"Note: field will not be shown unless explicitly added, (""*"" will not show them).","Not visible by default","Not visible by default"
 c,field.editability,1,,"Visible on creation","Visible on creation"
 u,field.editability,2,,"Visible on update","Visible on update"
 l,field.editability,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"

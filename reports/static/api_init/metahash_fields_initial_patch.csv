@@ -11,8 +11,8 @@ display_options,fields.field,9,fields.CharField,"display options as json; used b
 edit_type,fields.field,10,fields.CharField,"edit view type",string,,,,FALSE,"Edit Type","Edit Type",FALSE,field.edit_type,[l;d;e],,,[c;u],,
 visibility,fields.field,11,fields.ListField,,list,,,multiselect,FALSE,"The designations of where this field is visible",Visibility,FALSE,field.visibility,[l;d;e],,,[c;u],,
 editability,fields.field,12,fields.ListField,,list,,,multiselect,FALSE,"Field can be edited in these contexts",Editability,FALSE,field.editability,[l;d],,,[c;u],,
-ordering,fields.field,13,CsvBooleanField,,boolean,,,,FALSE,"The designations of whether this field is orderable through the API",Orderable,FALSE,,[d;e],,,[c;u],,
-filtering,fields.field,14,CsvBooleanField,,boolean,,,,FALSE,"Specifies that this field may be filtered through the API interface",Filterable,FALSE,,[d;e],,,[c;u],,
+ordering,fields.field,13,CsvBooleanField,,boolean,,,,FALSE,"The designations of whether this field is orderable through the API",Orderable,FALSE,,[d;e],,,[c;u],,FALSE
+filtering,fields.field,14,CsvBooleanField,,boolean,,,,FALSE,"Specifies that this field may be filtered through the API interface",Filterable,FALSE,,[d;e],,,[c;u],,FALSE
 json_field_type,fields.field,21,,"This field both specifies (if set) that this is a json field, and also the type of that field, for use by tastypie in serialization with the client",string,,,select,FALSE,"The json_field_type, if set, specifies that this field is stored virtually in the json_field of the metahash","API (JSON) Field Type",FALSE,field.json_field_type,[d;e],,,[c;u],,
 vocabulary_scope_ref,fields.field,22,fields.CharField,"This scope field value in the vocabularies table for the vocabulary entries for this field",string,,,,FALSE,"The vocabulary_scope_ref is used to look up controlled vocabularies for this field in the vocabularies table",Vocabulary:scope,FALSE,,[d;e],,,[c;u],,
 id,fields.field,99,,,string,,,,FALSE,"Internal use only ID",ID,FALSE,,[],,,[c;u],,

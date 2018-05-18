@@ -160,22 +160,30 @@ def decode_from_utf8(val):
         logger.exception('decode: %r, %r', val, type(val))
         raise
     
-def equivocal(val1, val2):
+def equivocal(val1, val2, skip_null_values=False, key=None):
     '''
     Test for equivalence between submitted and returned (csv) values:
     Compares string,number,boolean,or list where:
     - either object has been converted to a string,
     - with lists, ordering has changed, or members have been converted to 
     their string representation.
+    NOTE: skip_null_values added to address fields with parent "ref" set
     '''
     if DEBUG:
         logger.info('equivocal: %r, %r', val1, val2)
+
+    if val1 is None or val1 == '':
+        if skip_null_values is True:
+            logger.info('key: %r, skip nulls: %r',key, skip_null_values)
+            return True, ('skip_null_values')
     if val1 == val2:
         if DEBUG:
             logger.info('1equivocal: %r, %r', val1, val2)
         return True, ('val1', val1, 'val2', val2 )
     
     if (is_boolean(val1) is True or is_boolean(val2) is True ):
+        if DEBUG:
+            logger.info('boolean equivocal: %r, %r', val1, val2)
         if (parse_val(val1,'testval1','boolean')
             == parse_val(val2,'testval2','boolean')):
             if DEBUG:
@@ -202,6 +210,8 @@ def equivocal(val1, val2):
         
     
     if isinstance(val1, basestring):
+        if DEBUG:
+            logger.info('string equivocal: %r, %r', val1, val2)
 
         # TODO: rework API: equates empty string to "None"
         if not val1:
@@ -242,12 +252,18 @@ def equivocal(val1, val2):
                 logger.info('String true: %r: %r', val1, val2)
             return True, ('val1', val1, 'val2', val2    )
     else: # better be a list
+        if DEBUG:
+            logger.info('list equivocal: %r, %r', val1, val2)
         # TODO: rework API: equates empty list to "None"
         if not val1:
             if not val2:
                 return True, ('val1', val1, 'val2', val2 )
             else:
-                return False, ('val1', val1, 'val2', val2 )
+                if skip_null_values is True:
+                    logger.info('skip None: %r, %r', val1, val2)
+                    return True, ('skip_null_values is True',)
+                else:
+                    return False, ('val1', val1, 'val2', val2 )
         if not val2:
             return False, ('val2 is empty', 'val1', val1 )
         if not isinstance(val1, list) and isinstance(val2, list):
@@ -270,11 +286,12 @@ def equivocal(val1, val2):
         ', val1: %r:%r, val2: %r:%r', type(val1),val1, type(val2), val2)
     return False, ('val1', val1, 'val2', val2)
     
-def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri']):
+def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri'], skip_null_values=False):
     '''
     For testing equality of the (CSV) input to API returned values
     @param obj1 input
     @param obj2 output 
+    NOTE: skip_null_values added to address fields with parent "ref" set
     '''
     if obj1 is None:
         return False, ('obj1 is None')
@@ -313,12 +330,12 @@ def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri']):
                         val1, val2)
     
     keys_to_search = original_keys
-    logger.debug('keys to search: %r', keys_to_search)
+    logger.debug('keys to test: %r: %r', keys_to_search, skip_null_values)
     for key in keys_to_search:
-        result, msgs =  equivocal(obj1[key], obj2[key])
+        result, msgs =  equivocal(obj1[key], obj2[key], skip_null_values=skip_null_values, key=key)
         if not result:
-            return False, ('key not equal', key, obj1[key], obj2[key], 
-                'obj1', obj1, 'obj2', obj2, 'msgs', msgs)
+            return False, ('msgs', msgs,'key', key, obj1[key], obj2[key], 
+                'obj1', obj1, 'obj2', obj2)
             
     return True, ('obj1:', obj1, 'obj2:', obj2)
 
@@ -340,14 +357,23 @@ def find_obj_in_list(obj, item_list, id_keys_to_check=[], **kwargs):
                     found = None
                     break
             if found:
-                return True, (item)    
-        result, msgs = assert_obj1_to_obj2(obj, item, **kwargs)
-        if result:
-            return True, (item)
-        else:
-            if not msgs in list_msgs:
-                list_msgs.append(msgs)
-    return False, ('obj not found in list', obj, list_msgs)
+                return True, (item)
+        
+        else:    
+                
+            result, msgs = assert_obj1_to_obj2(obj, item, **kwargs)
+            if result:
+                return True, (item)
+            else:
+                if not msgs in list_msgs:
+                    list_msgs.append(msgs)
+    if id_keys_to_check:
+        return False, ('id_keys_to_check: %r, item: %r, not found in %r',
+            id_keys_to_check,
+            [ obj[key] for key in id_keys_to_check],
+            [ [obj[key] for key in id_keys_to_check] for obj in item_list ])
+    else:
+        return False, ('obj not found in list', obj, list_msgs)
 
 def find_all_obj_in_list(list1, list2, **kwargs):
     msgs = ['not run yet']
@@ -1293,8 +1319,18 @@ class IResourceTestCase(SimpleTestCase):
                     result, 
                     'not found: %r, msg: %r' % (inputobj, outputobj))
                 # once found, perform equality based on all keys (in obj1)
+                logger.debug('found: %r: %r', inputobj.get('scope'), inputobj.get('key'))
+
+                # For fields patches only:
+                # NOTE: skip_null_values added to address fields with parent "ref" set
+                skip_null_values = False
+                if 'scope' in inputobj and 'fields.' in inputobj.get('scope'):
+                    ref = inputobj.get('ref')
+                    if ref is not None:
+                        logger.info('%r: ref: %r',inputobj.get('key'), ref)
+                        skip_null_values = True
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
-                    excludes=keys_not_to_check)
+                    excludes=keys_not_to_check, skip_null_values=skip_null_values)
                 self.assertTrue(result,
                     'not equal: %r: %r - %r' % ( msg, inputobj, outputobj))
             
@@ -1392,8 +1428,12 @@ class IResourceTestCase(SimpleTestCase):
                                 resource, data_file, 
                                 keys_not_to_check=['resource_uri'])
                         elif command == 'patch':
+                            id_keys_to_check = []
+                            if resource == 'field':
+                                id_keys_to_check = ['key','scope']
                             self._patch_test(
                                 resource, data_file, 
+                                id_keys_to_check=id_keys_to_check,
                                 keys_not_to_check=['resource_uri'])
                         else:
                             raise AssertionError(

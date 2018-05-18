@@ -158,6 +158,12 @@ class Migration(migrations.Migration):
             model_name='plate',
             name='retired_activity_id',
         ),
+
+        migrations.RemoveField(
+            model_name='screenresult',
+            name='experimental_well_count',
+            field=models.IntegerField(default=0),
+        ),
         
         # TODO: remove lab head as separate model
         migrations.AlterField(

@@ -120,7 +120,7 @@ class MetaManager(models.Manager):
         for unparsed_object in unparsed_objects:
             parsed_object = {}
             # only need the key from the field definition table
-            for field_key in [ x.key for x in field_definition_table]:
+            for field_key in [x.key for x in field_definition_table]:
                 parsed_object[field_key] = unparsed_object.get_field(field_key)
                 
             # NOTE: choices for the "vocabulary_scope_ref" are being stored 

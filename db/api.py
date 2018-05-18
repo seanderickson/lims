@@ -108,11 +108,14 @@ from db.support.plate_matrix_transformer import Collation
 import xlsxwriter
 
 import schema as SCHEMA
+from db.schema import VOCAB
+from lims.app_data import APP_PUBLIC_DATA
 
 SCREEN_AVAILABILITY = SCHEMA.VOCAB.screen.screen_result_availability
 ACCESS_LEVEL = SCHEMA.VOCAB.screen.user_access_level_granted
 DSL = SCHEMA.VOCAB.screen.data_sharing_level
 LCP_STATUS = SCHEMA.VOCAB.lab_cherry_pick.status
+SCREENING_STATUS = SCHEMA.VOCAB.library.screening_status
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
@@ -155,6 +158,8 @@ API_MSG_PLATING_CANCELED = 'Plating canceled'
 API_MSG_CPR_PLATES_PLATED = 'Plates plated'
 API_MSG_CPR_PLATES_SCREENED = 'Plates screened'
 API_MSG_CPR_PLATED_CANCEL_DISALLOWED = 'Plating reservation may not be canceled after plates are plated'
+
+API_MSG_CPR_CONCENTRATIONS = 'concentration_warnings'
 # VOCAB_LCP_STATUS_SELECTED = 'selected'
 # VOCAB_LCP_STATUS_NOT_SELECTED = 'not_selected'
 # VOCAB_LCP_STATUS_UNFULFILLED = 'unfulfilled'
@@ -1564,6 +1569,10 @@ class LibraryCopyPlateResource(DbApiResource):
         new_fields['copies_screened']['key'] = 'copies_screened'
         new_fields['copies_screened']['title'] = 'Copies Screened'
         new_fields['copies_screened']['data_type'] = 'list'
+        # Add a "copy_comments" field
+        new_fields['copy_comments'] = schema['fields']['copy_comments']
+        new_fields['copy_comments']['data_type'] = 'list'
+        new_fields['copy_comments']['visibility'] = ['l']
         schema['fields'] = new_fields
         
         (filter_expression, filter_hash, readable_filter_hash) = \
@@ -1611,6 +1620,7 @@ class LibraryCopyPlateResource(DbApiResource):
             _l.c.short_name,
             _c.c.library_id,
             _ap.c.plate_number,
+            _ap.c.assay_plate_id,
             _concat(
                 _l.c.short_name, '/', _c.c.name, '/', 
                 cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
@@ -1676,6 +1686,22 @@ class LibraryCopyPlateResource(DbApiResource):
                             ==text('assay_plates.plate_number'))
                         .order_by(_c.c.name).alias('inner_copies'))
                     ).label('copies_screened'),
+                ( select([
+                    func.array_to_string(
+                        func.array_agg(literal_column('comments')), 
+                        LIST_DELIMITER_SQL_ARRAY),
+                    ])
+                    .select_from(
+                        select([_concat_with_sep((_c.c.name,_c.c.comments),': ').label('comments')])
+                        .select_from(_c.join(
+                            _assay_plates_inner,_c.c.copy_id
+                                ==_assay_plates_inner.c.copy_id))
+                        .where(_assay_plates_inner.c.plate_number
+                            ==text('assay_plates.plate_number'))
+                        .where(func.trim(_c.c.comments)!='')
+                        .group_by(_c.c.name, _c.c.comments)
+                        .order_by(_c.c.name).alias('inner_copy_comments'))
+                    ).label('copy_comments'),
                 ( select([func.min(_assay_plates_inner.c.date_of_activity)])
                     .select_from(_assay_plates_inner)
                     .where(_assay_plates_inner.c.plate_number
@@ -1687,7 +1713,7 @@ class LibraryCopyPlateResource(DbApiResource):
                         ==text('assay_plates.plate_number'))
                     ).label('last_date_screened'),
                 _assay_plates.c.plate_number,
-                func.count(None).label('assay_plate_count'),
+                func.count(_assay_plates.c.assay_plate_id).label('assay_plate_count'),
                 func.count(distinct(_assay_plates.c.activity_id))
                     .label('screening_count'),
                 (
@@ -4911,10 +4937,7 @@ class ScreenResultResource(DbApiResource):
             newfields = {}
             newfields.update(well_schema['fields'])
             for key,field in newfields.items():
-                if 'l' in field['visibility']:
-                    field['visibility'].remove('l')
-                if 'd' in field['visibility']:
-                    field['visibility'].remove('d')
+                field['visibility'] = [VOCAB.field.visibility.NONE]
             newfields.update(current_fields)
             
             if screenresult.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
@@ -7162,6 +7185,13 @@ class CherryPickRequestResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_scp_schema'),
                 name="api_get_scp_schema"),
+
+            url((r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)" 
+                 r"/warnings%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_cpr_warnings'),
+                name="api_dispatch_cpr_warnings_view"),
             
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
@@ -7591,6 +7621,174 @@ class CherryPickRequestResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
+    @read_authorization
+    def dispatch_cpr_warnings(self, request, **kwargs):
+
+        cpr_id = kwargs.get('cherry_pick_request_id', None)
+        if not cpr_id:
+            raise NotImplementedError('must provide a cherry_pick_request_id parameter')
+        
+        self.is_authenticated(request)
+
+        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
+        authorized = self._meta.authorization._is_resource_authorized(
+            request.user, 'read', **kwargs)
+        if authorized is not True:
+            raise PermissionDenied
+        
+        if request.method.lower() != 'get':
+            raise NotImplementedError()
+        
+        warnings = self.get_warnings(cpr_id)
+        
+        return self.build_response(
+            request, {API_RESULT_META: warnings }, response_class=HttpResponse, **kwargs)
+            
+    def get_warnings(self, cpr_id):    
+        
+        # Get warning fields of cpr
+        
+        warning_fields = ['screen_type','screener_picks_not_screened',
+            'duplicate_screener_cherry_picks','deprecated_picks',
+            'restricted_libraries','cherry_pick_allowance',
+            'screener_cherry_pick_count_cumulative','screener_cherry_picks',
+            'screened_experimental_well_count'
+        ];
+        
+        cpr_data = self._get_detail_response_internal(**{
+            'cherry_pick_request_id': str(cpr_id),
+            'exact_fields': warning_fields
+            })
+
+        if not cpr_data or not cpr_data['screener_cherry_picks']:
+            logger.info('no warnings, cherry pick has not begun...')
+            return {}
+        
+        meta = cpr_data.copy()
+        del meta['screener_cherry_picks']
+
+        # Parse library restrictions
+        # if meta['restricted_libraries']:
+        #     vocab_scope = 'library.screening_status'
+        #     library_screening_status_vocab = \
+        #         self.get_vocab_resource()._get_vocabularies_by_scope(vocab_scope)
+        #     
+        #     if not library_screening_status_vocab:
+        #         logger.warn('no vocabulary found for scope: %r',vocab_scope)
+        #     else:
+        #         temp = defaultdict(list)
+        #         restricted_libraries = meta['restricted_libraries']
+        #         for restriction in restricted_libraries:
+        #             (vocab,short_name) = restriction.split(':')
+        #             if vocab in library_screening_status_vocab:
+        #                 temp[library_screening_status_vocab[vocab]['title']].append(short_name)
+        #             else:
+        #                 temp[vocab].append(short_name)
+        #                 
+        #         meta['restricted_libraries'] = temp
+        
+        # Check the Cherrry Pick Allowance
+        
+        cumulative_count = cpr_data.get('screener_cherry_pick_count_cumulative',0)
+        allowance = cpr_data.get('cherry_pick_allowance',0)
+        
+        allow_percent = APP_PUBLIC_DATA.small_molecule_cherry_pick_ratio_allowed
+        if cpr_data['screen_type'] == VOCAB.screen.screen_type.RNAI:
+            allow_percent = APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
+        allow_percent = float(lims_utils.convert_decimal(allow_percent,1,3,100))
+        meta['cherry_pick_allowance_percent'] = allow_percent
+        if cumulative_count > allowance:
+              meta['cherry_pick_allowance_warning'] = (
+                  'The cumulative number of cherry picks requested for this screen: '
+                  '{} exceeds the allowed number: {} '
+                  '({}% of experimental wells screened).').format(
+                      cumulative_count, allowance, allow_percent)
+        
+        # Find plates having no available cpr copy
+        
+        plates_required = defaultdict(set)
+        for scp_well in cpr_data['screener_cherry_picks']:
+            plates_required[lims_utils.well_id_plate_number(scp_well)].add(scp_well)
+        logger.info('plates_required: %r', plates_required)
+        copy_plates_available = self.get_librarycopyplate_resource()\
+            ._get_list_response_internal(**{
+                'plate_number__in': plates_required.keys(),
+                'status__in': [ VOCAB.plate.status.AVAILABLE ],
+                'copy_usage_type__eq': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES
+            })
+        copy_plates_available = set([cp['plate_number'] for cp in copy_plates_available])
+        logger.info('copyplates_available: %r', copy_plates_available)
+        meta['copyplates_not_found'] = {plate_number:list(scps) for plate_number, scps 
+                            in plates_required.items()
+                            if plate_number not in copy_plates_available }
+        
+        # Check for other wells with the same reagent that have higher concentrations
+        
+        scp_alternates = self.get_screenercherrypick_resource()\
+            ._get_list_response_internal(
+                **{
+                    'cherry_pick_request_id': cpr_id,
+                    'show_other_reagents': True,
+                    'includes': ['molar_concentration','mg_ml_concentration','library_short_name']
+                })
+        scp_selected_map = { scp['searched_well_id']:scp for scp
+            in scp_alternates if scp['selected'] == True }
+        scp_alt_map = defaultdict(list)
+        for scp in scp_alternates:
+            selected_well_id = scp['searched_well_id']
+            selected_library = scp_selected_map[selected_well_id]['library_short_name']
+            if scp['selected'] is not True and scp['library_short_name']==selected_library:
+                scp_alt_map[scp['searched_well_id']].append(scp)
+        scp_warn_map = defaultdict(list)
+        for searched_well_id,alt_list in  scp_alt_map.items():
+            scp_selected = scp_selected_map.get(searched_well_id)
+            if scp_selected:
+                molar_concentration = scp_selected.get('molar_concentration')
+                mg_ml_concentration = scp_selected.get('mg_ml_concentration')
+                library_short_name = scp_selected.get('library_short_name')
+                if molar_concentration:
+                    best_alt = sorted(alt_list, reverse=True,
+                                      key=lambda x: x['molar_concentration'])[0]
+                    alt_library = best_alt['library_short_name']
+                    logger.info('scp: %r, best_alt: %r', searched_well_id, best_alt)
+                    if library_short_name == alt_library \
+                        and best_alt['molar_concentration'] > molar_concentration:
+                        scp_warn_map[searched_well_id] = {
+                            'library_short_name': library_short_name,
+                            'selected_concentration': u'{} {}M'.format(
+                                lims_utils.convert_decimal(
+                                    molar_concentration,1e-6, 3),
+                                lims_utils.get_siunit(1e-6)),
+                            'alternate_well': best_alt['screened_well_id'],
+                            'alternate_concentration':  u'{} {}M'.format(
+                                lims_utils.convert_decimal(
+                                    best_alt['molar_concentration'],1e-6, 3),
+                                lims_utils.get_siunit(1e-6)),
+                            }
+                elif mg_ml_concentration:
+                    best_alt = sorted(alt_list, reverse=True,
+                                      key=lambda x: x['mg_ml_concentration'])[0]
+                    alt_library = best_alt['library_short_name']
+                    if library_short_name == alt_library \
+                        and best_alt['mg_ml_concentration'] > mg_ml_concentration:
+                        scp_warn_map[searched_well_id] = {
+                            'library_short_name': library_short_name,
+                            'selected_concentration': u'{} mg/ml'.format(
+                                lims_utils.convert_decimal(
+                                    mg_ml_concentration,1, 3)),
+                            'alternate_well': best_alt['screened_well_id'],
+                            'alternate_concentration':  u'{} mg/ml'.format(
+                                lims_utils.convert_decimal(
+                                    best_alt['mg_ml_concentration'],1, 3)),
+                            }
+                else:
+                    logger.warn('no concentration for selected well: %r', searched_well_id)
+        if scp_warn_map:
+            meta[API_MSG_CPR_CONCENTRATIONS] = scp_warn_map
+        
+        logger.info('cpr warnings: %r', meta)
+        
+        return meta
     def build_list_response(self, request, schema=None, **kwargs):
         
         param_hash = self._convert_request_to_dict(request)
@@ -7608,243 +7806,456 @@ class CherryPickRequestResource(DbApiResource):
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id:
             param_hash['cherry_pick_request_id__eq'] = cherry_pick_request_id
-
-        try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            manual_field_includes.add('has_pool_screener_cherry_picks')
-            manual_field_includes.add('has_alternate_screener_cherry_pick_selections')
-            
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
-            
-            filter_expression = \
-                self._meta.authorization.filter(request.user,filter_expression)
-            
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
-             
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
-                    field_hash, rowproxy_generator)
-
+        if 'cherry_pick_request_id__eq' in param_hash:
+            cherry_pick_request_id = param_hash.get('cherry_pick_request_id__eq')
+        
+        # general setup
+      
+        manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes.add('has_pool_screener_cherry_picks')
+        manual_field_includes.add('has_alternate_screener_cherry_pick_selections')
+        
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
+        
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
+        
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        rowproxy_generator = None
+        if use_vocab is True:
             rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
-                    
-            # specific setup 
-            base_query_tables = ['cherry_pick_request', 'screen']
-            _cpr = self.bridge['cherry_pick_request']
-            _screen = self.bridge['screen']
-            _su = self.bridge['screensaver_user']
-            _lhsu = _su.alias('lhsu')
-            _scp = self.bridge['screener_cherry_pick']
-            _sirna_pool_duplexes = self.bridge['silencing_reagent_duplex_wells']
-            _well = self.bridge['well']
-            _library = self.bridge['library']
-            _lcp = self.bridge['lab_cherry_pick']
-            _cpp = self.bridge['cherry_pick_assay_plate']
-            _cpp2 = _cpp.alias('cpp2')
-            
-            _user_cte = ScreensaverUserResource.get_user_cte().cte('users_cpr')
-            _requestors = _user_cte.alias('requestors')
-            _approvers = _user_cte.alias('approvers')
-            _lead_screeners = _user_cte.alias('lead_screeners')
-            lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
-            
-            _lcp_subquery = (
-                select([
-                    _lcp.c.cherry_pick_request_id,
-                    func.count().label('lcp_count'),
-                    func.count(_lcp.c.copy_id).label('lcp_fullfilled_count')])
-                .select_from(_lcp)
-                .group_by(_lcp.c.cherry_pick_request_id)).cte('lcp_subquery')
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            # use "use_vocab" as a proxy to also adjust siunits for viewing
+            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                field_hash, rowproxy_generator)
+
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
                 
-            custom_columns = {
-                'requested_by_id': _requestors.c.screensaver_user_id,
-                'requested_by_name': _requestors.c.name,
-                'volume_approved_by_username': _approvers.c.username,
-                'volume_approved_by_name': _approvers.c.name,
-                'lab_name': lab_head_table.c.lab_name_full,
-                'lab_head_id': lab_head_table.c.screensaver_user_id,
-                'lab_head_username': lab_head_table.c.username,
-                'lead_screener_name': _lead_screeners.c.name,
-                'lead_screener_id': _lead_screeners.c.screensaver_user_id,
-                'lead_screener_username': _lead_screeners.c.username,
-                'number_plates': (
-                    select([func.count(None)])
-                        .select_from(_cpp)
-                        .where(_cpp.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id)
-                    ),
-                'number_plates_completed': (
-                    select([func.count(None)])
-                        .select_from(_cpp)
-                        .where(_cpp.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id)
-                        .where(_cpp.c.plating_date!=None)
-                    ),
-                'number_plates_screened': (
-                    select([func.count(None)])
-                        .select_from(_cpp)
-                        .where(_cpp.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id)
-                        .where(_cpp.c.screening_date!=None)
-                    ),
-                'is_completed': (
-                    case(
-                        [(
-                            (select([func.count(None)])
-                             .select_from(_cpp)
-                             .where(_cpp.c.cherry_pick_request_id==
-                                 _cpr.c.cherry_pick_request_id).as_scalar()>0), 
-                            (select([func.count(None)])
-                             .select_from(_cpp)
-                             .where(_cpp.c.cherry_pick_request_id
-                                 ==_cpr.c.cherry_pick_request_id)
-                             .where(_cpp.c.plating_date==None)).as_scalar()==0),
-                        ],
-                        else_=text('false'))
-                    ),
-                'number_unfulfilled_lab_cherry_picks': (
-                    func.coalesce(
-                        cast(_lcp_subquery.c.lcp_count - 
-                                _lcp_subquery.c.lcp_fullfilled_count,
-                             sqlalchemy.sql.sqltypes.Integer),0)),                    
-                'total_number_lcps': func.coalesce(
-                    cast(_lcp_subquery.c.lcp_count,
-                        sqlalchemy.sql.sqltypes.Integer),0),
-                'last_plating_activity_date': (
-                    select([func.max(_cpp.c.plating_date)])
+        # specific setup 
+        base_query_tables = ['cherry_pick_request', 'screen', 'screen_result']
+        _cpr = self.bridge['cherry_pick_request']
+        _screen = self.bridge['screen']
+        _sr = self.bridge['screen_result']
+        _su = self.bridge['screensaver_user']
+        _lhsu = _su.alias('lhsu')
+        _scp = self.bridge['screener_cherry_pick']
+        _sirna_pool_duplexes = self.bridge['silencing_reagent_duplex_wells']
+        _well = self.bridge['well']
+        _library = self.bridge['library']
+        _lcp = self.bridge['lab_cherry_pick']
+        _cpp = self.bridge['cherry_pick_assay_plate']
+        _cpp2 = _cpp.alias('cpp2')
+                
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_cpr')
+        _requestors = _user_cte.alias('requestors')
+        _approvers = _user_cte.alias('approvers')
+        _lead_screeners = _user_cte.alias('lead_screeners')
+        lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
+        
+        _lcp_subquery = (
+            select([
+                _lcp.c.cherry_pick_request_id,
+                func.count().label('lcp_count'),
+                func.count(_lcp.c.copy_id).label('lcp_fullfilled_count')])
+            .select_from(_lcp)
+            .group_by(_lcp.c.cherry_pick_request_id)).cte('lcp_subquery')
+        
+        # Duplicate Screener Cherry Picks subquery
+        _cpr2 = _cpr.alias('cpr2')
+        _other_cprs = (
+            select([
+                _cpr.c.cherry_pick_request_id,
+                (select([func.array_agg(_cpr2.c.cherry_pick_request_id)])
+                    .select_from(_cpr2)
+                    .where(_cpr2.c.screen_id==_cpr.c.screen_id)
+                    .where(_cpr2.c.cherry_pick_request_id!=_cpr.c.cherry_pick_request_id)
+                ).label('other_cpr_ids')])
+            .select_from(_cpr)
+            ).cte('other_cprs')
+        _scp2 = _scp.alias('scp2')    
+        _other_scps = (
+            select([
+                _other_cprs.c.cherry_pick_request_id,
+                _other_cprs.c.other_cpr_ids,
+                _scp.c.screened_well_id])
+            .select_from(_other_cprs)
+            .where(_scp.c.cherry_pick_request_id==_other_cprs.c.cherry_pick_request_id)
+            # TODO: replace with "any_()" from sqlalchemy 1.1 when avail
+            .where(_scp2.c.cherry_pick_request_id
+                   == text('any(other_cprs.other_cpr_ids)'))
+            .where(_scp2.c.screened_well_id
+                   == _scp.c.screened_well_id)
+            .order_by(_other_cprs.c.cherry_pick_request_id)
+            .order_by(_scp.c.screened_well_id)
+            ).cte('other_scps')
+        
+        # Deprecated subqueries
+        _deprecated_picks = (union(
+            select([
+                _scp.c.cherry_pick_request_id,
+                _scp.c.screened_well_id.label('well_id'),
+                _well.c.deprecation_reason
+                ])
+            .select_from(_scp.join(_well, _scp.c.screened_well_id==_well.c.well_id))
+            .where(_well.c.is_deprecated==True)
+            .where(_scp.c.selected),
+            select([
+                _lcp.c.cherry_pick_request_id,
+                _lcp.c.source_well_id.label('well_id'),
+                _well.c.deprecation_reason
+                ])
+            .select_from(_lcp.join(_well, _lcp.c.source_well_id==_well.c.well_id))
+            .where(_well.c.is_deprecated==True)
+            ).order_by(text('well_id'))).cte('deprecated_picks')
+        _deprecations = (
+            select([
+                _deprecated_picks.c.cherry_pick_request_id,
+                _deprecated_picks.c.deprecation_reason,
+                func.array_to_string(func.array_agg(
+                    _deprecated_picks.c.well_id),', ').label('well_ids')
+                ])
+            .select_from(_deprecated_picks)
+            .group_by(
+                _deprecated_picks.c.cherry_pick_request_id,
+                _deprecated_picks.c.deprecation_reason)
+            .order_by(
+                _deprecated_picks.c.cherry_pick_request_id,
+                _deprecated_picks.c.deprecation_reason)
+            ).cte('deprecations')
+        
+        # restricted_library subqueries
+        _libraries = (union(
+            select([
+                _scp.c.cherry_pick_request_id,
+                _library.c.library_id])
+            .select_from(_scp
+                .join(_well, _scp.c.screened_well_id==_well.c.well_id)
+                .join(_library,_well.c.library_id==_library.c.library_id))
+            .where(_scp.c.selected)
+            .group_by(_scp.c.cherry_pick_request_id, _library.c.library_id),
+            select([
+                _lcp.c.cherry_pick_request_id,
+                _library.c.library_id])
+            .select_from(_lcp
+                .join(_well, _lcp.c.source_well_id==_well.c.well_id)
+                .join(_library,_well.c.library_id==_library.c.library_id))
+            .group_by(_lcp.c.cherry_pick_request_id, _library.c.library_id),
+        )).cte('libraries')
+        _restricted_libraries = (
+            select([
+                _libraries.c.cherry_pick_request_id,
+                _library.c.short_name,
+                _library.c.screening_status
+                ])
+            .select_from(_libraries.join(_library,
+                _libraries.c.library_id==_library.c.library_id))
+            .where(_library.c.screening_status!=SCREENING_STATUS.ALLOWED)
+            .group_by(_libraries.c.cherry_pick_request_id,
+                      _library.c.screening_status,
+                      _library.c.short_name)
+            .order_by(_library.c.screening_status,_library.c.short_name)
+            ).cte('restricted_libraries')
+
+        # Wells that have not been screened?
+        _aw = self.bridge['assay_well']
+        _scps_not_loaded = (
+            select([
+                _cpr.c.cherry_pick_request_id,
+                _scp.c.screened_well_id
+            ])
+            .select_from(_cpr.join(
+                _scp, _cpr.c.cherry_pick_request_id==_scp.c.cherry_pick_request_id)
+                .join(_sr, _sr.c.screen_id==_cpr.c.screen_id, isouter=True)
+                .join(_aw, and_(
+                    _aw.c.screen_result_id==_sr.c.screen_result_id,
+                    _aw.c.well_id ==_scp.c.screened_well_id), isouter=True)
+            )
+            .where(_aw.c.well_id==None))
+        if cherry_pick_request_id:
+            # Note this will be slow for general queries
+            _scps_not_loaded = _scps_not_loaded.where(
+                _cpr.c.cherry_pick_request_id==cherry_pick_request_id )
+        _scps_not_loaded= _scps_not_loaded.cte('_scps_not_loaded')
+    
+        _la = self.bridge['lab_activity']
+        _ls = self.bridge['library_screening']
+        _ap = self.bridge['assay_plate']
+        _scps_not_screened = (
+            select([
+                _cpr.c.cherry_pick_request_id,
+                _scp.c.screened_well_id
+            ])
+            .select_from(_cpr.join(
+                _scp, _cpr.c.cherry_pick_request_id==_scp.c.cherry_pick_request_id)
+                .join(_well, _scp.c.screened_well_id==_well.c.well_id)
+                .join(_la, _cpr.c.screen_id==_la.c.screen_id, isouter=True)
+                .join(_ls, _ls.c.activity_id==_la.c.activity_id, isouter=True)
+                .join(_ap, and_(
+                    _ap.c.library_screening_id==_ls.c.activity_id,
+                    _ap.c.plate_number==_well.c.plate_number), isouter=True)
+            )
+            .where(_ap.c.plate_number==None)
+            .where(_scp.c.selected)
+            .group_by(_cpr.c.cherry_pick_request_id, _scp.c.screened_well_id)
+            .order_by(_cpr.c.cherry_pick_request_id, _scp.c.screened_well_id))
+        if cherry_pick_request_id:
+            # Note this will be slow for general queries
+            _scps_not_screened = _scps_not_screened.where(
+                _cpr.c.cherry_pick_request_id==cherry_pick_request_id )
+        _scps_not_screened= _scps_not_screened.cte('_scps_not_screened')
+            
+        custom_columns = {
+            'requested_by_id': _requestors.c.screensaver_user_id,
+            'requested_by_name': _requestors.c.name,
+            'volume_approved_by_username': _approvers.c.username,
+            'volume_approved_by_name': _approvers.c.name,
+            'lab_name': lab_head_table.c.lab_name_full,
+            'lab_head_id': lab_head_table.c.screensaver_user_id,
+            'lab_head_username': lab_head_table.c.username,
+            'lead_screener_name': _lead_screeners.c.name,
+            'lead_screener_id': _lead_screeners.c.screensaver_user_id,
+            'lead_screener_username': _lead_screeners.c.username,
+            'number_plates': (
+                select([func.count(None)])
                     .select_from(_cpp)
                     .where(_cpp.c.cherry_pick_request_id
-                        ==_cpr.c.cherry_pick_request_id)),
-                'last_screening_activity_date': (
-                    select([func.max(_cpp.c.screening_date)])
+                        ==_cpr.c.cherry_pick_request_id)
+                ),
+            'number_plates_completed': (
+                select([func.count(None)])
                     .select_from(_cpp)
                     .where(_cpp.c.cherry_pick_request_id
-                        ==_cpr.c.cherry_pick_request_id)),
-                
-                # TODO: new: when the lcp's were reserved and mapped
-                # 'date_volume_reserved': literal_column("'2016-12-07'"),
-                
-                'screener_cherry_picks': (
-                    select([func.array_to_string(
-                        func.array_agg(literal_column('screened_well_id')), 
-                        LIST_DELIMITER_SQL_ARRAY) ])
+                        ==_cpr.c.cherry_pick_request_id)
+                    .where(_cpp.c.plating_date!=None)
+                ),
+            'number_plates_screened': (
+                select([func.count(None)])
+                    .select_from(_cpp)
+                    .where(_cpp.c.cherry_pick_request_id
+                        ==_cpr.c.cherry_pick_request_id)
+                    .where(_cpp.c.screening_date!=None)
+                ),
+            'is_completed': (
+                case(
+                    [(
+                        (select([func.count(None)])
+                         .select_from(_cpp)
+                         .where(_cpp.c.cherry_pick_request_id==
+                             _cpr.c.cherry_pick_request_id).as_scalar()>0), 
+                        (select([func.count(None)])
+                         .select_from(_cpp)
+                         .where(_cpp.c.cherry_pick_request_id
+                             ==_cpr.c.cherry_pick_request_id)
+                         .where(_cpp.c.plating_date==None)).as_scalar()==0),
+                    ],
+                    else_=text('false'))
+                ),
+            'number_unfulfilled_lab_cherry_picks': (
+                func.coalesce(
+                    cast(_lcp_subquery.c.lcp_count - 
+                            _lcp_subquery.c.lcp_fullfilled_count,
+                         sqlalchemy.sql.sqltypes.Integer),0)),                    
+            'total_number_lcps': func.coalesce(
+                cast(_lcp_subquery.c.lcp_count,
+                    sqlalchemy.sql.sqltypes.Integer),0),
+            'last_plating_activity_date': (
+                select([func.max(_cpp.c.plating_date)])
+                .select_from(_cpp)
+                .where(_cpp.c.cherry_pick_request_id
+                    ==_cpr.c.cherry_pick_request_id)),
+            'last_screening_activity_date': (
+                select([func.max(_cpp.c.screening_date)])
+                .select_from(_cpp)
+                .where(_cpp.c.cherry_pick_request_id
+                    ==_cpr.c.cherry_pick_request_id)),
+            
+            # TODO: new: when the lcp's were reserved and mapped
+            # 'date_volume_reserved': literal_column("'2016-12-07'"),
+            
+            'screener_cherry_picks': (
+                select([func.array_to_string(
+                    func.array_agg(literal_column('screened_well_id')), 
+                    LIST_DELIMITER_SQL_ARRAY) ])
+                .select_from(
+                    select([_scp.c.screened_well_id])
+                        .select_from(_scp)
+                        # NOTE: when doing an inner select, must use literal_column,
+                        # otherwise SQalchemy thinks it is another table to add
+                        .where(_scp.c.cherry_pick_request_id
+                            ==literal_column(
+                                'cherry_pick_request.cherry_pick_request_id'))
+                        .where(_scp.c.selected)
+                        .order_by('screened_well_id').alias('inner_scps'))
+                    ),
+            'screener_cherry_pick_count': (
+                select([func.count(None)])
+                    .select_from(_scp)
+                    .where(_scp.c.cherry_pick_request_id
+                        ==_cpr.c.cherry_pick_request_id)
+                    .where(_scp.c.selected)),
+            'screener_picks_not_screened': (
+                select([func.array_to_string(
+                    func.array_agg(literal_column('screened_well_id')), 
+                    LIST_DELIMITER_SQL_ARRAY) ])
+                .select_from(
+                    select([_scps_not_screened.c.screened_well_id])
+                        .select_from(_scps_not_screened)
+                        # NOTE: when doing an inner select, must use literal_column,
+                        # otherwise SQalchemy thinks it is another table to add
+                        .where(_scps_not_screened.c.cherry_pick_request_id
+                            ==literal_column(
+                                'cherry_pick_request.cherry_pick_request_id'))
+                        .order_by('screened_well_id').alias('inner_nscp'))
+                    ),
+            'has_pool_screener_cherry_picks': (
+                select([func.count(None)>0])
                     .select_from(
-                        select([_scp.c.screened_well_id])
-                            .select_from(_scp)
-                            # NOTE: when doing an inner select, must use literal_column,
-                            # otherwise SQalchemy thinks it is another table to add
-                            .where(_scp.c.cherry_pick_request_id
-                                ==literal_column(
-                                    'cherry_pick_request.cherry_pick_request_id'))
-                            .where(_scp.c.selected)
-                            .order_by('screened_well_id').alias('inner_cpwells'))
-                        ),
-                'screener_cherry_pick_count': (
-                    select([func.count(None)])
-                        .select_from(_scp)
-                        .where(_scp.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id)
-                        .where(_scp.c.selected)),
-                'has_pool_screener_cherry_picks': (
-                    select([func.count(None)>0])
-                        .select_from(
-                            _scp.join(_well, 
-                                _scp.c.screened_well_id==_well.c.well_id)
-                            .join(_library, 
-                                _well.c.library_id==_library.c.library_id))
-                        .where(_library.c.is_pool==True)
-                        .where(_scp.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id).limit(1)),
-                'has_alternate_screener_cherry_pick_selections': (
-                    select([func.count(None)>0])
-                        .select_from(_scp)
-                        .where(_scp.c.cherry_pick_request_id
-                            ==_cpr.c.cherry_pick_request_id)
-                        .where(_scp.c.searched_well_id!=_scp.c.screened_well_id)
-                    )
-            }
-            
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
+                        _scp.join(_well, 
+                            _scp.c.screened_well_id==_well.c.well_id)
+                        .join(_library, 
+                            _well.c.library_id==_library.c.library_id))
+                    .where(_library.c.is_pool==True)
+                    .where(_scp.c.cherry_pick_request_id
+                        ==_cpr.c.cherry_pick_request_id).limit(1)),
+            'has_alternate_screener_cherry_pick_selections': (
+                select([func.count(None)>0])
+                    .select_from(_scp)
+                    .where(_scp.c.cherry_pick_request_id
+                        ==_cpr.c.cherry_pick_request_id)
+                    .where(_scp.c.searched_well_id!=_scp.c.screened_well_id)
+                ),
+            'duplicate_screener_cherry_picks': (
+                select([func.array_to_string(func.array_agg(
+                    _other_scps.c.screened_well_id),LIST_DELIMITER_SQL_ARRAY)])
+                .where(_other_scps.c.cherry_pick_request_id
+                       == _cpr.c.cherry_pick_request_id)
+                ),
+            'deprecated_picks': (
+                select([func.array_to_string(func.array_agg(_concat(
+                    _deprecations.c.deprecation_reason,': [',_deprecations.c.well_ids, ']')
+                    ),LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(_deprecations)
+                .where(_deprecations.c.cherry_pick_request_id
+                       == _cpr.c.cherry_pick_request_id)
+                ),
+            'restricted_libraries': (
+                select([func.array_to_string(func.array_agg(_concat(
+                    _restricted_libraries.c.screening_status,':',_restricted_libraries.c.short_name)
+                    ),LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(_restricted_libraries)
+                .where(_restricted_libraries.c.cherry_pick_request_id
+                       == _cpr.c.cherry_pick_request_id)
+                ),
+            'cherry_pick_allowance': (
+                cast(case([
+                    (_screen.c.screen_type=='small_molecule',
+                        settings.APP_PUBLIC_DATA.small_molecule_cherry_pick_ratio_allowed
+                            *_screen.c.screened_experimental_well_count
+                     )],
+                    else_=(
+                        settings.APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
+                            *_screen.c.screened_experimental_well_count
+                        )
+                    ), sqlalchemy.types.FLOAT)
+            ),
+            'screener_cherry_pick_count_cumulative': (
+                select([func.count(None)])
+                .select_from(_scp2.join(_cpr2,_scp2.c.cherry_pick_request_id
+                    ==_cpr2.c.cherry_pick_request_id))
+                .where(_cpr2.c.screen_id
+                       == _cpr.c.screen_id)
+                .where(_scp2.c.selected)
+                ),
+            # SS1 method
+            # 'cherry_pick_allowance': (
+            #     case([
+            #         (_screen.c.screen_type=='small_molecule',
+            #         select([
+            #             (settings.APP_PUBLIC_DATA.small_molecule_cherry_pick_ratio_allowed
+            #                 *func.count(func.distinct(_smr_unique.c.smiles)))                    
+            #             ])
+            #         .select_from(_smr_unique)
+            #         .where(_smr_unique.c.cherry_pick_request_id
+            #                ==_cpr.c.cherry_pick_request_id).as_scalar()
+            #          )],
+            #         else_=settings.APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
+            #     )),
+        }
+        
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
 
-            j = join(_cpr, _screen, _cpr.c.screen_id == _screen.c.screen_id)
-            j = j.join(
-                _requestors, 
-                _cpr.c.requested_by_id==_requestors.c.screensaver_user_id,
-                isouter=True)
-            j = j.join(
-                _approvers, 
-                _cpr.c.volume_approved_by_id==_approvers.c.screensaver_user_id,
-                isouter=True)
-            j = j.join(
-                lab_head_table, 
-                lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id,
-                isouter=True)
-            j = j.join(
-                _lead_screeners,
-                _lead_screeners.c.screensaver_user_id==_screen.c.lead_screener_id,
-                isouter=True)
+        j = join(_cpr, _screen, _cpr.c.screen_id == _screen.c.screen_id)
+        j = j.join(_sr, _cpr.c.screen_id == _sr.c.screen_id, isouter=True)
+        j = j.join(
+            _requestors, 
+            _cpr.c.requested_by_id==_requestors.c.screensaver_user_id,
+            isouter=True)
+        j = j.join(
+            _approvers, 
+            _cpr.c.volume_approved_by_id==_approvers.c.screensaver_user_id,
+            isouter=True)
+        j = j.join(
+            lab_head_table, 
+            lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id,
+            isouter=True)
+        j = j.join(
+            _lead_screeners,
+            _lead_screeners.c.screensaver_user_id==_screen.c.lead_screener_id,
+            isouter=True)
 
-            if ('number_unfulfilled_lab_cherry_picks' in field_hash
-                 or 'total_number_lcps' in field_hash):
-                j = j.join(
-                    _lcp_subquery, _cpr.c.cherry_pick_request_id
-                        ==_lcp_subquery.c.cherry_pick_request_id, isouter=True)
-            
-            stmt = select(columns.values()).select_from(j)
-            # general setup
+        if ('number_unfulfilled_lab_cherry_picks' in field_hash
+             or 'total_number_lcps' in field_hash):
+            j = j.join(
+                _lcp_subquery, _cpr.c.cherry_pick_request_id
+                    ==_lcp_subquery.c.cherry_pick_request_id, isouter=True)
+        
+        stmt = select(columns.values()).select_from(j)
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+        
+        if not order_clauses:
+            stmt = stmt.order_by(
+                nullslast(desc(column('cherry_pick_request_id'))))
+        
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
              
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
-            
-            if not order_clauses:
-                stmt = stmt.order_by(
-                    nullslast(desc(column('cherry_pick_request_id'))))
-            
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
     
     @write_authorization
     @un_cache
@@ -9406,6 +9817,7 @@ class ScreenerCherryPickResource(DbApiResource):
         schema = deepcopy(
             super(ScreenerCherryPickResource, self).build_schema(user=user, **kwargs))
         original_fields = schema['fields']
+        logger.info('original_fields: %r', original_fields.keys())
         if library_classification:
             # Add in reagent fields
             sub_data = self.get_reagent_resource(library_classification)\
@@ -9421,14 +9833,13 @@ class ScreenerCherryPickResource(DbApiResource):
         
         # Turn off the visibility of all inherited fields
         for key,field in schema['fields'].items():
-            if 'l' in field['visibility']:
-                field['visibility'].remove('l')
-            if 'd' in field['visibility']:
-                field['visibility'].remove('d')
+            field['visibility'] = [VOCAB.field.visibility.NONE]
         
         # Overlay the original scp fields on the top
         schema['fields'].update(original_fields)
-        logger.info('schema  fields: %r', schema['fields'].keys())
+        logger.debug('schema  fields: %r', schema['fields'].keys())
+        logger.debug('schema  fields: %r', 
+            [(key, field['visibility']) for key,field in schema['fields'].items()])
         return schema
 
     def build_sqlalchemy_columns(self, fields, base_query_tables=None, 
@@ -9482,6 +9893,7 @@ class ScreenerCherryPickResource(DbApiResource):
             
         # Note: build schema for each request to use the subtype
         schema = self.build_schema(library_classification=cpr.screen.screen_type)
+        logger.info('schema  fields: %r', schema['fields'].keys())
         
         # general setup
          
@@ -9504,6 +9916,7 @@ class ScreenerCherryPickResource(DbApiResource):
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
+        logger.info('visible fields: %r', field_hash.keys())
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
             
@@ -9533,7 +9946,8 @@ class ScreenerCherryPickResource(DbApiResource):
         _library = self.bridge['library']
            
         if show_other_reagents is True or show_alternates is True:
-        
+            logger.info('show_other_reagents: %r, show_alternates: %r', 
+                        show_other_reagents, show_alternates)
             _original_scps = (
                 select([
                     _scp.c.screener_cherry_pick_id,
@@ -10148,10 +10562,7 @@ class LabCherryPickResource(DbApiResource):
             
             # Turn off the visibility of all inherited fields
             for key,field in schema['fields'].items():
-                if 'l' in field['visibility']:
-                    field['visibility'].remove('l')
-                if 'd' in field['visibility']:
-                    field['visibility'].remove('d')
+                field['visibility'] = [VOCAB.field.visibility.NONE]
             
             # Overlay the original lcp fields on the top
             schema['fields'].update(original_fields)
@@ -14674,6 +15085,11 @@ class LibraryScreeningResource(ActivityResource):
             library_screening = LibraryScreening()
             library_screening.created_by = adminuser
         
+        # TODO: volume sanity check and warning:
+        # - if volume_transferred_per_well_from_library_plates is set:
+        #   warn if not equal to: 
+        #   volume_transferred_per_well_to_assay_plates * number_of_replicates
+        
         model_field_names = [
             x.name for x in library_screening._meta.get_fields()]
         for key, val in initializer_dict.items():
@@ -14696,11 +15112,13 @@ class LibraryScreeningResource(ActivityResource):
         
         plate_meta = {}
         if library_plates_screened is not None:
-            logger.debug('save library screening, set assay plates: %r', library_screening)
+            logger.debug('save library screening, set assay plates: %r', 
+                         library_screening)
             plate_meta = self._set_assay_plates(
                 request, schema, 
                 library_screening, library_plates_screened, ls_log) 
-            logger.info('save library screening, assay plates set: %r', library_screening)
+            logger.info('save library screening, assay plates set: %r', 
+                        library_screening)
         
             ls_log.json_field = json.dumps(plate_meta)
             logger.info('parent_log: %r', ls_log)
@@ -14729,6 +15147,7 @@ class LibraryScreeningResource(ActivityResource):
         
         # TODO: these statistics must be updated when the library definitions are
         # reloaded, see LibrariesDAO in SS1 and LibraryContentsLoader
+        # NOTE: Logic here should mirror WellResource.update_screening_stats()
         
         with get_engine().connect() as conn:
             # NOTE: mixing Django connection with SQA connection
@@ -15160,6 +15579,7 @@ class LibraryScreeningResource(ActivityResource):
         if plates_insufficient_volume:
             # Modified: 20170407 - per JAS/KR,
             # raise an Error instead for insufficient vol
+            # Modified 20170605 - overdraw volume but warn
             plates_insufficient_volume = sorted(plates_insufficient_volume)
             # msg = '%d plates' % len(plates_insufficient_volume)
             # if library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
@@ -17064,12 +17484,11 @@ class ScreenResource(DbApiResource):
         # FIXME: see #196 20180403
         # https://github.com/hmsiccbl/screensaver/issues/196
         # Library Plates Screened: 
-        # (1) total number of times library plates were screened (not counting replicates), 
+        # (1) Total number of times library plates were screened (not counting replicates), 
         # TODO: this requires a new query: sum(count(ap.plate_number)) - probably
         # requires a double nesting
         # (2) unique library plates screened
-        # FIXME: see #196: should be distinct lps count?
-        lps = (
+        unique_lps = (
             select([
                 _ap.c.screen_id,
                 func.count(distinct(_ap.c.plate_number)).label('count')
@@ -17078,20 +17497,20 @@ class ScreenResource(DbApiResource):
             .where(_ap.c.library_screening_id != None)
             .group_by(_ap.c.screen_id))
         if facility_id:
-            lps = lps.where(_screen.c.facility_id == facility_id )
-        lps = lps.cte('lps')    
-        lps2 = (
+            unique_lps = unique_lps.where(_screen.c.facility_id == facility_id )
+        unique_lps = unique_lps.cte('unique_lps')    
+        assay_plate_screening_count = (
             select([
                 _ap.c.screen_id,
-                func.count(_ap.c.plate_number).label('count')
+                func.count(_ap.c.assay_plate_id).label('count')
             ])
             .select_from(_ap.join(_screen,_ap.c.screen_id==_screen.c.screen_id))
             .where(_ap.c.library_screening_id != None)
             .where(_ap.c.replicate_ordinal == 0)
             .group_by(_ap.c.screen_id))
         if facility_id:
-            lps2 = lps2.where(_screen.c.facility_id == facility_id )
-        lps2 = lps2.cte('lps2')    
+            assay_plate_screening_count = assay_plate_screening_count.where(_screen.c.facility_id == facility_id )
+        assay_plate_screening_count = assay_plate_screening_count.cte('assay_plate_screening_count')    
         # Altered - 20160408 
         # per discussion with JS, no need to try to link presumed assay_plates
         # from the screen_result to (screening visit) assay_plates;
@@ -17308,13 +17727,14 @@ class ScreenResource(DbApiResource):
                     "        and (assay_readout_type = '') is false  ) as f1 ) " 
                     % LIST_DELIMITER_SQL_ARRAY),
                 
-                # FIXME: see #196: should be distinct lps count?
-                'library_plates_screened': (
-                    select([lps.c.count])
-                    .select_from(lps).where(lps.c.screen_id == _screen.c.screen_id)),
-                'library_plates_total_screened': (
-                    select([lps2.c.count])
-                    .select_from(lps2).where(lps2.c.screen_id == _screen.c.screen_id)),
+                'unique_library_plates_screened': (
+                    select([unique_lps.c.count])
+                    .select_from(unique_lps)
+                    .where(unique_lps.c.screen_id == _screen.c.screen_id)),
+                'library_plate_screening_count': (
+                    select([assay_plate_screening_count.c.count])
+                    .select_from(assay_plate_screening_count)
+                    .where(assay_plate_screening_count.c.screen_id == _screen.c.screen_id)),
                 'library_screenings': (
                     select([func.count(_library_screening.c.activity_id)])
                     .select_from(
@@ -21794,6 +22214,7 @@ class WellResource(DbApiResource):
         well_query.update(library_well_type='undefined')
         well_query.update(facility_id=None)
         well_query.update(is_deprecated=False)
+        well_query.update(deprecation_reason=False)
         well_query.update(molar_concentration=None)
         well_query.update(mg_ml_concentration=None)
         
@@ -21866,14 +22287,8 @@ class WellResource(DbApiResource):
         library_log.diff_keys = ['version_number']
         library_log.diffs = { 'version_number': [prev_version, library.version_number]}
         library_log.ref_resource_name = 'library'
-        # library_log.uri = self.get_library_resource().get_resource_uri(
-        #     model_to_dict(library))
         library_log.key = library.short_name
         library_log.uri = '/'.join([library_log.ref_resource_name, library_log.key])
-        # library_log.key = (
-        #     '/'.join(
-        #         self.get_library_resource()
-        #             .get_id(model_to_dict(library)).values()))
         kwargs.update({ 'parent_log': library_log })
  
         logger.info('Cache library wells for patch...') 
@@ -21966,7 +22381,7 @@ class WellResource(DbApiResource):
  
         library_log.save()
                  
-        logger.info('get new reagent state, for logging...')
+        logger.debug('get new reagent state, for logging: %r',kwargs_for_log)
         new_data = self.get_reagent_resource(library.classification)\
             ._get_list_response_internal(**kwargs_for_log)
          
@@ -21981,9 +22396,10 @@ class WellResource(DbApiResource):
         logger.debug('new data: %s', new_data_patches_only)
         logger.info('patch list done, original_data: %d, new data: %d' 
             % (len(original_data_patches_only), len(new_data_patches_only)))
+        
         logs = self.log_patches(
             request, original_data_patches_only, new_data_patches_only,
-            excludes=['substance_id'] #, 'is_restricted_structure']
+            excludes=['substance_id'], #, 'is_restricted_structure']
             **kwargs)
 
         patch_count = len(deserialized)
@@ -22685,7 +23101,16 @@ class LibraryResource(DbApiResource):
                     "  and well.molar_concentration is not null limit 1) then 'molar' end "
                     "], '%s' ) )" % LIST_DELIMITER_SQL_ARRAY
                     ),
-                
+                'molar_concentrations': (
+                    select([func.array_agg(func.distinct(_well.c.molar_concentration))])
+                    .select_from(_well)
+                    .where(_well.c.library_id==_l.c.library_id)
+                    ),
+                'mg_ml_concentrations': (
+                    select([func.array_agg(func.distinct(_well.c.mg_ml_concentration))])
+                    .select_from(_well)
+                    .where(_well.c.library_id==_l.c.library_id)
+                    ),
                 }
                      
             base_query_tables = ['library']

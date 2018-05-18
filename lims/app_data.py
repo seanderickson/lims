@@ -14,3 +14,5 @@ class APP_PUBLIC_DATA:
     contact_informatics_name='Informatics Contact'
     contact_informatics_url='mailto:informatics_contact@email.address.here'
 
+    small_molecule_cherry_pick_ratio_allowed = 0.003
+    rnai_cherry_pick_ratio_allowed = 0.0165

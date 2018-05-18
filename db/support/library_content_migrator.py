@@ -14,6 +14,7 @@ from db.api import SmallMoleculeReagentResource, WellResource, \
     SilencingReagentResource, NaturalProductReagentResource, LibraryResource
 from reports.api import compare_dicts, is_empty_diff
 from reports.models import ApiLog
+from db.migrations import create_log_time
 
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,6 @@ where r.library_contents_version_id=%s order by well_id;
                         activity.performed_by.user, 'id', log.username)
                 if not log.user_id:
                     log.user_id = 1
-                log.date_time = activity.date_created
                 log.ref_resource_name = self.libraryResource._meta.resource_name
                 log.api_action = 'PATCH'
                 log.json_field = {
@@ -162,6 +162,7 @@ where r.library_contents_version_id=%s order by well_id;
                 }
                 log.key = library.short_name
                 log.uri = '/'.join(['library',log.key])
+                log.date_time = create_log_time(log.key, activity.date_of_activity)
                 log.diffs = {
                     'version_number': [
                         prev_version.version_number if prev_version else 0, 

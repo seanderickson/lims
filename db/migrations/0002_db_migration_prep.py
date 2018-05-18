@@ -653,6 +653,7 @@ class Migration(migrations.Migration):
             name='email',
             field=models.TextField(null=True),
         ),
+        # TODO: remove this field
         migrations.AlterField(
             model_name='screenresult',
             name='experimental_well_count',

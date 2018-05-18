@@ -75,6 +75,28 @@ class DATA_COLUMN(schema_obj):
 
     USER_ACCESS_LEVEL_GRANTED = 'user_access_level_granted'
 
+class ACTIVITY(schema_obj):
+    ACTIVITY_ID = 'activity_id'
+    DATE_OF_ACTIVITY = 'date_of_activity'
+    ACTVITY_CLASS = 'activity_class'
+    TYPE = 'type'
+    SERVICED_USER_ID = 'serviced_user_id'
+    SERVICED_USERNAME = 'serviced_username'
+    PERFORMED_BY_USER_ID = 'performed_by_user_id'
+    PERFORMED_BY_USERNAME = 'performed_by_username'
+    COMMENTS = 'comments'
+    
+class LIBRARY_SCREENING(ACTIVITY):
+    
+    LIBRARY_PLATES_SCREENED = 'library_plates_screened'
+    
+    # Format for entries in the LIBRARY_PLATES_SCREENED array
+    PLATE_RANGE_FORMAT = \
+            '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
+    PLATE_RANGE_SINGLE_PLATE_FORMAT = \
+            '{library_short_name}:{copy_name}:{plate_number}'
+    
+
 class SCREEN_RESULT(schema_obj):
     resource_name = 'screenresult'
     
@@ -175,7 +197,17 @@ class VOCAB(reports.schema.VOCAB):
             numeric_types = (INTEGER, DECIMAL, NUMERIC)
             positive_types = (
                 BOOLEAN_POSITIVE, CONFIRMED_POSITIVE, PARTITIONED_POSITIVE)
-    
+    class plate(schema_obj):
+        class status(schema_obj):
+            AVAILABLE = 'available'
+            RETIRED = 'retired'
+    class copy(schema_obj):
+        class usage_type(schema_obj):
+            LIBRARY_SCREENING_PLATES = 'library_screening_plates'
+            CHERRY_PICK_SOURCE_PLATES = 'cherry_pick_source_plates'
+            STOCK_PLATES = 'stock_plates'
+            STOCK_PLATES_96 = '96_stock_plates'
+            
     class resultvalue(schema_obj):
         class partitioned_positive(schema_obj):
             NP = 0
@@ -198,9 +230,21 @@ class VOCAB(reports.schema.VOCAB):
             ASSAY_POSITIVE_CONTROL = 'assay_positive_control'
             LIBRARY_CONTROL = 'library_control'
             OTHER = 'other'
-            
     
+    class library(schema_obj):
+        class screening_status(schema_obj):
+            ALLOWED = 'allowed'
+            NOT_RECOMMENDED = 'not_recommended'
+            NOT_ALLOWED = 'not_allowed'
+            RETIRED = 'retired'
+            REQUIRES_PERMISSION = 'requires_permission'
+            
     class screen(schema_obj):
+        
+        class screen_type(schema_obj):
+            SMALL_MOLECULE = 'small_molecule'
+            RNAI = 'rnai'
+            
         # data_sharing_level = namedtuple('data_sharing_level', 
         #     ['SHARED','MUTUAL', 'MUTUAL_POSITIVES','PRIVATE'])\
         #     (0,1,2,3)

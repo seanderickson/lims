@@ -44,13 +44,17 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_LCP_MULTIPLE_SELECTIONS_SUBMITTED, \
     API_MSG_LCPS_MUST_BE_DELETED, API_MSG_CPR_PLATES_PLATED, \
     API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED, \
+    API_MSG_CPR_CONCENTRATIONS, \
     API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, API_MSG_SUCCESS, \
     API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
-    VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
-    VOCAB_LCP_STATUS_PLATED, VOCAB_USER_CLASSIFICATION_PI, WellResource
+    VOCAB_USER_CLASSIFICATION_PI, WellResource
+
+# VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
+#     VOCAB_LCP_STATUS_PLATED, 
+
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
@@ -80,16 +84,18 @@ from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
 import copy
 
 import db.schema as SCHEMA
+from db.schema import VOCAB
 
 
 FIELD = SCHEMA.FIELD
 
-ACCESS_LEVEL = SCHEMA.VOCAB.screen.user_access_level_granted
-DSL = SCHEMA.VOCAB.screen.data_sharing_level
+ACCESS_LEVEL = VOCAB.screen.user_access_level_granted
+DSL = VOCAB.screen.data_sharing_level
 DC = SCHEMA.DATA_COLUMN
 SCREEN = SCHEMA.SCREEN
-SCREEN_AVAILABILITY = SCHEMA.VOCAB.screen.screen_result_availability
+SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
 SU = SCHEMA.SCREENSAVER_USER
+LCP_STATUS = VOCAB.lab_cherry_pick.status
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +243,88 @@ class DBResourceTestCase(IResourceTestCase):
         for k,v in kwargs.items():
             _data[k] = v
         return _data
+    
+    def create_copy(self, library_short_name, copy_name, 
+            usage_type="library_screening_plates", **kwargs ):
+        data = {
+            'library_short_name': library_short_name,
+            'copy_name': copy_name,
+            'usage_type': usage_type,
+        }
+        for k,v in kwargs.items():
+            data[k] = v
+        
+        resource_uri = BASE_URI_DB + '/librarycopy'
+        resource_test_uri = '/'.join([
+            resource_uri,data['library_short_name'],
+            data['copy_name']])
+        copy_data = self._create_resource(
+            data, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume','initial_plate_status'])
+        logger.info('created: %r', copy_data)
+        return copy_data
 
+
+    def create_plate_range(self, library_short_name, copy_name, start_plate, end_plate):
+        
+        return SCHEMA.LIBRARY_SCREENING.PLATE_RANGE_FORMAT.format(
+            library_short_name=library_short_name, copy_name=copy_name,
+            start_plate=start_plate, end_plate=end_plate )
+        
+    def create_library_screening(self, 
+             screen_facility_id, library_plates_screened, performed_by_user_id, 
+             volume_transferred_per_well_from_library_plates,
+             uri_params=None, resource_uri=None, **kwargs):
+
+        valid_test_volume =  '{0:.9f}'.format(
+            Decimal(volume_transferred_per_well_from_library_plates)) # 200nL
+        
+        _data = {
+            'screen_facility_id': screen_facility_id,
+            'date_of_activity': _now().strftime("%Y-%m-%d"),
+            'is_for_external_library_plates': False,
+            'library_plates_screened': library_plates_screened,
+            'number_of_replicates': 1,
+            'performed_by_user_id': performed_by_user_id,
+            'volume_transferred_per_well_from_library_plates': 
+                valid_test_volume,
+            # 'volume_transferred_per_well_to_assay_plates': 
+            #     volume_transferred_per_well_to_assay_plates, 
+        }
+        for k,v in kwargs.items():
+            _data[k] = v
+        
+        if resource_uri is None:
+            resource_uri = '/'.join([
+                BASE_URI_DB, 'libraryscreening'])
+        resource_test_uri = resource_uri
+        resp = self.api_client.post(
+            resource_uri,format='json', 
+            data=_data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 1.a Inspect meta "Result" section
+        resp = self.deserialize(resp)
+        logger.info('resp: %r', resp)
+        
+        self.assertTrue(API_RESULT_META in resp, '%r' % resp)
+        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        meta = resp[API_RESULT_META][API_MSG_RESULT]
+        
+        self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
+        library_screening_output = resp[API_RESULT_DATA][0]
+        
+        # 1.b Inspect the returned library screening
+        for k,v in _data.items():
+            v2 = library_screening_output[k]
+            self.assertTrue(equivocal(v,v2),
+                'test key: %r:%r != %r' % (k, v, v2))
+        
+        return(library_screening_output, meta)
+        
     def create_screen(self, data=None, uri_params=None, resource_uri=None):
         ''' Create a test Screen through the API'''
         
@@ -626,7 +713,11 @@ class DBResourceTestCase(IResourceTestCase):
         resource_uri = '/'.join([
             BASE_URI_DB,'library', 
             self.pool_library1['short_name'],'reagent'])
-        self.pool_wells = self.get_list_resource(resource_uri)
+        self.pool_wells = self.get_list_resource(
+            resource_uri,
+            data_for_get={
+                'includes': 'duplex_wells'
+        })
         for pool_well in self.pool_wells:
             self.assertTrue('duplex_wells' in pool_well)
             for duplex_well in pool_well['duplex_wells']:
@@ -1251,7 +1342,8 @@ class LibraryResource(DBResourceTestCase):
         ''' 
         Validate that the input well/reagents were created in the output_data
         '''
-        substance_ids = set()
+        # NOTE: 20180518 - substance ID removed from view
+        # substance_ids = set()
         for inputobj in input_data:
             # 1. Validate well/reagents exist
             search = { 'well_id': 
@@ -1270,11 +1362,11 @@ class LibraryResource(DBResourceTestCase):
             self.assertTrue(
                 result, (msgs, 'input', expected_data, 'output', outputobj))
 
-            substance_id = outputobj['substance_id']
-            self.assertTrue(
-                substance_id not in substance_ids, 
-                ('substance_id not unique', substance_id, substance_ids))
-            substance_ids.add(substance_id)
+            # substance_id = outputobj['substance_id']
+            # self.assertTrue(
+            #     substance_id not in substance_ids, 
+            #     ('substance_id not unique', substance_id, substance_ids))
+            # substance_ids.add(substance_id)
         
     def test10_create_library_copy_specific_wells(self):
 
@@ -2657,7 +2749,8 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = '/'.join([
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         
-        data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
+        data_for_get = { 'limit': 0, 'includes': [
+            '*', 'duplex_wells','-structure_image'] }
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         xls_serializer = XLSSerializer()
         
@@ -5044,7 +5137,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(screen[key] == expected_value,
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
-        key = 'library_plates_screened'
+        key = 'unique_library_plates_screened'
         expected_value = expected_plate_count # 6 in library1, 11 in library2
         self.assertTrue(screen[key] == expected_value,
             (key,'expected_value',expected_value,
@@ -6087,7 +6180,8 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.library1 = self.create_library({
             'start_plate': 1000, 
             'end_plate': 1005,
-            'screen_type': 'small_molecule' })
+            'screen_type': 'small_molecule',
+             })
         self.library2 = self.create_library({
             'start_plate': 2000, 
             'end_plate': 2040,
@@ -6097,7 +6191,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.library3 = self.create_library({
             'start_plate': 3000, 
             'end_plate': 3005,
-            'screen_type': 'small_molecule' })
+            'screen_type': 'small_molecule',
+            # Create a restricted library to test warnings
+            'screening_status': VOCAB.library.screening_status.REQUIRES_PERMISSION 
+            })
 
         # library4: source wells will be forced to another destination plate,
         # if "keep_source_cherry_picks_together" is true 
@@ -6107,12 +6204,23 @@ class CherryPickRequestResource(DBResourceTestCase):
             'screen_type': 'small_molecule' })
         
         logger.info('set some experimental wells...')
-        plate = 1000
         experimental_well_count = 384
+        plate = 1000
         input_well_data = [
             self.create_small_molecule_test_well(
                 plate,i,library_well_type='experimental',
-                molar_concentration='0.001',
+                molar_concentration='0.000001',
+                # Create some deprecated to test warnings
+                is_deprecated = True,
+                deprecation_reason = 'Test Deprecation',
+                vendor_name='vendor1') 
+            for i in range(0,experimental_well_count)]
+        # Create some "alternate" wells with the same reagent/same library
+        plate = 1001
+        input_well_data = input_well_data + [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental',
+                molar_concentration='0.000002',
                 vendor_name='vendor1') 
             for i in range(0,experimental_well_count)]
         resource_name = 'well'
@@ -6131,7 +6239,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         input_well_data = [
             self.create_small_molecule_test_well(
                 plate,i,library_well_type='experimental',
-                molar_concentration='0.001',
+                molar_concentration='0.000001',
                 vendor_name='vendor2') 
             for i in range(0,experimental_well_count)]
         resource_uri = '/'.join([
@@ -6149,7 +6257,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         input_well_data = [
             self.create_small_molecule_test_well(
                 plate,i,library_well_type='experimental',
-                molar_concentration='0.001',
+                molar_concentration='0.000002',
                 vendor_name='vendor1') 
             for i in range(0,experimental_well_count)]
         resource_uri = '/'.join([
@@ -6398,6 +6506,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         return (cpr_data, scp_well_data)
     
+    
     def _test2_set_screener_cherry_picks(self):
         resource_uri = BASE_URI_DB + '/cherrypickrequest'
         cpr_data = self._test1_cherry_pick_request()
@@ -6445,6 +6554,192 @@ class CherryPickRequestResource(DBResourceTestCase):
         return (
             cpr_data, scp_well_data.values(), expected_screener_cherry_picks)
 
+    def test2c_screener_cherry_pick_warnings(self):
+        
+        (cpr_data, scp_well_data,expected_scps) = \
+            self._test2_set_screener_cherry_picks()
+
+        well_id_template = '01000:%s'
+        expected_concentration_warnings = [
+            well_id_template % 'A01',
+            well_id_template % 'A02',
+            well_id_template % 'A03',
+            well_id_template % 'A04',
+            well_id_template % 'A05',
+            well_id_template % 'A06',
+            ]
+        well_id_template = '01001:%s'
+        expected_concentration_alternates = [
+            well_id_template % 'A01',
+            well_id_template % 'A02',
+            well_id_template % 'A03',
+            well_id_template % 'A04',
+            well_id_template % 'A05',
+            well_id_template % 'A06',
+            ]
+        
+        cpr_id = str(cpr_data['cherry_pick_request_id'])
+        
+        # 1. Verify warnings
+        warning_uri= '/'.join([
+            BASE_URI_DB, 'cherrypickrequest',cpr_id,
+            'warnings'])
+        resp = self.api_client.get(warning_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 0 })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        warnings = self.deserialize(resp)[API_RESULT_META]
+        logger.info('Warnings: %r', warnings)
+        
+        # Verify cherry_pick_allowance warning because no screen result exists
+        self.assertTrue('cherry_pick_allowance' in warnings)
+
+        # Verify restricted library warnings
+        self.assertTrue('restricted_libraries' in warnings)
+        library_warnings = warnings.get('restricted_libraries')
+        self.assertIsNone(library_warnings)
+
+        # Verify copyplates_not_found is None
+        self.assertTrue('copyplates_not_found' in warnings)
+        copyplates_not_found = warnings['copyplates_not_found']
+        self.assertTrue(not copyplates_not_found)
+
+        # Verify deprecation warnings
+        self.assertTrue('deprecated_picks' in warnings)
+        deprecated_picks = warnings['deprecated_picks']
+        logger.info('deprecated picks: %r', deprecated_picks)
+        self.assertTrue(len(deprecated_picks), 1)
+        deprecated_picks = deprecated_picks[0]
+        self.assertTrue('Test Deprecation' in deprecated_picks)
+        
+        # Verify screener_picks_not_screened
+        self.assertTrue('screener_picks_not_screened' in warnings)
+        screener_picks_not_screened = warnings['screener_picks_not_screened']
+        self.assertTrue(len(screener_picks_not_screened) > 0)
+        for scp in scp_well_data:
+            well_id = scp['screened_well_id']
+            self.assertTrue(well_id in screener_picks_not_screened, 
+                '%r not in %r' % (well_id, screener_picks_not_screened))
+            
+        # Verify concentration warnings for plate 1000
+        # - plate 1001 has higher concentrations
+        self.assertTrue(API_MSG_CPR_CONCENTRATIONS in warnings)
+        concentration_warnings = warnings[API_MSG_CPR_CONCENTRATIONS]
+        
+        patch_data = []            
+        for i,expected_well in enumerate(expected_concentration_warnings):
+            logger.info('test for concentration alternates: %r', expected_well)
+            self.assertTrue(expected_well in concentration_warnings)
+            warning = concentration_warnings[expected_well]
+            logger.info('inspect warning: %r', warning)
+            expected_alternate = expected_concentration_alternates[i]
+            self.assertEqual(expected_alternate, warning['alternate_well'])
+            
+            # Create the patch to fix 
+            patch_data.append({
+                'searched_well_id': expected_well,
+                'screened_well_id': expected_alternate,
+                'selected': True })
+        
+        # add one well from restricted library, with no cherry pick source plates
+        patch_data.append({
+            'screened_well_id': '03000:A01',
+            'searched_well_id': '03000:A01',
+            'selected': True
+            })
+        scp_resource_uri = '/'.join([
+            BASE_URI_DB, 'cherrypickrequest', 
+            str(cpr_data['cherry_pick_request_id']),
+            'screener_cherry_pick'])
+        
+        resp = self.api_client.patch(
+            scp_resource_uri, 
+            format='json', 
+            data=patch_data, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        _data = self.deserialize(resp)
+        logger.info('patch screener_cherry_picks: %r', _data)
+
+        # 2. Verify warning changes
+        
+        resp = self.api_client.get(warning_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 0 })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        warnings = self.deserialize(resp)[API_RESULT_META]
+
+        logger.info('Warnings: %r', warnings)
+        
+        # Verify concentration warnings were eliminated
+        self.assertTrue(API_MSG_CPR_CONCENTRATIONS not in warnings)
+        
+        # Verify copyplates_not_found == 3000
+        copyplates_not_found = warnings.get('copyplates_not_found')
+        self.assertTrue('3000' in copyplates_not_found)
+        
+        # Verify library warnings now present
+        restricted_libraries = warnings.get('restricted_libraries')
+        self.assertIsNotNone(restricted_libraries)
+        self.assertTrue(
+            VOCAB.library.screening_status.REQUIRES_PERMISSION in
+                restricted_libraries[0])
+        self.assertTrue(
+            self.library3['short_name'] in restricted_libraries[0])
+
+        # Verify deprecation warnings were eliminated
+        self.assertIsNone(warnings.get('deprecated_picks'))
+
+        # Create library screening to change the cherry pick allowance
+        
+        plate_ranges = [
+            self.create_plate_range(
+                self.library1['short_name'], 
+                self.library1_copy3['copy_name'], 
+                self.library1['start_plate'], self.library1['end_plate'] )]
+        
+        volume_to_transfer = Decimal(self.library1_copy3['max_plate_volume'])/5
+
+        library_screening, meta = self.create_library_screening(
+            cpr_data['screen_facility_id'], 
+            plate_ranges, 
+            self.test_admin_user['screensaver_user_id'], 
+            volume_to_transfer )    
+
+        logger.info('created library screening: %r', library_screening)
+        logger.info('library screening meta: %r', meta)
+                    
+        # 3. Verify screener_picks_not_screened warning changes
+        
+        resp = self.api_client.get(warning_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 0 })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_warnings = self.deserialize(resp)[API_RESULT_META]
+
+        logger.info('new_warnings: %r', new_warnings)
+        self.assertTrue('screener_picks_not_screened' in warnings)
+        new_screener_picks_not_screened = warnings['screener_picks_not_screened']
+        self.assertTrue(len(screener_picks_not_screened) > 0)
+        logger.info('diff: %r', set(screener_picks_not_screened)
+                    -set(new_screener_picks_not_screened))
+        for scp in scp_well_data:
+            well_id = scp['screened_well_id']
+            plate_number = lims_utils.well_id_plate_number(well_id)
+            if plate_number == 1001:
+                self.assertTrue(well_id not in new_screener_picks_not_screened, 
+                    '%r should not be not in %r' % (well_id, new_screener_picks_not_screened))
+        
+        # TODO: verify screened_experimental_well_count == (library1 exp well count)
+        # TODO: create a second cpr with duplicate scps
+        # TODO: warn on no cpr copies exist    
+        
+        
     def test2a_set_screener_cherry_picks_alternate_searches(self):
         resource_uri = BASE_URI_DB + '/cherrypickrequest'
         cpr_data = self._test1_cherry_pick_request()
@@ -7017,37 +7312,30 @@ class CherryPickRequestResource(DBResourceTestCase):
             self._test2_set_screener_cherry_picks()
 
         # Test that using the API_PARAM_SHOW_OTHER_REAGENTS includes the (6) 
-        # reagents from library3
+        # reagents from library3 and the (6) reagents from library1, plate 1001
         data_for_get={ 
             'limit': 0,
+            'order_by': ['searched_well_id','screened_well_id'],
             API_PARAM_SHOW_OTHER_REAGENTS: True }
         expanded_scp_well_data = \
             self._get_scps(
                 cpr_data['cherry_pick_request_id'],
                 data_for_get=data_for_get)
         logger.debug('found expanded_scps: %r', expanded_scp_well_data)
-        expected_count = len(scp_well_data) + 6
+        expected_count = len(scp_well_data) + 6 + 6
         self.assertEqual(expected_count, len(expanded_scp_well_data))
         
         for scp in scp_well_data:
             well_id = scp['screened_well_id']
             foundSelected = False
-            foundExpanded = False
             for scp_well in expanded_scp_well_data:
-                if scp_well['screened_well_id'] == well_id:
+                if scp_well['selected'] == False:
+                    self.assertTrue(scp_well['library_plate'] in [1001,3000])
+                elif scp_well['screened_well_id'] == well_id:
                     foundSelected = True
-                elif scp_well['searched_well_id'] == well_id:
-                    foundExpanded = True
-                    self.assertEqual(
-                        scp_well['library_short_name'],
-                        self.library3['short_name'])
             self.assertTrue(
                 foundSelected, 'selected well_id: %r not found in %r'
                 % (well_id, scp_well_data)) 
-            if scp['library_short_name'] == self.library1['short_name']:
-                self.assertTrue(
-                    foundExpanded, 'expanded well_id: %r not found in %r'
-                    % (well_id, scp_well_data)) 
         
         # Now select two of the expanded wells
         other_reagents_to_post = []
@@ -7292,7 +7580,7 @@ class CherryPickRequestResource(DBResourceTestCase):
                     logger.debug(
                         'lcp well should be unfulfilled: %r', lcp_well)
                     self.assertEqual(
-                        VOCAB_LCP_STATUS_UNFULFILLED, lcp_well['status'])
+                        LCP_STATUS.UNFULFILLED, lcp_well['status'])
                     self.assertEqual(lcp_well['source_copy_name'], None)
                     lcp_well_1_a1 = lcp_well
                     continue
@@ -7300,7 +7588,7 @@ class CherryPickRequestResource(DBResourceTestCase):
                     if lcp_well['source_well_id'] == '01000:A02':
                         lcp_well_1_a2 = lcp_well
                     self.assertEqual(
-                        VOCAB_LCP_STATUS_SELECTED, lcp_well['status'])
+                        LCP_STATUS.SELECTED, lcp_well['status'])
             self.assertTrue(assigned_library in library_copy_map,
                 'well: %r, assigned library %r not in expected: %r'
                 % (source_well_id,assigned_library,library_copy_map))
@@ -7368,7 +7656,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         new_lcps = self._get_lcps(cpr_id)
         for lcp_well in new_lcps:
             self.assertEqual(
-                VOCAB_LCP_STATUS_SELECTED, lcp_well['status'])
+                LCP_STATUS.SELECTED, lcp_well['status'])
 
         # 2.A Verify that the API_PARAM_SHOW_RETIRED_COPY_WELlS shows
         # (A) plus the "retired" "libary_screening_plates"
@@ -7606,7 +7894,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         transfer_volume_per_well_approved = \
             Decimal(cpr_data['transfer_volume_per_well_approved'])
         for source_well_id, lcp in lcp_well_data.items():
-            self.assertEqual(lcp['status'], VOCAB_LCP_STATUS_PLATED)
+            self.assertEqual(lcp['status'], LCP_STATUS.PLATED)
             if lcp['source_well_id'] != '01000:A01':
                 self.assertEqual(
                     Decimal(lcp['source_copy_well_consumed_volume']),
@@ -7920,7 +8208,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         transfer_volume_per_well_approved = \
             Decimal(cpr_data['transfer_volume_per_well_approved'])
         for source_well_id, lcp in lcp_well_data.items():
-            self.assertEqual(lcp['status'], VOCAB_LCP_STATUS_PLATED)
+            self.assertEqual(lcp['status'], LCP_STATUS.PLATED)
             if lcp['source_well_id'] != '01000:A01':
                 self.assertEqual(
                     Decimal(lcp['source_copy_well_consumed_volume']),
@@ -7970,7 +8258,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             lcp['source_well_id']:lcp for lcp in new_lab_cherry_picks}
         for source_well_id, lcp in new_lab_cherry_picks.items():
             logger.debug('lcp: %r', source_well_id)
-            self.assertEqual(lcp['status'], VOCAB_LCP_STATUS_SELECTED)
+            self.assertEqual(lcp['status'], LCP_STATUS.SELECTED)
             self.assertTrue(lcp['source_copy_name'] != None, 'lcp: %r' % lcp)
             self.assertTrue(
                 lcp.get('cherry_pick_plate_number',"")==None,

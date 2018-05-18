@@ -447,7 +447,7 @@ def parse_wells_to_leave_empty(wells_to_leave_empty, plate_size):
             match = WELL_NAME_PATTERN.match(wellname)
             decorated.append((match.group(1),match.group(1), wellname))
     new_wells_to_leave_empty = [x[2] for x in sorted(decorated)]
-    logger.info('wells_to_leave_empty: %r', new_wells_to_leave_empty)
+    logger.debug('wells_to_leave_empty: %r', new_wells_to_leave_empty)
     
     return new_wells_to_leave_empty
 

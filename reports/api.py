@@ -6,11 +6,13 @@ from copy import deepcopy
 from decimal import Decimal
 import decimal
 from functools import wraps
+import importlib
 import json
 import logging
 from operator import itemgetter
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib
@@ -61,20 +63,18 @@ from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE
 from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
-import reports.utils.background_processor as background_processor
 import reports.utils.background_client_util as background_client_util
-import importlib
-import subprocess
-from reports.schema import API_RESULT_META
+import reports.utils.background_processor as background_processor
 
 
-RESOURCE = SCHEMA.RESOURCE
 
 logger = logging.getLogger(__name__)
 
 URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
 
+# from reports.schema import API_RESULT_META
+RESOURCE = SCHEMA.RESOURCE
 API_RESULT_OBJ = SCHEMA.API_RESULT_OBJ
 API_RESULT_DATA = SCHEMA.API_RESULT_DATA
 API_RESULT_META = SCHEMA.API_RESULT_META
@@ -1050,6 +1050,7 @@ class ApiResource(SqlAlchemyResource):
             return self.build_response(
                 request, { API_RESULT_META: meta }, response_class=HttpResponse)
         else:
+            kwargs_for_log['limit'] = 0
             logger.debug(
                 'return data with post response: %r, kwargs: %r', 
                 meta, kwargs_for_log)
@@ -1173,7 +1174,8 @@ class ApiResource(SqlAlchemyResource):
             logger.info('put success, no data')
             return HttpResponse(status=202)
         else:
-            response = self.get_list(request, meta=meta, **kwargs)             
+            kwargs_for_log['limit'] = 0
+            response = self.get_list(request, meta=meta, **kwargs_for_log)             
             response.status_code = 200
             return response 
 
@@ -2023,7 +2025,7 @@ class ApiResource(SqlAlchemyResource):
                     log = None
             else:
                 logger.info('log PATCH for %r', log.uri) 
-                logger.info('log diffs for %r: %r', log.uri, log.diffs) 
+                logger.debug('log diffs for %r: %r', log.uri, log.diffs) 
                 
         else: # creating
             log.api_action = API_ACTION_CREATE
@@ -2750,20 +2752,17 @@ class FieldResource(ApiResource):
             
             for field in field_hash.values():
                 key = field_key.format(**field)
-#                 logger.info('key: %r', key)
                 if key in fields:
                     raise Exception('field key is already defined: %r', key)
                 fields[key] = field
             
-#             fields.extend(field_hash.values())
-
         recursion_test = list()
         def fill_field_refs(key):
             if DEBUG_RESOURCES:
                 logger.info('fill field for %r', key)
             
             if key not in fields:
-                logger.info('key: %r not found in %r', key, fields.keys())
+                logger.debug('key: %r not found in %r', key, fields.keys())
             
             else:
                 field = fields[key]
@@ -2778,7 +2777,7 @@ class FieldResource(ApiResource):
                             'recursive field ref relationship for: %r, parents: %r'
                             % (key, recursion_test))
                     ref_field = fill_field_refs(ref_field_key)
-                    logger.info('ref_key: %r found ref field: %r', 
+                    logger.debug('ref_key: %r found ref field: %r', 
                                 ref_field_key, ref_field)
                     if ref_field:
                         temp = deepcopy(ref_field)
@@ -2798,7 +2797,7 @@ class FieldResource(ApiResource):
         decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields.values()]
         decorated.sort(key=itemgetter(0,1,2))
         fields = [field for scope,ordinal,key,field in decorated]
-
+        
         return fields
     
     

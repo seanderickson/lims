@@ -135,7 +135,6 @@ define([
     initialize : function() {
       var self = this;
       
-      
       self.userProps = {};
       this.on('change:users', function(){
         _.each(_.keys(self.userProps), function(prop){
@@ -204,11 +203,12 @@ define([
           limit:0,
           username: currentUser.username,
           'state__in': ['pending','submitted', 'processing'],
-//          'id': 152 // testing
         };
         
         self.jobCollection.fetch({
-          data: data_for_fetch
+          data: data_for_fetch,
+          // prevent triggering global event handler: ajaxStart loading gif
+          global: false 
         }).done(function(data, textStatus, jqXHR){
           console.log('initial job fetch', arguments);
         }).fail(function(){ 
@@ -1370,7 +1370,7 @@ define([
         },
         fetch: function(options) {
           var options = options || {};
-          if (!_.contains(options,'data')){
+          if (!_.has(options,'data')){
             options['data'] = data_for_get;
           }
           return Backbone.Model.prototype.fetch.apply(this, [options]);

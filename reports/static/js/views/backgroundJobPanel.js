@@ -80,7 +80,7 @@ define([
               if (rowCount > appModel.MAX_ROWS_IN_DIALOG_MSG){
                 testString = testString.split(sepRegex).slice(0,10);
                 testString.push('-- truncated --');
-                return testString.join('\n');
+                return testString.join(sep);
               }else{
                 return obj;
               }

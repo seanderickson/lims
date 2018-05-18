@@ -1265,7 +1265,11 @@ define([
       var columnCollection = new ColumnCollection();
       
       columnCollection.comparator = function(model){
-        return '' + model.get('resource') + '-' + model.get('key');
+        var resource = model.get('resource');
+        if (resource == 'Internal'){
+          resource = 'ZZ' + resource;
+        }
+        return '' + resource + '-' + model.get('key');
       }
       _.each(_fields, function(field){
         var key = field['key'];

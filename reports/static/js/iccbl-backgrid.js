@@ -1566,7 +1566,8 @@ var parseComments = Iccbl.parseComments = function(comment_array){
           Iccbl.getDateString(comment_parts[1]) + 
           ': ' + comment_parts[2];
       } else {
-        console.log('invalid comment:', comment_parts)
+        console.log('unparsed comment:', comment_parts)
+        return comment_parts.join(Iccbl.appModel.LIST_DELIMITER_SUB_ARRAY);
       }
     }).join('\n===== end comment =====\n');
 };
@@ -1921,14 +1922,18 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
     console.log('link clicked, override to handle', e);
   },
   
+  get_href: function(){
+    var self = this;
+    return Iccbl.formatString(self.hrefTemplate,self.model);
+  },
+  
   render : function() {
     var self = this;
     this.$el.empty();
     var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-    var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
     self.$el.append($('<a>', {
       tabIndex : -1,
-      href : interpolatedVal,
+      href : self.get_href(),
       target : self.target,
       title: self.title
     }).text(formattedValue));

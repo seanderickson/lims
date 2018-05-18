@@ -113,11 +113,14 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
 
   var loadCount = 0
   $(document).bind("ajaxSend", function(event, jqxhr, settings){
-    if ( settings.url.indexOf(appModel.reportsApiUri + '/job') >= 0 ){
-      // suppress the spinner for job panel updates
-      // FIXME: show spinner if explicitly loading the jobs view itself (use router)
-      return;
-    }
+    console.log('ajaxSend', arguments);
+// Remove: "global: false" flag should  prevent trigger event handler 
+// see: app_state.initialized()
+//    if ( settings.url.indexOf(appModel.reportsApiUri + '/job') >= 0 ){
+//      // suppress the spinner for job panel updates
+//      // FIXME: show spinner if explicitly loading the jobs view itself (use router)
+//      return;
+//    }
     $('#loading').fadeIn({duration:100});
     loadCount++;
     console.log('add to loadCount: ' + loadCount );

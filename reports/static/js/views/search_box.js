@@ -575,9 +575,11 @@ define([
           }
           var cpr_id = self.form4.getValue()['searchVal'];
           var resource = appModel.getResource('cherrypickrequest');
-          var _route = ['#', resource.key,cpr_id].join('/');
-          appModel.set('routing_options', {replace: false});  
-          appModel.router.navigate(_route, {trigger:true});
+          appModel.getModelFromResource(resource, cpr_id, function(model){
+            var _route = ['#screen', model.get('screen_facility_id'), resource.key,cpr_id].join('/');
+            appModel.set('routing_options', {replace: false});  
+            appModel.router.navigate(_route, {trigger:true});
+          });
         });      
       }
 

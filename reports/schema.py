@@ -175,6 +175,7 @@ class VOCAB(schema_obj):
             BILLING = 'billing'
             PROTOCOL = 'protocol'
             API = 'api'
+            NONE = 'none'
         class editability(schema_obj):
             CREATE = 'c'
             UPDATE = 'u'

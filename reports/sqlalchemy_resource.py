@@ -3,15 +3,17 @@ from __future__ import unicode_literals
 from collections import OrderedDict
 from functools import wraps
 import hashlib
+import json
 import logging
 import re
+import urllib
 
 from aldjemy.core import get_engine, get_tables
 from django.conf import settings
-# from django.core.cache import cache
 import django.db.models.constants
 from django.http.request import HttpRequest
 from django.http.response import StreamingHttpResponse, HttpResponse, Http404
+import six
 from sqlalchemy import select, asc, text
 import sqlalchemy
 from sqlalchemy.dialects import postgresql
@@ -27,23 +29,22 @@ from tastypie.exceptions import BadRequest, ImmediateHttpResponse
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
-    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_DATA_INTERCHANGE, HTTP_PARAM_USE_TITLES,\
+    HTTP_PARAM_RAW_LISTS, HTTP_PARAM_DATA_INTERCHANGE, HTTP_PARAM_USE_TITLES, \
     HTTP_PARAM_USE_VOCAB
 from reports.api_base import IccblBaseResource, un_cache
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE,\
+import reports.schema as SCHEMA
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     JSON_MIMETYPE, CSV_MIMETYPE, parse_val
 from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
     cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
-import json
-import urllib
-import six
-
 
 logger = logging.getLogger(__name__)
 
 DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
+
+VISIBILITY = SCHEMA.VOCAB.field.visibility
 
 def _concat(*args):
     '''
@@ -201,15 +202,46 @@ class SqlAlchemyResource(IccblBaseResource):
                 temp = { key:field for key,field in schema_fields.items()
                     if key in exact_fields or key in filter_fields }
             else:
-                temp = { key:field for key,field in schema_fields.items() 
-                    if ((field.get('visibility', None) 
-                            and visibilities & set(field['visibility'])) 
-                        or field['key'] in manual_field_includes
-                        or '*' in manual_field_includes ) }
-            
-                # manual excludes
-                temp = { key:field for key,field in temp.items() 
-                    if '-%s' % key not in manual_field_includes }
+                # Calculate the visible fields
+                temp = {}
+                for key,field in schema_fields.items():
+                    field_visibilities = set(field.get('visibility',[]))
+                    is_visible = False
+                    if DEBUG_VISIBILITY is True:
+                        logger.info('key: %r, visibility: %r', key, field_visibilities)
+                    if key in manual_field_includes:
+                        is_visible = True
+                        if DEBUG_VISIBILITY is True:
+                            logger.info('key: %r, manual', key)
+                    elif VISIBILITY.NONE not in field_visibilities:
+                        if '*' in manual_field_includes:
+                            is_visible = True
+                            if DEBUG_VISIBILITY is True:
+                                logger.info('key: %r, *', key)
+                        elif field_visibilities:
+                            if field_visibilities & visibilities:
+                                is_visible = True
+                                if DEBUG_VISIBILITY is True:
+                                    logger.info('key: %r, visibilities: %r', 
+                                        key, field_visibilities & visibilities)
+                    if '-%s' % key in manual_field_includes:
+                        is_visible = False
+
+                    if DEBUG_VISIBILITY is True:
+                        logger.info('key: %r, is_visible: %r', key, is_visible)
+                    
+                    if is_visible is True:
+                        temp[key] = field
+                
+                # temp = { key:field for key,field in schema_fields.items() 
+                #     if ((field.get('visibility', None) 
+                #             and visibilities & set(field['visibility'])) 
+                #         or field['key'] in manual_field_includes
+                #         or '*' in manual_field_includes ) }
+                # 
+                # # manual excludes
+                # temp = { key:field for key,field in temp.items() 
+                #     if '-%s' % key not in manual_field_includes }
             
             # dependency fields
             dependency_fields = set()
@@ -677,8 +709,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 col = func.trim(col)
             if value is False or str(value).lower() == 'false':
                 expression = col != None
-                if data_type == 'string':
-                    col = func.trim(col)
+#                 if data_type == 'string':
+#                     col = func.trim(col)
                 if (data_type == 'string' or 
                     data_type == 'list'):
                     expression = col != ''

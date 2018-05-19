@@ -162,7 +162,6 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='screenresult',
             name='experimental_well_count',
-            field=models.IntegerField(default=0),
         ),
         
         # TODO: remove lab head as separate model

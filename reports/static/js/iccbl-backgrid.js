@@ -2128,10 +2128,13 @@ _.extend(DecimalFormatter.prototype, {
   fromRaw: function (number, model) {
     var args = [].slice.call(arguments, 1);
     if(_.isUndefined(number)){
-      return '';
+      return null;
     }
     if(_.isNull(number)){
-      return '';
+      return null;
+    }
+    if (_.isString(number) && _.isEmpty(number)){
+      return null;
     }
     if(!_.isNumber(number)){
       try{

@@ -174,7 +174,7 @@ def equivocal(val1, val2, skip_null_values=False, key=None):
 
     if val1 is None or val1 == '':
         if skip_null_values is True:
-            logger.info('key: %r, skip nulls: %r',key, skip_null_values)
+            logger.debug('key: %r, skip nulls: %r',key, skip_null_values)
             return True, ('skip_null_values')
     if val1 == val2:
         if DEBUG:

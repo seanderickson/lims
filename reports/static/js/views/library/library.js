@@ -196,7 +196,6 @@ define([
       this.setView("#tab_container", view ).render();
     },
     
-    
     setWells: function(delegateStack) {
       var self = this;
       
@@ -210,8 +209,8 @@ define([
       if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail view
+        // TODO: will do a double fetch of the well here and in wellview
         var well_id = delegateStack.shift();
-        self.consumedStack.push(well_id);
         appModel.getModel(resource.key, well_id, function(model){
           model.resource = resource;
           view = new LibraryWellView({
@@ -219,6 +218,7 @@ define([
             uriStack: _.clone(delegateStack),
             library: self.model
           });
+          self.consumedStack.push(well_id);
           Backbone.Layout.setupView(view);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
@@ -234,7 +234,8 @@ define([
         view = new LibraryWellsView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
-          url: url
+          url: url,
+          library: self.model
         });
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -331,7 +332,7 @@ define([
               linkCallback: function(e){
                 e.preventDefault();
                 // re-fetch the full model
-                copyname = this.model.get('copy_name');
+                var copyname = this.model.get('copy_name');
                 var _key = [self.model.key,copyname].join('/');
                 appModel.getModel(copyResource.key, _key, function(model){
                   view = new LibraryCopyView({
@@ -361,7 +362,6 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.$("#tab_container-title").empty();
         self.setView("#tab_container", view ).render();

@@ -8,11 +8,12 @@ define([
   'views/list2',
   'views/generic_detail_layout',
   'views/library/library',
+  'views/library/libraryWell',
   'utils/treeSelector',
   'templates/genericResource.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, TreeSelector, layout) {
+         LibraryView, LibraryWellView, TreeSelector, layout) {
   
   var LibraryWellsView = Backbone.Layout.extend({
     
@@ -20,6 +21,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     initialize: function(args) {
       this.args = args;
+      this.library = args.library;
       this.resource = appModel.cloneResource(args.resource);
       console.log('LibraryWellsView: ' + args.resource.key);
       this.uriStack = args.uriStack;
@@ -267,6 +269,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var self = this;
 
       function createReagentView(schemaResult) {
+
+        var collection = new Iccbl.MyCollection();
+        
         // Update the current resource and fields:
         // - current resource prop and field definitions override the new 
         // definitions, if defined, but the new fields are used if not.
@@ -278,7 +283,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         if (self.args.url){
           url = self.args.url;
         }
-        console.log('url: ' + url);
         if (newResource.key == 'compound_search'){
           url += '/compound_search';
         }
@@ -299,8 +303,168 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         show_data_columns_control.click(function(e){
           self.showDataColumnsDialog(view);
         });
-        
         extraControls.push(show_data_columns_control);
+
+        ///////////////////////////////////////////////////////////
+        // Override the well link and provide next/previous buttons
+        
+        // Utility to find item index in collection
+        function findIndex(targetModel){
+          return collection.findIndex(function(model){
+              return targetModel.get('well_id')==model.get('well_id');
+            });
+        };
+        
+        function showWell(newIndex){
+
+          var newModel = collection.at(newIndex);
+          newModel.resource = newResource;
+          console.log('found next model', newModel.get('well_id'));
+
+          var backToSearchButton = $([
+            '<a class="btn btn-default btn-sm" ',
+               'title="Back to search',
+              'role="button" id="button-search" href="#">',
+              'Back to Search</a>'
+            ].join(''));
+    
+          var prevButton = $([
+            '<a class="btn btn-default btn-sm" ',
+               'title="Previous searched well',
+              'role="button" id="button-prev" href="#">',
+              '<</a>'
+            ].join(''));
+          var firstButton = $([
+            '<a class="btn btn-default btn-sm" ',
+               'title="First searched well',
+              'role="button" id="button-first" href="#">',
+              '<<</a>'
+            ].join(''));
+          var lastButton = $([
+            '<a class="btn btn-default btn-sm" ',
+               'title="last searched well',
+              'role="button" id="button-last" href="#">',
+              '>></a>'
+            ].join(''));
+          var nextButton = $([
+            '<a class="btn btn-default btn-sm" ',
+               'title="Next searched well',
+              'role="button" id="button-next" href="#">',
+              '></a>'
+            ].join(''));
+          firstButton.click(function(e){
+            e.preventDefault();
+            collection.getFirstPage().done(function(){
+              showWell(0);
+            });
+          });
+          lastButton.click(function(e){
+            e.preventDefault();
+            collection.getLastPage().done(function(){
+              showWell(collection.size()-1);
+            });
+          });
+          nextButton.click(function(e){
+            e.preventDefault();
+            var index = findIndex(newModel);
+            var newIndex = index+1;
+            if (collection.size()<=newIndex){
+              if (collection.hasNextPage()){
+                collection.getNextPage().done(function(){
+                  showWell(0);
+                });
+              } else {
+                collection.getFirstPage().done(function(){
+                  showWell(0);
+                });
+              }
+            } else {
+              showWell(newIndex);
+            }
+          });
+          
+          prevButton.click(function(e){
+            e.preventDefault();
+            var index = findIndex(newModel);
+            var newIndex = index-1;
+            if (newIndex<0){
+              if (collection.hasPreviousPage()){
+                collection.getPreviousPage().done(function(){
+                  showWell(collection.size()-1);
+                });
+              } else {
+                collection.getLastPage().done(function(){
+                  showWell(collection.size()-1);
+                });
+              }
+            } else {
+              showWell(newIndex);
+            }
+          });
+          
+          function showButtons($el){
+            $el.show();
+            var titleDiv = $el.find('#content_title').parent();
+            titleDiv.find('#search_context_title').remove();
+            var search_context_title = $('<h4 id="search_context_title"></h4>');
+
+            search_context_title.append(firstButton);
+            search_context_title.append('&nbsp;');
+            search_context_title.append(prevButton);
+            search_context_title.append('&nbsp;');
+            search_context_title.append('Well: ' + newModel.get('well_id') );
+            var absIndex = collection.state.pageSize * (collection.state.currentPage -1 )+ newIndex +1;
+            search_context_title.append('&nbsp;(' + absIndex + ' of ' + collection.state.totalRecords + ')');
+            search_context_title.append('&nbsp;');
+            search_context_title.append(nextButton);
+            search_context_title.append('&nbsp;');
+            search_context_title.append(lastButton);
+            search_context_title.append('&nbsp;');
+            if (!_.isEmpty(_.intersection(delegateStack, 
+                  [appModel.URI_PATH_COMPLEX_SEARCH,appModel.URI_PATH_ENCODED_SEARCH]))){
+              search_context_title.append(backToSearchButton);
+            }
+            titleDiv.append(search_context_title);
+          };
+          
+          var LWView = LibraryWellView.extend({
+            afterRender: function(){
+              LibraryWellView.prototype.afterRender.apply(this,arguments);
+              showButtons(self.$el.find('#content_title_row'));
+            }
+            
+          });
+          var lwView = new LWView({
+            model: newModel, 
+            uriStack: [],
+          });
+          Backbone.Layout.setupView(lwView);
+          self.consumedStack = [newModel.get('well_id')];
+          self.listenTo(lwView , 'uriStack:change', self.reportUriStack);
+          self.setView("#resource_content", lwView ).render();
+          backToSearchButton.click(function(e){
+            e.preventDefault();
+            self.consumedStack = [];
+            var titleDiv = self.$('#content_title').parent();
+            titleDiv.find('#search_context_title').remove();
+            
+            self.showList(delegateStack);
+          });
+        };
+        
+        
+        newResource['fields']['well_name'].backgridCellType = 
+          Iccbl.LinkCell.extend(_.extend({},
+            newResource['fields']['well_name'].display_options,
+            {
+              linkCallback: function(e){
+                e.preventDefault();
+                showWell(findIndex(this.model));
+              }
+            }));
+
+        ///////////////////////////////////////////////////////////
+        
         var WellListView = ListView.extend({
           afterRender: function(){
             ListView.prototype.afterRender.apply(this,arguments);
@@ -308,7 +472,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             return this;
           }
         });
-        var collection = new Iccbl.MyCollection();
         self.listenTo(collection, 'sync', function(e){
           if (collection.size() == 1 && collection.state.currentPage == 1){
             // show library well view
@@ -326,21 +489,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           url: url
         });
 
-        var view = new WellListView (viewArgs);
+        var view = new WellListView(viewArgs);
         self.listenTo(view, 'update_title', function(val) {
           if(val) {
             self.$('#content_title').html(newResource.title + ': <small>' + val + '</small>');
-            $('#content_title_row').show();
+            self.$el.find('#content_title_row').show();
           } else {
-            self.$('#content_title').html(newResource.title);
-            $('#content_title_row').show();
+//            self.$('#content_title').html(newResource.title);
           }
         });
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         Backbone.Layout.setupView(view);
         self.setView('#resource_content', view ).render();
         
-      }
+      };
       
       // Parse the delegateStack to determine if extra data columns are specified
       var listOptions = ListView.prototype.parseUriStack(delegateStack);
@@ -364,10 +526,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
         // 20180320 - only get the schema if it is not in the initialize args
-        
-//        var schemaUrl = [self.resource.apiUri,'schema'].join('/');
-//        appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
-        
         createReagentView(self.resource);
       }
     }

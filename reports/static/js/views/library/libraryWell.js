@@ -11,15 +11,15 @@ define([
   'views/generic_edit',
   'views/list2',
   'views/library/library',
+  'utils/tabbedController',
   'templates/generic-tabbed.html',
   'templates/genericResource.html'
 ], 
 function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, 
-         DetailView, DetailLayout, EditView, ListView, LibraryView, layout,
-         genericLayout ) {
+         DetailView, DetailLayout, EditView, ListView, LibraryView, 
+         TabbedController, layout, genericLayout ) {
 
-  // TODO: 20171114 - refactor to TabbedController
-  var LibraryWellView = Backbone.Layout.extend({
+  var LibraryWellView = TabbedController.extend({
     
     template: _.template(layout),
     
@@ -28,27 +28,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      this.library = args.library;
       
-      this.tabbed_resources = _.extend(
-        {}, _.mapObject(this.tabbed_resources_template, function(val,key){
+      this.tabbed_resources = _.extend({}, 
+        _.mapObject(this.tabbed_resources_template, function(val,key){
           return _.clone(val);
         }));
-      // Allow all tabs if allowed Well
-      //_.each(_.keys(this.tabbed_resources), function(key){
-      //  if(key !== 'detail'){
-      //    var permission = self.tabbed_resources[key].permission;
-      //    if (_.isUndefined(permission)){
-      //      permission = self.tabbed_resources[key].resource;
-      //    }
-      //    if (!appModel.hasPermission(permission)){
-      //      delete self.tabbed_resources[key];
-      //    }
-      //  }
-      //});
-      if (! self.model.has('duplex_wells')){
+      if ( self.model.resource.key != 'silencingreagent'){
         delete self.tabbed_resources['duplex_wells'];
       }
+      TabbedController.prototype.initialize.apply(this,arguments);
       
       _.bindAll(this, 'click_tab');
     },
@@ -65,12 +53,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         invoke: 'setDuplexWells',
         resource: 'well'
       },
-//      other_wells: { 
-//        description: 'Other Wells', 
-//        title: 'Other Wells', 
-//        invoke: 'setOtherWells',
-//        resource: 'well'
-//      },
+      //other_wells: { 
+      //  description: 'Other Wells', 
+      //  title: 'Other Wells', 
+      //  invoke: 'setOtherWells',
+      //  resource: 'well'
+      //},
       annotations: { 
         description: 'Annotations', 
         title: 'Annotations', 
@@ -85,29 +73,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     },
 
     /**
-     * Child view bubble up URI stack change event
-     */
-    reportUriStack: function(reportedUriStack) {
-      var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
-      this.trigger('uriStack:change', actualStack );
-    },
-
-    /**
      * Layoutmanager hook
      */
     serialize: function() {
       var self = this;
-      var base_url;
-      if (self.library){
-        base_url = [
-           self.library.resource.key,self.library.key,self.model.resource.key,
-           self.model.key].join('/');
-      }else{
-        base_url = [
-           'library', self.model.get('library_short_name'),self.model.resource.key,
-           self.model.key].join('/');
-      }
+      var base_url = [
+        'library', self.model.get('library_short_name'),'well',
+        self.model.key].join('/');
       return {
         'base_url': base_url,
         'tab_resources': self.tabbed_resources
@@ -132,43 +104,27 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           throw msg;
         }
       }
-      this.change_to_tab(viewId);
+
+      // re-fetch the model with all necessary fields
+      appModel.getModel(self.model.resource.key, self.model.get('well_id'), 
+        function(model){
+          self.model = model;
+          self.change_to_tab(viewId);
+        },
+        {
+          data_for_get: {
+            // Include "none" fields
+            includes: ['duplex_wells','pool_well', 
+              'screening_mg_ml_concentration', 'screening_molar_concentration', 
+              '*']
+          }
+        }
+      );
       console.log('afterRender, done.');
     },
     
-    click_tab : function(event){
-      event.stopPropagation();
-      event.preventDefault();
-      var key = event.currentTarget.id;
-      if(_.isEmpty(key)) return;
-      this.change_to_tab(key);
-    },
-
-    change_to_tab: function(key){
-      if(_.has(this.tabbed_resources, key)){
-        this.$('li').removeClass('active');
-        this.$('#' + key).addClass('active');
-        if(key !== 'detail'){
-          this.consumedStack = [key];
-        }else{
-          this.consumedStack = [];
-        }
-        var delegateStack = _.clone(this.uriStack);
-        this.uriStack = [];
-        var method = this[this.tabbed_resources[key]['invoke']];
-        if (_.isFunction(method)) {
-          method.apply(this,[delegateStack]);
-        } else {
-          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-        }
-      }else{
-        var msg = 'Unknown tab: ' + key;
-        appModel.error(msg);
-        throw msg;
-      }
-    },
-    
     setDetail: function(delegateStack) {
+      var self = this;
       var key = 'detail';
       
       var view = this.tabViews[key];
@@ -180,13 +136,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         afterRender: function(){
           var self = this;
           DetailView.prototype.afterRender.apply(this,arguments);
-          // TODO: support for generic images
+          // TODO: support for generic images in detail view
           if(this.model.has('structure_image')){
             $('#generic-detail-stickit-container').append(
                 '<img style="position: absolute; top: 8em; right: 3em" src="' 
                 + self.model.get('structure_image') + '" alt="image" />');
             $('#structure_image').closest('tr').remove();
           }
+          
+
         }
       });
       
@@ -213,7 +171,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         DetailView: detailView
       });
       this.tabViews[key] = view;
-
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -247,8 +204,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           template: _.template(genericLayout),
           afterRender: function(){
             var $content = $('<div class="container" id="studies_container"></div>');
-            $('#resource_content').html($content);
-            var $container = $('#studies_container');
             _.each(data, function(studyData){
               var facility_id = studyData['facility_id']
               var $studyContainer = $([
@@ -258,15 +213,15 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 '</div>',
                 ].join(''));
               console.log('studyData entry', studyData, facility_id, $studyContainer);
-              $container.append($studyContainer);
+              $content.append($studyContainer);
               var model = new Backbone.Model(studyData);
               model.resource = studyResource;
-              view = new DetailView({
+              var studyView = new DetailView({
                 model: model,
                 resource: studyResource,
                 buttons: []
               });
-              $studyContainer.find('#study_info-'+facility_id + '').append(view.render().$el);
+              $studyContainer.find('#study_info-'+facility_id + '').append(studyView.render().$el);
               
               // Create a resource schema on the fly for the annotations
               var schema = {
@@ -280,17 +235,18 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               console.log('values', studyData.values);
               var model = new Backbone.Model(studyData.values);
               model.resource = schema;
-              view = new DetailView({
+              var studySpecificDetail = new DetailView({
                 model: model,
                 resource: schema,
                 buttons: []
               });
-              $studyContainer.find('#annotation_info-'+facility_id + '').append(view.render().$el);
+              $studyContainer.find('#annotation_info-'+facility_id + '').append(studySpecificDetail.render().$el);
             });
+            this.$el.find('#resource_content').html($content);
             
           }
         });
-        var $el = self.setView('#tab_container', new AnnotationView()).render().$el;
+        self.setView('#tab_container', new AnnotationView()).render();
       };
       $.ajax({
         type : "GET",
@@ -307,7 +263,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     /** Generate a duplex well report for the given pool well **/
     setDuplexWells: function(delegateStack){
       var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'duplex_wells'].join('/')
+      var url = [appModel.dbApiUri,'well',self.model.key,'duplex_wells'].join('/')
       
       function showDuplexWells(response){
         console.log('process duplex data...', response);
@@ -419,13 +375,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 '</button> inconclusive or no data</label></li>',
               '</ul></span></div>'
               ].join(''));
-            $('#resource_content').html($content);
-            $('#legend').html($legend);
-            $('#grid').html(_grid.render().$el);
+            $content.find('#legend').html($legend);
+            $content.find('#grid').html(_grid.render().$el);
+            this.$el.find('#resource_content').html($content);
           }
         });
         
-        var $el = self.setView('#tab_container', new GridView()).render().$el;
+        self.setView('#tab_container', new GridView()).render();
       };
       $.ajax({
         type : "GET",
@@ -436,7 +392,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         fail: function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }      
       });
       
-      this.reportUriStack();
+      this.reportUriStack([]);
       
     }
   });

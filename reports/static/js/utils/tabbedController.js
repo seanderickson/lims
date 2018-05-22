@@ -51,7 +51,12 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
      */
     reportUriStack: function(reportedUriStack) {
       var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
+//      var actualStack = consumedStack.concat(reportedUriStack);
+      if (reportedUriStack){
+        actualStack = consumedStack.concat(reportedUriStack);
+      }else{
+        actualStack = consumedStack.slice(0);
+      }
       console.log('reportUriStack: actualStack', actualStack, arguments);
       this.trigger('uriStack:change', actualStack );
     },

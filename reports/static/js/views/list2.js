@@ -45,6 +45,8 @@ define([
 
       if (!self._options.extraControls){
         self._options.extraControls = [];
+      } else {
+        self._options.extraControls = _.clone(self._options.extraControls);
       }
 
       var ListModel = Backbone.Model.extend({
@@ -97,17 +99,6 @@ define([
         }
       }
 
-      var $modifySearch = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-        'role="button" id="modify_search_button" ',
-        'href="#">',
-        'Modify Search</a>'
-      ].join(''));
-      $modifySearch.click(function(e){
-        e.preventDefault();
-        self.modifySearch();
-      });
-      
       function setComplexSearch(){
         var searchId = self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH);
         if (!_.isUndefined(searchId)){
@@ -148,10 +139,8 @@ define([
       
       if (!_.isEmpty(listModel.get(appModel.URI_PATH_COMPLEX_SEARCH))){
         setComplexSearch();
-        self._options.extraControls.unshift($modifySearch);
       }else if (! _.isEmpty(listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
         setEncodedSearch();
-        self._options.extraControls.unshift($modifySearch);
       }
       
       var columns;
@@ -219,7 +208,9 @@ define([
       function parse(value, errors){
         var parsedData;
         console.log('parse', value);
-        if(resource.key == 'well' || resource.key == 'reagent'){
+        if(_.contains(
+          ['well','reagent','smallmoleculereagent','silencingreagent'], 
+          resource.key )){
           parsedData = Iccbl.parseRawWellSearch(value, errors);
         }else if (resource.key == 'compound_search'){
           parsedData = Iccbl.parseCompoundVendorIDSearch(value,errors);
@@ -584,11 +575,14 @@ define([
       if(previousStack && _.isEqual(previousStack,newStack)){
         console.log('no new stack updates');
       }else{
-        if (!previousStack){
-          // Note: replace: true - to suppress router history:
-          // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
-          appModel.set('routing_options', {replace: true});  
-        }
+        // Removed 20180521
+        //        if (!previousStack){
+        //          // Note: replace: true - to suppress router history:
+        //          // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
+        //          console.log('routing options: replace: false (suppress history)')
+        //          appModel.set('routing_options', {replace: true});  
+        //          appModel.set('routing_options', {replace: true});  
+        //        }
         self.getCollectionUrl(0);
         self.trigger('uriStack:change', newStack );
       }
@@ -1081,6 +1075,23 @@ define([
             self.extraSelectorInstance.render().$el);
       }
 
+      var $modifySearch = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+        'role="button" id="modify_search_button" ',
+        'href="#">',
+        'Modify Search</a>'
+      ].join(''));
+      $modifySearch.click(function(e){
+        e.preventDefault();
+        self.modifySearch();
+      });
+      
+      if (!_.isEmpty(self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH))){
+        self._options.extraControls.unshift($modifySearch);
+      }else if (! _.isEmpty(self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
+        self._options.extraControls.unshift($modifySearch);
+      }
+
       if(_.has(self._options,'extraControls')){
         self.$('#extra_controls').append(
           '<div id="extra_controls_div" class="panel"></div>');
@@ -1136,9 +1147,11 @@ define([
         ).done(function(){ });      
       }
       
-      // Note: replace: true - to suppress router history:
-      // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
-      appModel.set('routing_options', {replace: true});  
+      // NOTE: removed 20180521
+      //      // Note: replace: true - to suppress router history:
+      //      // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
+      //      appModel.set('routing_options', {replace: true});  
+      //      appModel.set('routing_options', {replace: true});  
       this.reportState();
       return this;
     },

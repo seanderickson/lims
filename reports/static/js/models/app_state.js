@@ -1380,6 +1380,7 @@ define([
       instance.fetch({
         success : function(model) {
           model.resource = resource;
+          model.options = options;
           model.key = key;
           model.set('id', key); // used by model.isNew(), if set use PATCH on save
           try{

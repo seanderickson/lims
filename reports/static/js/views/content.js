@@ -206,9 +206,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         this.$('#content_title').html('Child logs for: ' + _key);
         this.$('#content_title_row').show();
-      }else{
-        this.$('#content_title').html(resource.title + ' listing');
-        this.$('#content_title_row').show();
+      }
+      else{
+//        if (!_.isEmpty(_.intersection(uriStack, 
+//              [appModel.URI_PATH_COMPLEX_SEARCH,appModel.URI_PATH_ENCODED_SEARCH]))){
+//          this.$('#content_title').html(resource.title + ' listing');
+//          this.$('#content_title_row').show();
+//        }
       }
       
       console.log('collection url', url);
@@ -268,8 +272,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
           this.$('#content_title_row').show();
         }else{
-          this.$('#content_title').html(resource.title);
-          this.$('#content_title_row').show();
+          if (!_.contains(['well', 'smallmoleculereagent','silencingreagent'],resource.key)){
+            this.$('#content_title').html(resource.title);
+            this.$('#content_title_row').show();
+          }
         }
       });
     

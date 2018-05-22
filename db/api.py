@@ -20920,7 +20920,9 @@ class ReagentResource(DbApiResource):
         _cw = self.bridge['copy_well']
         pc_join = (_well.join(
                     _copy,_well.c.library_id==_copy.c.library_id)
-                .join(_p, _copy.c.copy_id==_p.c.copy_id))
+                .join(_p, and_(
+                    _well.c.plate_number==_p.c.plate_number,
+                    _copy.c.copy_id==_p.c.copy_id)))
                 # .join(_cw,
                 #       and_(_cw.c.well_id==_well.c.well_id, 
                 #            _cw.c.copy_id==_copy.c.copy_id),isouter=True))
@@ -20946,10 +20948,13 @@ class ReagentResource(DbApiResource):
                     _well.c.molar_concentration).label('molar_concentration'),
                 _p.c.status    
                 ])
-            .select_from(pc_join)
-            .where(_cw.c.well_id==_well.c.well_id)
-            .where(_cw.c.copy_id==_copy.c.copy_id)
-            .where(_cw.c.plate_id==_p.c.plate_id)
+            .select_from(pc_join.join(_cw,
+                and_(_cw.c.well_id==_well.c.well_id,
+                     _cw.c.copy_id==_copy.c.copy_id,
+                     _cw.c.plate_id==_p.c.plate_id), isouter=True))
+#             .where(_cw.c.well_id==_well.c.well_id)
+#             .where(_cw.c.copy_id==_copy.c.copy_id)
+#             .where(_cw.c.plate_id==_p.c.plate_id)
             )
         
         

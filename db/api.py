@@ -1197,6 +1197,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 logger.info('parsed: %r', parsed_search)
             parsed_searches.append(parsed_search)
         
+        logger.info('parsed searches: %r', parsed_searches)
         return parsed_searches
         
     @classmethod
@@ -1858,6 +1859,9 @@ class LibraryCopyPlateResource(DbApiResource):
         if plate_number:
             param_hash['plate_number__eq'] = plate_number
         plate_ids = param_hash.pop('plate_ids', None)
+        
+        
+        
         if plate_ids is not None:
             if isinstance(plate_ids,basestring):
                 plate_ids = [int(x) for x in plate_ids.split(',')]
@@ -7647,7 +7651,7 @@ class CherryPickRequestResource(DbApiResource):
     def get_warnings(self, cpr_id):    
         
         # Get warning fields of cpr
-        
+        logger.info('get warnings for cherry pick request: %r', cpr_id)
         warning_fields = ['screen_type','screener_picks_not_screened',
             'duplicate_screener_cherry_picks','deprecated_picks',
             'restricted_libraries','cherry_pick_allowance',
@@ -7660,6 +7664,8 @@ class CherryPickRequestResource(DbApiResource):
             'exact_fields': warning_fields
             })
 
+        logger.info('cpr warnings: got data')
+#         logger.info('cpr warnings: got data %r', cpr_data)
         if not cpr_data or not cpr_data['screener_cherry_picks']:
             logger.info('no warnings, cherry pick has not begun...')
             return {}
@@ -7709,21 +7715,41 @@ class CherryPickRequestResource(DbApiResource):
         plates_required = defaultdict(set)
         for scp_well in cpr_data['screener_cherry_picks']:
             plates_required[lims_utils.well_id_plate_number(scp_well)].add(scp_well)
-        logger.info('plates_required: %r', plates_required)
-        copy_plates_available = self.get_librarycopyplate_resource()\
-            ._get_list_response_internal(**{
-                'plate_number__in': plates_required.keys(),
-                'status__in': [ VOCAB.plate.status.AVAILABLE ],
-                'copy_usage_type__eq': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES
-            })
-        copy_plates_available = set([cp['plate_number'] for cp in copy_plates_available])
-        logger.info('copyplates_available: %r', copy_plates_available)
-        meta['copyplates_not_found'] = {plate_number:list(scps) for plate_number, scps 
+        logger.info('plates_required: %r', plates_required.keys())
+        
+        with get_engine().connect() as conn:
+            _plate = self.bridge['plate']
+            _copy = self.bridge['copy']
+            temp = (
+                select([distinct(_plate.c.plate_number)])
+                .select_from(_plate.join(_copy, _plate.c.copy_id==_copy.c.copy_id))
+                .where(_plate.c.plate_number.in_(plates_required.keys()))
+                .where(_plate.c.status == VOCAB.plate.status.AVAILABLE)
+                .where(_copy.c.usage_type == VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES)
+                )
+            plates_available = set([x[0] for x in conn.execute(temp)])
+            logger.info('plates_available: %r', plates_available)
+            meta['copyplates_not_found'] = {plate_number:list(scps) for plate_number, scps 
                             in plates_required.items()
-                            if plate_number not in copy_plates_available }
+                            if plate_number not in plates_available }
+            
+        # TODO: copyplate resource is slow here...
+        # copy_plates_available = self.get_librarycopyplate_resource()\
+        #     ._get_list_response_internal(**{
+        #         'plate_number__in': plates_required.keys(),
+        #         'status__in': [ VOCAB.plate.status.AVAILABLE ],
+        #         'copy_usage_type__eq': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES,
+        #         'exact_fields': ['plate_number','status','copy_usage_type']
+        #     })
+        # copy_plates_available = set([cp['plate_number'] for cp in copy_plates_available])
+        # logger.info('copyplates_available: %r', copy_plates_available)
+        # meta['copyplates_not_found'] = {plate_number:list(scps) for plate_number, scps 
+        #                     in plates_required.items()
+        #                     if plate_number not in copy_plates_available }
         
         # Check for other wells with the same reagent that have higher concentrations
         
+        logger.info('cpr warnings: find alternates...')
         scp_alternates = self.get_screenercherrypick_resource()\
             ._get_list_response_internal(
                 **{
@@ -7786,7 +7812,7 @@ class CherryPickRequestResource(DbApiResource):
         if scp_warn_map:
             meta[API_MSG_CPR_CONCENTRATIONS] = scp_warn_map
         
-        logger.info('cpr warnings: %r', meta)
+        logger.info('cpr warnings done')
         
         return meta
     def build_list_response(self, request, schema=None, **kwargs):
@@ -8001,14 +8027,15 @@ class CherryPickRequestResource(DbApiResource):
             .select_from(_cpr.join(
                 _scp, _cpr.c.cherry_pick_request_id==_scp.c.cherry_pick_request_id)
                 .join(_well, _scp.c.screened_well_id==_well.c.well_id)
-                .join(_la, _cpr.c.screen_id==_la.c.screen_id, isouter=True)
-                .join(_ls, _ls.c.activity_id==_la.c.activity_id, isouter=True)
-                .join(_ap, and_(
-                    _ap.c.library_screening_id==_ls.c.activity_id,
-                    _ap.c.plate_number==_well.c.plate_number), isouter=True)
             )
-            .where(_ap.c.plate_number==None)
             .where(_scp.c.selected)
+            .where(~exists(
+                select([None])
+                .select_from(_la.join(_ls, _ls.c.activity_id==_la.c.activity_id)
+                             .join(_ap, _ap.c.library_screening_id==_ls.c.activity_id))
+                .where(_ap.c.plate_number==_well.c.plate_number)
+                .where(_cpr.c.screen_id==_la.c.screen_id)
+                ))
             .group_by(_cpr.c.cherry_pick_request_id, _scp.c.screened_well_id)
             .order_by(_cpr.c.cherry_pick_request_id, _scp.c.screened_well_id))
         if cherry_pick_request_id:

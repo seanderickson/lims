@@ -257,23 +257,21 @@ define([
               comments.push(val.join(', '));
               body.append(val.join(', ')+ '<br>');
             }
-
           });
           
-          warningsButton.attr({'title': comments.join('\n')});
-          
-          warningsButton.click(function(e){
-            e.preventDefault();
-            Iccbl.appModel.showModalMessage({
-              title: 'Administrative warnings for Screener Cherry Picks',
-              view: body,
-              buttons_on_top: true,
+          if (!_.isEmpty(comments)){
+            warningsButton.attr({'title': comments.join('\n')});
+            warningsButton.click(function(e){
+              e.preventDefault();
+              Iccbl.appModel.showModalMessage({
+                title: 'Administrative warnings for Screener Cherry Picks',
+                view: body,
+                buttons_on_top: true,
+              });
             });
-          });
-          
-          warning_div.append('&nbsp;&nbsp;')
-          warning_div.append(warningsButton);
-          
+            warning_div.append('&nbsp;&nbsp;')
+            warning_div.append(warningsButton);
+          }
         }
         self.warningIsProcessing = false;
       }).fail(function(jqXHR, textStatus, errorThrown){

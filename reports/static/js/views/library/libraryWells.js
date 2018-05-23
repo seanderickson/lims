@@ -323,32 +323,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
           var backToSearchButton = $([
             '<a class="btn btn-default btn-sm" ',
-               'title="Back to search',
+               'title="Back to search" ',
               'role="button" id="button-search" href="#">',
               'Back to Search</a>'
             ].join(''));
     
           var prevButton = $([
             '<a class="btn btn-default btn-sm" ',
-               'title="Previous searched well',
+               'title="Previous searched well" ',
               'role="button" id="button-prev" href="#">',
               '<</a>'
             ].join(''));
           var firstButton = $([
             '<a class="btn btn-default btn-sm" ',
-               'title="First searched well',
+               'title="First searched well" ',
               'role="button" id="button-first" href="#">',
               '<<</a>'
             ].join(''));
           var lastButton = $([
             '<a class="btn btn-default btn-sm" ',
-               'title="last searched well',
+               'title="last searched well" ',
               'role="button" id="button-last" href="#">',
               '>></a>'
             ].join(''));
           var nextButton = $([
             '<a class="btn btn-default btn-sm" ',
-               'title="Next searched well',
+               'title="Next searched well" ',
               'role="button" id="button-next" href="#">',
               '></a>'
             ].join(''));

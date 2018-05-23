@@ -117,6 +117,7 @@ define([
         'tab_resources': this.tabbed_resources
       }      
     },
+    
     setWarnings: function() {
       var self = this;
       if (!appModel.hasGroup('readEverythingAdmin')){
@@ -126,6 +127,13 @@ define([
       if (self.model.isNew()){
         return;
       }
+      if (self.warningIsProcessing == true){
+        return;
+      }
+      else {
+        self.warningIsProcessing = true;
+      }
+      
       console.log('setWarnings...')
       var $target_el = $('#tab_container-title');
       var mouseTitle = 'Administrative warnings have been detected for the screener cherry picks';
@@ -267,9 +275,12 @@ define([
           warning_div.append(warningsButton);
           
         }
+        self.warningIsProcessing = false;
       }).fail(function(jqXHR, textStatus, errorThrown){
         console.log('fail', arguments);
         appModel.jqXHRfail.apply(this,arguments); 
+        $target_el.find('#warning-div').remove();
+        self.warningIsProcessing = false;
       });
       
     },
@@ -872,7 +883,6 @@ define([
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-//        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         self.listenTo(view, 'afterRender', function(event) {

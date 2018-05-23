@@ -7664,8 +7664,8 @@ class CherryPickRequestResource(DbApiResource):
             'exact_fields': warning_fields
             })
 
-        logger.info('cpr warnings: got data')
-#         logger.info('cpr warnings: got data %r', cpr_data)
+        logger.info('cpr warning data retrieved..')
+        
         if not cpr_data or not cpr_data['screener_cherry_picks']:
             logger.info('no warnings, cherry pick has not begun...')
             return {}
@@ -7783,13 +7783,13 @@ class CherryPickRequestResource(DbApiResource):
                             'library_short_name': library_short_name,
                             'selected_concentration': u'{} {}M'.format(
                                 lims_utils.convert_decimal(
-                                    molar_concentration,1e-6, 3),
-                                lims_utils.get_siunit(1e-6)),
+                                    molar_concentration,1e-3, 3),
+                                lims_utils.get_siunit(1e-3)),
                             'alternate_well': best_alt['screened_well_id'],
                             'alternate_concentration':  u'{} {}M'.format(
                                 lims_utils.convert_decimal(
-                                    best_alt['molar_concentration'],1e-6, 3),
-                                lims_utils.get_siunit(1e-6)),
+                                    best_alt['molar_concentration'],1e-3, 3),
+                                lims_utils.get_siunit(1e-3)),
                             }
                 elif mg_ml_concentration:
                     best_alt = sorted(alt_list, reverse=True,

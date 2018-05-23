@@ -8162,14 +8162,14 @@ class CherryPickRequestResource(DbApiResource):
             'cherry_pick_allowance': (
                 cast(case([
                     (_screen.c.screen_type=='small_molecule',
-                        settings.APP_PUBLIC_DATA.small_molecule_cherry_pick_ratio_allowed
-                            *_screen.c.screened_experimental_well_count
+                        func.ceil(settings.APP_PUBLIC_DATA.small_molecule_cherry_pick_ratio_allowed
+                            *_screen.c.screened_experimental_well_count)
                      )],
                     else_=(
-                        settings.APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
-                            *_screen.c.screened_experimental_well_count
+                        func.ceil(settings.APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
+                            *_screen.c.screened_experimental_well_count)
                         )
-                    ), sqlalchemy.types.FLOAT)
+                    ), sqlalchemy.types.INTEGER)
             ),
             'screener_cherry_pick_count_cumulative': (
                 select([func.count(None)])
@@ -9959,7 +9959,7 @@ class ScreenerCherryPickResource(DbApiResource):
                     _reagent.c.vendor_name])
                 .select_from(
                     _scp.join(_reagent, _scp.c.screened_well_id==_reagent.c.well_id)
-                        .join(_well,_scp.c.screened_well_id==_well.c.well_id))
+                        .join(_well,_reagent.c.well_id==_well.c.well_id))
 #                         .join(_library, _well.c.library_id==_library.c.library_id))
                 .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id)
                 .where(_scp.c.searched_well_id==_scp.c.screened_well_id)
@@ -9967,7 +9967,13 @@ class ScreenerCherryPickResource(DbApiResource):
             _original_scps = _original_scps.cte('original_scps')
         
             _alternates = (
-                select([_reagent.c.well_id,_original_scps.c.searched_well_id])
+                select([
+                    _reagent.c.well_id,
+                    # NOTE: only allow an alternate to be listed for the first 
+                    # searched_well_id, if there are multiple searched_well_id's 
+                    # that match the reagent
+                    func.min(_original_scps.c.searched_well_id).label('searched_well_id')
+                ])
                 .select_from(
                     _reagent.join(
                         _original_scps, 
@@ -9975,8 +9981,12 @@ class ScreenerCherryPickResource(DbApiResource):
                              _reagent.c.vendor_name==_original_scps.c.vendor_name)))
                 .where(_reagent.c.vendor_identifier != '')
                 .where(_reagent.c.well_id!=_original_scps.c.searched_well_id)
+                .where(not_(_reagent.c.well_id.in_(
+                    select([_scp.c.screened_well_id])
+                    .select_from(_scp)
+                    .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id))))
+                .group_by(_reagent.c.well_id)
                 ).cte('alternate_scps')
-        
             combined_scps = union(
                 select([
                     _scp.c.screener_cherry_pick_id,
@@ -10002,10 +10012,10 @@ class ScreenerCherryPickResource(DbApiResource):
                 .select_from(
                     _alternates.join(
                         _reagent,_alternates.c.well_id==_reagent.c.well_id))
-                .where(not_(_alternates.c.well_id.in_(
-                    select([_scp.c.screened_well_id])
-                    .select_from(_scp)
-                    .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id))))
+                # .where(not_(_alternates.c.well_id.in_(
+                #     select([_scp.c.screened_well_id])
+                #     .select_from(_scp)
+                #     .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id))))
                 )
             combined_scps = combined_scps.cte('combined')
             
@@ -10048,6 +10058,10 @@ class ScreenerCherryPickResource(DbApiResource):
                 alternate_searched_well_ids = set([x[0] for x in 
                     conn.execute(_alternates)])
                 stmt = stmt.where(working_scp.c.searched_well_id.in_(alternate_searched_well_ids))
+        
+        if show_other_reagents is False and show_alternates is False:
+            stmt = stmt.where(working_scp.c.selected==True)
+        
         # general setup
             
         (stmt, count_stmt) = self.wrap_statement(
@@ -14368,10 +14382,10 @@ class LibraryScreeningResource(ActivityResource):
             else:
                 _combined_query = _search_query
 
-            compiled_stmt = str(_combined_query.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(_combined_query.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
                     
             _result = conn.execute(_combined_query)
             
@@ -17567,7 +17581,8 @@ class ScreenResource(DbApiResource):
                 _screen.c.screen_id,
                 _screen_result.c.screen_result_id,
                 _screen_result.c.date_loaded,
-                _screen_result.c.experimental_well_count])
+                _screen_result.c.experimental_well_count
+            ])
             .select_from(
                 _screen.join(
                     _screen_result,
@@ -21043,6 +21058,8 @@ class ReagentResource(DbApiResource):
 
             _well = self.bridge['well']
             _reagent = self.bridge['reagent']
+            _or = _reagent.alias('other_reagent')
+            _reagent2 = _reagent.alias('reagent2')
             _sr = self.bridge['silencing_reagent']
             _smr = self.bridge['small_molecule_reagent']
             _molfile = self.bridge['molfile']
@@ -21094,6 +21111,26 @@ class ReagentResource(DbApiResource):
                         .select_from(spcs)
                         .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
                 else_=None)
+            
+            
+            custom_columns['other_wells_with_reagent'] = (
+                select([func.array_to_string(func.array_agg(
+                    literal_column('well_id')), LIST_DELIMITER_SQL_ARRAY )])
+                .select_from(
+                    select([_or.c.well_id])
+                    .select_from(_or)
+                    .where(and_(
+                        _or.c.vendor_identifier==_reagent2.c.vendor_identifier,
+                        _or.c.vendor_name==_reagent2.c.vendor_name,
+                        _or.c.well_id != _reagent2.c.well_id))
+                    .where(_reagent2.c.vendor_identifier != '')
+                    .where(_reagent2.c.well_id == text('reagent.well_id'))
+#                     .where(_reagent.c.well_id)
+                    .order_by(_reagent2.c.well_id)
+                    .alias('other_reagents'))
+                )
+            
+            
             
             # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
 
@@ -21264,7 +21301,7 @@ class ReagentResource(DbApiResource):
             #     dialect=postgresql.dialect(),
             #     compile_kwargs={"literal_binds": True}))
             # logger.info('compiled_stmt %s', compiled_stmt)
-    
+            
             return (field_hash, columns, stmt, count_stmt,filename)
                         
         except Exception, e:
@@ -21557,8 +21594,7 @@ class SilencingReagentResource(ReagentResource):
                     text('silencing_reagent.reagent_id=reagent.reagent_id'))
                 select_inner = select_inner.alias('a')
                 select_stmt = select([func.array_to_string(
-                                func.array_agg(column(field_name)),
-                                               LIST_DELIMITER_SQL_ARRAY)])
+                    func.array_agg(column(field_name)),LIST_DELIMITER_SQL_ARRAY)])
                 select_stmt = select_stmt.select_from(select_inner)
                 select_stmt = select_stmt.label(key)
                 custom_columns[key] = select_stmt
@@ -21572,8 +21608,7 @@ class SilencingReagentResource(ReagentResource):
                 select_inner = select_inner.order_by(_duplex_wells.c['well_id'])
                 select_inner = select_inner.alias('a')
                 select_stmt = select([func.array_to_string(
-                                func.array_agg(column(field_name)),
-                                               LIST_DELIMITER_SQL_ARRAY)])
+                    func.array_agg(column(field_name)),LIST_DELIMITER_SQL_ARRAY)])
                 select_stmt = select_stmt.select_from(select_inner)
                 select_stmt = select_stmt.label(key)
                 custom_columns[key] = select_stmt

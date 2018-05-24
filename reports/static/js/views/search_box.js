@@ -576,7 +576,8 @@ define([
           var cpr_id = self.form4.getValue()['searchVal'];
           var resource = appModel.getResource('cherrypickrequest');
           appModel.getModelFromResource(resource, cpr_id, function(model){
-            var _route = ['#screen', model.get('screen_facility_id'), resource.key,cpr_id].join('/');
+            var _route = ['#screen', model.get('screen_facility_id'), 
+              resource.key,cpr_id].join('/');
             appModel.set('routing_options', {replace: false});  
             appModel.router.navigate(_route, {trigger:true});
           });
@@ -761,6 +762,7 @@ define([
         var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
           encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
         console.log('route: ', uriStack);
+        appModel.set('routing_options', {replace: true});  
         appModel.router.navigate(uriStack.join('/'), {trigger:true});
       }else{
         // must change the route, and create a post
@@ -769,7 +771,6 @@ define([
         this.searchId = searchId;
         appModel.set('routing_options', {replace: false});  
         // Use the router to process the search: see content.js for handler
-        var resource = appModel.getResource('reagent');
         var _route = [
           resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
           searchId].join('/');

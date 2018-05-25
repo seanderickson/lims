@@ -482,6 +482,11 @@ class Migration(migrations.Migration):
         #     name='assayplate',
         #     unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
         # ),
+        
+        migrations.AlterField(
+            model_name='libraryscreening',
+            name='is_for_external_library_plates',
+            field=models.BooleanField(default=False)),
         migrations.AlterField(
             model_name='assayplate',
             name='plate_number',
@@ -654,6 +659,10 @@ class Migration(migrations.Migration):
             field=models.TextField(null=True),
         ),
         # TODO: remove this field
+        
+        # TODO: django migration doesn't change the default value 
+        # - all default settings must be implemented in manual SQL (until django 2.0 ?)
+        
         migrations.AlterField(
             model_name='screenresult',
             name='experimental_well_count',
@@ -672,7 +681,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='assaywell',
             name='is_positive',
-            field=models.BooleanField(default=False),
+            field=models.BooleanField(default=False, db_index=True),
         ),
         migrations.AlterField(
             model_name='datacolumn',

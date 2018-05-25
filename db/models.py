@@ -119,7 +119,7 @@ class LibraryScreening(Screening):
     screeninglink = models.OneToOneField(
         'Screening', primary_key=True, parent_link=True,db_column='activity_id')
     abase_testset_id = models.TextField()
-    is_for_external_library_plates = models.BooleanField()
+    is_for_external_library_plates = models.BooleanField(default=False)
     screened_experimental_well_count = models.IntegerField(default=0)
     libraries_screened_count = models.IntegerField(null=True)
     library_plates_screened_count = models.IntegerField(null=True)
@@ -856,13 +856,14 @@ class ScreenResult(models.Model):
     
     screen_result_id = models.AutoField(primary_key=True)
     replicate_count = models.IntegerField(default=0)
-    experimental_well_count = models.IntegerField(default=0)
     screen = models.OneToOneField(Screen, unique=True)
     date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True)
     channel_count = models.IntegerField(null=True, default=0)
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
+
+    experimental_well_count = models.IntegerField(default=0)
 
     class Meta:
         db_table = 'screen_result'
@@ -1145,9 +1146,9 @@ class Well(models.Model):
     
     barcode = models.TextField(null=True, unique=True)
 
-    # TODO: remove
-    deprecation_admin_activity = \
-        models.ForeignKey('AdministrativeActivity', null=True)
+    # TODO: remove 0098
+    # deprecation_admin_activity = \
+    #     models.ForeignKey('AdministrativeActivity', null=True)
 
 
     

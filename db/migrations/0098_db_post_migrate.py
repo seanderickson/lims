@@ -159,10 +159,10 @@ class Migration(migrations.Migration):
             name='retired_activity_id',
         ),
 
-        migrations.RemoveField(
-            model_name='screenresult',
-            name='experimental_well_count',
-        ),
+#         migrations.RemoveField(
+#             model_name='screenresult',
+#             name='experimental_well_count',
+#         ),
         
         # TODO: remove lab head as separate model
         migrations.AlterField(

@@ -471,6 +471,28 @@ ALTER TABLE assay_plate
   ADD CONSTRAINT assay_plate_unique_index
   UNIQUE(library_screening_id, plate_id, replicate_ordinal); 
 
+/** Django (<2.0?) will not set field defaults in migrations **/
+ALTER TABLE screen_result ALTER COLUMN experimental_well_count set default 0;
+ALTER TABLE screen_result ALTER COLUMN replicate_count set default 0;
+ALTER TABLE screen_result ALTER COLUMN channel_count set default 0;
+
+ALTER TABLE assay_well ALTER COLUMN is_positive set default false;
+
+ALTER TABLE data_column ALTER COLUMN is_follow_up_data set default false;
+ALTER TABLE data_column ALTER COLUMN is_derived set default false;
+
+ALTER TABLE cherry_pick_request ALTER COLUMN is_randomized_assay_plate_layout set default false;
+ALTER TABLE cherry_pick_request ALTER COLUMN keep_source_plate_cherry_picks_together set default false;
+
+ALTER TABLE library ALTER COLUMN version_number set default 0;
+
+ALTER TABLE silencing_reagent ALTER COLUMN is_restricted_sequence set default false;
+
+ALTER TABLE small_molecule_reagent ALTER COLUMN is_restricted_structure set default false;
+
+ALTER TABLE plate ALTER COLUMN screening_count set default 0;
+ALTER TABLE plate ALTER COLUMN cplt_screening_count set default 0;
+
 DROP TABLE cell_lineage;
 DROP TABLE cell_related_projects;
 DROP TABLE cell_markers;

@@ -299,25 +299,25 @@ define([
             var screen_facility_id = self.form1.getValue('screen_facility_id');
             var library_short_name = self.form1.getValue('library_short_name');
             if(user_id){
-              var route = 'screensaveruser/' + user_id;
+              var uriStack = ['screensaveruser', user_id];
               self.form1.setValue('user_id',null);
               self.form1.$el.find('[key="user_id"]')
                   .find('.chosen-select').trigger("chosen:updated");
-              appModel.router.navigate(route, {trigger: true});
+              appModel.setUriStack(uriStack);
             }
             else if(screen_facility_id){
-              var route = 'screen/' + screen_facility_id;
+              var uriStack = ['screen',screen_facility_id];
               self.form1.setValue('screen_facility_id',null);
               self.form1.$el.find('[key="screen_facility_id"]')
                   .find('.chosen-select').trigger("chosen:updated");
-              appModel.router.navigate(route, {trigger: true});
+              appModel.setUriStack(uriStack);
             }
             else if(library_short_name){
-              var route = 'library/' + library_short_name;
+              var uriStack = ['library',library_short_name];
               self.form1.setValue('library_short_name',null);
               self.form1.$el.find('[key="library_short_name"]')
                   .find('.chosen-select').trigger("chosen:updated");
-              appModel.router.navigate(route, {trigger: true});
+              appModel.setUriStack(uriStack);
             }
           }
         });
@@ -542,13 +542,12 @@ define([
           }
           var urlSearchParts = 
             PlateRangeSearchView.prototype.encodeFormData.call(this,parsedSearch);
-          // TODO: 20180312 - screening inquiry should use URI_PATH_ENCODED_SEARCH:
           // rework to support list args
           var uriStack = ['screen', parsedSearch.screen_facility_id,
                           'summary','plateranges',appModel.URI_PATH_SEARCH,
                           urlSearchParts.join(appModel.SEARCH_DELIMITER)]
           console.log('route: ', uriStack);
-          appModel.router.navigate(uriStack.join('/'), {trigger:true});
+          appModel.setUriStack(uriStack);
         });      
       }      
 
@@ -576,10 +575,9 @@ define([
           var cpr_id = self.form4.getValue()['searchVal'];
           var resource = appModel.getResource('cherrypickrequest');
           appModel.getModelFromResource(resource, cpr_id, function(model){
-            var _route = ['#screen', model.get('screen_facility_id'), 
+            var uriStack = ['#screen', model.get('screen_facility_id'), 
               resource.key,cpr_id].join('/');
-            appModel.set('routing_options', {replace: false});  
-            appModel.router.navigate(_route, {trigger:true});
+              appModel.setUriStack(uriStack);
           });
         });      
       }
@@ -711,7 +709,7 @@ define([
         var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
           encodedPlateSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
         console.log('route: ', uriStack);
-        appModel.router.navigate(uriStack.join('/'), {trigger:true});
+        appModel.setUriStack(uriStack);
       }else{
         // Send complex search data as a POST
         // must change the route, and create a post
@@ -722,11 +720,10 @@ define([
         var searchId = ( new Date() ).getTime();
         appModel.setSearch(searchId,text_to_search);
         this.searchId = searchId;
-        appModel.set('routing_options', {replace: false});  
-        var _route = [
+        var uriStack = [
           resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
-          searchId].join('/');
-        appModel.router.navigate(_route, {trigger:true});
+          searchId];
+        appModel.setUriStack(uriStack);
       }
     },
     
@@ -761,25 +758,16 @@ define([
         });
         var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
           encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
-        console.log('route: ', uriStack);
-        appModel.set('routing_options', {replace: true});  
-        appModel.router.navigate(uriStack.join('/'), {trigger:true});
+        appModel.setUriStack(uriStack);
       }else{
         // must change the route, and create a post
         var searchId = ( new Date() ).getTime();
         appModel.setSearch(searchId,text_to_search);
         this.searchId = searchId;
-        appModel.set('routing_options', {replace: false});  
-        // Use the router to process the search: see content.js for handler
-        var _route = [
+        var uriStack = [
           resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
-          searchId].join('/');
-        appModel.router.navigate(_route, {trigger:true});
-        // var newStack = [resource.key,appModel.URI_PATH_SEARCH,searchId];
-        // NOTE: easier to control the router history using navigate: 
-        // when using uristack, there is the problem of who set appModel.routing_options last:
-        // a race condition is set up between list2.js and search_box.js
-        //        appModel.set({'uriStack': newStack});     
+          searchId];
+        appModel.setUriStack(uriStack);
       }
       
     },
@@ -795,20 +783,18 @@ define([
         var encodedSearches = _.map(parsedSearchArray,encodeURIComponent);
         var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
           encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
-        appModel.router.navigate(uriStack.join('/'), {trigger:true});
+        appModel.setUriStack(uriStack);
       }else{
         // must change the route, and create a post
         var parsedSearches = text_to_search.split('')
         var searchId = ( new Date() ).getTime();
         appModel.setSearch(searchId,text_to_search);
         this.searchId = searchId;
-        appModel.set('routing_options', {replace: false});  
-        // Use the router to process the search: see content.js for handler
         var resource = appModel.getResource('compound_search');
-        var _route = [
+        var uriStack = [
           resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
-          searchId].join('/');
-        appModel.router.navigate(_route, {trigger:true});
+          searchId];
+        appModel.setUriStack(uriStack);
       }
     },
     

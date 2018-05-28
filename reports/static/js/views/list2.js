@@ -253,9 +253,6 @@ define([
               return parsedLine;
             }
           }).join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE);
-          if (search_path != appModel.URI_PATH_ENCODED_SEARCH){
-            appModel.set('routing_options', {replace: false});  
-          }
           self.listModel.unset(appModel.URI_PATH_COMPLEX_SEARCH, { silent: true});
           self.listModel.set(appModel.URI_PATH_ENCODED_SEARCH,search_text);
           
@@ -268,10 +265,6 @@ define([
           // from the search ID
           var searchId = '' + ( new Date() ).getTime();
           appModel.setSearch(searchId,text_to_search);
-          
-          if (search_path != appModel.URI_PATH_COMPLEX_SEARCH){
-            appModel.set('routing_options', {replace: false});  
-          }
           self.listModel.unset(appModel.URI_PATH_ENCODED_SEARCH, { silent: true});
           self.listModel.set(appModel.URI_PATH_COMPLEX_SEARCH,searchId);
           
@@ -530,8 +523,7 @@ define([
     /**
      * Report the listmodel "state" to the application using the uriStack
      */
-    reportState: function(args) {
-      console.log('report state', args);
+    reportState: function(options) {
       var self = this;
       var newStack = [];
       var previousStack = self.currentStack;
@@ -571,20 +563,12 @@ define([
         }
       });
       self.currentStack = newStack;
-      console.log('newStack: ' + JSON.stringify(newStack));
-      if(previousStack && _.isEqual(previousStack,newStack)){
-        console.log('no new stack updates');
-      }else{
-        // Removed 20180521
-        //        if (!previousStack){
-        //          // Note: replace: true - to suppress router history:
-        //          // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
-        //          console.log('routing options: replace: false (suppress history)')
-        //          appModel.set('routing_options', {replace: true});  
-        //          appModel.set('routing_options', {replace: true});  
-        //        }
-        self.getCollectionUrl(0);
+      console.log('reportState', previousStack, newStack);
+      if (!previousStack || !_.isEqual(previousStack,newStack)){
+        console.log('trigger list stack change...');
         self.trigger('uriStack:change', newStack );
+      }else{
+        
       }
     },
     
@@ -717,7 +701,6 @@ define([
           self.listModel.set('page',1);
           // set this because of how checkstate is triggered
           self.collection.state.currentPage = 1; 
-          appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
       
@@ -1147,11 +1130,6 @@ define([
         ).done(function(){ });      
       }
       
-      // NOTE: removed 20180521
-      //      // Note: replace: true - to suppress router history:
-      //      // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
-      //      appModel.set('routing_options', {replace: true});  
-      //      appModel.set('routing_options', {replace: true});  
       this.reportState();
       return this;
     },

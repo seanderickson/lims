@@ -123,8 +123,6 @@ define([
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         this.consumedStack = ['transformer'];
-        self.reportUriStack([]);
-        
       }
       
       appModel.getResourceFromUrl(schemaUrl, showTransformer);
@@ -158,12 +156,10 @@ define([
           summaryView: self,
           currentLibraryScreenings: currentLibraryScreenings
         });
-        Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
         self.setView("#tab_container", view ).render();
         this.consumedStack = ['plateranges'];
-        self.reportUriStack([]);
-        
       })
       .fail(function() { 
         Iccbl.appModel.jqXHRfail.apply(this,arguments); 
@@ -204,14 +200,8 @@ define([
               DetailView.prototype.afterRender.apply(this);
               this.$el.find('#libraries_screened_count').click(function(e) {
                 e.preventDefault();
-                self.consumedStack = ['libraries'];
-                self.showLibraries(delegateStack);
+                self.change_to_tab('library');
               });
-//              this.$el.find('#library_plate_screening_count').click(function(e) {
-//                e.preventDefault();
-//                self.consumedStack = ['plates'];
-//                self.showCopyPlates(delegateStack);
-//              });
               this.$el.find('#library_plates_data_loaded').click(function(e) {
                 e.preventDefault();
                 self.consumedStack = ['plates'];
@@ -224,11 +214,8 @@ define([
             }
           });
           self.tabViews[key] = view;
-          
-          self.setView("#tab_container", view ).render();
-          
           self.reportUriStack([]);
-          
+          self.setView("#tab_container", view ).render();
         },{ data_for_get: { visibilities: ['summary']} }
       );
     },
@@ -461,7 +448,6 @@ define([
           $title = self.$el.find('#tab_container-title');
           $title.html(view.getTitle());
           $title.show();
-          self.reportUriStack([]);
         });        
         return;
       } else {
@@ -503,7 +489,6 @@ define([
         $title = self.$el.find('#tab_container-title');
         $title.empty();
         $title.hide();
-      self.reportUriStack([]);
       }
     },
     
@@ -548,68 +533,10 @@ define([
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-      //self.listenTo(view, 'afterRender', function(event) {
-      //  view.$el.find('#list-title').show().append(
-      //    '<H4 id="title">Libraries for Screening: ' + self.model.key + '</H4>');
-      //});
       this.$el.find('#tab_container-title').hide();
-      self.reportUriStack([]);
       
     },
 
-//    /**
-//     * Show the Library Plates for library_plate_screening_count:
-//     * - The total number of times that library plates have been screened 
-//     * (not including replicates)
-//     */
-//    showCopyPlates: function(delegateStack) {
-//      var self = this;
-//      var url = [self.model.resource.apiUri,self.model.key,'plates_screened'].join('/');
-//      var resource = appModel.getResource('librarycopyplate');
-//      
-//      // FIXME: create new column "copies screened"
-//      var fields_to_show = [
-//          'library_short_name', 'library_screening_status','copy_name', 
-//          'library_comment_array','plate_number','comment_array', 
-//          'screening_count','assay_plate_count','copies_screened', 
-//          'last_date_screened','first_date_screened']
-//
-//      var copies_screened_field = _.clone(resource.fields['copy_name']);
-//      copies_screened_field['visibility'] = ['l'];
-//      copies_screened_field['data_type'] = 'list'
-//      copies_screened_field['key'] = 'copies_screened';
-//      copies_screened_field['title'] = 'Copies Screened';
-//      copies_screened_field['description'] = 'Copies screened for this plate';
-//      delete resource.fields['copy_name']
-//      resource.fields['copies_screened'] = copies_screened_field;
-//      
-//      _.each(resource['fields'], function(field){
-//        if (!_.contains(fields_to_show, field['key'])){
-//          field['visibility'] = [];
-//        }else{
-//          field['visibility'] = ['l','d'];
-//        }
-//      });
-//      
-//      var view = new ListView({ 
-//        uriStack: _.clone(delegateStack),
-//        resource: resource,
-//        url: url,
-//        extraControls: []
-//      });
-//      Backbone.Layout.setupView(view);
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//      self.listenTo(view, 'afterRender', function(event) {
-//        view.$el.find('#list-title').show().append(
-//          '<H4 id="title">Library Copy Plates Screened for: ' + self.model.key + '</H4>');
-//      });
-//      this.$('li').removeClass('active');
-//      this.$('#summary').addClass('active');
-//      self.$("#tab_container-title").hide();
-//      self.reportUriStack([]);
-//    },
-    
     /**
      * Plates screened
      */
@@ -727,8 +654,6 @@ define([
       Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
       this.$el.find('#tab_container-title').hide();
-      self.reportUriStack([]);
-
     },
 
   });

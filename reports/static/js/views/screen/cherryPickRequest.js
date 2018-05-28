@@ -676,7 +676,6 @@ define([
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         this.consumedStack = ['transformer'];
-        self.reportUriStack([]);
         
       }
       
@@ -2350,7 +2349,6 @@ define([
       });
       var view = new View();
       self.setView('#tab_container', view).render();
-      //      self.reportUriStack([]);
     }, // end showScpSearchForm
     
     createScpView: function(schemaResult, delegateStack){
@@ -2522,7 +2520,6 @@ define([
         row: SelectedScpRow
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack(['screenercherrypicks']);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
       self.listenTo(view, 'afterRender', function(event) {

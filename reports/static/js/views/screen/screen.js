@@ -404,7 +404,7 @@ define([
               editVisibleKeys.push('primary_screen');
               showEdit(newModel);
               self.$('ul.nav-tabs > li').addClass('disabled');
-              self.reportUriStack();
+              self.reportUriStack([]);
               var titleDiv = $('#detail_container').find('#content_title')
               titleDiv.append(
                 '<H4 id="title">Reconfirmation Up Screen for ' + 
@@ -450,7 +450,9 @@ define([
 
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      this.consumedStack = []; 
+      this.consumedStack = [];
+//      this.reportUriStack([]);
+
       this.setView("#tab_container", view ).render();
       
       return view;
@@ -1238,8 +1240,8 @@ define([
               uriStack: _.clone(delegateStack),
               screen: self.model
             });
-            Backbone.Layout.setupView(view);
             self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            Backbone.Layout.setupView(view);
             self.setView("#tab_container", view ).render();
             
             console.log('title: ', 
@@ -1307,8 +1309,8 @@ define([
           collection: collection,
           extraControls: extraControls
         });
-        Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
         self.$("#tab_container-title").empty();
         self.$("#tab_container-title").hide();
         self.setView("#tab_container", view ).render();
@@ -1350,8 +1352,8 @@ define([
         uriStack: ['+add']
       });
       
-      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
 
       
@@ -1395,8 +1397,8 @@ define([
               screen: self.model,
               uriStack: _.clone(delegateStack)
             });
-            Backbone.Layout.setupView(view);
             self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            Backbone.Layout.setupView(view);
             self.setView("#tab_container", view ).render();
           });        
           return;
@@ -1463,8 +1465,8 @@ define([
             screen: self.model,
             uriStack: ['+add']
           });
-          Backbone.Layout.setupView(view);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          Backbone.Layout.setupView(view);
           self.setView("#tab_container", view ).render();
 
           self.consumedStack = ['activities'];
@@ -1482,8 +1484,8 @@ define([
           extraControls: extraControls
         });
         
-        Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
         self.setView("#tab_container", view ).render();
 
       }
@@ -1497,8 +1499,8 @@ define([
         model: self.model, 
         uriStack: _.clone(delegateStack)
       });
-      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
       self.$("#tab_container-title").hide();
     },
@@ -1565,8 +1567,8 @@ define([
         model: self.model, 
         uriStack: _.clone(delegateStack)
       });
-      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
       self.$("#tab_container-title").hide();
     },
@@ -1602,12 +1604,13 @@ define([
             });
             self.tabViews[key] = view;
             
-            self.listenTo(view , 'uriStack:change', this.reportUriStack);
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
             self.setView("#tab_container", view ).render();
           },{ data_for_get: { visibilities: ['billing']}});
       } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
+        self.reportUriStack([]);
       }
       self.$("#tab_container-title").hide();
     },

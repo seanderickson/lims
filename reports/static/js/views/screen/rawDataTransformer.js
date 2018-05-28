@@ -469,6 +469,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       Backbone.Layout.setupView(view);
       editform_el = this.setView("#resource_content", view ).render().$el;
+      self.reportUriStack([]);
       
     }, // afterRender
 
@@ -1127,17 +1128,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.trigger('uriStack:change', actualStack );
     }
   
-
-//    /**
-//     * Child view bubble up URI stack change event
-//     */
-//    reportUriStack: function(reportedUriStack) {
-//      var consumedStack = this.consumedStack || [];
-//      var actualStack = consumedStack.concat(reportedUriStack);
-//      this.trigger('uriStack:change', actualStack );
-//    },
-    
-    
   });
 
   return RawDataTransformView;

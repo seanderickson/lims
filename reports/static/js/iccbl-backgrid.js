@@ -2999,16 +2999,12 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   reportUriStack: function(reportedUriStack, options) {
     var options = options || {source: this};
     var consumedStack = this.consumedStack || [];
-    var actualStack = consumedStack.concat(reportedUriStack);
-    // 20180425 - fix: window location automatically encodes the hash url,
-    // and backbone router generates a second route change with the 
-    // encoded url; ensure that uriStack contains only strings so that all
-    // iterations match.
-    actualStack = _.map(actualStack, function(fragment){
-      return '' + fragment;
-    });
-    console.log('reportUriStack:', actualStack, options);
-    this.model.set({ 'uriStack': actualStack }, options);     
+    if (reportedUriStack){
+      actualStack = consumedStack.concat(reportedUriStack);
+    }else{
+      actualStack = consumedStack.slice(0);
+    }
+    Iccbl.appModel.reportUriStack(actualStack, options);
   },
   
   /**
@@ -3018,12 +3014,11 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
    *          the event source triggering view
    */
   uriStackChange: function(model, val, options) {
-    if(options.source === this){
+    if(options && options.source === this){
       console.log('UriContainerView: self generated uristack change');
       return;
     }else{
       var uriStack = _.clone(this.model.get('uriStack'));
-      console.log('uriStackChange', uriStack);
       try {
         this.changeUri(uriStack);
       }catch (e){

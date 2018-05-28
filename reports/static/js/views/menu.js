@@ -33,7 +33,7 @@ define([
        * @param options.source = the event source triggering view
        */
       uriStackChange: function(model, val, options) {
-        if(options.source === this){
+        if(options && options.source === this){
           console.log('menu: self generated uristack change');
           return;
         }else{

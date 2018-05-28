@@ -116,7 +116,6 @@ define([
       current_view: 'home',
       current_resource_id: 'home',
       current_options: {},
-      routing_options: {},
       current_scratch: {},
       current_details: {},
       login_information: {},
@@ -1806,7 +1805,20 @@ define([
       return this.jobCollection;
     },
     
-    setUriStack: function(value){
+
+    /**
+     * setUriStack:
+     * Initiates a "change:uriStack" event signal to view/controllers in the 
+     * application:
+     * Called by: UI events (menu click, tab actions)
+     * Listeners: content.js, menu.js, search_box.js
+     * Coding convention; the final designated target view (which may modify 
+     * the stack as needed) will call "reportUriStack", initiating a cascade of 
+     * "reportUriStack" calls to set the final URL and history.
+     */  
+    setUriStack: function(value, options){
+
+      var options = _.extend( {'deferred_navigation': true }, options);
       
       // 20180425 - fix: window location automatically encodes the hash url,
       // and backbone router generates a second route change with the 
@@ -1815,13 +1827,37 @@ define([
       value = _.map(value, function(fragment){
         return '' + fragment;
       });
-      if(this.get('uriStack') == value ){
+      if(_.isEqual(this.get('uriStack'),value )){
         // signal a change event if this method was called with the same value
         // - for the menu signaling
-        this.trigger('change:uriStack', this);
+          this.trigger('change:uriStack', this);
       }else{
-        this.set({ uriStack: value });
+        this.set({ uriStack: value }, options);
       }
+    },
+    
+    /**
+     * reportUriStack:
+     * Reports the final URI stack for history management:
+     * - router listens for "change:reportUriStack events.
+     * 
+     * UriStack parsing is performed by the hierarchy of controllers beginning 
+     * at "content.js" and ending with a designated final view/controller. For
+     * any given UriStack; there will be one final view/controller that is 
+     * responsible for calling "reportUriStack" which triggers a cascade of
+     * "reportUriStack" calls ending here.
+     */
+    reportUriStack: function(reportedUriStack, options) {
+      // 20180425 - fix: window location automatically encodes the hash url,
+      // and backbone router generates a second route change with the 
+      // encoded url; ensure that uriStack contains only strings so that all
+      // iterations match.
+      reportedUriStack = _.map(reportedUriStack, function(fragment){
+        return '' + fragment;
+      });
+      console.log('reportUriStack:', reportedUriStack, options);
+      this.set({ 'uriStack': reportedUriStack }, { silent: true } ); 
+      this.set({ 'reportedUriStack': reportedUriStack }, options);     
     },
 
     /**

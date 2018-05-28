@@ -1222,9 +1222,9 @@ define([
           collection: collection,
           extraControls: [addRnaiScreenButton,addSMScreenButton]
       });
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);
       self.consumedStack = ['screens']; 
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();      
     },
 
@@ -1271,8 +1271,8 @@ define([
               user: self.model,
               uriStack: _.clone(delegateStack)
             });
-            Backbone.Layout.setupView(view);
             self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            Backbone.Layout.setupView(view);
             self.setView("#tab_container", view ).render();
           });        
           return;
@@ -1361,8 +1361,8 @@ define([
               });
             }
           });
-          Backbone.Layout.setupView(view);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          Backbone.Layout.setupView(view);
           self.setView("#tab_container", view ).render();
         })();
       }
@@ -1814,9 +1814,9 @@ define([
           appModel.clearPagePending();
         });
         
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
         Backbone.Layout.setupView(view);
         self.consumedStack = [key]; 
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
       };
         

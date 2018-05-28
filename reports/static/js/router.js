@@ -22,7 +22,7 @@ function($, _, Backbone, appModel) {
               + JSON.stringify(params) + ', routesHit:' + self.routesHit);
         }, this);
 
-      this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
+      this.listenTo(appModel, 'change:reportedUriStack', this.reportUriStack);
       console.log('router initialized...');
     },
     
@@ -67,7 +67,7 @@ function($, _, Backbone, appModel) {
       if (path){
         uriStack = popKeysAndDecode(path.split('/'));
       }
-      appModel.set({ uriStack: uriStack }, { source: this });
+      appModel.set({ uriStack: uriStack });
     },
     
     back: function() {  
@@ -91,34 +91,21 @@ function($, _, Backbone, appModel) {
       return stack.join('/');
     },
     
-    uriStackChange: function(model, vals, options){
-      if(options.source === this){
-        console.log('self generated uristack change');
-        return;
-      }else{
-        this.model_set_route();
-      }
-    },
-    
-    model_set_route: function() {
-      var uriStack = appModel.get('uriStack');
-      console.log('model_set_route: ' + JSON.stringify(uriStack));
+    reportUriStack: function(model, vals, options){
+      var uriStack = appModel.get('reportedUriStack');
+      console.log('reportUriStack: ' + JSON.stringify(uriStack));
       var route = this.get_route(uriStack);
+
       // TODO: this mirrors the handler for route match in main.js
       document.title = 'Screensaver LIMS' + ': ' + route;
 
-      // Trigger false to suppress further parsing, 
-      // Replace false (default) to create browser history
-      var options = { trigger: false, replace:false }; // , replace:false
-      var routing_options = appModel.get('routing_options');
-      appModel.set({ routing_options: {} });
-      if(!_.isUndefined(routing_options)){
-          options = _.extend(options, routing_options);
-      }
       // Clear out error messages after navigating away from page
       appModel.clearErrors();
       console.log('route: ', route, options);
       
+      // Trigger false to suppress further parsing, 
+      // Replace false (default) to create browser history
+      var options = { trigger: false, replace:false }; 
       this.navigate( route, options );
     }
 

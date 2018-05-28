@@ -179,7 +179,7 @@ MAX_WELL_INDEXES_TO_CACHE=3e+08
 # maximum rows to cache for cached_resultproxy:
 # see reports/sqlalchemy_resource
 # (max rows per query by hash)
-MAX_ROWS_FOR_CACHE_RESULTPROXY=1e3
+MAX_ROWS_FOR_CACHE_RESULTPROXY=1e4
 
 # minimum wells for insertion into the well_query_index before dropping indexes
 # - for performance tuning on screen result / well queries

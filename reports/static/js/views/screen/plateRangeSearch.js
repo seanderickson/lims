@@ -376,7 +376,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         if (_.isEmpty(plate_searches)){
           console.log('nothing to search! ', self.plate_range_collection);
         }
-//        var encodedSearch = encodeURIComponent(plate_searches.join(';'));
         var encodedSearch = plate_searches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE);
         var route = ['#'+resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
                      encodedSearch];

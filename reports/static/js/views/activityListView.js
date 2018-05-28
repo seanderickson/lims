@@ -31,7 +31,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
           }
           else {
             if (!_.isEmpty(this.model.get('serviced_user_id'))){
-              hrefTemplate = '#screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}';
+              hrefTemplate = '#screensaveruser/{serviced_user_id}/activity/{activity_id}';
             } 
             else if (!_.isEmpty(this.model.get('screen_facility_id'))){
               hrefTemplate = '#screen/{screen_facility_id}/activities/{activity_id}';

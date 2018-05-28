@@ -153,7 +153,7 @@ define([
      * Child view bubble up URI stack change event
      */
     reportUriStack: function(reportedUriStack) {
-      console.log('reportUriStack --- ' );
+      console.log('reportUriStack --- ', reportedUriStack, this.consumedStack);
       var consumedStack = this.consumedStack || [];
       var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );

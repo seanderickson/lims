@@ -310,9 +310,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         // Utility to find item index in collection
         function findIndex(targetModel){
-          return collection.findIndex(function(model){
-              return targetModel.get('well_id')==model.get('well_id');
-            });
+          return collection.findIndex(targetModel);
         };
         
         function showWell(newIndex){
@@ -401,6 +399,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               showWell(newIndex);
             }
           });
+          backToSearchButton.click(function(e){
+            e.preventDefault();
+            self.consumedStack = [];
+            var titleDiv = self.$('#content_title').parent();
+            titleDiv.find('#search_context_title').remove();
+            
+            self.showList(delegateStack);
+          });
           
           function showButtons($el){
             $el.show();
@@ -442,14 +448,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           self.consumedStack = [newModel.get('well_id')];
           self.listenTo(lwView , 'uriStack:change', self.reportUriStack);
           self.setView("#resource_content", lwView ).render();
-          backToSearchButton.click(function(e){
-            e.preventDefault();
-            self.consumedStack = [];
-            var titleDiv = self.$('#content_title').parent();
-            titleDiv.find('#search_context_title').remove();
-            
-            self.showList(delegateStack);
-          });
         };
         
         
@@ -461,10 +459,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
                 e.preventDefault();
                 showWell(findIndex(this.model));
               }
-            }));
+            })
+          );
 
-        ///////////////////////////////////////////////////////////
-        
         var WellListView = ListView.extend({
           afterRender: function(){
             ListView.prototype.afterRender.apply(this,arguments);
@@ -472,6 +469,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             return this;
           }
         });
+
+        ///////////////////////////////////////////////////////////
+        
         self.listenTo(collection, 'sync', function(e){
           if (collection.size() == 1 && collection.state.currentPage == 1){
             // show library well view
@@ -479,7 +479,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             var libraryResource = appModel.getResource('library');
             var _route = ['#', libraryResource.key, well.get('library_short_name'),
                           'well', well.get('well_id')].join('/');
-            appModel.set('routing_options', {replace: false});  
+            // FIXME: use appModel.setUriStack here
             appModel.router.navigate(_route, {trigger:true});
           }
         });
@@ -495,7 +495,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             self.$('#content_title').html(newResource.title + ': <small>' + val + '</small>');
             self.$el.find('#content_title_row').show();
           } else {
-//            self.$('#content_title').html(newResource.title);
+            // CHANGE: only set if special "val" search params are indicated
+            // self.$('#content_title').html(newResource.title);
           }
         });
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

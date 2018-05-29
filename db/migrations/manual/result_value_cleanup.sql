@@ -9,12 +9,19 @@
 
 **/
 
+/**
+ NOTE: result_value_duplicates has already been created on ss1 database (20180529) 
+ 
+drop table result_value_duplicates;
 create table result_value_duplicates as 
   select data_column_id, well_id, count(*)
   from result_value
   group by data_column_id, well_id
   HAVING count(*) > 1;
+**/
 
+
+drop table result_value_duplicates2;
 create table result_value_duplicates2 as 
   select rv.*  
   from result_value rv 
@@ -40,4 +47,6 @@ delete from result_value where result_value_id in (
 alter table result_value 
   ADD constraint data_column_well_id unique(data_column_id, well_id);
 
+/**
 drop index result_value_data_column_and_well_index;
+**/

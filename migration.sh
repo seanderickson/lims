@@ -210,8 +210,6 @@ function restoredb_data {
     done          
   fi  
   
-  result_value_cleanup
-  
   echo "vacuum analyze $(ts)"
   psql -h $DBHOST -d $DB -U $DBUSER -c "vacuum analyze;"
   
@@ -997,7 +995,9 @@ function main {
   restoredb
   
   restoredb_data
-    
+  
+  result_value_cleanup
+  
   maybe_activate_virtualenv
   
   pip install -r requirements.txt >>"$LOGFILE" 2>&1
@@ -1076,6 +1076,8 @@ main "$@"
   
 #  restoredb_data
     
+#  result_value_cleanup
+
 #  maybe_activate_virtualenv
   
 #  pip install -r requirements.txt >>"$LOGFILE" 2>&1

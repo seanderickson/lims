@@ -19,7 +19,7 @@ import db.schema
 from reports import InformationError, HEADER_APILOG_COMMENT_CLIENT
 from reports.api import API_RESULT_DATA, API_RESULT_META
 from reports.serialize import LimsJSONEncoder, parse_val
-from reports.utils import parse_credentials
+from reports.utils import parse_credentials, sort_nicely
 from reports.utils.admin_emailer import Emailer, read_email_template, \
     create_prettytable, validate_email
 from reports.utils.django_requests import get_resource, get_resource_listing, \
@@ -471,7 +471,7 @@ if __name__ == "__main__":
             
             txt_screens = []
             html_screens = []
-            for facility_id in sorted(screens.keys()):
+            for facility_id in sort_nicely(screens.keys()):
                 screen = screens[facility_id]
                 txt_screens.append(
                     replace_for_text(screen))
@@ -821,7 +821,7 @@ if __name__ == "__main__":
             
             txt_notified_screens = []
             html_notified_screens = []
-            for facility_id in sorted(screens_to_expire.keys()):
+            for facility_id in sort_nicely(screens_to_expire.keys()):
                 screen = screens_to_expire[facility_id]
                 txt_notified_screens.append(
                     replace_for_text(screen))
@@ -1047,14 +1047,14 @@ if __name__ == "__main__":
             
             txt_notified_screens = []
             html_notified_screens = []
-            for facility_id in sorted(screens_notified):
+            for facility_id in sort_nicely(screens_notified):
                 screen = screens[facility_id]
                 txt_notified_screens.append(replace_for_text(screen))
                 html_notified_screens.append(replace_for_html(screen))
                 
             txt_not_notified_screens = []
             html_not_notified_screens = []
-            for facility_id in sorted(screens_not_notified):
+            for facility_id in sort_nicely(screens_not_notified):
                 screen = screens[facility_id]
                 txt_not_notified_screens.append(replace_for_text(screen))
                 html_not_notified_screens.append(replace_for_html(screen))

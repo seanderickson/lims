@@ -221,6 +221,8 @@ function restoredb_data {
 }
 
 function django_syncdb {
+
+  echo "django_syncdb: $(ts) ..." >> "$LOGFILE"
   
   # migrate replaces syncdb; 
   # note; some of the system migrations (auth, sites, admin, contenttypes ) will
@@ -245,6 +247,8 @@ function django_syncdb {
 
   # TODO: remove if memcached is installed
   $DJANGO_CMD createcachetable
+
+  echo "django_syncdb done: $(ts) ..." >> "$LOGFILE"
 }
 
 function premigratedb {
@@ -525,7 +529,7 @@ function setup_production_users {
 
   echo "setup_production_users: $(ts) ..." >> "$LOGFILE"
 
-  echo "setup_production_users using a local dev server on port $BOOTSTRAP_PORT..."
+  echo "setup_production_users using a local dev server on port $BOOTSTRAP_PORT..." >> "$LOGFILE"
   
   # FIXME: using the local server may not be necessary as the server has been bootstrapped
   nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
@@ -534,7 +538,7 @@ function setup_production_users {
   server_pid=$!
   if [[ "$?" -ne 0 ]]; then
     runserver_status =$?
-    echo "setup test data error, dev runserver status: $runserver_status"
+    echo "setup test data error, dev runserver status: $runserver_status" >> "$LOGFILE"
     exit $runserver_status
   fi
 #  echo "wait for server process: ($!) to start..."
@@ -550,7 +554,7 @@ function setup_production_users {
     error "bootstrap production data failed: $?"
   fi
 
-  # add user "sde" to the screensaver_users table 20150831
+  echo "Add user 'sde' to the screensaver_users table..." >> "$LOGFILE"
   curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
     -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
     --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv  >>"$LOGFILE" 2>&1

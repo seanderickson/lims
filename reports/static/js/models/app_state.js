@@ -2283,16 +2283,16 @@ define([
       // to be updated by the response headers.
       var i = 0;
       var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
-      var cookieTimer = setInterval( checkCookies, intervalCheckTime );
+      var cookieTimer = window.setInterval( checkCookies, intervalCheckTime );
       function checkCookies() {
         if ( document.cookie.search( cookiePattern ) >= 0 ) {
-          clearInterval( cookieTimer );
+          window.clearInterval( cookieTimer );
           $('#loading').fadeOut({duration:100});
           return(
             console.log( "Download complete!!" )
           );
         }else if(i >= maxIntervals){
-          clearInterval( cookieTimer );
+          window.clearInterval( cookieTimer );
           window.alert('download abort after tries: ' + i);
           return(
             console.log( "Download abort!!" )

@@ -33,14 +33,32 @@ define([
         
         function retrieveModel(){
           console.log('retreive job state...')
+          if (_.contains(['completed','failed'] , self.finalJobState)){
+            window.clearInterval(self.jobTimer);
+            return;
+          }
           self.model.fetch()
             .success(function(model){
               console.log('new model', model);
               self.afterRender();
+            })
+            .fail(function(){
+              var arguments = arguments;
+              var failEl = $('<a>', {
+                href: '#', title: 'show failure response', class: 'alert-link'
+              }).text("Server Error");
+              failEl.click(function(e){
+                e.preventDefault();
+                Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+              });
+              $el.removeClass('alert-info');
+              $el.addClass('alert alert-danger alert-dismissible');
+              $el.append(failEl);
+              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
             });
         }
         
-        this.jobTimer = setInterval(retrieveModel, self.JOB_CHECK_INTERVAL_MS); 
+        this.jobTimer = window.setInterval(retrieveModel, self.JOB_CHECK_INTERVAL_MS); 
         
       },
       
@@ -181,12 +199,12 @@ define([
           $el.removeClass('alert-info');
           $el.addClass('alert alert-success alert-dismissible')
           $el.append(dismissLink);
-          clearInterval(self.jobTimer);
+          window.clearInterval(self.jobTimer);
         }else if (state=='failed'){
           $el.removeClass('alert-info');
           $el.addClass('alert alert-danger alert-dismissible');
           $el.append(dismissLink);
-          clearInterval(self.jobTimer);
+          window.clearInterval(self.jobTimer);
         }
       },
       

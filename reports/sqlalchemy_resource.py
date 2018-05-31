@@ -1111,7 +1111,8 @@ class SqlAlchemyResource(IccblBaseResource):
                     'limit: %d, %r', 
                     use_caching, self.use_cache, limit, is_for_detail)
                 if ((self.use_cache is True and use_caching is not False)
-                        and ( use_caching is True or limit > 0)):
+                        and ( use_caching is True or limit > 0)
+                        and is_for_detail is not True):
                     cache_hit = self._cached_resultproxy(
                         conn, stmt, count_stmt, param_hash, limit, offset)
                     if cache_hit:
@@ -1129,7 +1130,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     # compiled_stmt = str(count_stmt.compile(
                     #     dialect=postgresql.dialect(),
                     #     compile_kwargs={"literal_binds": True}))
-                    # logger.info('compiled_stmt %s', compiled_stmt)
+                    # logger.info('compiled count stmt: %s', compiled_stmt)
                     
                     count = conn.execute(count_stmt).scalar()
                     logger.info('excuted count stmt: %d', count)

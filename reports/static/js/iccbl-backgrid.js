@@ -2227,6 +2227,9 @@ _.extend(SIUnitsFormatter.prototype, {
   fromRaw: function (number, model) {
 
     if (_.isNull(number) || _.isUndefined(number)) return '';
+    if (_.isString(number) && _.isEmpty(number)){
+      return null;
+    }
 
     return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
   },

@@ -274,8 +274,7 @@ def sdf_generator(data, title_function=None):
                 if title_function:
                     title = encode_utf8(title_function(key))
                 yield '> <%s>\n' % title
-
-                if val:
+                if val is not None:
                     # Note: find lists, but not strings (or dicts)
                     # Note: a dict here will be non-standard; probably an error 
                     # report, so just stringify dicts as is.

@@ -123,7 +123,7 @@ def to_sdf(data,output):
             # according to 
             # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
             # "only one blank line should terminate a data item"
-            if v:
+            if v is not None:
                 # find lists, but not strings (or dicts)
                 # Note: a dict here will be non-standard; probably an error 
                 # report, so just stringify dicts as is.

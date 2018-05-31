@@ -172,7 +172,7 @@ def resolve_image(request, uri):
 def encode_utf8(val):
     '''For writing, make sure all strings are byte strings encoded as UTF-8
     '''
-    if not val:
+    if val is None:
         return val
     elif isinstance(val, basestring):
         return val.encode('utf-8')

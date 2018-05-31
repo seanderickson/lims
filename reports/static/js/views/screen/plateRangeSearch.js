@@ -2,7 +2,7 @@ define([
   'jquery',
   'underscore',
   'backbone',
-  'backgrid',
+//  'backgrid',
   'layoutmanager',
   'iccbl_backgrid',
   'models/app_state',
@@ -11,7 +11,7 @@ define([
   'views/generic_edit',
   'templates/genericResource.html'
 ], 
-function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, 
+function($, _, Backbone, layoutmanager, Iccbl, appModel, 
          PlateRangePrototype, DetailView, EditView, genericLayout ) {
   
   /**
@@ -767,6 +767,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         form, "volume_required:change", 
         self.calculateTotalVolume);
       self.calculateTotalVolume();
+      self.reportUriStack([]);
     }
   });
 

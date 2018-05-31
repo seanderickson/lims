@@ -323,6 +323,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       cell.append(plate_range_grid.render().$el);
       $target_el.append(cell);
       
+      return plate_range_grid;
     }, // _createPlateRangeTable
 
 

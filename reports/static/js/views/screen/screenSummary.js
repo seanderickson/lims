@@ -156,10 +156,10 @@ define([
           summaryView: self,
           currentLibraryScreenings: currentLibraryScreenings
         });
+        this.consumedStack = ['plateranges'];
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         Backbone.Layout.setupView(view);
         self.setView("#tab_container", view ).render();
-        this.consumedStack = ['plateranges'];
       })
       .fail(function() { 
         Iccbl.appModel.jqXHRfail.apply(this,arguments); 

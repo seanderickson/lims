@@ -304,6 +304,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.$('#content_title').empty();
       this.objects_to_destroy = [];
       this.off();
+      appModel.clearErrors();
+
     },
 
     // Main view control method

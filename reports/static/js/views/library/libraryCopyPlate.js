@@ -252,7 +252,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
               e.preventDefault();
               // re-fetch the full model
               plate_number = this.model.get('plate_number');
-              this.consumedStack = [plate_number];
+              self.consumedStack = [plate_number];
               _key = [this.model.get('library_short_name'),
                       this.model.get('copy_name'),
                       plate_number].join('/');

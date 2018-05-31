@@ -106,7 +106,16 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
 
       // re-fetch the model with all necessary fields
-      appModel.getModel(self.model.resource.key, self.model.get('well_id'), 
+      var resource = self.model.resource;
+      if (self.model.get('screen_type') == 'small_molecule'){
+        resource = appModel.getResource('smallmoleculereagent');
+      } else if (self.model.get('screen_type') == 'rnai'){
+        resource = appModel.getResource('silencingreagent');
+      } else {
+        resource = appModel.getResource('naturalproductreagent');
+      }
+      
+      appModel.getModel(resource.key, self.model.get('well_id'), 
         function(model){
           self.model = model;
           self.change_to_tab(viewId);

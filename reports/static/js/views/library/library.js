@@ -79,7 +79,10 @@ define([
       }
       UploadDataForm.postUploadFileDialog(url, content_types)
         .done(function(data, textStatus, jqXHR){
-          self.model.fetch();
+          self.model.fetch({ reset: true }).done(function(){
+            console.log('re-render library...');
+            self.render();
+          });
           appModel.showConnectionResult(data, {
             title: 'Upload success'
           });

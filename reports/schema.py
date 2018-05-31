@@ -134,7 +134,29 @@ class JOB(schema_obj):
     
     JOB_PROCESSING_FLAG = 'job_id'
     
+class APILOG(schema_obj):
+    resource_name = 'apilog'
+    
+    USERNAME = 'username'
+    USER_ID = 'user_id'
+    URI = 'uri'
+    KEY = 'key'
+    REF_RESOURCE_NAME = 'ref_resource_name'
+    API_ACTION = 'api_action'
+    DATE_TIME = 'date_time'
+    DIFF_KEYS = 'diff_keys'
+    DIFFS = 'diffs'
+    JSON_FIELD = 'json_field'
+    COMMENT = 'comment'
+    CHILD_LOGS = 'child_logs'
+    ID = 'id'
+    PARENT_LOG_URI = 'parent_log_uri'
+    PARENT_LOG_ID = 'parent_log_id'
+    LOG_URI = 'log_uri'
+
+    
 class VOCAB(schema_obj):
+    ''' Define selected vocabulary constants used by the API.'''
     
     class resource(schema_obj):
         class visibility(schema_obj):
@@ -193,7 +215,17 @@ class VOCAB(schema_obj):
             PROCESSING = 'processing'
             COMPLETED = 'completed'
             FAILED = 'failed'
-
+    
+    class apilog(schema_obj):
+        class api_action(schema_obj):
+            POST = 'POST'
+            PUT = 'PUT'
+            # NOTE: "CREATE" - to distinguish PATCH/modify, PATCH/create
+            CREATE = 'CREATE' 
+            PATCH = 'PATCH'
+            DELETE = 'DELETE'
+            
+            
 def parse_schema(schema):
 
     fields = schema[RESOURCE.FIELDS]

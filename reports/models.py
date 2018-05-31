@@ -21,6 +21,8 @@ from reports.serialize import LimsJSONEncoder
 
 import reports.schema as SCHEMA
 
+API_ACTION = SCHEMA.VOCAB.apilog.api_action
+
 logger = logging.getLogger(__name__)
 
 def dict_strip_unicode_keys(uni_dict):
@@ -158,17 +160,6 @@ class LogDiff(models.Model):
             "<LogDiff(ref_resource_name=%r, key=%r, field=%r)>" 
             % (self.log.ref_resource_name, self.log.key, self.field_key))
 
-API_ACTION_POST = 'POST'
-API_ACTION_PUT = 'PUT'
-# NOTE: "CREATE" - to distinguish PATCH/modify, PATCH/create
-API_ACTION_CREATE = 'CREATE' 
-API_ACTION_PATCH = 'PATCH'
-API_ACTION_DELETE = 'DELETE'
-API_ACTION_CHOICES = ((API_ACTION_POST,API_ACTION_POST),
-                      (API_ACTION_PUT,API_ACTION_PUT),
-                      (API_ACTION_CREATE,API_ACTION_CREATE),
-                      (API_ACTION_PATCH,API_ACTION_PATCH),
-                      (API_ACTION_DELETE,API_ACTION_DELETE))
 class ApiLog(models.Model):
     
     objects = models.Manager()
@@ -193,7 +184,12 @@ class ApiLog(models.Model):
     date_time = models.DateTimeField(null=False)
     
     api_action = models.CharField(
-        max_length=10, null=False, choices=API_ACTION_CHOICES)
+        max_length=10, null=False, 
+        choices=zip(
+            API_ACTION.get_ordered_dict().keys(),
+            API_ACTION.get_ordered_dict().values(),
+            )
+        )
     
     comment = models.TextField(null=True)
     

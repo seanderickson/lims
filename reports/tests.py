@@ -72,7 +72,7 @@ from django.test.testcases import SimpleTestCase
 from reports import HEADER_APILOG_COMMENT
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
 from reports.dump_obj import dumpObj
-from reports.models import API_ACTION_CREATE, MetaHash, UserGroup, \
+from reports.models import MetaHash, UserGroup, \
     UserProfile, ApiLog, Permission, Job
 import reports.schema as SCHEMA
 from reports.serialize import parse_val, JSON_MIMETYPE
@@ -2210,7 +2210,7 @@ class UserUsergroupSharedTest(object):
                 str((6,len(objects), 'wrong # of api logs', objects)))
             for obj in objects:
                 self.assertTrue(
-                    obj['api_action'] == API_ACTION_CREATE, 
+                    obj['api_action'] == VOCAB.apilog.api_action.CREATE, 
                     ('action should be create', obj))
                 self.assertTrue( 
                     obj['comment'] == data_for_get[HEADER_APILOG_COMMENT], 

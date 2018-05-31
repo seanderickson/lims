@@ -56,8 +56,7 @@ from reports.api_base import IccblBaseResource, un_cache, Authorization, \
     IccblSessionAuthentication, IccblBasicAuthentication, \
     BackgroundJobImmediateResponse
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
-                           UserGroup, UserProfile, Job, API_ACTION_DELETE, \
-                           API_ACTION_CREATE
+                           UserGroup, UserProfile, Job
 import reports.schema as SCHEMA
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE
@@ -78,6 +77,7 @@ RESOURCE = SCHEMA.RESOURCE
 API_RESULT_OBJ = SCHEMA.API_RESULT_OBJ
 API_RESULT_DATA = SCHEMA.API_RESULT_DATA
 API_RESULT_META = SCHEMA.API_RESULT_META
+API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
 
 API_PARAM_OVERRIDE = 'override'
@@ -828,7 +828,7 @@ class ApiResource(SqlAlchemyResource):
 
     def find_key_from_resource_uri(self,resource_uri, schema=None):
         if schema is None:
-            logger.info('create schema for find_key_from_resource_uri: %r', resource_uri)
+            logger.debug('create schema for find_key_from_resource_uri: %r', resource_uri)
             schema = self.build_schema()
         id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
@@ -1024,7 +1024,7 @@ class ApiResource(SqlAlchemyResource):
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         logger.debug('updates: %r', [x for x in logs if x.diffs ])
-        create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
+        create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
             API_MSG_RESULT: {
@@ -1149,7 +1149,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('put logs created: %d', len(logs) if logs else 0 )
         put_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
-        delete_count = len([x for x in logs if x.api_action == API_ACTION_DELETE])
+        delete_count = len([x for x in logs if x.api_action == API_ACTION.DELETE])
         meta = { 
             API_MSG_RESULT: {
                 API_MSG_SUBMIT_COUNT : put_count, 
@@ -1283,7 +1283,7 @@ class ApiResource(SqlAlchemyResource):
         logger.info('post logs created: %d', len(logs) if logs else 0 )
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
-        create_count = len([x for x in logs if x.api_action == API_ACTION_CREATE])
+        create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
             API_MSG_RESULT: {
@@ -1613,7 +1613,7 @@ class ApiResource(SqlAlchemyResource):
             request, attributes=original_data, id_attribute=id_attribute, schema=schema)
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
-        log.api_action = API_ACTION_DELETE
+        log.api_action = API_ACTION.DELETE
         log.save()
         
         self.delete_obj(request, {}, log=log, **kwargs_for_log)
@@ -1988,9 +1988,11 @@ class ApiResource(SqlAlchemyResource):
     
     def log_patch(self, request, prev_dict, new_dict, log=None, 
             id_attribute=None, excludes=None, exclude_patterns=None, 
-            full_create_log=False, **kwargs):
+            full_create_log=False, log_empty_diffs=True, **kwargs):
         '''
-        @param full_create_log - create a diff log showing initial state on create
+        @param full_create_log create a diff log showing initial state on create
+        @param log_empty_diffs creates a log even if there are no diffs, if there 
+            is a comment to record
         '''
         default_exclude_patterns = ['comment_array']
         if exclude_patterns is None:
@@ -2020,15 +2022,17 @@ class ApiResource(SqlAlchemyResource):
                         % (prev_dict,new_dict))
                 else:
                     logger.info('no diffs found: %r', log.uri) 
-                if log.comment is None:
-                    # if no comment, no need to save the log
+                if log_empty_diffs is not True:
+                    log = None
+                elif not log.comment:
+                    # In this case, there is nothing to log
                     log = None
             else:
                 logger.info('log PATCH for %r', log.uri) 
                 logger.debug('log diffs for %r: %r', log.uri, log.diffs) 
                 
         else: # creating
-            log.api_action = API_ACTION_CREATE
+            log.api_action = API_ACTION.CREATE
             if full_create_log is True:
                 log.diffs = { 
                     key: [None,val] for key,val in new_dict.items() 
@@ -2044,7 +2048,7 @@ class ApiResource(SqlAlchemyResource):
 
     @transaction.atomic
     def log_patches(self,request, original_data, new_data, schema=None, 
-        full_create_log=False, **kwargs):
+        full_create_log=False, log_empty_diffs=False, **kwargs):
         '''
         log differences between dicts having the same identity in the arrays:
         @param original_data - data from before the API action
@@ -2053,10 +2057,6 @@ class ApiResource(SqlAlchemyResource):
         value.
         '''
         logs = []
-        
-#         log_comment = None
-#         if HEADER_APILOG_COMMENT in request.META:
-#             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         if DEBUG_PATCH_LOG:
             logger.info('log patches: %s' %kwargs)
@@ -2091,7 +2091,8 @@ class ApiResource(SqlAlchemyResource):
                 
             log = self.log_patch(
                 request, prev_dict, new_dict, id_attribute=id_attribute, 
-                schema=schema, full_create_log=full_create_log, **kwargs)  
+                schema=schema, full_create_log=full_create_log, 
+                log_empty_diffs=log_empty_diffs, **kwargs)  
             if DEBUG_PATCH_LOG:
                 logger.info('patch log: %r', log)          
             if log:
@@ -2110,7 +2111,7 @@ class ApiResource(SqlAlchemyResource):
             if 'parent_log' in kwargs:
                 log.parent_log = kwargs.get('parent_log', None)
 
-            log.api_action = API_ACTION_DELETE
+            log.api_action = API_ACTION.DELETE
             # 20170601 - no diffs for delete
             # log.diffs = { key:[val,None] for key,val in deleted_dict.items() }
             logs.append(log)
@@ -2171,7 +2172,7 @@ class ApiLogResource(ApiResource):
         ]
         
     def dispatch_clear_cache(self, request, **kwargs):
-        self.clear_cache()
+        self.clear_cache(request, **kwargs)
         return self.build_response(request, 'ok', **kwargs)
 
     @read_authorization
@@ -2334,7 +2335,18 @@ class ApiLogResource(ApiResource):
                 custom_columns['date_time'] = \
                     literal_column(
                         "date_trunc('millisecond',reports_apilog.date_time)")
-            
+                # TODO: 20180530
+                # Remove timzone from queries: assume all times are for the current
+#                         "date_trunc('millisecond',reports_apilog.date_time) AT TIME ZONE 'UTC' ")
+                        # TODO: convert to UTC - SQLAlchemy and raw SQL return different values
+                        # for the following (SQLAlchemy generates a timezone, raw sql UTC)
+#                         "to_char(reports_apilog.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS')"
+#                         "|| to_char(extract('timezone_hour' from parent_log.date_time),'S00')" 
+#                         "||':'" 
+#                         "|| to_char(extract('timezone_minute' from parent_log.date_time),'FM00')" )
+                # timezone:
+                # to_char(reports_apilog.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS') 
+                # - this should be applied to all times
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
@@ -4335,6 +4347,7 @@ class UserResource(ApiResource):
                             ugr = self.get_usergroup_resource()
                             for g in val:
                                 usergroup_key = ugr.find_key_from_resource_uri(g)
+                                logger.info('usergroup_key: %r', usergroup_key)
                                 try:
                                     usergroup = UserGroup.objects.get(**usergroup_key)
                                     usergroup.users.add(userprofile)

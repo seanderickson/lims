@@ -52,9 +52,6 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
     VOCAB_USER_CLASSIFICATION_PI, WellResource
 
-# VOCAB_LCP_STATUS_SELECTED, VOCAB_LCP_STATUS_UNFULFILLED, \
-#     VOCAB_LCP_STATUS_PLATED, 
-
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
@@ -72,8 +69,7 @@ from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_NOT_ALLOWED, \
     API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ
-from reports.models import ApiLog, UserProfile, UserGroup, API_ACTION_PATCH, \
-    API_ACTION_CREATE, Vocabulary
+from reports.models import ApiLog, UserProfile, UserGroup, Vocabulary
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
     xlsutils
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
@@ -96,6 +92,8 @@ SCREEN = SCHEMA.SCREEN
 SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
 SU = SCHEMA.SCREENSAVER_USER
 LCP_STATUS = VOCAB.lab_cherry_pick.status
+APILOG = SCHEMA.APILOG
+API_ACTION = VOCAB.apilog.api_action
 
 logger = logging.getLogger(__name__)
 
@@ -1337,6 +1335,216 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(test_comment2 in comment_array[0], 
             'test_comment2: %r not found in library response obj: %r' % (
                 test_comment2, patch_response))
+        
+    def test1c_patch_library(self):
+        
+        # PREP
+        # 1. Create Library
+        logger.info('create library...')
+        library_item = self.create_library({
+            'start_plate': 1000, 
+            'end_plate': 1001,
+            'screen_type': 'small_molecule',
+             })
+
+        # 2. Patch some wells
+        logger.info('set some experimental wells...')
+        experimental_well_count = 384
+        plate = library_item['start_plate']
+        input_well_data = [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental',
+                molar_concentration='0.000001',
+                vendor_name='vendor1') 
+            for i in range(0,experimental_well_count)]
+        well_patch_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],'well'])
+        resp = self.api_client.patch(
+            well_patch_uri, format='sdf', data={ 'objects': input_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 2.a Verify the well data
+        resource_name = 'reagent'
+        reagent_resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        data_for_get={
+             'limit': 0, 
+            'includes': ['*','-structure_image']
+        }        
+        resp = self.api_client.get(
+            reagent_resource_uri, format='sdf', 
+            authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        returned_data = new_obj[API_RESULT_DATA]
+        expected_count = 384*(library_item['end_plate']-library_item['start_plate']+1)
+        self.assertEqual(
+            len(returned_data), expected_count, 
+            ('returned_data len:',
+                len(returned_data), 'expected',expected_count))
+
+        specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
+        fields = specific_schema['fields']
+        self.validate_wells(input_well_data, returned_data, fields)
+        
+        
+        # TEMP
+        for i,well in enumerate(returned_data):
+            logger.info('well: %r', well)
+            if i % 10 == 0:
+                break
+        
+        # 3. Test APILOGS
+        # 3.a Library APILOGS
+        apilog_uri = '/'.join([BASE_REPORTS_URI, APILOG.resource_name])
+        
+        # Test library apilog
+        resp = self.api_client.get(
+            apilog_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'includes': '*',
+                'limit': 0, 
+                APILOG.REF_RESOURCE_NAME: 'library'})
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        library_logs = new_obj[API_RESULT_DATA]
+        expected_count = 2 # create and patch
+        self.assertEqual( 
+            len(library_logs), expected_count , 
+            str((len(library_logs), expected_count, new_obj)))
+        
+        parent_log_id = None
+        for library_log in library_logs:
+            if library_log[APILOG.API_ACTION] == API_ACTION.CREATE:
+                logger.info('child_logs: %r', library_log[APILOG.CHILD_LOGS])
+            elif library_log[APILOG.API_ACTION] == API_ACTION.PATCH:
+                parent_log_id = library_log[APILOG.ID]
+                logger.info('patch log: %r', library_log)
+            else:
+                self.fail('unexpected log: %r', library_log)
+        
+        # 3.b Well APILOGS (should be empty for initial patch...)
+        logger.info('Test well apilogs...')
+        resp = self.api_client.get(
+            apilog_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0, 
+                APILOG.PARENT_LOG_ID: parent_log_id })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        well_patches = new_obj[API_RESULT_DATA]
+        
+        # For initial library load, well patches are not created;
+        self.assertEqual(len(well_patches),0, 
+            'Inital library load should not create patch logs: %r' % well_patches)
+        
+        # 4. PATCH wells 
+        new_well_data = input_well_data[:]
+        patched_count = 5
+        for i in range(0,patched_count):
+            new_well_data[i]['smiles'] = 'xxx_test_smiles_%d' % i
+
+        # Try to patch a non-experimental well - should result in no action
+        new_well_data.append({
+            'well_id': '%s:%s' % (str(library_item['end_plate']).zfill(5),'A01'),
+            'smiles': 'test_smiles_not_experimental_well'})
+        
+        resp = self.api_client.patch(
+            well_patch_uri, format='sdf', data={ 'objects': new_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 4.a Verify PATCHed wells
+        data_for_get={
+            'limit': 0, 
+            'includes': ['*','-structure_image']
+        }        
+        resp = self.api_client.get(
+            reagent_resource_uri, format='sdf', 
+            authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        returned_data = new_obj[API_RESULT_DATA]
+        expected_count = 384*(library_item['end_plate']-library_item['start_plate']+1)
+        self.assertEqual(
+            len(returned_data), expected_count, 
+            ('returned_data len:',
+                len(returned_data), 'expected',expected_count))
+        specific_schema = self.get_single_resource(reagent_resource_uri + '/schema')
+        fields = specific_schema['fields']
+        self.validate_wells(input_well_data, returned_data, fields)
+        
+        # 5. Test APILOGS after secondary well patch
+        # 5.a Library logs
+        resp = self.api_client.get(
+            apilog_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'includes': '*',
+                'limit': 0,
+                APILOG.API_ACTION: API_ACTION.PATCH, 
+                APILOG.REF_RESOURCE_NAME: 'library'})
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        library_logs = new_obj[API_RESULT_DATA]
+        expected_count = 2 # patch logs
+        self.assertEqual( 
+            len(library_logs), expected_count , 
+            str((len(library_logs), expected_count, new_obj)))
+        
+        parent_log_id = None
+        for library_log in library_logs:
+            if library_log[APILOG.API_ACTION] == API_ACTION.PATCH:
+                if library_log[APILOG.CHILD_LOGS] != 0:
+                    parent_log_id = library_log[APILOG.ID]
+                logger.info('patch log: %r', library_log)
+            else:
+                self.fail('unexpected log: %r', library_log)
+        
+        self.assertIsNotNone(parent_log_id, 
+            'no library log found with child logs: %r' % library_logs)
+        
+        # 5.b Well APILOGS (should be empty for initial patch...)
+        logger.info('Test well apilogs...')
+        resp = self.api_client.get(
+            apilog_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0, 
+                APILOG.PARENT_LOG_ID: parent_log_id })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        well_patches = new_obj[API_RESULT_DATA]
+        
+        self.assertEqual(len(well_patches),patched_count, 
+            'wrong number of well patches: %d' % len(well_patches))
+        
+        for well_patch in well_patches:
+            logger.info('well_patch: %r', well_patch)
+            self.assertEqual(well_patch['diff_keys'], ['smiles'])
         
     def validate_wells(self, input_data, output_data, fields):
         ''' 
@@ -2644,16 +2852,14 @@ class LibraryResource(DBResourceTestCase):
             # (none for create), 4 for update
             for log in logs:
                 logger.info('log: %r', log)
-            expected_count = 4
+            patch_logs = [l for l in logs if l[APILOG.API_ACTION]==API_ACTION.PATCH ]
+            expected_patch_count = 4
             self.assertEqual( 
-                len(logs), expected_count , 
+                len(patch_logs), 
+                expected_patch_count , 
                 str((len(logs), expected_count)))
             
-            self.assertEqual(
-                len(logs), 4, 
-                ('expected %d patch logs, found: %d' %(4,len(logs)), logs))
-            
-            for log in logs:
+            for log in patch_logs:
                 self.assertTrue(
                     ( 'parent_log_uri' in log and
                       library_item['short_name'] in log['parent_log_uri'] ), 
@@ -2676,15 +2882,15 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test7_load_sirnai ...')
         
-        filename = ('%s/db/static/test_data/libraries/clean_data_rnai.xlsx'
-                    % APP_ROOT_DIR )
-        
         library_item = self.create_library({ 
             'start_plate': 50001,  
             'end_plate': 50001, 
             'plate_size': '384',
             'screen_type': 'rnai' })
         resource_uri = BASE_URI_DB + '/library'
+        
+        filename = ('%s/db/static/test_data/libraries/clean_data_rnai.xlsx'
+                    % APP_ROOT_DIR )
         
         self._load_xls_reagent_file(filename,library_item, 5,384 )
 
@@ -4697,7 +4903,7 @@ class ScreenResource(DBResourceTestCase):
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
             'key': library_screening_output['activity_id'],
-            'api_action': API_ACTION_CREATE
+            'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
             BASE_REPORTS_URI + '/apilog', 
@@ -4810,7 +5016,7 @@ class ScreenResource(DBResourceTestCase):
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
             'key': library_screening_output['activity_id'],
-            'api_action': API_ACTION_PATCH
+            'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
             BASE_REPORTS_URI + '/apilog', 
@@ -5155,7 +5361,7 @@ class ScreenResource(DBResourceTestCase):
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
             'key': library_screening_output['activity_id'],
-            'api_action': API_ACTION_CREATE
+            'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
             BASE_REPORTS_URI + '/apilog', 
@@ -5270,7 +5476,7 @@ class ScreenResource(DBResourceTestCase):
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
             'key': library_screening_output2['activity_id'],
-            'api_action': API_ACTION_PATCH
+            'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
             BASE_REPORTS_URI + '/apilog', 
@@ -5279,7 +5485,6 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.info('apilog: %r', apilog)
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
         self.assertTrue('library_plates_screened' in apilog['diff_keys'])
         self.assertTrue(added_plate_range in apilog['diffs'], 
@@ -5296,10 +5501,11 @@ class ScreenResource(DBResourceTestCase):
         apilogs = self.get_list_resource(
             BASE_REPORTS_URI + '/apilog', 
             data_for_get=data_for_get )
+        
         self.assertTrue(
             len(apilogs) == expected_updated_plate_count, 
-            'wrong number of child logs returned: %d: %r' 
-            % (len(apilogs), apilogs))
+            'wrong number of child logs returned: %d: (expected: %d): %r' 
+            % (len(apilogs), expected_updated_plate_count, apilogs))
         apilog = apilogs[0]
         logger.debug('apilog: %r', apilog)
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )

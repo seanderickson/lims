@@ -179,8 +179,24 @@ class PUBLICATION(schema_obj):
             
         return txt    
 
+class WELL(schema_obj):
+    resource_name = 'well'
+    
+    WELL_ID = 'well_id'
+    PLATE_NUMBER = 'plate_number'
+    WELL_NAME = 'well_name'
+    LIBRARY_SHORT_NAME = 'library_short_name'
+    LIBRARY_NAME = 'library_name'
+    SCREEN_TYPE = 'screen_type'
+    LIBRARY_WELL_TYPE = 'library_well_type'
+    MG_ML_CONCENTRATION = 'mg_ml_concentration'
+    MOLAR_CONCENTRATION = 'molar_concentration'
+    IS_DEPRECATED = 'is_deprecated'
+    DEPRECATION_REASON = 'deprecation_reason'
+
 
 class VOCAB(reports.schema.VOCAB):
+    ''' Define selected vocabulary constants used by the API.'''
     
     class datacolumn(schema_obj):
         class data_type(schema_obj):
@@ -275,6 +291,15 @@ class VOCAB(reports.schema.VOCAB):
             OVERLAPPING_ONLY = 1
             MUTUALLY_SHARED = 2
             ALL = 3
+    
+    class well(schema_obj):
+        class library_well_type(schema_obj):
+            UNDEFINED = 'undefined'
+            EXPERIMENTAL = 'experimental'
+            DMSO = 'dmso'
+            LIBRARY_CONTROL = 'library_control'
+            RNAI_BUFFER = 'rnai_buffer'
+            EMPTY = 'empty' 
             
     class user_agreement(schema_obj):
         

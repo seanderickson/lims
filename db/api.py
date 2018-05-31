@@ -91,8 +91,7 @@ from reports.api import ApiLogResource, UserGroupAuthorization, \
 import reports.api
 from reports.api_base import un_cache, IccblBasicAuthentication, \
     IccblSessionAuthentication
-from reports.models import Vocabulary, ApiLog, UserProfile, \
-    API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH, API_ACTION_CREATE
+from reports.models import Vocabulary, ApiLog, UserProfile
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE
 from reports.serialize.csvutils import convert_list_vals
@@ -111,11 +110,14 @@ import schema as SCHEMA
 from db.schema import VOCAB
 from lims.app_data import APP_PUBLIC_DATA
 
+WELL_TYPE = SCHEMA.VOCAB.well.library_well_type
+ASSAY_WELL_CONTROL = SCHEMA.VOCAB.assaywell.control_type
 SCREEN_AVAILABILITY = SCHEMA.VOCAB.screen.screen_result_availability
 ACCESS_LEVEL = SCHEMA.VOCAB.screen.user_access_level_granted
 DSL = SCHEMA.VOCAB.screen.data_sharing_level
 LCP_STATUS = SCHEMA.VOCAB.lab_cherry_pick.status
 SCREENING_STATUS = SCHEMA.VOCAB.library.screening_status
+API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
@@ -829,7 +831,7 @@ class PlateLocationResource(DbApiResource):
         update_count = len([x for x in patched_plate_logs if x.diffs ])
         unchanged_count = patch_count - update_count
         action = update_log.api_action if update_log else 'Unchanged'
-        if action == API_ACTION_CREATE:
+        if action == API_ACTION.CREATE:
             action += ': ' + update_log.key
         meta = { 
             API_MSG_RESULT: { 
@@ -1197,7 +1199,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 logger.info('parsed: %r', parsed_search)
             parsed_searches.append(parsed_search)
         
-        logger.info('parsed searches: %r', parsed_searches)
+        logger.debug('parsed searches: %r', parsed_searches)
         return parsed_searches
         
     @classmethod
@@ -1860,8 +1862,6 @@ class LibraryCopyPlateResource(DbApiResource):
             param_hash['plate_number__eq'] = plate_number
         plate_ids = param_hash.pop('plate_ids', None)
         
-        
-        
         if plate_ids is not None:
             if isinstance(plate_ids,basestring):
                 plate_ids = [int(x) for x in plate_ids.split(',')]
@@ -2071,7 +2071,7 @@ class LibraryCopyPlateResource(DbApiResource):
                     select([func.count(None)])
                     .select_from(_well)
                     .where(_well.c.plate_number==_p.c.plate_number)
-                    .where(_well.c.library_well_type=='experimental')),
+                    .where(_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL)),
 
                 'comment_array': (
                     select([func.array_to_string(
@@ -2678,9 +2678,6 @@ class UserAgreementResource(DbApiResource):
             .where(func.coalesce(_vocab.c.is_retired,False) != True)
             .order_by(_vocab.c.ordinal))
         types = []
-        compiled_stmt = str(agreement_type_table.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
         with get_engine().connect() as conn:
             result = conn.execute(agreement_type_table)
             types =  [x[0] for x in result ]
@@ -5212,7 +5209,7 @@ class ScreenResultResource(DbApiResource):
         except ObjectDoesNotExist as e:
             logger.error('admin user: %r does not exist', request.user.username )
             raise
-        screen_log = self.make_log(request, **{ 'action': API_ACTION_PATCH })
+        screen_log = self.make_log(request, **{ 'action': API_ACTION.PATCH })
         screen_log.ref_resource_name = 'screen'
         screen_log.key = screen.facility_id
         screen_log.uri = '/'.join(['screen', screen_log.key])
@@ -5443,7 +5440,7 @@ class ScreenResultResource(DbApiResource):
                         dc.positives_count += 1
                         assay_well_initializer['is_positive'] = True
              
-                if well.library_well_type != 'experimental'\
+                if well.library_well_type != WELL_TYPE.EXPERIMENTAL\
                     and assay_well_initializer['is_positive'] is True:
                     # TODO: log these to a report file? slowing down the server
                     logger.debug('non experimental well, not considered for positives:'
@@ -5536,7 +5533,7 @@ class ScreenResultResource(DbApiResource):
                     
                     assay_well_control_type = result_row.get('assay_well_control_type', None)
                     if assay_well_control_type:
-                        allowed_control_well_types = ['empty', 'dmso']
+                        allowed_control_well_types = [WELL_TYPE.EMPTY, WELL_TYPE.DMSO]
                         if well.library_well_type in allowed_control_well_types:
                             assay_well_initializer['assay_well_control_type'] = \
                                 assay_well_control_type
@@ -5741,7 +5738,7 @@ class ScreenResultResource(DbApiResource):
             screen_result.experimental_well_count = int(
                 conn.execute(
                     sql_experimental_wells_loaded,
-                    ('experimental', screen_facility_id))
+                    (WELL_TYPE.EXPERIMENTAL, screen_facility_id))
                 .scalar() or 0)
             
             sql_replicate_count = (
@@ -6560,27 +6557,27 @@ class CopyWellResource(DbApiResource):
                 'copywell_id': (
                     _concat(_l.c.short_name,'/',_c.c.name,'/',_w.c.well_id)),
                 'volume': case([
-                    (_w.c.library_well_type=='experimental', 
+                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                          func.coalesce(_cw.c.volume, 
                              _p.c.remaining_well_volume, _p.c.well_volume) )],
                     else_=None),
                 'initial_volume': case([
-                    (_w.c.library_well_type=='experimental', 
+                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                          func.coalesce(_cw.c.initial_volume,_p.c.well_volume) )],
                      else_=None),
                 'consumed_volume': case([
-                    (_w.c.library_well_type=='experimental', 
+                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                         func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
                             func.coalesce(_cw.c.volume, _p.c.remaining_well_volume) )],
                     else_=None),
                 'mg_ml_concentration': case([
-                    (_w.c.library_well_type=='experimental', 
+                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                         func.coalesce(
                             _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration,
                             _w.c.mg_ml_concentration ) )],
                     else_=None),
                 'molar_concentration': case([
-                    (_w.c.library_well_type=='experimental', 
+                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                         func.coalesce(
                             _cw.c.molar_concentration,_p.c.molar_concentration,
                             _w.c.molar_concentration ) )],
@@ -6591,7 +6588,7 @@ class CopyWellResource(DbApiResource):
                 
                 
                 # 'adjustments': case([
-                #     (_w.c.library_well_type=='experimental', 
+                #     (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                 #         func.coalesce(_cw.c.adjustments, 0) )],
                 #     else_=None),
                 # Note: the query plan makes this faster than the hash join of 
@@ -6684,7 +6681,7 @@ class CopyWellResource(DbApiResource):
             logger.info(msg)
             raise Http404(msg)
 
-        if well.library_well_type != 'experimental':
+        if well.library_well_type != WELL_TYPE.EXPERIMENTAL:
             logger.info('CopyWell patch: ignore non experimental well: %r', well_id)
             return None
         
@@ -8624,7 +8621,7 @@ class CherryPickRequestResource(DbApiResource):
             
         non_experimental_wells = []
         for well in wells:
-            if well.library_well_type != 'experimental':
+            if well.library_well_type != WELL_TYPE.EXPERIMENTAL:
                 non_experimental_wells.append(well)
         if non_experimental_wells:
             raise ValidationError(   
@@ -10910,16 +10907,16 @@ class LabCherryPickResource(DbApiResource):
                         )],
                         else_=None )),
                 'source_copy_well_volume': case([
-                    (_well.c.library_well_type=='experimental', 
+                    (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                          func.coalesce(_cw.c.volume, 
                              _p.c.remaining_well_volume, _p.c.well_volume) )],
                     else_=None),
                 'source_copy_well_initial_volume': case([
-                    (_well.c.library_well_type=='experimental', 
+                    (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                          func.coalesce(_cw.c.initial_volume,_p.c.well_volume) )],
                      else_=None),
                 'source_copy_well_consumed_volume': case([
-                    (_well.c.library_well_type=='experimental', 
+                    (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                         func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
                             func.coalesce(_cw.c.volume, _p.c.remaining_well_volume) )],
                     else_=None),
@@ -12089,12 +12086,12 @@ class LibraryCopyResource(DbApiResource):
                 library = librarycopy.library
                 mg_mls = ( 
                     library.well_set.all()
-                        .filter(library_well_type='experimental')
+                        .filter(library_well_type=WELL_TYPE.EXPERIMENTAL)
                         .distinct('mg_ml_concentration')
                         .values_list('mg_ml_concentration', flat=True))
                 molars = ( 
                     library.well_set.all()
-                        .filter(library_well_type='experimental')
+                        .filter(library_well_type=WELL_TYPE.EXPERIMENTAL)
                         .distinct('molar_concentration')
                         .values_list('molar_concentration', flat=True))
                 
@@ -12484,7 +12481,7 @@ class PublicationResource(DbApiResource):
                 'exact_fields': ['publications'],
                 })
         parent_log = screen_resource.make_log(request)
-        parent_log.api_action = API_ACTION_PATCH
+        parent_log.api_action = API_ACTION.PATCH
         parent_log.key = screen.facility_id
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
         parent_log.diff_keys = ['publications']
@@ -12549,7 +12546,7 @@ class PublicationResource(DbApiResource):
         log.key = '/'.join([str(original_data[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name,log.key])
         log.parent_log = parent_log
-        log.api_action = API_ACTION_DELETE
+        log.api_action = API_ACTION.DELETE
         log.diffs = { k:[v,None] for k,v in original_data.items()}
         log.save()
         logger.info('delete, api log: %r', log)
@@ -12683,7 +12680,7 @@ class AttachedFileResource(DbApiResource):
                 'exact_fields': ['attached_files'],
                 })
         parent_log = screen_resource.make_log(request)
-        parent_log.api_action = API_ACTION_PATCH
+        parent_log.api_action = API_ACTION.PATCH
         parent_log.key = str(screen.facility_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
         parent_log.diff_keys = ['attached_files']
@@ -12704,7 +12701,7 @@ class AttachedFileResource(DbApiResource):
         '''
         user_resource = self.get_screen_resource()
         parent_log = user_resource.make_log(request)
-        parent_log.api_action = API_ACTION_PATCH
+        parent_log.api_action = API_ACTION.PATCH
         parent_log.key = str(user.screensaver_user_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
         parent_log.diff_keys = ['attached_files']
@@ -12920,7 +12917,7 @@ class AttachedFileResource(DbApiResource):
         log.key = '/'.join([str(_dict[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name, log.key])
         log.parent_log = parent_log
-        log.api_action = API_ACTION_DELETE
+        log.api_action = API_ACTION.DELETE
         log.diffs = { k: [v,None] for k,v in _dict.items() }
         log.save()
         logger.debug('delete, api log: %r', log)
@@ -15207,7 +15204,7 @@ class LibraryScreeningResource(ActivityResource):
                 'and s.facility_id = %s;')
             screen.screened_experimental_well_count = int(
                 conn.execute(
-                    sql, ('experimental', screen_facility_id))
+                    sql, (WELL_TYPE.EXPERIMENTAL, screen_facility_id))
                 .scalar() or 0)
             sql = (
                 'select count(distinct(w.well_id)) '
@@ -15221,7 +15218,7 @@ class LibraryScreeningResource(ActivityResource):
                 'and s.facility_id = %s;')
             screen.unique_screened_experimental_well_count = int(
                 conn.execute(
-                    sql, ('experimental', screen_facility_id))
+                    sql, (WELL_TYPE.EXPERIMENTAL, screen_facility_id))
                 .scalar() or 0)
             logger.info('screen_screening_statistics: %d, %d',
                 screen.screened_experimental_well_count, 
@@ -15643,7 +15640,7 @@ class LibraryScreeningResource(ActivityResource):
                 includes =['-library_comment_array', '-comment_array'])
             plate_logs = self.get_plate_resource().log_patches(
                 request, _original_plate_data, _new_plate_data,
-                parent_log=ls_log, api_action=API_ACTION_PATCH)
+                parent_log=ls_log, api_action=API_ACTION.PATCH)
             logger.debug('plate_logs created: %d', len(plate_logs))
         
         # TODO: log the copy state as well
@@ -15743,11 +15740,11 @@ class RawDataTransformerResource(DbApiResource):
         'library_controls': 'C'
     }
     library_well_type_abbreviations = {
-        'experimental': 'X',
-        'empty': 'E',
-        'dmso': 'D',
-        'library_control': 'C',
-        'rnai_buffer': 'B' 
+        WELL_TYPE.EXPERIMENTAL: 'X',
+        WELL_TYPE.EMPTY: 'E',
+        WELL_TYPE.DMSO: 'D',
+        WELL_TYPE.LIBRARY_CONTROL: 'C',
+        WELL_TYPE.RNAI_BUFFER: 'B' 
     }
 
     class Meta:
@@ -16497,7 +16494,7 @@ class RawDataTransformerResource(DbApiResource):
                 if well_name in named_range['wells']:
                     well['control_label'] = label
                     found = True
-                    if library_well_type == 'experimental':
+                    if library_well_type == WELL_TYPE.EXPERIMENTAL:
                         library_control_exceptions[well_name].add(
                             well['well_id'])
             
@@ -16511,7 +16508,7 @@ class RawDataTransformerResource(DbApiResource):
                             well['type_abbreviation'] = \
                                 self.control_type_abbreviations[ctype]
                             well['control_label'] = label
-                            if library_well_type == 'experimental':
+                            if library_well_type == WELL_TYPE.EXPERIMENTAL:
                                 ctype_exceptions[assay_control_wellname].add(
                                     well['well_id'])
                             break
@@ -18581,7 +18578,7 @@ class StudyResource(ScreenResource):
             join screen using(screen_id)
             where screen.screen_type = '{screen_type}'
             and screen.study_type is null
-            and w.library_well_type = 'experimental'
+            and w.library_well_type = '{well_type}'
         )
         select
             well_id,
@@ -18591,7 +18588,8 @@ class StudyResource(ScreenResource):
         group by well_id
         order by well_id
         '''
-        sql = sql.format(screen_type=study_obj.screen_type)
+        sql = sql.format(screen_type=study_obj.screen_type, 
+                         well_type=WELL_TYPE.EXPERIMENTAL)
         columns = ['well_id', 'screened_count', 'positives_count']
         
         # Create the study by iterating through the report:
@@ -18745,7 +18743,7 @@ class StudyResource(ScreenResource):
             join screen using(screen_id)
             where screen.screen_type = '{screen_type}'
             and screen.study_type is null
-            and w.library_well_type = 'experimental'
+            and w.library_well_type = '{well_type}'
         )
         select
             well_id,
@@ -18806,7 +18804,8 @@ class StudyResource(ScreenResource):
             from aws
             group by well_id
             order by well_id '''
-        sql = sql.format(screen_type=study_obj.screen_type)
+        sql = sql.format(screen_type=study_obj.screen_type,
+                         well_type=WELL_TYPE.EXPERIMENTAL)
         
         # Create the study by iterating through the report:
         # Collate the number of confirmed positives for each Screen
@@ -21111,13 +21110,13 @@ class ReagentResource(DbApiResource):
                 well_base_query, well_ids, plate_numbers, library, 
                 cherry_pick_request_id_screener, cherry_pick_request_id_lab)
             custom_columns['screening_mg_ml_concentration'] = case([
-                (_well.c.library_well_type=='experimental', 
+                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                     select([spcs.c.mg_ml_concentration])
                         .select_from(spcs)
                         .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
                 else_=None)
             custom_columns['screening_mg_ml_concentrations'] = case([
-                (_well.c.library_well_type=='experimental', 
+                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                     select([func.array_to_string(
                         func.array_agg(cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
                         LIST_DELIMITER_SQL_ARRAY)])
@@ -21125,20 +21124,19 @@ class ReagentResource(DbApiResource):
                         .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
                 else_=None)
             custom_columns['screening_molar_concentration'] = case([
-                (_well.c.library_well_type=='experimental', 
+                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                     select([spcs.c.molar_concentration])
                         .select_from(spcs)
                         .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
                 else_=None)
             custom_columns['screening_molar_concentrations'] = case([
-                (_well.c.library_well_type=='experimental', 
+                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                     select([func.array_to_string(
                         func.array_agg(distinct(spcs.c.molar_concentration)),
                         LIST_DELIMITER_SQL_ARRAY)])
                         .select_from(spcs)
                         .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
                 else_=None)
-            
             
             custom_columns['other_wells_with_reagent'] = (
                 select([func.array_to_string(func.array_agg(
@@ -21813,6 +21811,7 @@ class SilencingReagentResource(ReagentResource):
                 gene_symbol.save()
     
         _key = 'genbank_accession_numbers'
+        
         if data.get('%s_%s' % (source_type, _key), None):
             _list = data['%s_%s' % (source_type, _key)]
             for i, num in enumerate(_list):
@@ -22278,7 +22277,7 @@ class WellResource(DbApiResource):
 
         logger.info('resetting well data...')
         well_query = Well.objects.all().filter(library=library)
-        well_query.update(library_well_type='undefined')
+        well_query.update(library_well_type=WELL_TYPE.UNDEFINED)
         well_query.update(facility_id=None)
         well_query.update(is_deprecated=False)
         well_query.update(deprecation_reason=False)
@@ -22335,14 +22334,15 @@ class WellResource(DbApiResource):
                 kwargs_for_log['%s__in' % id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
 
-        logger.info('get original state, for logging')
+        logger.debug('get original reagent state, for logging: %r',kwargs_for_log)
         kwargs_for_log['includes'] = ['*', '-molfile','-structure_image']
         # NOTE: do not consider "undefined" wells for diff logs (create actions 
         # will not be logged.
-        kwargs_for_log['library_well_type__ne'] = 'undefined'
+        kwargs_for_log['library_well_type__ne'] = WELL_TYPE.UNDEFINED
         original_data = self.get_reagent_resource(library.classification)\
             ._get_list_response_internal(**kwargs_for_log)
-
+        original_data = { data['well_id']:data for data in original_data }
+        
         prev_version = library.version_number
         if library.version_number:
             library.version_number += 1
@@ -22356,7 +22356,7 @@ class WellResource(DbApiResource):
         library_log.ref_resource_name = 'library'
         library_log.key = library.short_name
         library_log.uri = '/'.join([library_log.ref_resource_name, library_log.key])
-        kwargs.update({ 'parent_log': library_log })
+        # kwargs.update({ 'parent_log': library_log })
  
         logger.info('Cache library wells for patch...') 
         well_map = dict((well.well_id, well) 
@@ -22369,6 +22369,7 @@ class WellResource(DbApiResource):
         fields = { key:field for key,field in schema['fields'].items()
             if field['scope'] == 'fields.%s'% schema['key']
                 and 'u' in field['editability'] }
+        reagent_data = []
         for i,well_data in enumerate(deserialized):
             well_data['library_short_name'] = kwargs['library_short_name']
              
@@ -22403,7 +22404,7 @@ class WellResource(DbApiResource):
                     setattr(well, key, val)
             
             well.save()
-        
+            
             duplex_wells = []
             if well_data.get('duplex_wells', None):
                 if not library.is_pool:
@@ -22421,13 +22422,20 @@ class WellResource(DbApiResource):
                             key='duplex_well not found',
                             msg='well: %r, pool well: %r' % (well.well_id, well_id))
                 well_data['duplex_wells'] = duplex_wells
+
+            # Pass on the reagent patch data only for experimental wells
+            if well.library_well_type in [
+                    WELL_TYPE.EXPERIMENTAL, WELL_TYPE.LIBRARY_CONTROL]:
+                reagent_data.append(well_data)
+            
             if i and i % 1000 == 0:
                 logger.info('patched: %d wells', i+1)
         logger.info('patched %d wells', i+1)
         
-        logger.info('patch data: %r',library.classification)
+        logger.info('patch reagent data for: %r',library.classification)
+        
         self.get_reagent_resource(library.classification)\
-            ._patch_wells(request, deserialized)        
+            ._patch_wells(request, reagent_data)        
         
         library.save()
         
@@ -22438,7 +22446,7 @@ class WellResource(DbApiResource):
         self.get_reagent_resource(library.classification).get_debug_times()
          
         experimental_well_count = library.well_set.filter(
-            library_well_type__iexact='experimental').count()
+            library_well_type__iexact=WELL_TYPE.EXPERIMENTAL).count()
         if library.experimental_well_count != experimental_well_count:
             library_log.diff_keys.append('experimental_well_count')
             library_log.diffs['experimental_well_count'] = \
@@ -22451,23 +22459,15 @@ class WellResource(DbApiResource):
         logger.debug('get new reagent state, for logging: %r',kwargs_for_log)
         new_data = self.get_reagent_resource(library.classification)\
             ._get_list_response_internal(**kwargs_for_log)
-         
-        original_data_patches_only = []
-        new_data_patches_only = []
-        for item in original_data:
-            for new_item in new_data:
-                if item['well_id'] == new_item['well_id']:
-                    original_data_patches_only.append(item)
-                    new_data_patches_only.append(new_item)
-         
-        logger.debug('new data: %s', new_data_patches_only)
-        logger.info('patch list done, original_data: %d, new data: %d' 
-            % (len(original_data_patches_only), len(new_data_patches_only)))
+        new_data = { data['well_id']:data for data in new_data }    
+        
+        patched_new_data = [new_data[well_id] 
+            for well_id in new_data.keys() if well_id in original_data ]
         
         logs = self.log_patches(
-            request, original_data_patches_only, new_data_patches_only,
+            request, original_data.values(), patched_new_data,
             excludes=['substance_id'], #, 'is_restricted_structure']
-            **kwargs)
+            parent_log = library_log)
 
         patch_count = len(deserialized)
         # Update: for wells, only measure what has diffed
@@ -22494,6 +22494,8 @@ class WellResource(DbApiResource):
                 API_MSG_COMMENTS: library_log.comment
             }
         }
+        logger.info('wells patch complete: %r', meta)
+        
         if deserialize_meta:
             meta.update(deserialize_meta)
         
@@ -23330,8 +23332,7 @@ class LibraryResource(DbApiResource):
                             well.well_id = lims_utils.well_id(plate, well.well_name)
                             well.library = library
                             well.plate_number = plate
-                            # FIXME: use vocabularies for well type
-                            well.library_well_type = 'undefined'
+                            well.library_well_type = WELL_TYPE.UNDEFINED
                             bulk_create_wells.append(well)
                             i += 1
                             if i % 1000 == 0:

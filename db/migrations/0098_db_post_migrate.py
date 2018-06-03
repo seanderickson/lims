@@ -17,6 +17,21 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        
+        migrations.CreateModel(
+            name='WellQueryIndex',
+            fields=[
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
+                ('query', models.ForeignKey(to='db.CachedQuery')),
+                ('well', models.ForeignKey(to='db.Well')),
+            ],
+            options={
+                'db_table': 'well_query_index',
+            },
+        ),
+        
         migrations.AlterField(
             model_name='attachedfile',
             name='type',

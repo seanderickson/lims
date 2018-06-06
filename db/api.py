@@ -16,6 +16,7 @@ import re
 from tempfile import SpooledTemporaryFile, NamedTemporaryFile
 import time
 import urllib
+from urlparse import urlparse
 from zipfile import ZipFile, ZipInfo
 
 from aldjemy.core import get_engine, get_tables
@@ -51,6 +52,7 @@ from tastypie.exceptions import BadRequest
 from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
 import unicodecsv
+import xlsxwriter
 
 from db import WELL_ID_PATTERN, WELL_NAME_PATTERN, PLATE_PATTERN, \
     PLATE_RANGE_PATTERN, COPY_NAME_PATTERN
@@ -68,17 +70,19 @@ from db.models import ScreensaverUser, Screen, \
     ScreenKeyword, ResultValue, AssayWell, Publication, ScreenerCherryPick, \
     LabCherryPick, CherryPickRequestEmptyWell, CherryPickScreening, \
     LabAffiliation, UserAgreement, RawDataTransform, RawDataInputFile
-from db.support import lims_utils, screen_result_importer, bin_packer,\
+from db.schema import VOCAB
+from db.support import lims_utils, screen_result_importer, bin_packer, \
     raw_data_reader, plate_matrix_transformer
 from db.support.data_converter import default_converter
+from db.support.plate_matrix_transformer import Collation
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
+from lims.app_data import APP_PUBLIC_DATA
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
     LIST_DELIMITER_SUB_ARRAY
 from reports import ValidationError, InformationError, _now
-    
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_SUCCESS, API_RESULT_DATA, \
@@ -92,23 +96,22 @@ import reports.api
 from reports.api_base import un_cache, IccblBasicAuthentication, \
     IccblSessionAuthentication
 from reports.models import Vocabulary, ApiLog, UserProfile
+from reports.schema import DATE_FORMAT
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
-    XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE
+    XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE, csvutils
 from reports.serialize.csvutils import convert_list_vals
 from reports.serialize.streaming_serializers import ChunkIterWrapper, \
     json_generator, cursor_generator, sdf_generator, generic_xlsx_response, \
     csv_generator, get_xls_response, image_generator, closing_iterator_wrapper, \
     FileWrapper1
+from reports.serialize.xlsutils import LIST_DELIMITER_XLS, write_xls_image
 from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat, _concat_with_sep
-from db.support.plate_matrix_transformer import Collation
-import xlsxwriter
-
+from reports.utils import sort_nicely, alphanum_key
 import schema as SCHEMA
-from db.schema import VOCAB
-from lims.app_data import APP_PUBLIC_DATA
+
 
 WELL_TYPE = SCHEMA.VOCAB.well.library_well_type
 ASSAY_WELL_CONTROL = SCHEMA.VOCAB.assaywell.control_type
@@ -5230,7 +5233,7 @@ class ScreenResultResource(DbApiResource):
                 screen_result.assaywell_set.all().delete()
                 screen_result.screen.assayplate_set\
                     .filter(library_screening__isnull=True).delete()
-                screen_log.diff_keys = ['last_data_loading_date']
+#                 screen_log.diff_keys = ['last_data_loading_date']
                 screen_log.diffs = { 
                     'last_data_loading_date': 
                         [screen_result.date_loaded, screen_log.date_time]
@@ -6303,7 +6306,7 @@ class DataColumnResource(DbApiResource):
         else:
             _dict['data_type'] = 'string'
         _dict['data_column_id'] = dc.data_column_id
-        logger.info('create dc from orm: %r: %r', columnName, _dict)
+        logger.debug('create dc from orm: %r: %r', columnName, _dict)
         return (columnName, _dict)
 
     @write_authorization
@@ -12484,7 +12487,7 @@ class PublicationResource(DbApiResource):
         parent_log.api_action = API_ACTION.PATCH
         parent_log.key = screen.facility_id
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-        parent_log.diff_keys = ['publications']
+#         parent_log.diff_keys = ['publications']
         current_pubs = _screen_data['publications'] or []
         if is_delete:
             new_pubs = [x for x in current_pubs 
@@ -12683,7 +12686,7 @@ class AttachedFileResource(DbApiResource):
         parent_log.api_action = API_ACTION.PATCH
         parent_log.key = str(screen.facility_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-        parent_log.diff_keys = ['attached_files']
+#         parent_log.diff_keys = ['attached_files']
         current_files = _screen_data['attached_files'] or []
         if is_delete:
             new_files = [x for x in current_files 
@@ -12704,7 +12707,7 @@ class AttachedFileResource(DbApiResource):
         parent_log.api_action = API_ACTION.PATCH
         parent_log.key = str(user.screensaver_user_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-        parent_log.diff_keys = ['attached_files']
+#         parent_log.diff_keys = ['attached_files']
         if is_delete:
             parent_log.diffs =  { 'attached_fiels': [af.filename,None] }
         else:
@@ -20751,6 +20754,7 @@ class ReagentResource(DbApiResource):
         self.smr_resource = None
         self.npr_resource = None
         self.data_column_resource = None
+        self.study_resource = None
         super(ReagentResource, self).__init__(**kwargs)
     
     def prepend_urls(self):
@@ -20780,6 +20784,18 @@ class ReagentResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/(?P<well_id>\d{1,5}\:?[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
+                r"/other_wells%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_other_wells'), 
+                name="api_dispatch_other_wells"),
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
+                r"/report%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_well_detail_report'), 
+                name="api_dispatch_well_detail_report"),
         ]
     
     def get_debug_times(self):
@@ -20811,7 +20827,12 @@ class ReagentResource(DbApiResource):
         if not self.library_resource:
             self.library_resource = LibraryResource()
         return self.library_resource
-                
+    
+    def get_study_resource(self):
+        if not self.study_resource:
+            self.study_resource = StudyResource()
+        return self.study_resource 
+    
     def get_schema(self, request, **kwargs):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -20903,6 +20924,438 @@ class ReagentResource(DbApiResource):
 
         return schema
 
+    def dispatch_other_wells(self, request, **kwargs):
+        self.is_authenticated(request)
+
+        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
+        authorized = self._meta.authorization._is_resource_authorized(
+            request.user, 'read', **kwargs)
+        if authorized is not True:
+            raise PermissionDenied
+        if request.method.lower() != 'get':
+            return self.dispatch('detail', request, **kwargs)
+    
+        well_id = kwargs.pop('well_id', None)
+        if not well_id:
+            raise NotImplementedError('must provide a well_id parameter')
+                
+        well_kwargs = {
+            'exact_fields':  ['other_wells_with_reagent'],
+            'well_id': well_id
+            }        
+        well_data = self._get_detail_response_internal(request.user, **well_kwargs)
+        other_wells = well_data.get('other_wells_with_reagent')
+        if not other_wells:
+            raise Http404('no other wells found for well_id: %r' % well_id)
+        
+        kwargs['well_id__in'] = other_wells
+        return self.get_list(request, **kwargs)
+        
+    def get_other_wells(self, user, well_id ):
+        
+        kwargs = {
+            'exact_fields':  ['other_wells_with_reagent'],
+            'well_id': well_id
+            }        
+        
+        well_data = self._get_detail_response_internal(user, **kwargs)
+        other_wells = well_data.get('other_wells_with_reagent')
+        data = []
+        if other_wells:
+            data = self._get_list_response_internal(user,**{
+                'well_id__in': other_wells })
+        return data
+        
+    def get_annotations(self, well_id):
+
+        screens = {}        
+        for rv in (ResultValue.objects
+                .filter(well_id=well_id)
+                .filter(data_column__screen_result__screen__study_type__isnull=False)):
+            screen = rv.data_column.screen_result.screen
+            if screen.facility_id not in screens:
+                _screen_data = screens.setdefault(
+                    screen.facility_id,
+                    { 
+                        '1-screen_facility_id': screen.facility_id,
+                        'facility_id': screen.facility_id,
+                        'title': screen.title,
+                        'summary': screen.summary,
+                        'lead_screener_id': screen.lead_screener.screensaver_user_id,
+                        'lead_screener_name': '%s %s' % (
+                            screen.lead_screener.first_name, screen.lead_screener.last_name),
+                        'lab_head_id': screen.lab_head.screensaver_user_id,
+                        'lab_name': '%s %s' % (
+                            screen.lab_head.first_name, screen.lab_head.last_name),
+                        'date_created': screen.date_created,
+                        'study_type': screen.study_type,
+                        'values': {},
+                        'fields': {}
+                    })
+            _screen_data = screens[screen.facility_id]
+            (column_name, _dict) = \
+                self.get_datacolumn_resource()._create_datacolumn_from_orm(rv.data_column)
+            _screen_data['values'][column_name] = rv.value
+            if _dict['data_type'] in ['decimal','integer','numeric']:
+                _screen_data['values'][column_name] = rv.numeric_value
+            _dict['visibility'] = ['l','d']
+            _dict['title'] = _dict['name']
+            _screen_data['fields'][column_name] = _dict
+        
+        final_data = sorted(screens.values(), key=lambda x: x['facility_id'])
+        return final_data
+        
+    def get_duplex_data(self, user, well_id):
+        
+        data = {}
+        try:
+            sr = SilencingReagent.objects.get(well__well_id=well_id)
+            
+            if sr.well.library.is_pool is not True:
+                return data
+            
+            _aw = self.bridge['assay_well']
+            _sr = self.bridge['screen_result']
+            _s = self.bridge['screen']
+            srr = ScreenResultResource()
+            
+            # FIXME:  only allow duplex confirmation data for user_access_level_granted=2,3
+            
+            stmt = (
+                select([_s.c.facility_id, _s.c.title, 
+                        _aw.c.confirmed_positive_value, 
+                        _aw.c.is_positive])
+                    .select_from(_aw
+                        .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
+                        .join(_s, _sr.c.screen_id==_s.c.screen_id))
+                    .where(_s.c.study_type == None))
+            fields = ['facility_id', 'title', 'confirmed_positive_value', 'is_positive']
+    
+            with get_engine().connect()as conn:
+                
+                data_per_screen = {}
+                well_info = {}
+                for dw in sr.duplex_wells.all():
+                    
+                    item = { 'well_id': dw.well_id }
+                    sr = SilencingReagent.objects.get(well__well_id=dw.well_id)
+                    
+                    item['sequence'] = sr.sequence
+                    item['vendor_id'] = '%s %s' %(sr.vendor_name,sr.vendor_identifier)
+                    item['library_short_name'] = dw.library.short_name
+                    well_info[dw.well_id] = item
+                    
+                    result = conn.execute(stmt.where(_aw.c.well_id==dw.well_id))
+                    if logger.isEnabledFor(logging.DEBUG):
+                        compiled_stmt = str(stmt.where(_aw.c.well_id==dw.well_id).compile(
+                            dialect=postgresql.dialect(),
+                            compile_kwargs={"literal_binds": True}))
+                        logger.info('stmt: %r', compiled_stmt)
+                        
+                    for screen_cp_data in cursor_generator(result, fields):
+
+
+                        if self.get_study_resource()._meta.authorization\
+                            .has_screen_read_authorization(
+                                user,screen_cp_data['facility_id']) is False:
+                            logger.info('cp data denied for: %r: %r', user, screen_cp_data)
+                        else:
+                            screen_row = data_per_screen.setdefault(
+                                screen_cp_data['facility_id'],
+                                { 'screen_facility_id': screen_cp_data['facility_id'],
+                                  'screen_title': screen_cp_data['title'],
+                                 })
+                            screen_row[dw.well_id] = screen_cp_data['confirmed_positive_value']
+                                
+                data = { 'duplex_wells': well_info,
+                        'confirmed_positive_values': data_per_screen.values() }
+        except ObjectDoesNotExist:
+            logger.info('no silencing reagent for well: %r', well_id)
+            
+        return data
+
+    
+    def dispatch_well_detail_report(self, request, **kwargs):
+        ''' 
+        Special single reagent view:
+        - includes annotations
+        - include duplex wells report
+        - bypasses the "dispatch" framework call
+        -- must be authenticated and authorized
+        '''
+        logger.info('dispatch_well_detail_report')
+        
+        self.is_authenticated(request)
+
+        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
+        authorized = self._meta.authorization._is_resource_authorized(
+            request.user, 'read', **kwargs)
+        if authorized is not True:
+            raise PermissionDenied
+        if request.method.lower() != 'get':
+            return self.dispatch('detail', request, **kwargs)
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        content_type = self.get_serializer().get_accept_content_type(
+            request,format=kwargs.get('format', None))
+
+        is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+        use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+        use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+        use_raw_lists = request.GET.get(HTTP_PARAM_RAW_LISTS, False)
+        if is_data_interchange or content_type == SDF_MIMETYPE:
+            use_vocab = False
+            use_titles = False
+            use_raw_lists = True
+
+        well_id = kwargs.get('well_id', None)
+        if not well_id:
+            raise NotImplementedError('must provide a well_id parameter')
+
+        try:
+            well = Well.objects.get(well_id=well_id)
+        except ObjectDoesNotExist:
+            raise Http404('no well found for well_id: %r' % well_id)
+            
+        screen_type = well.library.screen_type
+        schema = self.build_schema(request.user, 
+                                   library_classification=screen_type)
+        includes = set()
+        if screen_type == 'small_molecule':
+            if content_type == SDF_MIMETYPE:
+                includes.add('molfile')
+            else:
+                includes.add('structure_image')
+        kwargs_internal = param_hash.copy()
+        kwargs_internal.update({
+            'well_id': well_id,
+            'library_short_name': well.library.short_name,
+            'includes': list(includes),
+            'schema': schema,
+            # set the server name so that the image url is constructed properly
+            'SERVER_NAME': request.get_host(),
+            'visibilities': ['report',]
+            
+        })
+        well_data = self._get_detail_response_internal(
+            user=request.user, **kwargs_internal)
+        if not well_data:
+            raise Http404('no well found for well_id: %r' % well_id)
+        
+        final_data = {
+            'well_data': well_data,
+        }
+        
+        if content_type != SDF_MIMETYPE:
+            annotation_data = self.get_annotations(well_id)
+            if annotation_data:
+                final_data['annotations'] =  annotation_data
+            duplex_data = self.get_duplex_data(request.user, well_id)
+            if duplex_data:
+                final_data['duplex_data'] = duplex_data
+            other_wells = self.get_other_wells(request.user, well_id)
+            if other_wells: 
+                final_data['other_wells'] = other_wells
+                
+        def format_report_data(data):
+            
+            list_brackets = LIST_BRACKETS
+            if use_raw_lists:
+                list_brackets = None
+            formatted_data = []
+            formatted_data.append(['Field','Value'])
+            
+            well_data = data['well_data']
+
+            sorted_well_keys = sorted(
+                well_data.keys(),
+                key = lambda field_name: 
+                    schema['fields'][field_name].get('ordinal'))
+            def title_function(key):
+                if use_titles is True:
+                    return schema['fields'][key]['title']
+                else:
+                    return key
+                
+            for i, key in enumerate(sorted_well_keys):
+                val = well_data[key]
+                if val is None:
+                    logger.info('skipping key: %r', key)
+                    continue
+                elif isinstance(val, six.string_types):
+                    if not val.strip():
+                        continue
+                row = [
+                    title_function(key),
+                    csvutils.convert_list_vals(
+                        val, delimiter=LIST_DELIMITER_XLS, 
+                        list_brackets=list_brackets)
+                ]
+                formatted_data.append(row)
+                
+            annotations = data.get('annotations')
+            if annotations:
+                formatted_data.append([])
+                formatted_data.append(['Study Data'])
+                study_schema = \
+                    self.get_study_resource().build_schema(user=request.user)
+                def study_title_fun(key):
+                    if use_titles is True:
+                        return study_schema['fields'][key]['title']
+                    else:
+                        return key
+                    
+                study_fields = [
+                    'facility_id', 'title','summary','lead_screener_name',
+                    'lab_name', 'study_type', 'date_created']
+                study_value_header = ['Study Field','Description','Value']
+                
+                for study_data in annotations:
+                    for i, key in enumerate(study_fields):
+                        row = [study_title_fun(key)]
+                        if key == 'date_created':
+                            val = parse_val(
+                                study_data[key],'date_created','date')
+                            if val:
+                                row.append(val.strftime(DATE_FORMAT))
+                        else:
+                            row.append(study_data[key])
+                        formatted_data.append(row)
+
+                    formatted_data.append(study_value_header)
+                    
+                    for i, (key,value) in enumerate(study_data['values'].items()):
+                        row = [
+                            study_data['fields'][key]['name'],
+                            study_data['fields'][key]['description'],
+                            value
+                            ]
+                        formatted_data.append(row)
+
+            duplex_data = data.get('duplex_data')
+            if duplex_data:
+                formatted_data.append([])
+                formatted_data.append(['Duplex Data'])
+                cp_vocab = self.get_vocab_resource()\
+                    ._get_vocabularies_by_scope(
+                        'resultvalue.confirmed_positive_indicator')
+                wells = sorted(duplex_data['duplex_wells'].keys())
+                screens = sorted(
+                    duplex_data['confirmed_positive_values'], 
+                    key= lambda x: alphanum_key(x['screen_facility_id']))
+                row = ['Screen','',]
+                row.extend(wells)
+                formatted_data.append(row)
+                well_row1 = ['','']
+                well_row2 = ['','']
+                for j,well_id in enumerate(wells):
+                    well_data = duplex_data['duplex_wells'][well_id]
+                    logger.info('j: %d, well_data: %r', j, well_data)
+                    well_row1.append(well_data['vendor_id'])
+                    well_row2.append(well_data['sequence'])
+                formatted_data.append(well_row1)
+                formatted_data.append(well_row2)
+                
+                for i,screen_data in enumerate(screens):
+                    screen_row = [
+                        screen_data['screen_facility_id'],
+                        screen_data['screen_title']]
+                    for j,well_id in enumerate(wells):
+                        screen_row.append(
+                            cp_vocab[str(screen_data[well_id])]['title'])
+                    
+                    formatted_data.append(screen_row)
+            
+            other_wells = data.get('other_wells')
+            if other_wells:
+                
+                formatted_data.append([])
+                formatted_data.append(['Other Wells with the same Reagent'])
+                
+                other_well_fields = [
+                    'well_id','plate_number','well_name','library_short_name',
+                    'vendor_identifier','vendor_name',
+                    'mg_ml_concentration','molar_concentration']
+
+                formatted_data.append([
+                    title_function(field) for field in other_well_fields ])
+                for well_data in other_wells:
+                    formatted_data.append([
+                        well_data[field] for field in other_well_fields])
+                
+            return formatted_data
+                
+        def create_xls_report_response(data):
+            with  NamedTemporaryFile(delete=False) as temp_file:
+                wb = xlsxwriter.Workbook(temp_file, {'constant_memory': False})
+                sheet = wb.add_worksheet('data')
+                # text_wrap note: Excel will fail to resize the height for:
+                # cell_format = wb.add_format({'text_wrap': True})
+                sheet.set_column(0,10,30)
+                
+                for i,row in enumerate(data):
+                    if row and row[0] == 'Structure Image':
+                        sheet.write_string(i,0,row[0])
+                        val = urlparse(row[1])[2]
+                        write_xls_image(sheet, i, 1, val, request)
+                    else:
+                        sheet.write_row(i,0,row)
+
+                logger.info('close workbook...')
+                wb.close()
+                
+                logger.info('get file size...')
+                temp_file.seek(0, os.SEEK_END)
+                size = temp_file.tell()
+                temp_file.seek(0)   
+                
+                logger.info('xls stream to response...')
+                _file = file(temp_file.name)
+                response = StreamingHttpResponse(FileWrapper1(_file)) 
+                response['Content-Length'] = size
+                response['Content-Type'] = XLSX_MIMETYPE
+                return response
+        
+        def to_csv(data):
+            raw_data = cStringIO.StringIO()
+            writer = unicodecsv.writer(raw_data) 
+            for row in data:
+                writer.writerow(row)
+            return raw_data.getvalue()     
+                
+        filename = 'well_%s' % '_'.join(well_id.split(':'))
+            
+        if content_type == XLS_MIMETYPE:
+            response = create_xls_report_response(format_report_data(final_data))
+            response['Content-Disposition'] = \
+                'attachment; filename=%s.xlsx' % filename
+        elif content_type == CSV_MIMETYPE:
+            response = HttpResponse(
+                content=to_csv(format_report_data(final_data)),
+                content_type=content_type)
+            response['Content-Disposition'] = \
+                'attachment; filename=%s.csv' % filename
+        elif content_type == SDF_MIMETYPE:
+            response = HttpResponse(
+                content=self.get_serializer().serialize(
+                    well_data, content_type),
+                content_type=content_type)
+            response['Content-Disposition'] = \
+                'attachment; filename=%s.sdf' % filename
+        else:
+            raise Exception('content type not supported: %r' % content_type)
+        
+        downloadID = request.GET.get('downloadID', None)
+        if downloadID:
+            logger.info('set cookie "downloadID" %r', downloadID )
+            response.set_cookie('downloadID', downloadID)
+        else:
+            logger.debug('no downloadID: %s' % request.GET )
+    
+        logger.info('returning response: %r', response)
+        return response;
+
     @read_authorization
     def get_detail(self, request, **kwargs):
         # substance_id = kwargs.get('substance_id')
@@ -20911,6 +21364,7 @@ class ReagentResource(DbApiResource):
             raise NotImplementedError('must provide a well_id parameter')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        logger.info('visibilities: %r', kwargs['visibilities'])
         kwargs['is_for_detail'] = True
         return self.get_list(request, **kwargs)
 
@@ -21043,6 +21497,10 @@ class ReagentResource(DbApiResource):
             
             # general setup
             manual_field_includes = set(param_hash.get('includes', []))
+            manual_field_includes.add('screen_type')
+            # always include plate number and well name for ordering
+            manual_field_includes.add('plate_number')
+            manual_field_includes.add('well_name')
             
             plate_numbers = param_hash.pop('plate_number__in',None)
 
@@ -21150,12 +21608,9 @@ class ReagentResource(DbApiResource):
                         _or.c.well_id != _reagent2.c.well_id))
                     .where(_reagent2.c.vendor_identifier != '')
                     .where(_reagent2.c.well_id == text('reagent.well_id'))
-#                     .where(_reagent.c.well_id)
                     .order_by(_reagent2.c.well_id)
                     .alias('other_reagents'))
                 )
-            
-            
             
             # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
 
@@ -21282,7 +21737,9 @@ class ReagentResource(DbApiResource):
                         LIST_DELIMITER_SQL_ARRAY)])
                         .select_from(pool_wells)
                         .where(pool_wells.c.well_id==_well.c.well_id))
-            
+            if 'is_pool' in field_hash:
+                custom_columns['is_pool'] = _library.c.is_pool
+                
             if cherry_pick_request_id_screener is not None:
                 j = j.join(_scp,
                     _scp.c.screened_well_id==_well.c.well_id)
@@ -21343,7 +21800,7 @@ class ReagentResource(DbApiResource):
             return self.search(request, **kwargs)
         else:
             return self.get_list(request,**kwargs)
-        
+
     @read_authorization
     def build_list_response(self, request, **kwargs):
         
@@ -21420,6 +21877,8 @@ class ReagentResource(DbApiResource):
         if content_type == SDF_MIMETYPE:
             manual_field_includes.add('molfile')
         param_hash['includes'] = manual_field_includes
+        
+        logger.info('visibilities: %r, %r', param_hash.get('visibilities'), param_hash)
             
         (field_hash, columns, stmt, count_stmt, filename) = \
             self.get_query(
@@ -21552,6 +22011,7 @@ class SilencingReagentResource(ReagentResource):
         gene_symbol = bridge['gene_symbol']
         genbank_acc = bridge['gene_genbank_accession_number']
         well_table = bridge['well']
+        library_table = bridge['library']
         
         # Example:
         # (select gene_name from gene 
@@ -21641,32 +22101,35 @@ class SilencingReagentResource(ReagentResource):
                 if DEBUG_BUILD_COLS:
                     logger.info(str((select_stmt)))
             
-            # NOT Performant - not used, see ReagentResource pool_well definition
             if key == 'pool_well':
-                _duplex_wells = bridge['silencing_reagent_duplex_wells']
-                pool_reagent = bridge['reagent'].alias('pool_reagent')
-                 
-                custom_columns[key] = (
-                    select([func.array_to_string(
-                        func.array_agg(literal_column('well_id')),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(
-                        select([pool_reagent.c.well_id])
-                        .select_from(_duplex_wells.join(
-                            pool_reagent,pool_reagent.c.reagent_id==
-                                _duplex_wells.c.silencingreagent_id))
-                        .where(_duplex_wells.c.well_id==text('reagent.well_id')).alias('inner_pool')
-                    )
-                # Some duplex wells are pointed to by multiple pool wells:
-                # CPR44311, lcp report shows multple rows 
-                # returned from subquery
-                # e.g.: 50471:G08 - has 50599:I17,50599:I17...
-                # (Mouse4 Pools: Remaining Genome)
-                # 50448:C18 - has 50599:I17,50599:I17... 
-                # (Mouse4 Pools: Remaining Genome)
-                )
-                
-                  
+                # NOTE: this has been moved to ReagentResource:
+                pass
+                # NOT Performant - not used, see ReagentResource pool_well definition
+                # _duplex_wells = bridge['silencing_reagent_duplex_wells']
+                # pool_reagent = bridge['reagent'].alias('pool_reagent')
+                #  
+                # custom_columns[key] = (
+                #     select([func.array_to_string(
+                #         func.array_agg(literal_column('well_id')),
+                #         LIST_DELIMITER_SQL_ARRAY)])
+                #     .select_from(
+                #         select([pool_reagent.c.well_id])
+                #         .select_from(_duplex_wells.join(
+                #             pool_reagent,pool_reagent.c.reagent_id==
+                #                 _duplex_wells.c.silencingreagent_id))
+                #         .where(_duplex_wells.c.well_id==text('reagent.well_id')).alias('inner_pool')
+                #     )
+                # # Some duplex wells are pointed to by multiple pool wells:
+                # # CPR44311, lcp report shows multple rows 
+                # # returned from subquery
+                # # e.g.: 50471:G08 - has 50599:I17,50599:I17...
+                # # (Mouse4 Pools: Remaining Genome)
+                # # 50448:C18 - has 50599:I17,50599:I17... 
+                # # (Mouse4 Pools: Remaining Genome)
+                # )
+            if key == 'is_pool':
+                # NOTE: this has been moved to ReagentResource:
+                pass
         if DEBUG_BUILD_COLS: 
             logger.info('sirna custom_columns: %r', custom_columns.keys())
             logger.info('silencingreagent base_query_tables: %r', base_query_tables)    
@@ -22081,6 +22544,8 @@ class WellResource(DbApiResource):
                 self.wrap_view('dispatch_well_duplex_view'), 
                     name="api_dispatch_well_duplex_view"),
         ]
+        
+    
 
     @read_authorization
     def dispatch_well_annotations_view(self, request, **kwargs):
@@ -22096,48 +22561,15 @@ class WellResource(DbApiResource):
         if not well_id:
             raise NotImplementedError('must provide a well_id parameter')
         
-        screens = {}        
-        for rv in (ResultValue.objects
-                .filter(well_id=well_id)
-                .filter(data_column__screen_result__screen__study_type__isnull=False)):
-            screen = rv.data_column.screen_result.screen
-            if screen.facility_id not in screens:
-                _screen_data = screens.setdefault(
-                    screen.facility_id,
-                    { 
-                        '1-screen_facility_id': screen.facility_id,
-                        'facility_id': screen.facility_id,
-                        'title': screen.title,
-                        'summary': screen.summary,
-                        'lead_screener_id': screen.lead_screener.screensaver_user_id,
-                        'lead_screener_name': '%s %s' % (
-                            screen.lead_screener.first_name, screen.lead_screener.last_name),
-                        'lab_head_id': screen.lab_head.screensaver_user_id,
-                        'lab_name': '%s %s' % (
-                            screen.lab_head.first_name, screen.lab_head.last_name),
-                        'date_created': screen.date_created,
-                        'study_type': screen.study_type,
-                        'values': {},
-                        'fields': {}
-                    })
-            _screen_data = screens[screen.facility_id]
-            (column_name, _dict) = \
-                self.get_data_column_resource()._create_datacolumn_from_orm(rv.data_column)
-            _screen_data['values'][column_name] = rv.value
-            if _dict['data_type'] in ['decimal','integer','numeric']:
-                _screen_data['values'][column_name] = rv.numeric_value
-            _dict['visibility'] = ['l','d']
-            _dict['title'] = _dict['name']
-            _screen_data['fields'][column_name] = _dict
+        final_data = self.get_generic_reagent_resource().get_annotations(well_id)
         
-        final_data = sorted(screens.values(), key=lambda x: x['facility_id'])
         content_type = self.get_serializer().get_accept_content_type(
             request,format=kwargs.get('format', None))
         return HttpResponse(
             content=self.get_serializer().serialize(
                 final_data, content_type),
             content_type=content_type)
-        
+
     @read_authorization
     def dispatch_well_duplex_view(self, request, **kwargs):
         '''
@@ -22147,49 +22579,7 @@ class WellResource(DbApiResource):
         if not well_id:
             raise NotImplementedError('must provide a well_id parameter')
         
-        sr = SilencingReagent.objects.get(well__well_id=well_id)
-        
-        _aw = self.bridge['assay_well']
-        _sr = self.bridge['screen_result']
-        _s = self.bridge['screen']
-        srr = ScreenResultResource()
-        
-        stmt = (
-            select([_s.c.facility_id, _aw.c.confirmed_positive_value, 
-                    _aw.c.is_positive])
-                .select_from(_aw
-                    .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
-                    .join(_s, _sr.c.screen_id==_s.c.screen_id))
-                .where(_s.c.study_type == None))
-        fields = ['facility_id', 'confirmed_positive_value', 'is_positive']
-
-        with get_engine().connect()as conn:
-            
-            data_per_screen = {}
-            well_info = {}
-            for dw in sr.duplex_wells.all():
-                
-                item = { 'well_id': dw.well_id }
-                sr = SilencingReagent.objects.get(well__well_id=dw.well_id)
-                
-                item['sequence'] = sr.sequence
-                item['vendor_id'] = '%s %s' %(sr.vendor_name,sr.vendor_identifier)
-                well_info[dw.well_id] = item
-                
-                result = conn.execute(stmt.where(_aw.c.well_id==dw.well_id))
-                if logger.isEnabledFor(logging.DEBUG):
-                    compiled_stmt = str(stmt.where(_aw.c.well_id==dw.well_id).compile(
-                        dialect=postgresql.dialect(),
-                        compile_kwargs={"literal_binds": True}))
-                    logger.info('stmt: %r', compiled_stmt)
-                for x in cursor_generator(result, fields):
-                    screen_row = data_per_screen.setdefault(
-                        x['facility_id'],
-                        { 'screen_facility_id': x['facility_id']})
-                    screen_row[dw.well_id] = x['confirmed_positive_value']
-                            
-            data = { 'duplex_wells': well_info,
-                     'confirmed_positive_values': data_per_screen.values() }
+        data = self.get_generic_reagent_resource().get_duplex_data(request.user, well_id)
                 
         content_type = self.get_serializer().get_accept_content_type(
             request,format=kwargs.get('format', None))
@@ -22197,7 +22587,8 @@ class WellResource(DbApiResource):
             content=self.get_serializer().serialize(
                 data, content_type),
             content_type=content_type)
-        
+
+
     def get_schema(self, request, **kwargs):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -22244,6 +22635,8 @@ class WellResource(DbApiResource):
         logger.debug('final field visibilities: %r', 
             [(key,'%r'%fi['visibility']) for key, fi in data['fields'].items()])
         return data
+    
+    
     
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -22315,13 +22708,16 @@ class WellResource(DbApiResource):
             raise BadRequest('library_short_name is required')
         library = Library.objects.get(
             short_name=kwargs['library_short_name'])
+        
         logger.info(
             'patch_list: WellResource: library: %r...', library.short_name)
          
         deserialized, deserialize_meta = self.deserialize(request)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
- 
+        
+        # Fetch original state for logging
+        
         id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
@@ -22343,16 +22739,7 @@ class WellResource(DbApiResource):
             ._get_list_response_internal(**kwargs_for_log)
         original_data = { data['well_id']:data for data in original_data }
         
-        prev_version = library.version_number
-        if library.version_number:
-            library.version_number += 1
-        else:
-            library.version_number = 1
-        library.save()
-         
         library_log = self.make_log(request, **kwargs)
-        library_log.diff_keys = ['version_number']
-        library_log.diffs = { 'version_number': [prev_version, library.version_number]}
         library_log.ref_resource_name = 'library'
         library_log.key = library.short_name
         library_log.uri = '/'.join([library_log.ref_resource_name, library_log.key])
@@ -22399,6 +22786,17 @@ class WellResource(DbApiResource):
 
             initializer_dict = self.parse(well_data, fields=fields)
             logger.debug('well: %r: %r', well_id, initializer_dict)
+            
+            # Validation
+            ## 20180603 TODO:
+            # collect cumulative errors
+            # library_well_type
+#             new_well_type = initializer_dict.get('library_well_type')
+#             if new_well_type:
+#                 if new_well_type != well.library_well_type:
+#                     if well.library_well_type != WELL_TYPE.UNDEFINED:
+#                         raise ValidationError()
+
             for key, val in initializer_dict.items():
                 if hasattr(well, key):
                     setattr(well, key, val)
@@ -22448,7 +22846,7 @@ class WellResource(DbApiResource):
         experimental_well_count = library.well_set.filter(
             library_well_type__iexact=WELL_TYPE.EXPERIMENTAL).count()
         if library.experimental_well_count != experimental_well_count:
-            library_log.diff_keys.append('experimental_well_count')
+#             library_log.diff_keys.append('experimental_well_count')
             library_log.diffs['experimental_well_count'] = \
                 [library.experimental_well_count, experimental_well_count]
             library.experimental_well_count = experimental_well_count
@@ -22483,6 +22881,16 @@ class WellResource(DbApiResource):
         # see LibrariesDAO in SS1
         if update_count:
             self.update_screening_stats(library)
+        
+        if update_count > 0 or create_count > 0:
+            prev_version = library.version_number
+            if library.version_number:
+                library.version_number += 1
+            else:
+                library.version_number = 1
+            library.save()
+            library_log.diffs['version_number'] = [prev_version, library.version_number]
+            library_log.save()
         
         meta = { 
             API_MSG_RESULT: { 

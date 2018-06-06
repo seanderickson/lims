@@ -35,6 +35,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }));
       if ( self.model.resource.key != 'silencingreagent'){
         delete self.tabbed_resources['duplex_wells'];
+      } else {
+        if (self.model.get('is_pool') != true){
+          delete self.tabbed_resources['duplex_wells'];
+        }
+      }
+      if (! self.model.has('other_wells')){
+          delete self.tabbed_resources['other_wells_with_reagent'];
+        
       }
       TabbedController.prototype.initialize.apply(this,arguments);
       
@@ -53,25 +61,26 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         invoke: 'setDuplexWells',
         resource: 'well'
       },
-      //other_wells: { 
-      //  description: 'Other Wells', 
-      //  title: 'Other Wells', 
-      //  invoke: 'setOtherWells',
-      //  resource: 'well'
-      //},
       annotations: { 
         description: 'Annotations', 
         title: 'Annotations', 
         invoke: 'setAnnotations',
         resource: 'well',
         permission: 'screen'
+      },
+      other_wells: { 
+        description: 'Other Wells With the same reagent identifier', 
+        title: 'Other Wells With Reagent', 
+        invoke: 'setOtherWells',
+        resource: 'well'
       }
     },      
     
     events: {
-        'click ul.nav-tabs >li': 'click_tab',
+      'click ul.nav-tabs >li': 'click_tab',
     },
 
+    
     /**
      * Layoutmanager hook
      */
@@ -170,7 +179,20 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           var route = newUriStack.join('/');
           console.log('history route: ' + route);
           appModel.router.navigate(route, {trigger: true});
-        }
+        },
+        download: function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          
+          var self = this;
+          var url = [self.model.resource.apiUri,self.model.get('well_id'),
+                     'report'].join('/');
+          
+          appModel.download(url, this.model.resource);
+          //url += '?format=xls&use_vocabularies=true&use_titles=true&raw_lists=true';
+          //appModel.downloadUrl(url);
+        },
+      
       });
       
       view = new DetailLayoutWell({ 
@@ -181,6 +203,21 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
+      this.setView("#tab_container", view ).render();
+    },
+
+    setOtherWells: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,
+                 self.model.key,
+                 'other_wells'].join('/')
+      var view = new ListView({
+        uriStack: delegateStack,
+        url: url,
+        resource: self.model.resource
+      });
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
     
@@ -230,7 +267,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 resource: studyResource,
                 buttons: []
               });
-              $studyContainer.find('#study_info-'+facility_id + '').append(studyView.render().$el);
+              $studyContainer.find('#study_info-'+facility_id + '')
+                .append(studyView.render().$el);
               
               // Create a resource schema on the fly for the annotations
               var schema = {
@@ -249,7 +287,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 resource: schema,
                 buttons: []
               });
-              $studyContainer.find('#annotation_info-'+facility_id + '').append(studySpecificDetail.render().$el);
+              $studyContainer.find('#annotation_info-'+facility_id + '')
+                .append(studySpecificDetail.render().$el);
             });
             this.$el.find('#resource_content').html($content);
             
@@ -317,11 +356,21 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'editable' : false,
           'visible': true,
           'headerCell': Backgrid.HeaderCell.extend({
+            sortable: function() { return false; },
             render: function(){
               this.$el.empty();
               var well_data = this.column.get("label");
               this.$el.append([well_data['vendor_id'],well_data['sequence'], 
-                               well_data['well_id']].join('<br>'));
+                               ].join('<br>'));
+              this.$el.append('<br>')
+              var hrefTemplate = '#library/{library_short_name}/well/{well_id}'
+              var href = Iccbl.formatString(hrefTemplate,well_data);
+              this.$el.append($('<a>', {
+                tabIndex : -1,
+                href : href,
+                target : '_blank',
+              }).text(well_data['well_id']));              
+              
               return this;
             }
           })
@@ -347,7 +396,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               'label' : label,
               'description' : 'Duplex Well Data',
               'order': 1,
-              'sortable': true,
+              'sortable': false,
               'cell': ColoredConfirmationCell
             })
           );

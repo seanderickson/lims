@@ -103,6 +103,10 @@ def parse_val(value, key, data_type, options=None):
                 return int(float(value))
             return int(value)
         elif data_type == 'date':
+            if isinstance(value, datetime.date):
+                return value
+            elif isinstance(value, datetime.datetime):
+                return value.date()
             return dateutil.parser.parse(value).date()
         elif data_type == 'datetime':
             return dateutil.parser.parse(value)
@@ -163,7 +167,7 @@ def parse_json_field(val, key, json_field_type):
             'unknown json_field_type: %s' % json_field_type)
 
 def resolve_image(request, uri):
-    logger.debug('find image at %r', uri)
+    logger.info('find image at %r', uri)
     view, args, kwargs = resolve(uri)
     kwargs['request'] = request
     response = view(*args, **kwargs)

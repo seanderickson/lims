@@ -206,17 +206,6 @@ class BaseSerializer(object):
             raise BadRequest(
                 'No content type found for request: %r, %r'
                 % (request, request.META))
-#             msg = 'no best match format for CONTENT_TYPE: '
-#             if request:
-#                 msg += request.META.get('CONTENT_TYPE','-no content type specified')
-#             else:
-#                 msg += ', request not specified'
-#             if format:
-#                 msg += ', format: %r' % format
-#             else:
-#                 msg += ', format not specified. '
-#             msg += 'ser: %r' % self
-#             raise BadRequest(msg)
         return content_type
 
     def serialize(self, data, content_type):

@@ -661,7 +661,7 @@ class ApiResource(SqlAlchemyResource):
             kwargs.setdefault('limit', 0)
             response = self.get_list(
                 request,
-                format='json',
+#                 format='json',
                 includes=includes,
                 **kwargs)
             _data = self.get_serializer().deserialize(
@@ -680,14 +680,14 @@ class ApiResource(SqlAlchemyResource):
         '''
         Return the detail response as a dict
         '''
-        logger.debug('_get_detail_response: %r, %r', 
+        logger.info('_get_detail_response: %r, %r', 
             self._meta.resource_name, 
             {k:v for k,v in kwargs.items() if k !='schema'})
         includes = kwargs.pop('includes', '*')
         try:
             response = self.get_detail(
                 request,
-                format='json',
+#                 format='json',
                 includes=includes,
                 **kwargs)
             _data = {}
@@ -705,7 +705,8 @@ class ApiResource(SqlAlchemyResource):
     #@un_cache
     def _get_detail_response_internal(self, user=None, **kwargs):
         request = self.request_factory.generic(
-            'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
+            'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE,
+            **kwargs )
         if user is None:
             logger.debug('_get_detail_response_internal, no user')
             class User:

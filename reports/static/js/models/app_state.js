@@ -2394,14 +2394,18 @@ define([
         schema: formSchema
       });
       var formFields = new FormFields();
+      
       formFields.set('use_vocabularies', true);
       formFields.set('use_titles', true);
       formFields.set('raw_lists', true);
-      formFields.set('content_type', formSchema['content_type'].options[0]);
+      if (_.contains(resource.content_types, 'xls')){
+        formFields.set('content_type','xls');
+      } else {
+        formFields.set('content_type', formSchema['content_type'].options[0]);
+      }
       var form = new Backbone.Form({
         model: formFields,
         template: _.template([
-//          "<div>",
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
           ].join(''))

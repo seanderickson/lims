@@ -186,8 +186,8 @@ class SqlAlchemyResource(IccblBaseResource):
         
         if DEBUG_VISIBILITY:
             logger.info(
-                'visibilities: %r, order_params: %r',
-                visibilities, order_params)
+                'visibilities: %r, order_params: %r, manual_field_includes: %r',
+                visibilities, order_params, manual_field_includes)
             logger.info(
                 'field_hash initial: %r, manual: %r, exact: %r', 
                 schema_fields.keys(),manual_field_includes, exact_fields )
@@ -200,7 +200,8 @@ class SqlAlchemyResource(IccblBaseResource):
         try:
             if exact_fields:
                 temp = { key:field for key,field in schema_fields.items()
-                    if key in exact_fields or key in filter_fields }
+                    if key in exact_fields or key in filter_fields 
+                        or key in manual_field_includes }
             else:
                 # Calculate the visible fields
                 temp = {}
@@ -1172,7 +1173,6 @@ class SqlAlchemyResource(IccblBaseResource):
                 
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
-                    # FIXME: test this for generators other than json generator        
             
             result = closing_iterator_wrapper(result, conn.close)
             return self.stream_response_from_cursor(

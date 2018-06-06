@@ -70,8 +70,9 @@ define([
      * (reagents) and not on the library entity itself.
      */
     upload: function(event){
+      e.preventDefault();
+      e.stopPropagation();
       var self = this;
-      event.preventDefault();
       var url = _.result(this.model, 'url') + '/well';
       var content_types = self.model.resource.content_types; // use standard library content types
       if( this.model.get('screen_type') == 'small_molecule') {
@@ -98,8 +99,9 @@ define([
      * (reagents) and not on the library entity itself.
      */
     download: function(e){
-      var self = this;
       e.preventDefault();
+      e.stopPropagation();
+      var self = this;
       var resource;
       if( this.model.get('screen_type') == 'rnai') {
         resource = appModel.getResource('silencingreagent');

@@ -82,6 +82,7 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 import reports.utils.background_processor
 import reports.utils.log_utils
+import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -657,7 +658,7 @@ class SerializerTest(TestCase):
         input = [['one','two', 'three', 'four', 'five','six','seven'    ],
                 ['uno', '2', 'true', 'false', '',['a','b','c'], u'\u03bc']]
         
-        input_data = csvutils.from_csv_iterate(input)
+        input_data = csvutils.read_input_spreadsheet(input)
         for obj in input_data:
             self.assertTrue(obj['one']=='uno')
             self.assertTrue(obj['two']=='2')
@@ -846,7 +847,7 @@ M  END'''            }
         last_record = {
             'Library': 'Biomol-TimTec1',
             'Source': 'Biomol-TimTec',
-            'vendor': 'Biomol-TimTec',
+            'vendor': '',
             'vendor_reagent_id': '',
             'plate_number': '1536',
             'well_name': 'A09',
@@ -871,12 +872,14 @@ M  END'''            }
                 for x in input_data:
                     print x, '\n'
             
+            logger.info('check input file counts...')
             expected_count = 8
             self.assertEqual(len(input_data), expected_count, 
                 str(('initial serialization of ',filename,'found',
                     len(input_data), 'expected',expected_count,
                     'input_data',input_data)))
             
+            logger.info('check record 1...')
             result, msgs = assert_obj1_to_obj2(record_one, input_data[0])
             self.assertTrue(result, msgs)
  
@@ -891,15 +894,15 @@ M  END'''            }
                     if record_two[MOLDATAKEY][i] != c:
                         print 'i', i, c,record_two[MOLDATAKEY][i]
                         break 
-
+            
+            logger.info('check record 2...')
             result, msgs = assert_obj1_to_obj2(record_two, input_data[1])
             self.assertTrue(result, msgs)
- 
+            logger.info('check last record...')
             result, msgs = assert_obj1_to_obj2(last_record, input_data[-1])
             self.assertTrue(result, msgs)
  
-            # Now test the whole system by writing back out and reading back in
-            
+            logger.info('Now test the whole system by writing back out and reading back in...')
             out_filename = os.path.join(APP_ROOT_DIR, filename + 'out')
             sdf_data = serializer.to_sdf(input_data)
             with open(out_filename, 'w') as fout:    
@@ -909,16 +912,21 @@ M  END'''            }
             with open(out_filename) as fin:    
                 _fdata = serializer.from_sdf(fin.read(), root=None)
                 final_data = _fdata
-                
+
+                logger.info('check final counts...')                
                 self.assertEqual(len(input_data), len(final_data), 
                     str(('initial serialization of ',out_filename,'found',
                         len(final_data), 'expected',len(input_data),
                         'final_data',final_data)))
                 
+                logger.info('check final records...')
                 keys_not_to_check=[]
                 for i,inputobj in enumerate(input_data):
+                    logger.info('check %d, %r', i, inputobj)
                     result, outputobj = find_obj_in_list(
                         inputobj,final_data, excludes=keys_not_to_check )
+                    
+                    logger.info('result: %r', result)
                     if not result:
                         print 'input obj not found'
                         print inputobj, '\n'
@@ -958,7 +966,7 @@ class XlsSerializerTest(SimpleTestCase):
     
         with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
             _data = serializer.from_xls(fin.read(), root=None)
-            final_data = _data
+            final_data = [x for x in _data] # unspool the generator
             
             self.assertTrue(
                 len(final_data)==len(records), 
@@ -982,7 +990,7 @@ class XlsSerializerTest(SimpleTestCase):
                 'library_well_type': 'experimental', 
                 'molar_concentration': '0.0001', 
                 'mg_ml_concentration': '.115', 
-                'vendor': 'vendorX', 
+                'vendor_name': 'vendorX', 
                 'vendor_reagent_id': 'M-005300-00', 
                 'facility_reagent_id': 'F-005300-00', 
                 'silencing_reagent_type': 'sirna', 
@@ -1002,7 +1010,7 @@ class XlsSerializerTest(SimpleTestCase):
                 'plate_number': '50001', 
                 'well_name': 'A07', 
                 'library_well_type': 'library_control', 
-                'vendor': 'vendorX', 
+                'vendor_name': 'vendorX', 
                 'vendor_reagent_id': 'M-000000-00', 
                 'silencing_reagent_type': 'sirna', 
                 'sequence': 'GUACAGAGAGGACUACUUC;GGUACGAGGUGAUGCAGUU;UCAGUGGCCUCAACGAGAA;GCAAGUACAGAGAGGACUA', 
@@ -1016,22 +1024,24 @@ class XlsSerializerTest(SimpleTestCase):
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
         with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
             _data = serializer.from_xls(fin.read(), root=None)
+            final_data = [x for x in _data] # unspool the generator
+            logger.info('final_data: %r', final_data)
             expected_count = 5
             self.assertTrue(
-                len(_data)==expected_count, 
-                str(('len is', len(_data),expected_count)))
+                len(final_data)==expected_count, 
+                str(('len is', len(final_data),expected_count)))
 
             keys_not_to_check=[]
             for i,inputobj in enumerate(test_input_data):
                 result, outputobj = find_obj_in_list(
-                    inputobj,_data, excludes=keys_not_to_check )
+                    inputobj,final_data, excludes=keys_not_to_check )
                 if not result:
                     print '========input obj not found==========='
                     print inputobj, '\n'
                     print 'messages'
                     print outputobj
                     print 'final data read in:'
-                    for x in _data:
+                    for x in final_data:
                         print x , '\n'
                     print_find_errors(outputobj)
                     
@@ -1041,22 +1051,23 @@ class XlsSerializerTest(SimpleTestCase):
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
         with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
             _data = serializer.from_xlsx(fin.read(), root=None)            
+            final_data = [x for x in _data] # unspool the generator
             expected_count = 5
             self.assertTrue(
-                len(_data)==expected_count, 
-                str(('len is', len(_data),expected_count)))
+                len(final_data)==expected_count, 
+                str(('len is', len(final_data),expected_count)))
 
             keys_not_to_check=[]
             for i,inputobj in enumerate(test_input_data):
                 result, outputobj = find_obj_in_list(
-                    inputobj,_data, excludes=keys_not_to_check )
+                    inputobj,final_data, excludes=keys_not_to_check )
                 if not result:
                     print '========xlsx input obj not found==========='
                     print inputobj, '\n'
                     print 'messages'
                     print outputobj
                     print 'final data read in:'
-                    for x in _data:
+                    for x in final_data:
                         print x , '\n'
                     print_find_errors(outputobj)
                     
@@ -1258,7 +1269,7 @@ class IResourceTestCase(SimpleTestCase):
         # NOTE: not all responses have data nested in API_RESULT_DATA
         if API_RESULT_DATA in new_obj:
             self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
-                'more than one object returned for: %r, returns: %r'
+                'get_single_resource for: %r, returns: %r'
                 % (resource_uri,new_obj))
             new_obj = new_obj[API_RESULT_DATA][0]
         logger.debug('obj: %r', new_obj)
@@ -1290,10 +1301,12 @@ class IResourceTestCase(SimpleTestCase):
             # Note: we have to deserialize the input, because the TP test method 
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
+            input_data = input_data[API_RESULT_DATA]
+            input_data = [x for x in input_data]
             
             logger.info('Submitting patch... %r: %r', filename, resource_uri)
             resp = self.api_client.patch(
-                resource_uri, format='csv', data=input_data, 
+                resource_uri, format='csv', data={ API_RESULT_DATA: input_data }, 
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
                 resp.status_code <= 204, 
@@ -1308,13 +1321,16 @@ class IResourceTestCase(SimpleTestCase):
                 (resp.status_code, self.get_content(resp)))
             
             new_obj = self.deserialize(resp)
-            for inputobj in input_data[API_RESULT_DATA]:
+            final_data = new_obj[API_RESULT_DATA]
+            # unspool
+            final_data = [x for x in final_data]
+            for inputobj in input_data:
                 # use id_keys_to_check to perform a search only on those keys
                 result, outputobj = find_obj_in_list(
-                    inputobj,new_obj[API_RESULT_DATA], 
+                    inputobj,final_data, 
                     id_keys_to_check=id_keys_to_check, 
                     excludes=keys_not_to_check )
-                logger.debug('objects returned: %r', new_obj[API_RESULT_DATA])
+                logger.debug('objects returned: %r', final_data)
                 self.assertTrue(
                     result, 
                     'not found: %r, msg: %r' % (inputobj, outputobj))
@@ -1335,7 +1351,7 @@ class IResourceTestCase(SimpleTestCase):
                     'not equal: %r: %r - %r' % ( msg, inputobj, outputobj))
             
             # return both collections for further testing
-            return (input_data[API_RESULT_DATA], new_obj[API_RESULT_DATA]) 
+            return (input_data, final_data) 
 
     def _put_test(
         self, resource_name, filename, keys_not_to_check=['resource_uri'], 
@@ -1355,9 +1371,11 @@ class IResourceTestCase(SimpleTestCase):
             # NOTE: have to deserialize the input, because the TP test method 
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
+            input_data = input_data[API_RESULT_DATA]
+            input_data = [x for x in input_data]
             
             resp = self.api_client.put(
-                resource_uri, format='csv', data=input_data, 
+                resource_uri, format='csv', data={ API_RESULT_DATA: input_data }, 
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
                 resp.status_code <= 204, 
@@ -1370,22 +1388,25 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200], 
                 '%r: %r' % (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
+            final_data = new_obj[API_RESULT_DATA]
+            # unspool
+            final_data = [x for x in final_data]
             # do a length check, since put will delete existing resources
             self.assertEqual(
-                len(new_obj[API_RESULT_DATA]), len(input_data[API_RESULT_DATA]), 
+                len(final_data), len(input_data), 
                 str(('input length != output length: ',
-                    len(new_obj[API_RESULT_DATA]), 
-                    len(input_data[API_RESULT_DATA]),
-                    input_data,'\n\n', new_obj)))
+                    len(final_data), 
+                    len(input_data),
+                    input_data,'\n\n', final_data)))
             
-            for inputobj in input_data[API_RESULT_DATA]:
+            for inputobj in input_data:
                 result, outputobj = find_obj_in_list(
-                    inputobj,new_obj[API_RESULT_DATA],
+                    inputobj,final_data,
                     id_keys_to_check=id_keys_to_check,
                     excludes=keys_not_to_check)
                 self.assertTrue(
                     result, 
-                    'not found: %r: %r' % (outputobj, new_obj[API_RESULT_DATA]))
+                    'not found: %r: %r' % (outputobj, final_data))
                 # once found, perform equality based on all keys (in obj1)
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
                     excludes=keys_not_to_check)
@@ -1393,7 +1414,7 @@ class IResourceTestCase(SimpleTestCase):
                     result,
                     'not equal: %r: %r - %r' % ( msg, inputobj, outputobj))
             #TODO: GET the apilogs expected and test them
-            return (input_data[API_RESULT_DATA], new_obj[API_RESULT_DATA]) 
+            return (input_data, final_data) 
 
     def _run_api_init_actions(self, input_actions_file, reinit_pattern=None):
         logger.info( '_run_api_init_actions: %r, reinit_pattern: %r', 
@@ -1996,6 +2017,7 @@ class TestApiInit(IResourceTestCase):
             (resp.status_code, self.get_content(resp)))
 
         new_objects = new_obj[API_RESULT_DATA]
+        new_objects = [x for x in  new_objects]
         self.assertEqual(
             len(new_objects), len(bootstrap_items), (len(new_objects)))
 
@@ -2162,17 +2184,21 @@ class VocabularyResource(IResourceTestCase):
                 'limit': 0,
                 'scope__eq': 'test.vocab' })
         new_obj = self.deserialize(resp)
+        
+        final_data = new_obj[API_RESULT_DATA]
+        final_data = [x for x in final_data]
+        
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         self.assertEqual(
-            len(new_obj[API_RESULT_DATA]), len(test_vocabs), (new_obj))
+            len(final_data), len(test_vocabs), (new_obj))
         
         for i,item in enumerate(test_vocabs):
-            result, obj = find_obj_in_list(item, new_obj[API_RESULT_DATA])
+            result, obj = find_obj_in_list(item, final_data)
             self.assertTrue(
                 result, 
-                ('vocab item not found', item, new_obj[API_RESULT_DATA]))
+                ('vocab item not found', item, final_data))
 
 
 class UserUsergroupSharedTest(object):
@@ -2204,6 +2230,7 @@ class UserUsergroupSharedTest(object):
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
             objects = new_obj[API_RESULT_DATA]
+            objects = [x for x in objects]
             # look for 6 "CREATE" logs
             self.assertEqual( 
                 len(objects), 6, 
@@ -2277,18 +2304,21 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         
         resp = self.api_client.get(uri, format='json', 
             authentication=self.get_credentials(), data=data_for_get)
-        new_obj = self.deserialize(resp)
+        new_obj = self.deserialize(resp)        
+        final_data = new_obj[API_RESULT_DATA]
+        final_data = [x for x in final_data]
+
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         self.assertEqual(
-            len(new_obj[API_RESULT_DATA]), 3, (new_obj))
+            len(final_data), 3, (final_data))
         
         for i,item in enumerate(bootstrap_items):
-            result, obj = find_obj_in_list(item, new_obj[API_RESULT_DATA])
+            result, obj = find_obj_in_list(item, final_data)
             self.assertTrue(
                 result, 
-                ('bootstrap item not found', item, new_obj[API_RESULT_DATA]))
+                ('bootstrap item not found', item, final_data))
 
     def test2_patch_user_permissions(self,test_log=False):
         '''
@@ -2589,16 +2619,20 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         resp = self.api_client.get(
                 uri, format='json', authentication=self.get_credentials())
         new_obj = self.deserialize(resp)
+        final_data = new_obj[API_RESULT_DATA]
+        final_data = [x for x in final_data]
+        
+        
         result, outputobj = find_all_obj_in_list(
-            usergroup_patch[API_RESULT_DATA],new_obj[API_RESULT_DATA],
+            usergroup_patch[API_RESULT_DATA],final_data,
             id_keys_to_check=['name']) #, excludes=keys_not_to_check )
         self.assertTrue(
             result, 
             ('not found', outputobj,'=== objects returned ===', 
-                new_obj[API_RESULT_DATA])) 
+                final_data)) 
         
         # is it set-2, does group inherit the permissions?
-        for obj in new_obj[API_RESULT_DATA]:
+        for obj in final_data:
             if obj['name'] == 'testGroup6':
                 testGroup6 = obj
             if obj['name'] == 'testGroup3':
@@ -2666,7 +2700,6 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        
         self.assertTrue(new_obj['all_users'])
         self.assertTrue(
             username in new_obj['all_users'],
@@ -2680,6 +2713,17 @@ class JobResource(IResourceTestCase):
     def setUp(self):
         super(JobResource, self).setUp()
         settings.BACKGROUND_PROCESSING = True
+        
+        # Clean out the old data files, if they exist
+        job_directory = os.path.join(settings.PROJECT_ROOT,'background_test')
+        shutil.rmtree(job_directory, ignore_errors=True)
+        os.makedirs(job_directory)
+        
+        settings.BACKGROUND_PROCESSOR['post_data_directory'] = \
+            os.path.join(settings.PROJECT_ROOT,'background_test','post_data')
+        settings.BACKGROUND_PROCESSOR['job_output_directory'] = \
+            os.path.join(settings.PROJECT_ROOT,'background_test','job_output')
+        
         
     def tearDown(self):
         IResourceTestCase.tearDown(self)

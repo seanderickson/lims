@@ -182,6 +182,8 @@ class PUBLICATION(schema_obj):
 class WELL(schema_obj):
     resource_name = 'well'
     
+    WELL_ID_PATTERN_MSG = '[plate_number]:[well_name]'
+    
     WELL_ID = 'well_id'
     PLATE_NUMBER = 'plate_number'
     WELL_NAME = 'well_name'
@@ -194,6 +196,49 @@ class WELL(schema_obj):
     IS_DEPRECATED = 'is_deprecated'
     DEPRECATION_REASON = 'deprecation_reason'
 
+class REAGENT(schema_obj):
+    resource_name = 'reagent'
+    
+    VENDOR_NAME = 'vendor_name'
+    VENDOR_IDENTIFIER = 'vendor_identifier'
+    VENDOR_BATCH_ID = 'vendor_batch_id'
+
+class SMALL_MOLECULE_REAGENT(schema_obj):
+    resource_name = 'smallmoleculereagent'
+    
+    SMILES = 'smiles'
+    INCHI = 'inchi'
+    MOLECULAR_FORMULA = 'molecular_formula'
+    MOLECULAR_MASS = 'molecular_mass'
+    MOLECULAR_WEIGHT = 'molecular_weight'
+    COMPOUND_NAME = 'compound_name'
+    PUBCHEM_CID = 'pubchem_cid'
+    CHEMBANK_ID = 'chembank_id'
+    CHEMBL_ID = 'chembl_id'
+    IS_RESTRICTED_STRUCTURE = 'is_restricted_structure'
+    MOLFILE = 'molfile'
+    STRUCTURE_IMAGE = 'structure_image'
+
+class SILENCING_REAGENT(schema_obj):
+    resource_name = 'silencingreagent'
+    
+    SEQUENCE = 'sequence'
+    ANTI_SENSE_SEQUENCE = 'anti_sense_sequence'
+    VENDOR_GENE_NAME = 'vendor_gene_name'
+    VENDOR_ENTREZGENE_ID = 'vendor_entrezgene_id'
+    VENDOR_ENTREZGENE_SYMBOLS = 'vendor_entrezgene_symbols'
+    VENDOR_GENBANK_ACC_NOS = 'vendor_genbank_accession_numbers'
+    VENDOR_GENE_SPECIES = 'vendor_gene_species'
+    FACILITY_GENE_NAME = 'facility_gene_name'
+    FACILITY_ENTREZGENE_ID = 'facility_entrezgene_id'
+    FACILITY_ENTREZGENE_SYMBOLS = 'facility_entrezgene_symbols'
+    FACILITY_GENBANK_ACC_NOS = 'facility_genbank_accession_numbers'
+    FACILITY_GENE_SPECIES = 'facility_gene_species'
+    IS_RESTRICTED_SEQUENCE = 'is_restricted_sequence'
+    DUPLEX_WELLS = 'duplex_wells'
+    POOL_WELL = 'pool_well'
+    SILENCING_REAGENT_TYPE = 'silencing_reagent_type'
+    IS_POOL = 'is_pool'
 
 class VOCAB(reports.schema.VOCAB):
     ''' Define selected vocabulary constants used by the API.'''
@@ -213,10 +258,12 @@ class VOCAB(reports.schema.VOCAB):
             numeric_types = (INTEGER, DECIMAL, NUMERIC)
             positive_types = (
                 BOOLEAN_POSITIVE, CONFIRMED_POSITIVE, PARTITIONED_POSITIVE)
+    
     class plate(schema_obj):
         class status(schema_obj):
             AVAILABLE = 'available'
             RETIRED = 'retired'
+    
     class copy(schema_obj):
         class usage_type(schema_obj):
             LIBRARY_SCREENING_PLATES = 'library_screening_plates'

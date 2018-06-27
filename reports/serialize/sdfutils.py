@@ -76,6 +76,8 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')):
         for tag, value in mol_record.items():
             print (u'%s: %s' % (tag, value)).encode(_params.ENCODING)
         print
+        
+    # TODO: implement this as a generator
     """
     result = []
     if isinstance(data, six.string_types):

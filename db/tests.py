@@ -85,15 +85,17 @@ from db.schema import VOCAB
 
 FIELD = SCHEMA.FIELD
 
-ACCESS_LEVEL = VOCAB.screen.user_access_level_granted
-DSL = VOCAB.screen.data_sharing_level
+APILOG = SCHEMA.APILOG
 DC = SCHEMA.DATA_COLUMN
 SCREEN = SCHEMA.SCREEN
-SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
 SU = SCHEMA.SCREENSAVER_USER
-LCP_STATUS = VOCAB.lab_cherry_pick.status
-APILOG = SCHEMA.APILOG
+WELL = SCHEMA.WELL
+
 API_ACTION = VOCAB.apilog.api_action
+ACCESS_LEVEL = VOCAB.screen.user_access_level_granted
+DSL = VOCAB.screen.data_sharing_level
+LCP_STATUS = VOCAB.lab_cherry_pick.status
+SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +239,7 @@ class DBResourceTestCase(IResourceTestCase):
             _data['vendor_name'] = 'vendorX'
             _data['vendor_identifier'] = 'ID-%d' % well_index
             _data['vendor_batch_id'] = 2
-    
+        
         for k,v in kwargs.items():
             _data[k] = v
         return _data
@@ -642,20 +644,14 @@ class DBResourceTestCase(IResourceTestCase):
                     library_well_type = 'library_control'
                 test_well = self.create_test_well(
                     plate,i,library_well_type=library_well_type,
-                    molar_concentration='0.001',
-                    vendor_name='duplex_vendor2') 
+                    molar_concentration='0.001') 
                 input_well_data.append(test_well)
-#             duplex_well_data = [
-#                 self.create_test_well(
-#                     plate,i,library_well_type='experimental',
-#                     molar_concentration='0.001',
-#                     vendor_name='duplex_vendor2') 
-#                 for i in range(0,experimental_well_count)]
-#             input_well_data.extend(duplex_well_data)
         logger.info(
             'patch duplex library %r wells: %d...', 
             self.duplex_library1['short_name'], len(input_well_data))
         logger.debug('input_well_data: %r', input_well_data)
+
+        
         resource_uri = '/'.join([
             BASE_URI_DB,'library', 
             self.duplex_library1['short_name'],resource_name])
@@ -684,8 +680,7 @@ class DBResourceTestCase(IResourceTestCase):
                 library_well_type = 'library_control'
             input_well = self.create_test_well(
                 plate,i,library_well_type=library_well_type,
-                molar_concentration='0.001',
-                vendor_name='rna_vendor1') 
+                molar_concentration='0.001') 
             duplex_wells = []
             for duplex_plate in range(
                     self.duplex_library1['start_plate'],
@@ -1336,7 +1331,8 @@ class LibraryResource(DBResourceTestCase):
             'test_comment2: %r not found in library response obj: %r' % (
                 test_comment2, patch_response))
         
-    def test1c_patch_library(self):
+    def test2a_patch_library_wells(self):
+        ''' Test patching of individual wells '''
         
         # PREP
         # 1. Create Library
@@ -1394,13 +1390,6 @@ class LibraryResource(DBResourceTestCase):
         fields = specific_schema['fields']
         self.validate_wells(input_well_data, returned_data, fields)
         
-        
-        # TEMP
-        for i,well in enumerate(returned_data):
-            logger.info('well: %r', well)
-            if i % 10 == 0:
-                break
-        
         # 3. Test APILOGS
         # 3.a Library APILOGS
         apilog_uri = '/'.join([BASE_REPORTS_URI, APILOG.resource_name])
@@ -1457,11 +1446,6 @@ class LibraryResource(DBResourceTestCase):
         for i in range(0,patched_count):
             new_well_data[i]['smiles'] = 'xxx_test_smiles_%d' % i
 
-        # Try to patch a non-experimental well - should result in no action
-        new_well_data.append({
-            'well_id': '%s:%s' % (str(library_item['end_plate']).zfill(5),'A01'),
-            'smiles': 'test_smiles_not_experimental_well'})
-        
         resp = self.api_client.patch(
             well_patch_uri, format='sdf', data={ 'objects': new_well_data } , 
             authentication=self.get_credentials(), 
@@ -1545,6 +1529,178 @@ class LibraryResource(DBResourceTestCase):
         for well_patch in well_patches:
             logger.info('well_patch: %r', well_patch)
             self.assertEqual(well_patch['diff_keys'], ['smiles'])
+        
+    def test2b_patching_errors(self):
+        ''' Test error handling when patching '''
+        
+        WELL_TYPE = VOCAB.well.library_well_type
+        SM_REAGENT = SCHEMA.SMALL_MOLECULE_REAGENT
+        
+        # PREP
+        # 1. Create Library
+        logger.info('create library...')
+        library_item = self.create_library({
+            'start_plate': 1000, 
+            'end_plate': 1001,
+            'screen_type': 'small_molecule',
+             })
+        test_plate = library_item['start_plate']
+
+        # Patch tests
+        
+        def make_well_id(index):
+            well_name = lims_utils.well_name_from_index(well_index, library_item['platesize'])
+            return lims_utils.well_id(test_plate, well_name)
+
+        # 1. Missing or bad well ids
+        new_data = [
+            # Missing well id:
+            { WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EXPERIMENTAL},
+            { WELL.WELL_ID: 'bad well id',
+              WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EXPERIMENTAL
+            },
+        ]
+
+        well_patch_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],'well'])
+        resp = self.api_client.patch(
+            well_patch_uri, format='json', data={ 'objects': new_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        
+        response_obj = self.deserialize(resp)
+        logger.info('response: %r', response_obj)
+        self.assertTrue('errors' in response_obj)
+        errors = response_obj['errors']
+        
+        # 1.a Bad well id
+        self.assertTrue('Row: 0' in errors)
+        error = errors['Row: 0']
+        self.assertTrue('well_id' in error)
+        self.assertTrue('required' in error['well_id'])
+
+        self.assertTrue('Row: 1' in errors)
+        error = errors['Row: 1']
+        self.assertTrue('well_id' in error)
+        self.assertTrue('bad well id' in error['well_id']) 
+        
+        # 2. Well type issues
+        
+        # non-experimental wells cannot have small mol fields
+        non_experimental_well = self.create_small_molecule_test_well(
+                test_plate, 0, 
+                **{ WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EXPERIMENTAL })
+        non_experimental_well[WELL.LIBRARY_WELL_TYPE] =  WELL_TYPE.DMSO
+        non_experimental_well1 = self.create_small_molecule_test_well(
+                test_plate, 1, 
+                **{ WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EXPERIMENTAL })
+        non_experimental_well1[WELL.LIBRARY_WELL_TYPE] =  WELL_TYPE.EMPTY
+
+        unknown_type_well = self.create_small_molecule_test_well(
+                test_plate, 1, 
+                **{ WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EXPERIMENTAL })
+        unknown_type_well[WELL.LIBRARY_WELL_TYPE] =  'xxx'
+        new_data = [
+            non_experimental_well,
+            non_experimental_well1,
+            unknown_type_well
+        ]
+        new_data = {w['well_id']:w for w in new_data }
+        resp = self.api_client.patch(
+            well_patch_uri, format='json', data={ 'objects': new_data.values() } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        
+        response_obj = self.deserialize(resp)
+        self.assertTrue('errors' in response_obj)
+        errors = response_obj['errors']
+        self.assertEqual(len(errors),len(new_data))
+        for well_id,error in errors.items():
+            self.assertTrue(well_id in new_data)
+            self.assertTrue(WELL.LIBRARY_WELL_TYPE in error, 'bad error: %r' % error )
+        
+        # 3. Small Molecule input field errors
+        # TODO
+        
+        # 4. Well type changes
+        
+        # first set a well to experimental
+        experimental_well = self.create_small_molecule_test_well(
+                test_plate, 0, 
+                **{ WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EXPERIMENTAL })
+        test_well_id = experimental_well[WELL.WELL_ID]
+        resp = self.api_client.patch(
+            well_patch_uri, format='json', data={ 'objects': [
+                experimental_well, ]} , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # Now update: experimental -> empty
+        test_empty_well = {
+            WELL.WELL_ID: test_well_id,
+            WELL.LIBRARY_WELL_TYPE: WELL_TYPE.EMPTY }
+        resp = self.api_client.patch(
+            well_patch_uri, format='json', data={ 'objects': [
+                test_empty_well, ]} , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        response_obj = self.deserialize(resp)
+        logger.info('patch well type to empty, response: %r', response_obj)
+        
+        
+        # logs
+        apilog_uri = '/'.join([BASE_REPORTS_URI, APILOG.resource_name])
+        # Test library apilog
+        resp = self.api_client.get(
+            apilog_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'includes': '*',
+                'limit': 0, 
+                APILOG.KEY: test_well_id,
+        })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        logs = self.deserialize(resp)[API_RESULT_DATA]
+        self.assertTrue(len(logs), 1)
+        log = logs[0]
+        self.assertTrue(WELL.LIBRARY_WELL_TYPE in log['diffs'])
+        logger.info('apilog: %r', log)
+
+        well_data = self.get_single_resource(well_patch_uri, {
+            WELL.WELL_ID: test_well_id})
+        self.assertEqual(well_data[WELL.LIBRARY_WELL_TYPE], WELL_TYPE.EMPTY)
+        
+        
+        # 4.b experimental -> undefined
+        test_undefined_well = {
+            WELL.WELL_ID: test_well_id,
+            WELL.LIBRARY_WELL_TYPE: WELL_TYPE.UNDEFINED }
+        resp = self.api_client.patch(
+            well_patch_uri, format='json', data={ 'objects': [
+                test_undefined_well, ]} , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        well_data = self.get_single_resource(well_patch_uri, {
+            WELL.WELL_ID: test_well_id})
+        self.assertEqual(well_data[WELL.LIBRARY_WELL_TYPE], WELL_TYPE.UNDEFINED)
         
     def validate_wells(self, input_data, output_data, fields):
         ''' 
@@ -2679,9 +2835,9 @@ class LibraryResource(DBResourceTestCase):
 
         # TODO: test regex and number: min/max, vocabularies
         
-    def test61_small_molecule_delete_compound_name(self):
-        # TODO: test that sm.compound names can be removed
-        pass
+#     def test61_small_molecule_delete_compound_name(self):
+#         # TODO: test that sm.compound names can be removed
+#         pass
     
     def test6_load_small_molecule_file(self):
         
@@ -2894,10 +3050,124 @@ class LibraryResource(DBResourceTestCase):
         
         self._load_xls_reagent_file(filename,library_item, 5,384 )
 
-    # def test7a_sirna_validations(self):
-    #     # TODO: test validations
-    #     pass
+    def test7a_load_dirty_sirna(self):
 
+        logger.info('test7_load_sirnai ...')
+        
+        library_item = self.create_library({ 
+            'start_plate': 55001,  
+            'end_plate': 55001, 
+            'plate_size': '384',
+            'screen_type': 'rnai' })
+        resource_uri = BASE_URI_DB + '/library'
+        
+        filename = ('%s/db/static/test_data/libraries/dirty_data_rnai.xlsx'
+                    % APP_ROOT_DIR )
+        expected_in = 14 # rows to read in
+        
+        start_plate = library_item['start_plate']
+        end_plate = library_item['end_plate']
+
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        
+        data_for_get = { 'limit': 0, 'includes': [
+            '*', 'duplex_wells','-structure_image'] }
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
+        xls_serializer = XLSSerializer()
+        
+        logger.info('Open and PUT file: %r', filename)
+        with open(filename) as input_file:
+            ### NOTE: submit the data as an object, because the test framework
+            ### will convert it to the target format.
+            input_data = self.serializer.from_xlsx(input_file.read())
+            input_data = [x for x in input_data[API_RESULT_DATA]]
+            self.assertEqual(
+                len(input_data), expected_in, 
+                str(('initial serialization of ',filename,'found',
+                    len(input_data), 'expected',expected_in)))
+            
+            resp = self.api_client.put(
+                resource_uri, format='xlsx', data=input_data, 
+                authentication=self.get_credentials(), **data_for_get )
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code, 
+                 self.get_content(resp)))
+            
+            # Test for the expected errors
+            response_obj = self.deserialize(resp)
+            self.assertTrue('errors' in response_obj)
+            errors = response_obj['errors']
+
+            expected_errors = {
+                "55001:A06": {
+                  "vendor_entrezgene_id": [
+                    "parse error: invalid literal for float(): 22848a"
+                  ]
+                }, 
+                "55001:A08": {
+                  "molar_concentration": [
+                    "parse error: Invalid literal for Decimal: u'1 uM'"
+                  ]
+                }, 
+                "55001:A09": {
+                  "library_well_type": "Reagent fields may only be specified for library_well_type in: (experimental, library_control)"
+                }, 
+                "55001:A11": {
+                  "library_well_type": [
+                    "'buffer1' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"
+                  ]
+                }, 
+                "55001:A15": {
+                  "vendor_identifier": "vendor_name and vendor_identifier must both be specified, or neither should be specified", 
+                  "vendor_name": "vendor_name and vendor_identifier must both be specified, or neither should be specified"
+                }, 
+                "55001:A20": {
+                  "vendor_identifier": "Required if sequence is specified"
+                }, 
+                "55001:A21": {
+                  "library_well_type": [
+                    "required"
+                  ]
+                }, 
+                "55001:A22": {
+                  "vendor_identifier": "vendor_name and vendor_identifier must both be specified, or neither should be specified", 
+                  "vendor_name": "vendor_name and vendor_identifier must both be specified, or neither should be specified"
+                }, 
+                "55001:A23": {
+                  "silencing_reagent_type": "Required if sequence is specified"
+                }, 
+                "55001:A24": {
+                  "mg_ml_concentration": "required for library_well_type=='experimental'", 
+                  "molar_concentration": "required for library_well_type=='experimental'", 
+                  "silencing_reagent_type": "Required if sequence is specified"
+                }, 
+                "60001:A01": {
+                  "well_id": [
+                    "well u'60001:A01' not found for this library u'TestRNA1'"
+                  ]
+                }, 
+                "Row: 8": {
+                  "well_id": "required"
+                },
+              }
+            self.assertTrue(len(expected_errors)==len(errors), 
+                'Unexpected: %r, not found: %r' % (
+                    {k:v for k,v in errors.items() if k not in expected_errors},
+                    {k:v for k,v in expected_errors.items() if k not in errors }
+                    ))
+            for id, error in errors.items():
+                expected_error = expected_errors[id]
+                for key,val in expected_error.items():
+                    self.assertTrue(
+                        key in error, 
+                        'id: %r, error key: %r not found' %(id, key))
+                    # NOTE: error message may vary, not checking at this time
+                    # self.assertEqual(error[key],expected_error[key])
+                
+            
     def test8_sirna_duplex(self):
         
         logger.info('test8_sirna_duplex ...')
@@ -2966,14 +3236,18 @@ class LibraryResource(DBResourceTestCase):
             ### will convert it to the target format.
             input_data = self.serializer.from_xlsx(input_file.read())
             input_data = [x for x in input_data[API_RESULT_DATA]]
+#             logger.info('input data: %r', input_data)
             self.assertEqual(
                 len(input_data), expected_in, 
                 str(('initial serialization of ',filename,'found',
                     len(input_data), 'expected',expected_in)))
             
-            resp = self.api_client.put(
+            resp = self.api_client.patch(
                 resource_uri, format='xlsx', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
+#             resp = self.api_client.put(
+#                 resource_uri, format='xlsx', data=input_data, 
+#                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
                 resp.status_code in [200, 204], 
                 (resp.status_code, 
@@ -4042,8 +4316,8 @@ class ScreenResultResource(DBResourceTestCase):
             self.assertTrue(key in sheet_errors, 
                 'key: %r should be in errors: %r' % (key, sheet_errors))
             self.assertTrue(
-                'could not convert' in str(sheet_errors[key]),
-                'error should be a conversion error: %r, %r' 
+                'parse error' in str(sheet_errors[key]),
+                'error should be a parse error: %r, %r' 
                     % (key,sheet_errors[key]) )
             key = '00001:A03'
             self.assertTrue(key in sheet_errors, 
@@ -4056,8 +4330,8 @@ class ScreenResultResource(DBResourceTestCase):
             self.assertTrue(key in sheet_errors, 
                 'key: %r should be in errors: %r' % (key, sheet_errors))
             self.assertTrue(
-                'could not convert' in str(sheet_errors[key]),
-                'error should be a conversion error: %r, %r' 
+                'parse error' in str(sheet_errors[key]),
+                'error should be a parse error: %r, %r' 
                     % (key,sheet_errors[key]) )
 
     def test5_data_column_errors(self):

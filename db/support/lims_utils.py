@@ -59,9 +59,12 @@ def get_well_name(row, col):
     name= row_to_letter(row) + '{:0>2d}'.format(col+1)
     return name
 
-def well_id(plate, well_name):    
-    #return '%05d:%s' % (plate, well_name)
-    return '%s:%s' % (str(plate).zfill(5), well_name)
+def well_id(plate, well_name):
+    try:
+        plate_number = int(plate)  
+        return '%s:%s' % (str(plate_number).zfill(5), well_name)
+    except:
+        return None
 
 def well_name_from_index_rows_first(index, platesize):
     '''
@@ -168,6 +171,29 @@ def well_id_plate_number(well_id):
             key='well_id', 
             msg='%r Does not match pattern: %s' % (well_id,WELL_ID_PATTERN.pattern))
     return int(match.group(1))
+
+def well_id_name(well_id):
+    ''' Get the plate_number from the well_id '''
+    match = WELL_ID_PATTERN.match(well_id)
+    if not match:
+        raise ValidationError(
+            key='well_id', 
+            msg='%r Does not match pattern: %s' % (well_id,WELL_ID_PATTERN.pattern))
+    wellrow = match.group(3).upper()
+    wellcol = match.group(4)
+    return '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+
+def parse_well_id(pattern):
+    match = WELL_ID_PATTERN.match(pattern)
+    if not match:
+        return None
+    else:
+        plate = int(match.group(1))
+        wellrow = match.group(3).upper()
+        wellcol = match.group(4)
+        wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+        plate = str(plate).zfill(5)
+        return well_id(plate, wellname)
 
 def plate_size_from_plate_type(plate_type):
     '''
@@ -510,11 +536,16 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
             break
     return min_satisfying_set
 
-def get_siunit(default_unit_value=1e-6):
+def get_siunit_symbol(test_value):
+    
+    return get_siunit(test_value)[0]
+
+def get_siunit(test_value):
     '''
-    Return the best match SI Unit symbol for the default_unit_value, such that:
-    default_unit_value can be represented a number between 1 and 1000;
-    (best_match_symbol_val)<=default_unit_value<(next_higher_symbol_val)
+    Return the best match (SI Unit symbol, value) for the given
+    test_value, such that:
+    test_value can be represented a number between 1 and 1000;
+    (best_match_symbol_val)<=test_value<(next_higher_symbol_val)
     '''
     siunits = [
       ['T', 1e12],
@@ -528,8 +559,8 @@ def get_siunit(default_unit_value=1e-6):
       ['p', 1e-12 ]
       ]
     for symbol,val in siunits:
-        if val <= default_unit_value:
-            return symbol
+        if val <= test_value:
+            return (symbol,val)
     return None
 
 def convert_decimal(

@@ -168,7 +168,7 @@ if __name__ == "__main__":
     url = args.url
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
-
+    
     username = None
     if args.credential_file:
         username,password = parse_credentials(args.credential_file)
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     
     headers ={}
 
-    #### log in using django form-based auth, and keep the session
+    logger.info('begin processing file: %r', args.input_actions_file)
     session = get_logged_in_session(
         username, password, base_url)
     # django session based auth requires a csrf token

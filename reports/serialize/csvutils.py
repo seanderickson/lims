@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 import csv
 import logging
+import re
 
 from reports.serialize import to_simple
 from django.utils.encoding import smart_text, force_text
@@ -26,7 +27,7 @@ def utf_8_encoder(unicode_csv_data):
     for line in unicode_csv_data:
         yield line.encode('utf-8')
 
-def from_csv(csvfile, list_delimiter=LIST_DELIMITER_CSV, list_keys=None):
+def from_csv(csvfile, list_delimiters=None, list_keys=None):
     '''
     Returns an in memory matrix (array of arrays) for the input file
     
@@ -40,17 +41,22 @@ def from_csv(csvfile, list_delimiter=LIST_DELIMITER_CSV, list_keys=None):
     '''
     # reader = csv.reader(csvfile, encoding='utf-8')
     reader = unicode_csv_reader(csvfile)
-    return from_csv_iterate(reader, list_delimiter=list_delimiter, list_keys=list_keys)
+#     return from_csv_iterate(reader, list_delimiters=list_delimiters, list_keys=list_keys)
+    return input_spreadsheet_reader(reader, list_delimiters=list_delimiters, list_keys=list_keys)
     
-def csv_generator(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None):
+def input_spreadsheet_reader(iterable, list_delimiters=None, list_keys=None):
     '''
-    Perform LIMS specific nested list serialization:
-    - otherwise yields the iterable items in a generator.
-    - FIXME: the name "csv_generator" is misleading; no csv serialization 
-    operations are being performed here. propose: "nested_list_generator"
+    Return an custom "DictReader" for row based input, representing a 
+    csv-like input matrix.
+    - The first row is interpreted as the keys to the (dict) for the entire read.
+    - Supports nested lists; data that is either surrounded by brackets "[]", or designated
+    by the "list_keys" parameter is read in as a list-of-values;
+    - separated by the "list_delimiters".
     '''
     list_keys = list_keys or []
-    list_keys = list(list_keys)
+    list_keys = set(list_keys)
+    list_delimiters = list_delimiters or [LIST_DELIMITER_CSV,]
+    list_delim_regex = re.compile(r'[%s]+' % ''.join(list_delimiters))
     i = 0 
     for row in iterable:
         if i == 0:
@@ -64,32 +70,36 @@ def csv_generator(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None):
                         # this could denote an escaped bracket, i.e. for a regex
                         item[key] = val[1:]
                     elif key in list_keys or val[0]=='[':
-                        # due to the simplicity of the serializer, above, any 
-                        # quoted string is a nested list
-                        list_keys.append(key)
-                        item[key] = [
-                            x.strip() 
-                            for x in val.strip('"[]').split(list_delimiter)]
-                        logger.debug('%r, val: %r converted to %r', key, val, item[key])
+                        list_keys.add(key)
+                        item[key] = []
+                        val = val.strip('"[] ')
+                        for x in list_delim_regex.split(val):
+                            x = x.strip()
+                            if x:
+                                item[key].append(x)
+            
             yield item
         i += 1
+        if i % 10000 == 0:
+            logger.info('read in %d lines...', i)
     logger.debug('read in data, count: %d', i )   
     
-def from_csv_iterate(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None):
+def read_input_spreadsheet(iterable, list_delimiters=None, list_keys=None):
     '''
-    Returns an in memory array of dicts for the iterable, representing a 
+    Returns an in memory array of dicts, representing a 
     csv-like input matrix.
-    - the first row is interpreted as the dict keys, unless a list_keys param is 
-    specified 
-    
-    FIXME: the name "from_csv_iterate" is misleading, as no csv-specific
-    deserialization operations are going on here. propose: "nested_list_reader"
+    - The first row is interpreted as the keys to the (dict) for the entire read.
+    - Supports nested lists; data that is either surrounded by brackets "[]", or designated
+    by the "list_keys" parameter is read in as a list-of-values;
+    - separated by the "list_delimiters".
     '''
     list_keys = list_keys or []
+    list_keys = set(list_keys)
+    list_delimiters = list_delimiters or [LIST_DELIMITER_CSV,]
+    list_delim_regex = re.compile(r'[%s]+' % ''.join(list_delimiters))
     data_result = []
     i = 0
     keys = []
-    list_keys = list(list_keys) 
     logger.debug('list_keys: %r', list_keys)
     for row in iterable:
         if i == 0:
@@ -103,11 +113,10 @@ def from_csv_iterate(iterable, list_delimiter=LIST_DELIMITER_CSV, list_keys=None
                         # this could denote an escaped bracket, i.e. for a regex
                         item[key] = val[1:]
                     elif key in list_keys or val[0]=='[':
-                        # due to the simplicity of the serializer, above, any 
-                        # quoted string is a nested list
-                        list_keys.append(key)
+                        list_keys.add(key)
                         item[key] = []
-                        for x in val.strip('"[]').split(list_delimiter):
+                        val = val.strip('"[] ')
+                        for x in list_delim_regex.split(val):
                             x = x.strip()
                             if x:
                                 item[key].append(x)

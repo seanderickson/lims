@@ -1116,11 +1116,10 @@ def create_id():
         val = row[0]
         new_id = create_substance_id(val)
         if val % 10000 == 0:
-            logger.info('created substance id %r from %r', new_id,val)
+            logger.debug('created substance id %r from %r', new_id,val)
         logger.debug('seq: %r, created_id: %r', val, new_id)
         return new_id
     except Exception, e:
-#         logger.exception('on create_id')
         return None
 
 class Well(models.Model):
@@ -1150,8 +1149,6 @@ class Well(models.Model):
     # deprecation_admin_activity = \
     #     models.ForeignKey('AdministrativeActivity', null=True)
 
-
-    
     class Meta:
         db_table = 'well'
 
@@ -1218,15 +1215,16 @@ class Reagent(models.Model):
         max_length=8, unique=True, 
         default=create_id)
     
-    vendor_identifier = models.TextField()
-    vendor_name = models.TextField()
+    vendor_identifier = models.TextField(null=True)
+    vendor_name = models.TextField(null=True)
+    vendor_name_synonym = models.TextField(null=True)
+    vendor_batch_id = models.TextField(null=True)
     
     # TODO: deprecated
     # library_contents_version = \
     #     models.ForeignKey('LibraryContentsVersion', null=True)
 
     well = models.ForeignKey('Well', null=True, related_name='reagents') # , related_name='well_reagent')
-    vendor_batch_id = models.TextField()
 
     class Meta:
         db_table = 'reagent'
@@ -1284,6 +1282,11 @@ class GeneGenbankAccessionNumber(models.Model):
     class Meta:
         unique_together = (('gene', 'genbank_accession_number'))    
         db_table = 'gene_genbank_accession_number'
+
+    def __repr__(self):
+        return (
+            '<GeneGenbankAccessionNumber(gene: %r, genbank_accession_number: %s)>' 
+            % (self.gene, self.genbank_accession_number ))
 
 class GeneSymbol(models.Model):
     

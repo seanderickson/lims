@@ -8,13 +8,13 @@ solvent,fields.library,,,6,,,TRUE,"Solvent used in the library wells",Solvent,TR
 library_type,fields.library,,,7,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,[l;d;e],[c;u],string,,,select,,,,,,,,,
 is_pool,fields.library,,,8,,,TRUE,"Whether wells contains pools of reagents or single reagents","Is Pool",TRUE,,,[l;d;e],[c;u],boolean,,,,,,,,,,,,
 screening_status,fields.library,,,9,,,TRUE,"Screening Status","Screening Status",TRUE,,library.screening_status,[l;d;e],[c;u],string,,,select,,,,,,,,,
-start_plate,fields.library,,,9,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
-end_plate,fields.library,,,10,,,TRUE,"The plate number for the last plate in the library","End Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
+start_plate,fields.library,,,10,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
+end_plate,fields.library,,,11,,,TRUE,"The plate number for the last plate in the library","End Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
 plate_count,fields.library,custom,,12,,,TRUE,"The number of plates in the library","Plate Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/plate' }",,,,,,,,,,
-plate_size,fields.library,,,11,,,TRUE,"The library plate size","Plate Size",TRUE,,plate.size,[l;d;e],[c],string,,,select,,,384,TRUE,,,,,
-copies,fields.library,custom,,199,Internal,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,,,list,,,,,,,,,,,,
-screening_copies,fields.library,custom,,199,,,TRUE,"Copies designated as ""library_screening_plates""","Screening Copies",TRUE,,,,,list,,,,,,,,,,,,
-copies2,fields.library,custom,,199,,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#library/{short_name}/copy/{__val__}', 'target': '_self' }",,,,,,,,,,
+plate_size,fields.library,,,13,,,TRUE,"The library plate size","Plate Size",TRUE,,plate.size,[l;d;e],[c],string,,,select,,,384,TRUE,,,,,
+copies,fields.library,custom,,199,Internal,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,,,list,,,,,,,,,,,,[readEverythingAdmin]
+screening_copies,fields.library,custom,,199,,,TRUE,"Copies designated as ""library_screening_plates""","Screening Copies",TRUE,,,,,list,,,,,,,,,,,,[readEverythingAdmin]
+copies2,fields.library,custom,,199,,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#library/{short_name}/copy/{__val__}', 'target': '_self' }",,,,,,,,,,[readEverythingAdmin]
 date_created,fields.library,,,96,Admin,,TRUE,"The date the entity was originally recorded in Screensaver.","Date Recorded",TRUE,,,[d],,date,,,,TRUE,,,,,,,,
 date_loaded,fields.library,,,98,Admin,,TRUE,"The date the library data was loaded","Date Loaded",TRUE,,,[d],,date,,,,TRUE,,,,,,,,
 date_publicly_available,fields.library,,,99,Admin,,TRUE,"The date the library data was made publicly available","Date Publicly Available",TRUE,,,[d],[c;u],date,,,,TRUE,,,,,,,,

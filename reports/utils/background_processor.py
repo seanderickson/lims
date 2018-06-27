@@ -16,7 +16,7 @@ from django.test.client import RequestFactory
 import django.test.client
 import django.utils.http
 
-from reports import HEADER_APILOG_COMMENT
+from reports import HEADER_APILOG_COMMENT, ValidationError
 from reports.schema import API_RESULT_DATA
 import reports.schema as SCHEMA
 from reports.serialize import MULTIPART_MIMETYPE, JSON_MIMETYPE
@@ -34,7 +34,12 @@ def create_request_from_job(job_data, raw_data=''):
     
     if DEBUG_BACKGROUND is True:
         logger.info('create_request_from_job: %r', job_data)
-    
+    if raw_data:
+        logger.info('raw_data: %r, %d', type(raw_data), len(raw_data))
+        if len(raw_data) < 1000:
+            logger.info('raw_data: %r', raw_data)
+        else: 
+            logger.info('raw_data(trunc): %r', raw_data[:1000])
     request_factory = RequestFactory()
     
     path = job_data[JOB.URI]

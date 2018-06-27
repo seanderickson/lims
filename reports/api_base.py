@@ -408,7 +408,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     def get_cache(self):
         raise NotImplementedError('get_cache must be implemented: %r', self._meta.resource_name)
 
-    def deserialize(self, request, format=None):
+    def deserialize(self, request, format=None, schema=None):
         
         # TODO: refactor to use delegate deserialize to the serializer class:
         # - allow Resource classes to compose functionality vs. inheritance
@@ -419,6 +419,15 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         else:
             content_type = self.get_serializer().get_content_type(request)
         logger.info('deserialize for content_type: %r', content_type)
+        
+        if schema is None:
+            schema = self.build_schema(user=request.user)
+        # NOTE: Injecting information about the list fields, so that they
+        # can be properly parsed (this is a custom serialization format)
+        list_keys = [x for x,y in schema['fields'].items() 
+            if y.get('data_type') == 'list']
+            
+        
         if content_type.startswith('multipart'):
             if not request.FILES:
                 logger.error('No "FILES" found with multipart content.')
@@ -437,43 +446,30 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             # FIXME: rework to use the multipart Content-Type here
             if 'sdf' in request.FILES:  
                 file = request.FILES['sdf']
-                return self.get_serializer().deserialize(
-                    file.read(), SDF_MIMETYPE), {
-                        'filename': file.name }
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), SDF_MIMETYPE), 
+                    { 'filename': file.name })
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
-                
-                schema = self.build_schema(user=request.user)
-                list_keys = [x for x,y in schema['fields'].items() 
-                    if y.get('data_type') == 'list']
-                return self.get_serializer().deserialize(
-                    file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys}), {
-                        'filename': file.name }
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), XLS_MIMETYPE, list_keys=list_keys), 
+                    { 'filename': file.name } )
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
-
-                schema = self.build_schema(user=request.user)
-                list_keys = [x for x,y in schema['fields'].items() 
-                    if y.get('data_type') == 'list']
-                
-                return self.get_serializer().deserialize(
-                    file.read(), CSV_MIMETYPE, **{ 'list_keys': list_keys}), { 
-                        'filename': file.name }
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), CSV_MIMETYPE, list_keys=list_keys), 
+                    { 'filename': file.name } )
             else:
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
         
-        logger.debug('use deserializer: %r', content_type)
-        
-        if content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
-            # NOTE: Injecting information about the list fields, so that they
-            # can be properly parsed (this is a custom serialization format)
-            schema = self.build_schema(user=request.user)
-            list_keys = [x for x,y in schema['fields'].items() 
-                if y.get('data_type') == 'list']
-            return self.get_serializer().deserialize(
-                request.body,content_type,
-                **{ 'list_keys': list_keys}), None
+        elif content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
+            return (
+                self.get_serializer().deserialize(
+                    request.body,content_type, list_keys=list_keys), None )
         else:
             return self.get_serializer().deserialize(request.body,content_type), None
             

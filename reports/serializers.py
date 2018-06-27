@@ -339,28 +339,40 @@ class XLSSerializer(BaseSerializer):
 
         return self.from_xls(content, root=root, **kwargs)
 
-    def from_xls(self, content, root='objects',**kwargs):
+    def from_xls(self, content, root='objects', list_keys=None, list_delimiters=None, **kwargs):
         
+        logger.info('deserialize from_xls...')
         if isinstance(content, six.string_types):
             wb = xlrd.open_workbook(file_contents=content)
         else:
             wb = xlrd.open_workbook(cStringIO.StringIO(content))
             
         if wb.nsheets > 1:
-            logger.warn('only first page of workbooks supported')
-         
+            # TODO: concatentate all sheets?
+            logger.warn('only first page of workbooks is supported')
+        
+        logger.info('read first sheet ...') 
         # TODO: if root is specified, then get the sheet by name
         sheet = wb.sheet_by_index(0)
          
         if sheet.name.lower() in ['error', 'errors']:
             return xlsutils.sheet_rows(sheet)
              
+        list_delimiters = list_delimiters or [LIST_DELIMITER_XLS,]
+        
         # because workbooks are treated like sets of csv sheets, now convert
         # as if this were a csv sheet
-        data = csvutils.from_csv_iterate(
-            xlsutils.sheet_rows(sheet),
-            list_delimiter=LIST_DELIMITER_XLS, 
-            list_keys=kwargs.get('list_keys', None))
+        
+        data = csvutils.input_spreadsheet_reader(
+            xlsutils.sheet_rows(sheet), 
+            list_delimiters=list_delimiters, 
+            list_keys=list_keys)
+        
+        # # TODO: use csv_generator
+        # data = csvutils.input_spreadsheet_reader(
+        #     xlsutils.sheet_rows(sheet),
+        #     list_delimiters=list_delimiters, 
+        #     list_keys=list_keys)
  
         if root:
             return { root: data }
@@ -382,8 +394,6 @@ class CSVSerializer(BaseSerializer):
         Note: csv.py doesn't do Unicode; encode values as UTF-8 byte strings
         '''
 
-        data = to_simple(data)
-
         # Can use cStringIO here because csv writer will write only bytes
         raw_data = cStringIO.StringIO()
         # raw_data = StringIO.StringIO()
@@ -400,9 +410,9 @@ class CSVSerializer(BaseSerializer):
         if 'objects' in data:
             data = data['objects']
 
-        if len(data) == 0:
-            return data
-
+#         if len(data) == 0:
+#             return data
+        
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
             # but also, it could be just one item being returned
@@ -413,9 +423,13 @@ class CSVSerializer(BaseSerializer):
             i = 0
             keys = None
             for item in data:
+                
+                ### Removed, handled in convert_list_vals, 
+                ### data = to_simple(data)
+
                 if i == 0:
                     keys = item.keys()
-#                     writer.writerow([smart_text(key).encode('utf-8') for key in keys])
+                    # writer.writerow([smart_text(key).encode('utf-8') for key in keys])
                     writer.writerow([smart_text(key) for key in keys])
                 i += 1
                 writer.writerow([csvutils.convert_list_vals(val) 
@@ -423,7 +437,7 @@ class CSVSerializer(BaseSerializer):
 
         return raw_data.getvalue()
 
-    def from_csv(self, content, root='objects', **kwargs):
+    def from_csv(self, content, root='objects', list_keys=None, list_delimiters=None, **kwargs):
         '''
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
@@ -432,16 +446,15 @@ class CSVSerializer(BaseSerializer):
         if isinstance(content, six.binary_type):
             content = force_text(content)
 
-        objects = csvutils.from_csv(
+        data = csvutils.from_csv(
             StringIO.StringIO(content),
             # Can not use cStringIO here, because Unicode data will be read
             # cStringIO.StringIO(content),
-            list_delimiter=LIST_DELIMITER_CSV,
-            list_keys=kwargs.get('list_keys', None))
+            list_keys=list_keys, list_delimiters=list_delimiters)
         if root:
-            return { root: objects }
+            return { root: data }
         else:
-            return objects
+            return data
 
 class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
 

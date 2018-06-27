@@ -24,6 +24,7 @@ API_RESULT_DATA = 'objects'
 API_RESULT_META = 'meta'
 
 API_PARAM_SEARCH = 'search'
+API_PARAM_NESTED_SEARCH = 'nested_search_data'
 # URI_PARAM_RAW_SEARCH = 'raw_search_data'
 # Complex search - a search data structure sent as a POST header 
 API_PARAM_COMPLEX_SEARCH_ID = 'search_id'

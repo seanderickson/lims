@@ -292,7 +292,7 @@ def sdf_generator(data, title_function=None):
                 yield '\n'
             yield '$$$$\n'
 
-        logger.info('wrote %d', rownum)
+        logger.info('wrote %d', rownum+1)
     except Exception, e:
         logger.exception('SDF streaming error')
         raise
@@ -408,7 +408,7 @@ def get_xls_response(
                             else:
                                 sheet.write_string(filerow,i,val)
                     filerow += 1
-                    if row % 10001 == 0:
+                    if row % 10000 == 0:
                         logger.info('wrote %d rows to temp file', row)
                 
                     if filerow > max_rows_per_sheet:

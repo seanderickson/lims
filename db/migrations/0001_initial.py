@@ -632,9 +632,10 @@ class Migration(migrations.Migration):
             fields=[
                 ('reagent_id', models.AutoField(serialize=False, primary_key=True)),
 #                 ('substance_id', models.CharField(default=db.models.create_id, unique=True, max_length=8)),
-                ('vendor_identifier', models.TextField()),
-                ('vendor_name', models.TextField()),
-                ('vendor_batch_id', models.TextField()),
+                ('vendor_identifier', models.TextField(null=True)),
+                ('vendor_name', models.TextField(null=True)),
+                ('vendor_name_synonym', models.TextField(null=True)),
+                ('vendor_batch_id', models.TextField(null=True)),
                 ('facility_batch_id', models.IntegerField(null=True)),
             ],
             options={

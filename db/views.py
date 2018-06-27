@@ -72,7 +72,7 @@ def well_image(request, well_id):
                     % (well_id, e))
                 raise HttpResponseServerError
         else:
-            logger.info('well_image for %s not found at "%s"', 
+            logger.debug('well_image for %s not found at "%s"', 
                 well_id, structure_image_path)
             raise Http404
 

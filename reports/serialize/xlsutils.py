@@ -166,7 +166,7 @@ def write_xls_image(worksheet, filerow, col, val, request):
         image.save(bytes, image.format)
         worksheet.insert_image(filerow, col, fullpath, {'image_data': bytes })
     except Exception, e:
-        logger.exception('no image at: %r, %r', val,e)
+        logger.info('no image at: %r, %r', val,e)
 
 def read_string(cell):
     '''

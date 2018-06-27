@@ -6,9 +6,9 @@ title,fields.field,3,fields.CharField,"The title of this field",string,link,"{ '
 description,fields.field,4,fields.CharField,,string,,,,FALSE,"The description is used in tooltips and other queues to the user",Description,FALSE,,[l;d;e],,,[c;u],,
 comment,fields.field,5,fields.CharField,"comment on the comment!",string,,,,FALSE,"The comment is additional information displayed in the detail view",Comment,FALSE,,[d;e],,,[c;u],,
 data_type,fields.field,7,fields.CharField,"data type for persistence/serialization",string,,,,FALSE,"Data Type","Data Type",FALSE,field.data_type,[l;d;e],,,[c;u],,
-display_type,fields.field,8,fields.CharField,"display type for list and detail view",string,,,,FALSE,"Display Type","Display Type",FALSE,field.display_type,[l;d;e],,,[c;u],,
+display_type,fields.field,8,fields.CharField,"display type for list and detail view",string,full_string,,multiselect,FALSE,"Display Type","Display Type",FALSE,field.display_type,[l;d;e],,,[c;u],,
 display_options,fields.field,9,fields.CharField,"display options as json; used by client to display",string,,,,FALSE,"Options hash for the client to parse on display.","Display Options",FALSE,,[d;e],,,[c;u],,
-edit_type,fields.field,10,fields.CharField,"edit view type",string,,,,FALSE,"Edit Type","Edit Type",FALSE,field.edit_type,[l;d;e],,,[c;u],,
+edit_type,fields.field,10,fields.CharField,"edit view type",string,full_string,,multiselect,FALSE,"Edit Type","Edit Type",FALSE,field.edit_type,[l;d;e],,,[c;u],,
 visibility,fields.field,11,fields.ListField,,list,,,multiselect,FALSE,"The designations of where this field is visible",Visibility,FALSE,field.visibility,[l;d;e],,,[c;u],,
 editability,fields.field,12,fields.ListField,,list,,,multiselect,FALSE,"Field can be edited in these contexts",Editability,FALSE,field.editability,[l;d],,,[c;u],,
 ordering,fields.field,13,CsvBooleanField,,boolean,,,,FALSE,"The designations of whether this field is orderable through the API",Orderable,FALSE,,[d;e],,,[c;u],,FALSE

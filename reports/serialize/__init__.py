@@ -100,7 +100,10 @@ def parse_val(value, key, data_type, options=None):
         elif data_type == 'integer':
             if isinstance(value, six.string_types):
                 # Note: convert an integer from values like "5.0"
-                return int(float(value))
+                try:
+                    return int(float(value))
+                except:
+                    return int(value)
             return int(value)
         elif data_type == 'date':
             if isinstance(value, datetime.date):
@@ -136,7 +139,10 @@ def parse_val(value, key, data_type, options=None):
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))
     except Exception, e:
         logger.exception('value not parsed %r:%r',key, value)
-        raise ValidationError(key=key,msg='parse error: %r' % str(e))
+        msg = str(e)
+        if hasattr(e,'message'):
+            msg = e.message
+        raise ValidationError(key=key,msg='parse error: %s' % msg)
 
 def parse_json_field(val, key, json_field_type):
     'Parse input field values for composing the nested json field'
@@ -167,7 +173,6 @@ def parse_json_field(val, key, json_field_type):
             'unknown json_field_type: %s' % json_field_type)
 
 def resolve_image(request, uri):
-    logger.info('find image at %r', uri)
     view, args, kwargs = resolve(uri)
     kwargs['request'] = request
     response = view(*args, **kwargs)

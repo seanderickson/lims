@@ -1379,6 +1379,10 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
+
+        if not deserialized:
+            return {}
+        
         kwargs_for_log = self.get_id(deserialized,validate=False,schema=schema,**kwargs)
         
         id_attribute = schema['id_attribute']
@@ -1479,6 +1483,10 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
+        
+        if not deserialized:
+            return {}
+        
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, validate=True, schema=schema, **kwargs)
@@ -2889,15 +2897,20 @@ class FieldResource(ApiResource):
         if not schema:
             raise Exception('schema not initialized')
         fields = schema[RESOURCE.FIELDS]
+        
+        if not deserialized:
+            return {}
+
+        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
+        
         initializer_dict = {}
         for key in fields.keys():
             if key in deserialized:
                 initializer_dict[key] = parse_val(
                     deserialized.get(
                         key,None), key,fields[key].get('data_type','string')) 
-        
-        id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
-        
+        if not initializer_dict:
+            return {}
         try:
             field = None
             try:

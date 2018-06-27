@@ -37,39 +37,6 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   
   console.log('init screensaver/reports...')
   
-  /** 
-   * NOTE: The ajax "traditional" setting is needed to serialize the ordering
-   * array sent to the server and used to implement multisort with the 
-   * tastypie server.
-   * With traditional serialization, the array values are serialized as
-   * order=val1&order=val1&order=...
-   * see http://api.jquery.com/jQuery.param/c
-   **/
-  $.ajaxSettings.traditional = true;
-
-  /**
-   * For ajax POST operations: send the session id as a request
-   * header (CSRF protection in SessionAuthentication requires).
-   * (the other option is to use Basic Authentication)
-   * see:
-   * tastypie/authentication.is_authenticated
-   * and
-   * http://stackoverflow.com/questions/15388694/does-sessionauthentication-work-in-tastypie-for-http-post
-   */
-
-  // sending a csrftoken with every ajax request
-  function csrfSafeMethod(method) {
-      // these HTTP methods do not require CSRF protection
-      return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-  };
-  $.ajaxSetup({
-      crossDomain: false, // obviates need for sameOrigin test
-      beforeSend: function(xhr, settings) {
-          if (!csrfSafeMethod(settings.type)) {
-              xhr.setRequestHeader("X-CSRFToken", appModel.readCookie('csrftoken'));
-          }
-      }
-  });
   
   // Prevent keypresses in input elements from propogating to the form submit button
   $(document).on("keypress", "input:not(textarea):not([type=submit])", function(event) {
@@ -112,6 +79,47 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   appModel.set('screener_menu', screener_menu_resource);
 
   var loadCount = 0
+
+  /** 
+   * NOTE: The ajax "traditional" setting is needed to serialize the ordering
+   * array sent to the server and used to implement multisort with the 
+   * tastypie server.
+   * With traditional serialization, the array values are serialized as
+   * order=val1&order=val1&order=...
+   * see http://api.jquery.com/jQuery.param/c
+   **/
+  $.ajaxSettings.traditional = true;
+
+  /**
+   * For ajax POST operations: send the session id as a request
+   * header (CSRF protection in SessionAuthentication requires).
+   * (the other option is to use Basic Authentication)
+   * see:
+   * tastypie/authentication.is_authenticated
+   * and
+   * http://stackoverflow.com/questions/15388694/does-sessionauthentication-work-in-tastypie-for-http-post
+   */
+
+  // sending a csrftoken with every ajax request
+  function csrfSafeMethod(method) {
+      // these HTTP methods do not require CSRF protection
+      return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+  };
+  $.ajaxSetup({
+      crossDomain: false, // obviates need for sameOrigin test
+      beforeSend: function(xhr, settings) {
+          if (!csrfSafeMethod(settings.type)) {
+              xhr.setRequestHeader("X-CSRFToken", appModel.readCookie('csrftoken'));
+          }
+      },
+      statusCode: {
+      401: function(err){
+        console.log('Login Failed.', err.responseJSON);
+        authErrorHandler(err);
+      }
+    }      
+  });
+
   $(document).bind("ajaxSend", function(event, jqxhr, settings){
     console.log('ajaxSend', arguments);
 // Remove: "global: false" flag should  prevent trigger event handler 
@@ -149,6 +157,13 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   var appRouter = appModel.router = new AppRouter({ model: appModel });
   var appView = new AppView({ model: appModel },{ router: appRouter});
 
+  function authErrorHandler(){
+    window.logged_in = false;
+    window.location='/accounts/login/?next=' + 
+      window.location.pathname + window.location.hash;
+    
+  };
+  
   appModel.start(function(){
     console.log('Render application')
     appView.$el.appendTo("#application_div")

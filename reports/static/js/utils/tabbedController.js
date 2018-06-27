@@ -23,12 +23,21 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
       var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
       _.each(_.keys(displayed_tabbed_resources), function(key) {
         if (key !== 'detail') {
-          var permission = displayed_tabbed_resources[key].permission;
-          if (_.isUndefined(permission)) {
-            permission = displayed_tabbed_resources[key].resource;
-          }
-          if (!appModel.hasPermission(permission, 'read')) {
-            delete displayed_tabbed_resources[key];
+          var group = displayed_tabbed_resources[key].group;
+          if (!_.isUndefined(group)){
+            if (!appModel.hasGroup(group)){
+              delete displayed_tabbed_resources[key];
+            }
+          }else{
+            var permission = displayed_tabbed_resources[key].permission;
+            if (_.isUndefined(permission)) {
+              permission = displayed_tabbed_resources[key].resource;
+            }
+            if (permission!==''){
+              if (!appModel.hasPermission(permission, 'read')) {
+                delete displayed_tabbed_resources[key];
+              }
+            }
           }
         }
       });

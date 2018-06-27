@@ -1405,7 +1405,7 @@ define([
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {
         appModel.showOkCommentForm({
-          title: 'Enter a comment',
+          title: 'Enter a comment (optional)', 
           ok: function(values) {
             headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
             self.save(changedAttributes, options);

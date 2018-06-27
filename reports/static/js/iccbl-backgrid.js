@@ -2278,10 +2278,10 @@ _.extend(SIUnitsFormatter.prototype, {
     }
     
     var pairUnit = self.getSIUnit(number);
-    // 20180423 - If defaultUnit is set, use it by default:
+    // 20180423 - If defaultUnit is set and less than the number, use it:
     // Test the SIUnit to make sure it does not result in a 0 display value;
-    // if it does, then find an appropriate SIUnit
-    if (_.isNumber(self.defaultUnit)){
+    // if it does, use the recommended SIUnit
+    if (_.isNumber(self.defaultUnit) && number >= self.defaultUnit ){
       var test_pairUnit = self.getSIUnit(self.defaultUnit);
       var test_val = (1/test_pairUnit[1])*number;
       test_val = test_val.toFixed(decimals)*1;
@@ -2461,6 +2461,8 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
 });  
 
 var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
+
+  className: 'text-wrap-cell',
 
   initialize: function(){
     

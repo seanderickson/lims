@@ -62,14 +62,14 @@ define([
     events: {
       'click ul.nav-tabs >li': 'click_tab',
       'click button#upload': 'upload',
-      'click button#download': 'download',
+//      'click button#download': 'download',
     },
 
     /**
      * Note: for library, upload and download operate on the library contents, 
      * (reagents) and not on the library entity itself.
      */
-    upload: function(event){
+    upload: function(e){
       e.preventDefault();
       e.stopPropagation();
       var self = this;
@@ -179,8 +179,8 @@ define([
             comment__is_blank: false
           };
           appModel.createCommentTable(self.model,search_data, $('#comment_table'));
-        },
-      });
+        }
+      });;
 
       view = new DetailLayout({ 
         model: this.model,
@@ -193,6 +193,7 @@ define([
             appModel.getLibraries();
           }
         }),
+        download: self.download,
         buttons: buttons 
       });
       this.tabViews[key] = view;

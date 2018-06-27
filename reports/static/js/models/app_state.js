@@ -1448,25 +1448,8 @@ define([
     hasPermission: function(resource, permission){
       if (DEBUG) console.log('hasPermission', resource, permission);
       var self = this;
-      if(self.getCurrentUser().is_superuser) return true;
+      if (self.getCurrentUser().is_superuser) return true;
       
-//      var r_perm = 'resource/'+ resource;
-//      if( permission=='edit'){
-//        permission = 'write';
-//      }
-//      if(!_.isUndefined(permission) && permission == 'write' ){
-//        // only check for 'write' permission; write implies read
-//        r_perm += '/'+ permission;
-//      }// otherwise, will return true if user has either permission
-//      var match = _.find(
-//          self.getCurrentUser().all_permissions, 
-//          function(p){
-//            if(p.indexOf(r_perm) > -1 ) {
-//              return true;
-//            }
-//          });
-//      console.log('permission', r_perm, !_.isUndefined(match));
-//      return !_.isUndefined(match);
       return self._permissionMatch(
         resource, permission, self.getCurrentUser().all_permissions);
     
@@ -1634,6 +1617,36 @@ define([
         });
       }
     },
+    
+    /**
+     * Creates a hierarchical printout of an object using 
+     * JSON.stringify
+     */
+    print_json: function(obj){
+      
+      // Convert single list values into strings
+      function replacer(key, val){
+        if (_.isArray(val) && val.length==1){
+          return val[0];
+        }else{
+          return val;
+        }
+      };
+      var str = JSON.stringify(obj, replacer, 2); 
+      // remove escapes around quotes
+      str = str.replace(/\\(["'])/g, '$1');
+      // remove python unicode literal
+      str = str.replace(/u(['"])/g,'$1');
+      // remove single quotes
+      str = str.replace(/"/g,'');
+      // remove object brackets
+      str = str.replace(/[{}]+/g,'');
+      // remove empty lines
+      str = str.replace(/^\s*$\n+/gm,'');
+      // remove single comma on a line
+      str = str.replace(/^\s*,\s*$/gm,'')
+      return str;
+    },
 
     /**
      * Process an error dict into single string for display to the end user.
@@ -1657,10 +1670,21 @@ define([
       } else if (_.isArray(dict)){
         var cumulative = '';
         dict = _.map(dict, function(val){
-          cumulative += val;
-          if (cumulative.length > 40 && cumulative != val){
-            val = sep + val;
-            cumulative = val;
+          if (_.isObject(val) && !_.isArray(val)){
+            var parts = self.print_dict(val, sep);
+            if (parts.length > 40){
+              cumulative += sep + parts;
+              val = sep + parts;
+            } else {
+              val = parts;
+              cumulative += parts;
+            }
+          } else {
+            cumulative += val;
+            if (cumulative.length > 40 && cumulative != val){
+              val = sep + val;
+              cumulative = val;
+            }
           }
           return val;
         });
@@ -1725,7 +1749,8 @@ define([
         options['title'] = title;
       }
       var sep = '<br/>';
-      var bodyMsg = this.print_dict(jsonObj, sep);
+//      var bodyMsg = this.print_dict(jsonObj, sep);
+      var bodyMsg = this.print_json(jsonObj);
       var rowCount = (bodyMsg.match(new RegExp(sep, "g")) || []).length;
       if (rowCount > Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG){
         bodyMsg = this.print_dict(jsonObj, '\n');
@@ -1736,6 +1761,11 @@ define([
         options['view'] = body;
       } else {
         options['body'] = bodyMsg;
+        options['buttons_on_top'] = true;
+        body = $('<textarea class="input-full" rows=' 
+          + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+        body.val(bodyMsg);
+        options['view'] = body;
       }
       Iccbl.appModel.showModalMessage(options);
     },
@@ -1916,6 +1946,10 @@ define([
      **/
     createCommentTable: function(model,search_data, $target_el) {
       var self = this;
+      
+      if (!self.hasGroup('readEverythingAdmin')){
+        return;
+      }
 
       var search_data = _.extend({
         comment__is_blank: false

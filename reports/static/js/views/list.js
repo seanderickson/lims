@@ -173,8 +173,7 @@ define([
           }
       });
 
-      self.listenTo(
-        self.collection, "MyCollection:edit", 
+      self.listenTo(self.collection, "MyCollection:edit", 
     		function (model) {
           var id = Iccbl.getIdFromIdAttribute( model, resource );
           // signal to the app_model that the current view has changed 

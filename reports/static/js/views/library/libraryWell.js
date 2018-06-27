@@ -33,12 +33,16 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         _.mapObject(this.tabbed_resources_template, function(val,key){
           return _.clone(val);
         }));
+      
+      console.log('self.model.resource.key', self.model.resource.key);
       if ( self.model.resource.key != 'silencingreagent'){
+        console.log('remove duplex_wells tab for', self.model.resource.key);
         delete self.tabbed_resources['duplex_wells'];
       } else {
-        if (self.model.get('is_pool') != true){
-          delete self.tabbed_resources['duplex_wells'];
-        }
+//        if (self.model.get('is_pool') != true){
+//          console.log('remove duplex_wells tab for non pool well', self.model, self.model.get('is_pool'));
+//          delete self.tabbed_resources['duplex_wells'];
+//        }
       }
       if (! self.model.has('other_wells')){
           delete self.tabbed_resources['other_wells_with_reagent'];
@@ -59,20 +63,19 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         description: 'Duplex Wells', 
         title: 'Duplex Wells', 
         invoke: 'setDuplexWells',
-        resource: 'well'
+        group: 'readEverythingAdmin'
       },
       annotations: { 
         description: 'Annotations', 
         title: 'Annotations', 
         invoke: 'setAnnotations',
-        resource: 'well',
-        permission: 'screen'
+        permission: '' // All logged in users
       },
       other_wells: { 
         description: 'Other Wells With the same reagent identifier', 
         title: 'Other Wells With Reagent', 
         invoke: 'setOtherWells',
-        resource: 'well'
+        permission: '' // All logged in users
       }
     },      
     
@@ -127,6 +130,16 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       appModel.getModel(resource.key, self.model.get('well_id'), 
         function(model){
           self.model = model;
+          if (self.model.get('is_pool') != true){
+            console.log('remove duplex_wells tab for non pool well', self.model, self.model.get('is_pool'));
+            delete self.tabbed_resources['duplex_wells'];
+            $('#duplex_wells').remove();
+          }
+          if (_.isEmpty(self.model.get('other_wells_with_reagent'))){
+            console.log('remove other_wells tab for non pool well', self.model, self.model.get('other_wells'));
+            delete self.tabbed_resources['other_wells'];
+            $('#other_wells').remove();
+          }
           self.change_to_tab(viewId);
         },
         {

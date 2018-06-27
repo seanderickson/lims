@@ -287,13 +287,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           url += '/compound_search';
         }
         
+        if (self.library && self.library.get('is_pool') !== true){
+          delete newFields['duplex_wells'];
+        } else {
+          delete newFields['pool_well'];
+        }
+        if (self.library && self.library.get('screen_type') !== 'rnai'){
+          delete newFields['pool_well'];
+        }
+        
         if (!_.isEmpty(_.intersection(delegateStack, 
               [appModel.URI_PATH_COMPLEX_SEARCH,appModel.URI_PATH_ENCODED_SEARCH]))){
           console.log('encoded or complex search found');
           newResource['options']['rpp'] = '24';
         }
         
-        var extraControls = [];
+//        var extraControls = [];
         var show_data_columns_control = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
           'id="show_data_columns_control" title="Show study and screen data columns" >',
@@ -303,7 +312,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         show_data_columns_control.click(function(e){
           self.showDataColumnsDialog(view);
         });
-        extraControls.push(show_data_columns_control);
+//        extraControls.push(show_data_columns_control);
 
         ///////////////////////////////////////////////////////////
         // Override the well link and provide next/previous buttons
@@ -462,10 +471,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             })
           );
 
+//        var imageDownload = $([
+//          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+//          'id="Download images as a zip file" title="Download images" >',
+//          'Download images',
+//          '</button>'
+//          ].join(''));
+//        
+//        imageDownload.click(function(e){
+//          e.preventDefault();
+//          e.stopPropagation();
+//          
+//          // TODO: initiate download
+//          
+//          
+//        });
+        
         var WellListView = ListView.extend({
           afterRender: function(){
             ListView.prototype.afterRender.apply(this,arguments);
             this.$('#list_controls').append(show_data_columns_control);
+//            this.$('#list_controls').prepend(imageDownload);
             return this;
           }
         });
@@ -483,6 +509,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             appModel.router.navigate(_route, {trigger:true});
           }
         });
+        
         var viewArgs = _.extend({},self.args,{
           resource: newResource,
           collection: collection,

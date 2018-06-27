@@ -3278,7 +3278,8 @@ class ScreenAuthorization(UserGroupAuthorization):
         if active_agreements.exists():
             current_dsl = active_agreements[0].data_sharing_level
         else:
-            logger.info('no active %r user agreements for user: %r', type, screensaver_user)
+            logger.info('no active %r user agreements for user: %r', 
+                        user_agreement_type, screensaver_user)
         logger.debug('user dsl: %r, %r, %r', 
             screensaver_user, user_agreement_type, current_dsl)
         return current_dsl
@@ -3302,8 +3303,8 @@ class ScreenAuthorization(UserGroupAuthorization):
                             screensaver_user.screensaver_user_id, current_dsl)
                         return True
         if DEBUG_SCREEN_ACCESS:
-            logger.info('has_sm_data_deposited %r: %r', 
-                screensaver_user.screensaver_user_id, current_dsl)
+            logger.info('has_sm_data_deposited %r: %r: %r', 
+                screensaver_user.screensaver_user_id, current_dsl, False)
         return False
     
     def has_rna_data_deposited(self, screensaver_user):
@@ -3314,6 +3315,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         '''
         current_dsl = self.get_user_data_sharing_level(
             screensaver_user, self.VOCAB_USER_AGREEMENT_RNAI)
+        logger.info('current_dsl: %r, %r', screensaver_user, current_dsl)
         my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
@@ -3325,8 +3327,8 @@ class ScreenAuthorization(UserGroupAuthorization):
                             screensaver_user.screensaver_user_id, current_dsl)
                         return True
         if DEBUG_SCREEN_ACCESS:
-            logger.info('has_rnai_data_deposited %r: %r', 
-                screensaver_user.screensaver_user_id, current_dsl)
+            logger.info('has_rnai_data_deposited %r: %r: %r', 
+                screensaver_user.screensaver_user_id, current_dsl, False)
         return False
     
     def get_read_authorized_screens(self, screensaver_user):
@@ -3340,9 +3342,27 @@ class ScreenAuthorization(UserGroupAuthorization):
         if DEBUG_SCREEN_ACCESS:
             logger.info('get_read_authorized_screens %r', screensaver_user)
         authorized_screens = set()
-        authorized_screens.update(self.get_user_screens(screensaver_user))
-        public_screens = Screen.objects.all().filter(data_sharing_level=DSL.SHARED)
-        authorized_screens.update(public_screens)
+        user_screens = self.get_user_screens(screensaver_user)
+        authorized_screens.update(user_screens)
+        
+        # 20180627: TODO: should allow access only to screen type for user?
+        has_rnai = any([x.screen_type == SCHEMA.VOCAB.screen.screen_type.RNAI
+                        for x in user_screens])
+        has_sm = any([x.screen_type == SCHEMA.VOCAB.screen.screen_type.SMALL_MOLECULE
+                        for x in user_screens])
+        if DEBUG_SCREEN_ACCESS:
+            logger.info('user: %r, has_rnai: %r, has_sm: %r', 
+                        screensaver_user.username, has_rnai, has_sm)
+        if has_sm:
+            public_screens = Screen.objects.all()\
+                .filter(data_sharing_level=DSL.SHARED)\
+                .filter(screen_type=SCHEMA.VOCAB.screen.screen_type.SMALL_MOLECULE)
+            authorized_screens.update(public_screens)
+        if has_rnai:
+            public_screens = Screen.objects.all()\
+                .filter(data_sharing_level=DSL.SHARED)\
+                .filter(screen_type=SCHEMA.VOCAB.screen.screen_type.RNAI)
+            authorized_screens.update(public_screens)
 
         has_sm_data_deposited = self.has_sm_data_deposited(screensaver_user)
         has_rna_data_deposited = self.has_rna_data_deposited(screensaver_user)
@@ -3351,11 +3371,15 @@ class ScreenAuthorization(UserGroupAuthorization):
             visible_screens = (
                 Screen.objects.all().filter(screen_type=VOCAB_SCREEN_TYPE_SM)
                     .filter(data_sharing_level__lt=DSL.PRIVATE))
+            logger.info('update with visible small_molecule screens: %r', 
+                        [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
         if has_rna_data_deposited:
             visible_screens = (
                 Screen.objects.all().filter(screen_type=VOCAB_SCREEN_TYPE_RNAI)
                     .filter(data_sharing_level__lt=DSL.PRIVATE))
+            logger.info('update with visible rna screens: %r', 
+                        [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
         if DEBUG_SCREEN_ACCESS:
             logger.info(
@@ -13546,7 +13570,7 @@ class ActivityResource(DbApiResource):
         _library_screening = self.bridge['library_screening']
         _cps = self.bridge['cherry_pick_screening']
         # 20171108 - Do not show CPLT activities in general report
-        # _cplt = self.bridge['cherry_pick_liquid_transfer']
+        _cplt = self.bridge['cherry_pick_liquid_transfer']
         j = j.join(
             _library_screening,
             _la.c.activity_id == _library_screening.c.activity_id, isouter=True)
@@ -13563,6 +13587,8 @@ class ActivityResource(DbApiResource):
         
         stmt = select(columns.values()).select_from(j)
         
+        stmt = stmt.where(~exists(
+            select([None]).select_from(_cplt).where(_cplt.c.activity_id==_a.c.activity_id)))
         # stmt = self._meta.authorization.filter_in_sql(
         #     user, stmt, screen_table=_screen)
         # general setup
@@ -17368,6 +17394,7 @@ class ScreenResource(DbApiResource):
         
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
+        logger.info('filter expression: %r', filter_expression)
 
         order_params = param_hash.get('order_by', [])
         order_params.append('-facility_id')
@@ -17963,7 +17990,7 @@ class ScreenResource(DbApiResource):
         # general setup
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-        if DEBUG_SCREEN: 
+        if True or DEBUG_SCREEN: 
             logger.info(
                 'stmt: %s',
                 str(stmt.compile(
@@ -19145,6 +19172,31 @@ class ScreensaverUserResourceAuthorization(UserResourceAuthorization):
         logger.info('user: %r, associated users: %r', user.username, associated_users)
         
         return associated_users
+    
+    def filter(self, user, filter_expression):
+
+        if self.is_restricted_view(user) is False:
+            return filter_expression
+
+        associated_users = \
+            self.get_associated_users(user)
+        auth_filter = column('screensaver_user_id').in_([
+                user.screensaver_user_id for user in associated_users])
+        
+        if filter_expression is not None:
+            filter_expression = and_(filter_expression, auth_filter)
+        else:
+            filter_expression = auth_filter
+
+        return filter_expression
+
+
+    def get_row_property_generator(self, user, fields, extant_generator):
+        
+        # TODO: consider allowing access to own data for "view_groups" restricted fields
+        
+        return extant_generator
+    
         
 class UserChecklistAuthorization(ScreensaverUserResourceAuthorization):        
 
@@ -20173,13 +20225,13 @@ class ScreensaverUserResource(DbApiResource):
         # natural ordering
         stmt = stmt.order_by(_su.c.last_name, _su.c.first_name)
             
-        if self._meta.authorization.is_restricted_view(request.user):
-            logger.info('create_authorized_user_filter')
-            associated_users = \
-                self._meta.authorization.get_associated_users(request.user)
-            stmt = stmt.where(
-                _su.c.screensaver_user_id.in_([
-                    user.screensaver_user_id for user in associated_users]))
+#         if self._meta.authorization.is_restricted_view(request.user):
+#             logger.info('create_authorized_user_filter')
+#             associated_users = \
+#                 self._meta.authorization.get_associated_users(request.user)
+#             stmt = stmt.where(
+#                 _su.c.screensaver_user_id.in_([
+#                     user.screensaver_user_id for user in associated_users]))
         
         # general setup
          
@@ -22494,7 +22546,6 @@ class SmallMoleculeReagentResource(ReagentResource):
         return SqlAlchemyResource.build_sqlalchemy_columns(
             self, fields, base_query_tables=base_query_tables, 
             custom_columns=custom_columns)  
-
     
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 

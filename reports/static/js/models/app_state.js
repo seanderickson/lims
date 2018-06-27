@@ -1521,7 +1521,7 @@ define([
       if (resourceId == 'my_screens'){
         var suResource = uiResources['screensaveruser'];
         var currentUser = self.getCurrentUser();
-        resource.apiUri = [suResource.apiUri, currentUser.username, 'screens'].join('/');
+        resource.apiUri = [suResource.apiUri, currentUser.screensaver_user_id, 'screens'].join('/');
       }
       
       return resource;

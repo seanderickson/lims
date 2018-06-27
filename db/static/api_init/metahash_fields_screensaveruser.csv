@@ -1,5 +1,5 @@
 key,scope,table,field,ordinal,comment,filtering,description,title,ordering,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,alias,is_restricted,regex,required,view_groups,data_access_level
-screensaver_user_id,fields.screensaveruser,,,0,"Arbitrarily assigned internal user ID for the User",TRUE,"The internal user ID","Screensaver User ID",TRUE,,[l;d],,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,[readEverythingAdmin],
+screensaver_user_id,fields.screensaveruser,,,0,"Arbitrarily assigned internal user ID for the User",TRUE,"The internal user ID","Screensaver User ID",TRUE,,[l;d],,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,
 name,fields.screensaveruser,custom,,2,,TRUE,"The full name of the user (last, first)",Name,TRUE,,[l;d],,string,,,,,,,,,1
 first_name,fields.screensaveruser,,,3,,TRUE,"First Name","First Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
 last_name,fields.screensaveruser,,,4,,TRUE,"Last Name","Last Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
@@ -9,11 +9,11 @@ lab_head_id,fields.screensaveruser,,,7,,TRUE,"The Screensaver User ID of the Lab
 lab_affiliation_id,fields.screensaveruser,,,8,,TRUE,"Lab Affiliation ID","Principal Investigator Lab Affiliation",TRUE,,,[c;u],integer,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}', 'widthClass': 'col-sm-8' }",select,,,,,,1
 lab_affiliation_name,fields.screensaveruser,,,9,,TRUE,"Lab Affiliation Name","Principal Investigator Lab Affiliation Name",TRUE,,,,string,,,,,,,,,1
 lab_affiliation_category,fields.screensaveruser,,,10,,TRUE,"Lab Affiliation Category","Lab Affiliation Category",TRUE,lab_affiliation.category,,,string,,,select,,,,,,1
-lab_head_appointment_category,fields.screensaveruser,,,13,,TRUE,"Lab Head Appointment Category","App't Category",TRUE,lab_head.appointment_category,,[c;u],string,,,select,,,,,[readEverythingAdmin],
-lab_head_appointment_department,fields.screensaveruser,,,14,,TRUE,"Lab Head Appointment Department","App't Department",TRUE,lab_head.appointment_department,,[c;u],string,,,select,,,,,[readEverythingAdmin],
-lab_head_appointment_update_date,fields.screensaveruser,,,15,,TRUE,"The date when Lab Head Appointment was set","Date App't Updated",TRUE,,,[c;u],date,,,,,,,,[readEverythingAdmin],
+lab_head_appointment_category,fields.screensaveruser,,,13,,TRUE,"Lab Head Appointment Category","App't Category",TRUE,lab_head.appointment_category,,[c;u],string,,,select,,,,,,
+lab_head_appointment_department,fields.screensaveruser,,,14,,TRUE,"Lab Head Appointment Department","App't Department",TRUE,lab_head.appointment_department,,[c;u],string,,,select,,,,,,
+lab_head_appointment_update_date,fields.screensaveruser,,,15,,TRUE,"The date when Lab Head Appointment was set","Date App't Updated",TRUE,,,[c;u],date,,,,,,,,,
 email,fields.screensaveruser,,,16,,TRUE,Email,Email,TRUE,,[l;d],[c;u],string,,"{ 'maxlength': '100' }",,,,"^[\w\-]{1,}([\w\-\+.]{1,1}[\w\-]{1,}){0,}[@][\w\-]{1,}([.]([\w\-]{1,})){1,3}$",,,1
-ecommons_id,fields.screensaveruser,,,17,,TRUE,Ecommons,Ecommons,TRUE,,[l;d],[c;u],string,,,,,,^\w+$,,[readEverythingAdmin],
+ecommons_id,fields.screensaveruser,,,17,,TRUE,Ecommons,Ecommons,TRUE,,[l;d],[c;u],string,,,,,,^\w+$,,,
 username,fields.screensaveruser,auth_user,,18,,TRUE,Username,Username,TRUE,,,[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,^\w+$,,,1
 harvard_id,fields.screensaveruser,,,19,,TRUE,"The Harvard ID of the user","Harvard ID",TRUE,,[l;d],[c;u],string,,,,,,,,[readEverythingAdmin],
 harvard_id_expiration_date,fields.screensaveruser,,,20,,TRUE,"The date this user's Harvard ID is initially set to expire","Harvard ID Initial Expiration Date",TRUE,,,,date,,,,,,,,[readEverythingAdmin],

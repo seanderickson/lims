@@ -17990,7 +17990,7 @@ class ScreenResource(DbApiResource):
         # general setup
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-        if True or DEBUG_SCREEN: 
+        if DEBUG_SCREEN: 
             logger.info(
                 'stmt: %s',
                 str(stmt.compile(
@@ -22324,52 +22324,16 @@ class SilencingReagentResource(ReagentResource):
             self, fields, base_query_tables=base_query_tables, 
             custom_columns=custom_columns)  
 
-    # NOTE: removed; patching will only be done in batch, from library/well
-    # @transaction.atomic()    
-    # def patch_obj(self, request, deserialized, **kwargs):
-    # 
-    #     start_time = time.time()
-    #      
-    #     well = kwargs.get('well', None)
-    #     if not well:
-    #         raise ValidationError(key='well', msg='required')
-    # 
-    #     schema = self.build_schema()
-    #     fields = schema['fields']
-    #     mutable_fields = []
-    #     for field in fields.values():
-    #         editability = field.get('editability', None)
-    #         if editability and (
-    #             'u' in editability or (create and 'c' in editability )):
-    #             mutable_fields.append(field)
-    #     id_kwargs = self.get_id(deserialized, **kwargs)
-    # 
-    #     patch = False
-    #     if not well.reagents.exists():
-    #         reagent = SilencingReagent(well=well)
-    #          
-    #         # only allow duplex_wells to be set on create
-    #         if 'duplex_wells' in kwargs:
-    #             reagent.save()
-    #             reagent.duplex_wells = kwargs['duplex_wells']
-    #      
-    #     else:
-    #         patch = True
-    #         # TODO: only works for a single reagent
-    #         # can search for the reagent using id_kwargs
-    #         # reagent = well.reagents.all().filter(**id_kwargs)
-    #         # TODO: update reagent
-    #         reagent = well.reagents.all()[0]
-    #         reagent = reagent.silencingreagent
-    #         logger.info('found reagent: %r, %r', reagent.well_id, reagent)
-    # 
-    #     self._set_reagent_values(reagent, deserialized, patch)                
-    #      
-    #     return reagent        
+    @write_authorization
+    @transaction.atomic
+    def patch_obj(self, request, deserialized, **kwargs):
+        # NOTE: patching will only be done in batch, from library/well
+        raise NotImplementedError
 
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
         - deserialized has been loaded with the well & duplex wells
+        NOTE: patching will only be done in batch, from library/well
         '''
         logger.info('patch (%d) reagents for silencing_reagent ...', len(deserialized))
         schema = self.build_schema(request.user)
@@ -22546,6 +22510,13 @@ class SmallMoleculeReagentResource(ReagentResource):
         return SqlAlchemyResource.build_sqlalchemy_columns(
             self, fields, base_query_tables=base_query_tables, 
             custom_columns=custom_columns)  
+
+    @write_authorization
+    @transaction.atomic
+    def patch_obj(self, request, deserialized, **kwargs):
+        # NOTE: patching will only be done in batch, from library/well
+        raise NotImplementedError
+
     
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
@@ -22672,6 +22643,12 @@ class NaturalProductReagentResource(ReagentResource):
     def delete_reagents(self, library):
         
         NaturalProductReagent.objects.all().filter(well__library=library).delete()
+
+    @write_authorization
+    @transaction.atomic
+    def patch_obj(self, request, deserialized, **kwargs):
+        # NOTE: patching will only be done in batch, from library/well
+        raise NotImplementedError
 
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 

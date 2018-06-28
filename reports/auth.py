@@ -111,6 +111,9 @@ class CustomAuthenticationBackend():
             msg = 'no such user with the id: %r' % username
             logger.warn(msg)
             raise PermissionDenied(msg)
+        except Exception, e:
+            logger.warn('auth ex: %r', e)
+            raise PermissionDenied(e)
 
     def get_user(self, user_id):
         try:

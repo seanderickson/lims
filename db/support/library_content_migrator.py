@@ -146,6 +146,11 @@ where r.library_contents_version_id=%s order by well_id;
                 log = ApiLog()
                 if getattr(activity.performed_by, 'ecommons_id', None):
                     log.username = activity.performed_by.ecommons_id
+                    
+                    if log.username == 'dwrobel':
+                        log.username = 'djw11'
+                        log.user_id = 761
+                    
                 if getattr(activity.performed_by, 'user', None):
                     log.user_id = getattr(
                         activity.performed_by.user, 'id', log.username)
@@ -261,23 +266,29 @@ where r.library_contents_version_id=%s order by well_id;
         if is_empty_diff(difflog):
             return None
         
-        activity = version.library_contents_loading_activity.activity
         log = ApiLog()
         
-        if getattr(activity.performed_by, 'ecommons_id', None):
-            log.username = activity.performed_by.ecommons_id
+        if parent_log:
+            log.username = parent_log.username
+            log.user_id = parent_log.user_id
+            log.comment = parent_log.comment
+            log.date_time = parent_log.date_time
         else:
-            log.username = 'sde'
-            
-        if getattr(activity.performed_by, 'login_id', None):
-            log.username = activity.performed_by.login_id
-        # FIXME
-        log.user_id = 1
+            activity = version.library_contents_loading_activity.activity
+            if getattr(activity.performed_by, 'ecommons_id', None):
+                log.username = activity.performed_by.ecommons_id
+            else:
+                log.username = 'sde'
+                
+            if getattr(activity.performed_by, 'login_id', None):
+                log.username = activity.performed_by.login_id
+            # FIXME
+            log.user_id = 1
         
-        log.date_time = activity.date_created
+            log.date_time = activity.date_of_activity
+
         log.ref_resource_name = self.wellResource._meta.resource_name
-        # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
-        log.api_action = 'MIGRATION'
+        log.api_action = 'PATCH'
         log.key = prev_dict['well_id']
         log.uri = '/db/api/v1/well/'+log.key 
         log.diffs = difflog

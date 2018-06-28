@@ -65,8 +65,8 @@ define([
       return view;
     },
     
-    clickEdit: function(event){
-      event.preventDefault();
+    clickEdit: function(e){
+      e.preventDefault();
       this.reportUriStack(['edit']);
       this.showEdit();
     },
@@ -116,23 +116,23 @@ define([
       appModel.download(this.model.url, this.model.resource);
     },
 
-    cancel: function(event){
-      event.preventDefault();
-      e.stopPropagation()
+    cancel: function(e){
+      e.preventDefault();
+      e.stopPropagation();
       appModel.clearPagePending();
       this.showDetail();
     },    
     
-    back: function(event){
-      event.preventDefault();
-      e.stopPropagation()
+    back: function(e){
+      e.preventDefault();
+      e.stopPropagation();
       this.remove();
       appModel.router.back();
     },
 
-    history: function(event) {
-      event.preventDefault();
-      e.stopPropagation()
+    history: function(e) {
+      e.preventDefault();
+      e.stopPropagation();
       var self = this;
       
       var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];

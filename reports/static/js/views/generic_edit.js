@@ -1324,8 +1324,9 @@ define([
         });
     },
     
-    click_save: function( event ) {
-      event.preventDefault();
+    click_save: function(e) {
+      e.preventDefault();
+      e.stopPropagation();
       var self = this;
       var errors, changedAttributes,
         options = {};

@@ -15,10 +15,9 @@ define([
 	var DetailView = Backbone.Layout.extend({
 	  
 	  attributes: { id: 'generic-detail-stickit-container' },
+	  
 	  /**
-	   * this.model - implicit as the first argument the constructor
      * @param resource - the API resource schema
-	   *   resource.detailKeys() returns the metahash field keys 'detail' in 'visibility'
 	   */
 	  initialize: function(args) {
 	    console.log('initialize generic_detail_stickit view');

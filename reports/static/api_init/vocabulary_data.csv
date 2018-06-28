@@ -51,13 +51,13 @@ xls,resource.content_type,2,"The Excel 2007+ XLSX file format",application/xls,X
 sdf,resource.content_type,3,"see http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip",chemical/x-mdl-sdfile,SDF-molfile
 female,user.gender,1,,Female,Female
 male,user.gender,2,,Male,Male
-other,user.gender,3,,Other,Other
+no_information,user.gender,3,,"No Information","No Information"
 0,field.data_access_level,0,"Screen data is private, and does not belong to the user; User or Screen is level 2 (mutual/overlapping) but other screen is not overlapping.","User has no access to this resource based on users data sharing level and resource data sharing level","Not Visible"
-1,field.data_access_level,1,"Screen is overlapping/mutual and user is level 1 or 2, User is level 2 (mutual/overlapping sharing) and screeen is overlapping.","Shared because screen is overlapping with user's screens","Shared Overlapping"
-2,field.data_access_level,2,"Both user and screen are level 1","Visible between sharing (level 1 users and screens), or for level 0 screens","Shared Mutually"
-3,field.data_access_level,3,"Own screens and public (level 0) screens; admin view privelege","Full Visibility - Own Screens, admin view","Full Visibility"
-pending,job.state,0,,"Pending - waiting for background processor",Pending
-submitted,job.state,1,,"Submitted - background processor has queued the job",Submitted
-processing,job.state,2,,"Processing - Job is running",Processing
-completed,job.state,3,,Completed,Completed
-failed,job.state,4,,Failed,Failed
+0,field.data_access_level,1,"Screen is overlapping/mutual and user is level 1 or 2, User is level 2 (mutual/overlapping sharing) and screeen is overlapping.","Shared because screen is overlapping with user's screens","Shared Overlapping"
+0,field.data_access_level,2,"Both user and screen are level 1","Visible between sharing (level 1 users and screens), or for level 0 screens","Shared Mutually"
+0,field.data_access_level,3,"Own screens and public (level 0) screens; admin view privelege","Full Visibility - Own Screens, admin view","Full Visibility"
+0,job.state,0,,"Pending - waiting for background processor",Pending
+0,job.state,1,,"Submitted - background processor has queued the job",Submitted
+0,job.state,2,,"Processing - Job is running",Processing
+0,job.state,3,,Completed,Completed
+0,job.state,4,,Failed,Failed

@@ -27,6 +27,8 @@ SDF_MIMETYPE = 'chemical/x-mdl-sdfile'
 ZIP_MIMETYPE = 'application/zip'
 MULTIPART_MIMETYPE = 'multipart/form-data'
 
+INTEGER_POSTGRES_MAX=2147483647
+
 def make_local_time(datetime_obj):
     '''
     Motivation: convert UST datetimes to the local timezone
@@ -98,13 +100,24 @@ def parse_val(value, key, data_type, options=None):
                 value = value.strip()
             return value
         elif data_type == 'integer':
+            val = None
             if isinstance(value, six.string_types):
                 # Note: convert an integer from values like "5.0"
                 try:
-                    return int(float(value))
+                    val = int(float(value))
                 except:
-                    return int(value)
-            return int(value)
+                    val = int(value)
+            else:
+                val = int(value)
+            
+            if val and val != 0:
+                if abs(val) > INTEGER_POSTGRES_MAX:
+                    raise ValidationError(
+                        key=key, 
+                        msg='abs(%d) > %d (PostGreSQL integer max value)' 
+                            % (val, INTEGER_POSTGRES_MAX))
+            
+            return val
         elif data_type == 'date':
             if isinstance(value, datetime.date):
                 return value
@@ -137,6 +150,8 @@ def parse_val(value, key, data_type, options=None):
             return value # otherwise, better be a list
         else:
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))
+    except ValidationError, e:
+        raise
     except Exception, e:
         logger.exception('value not parsed %r:%r',key, value)
         msg = str(e)

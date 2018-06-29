@@ -80,13 +80,57 @@ define([
       }
       UploadDataForm.postUploadFileDialog(url, content_types)
         .done(function(data, textStatus, jqXHR){
-          self.model.fetch({ reset: true }).done(function(){
-            console.log('re-render library...');
-            self.render();
-          });
-          appModel.showConnectionResult(data, {
-            title: 'Upload success'
-          });
+//          self.model.fetch({ reset: true }).done(function(){
+//            console.log('re-render library...');
+//            self.render();
+//          });
+//          appModel.showConnectionResult(data, {
+//            title: 'Upload success'
+//          });
+          
+          
+          function refreshOnUpdate(){
+            // Must refetch and render, once for the containing tabbed layout,
+            // and then (during render), will refetch again for the table view
+            self.model.fetch({
+              reset: true,
+              success: function() {
+                self.render();
+//                appModel.showConnectionResult(data, {
+//                  title: 'Upload success'
+//                });
+              }
+            }).fail(function() { 
+              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+            });
+          };
+          
+          if (appModel.getAppData().get('BACKGROUND_PROCESSING') == true){
+            data = _.result(data,appModel.API_RESULT_META, data);
+            if (!_.has(data, 'job')){
+              appModel.error('Job response does not contain job data');
+              return;
+            }
+            var jobModel = appModel.addBackgroundJob(data['job']);
+            
+            self.listenTo(jobModel, 'change:state', jobStateChanged);
+            
+            // TODO: Create a listener to update library from any browser instance
+            function jobStateChanged(){
+              console.log('jobStateChanged:', arguments);
+              if (jobModel.get('state') != 'completed'){
+                return;
+              }
+              if (self.isClosed == true){
+                console.log('library view has been closed already');
+                return;
+              }
+              refreshOnUpdate();
+            };
+          } else {
+            refreshOnUpdate();
+          }
+          
         })
         .fail(function(){
           appModel.jqXHRfail.apply(this,arguments); 
@@ -191,7 +235,20 @@ define([
             EditView.prototype.save_success.apply(this,arguments);
             appModel.unset('libraries', {silent: true});
             appModel.getLibraries();
-          }
+          },
+          afterRender: function(){
+            EditView.prototype.afterRender.apply(this,arguments);
+            var form = this;
+            
+            form.on('screen_type:change', function(e){
+              var screen_type = form.getValue('screen_type');
+              if (screen_type == 'small_molecule'){
+                form.$el.find('div[data-fields="is_pool"]').hide();
+              }else{
+                form.$el.find('div[data-fields="is_pool"]').show();
+              }
+            });
+          }          
         }),
         download: self.download,
         buttons: buttons 

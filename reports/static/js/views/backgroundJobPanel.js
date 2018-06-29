@@ -34,31 +34,31 @@ define([
         function retrieveModel(){
           console.log('retreive job state...')
           if (_.contains(['completed','failed'] , self.finalJobState)){
-            window.clearInterval(self.jobTimer);
+            clearInterval(self.jobTimer);
             return;
           }
-          self.model.fetch()
+          self.model.fetch({global: false })
             .success(function(model){
               console.log('new model', model);
               self.afterRender();
             })
             .fail(function(){
               var arguments = arguments;
-              var failEl = $('<a>', {
+              var failEl = self.$el.find('<a>', {
                 href: '#', title: 'show failure response', class: 'alert-link'
               }).text("Server Error");
               failEl.click(function(e){
                 e.preventDefault();
                 Iccbl.appModel.jqXHRfail.apply(this,arguments); 
               });
-              $el.removeClass('alert-info');
-              $el.addClass('alert alert-danger alert-dismissible');
-              $el.append(failEl);
+              self.$el.removeClass('alert-info');
+              self.$el.addClass('alert alert-danger alert-dismissible');
+              self.$el.append(failEl);
               Iccbl.appModel.jqXHRfail.apply(this,arguments); 
             });
         }
         
-        this.jobTimer = window.setInterval(retrieveModel, self.JOB_CHECK_INTERVAL_MS); 
+        this.jobTimer = setInterval(retrieveModel, self.JOB_CHECK_INTERVAL_MS); 
         
       },
       
@@ -199,12 +199,14 @@ define([
           $el.removeClass('alert-info');
           $el.addClass('alert alert-success alert-dismissible')
           $el.append(dismissLink);
-          window.clearInterval(self.jobTimer);
+          console.log('clear internal:', self.jobTimer);
+          clearInterval(self.jobTimer);
         }else if (state=='failed'){
           $el.removeClass('alert-info');
           $el.addClass('alert alert-danger alert-dismissible');
           $el.append(dismissLink);
-          window.clearInterval(self.jobTimer);
+          console.log('clear internal:', self.jobTimer);
+          clearInterval(self.jobTimer);
         }
       },
       

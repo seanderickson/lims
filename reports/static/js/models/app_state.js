@@ -203,7 +203,7 @@ define([
           username: currentUser.username,
           'state__in': ['pending','submitted', 'processing'],
         };
-        
+        // background jobs
         self.jobCollection.fetch({
           data: data_for_fetch,
           // prevent triggering global event handler: ajaxStart loading gif
@@ -1632,7 +1632,8 @@ define([
           return val;
         }
       };
-      var str = JSON.stringify(obj, replacer, 2); 
+      var str = JSON.stringify(obj, replacer, 2);
+      
       // remove escapes around quotes
       str = str.replace(/\\(["'])/g, '$1');
       // remove python unicode literal
@@ -1641,10 +1642,12 @@ define([
       str = str.replace(/"/g,'');
       // remove object brackets
       str = str.replace(/[{}]+/g,'');
-      // remove empty lines
-      str = str.replace(/^\s*$\n+/gm,'');
+      // remove list brackets
+      str = str.replace(/[\[\]]+/g, '');
       // remove single comma on a line
       str = str.replace(/^\s*,\s*$/gm,'')
+      // remove empty lines
+      str = str.replace(/^\s*$\n+/gm,'');
       return str;
     },
 

@@ -22529,7 +22529,7 @@ class SmallMoleculeReagentResource(ReagentResource):
 
         cumulative_error = ValidationError(errors=defaultdict(dict))
         def add_error(well_id, error):
-            errors[well_id].update(error.errors)
+            cumulative_error.errors[well_id].update(error.errors)
         
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
@@ -22558,6 +22558,18 @@ class SmallMoleculeReagentResource(ReagentResource):
             raise cumulative_error
 
         logger.info('patched %d reagents', i+1)
+
+    def parse(self, deserialized, create=False, fields=None, schema=None):
+        _data = ReagentResource.parse(self, deserialized, create=create, fields=fields, schema=schema)
+
+        # Add in special parsing for the nested list integers        
+        for key,val in _data.items():
+            if val:
+                if key in ['pubchem_cid', 'chembank_id','chembl_id']:
+                    for v in val:
+                        parse_val(v, key, 'integer')
+        return _data
+
 
     def _set_reagent_values(self, reagent, deserialized, is_patch, schema, fields):
 
@@ -22660,7 +22672,7 @@ class NaturalProductReagentResource(ReagentResource):
         logger.info('natural product reagent fields: %r', fields.keys())
         cumulative_error = ValidationError(errors=defaultdict(dict))
         def add_error(well_id, error):
-            errors[well_id].update(error.errors)
+            cumulative_error.errors[well_id].update(error.errors)
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
             is_patch = False
@@ -22688,6 +22700,11 @@ class NaturalProductReagentResource(ReagentResource):
             reagent.save()
             if (i+1) % 1000 == 0:
                 logger.info('patched %d reagents', i+1)
+
+        if cumulative_error.errors:
+            logger.info('cumulative_errors...: %r', cumulative_error)
+            raise cumulative_error
+        
         logger.info('patched %d reagents', i+1)
 
 class WellSerializer(LimsSerializer):
@@ -22899,6 +22916,7 @@ class WellResource(DbApiResource):
         return self.patch_list(request, **kwargs)
     
     @write_authorization
+    @background_job
     @un_cache        
     @transaction.atomic
     def patch_list(self, request, **kwargs):
@@ -22933,11 +22951,9 @@ class WellResource(DbApiResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
         
-        cumulative_error = ValidationError(errors=OrderedDict())
+        cumulative_error = ValidationError(errors=defaultdict(dict))
         def add_error(well_id, new_errors):
             errors = cumulative_error.errors
-            if well_id not in errors:
-                errors[well_id] = {}
             errors[well_id].update(new_errors)
         
         # 1. Validate all patched entries and collect well_ids    
@@ -22973,7 +22989,7 @@ class WellResource(DbApiResource):
                     add_error(
                         'Row: %d' % row, 
                         { WELL.WELL_ID: 
-                            'Well ID: "{}" does not fit pattern {}'\
+                            'Well ID: "{}" does not fit the pattern {}'\
                                 .format(id, WELL.WELL_ID_PATTERN_MSG) })
                     continue
                 else:
@@ -23204,11 +23220,9 @@ class WellResource(DbApiResource):
             except ValidationError, e:
                 if cumulative_error.errors:
                     for well_id, error_dict in e.errors.items():
-                        if well_id not in cumulative_error.errors:
-                            cumulative_error.errors[well_id] = {}
                         cumulative_error.errors[well_id].update(error_dict)
                 else:
-                    cumulative_errors = e
+                    cumulative_error = e
         else:
             logger.info('no reagent data to patch')
             
@@ -23238,6 +23252,7 @@ class WellResource(DbApiResource):
             ._get_list_response_internal(**kwargs_for_log)
         new_data = { data['well_id']:data for data in new_data }    
 
+        # Use the API representation of each well to do final validations
         for well_id, well_data in new_data.items():
             # NOTE: if a well already has an error, it may fail to generate later 
             # validations errors due to not being loaded
@@ -23246,6 +23261,11 @@ class WellResource(DbApiResource):
                 if errors:
                     add_error(well_id, errors)
         if cumulative_error.errors:
+            sorted_wells = sorted(cumulative_error.errors.keys())
+            sorted_errors = list()
+            for well_id in sorted_wells:
+                sorted_errors.append((well_id, cumulative_error.errors[well_id]))
+            cumulative_error.errors = sorted_errors
             if DEBUG_LIB_LOAD is True:
                 logger.info('cumulative_errors...: %r', cumulative_error)
             raise cumulative_error

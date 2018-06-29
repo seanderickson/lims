@@ -2082,7 +2082,8 @@ class ApiResource(SqlAlchemyResource):
                     logger.info('no diffs found: %r, %r' 
                         % (prev_dict,new_dict))
                 else:
-                    logger.info('no diffs found: %r', log.uri) 
+                    if DEBUG_PATCH_LOG:
+                        logger.info('no diffs found: %r', log.uri) 
                 if log_empty_diffs is not True:
                     log = None
                 elif not log.comment:

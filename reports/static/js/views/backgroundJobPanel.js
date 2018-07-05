@@ -44,7 +44,7 @@ define([
             })
             .fail(function(){
               var arguments = arguments;
-              var failEl = self.$el.find('<a>', {
+              var failEl = $('<a>', {
                 href: '#', title: 'show failure response', class: 'alert-link'
               }).text("Server Error");
               failEl.click(function(e){

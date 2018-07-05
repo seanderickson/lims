@@ -2090,8 +2090,9 @@ class ApiResource(SqlAlchemyResource):
                     # In this case, there is nothing to log
                     log = None
             else:
-                logger.info('log PATCH for %r', log.uri) 
-                logger.debug('log diffs for %r: %r', log.uri, log.diffs) 
+                if DEBUG_PATCH_LOG:
+                    logger.info('log PATCH for %r', log.uri) 
+                    logger.debug('log diffs for %r: %r', log.uri, log.diffs) 
                 
         else: # creating
             log.api_action = API_ACTION.CREATE

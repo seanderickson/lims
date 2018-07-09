@@ -4,6 +4,7 @@ import cStringIO
 import logging
 import re
 import six
+from reports.serialize import INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,8 @@ ENCODING = u'utf8',
 MOLDATAKEY = u'molfile'
 COMMENTKEY = u'comment'
 COMMENTTAG = u'comment'
+
+
 
 _moldata_re = re.compile(ur'M\s+END')
 _dos2unix = re.compile(ur'\r\n')
@@ -83,21 +86,33 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')):
     if isinstance(data, six.string_types):
         data = data.strip()
         data = data.strip(u'$')
+        
+        cumulative_lines = 1
 
         mols = _delimre.split(data)
         for mol in mols:
+            mol_lines = len(_dos_unix_le.split(mol))
             x = dict(parse_mol(mol))
+            x[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY] = cumulative_lines
+            cumulative_lines += mol_lines-1
+            
             result.append(x)
     else: # treat the data as an iterable
         buffer = cStringIO.StringIO()
+        linecount = 0
+        record_line = 0
         for line in data:
             if _delimre.match(line):
                 x = dict(parse_mol(buffer.read()))
+                x[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY] = record_line
+                record_line = 0
                 result.append(x)
                 buffer = cStringIO.StringIO()
             else:
+                if record_line == 0:
+                    record_line = linecount
                 buffer.write(line)
-    
+            linecount += 1
     return tuple(result)
 
 

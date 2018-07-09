@@ -29,6 +29,8 @@ MULTIPART_MIMETYPE = 'multipart/form-data'
 
 INTEGER_POSTGRES_MAX=2147483647
 
+INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY = '_line'
+
 def make_local_time(datetime_obj):
     '''
     Motivation: convert UST datetimes to the local timezone

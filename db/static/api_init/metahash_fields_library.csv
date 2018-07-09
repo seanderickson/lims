@@ -1,26 +1,26 @@
 key,scope,table,field,ordinal,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_admin,nested_resource,default,required,min,max,regex,validation_message,view_groups
-short_name,fields.library,,,2,,,TRUE,"The abbreviated name for the library","Short Name",TRUE,,,[l;d;e],[c],string,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,,,TRUE,,,"^[\w ]+$","Only letters, numbers and spaces are allowed.",
-library_name,fields.library,,,1,,,TRUE,"The full name of the library","Library Name",TRUE,,,[d;e],[c],string,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,,,TRUE,,,"^[\w ]+$","Only letters, numbers and spaces are allowed.",
-experimental_well_count,fields.library,,,3,,,TRUE,"The number of experimental wells in the library (click link to browse experimental wells)","Experimental Well Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/well/search/library_well_type__in=experimental' }",,,,,,,,,,
-provider,fields.library,,,4,,,TRUE,"The vendor or source that provided the library",Provider,TRUE,,,[l;d;e],[c;u],string,,,,,,,,,,,,
-screen_type,fields.library,,,5,,,TRUE,"RNAi' or 'Small Molecule'","Screen Type",TRUE,,screen.type,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
-solvent,fields.library,,,6,,,TRUE,"Solvent used in the library wells",Solvent,TRUE,,library.solvent,[d;e],[c;u],string,,,select,,,,TRUE,,,,,
-library_type,fields.library,,,7,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,[l;d;e],[c;u],string,,,select,,,,,,,,,
-is_pool,fields.library,,,8,,,TRUE,"Whether wells contains pools of reagents or single reagents","Is Pool",TRUE,,,[l;d;e],[c;u],boolean,,,,,,,,,,,,
-screening_status,fields.library,,,9,,,TRUE,"Screening Status","Screening Status",TRUE,,library.screening_status,[l;d;e],[c;u],string,,,select,,,,,,,,,
-start_plate,fields.library,,,10,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
-end_plate,fields.library,,,11,,,TRUE,"The plate number for the last plate in the library","End Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
-plate_count,fields.library,custom,,12,,,TRUE,"The number of plates in the library","Plate Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/plate' }",,,,,,,,,,
-plate_size,fields.library,,,13,,,TRUE,"The library plate size","Plate Size",TRUE,,plate.size,[l;d;e],[c],string,,,select,,,384,TRUE,,,,,
-copies,fields.library,custom,,199,Internal,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,,,list,,,,,,,,,,,,[readEverythingAdmin]
-screening_copies,fields.library,custom,,199,,,TRUE,"Copies designated as ""library_screening_plates""","Screening Copies",TRUE,,,,,list,,,,,,,,,,,,[readEverythingAdmin]
-copies2,fields.library,custom,,199,,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#library/{short_name}/copy/{__val__}', 'target': '_self' }",,,,,,,,,,[readEverythingAdmin]
-date_created,fields.library,,,96,Admin,,TRUE,"The date the entity was originally recorded in Screensaver.","Date Recorded",TRUE,,,[d],,date,,,,TRUE,,,,,,,,
-date_loaded,fields.library,,,98,Admin,,TRUE,"The date the library data was loaded","Date Loaded",TRUE,,,[d],,date,,,,TRUE,,,,,,,,
-date_publicly_available,fields.library,,,99,Admin,,TRUE,"The date the library data was made publicly available","Date Publicly Available",TRUE,,,[d],[c;u],date,,,,TRUE,,,,,,,,
-date_screenable,fields.library,,,97,Admin,,TRUE,"The earliest date on which a copy of this library was plated","Date First Plated",TRUE,,,[d],,date,,,,TRUE,,,,,,,,
-description,fields.library,,,14,,,TRUE,"A description of the library",Description,TRUE,,,[d;e],[c;u],string,,,textarea,,,,,,,,,
-owner,fields.library,custom,,18,Internal,,TRUE,"The user that owns the library, if applicable.",Owner,TRUE,,,[d;e],[c;u],string,,,,,,,,,,,,
+date_created,fields.library,,,1,Admin,,TRUE,"The date the entity was originally recorded in Screensaver.","Date Recorded",TRUE,,,[d],,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
+short_name,fields.library,,,2,,,TRUE,"The abbreviated name for the library","Short Name",TRUE,,,[l;d;e],[c],string,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,,,TRUE,,,"^[\w -]+$","Only letters, numbers, dashes, and spaces are allowed.",
+library_name,fields.library,,,3,,,TRUE,"The full name of the library","Library Name",TRUE,,,[d;e],[c],string,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,,,TRUE,,,"^[\w -]+$","Only letters, numbers, dashes, and spaces are allowed.",
+experimental_well_count,fields.library,,,4,,,TRUE,"The number of experimental wells in the library (click link to browse experimental wells)","Experimental Well Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/well/search/library_well_type__in=experimental' }",,,,,,,,,,
+provider,fields.library,,,5,,,TRUE,"The vendor or source that provided the library",Provider,TRUE,,,[l;d;e],[c;u],string,,,,,,,TRUE,,,,,
+screen_type,fields.library,,,6,,,TRUE,"RNAi' or 'Small Molecule'","Screen Type",TRUE,,screen.type,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
+plate_size,fields.library,,,7,,,TRUE,"The library plate size","Plate Size",TRUE,,plate.size,[l;d;e],[c],string,,,select,,,384,TRUE,,,,,
+solvent,fields.library,,,8,,,TRUE,"Solvent used in the library wells",Solvent,TRUE,,library.solvent,[d;e],[c;u],string,,,select,,,,TRUE,,,,,
+library_type,fields.library,,,9,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,[l;d;e],[c;u],string,,,select,,,,,,,,,
+is_pool,fields.library,,,10,,,TRUE,"Whether wells contains pools of reagents or single reagents","Is Pool",TRUE,,,[l;d;e],[c;u],boolean,,,,,,,,,,,,
+screening_status,fields.library,,,11,,,TRUE,"Screening Status","Screening Status",TRUE,,library.screening_status,[l;d;e],[c;u],string,,,select,,,,,,,,,
+start_plate,fields.library,,,12,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
+end_plate,fields.library,,,13,,,TRUE,"The plate number for the last plate in the library","End Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
+plate_count,fields.library,custom,,14,,,TRUE,"The number of plates in the library","Plate Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/plate' }",,,,,,,,,,
+description,fields.library,,,15,,,TRUE,"A description of the library",Description,TRUE,,,[d;e],[c;u],string,,,textarea,,,,,,,,,
+owner,fields.library,custom,,16,Internal,,TRUE,"The user that owns the library, if applicable.",Owner,TRUE,,,[d;e],,string,,,,TRUE,,,,,,,,[readEverythingAdmin]
+copies,fields.library,custom,,199,Internal,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,,,list,,,,TRUE,,,,,,,,[readEverythingAdmin]
+screening_copies,fields.library,custom,,199,,,TRUE,"Copies designated as ""library_screening_plates""","Screening Copies",TRUE,,,,,list,,,,TRUE,,,,,,,,[readEverythingAdmin]
+copies2,fields.library,custom,,199,,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#library/{short_name}/copy/{__val__}', 'target': '_self' }",,TRUE,,,,,,,,[readEverythingAdmin]
+date_loaded,fields.library,,,98,Admin,,TRUE,"The date the library data was loaded","Date Loaded",TRUE,,,,,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
+date_publicly_available,fields.library,,,99,Admin,,TRUE,"The date the library data was made publicly available","Date Publicly Available",TRUE,,,,,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
+date_screenable,fields.library,,,97,Admin,,TRUE,"The earliest date on which a copy of this library was plated","Date First Plated",TRUE,,,[d],,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
 version_number,fields.library,,,999,Internal,,TRUE,"Number of the latest version of the library.","Version Number",TRUE,,,[d],,integer,link,"{ 'hrefTemplate': '#apilog/order/-date_time/search/ref_resource_name=library;key={short_name};diffs__contains=version_number' }",,,,,,,,,,
 comment_array,fields.library,,,20,Internal,,TRUE,Comments,Comments,FALSE,,,[none],,list,comment_array,,,,,,,,,,,[readEverythingAdmin]
 concentration_types,fields.library,,,999,Internal,,TRUE,"Concentration types used for the wells (mg/ml or molar)","Concentration Types",TRUE,,,[none],,list,,,,,,,,,,,,

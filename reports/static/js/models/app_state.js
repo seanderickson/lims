@@ -1617,14 +1617,14 @@ define([
         });
       }
     },
-    
     /**
      * Creates a hierarchical printout of an object using 
      * JSON.stringify
      */
     print_json: function(obj){
-      
+      var record_separator = '==========\n'
       // Convert single list values into strings
+
       function replacer(key, val){
         if (_.isArray(val) && val.length==1){
           return val[0];
@@ -1644,13 +1644,14 @@ define([
       str = str.replace(/[{}]+/g,'');
       // remove list brackets
       str = str.replace(/[\[\]]+/g, '');
-      // remove single comma on a line
-      str = str.replace(/^\s*,\s*$/gm,'')
       // remove empty lines
       str = str.replace(/^\s*$\n+/gm,'');
+      // remove single comma on a line
+      str = str.replace(/^\s*,\s*$/gm,'')
+        
       return str;
     },
-
+    
     /**
      * Process an error dict into single string for display to the end user.
      */

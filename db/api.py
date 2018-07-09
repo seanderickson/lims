@@ -98,7 +98,8 @@ from reports.api_base import un_cache, IccblBasicAuthentication, \
 from reports.models import Vocabulary, ApiLog, UserProfile
 from reports.schema import DATE_FORMAT
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
-    XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE, csvutils
+    XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE, \
+    INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, csvutils
 from reports.serialize.csvutils import convert_list_vals
 from reports.serialize.streaming_serializers import ChunkIterWrapper, \
     json_generator, cursor_generator, sdf_generator, generic_xlsx_response, \
@@ -21687,7 +21688,6 @@ class ReagentResource(DbApiResource):
             j = j.join(
                 _reagent, _well.c.well_id == _reagent.c.well_id, isouter=True)
             j = j.join(_library, _well.c.library_id == _library.c.library_id)
-            
                     
             custom_columns = {}
 
@@ -22340,9 +22340,10 @@ class SilencingReagentResource(ReagentResource):
         fields = schema['fields']
 
         cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, error):
-            errors = cumulative_error.errors
-            errors[well_id].update(error.errors)
+        def add_error(well_id, new_errors, raw_data=None):
+            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
+                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
+            cumulative_error.errors[well_id].update(new_errors)
             
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
@@ -22367,7 +22368,7 @@ class SilencingReagentResource(ReagentResource):
                 if (i+1) % 1000 == 0:
                     logger.info('patched %d reagents', i+1)
             except ValidationError, e:
-                add_error(well.well_id, e)
+                add_error(well.well_id, e.errors, raw_data=well_data)
             
         if cumulative_error.errors:
             raise cumulative_error
@@ -22528,8 +22529,10 @@ class SmallMoleculeReagentResource(ReagentResource):
         fields = schema['fields']
 
         cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, error):
-            cumulative_error.errors[well_id].update(error.errors)
+        def add_error(well_id, new_errors, raw_data=None):
+            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
+                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
+            cumulative_error.errors[well_id].update(new_errors)
         
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
@@ -22551,7 +22554,7 @@ class SmallMoleculeReagentResource(ReagentResource):
                 if (i+1) % 1000 == 0:
                     logger.info('patched %d reagents', i+1)
             except ValidationError, e:
-                add_error(well.well_id, e)
+                add_error(well.well_id, e.errors, raw_data=well_data)
             
         if cumulative_error.errors:
             logger.info('cumulative_errors...: %r', cumulative_error)
@@ -22671,8 +22674,10 @@ class NaturalProductReagentResource(ReagentResource):
         fields = schema['fields']
         logger.info('natural product reagent fields: %r', fields.keys())
         cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, error):
-            cumulative_error.errors[well_id].update(error.errors)
+        def add_error(well_id, new_errors, raw_data=None):
+            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
+                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
+            cumulative_error.errors[well_id].update(new_errors)
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
             is_patch = False
@@ -22691,7 +22696,7 @@ class NaturalProductReagentResource(ReagentResource):
             initializer_dict = self.parse(well_data, fields=fields)
             errors = self.validate(initializer_dict, patch=is_patch, fields=fields)
             if errors:
-                add_error(well.well_id, ValidationError(errors))
+                add_error(well.well_id, errors, raw_data=well_data)
             
             for key, val in initializer_dict.items():
                 if hasattr(reagent, key):
@@ -22952,9 +22957,10 @@ class WellResource(DbApiResource):
             deserialized = deserialized[self._meta.collection_name]
         
         cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, new_errors):
-            errors = cumulative_error.errors
-            errors[well_id].update(new_errors)
+        def add_error(well_id, new_errors, raw_data=None):
+            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
+                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
+            cumulative_error.errors[well_id].update(new_errors)
         
         # 1. Validate all patched entries and collect well_ids    
         kwargs_for_log = kwargs.copy()
@@ -22962,39 +22968,45 @@ class WellResource(DbApiResource):
         ids = set()
         valid_data = []
         for row,data in enumerate(deserialized):
+            debug_key = data.get(INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY,None)
+            if debug_key is None:
+                debug_key = 'Row: %d' % row
+            else:
+                debug_key = 'Line: {}'.format(debug_key)
             id = data.get(id_attribute,None)
             if not id:
-
                 well_name = data.get('well_name', None)
                 plate_number = data.get('plate_number', None)
                 if well_name and plate_number:                
                     well_id = lims_utils.well_id(plate_number, well_name)
                     if not well_id:
-                        add_error('Row: %d' % row, {
-                            WELL.WELL_ID: 'parse error: {}:{}'.format(plate_number, well_name)})
+                        add_error(debug_key, {
+                            WELL.WELL_ID: 'parse error: {}:{}'.format(plate_number, well_name)},
+                        raw_data=data)
                         continue
                     else:
                         if well_id in ids:
-                            add_error(well_id, {'Row: %d' % row: 'duplicate'})
+                            add_error(
+                                well_id, { debug_key: 'duplicate' })
                         else:
                             data[WELL.WELL_ID] = well_id
                             valid_data.append(data)
                             ids.add(well_id)
                 else:
-                    add_error('Row: %d' % row, { WELL.WELL_ID: 'required'})
+                    add_error(debug_key, { WELL.WELL_ID: 'required'})
                     continue
             else:
                 well_id = lims_utils.parse_well_id(id)
                 if not well_id:
                     add_error(
-                        'Row: %d' % row, 
+                        debug_key, 
                         { WELL.WELL_ID: 
                             'Well ID: "{}" does not fit the pattern {}'\
                                 .format(id, WELL.WELL_ID_PATTERN_MSG) })
                     continue
                 else:
                     if well_id in ids:
-                        add_error(well_id, {'Row: %d' % row: 'duplicate'})
+                        add_error(well_id, {debug_key: 'duplicate'})
                     else:
                         data[WELL.WELL_ID] = well_id
                         valid_data.append(data)
@@ -23207,7 +23219,7 @@ class WellResource(DbApiResource):
                     logger.info('patched %d wells', i+1)
             except ValidationError, e:
                 logger.exception('well error: %r', e)
-                add_error(well_id, e.errors)
+                add_error(well_id, e.errors, raw_data=well_data)
                 
         logger.info('patched %d wells', i+1)
 
@@ -23266,6 +23278,10 @@ class WellResource(DbApiResource):
             for well_id in sorted_wells:
                 sorted_errors.append((well_id, cumulative_error.errors[well_id]))
             cumulative_error.errors = sorted_errors
+            
+            if deserialize_meta:
+                for k,v in deserialize_meta.items():
+                    cumulative_error.errors.append((k,v))
             if DEBUG_LIB_LOAD is True:
                 logger.info('cumulative_errors...: %r', cumulative_error)
             raise cumulative_error
@@ -24124,6 +24140,28 @@ class LibraryResource(DbApiResource):
         
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         Library.objects.get(**id_kwargs).delete()
+    
+    
+    def validate(self, _dict, patch=False, schema=None, fields=None):
+        errors = DbApiResource.validate(self, _dict, patch=patch, schema=schema, fields=fields)
+    
+        if patch is False:
+            
+            if 'start_plate' not in _dict:
+                errors['start_plate'] = ['required',]
+            elif 'end_plate' not in _dict:
+                errors['end_plate'] = ['required',]
+            else:
+                if _dict['start_plate'] > _dict['end_plate']:
+                    raise ValidationError(key='start_plate', msg='start and end plate range is out of order')
+                well_test = Well.objects.all().filter(
+                    plate_number__range=(_dict['start_plate'],_dict['end_plate']))
+                if well_test.exists():
+                    msg = 'part of range is already allocated to another library'
+                    errors['start_plate'] = [msg]
+                    errors['end_plate'] = [msg]
+                    
+        return errors
     
     @write_authorization
     @transaction.atomic    

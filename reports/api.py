@@ -1549,9 +1549,9 @@ class ApiResource(SqlAlchemyResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        
-#         if not deserialized:
-#             return {}
+        logger.info('deserialized: %r', deserialized)
+        if not deserialized:
+            return {}
         
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(

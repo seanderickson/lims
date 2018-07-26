@@ -13,9 +13,11 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
    * assignment.
    * - If editable, grid squares (wells) may be selected by the user.
    * 
-   * NamedRanges color support:
+   * V2: NamedRanges color support:
    * - palette may be specified, otherwise it will be generated:
    * see: https://github.com/google/palette.js/tree/master
+   * 
+   * TODO: wellSelector.js should be replaced by this version.
    */
   
   
@@ -63,19 +65,16 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
 
     initialize : function(options) {
     
+      var self = this;
       WellColumnSelectorHeader.__super__.initialize.apply(this, arguments);
 
-      var self = this;
       var columnIndex = this.columnIndex = parseInt(this.column.get('name'))-1;
       
       this.on("select-column", function (colNumber, selected) {
-        console.log('select-column', colNumber,selected)
         self.collection.each(function(model){
           model.set(columnIndex, selected);
         });
-        console.log('column trigger: selection_update')
         self.collection.trigger('selection_update');
-        
       });
       
       this.listenTo(this.collection, 'change:' + columnIndex, function(){
@@ -177,9 +176,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
             }
           )));
         }
-        console.log('row trigger selection_update');
         self.model.collection.trigger('selection_update');
-        
       });
       
       this.listenTo(model, 'change', function(model, options){
@@ -290,6 +287,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
 
       var self = this;
       this.column = options.column;
+
       if (!(this.column instanceof Backgrid.Column)) {
         this.column = new Backgrid.Column(this.column);
       }
@@ -297,7 +295,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       var rowIndex = this.rowIndex = this.model.get('row');
       var wellName = this.wellName = Iccbl.getWellName(this.rowIndex,this.columnIndex);
 
-      // TODO: review: actions copied from Backgrid.Cell initializer
       var column = this.column, model = this.model, $el = this.$el;
       this.listenTo(column, "change:renderable", function (column, renderable) {
         $el.toggleClass("renderable", renderable);
@@ -345,9 +342,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
         '<span class="input-group-addon" id="basic-addon1">',
         '<input type="radio" name="rangeControl"  id="radio_{ordinal}" >',
         '</span>',
-//        '<input type="text" class="form-control" id="text_{ordinal}" disabled="disabled" ',
-//        '  placeholder="Enter a label" value="{label}" aria-describedby="basic-addon1">',
-//        '</input>',
         '<textarea rows=1 class="form-control textarea-noscroll" id="text_{ordinal}" readonly ',
         '  placeholder="Enter a label" value="{label}" aria-describedby="basic-addon1">',
         '{label}</textarea>',
@@ -378,7 +372,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
     },
     
     changeLabel: function(e){
-//      var text = this.$('input[type=text]').val();
       var text = this.$('textarea').val();
       console.log('changeLabel', text);
       
@@ -388,7 +381,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       
       if (extantModel){
         this.model.trigger('set_errors', ['Label already used: "' + text + '"']);
-//        this.$('input[type=text]').val('');
         this.$('textarea').val('');
         return;
       }else{
@@ -422,9 +414,9 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
         '<span class="input-group-addon" id="basic-addon1">',
         '<input type="radio" name="rangeControl"  id="radio_show_all" checked >',
         '</span>',
-//        '<input type="text" class="form-control" id="text_0" disabled="disabled" ',
-//        '  value="All" >',
-//        '</input>',
+        //'<input type="text" class="form-control" id="text_0" disabled="disabled" ',
+        //'  value="All" >',
+        //'</input>',
         '<textarea rows=1 class="form-control" id="text_0" readonly >',
         'All</textarea>',
         '<a class="btn input-group-addon" id="add_range_button" >+</a>',
@@ -495,14 +487,11 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
         model.set('selected', false);
       });
       namedRangeModel.set('selected', true);
-//      self.$el.find('input[type=text]').prop('disabled', true);
-//      self.$el.find('textarea').prop('disabled', true);
       self.$el.find('textarea').prop('readonly', true);
       self.$el.find('a').addClass('disabled');
       self.$el.find('#radio_'+namedRangeModel.id).prop('checked', true);
       
       if (self.editable){
-//        self.$el.find('#text_'+namedRangeModel.id).prop('disabled', false);
         self.$el.find('#text_'+namedRangeModel.id).prop('readonly', false);
         self.$el.find('#clear_'+namedRangeModel.id).removeClass('disabled');
       }
@@ -528,8 +517,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       var selectedRange = this.collection.findWhere({'selected': true});
       if (selectedRange){
         selectedRange.set('selected',false);
-//        self.$el.find('input[type=text]').prop('disabled', true);
-//        self.$el.find('textarea').prop('disabled', true);
         self.$el.find('textarea').prop('readonly', true);
         self.$el.find('a').addClass('disabled');
         self.$el.find('#radio_show_all').prop('checked',true);

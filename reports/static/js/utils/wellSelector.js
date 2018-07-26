@@ -11,7 +11,10 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
    * WellSelector is a UI Grid Viewer that uses plate mapping row and column
    * assignment.
    * - If editable, grid squares (wells) may be selected by the user.
+   * 
+   * TODO: Version 2: wellSelector2.js should replace this version.
    */
+
   /** Clicking this cell toggles the entire grid **/
   var ToggleColumnHeader = Backgrid.HeaderCell.extend({
     
@@ -55,6 +58,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     
       var self = this;
       WellColumnSelectorHeader.__super__.initialize.apply(this, arguments);
+      
       var colNumber = parseInt(this.column.get('name'));
       
       this.listenTo(this.collection, "select-column", function (colNumber, selected) {
@@ -96,19 +100,17 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     },
       
     renderSelection: function(){
-      var self = this;
       var selected = self.isColumnSelected();
       self.checkbox().prop('checked', selected);
       this.$el.toggleClass("selected", selected);
     },
     
     render : function() {
-      var self = this;
       WellColumnSelectorHeader.__super__.render.apply(this);
       var isSelected = self.isColumnSelected();
       var columnSelector = $('<input type="checkbox" style="display: none;" >');
       this.$el.prepend(columnSelector);
-      self.renderSelection();
+      this.renderSelection();
       return this;
     }
   });
@@ -281,7 +283,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
         this.column = new Backgrid.Column(this.column);
       }
       
-      // TODO: review: actions copied from Backgrid.Cell initializer
       var column = this.column, model = this.model, $el = this.$el;
       this.listenTo(column, "change:renderable", function (column, renderable) {
         $el.toggleClass("renderable", renderable);

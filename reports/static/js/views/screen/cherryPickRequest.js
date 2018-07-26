@@ -2083,11 +2083,11 @@ define([
         'source_plate_cp_screening_count'];
      showCopyWellsControl.click(function(e) {
         function processClick(){
+          var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
           if (e.target.checked) {
             var includes = _.clone(view.listModel.get('includes'));
             includes = _.union(extra_columns_for_selection,includes);
             view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['show_copy_wells'] = 'true';
 
             showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
@@ -2095,7 +2095,6 @@ define([
             view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
             // make sure unset
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (!_.has(searchHash,'show_copy_wells')) {
               return;
             }

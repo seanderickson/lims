@@ -254,7 +254,7 @@ define([
           };
 
           screenTypeSettings(model.get('screen_type'));
-          // Note the "screen_type:change" syntax is backwards from Backbone
+          // Note the forms "screen_type:change" syntax is backwards from Backbone
           form.on('screen_type:change', function(e){
             screenTypeSettings(form.getValue('screen_type'));
           });

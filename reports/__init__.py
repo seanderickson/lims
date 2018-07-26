@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+from collections import defaultdict
+import logging
+
 import django.core.exceptions
 import django.core.serializers.json
 import django.utils.timezone
 
-from collections import OrderedDict
-import logging
+import reports.schema as SCHEMA
+
 
 # Note the csv package does not allow multibyte delimiters 
 CSV_DELIMITER = b','  
@@ -21,7 +24,7 @@ HTTP_PARAM_USE_TITLES = 'use_titles'
 HTTP_PARAM_RAW_LISTS = 'raw_lists'
 HTTP_PARAM_DATA_INTERCHANGE = 'data_interchange'
 
-API_RESULT_ERROR = 'errors'
+API_RESULT_ERROR = SCHEMA.ERROR.resource_name
 
 # Header custom comment field
 HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
@@ -53,6 +56,30 @@ class ValidationError(Exception):
      
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors
+
+
+class CumulativeError(ValidationError):
+    
+    def __init__(self):
+        
+        ValidationError.__init__(self, errors=defaultdict(dict))
+        
+    def add_error(self, key, new_errors, line=None):
+        if line:
+            new_errors[SCHEMA.ERROR.LINE] = line
+        self.errors[key].update(new_errors)
+
+    def _update_from(self, new_errors):
+        # update a two-level dict
+        if self.errors:
+            for key, error_dict in new_errors.items():
+                self.errors[key].update(error_dict)
+        else:
+            self.errors.update(new_errors)
+    
+    def update_from(self, cumulative_error):
+        self._update_from(cumulative_error.errors)
+        
 
 class InformationError(ValidationError):
     pass

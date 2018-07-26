@@ -183,15 +183,15 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
 # upload single meta data files
 curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data_updates.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data_updates.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
 
 PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f db/static/api_init/metahash_fields_useragreement.csv -v
 

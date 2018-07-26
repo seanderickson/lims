@@ -146,12 +146,16 @@ def to_sdf(data,output):
                 # report, so just stringify dicts as is.
                 if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
                     for x in v:
-                        # DB should be UTF-8, so this should not be necessary,
-                        # however, it appears we have legacy non-utf data in 
-                        # some tables (i.e. small_molecule_compound_name 193090
-                        output.write(unicode.encode(x,'utf-8'))
-#                             output.write(str(x))
-                        output.write('\n')
+                        if isinstance(x, six.string_types):
+                            # DB should be UTF-8, so this should not be necessary,
+                            # however, it appears we have legacy non-utf data in 
+                            # some tables (i.e. small_molecule_compound_name 193090
+                            output.write(unicode.encode(x,'utf-8'))
+                            output.write('\n')
+                        else:
+                            # Handle non-standard sdf data (e.g. error response)
+                            output.write(str(x))
+                            output.write('\n')
                 else:
                     output.write(str(v))
                     output.write('\n')

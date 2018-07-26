@@ -1196,7 +1196,7 @@ class WellQueryIndex(models.Model):
             '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
             % (self.id, self.well, self.query ))
         
-# TODO: unused
+# TODO: 2018-07-09: proposed, but unused 
 class Substance(models.Model):
     ''' Substance is the ORM specific method for creating the substance_id_seq
     '''
@@ -1224,7 +1224,7 @@ class Reagent(models.Model):
     # library_contents_version = \
     #     models.ForeignKey('LibraryContentsVersion', null=True)
 
-    well = models.ForeignKey('Well', null=True, related_name='reagents') # , related_name='well_reagent')
+    well = models.ForeignKey('Well', null=True, related_name='reagents')
 
     class Meta:
         db_table = 'reagent'
@@ -1412,6 +1412,9 @@ class Library(models.Model):
     loaded_by = models.ForeignKey('ScreensaverUser',
                                   related_name='libraries_loaded',
                                   null=True)
+    
+    is_released = models.BooleanField(default=False)
+    
     @property
     def classification(self):
         if self.screen_type == 'rnai':
@@ -1560,29 +1563,6 @@ class PlateLocation(models.Model):
             % (self.room, self.freezer, self.shelf, self.bin, 
                self.plate_location_id) )
 
-class SchemaHistory(models.Model):
-
-    screensaver_revision = models.IntegerField(primary_key=True)
-    date_updated = models.DateTimeField(null=True)
-    comment = models.TextField()
-    
-    class Meta:
-        db_table = 'schema_history'
-
-    def __repr__(self):
-        return (
-            '<SchemaHistory(screensaver_revision=%r, date_updated=%r, '
-            'comment=%r)>'
-            % (self.screensaver_revision, self.date_updated, 
-               self.comment)) 
-
-class LegacySmallMoleculeCasNumber(models.Model):
-    
-    smiles = models.CharField(max_length=2047)
-    cas_number = models.TextField()
-    class Meta:
-        db_table = '_legacy_small_molecule_cas_number'
-
 class AbaseTestset(models.Model):
     
     abase_testset_id = models.IntegerField(primary_key=True)
@@ -1679,6 +1659,33 @@ class ScreenKeyword(models.Model):
     class Meta:
         unique_together = (('screen', 'keyword'))
         db_table = 'screen_keyword'
+
+# TODO: deprecate
+# django migrations supercede this
+class SchemaHistory(models.Model):
+
+    screensaver_revision = models.IntegerField(primary_key=True)
+    date_updated = models.DateTimeField(null=True)
+    comment = models.TextField()
+    
+    class Meta:
+        db_table = 'schema_history'
+
+    def __repr__(self):
+        return (
+            '<SchemaHistory(screensaver_revision=%r, date_updated=%r, '
+            'comment=%r)>'
+            % (self.screensaver_revision, self.date_updated, 
+               self.comment)) 
+
+# TODO: deprecate
+# Not used in SS1
+class LegacySmallMoleculeCasNumber(models.Model):
+    
+    smiles = models.CharField(max_length=2047)
+    cas_number = models.TextField()
+    class Meta:
+        db_table = '_legacy_small_molecule_cas_number'
 
 # # Deprecated: to be calculated on the fly:
 # # Note: this model is not in SS1

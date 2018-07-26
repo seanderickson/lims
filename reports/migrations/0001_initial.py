@@ -26,14 +26,21 @@ class Migration(migrations.Migration):
                 ('key', models.CharField(max_length=128, db_index=True)),
                 ('uri', models.TextField()),
                 ('date_time', models.DateTimeField()),
-                ('api_action', models.CharField(max_length=10, 
-                    choices=[('POST', 'POST'), ('PUT', 'PUT'), 
-                        ('CREATE', 'CREATE'), ('PATCH', 'PATCH'), 
-                        ('DELETE', 'DELETE')])),
+                ('api_action', 
+                    models.CharField(max_length=10, 
+                        choices=[
+                            (b'CREATE', b'CREATE'), 
+                            (b'DELETE', b'DELETE'), 
+                            (b'PATCH', b'PATCH'), 
+                            (b'POST', b'POST'), 
+                            (b'PUT', b'PUT')]
+                    )
+                ),
                 ('comment', models.TextField(null=True)),
                 ('json_field', models.TextField(null=True)),
                 ('parent_log', models.ForeignKey(
                     related_name='child_logs', to='reports.ApiLog', null=True)),
+                ('is_preview', models.BooleanField(default=False)),
             ],
         ),
         migrations.CreateModel(

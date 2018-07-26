@@ -318,7 +318,7 @@ class SqlAlchemyResource(IccblBaseResource):
         @param manual_includes - columns to include even if the field 
         visibility is not set
         '''
-        DEBUG_BUILD_COLUMNS = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_COLUMNS = logger.isEnabledFor(logging.DEBUG)
         base_query_tables = base_query_tables or []
         custom_columns = custom_columns or []
         
@@ -415,6 +415,8 @@ class SqlAlchemyResource(IccblBaseResource):
                                                        LIST_DELIMITER_SQL_ARRAY)])
                         stmt2 = stmt2.select_from(join_stmt).label(key)
                         columns[key] = stmt2
+                    if DEBUG_BUILD_COLUMNS:
+                        logger.info('built linked column: %s: %r', key, columns[key])
                 else:
                     if DEBUG_BUILD_COLUMNS:        
                         logger.info(
@@ -810,92 +812,6 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.exception('on build_sqlalchemy_filter_hash')
             raise e   
 
-#     def _get_list_response(self,request,**kwargs):
-#         '''
-#         Return a deserialized list of dicts
-#         '''
-#         logger.debug('_get_list_response: %r, %r', 
-#             self._meta.resource_name, 
-#             {k:v for k,v in kwargs.items() if k !='schema'})
-#         includes = kwargs.pop('includes', '')
-#         try:
-#             kwargs.setdefault('limit', 0)
-#             response = self.get_list(
-#                 request,
-#                 format='json',
-#                 includes=includes,
-#                 **kwargs)
-#             _data = self.get_serializer().deserialize(
-#                 LimsSerializer.get_content(response), JSON_MIMETYPE)
-#             if self._meta.collection_name in _data:
-#                 _data = _data[self._meta.collection_name]
-#             logger.debug(' data: %r', _data)
-#             return _data
-#         except Http404:
-#             return []
-#         except Exception as e:
-#             logger.exception('on get list: %r', e)
-#             raise
-#         
-#     def _get_detail_response(self,request,**kwargs):
-#         '''
-#         Return the detail response as a dict
-#         '''
-#         logger.debug('_get_detail_response: %r, %r', 
-#             self._meta.resource_name, 
-#             {k:v for k,v in kwargs.items() if k !='schema'})
-#         includes = kwargs.pop('includes', '*')
-#         try:
-#             response = self.get_detail(
-#                 request,
-#                 format='json',
-#                 includes=includes,
-#                 **kwargs)
-#             _data = {}
-#             if response.status_code == 200:
-#                 _data = self._meta.serializer.deserialize(
-#                     LimsSerializer.get_content(response), JSON_MIMETYPE)
-#             else:
-#                 logger.info(
-#                     'no data found for %r, %r, %r', 
-#                     self._meta.resource_name, kwargs, response.status_code)
-#             return _data
-#         except Http404:
-#             return {}
-#         
-#     #@un_cache
-#     def _get_detail_response_internal(self, user=None, **kwargs):
-#         request = self.request_factory.generic(
-#             'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
-#         if user is None:
-#             logger.debug('_get_detail_response_internal, no user')
-#             class User:
-#                 is_superuser = True
-#                 username = 'internal_request'
-#                 def is_authenticated(self):
-#                     return True
-#             request.user = User()
-#         else:
-#             request.user = user
-#         result = self._get_detail_response(request, **kwargs)
-#         return result
-# 
-#     def _get_list_response_internal(self, user=None, **kwargs):
-#         request = self.request_factory.generic(
-#             'GET', '.', HTTP_ACCEPT=JSON_MIMETYPE )
-#         if user is None:
-#             logger.debug('_get_list_response_internal, no user')
-#             class User:
-#                 is_superuser = True
-#                 username = 'internal_request'
-#                 def is_authenticated(self):
-#                     return True
-#             request.user = User()
-#         else:
-#             request.user = user
-#         result = self._get_list_response(request, **kwargs)
-#         return result
-    
     def _cached_resultproxy(self, conn, stmt, count_stmt, param_hash, limit, offset):
         ''' 
         Cache for resultsets:

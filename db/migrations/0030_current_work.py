@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0020_well_deprecation'),
+        ('db', '0021_library_is_released'),
     ]
 
     operations = [

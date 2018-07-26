@@ -321,8 +321,6 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 logger.info('input: %r, row_range: %r', parts, row_range)
                 if row_range[1] >= n_rows:
                     errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
-#                     errors.add('row is out of range: %r, max: %r', 
-#                         input, row_to_letter(n_rows-1))
                     continue
                 for i in range(0,n_cols):
                     for j in range(row_range[0],row_range[1]+1):
@@ -339,8 +337,6 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 logger.info('col_range: %r, %r', parts, col_range)
                 if col_range[1] >= n_cols:
                     errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
-#                     errors.add('col is out of range: %r, max: %r', 
-#                         input, n_cols)
                     continue
                 for i in range(col_range[0],col_range[1]+1):
                     for j in range(0,n_rows):
@@ -357,30 +353,23 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 col_range = sorted([start_col, stop_col])
                 if col_range[1] >= n_cols:
                     errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
-#                     errors.add('col is out of range: %r, max: %r', 
-#                         input, n_cols)
                     continue
                 row_range = sorted([start_row,stop_row])
                 logger.info('well range: %r, %r, %r', parts,row_range,col_range)
                 if row_range[1] >= n_rows:
                     errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
-#                     errors.add('row is out of range: %r, max: %r', 
-#                         input, row_to_letter(n_rows-1))
                     continue
                 for i in range(col_range[0],col_range[1]+1):
                     for j in range(row_range[0],row_range[1]+1):
                         wells.append(get_well_name(j,i))
             else:
                 errors[ERROR_ENTRY_NOT_RECOGNIZED].append(input)
-#                 errors.append('unrecognized block range entry: %r'% input)
         elif len(parts) == 1:
             input = parts[0]
             if ROW_PATTERN.match(input):
                 row = letter_to_row_index(ROW_PATTERN.match(input).group(2))
                 if row >= n_rows:
                     errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
-#                     errors.add('row is out of range: %r, max: %r', 
-#                         input, row_to_letter(n_rows-1))
                     continue
                 for i in range(0,n_cols):
                     wells.append(get_well_name(row,i))
@@ -388,8 +377,6 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 col = int(COL_PATTERN.match(input).group(2))-1
                 if col >= n_cols:
                     errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
-#                     errors.add('col is out of range: %r, max: %r', 
-#                         input, n_cols)
                     continue
                 for j in range(0,n_rows):
                     wells.append(get_well_name(j,col))
@@ -398,33 +385,25 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 col = int(WELL_PATTERN.match(input).group(2))-1
                 if row >= n_rows:
                     errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
-#                     errors.add('row is out of range: %r, max: %r', 
-#                         input, row_to_letter(n_rows-1))
                     continue
                 if col >= n_cols:
                     errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
-#                     errors.add('col is out of range: %r, max: %r', 
-#                         input, n_cols)
                     continue
                 wells.append(get_well_name(row,col))
             else:
                 errors[ERROR_ENTRY_NOT_RECOGNIZED].append(input)
-#                 errors.append('unrecognized single specifier entry: %r'% input)
         else:
             errors[ERROR_ENTRY_NOT_RECOGNIZED].append(input)
-#             errors.append('unrecognized entry: %r' % input)
     return sorted(wells)
   
    
-
 def parse_wells_to_leave_empty(wells_to_leave_empty, plate_size):
     '''
     TODO: replace with parse_well_ranges
     Parse the wells to leave empty field of the Cherry Pick Request.
     '''
-    
-    
-    logger.info('raw wells_to_leave_empty: %r, plate_size: %r', 
+
+    logger.debug('raw wells_to_leave_empty: %r, plate_size: %r', 
         wells_to_leave_empty, plate_size)
 
     ncols = get_cols(plate_size)

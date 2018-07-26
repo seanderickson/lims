@@ -75,7 +75,30 @@ class DATA_COLUMN(schema_obj):
 
     USER_ACCESS_LEVEL_GRANTED = 'user_access_level_granted'
 
+class LIBRARY(schema_obj):    
+    resource_name = 'library'
+
+    DATE_CREATED = 'date_created'
+    SHORT_NAME = 'short_name'
+    NAME = 'library_name'
+    EXPERIMENTAL_WELL_COUNT = 'experimental_well_count'
+    PROVIDER = 'provider'
+    SCREEN_TYPE = 'screen_type'
+    PLATE_SIZE = 'plate_size'
+    SOLVENT = 'solvent'
+    LIBRARY_TYPE = 'library_type'
+    IS_POOL = 'is_pool'
+    SCREENING_STATUS = 'screening_status'
+    START_PLATE = 'start_plate'
+    END_PLATE = 'end_plate'
+    DESCRIPTION = 'description'
+    VERSION_NUMBER = 'version_number'
+    IS_RELEASED = 'is_released'
+    PREVIEW_LOG_ID = 'preview_log_id'
+    
 class ACTIVITY(schema_obj):
+    resource_name = 'activity'
+    
     ACTIVITY_ID = 'activity_id'
     DATE_OF_ACTIVITY = 'date_of_activity'
     ACTVITY_CLASS = 'activity_class'
@@ -87,6 +110,7 @@ class ACTIVITY(schema_obj):
     COMMENTS = 'comments'
     
 class LIBRARY_SCREENING(ACTIVITY):
+    resource_name = 'library_screening'
     
     LIBRARY_PLATES_SCREENED = 'library_plates_screened'
     

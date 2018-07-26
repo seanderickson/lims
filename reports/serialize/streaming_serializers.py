@@ -132,7 +132,7 @@ def interpolate_value_template(value_template, row):
             return ''
     return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
 
-
+# TODO: inject or wrap dependency on well.library_well_type 
 def image_generator(rows, image_keys, request):
     '''
     Check that any image values in the rows can be fetched:
@@ -148,7 +148,7 @@ def image_generator(rows, image_keys, request):
                 # hack to speed things up:
                 if ( key == 'structure_image' and
                         'library_well_type' in row and
-                        row['library_well_type'].lower() == 'empty' ):
+                        row['library_well_type'] == 'empty' ):
                     row[key] = None
                 else:
                     try:

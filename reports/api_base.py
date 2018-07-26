@@ -225,11 +225,14 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         """
         
         request_method = request.method.lower()
-        method = getattr(self, "%s_%s" 
-            % (request_method, request_type), None)
+        method_name = "%s_%s" % (request_method, request_type)
+        method = getattr(self, method_name, None)
 
         if method is None:
-            raise ImmediateHttpResponse(response=HttpNotImplemented())
+            raise ImmediateHttpResponse(
+                response=HttpNotImplemented(
+                    '"%s" is not implemented for "%s"' 
+                        % (method_name, self._meta.resource_name)))
 
         convert_post_to_put(request)
         response = method(request, **kwargs)

@@ -68,10 +68,11 @@ from reports import ValidationError, HEADER_APILOG_COMMENT, _now, \
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_NOT_ALLOWED, \
-    API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ
+    API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ,\
+    API_PARAM_PATCH_PREVIEW_MODE, API_PARAM_SHOW_PREVIEW
 from reports.models import ApiLog, UserProfile, UserGroup, Vocabulary
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
-    xlsutils
+    xlsutils, LimsJSONEncoder
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
 from reports.tests import IResourceTestCase, equivocal, DJANGO_ACCEPT_PARAM
@@ -82,6 +83,7 @@ import copy
 import db.schema as SCHEMA
 from db.schema import VOCAB
 
+# SCHEMA imports
 
 FIELD = SCHEMA.FIELD
 
@@ -90,6 +92,17 @@ DC = SCHEMA.DATA_COLUMN
 SCREEN = SCHEMA.SCREEN
 SU = SCHEMA.SCREENSAVER_USER
 WELL = SCHEMA.WELL
+REAGENT = SCHEMA.REAGENT
+SMALL_MOLECULE_REAGENT = SCHEMA.SMALL_MOLECULE_REAGENT
+
+LIBRARY = SCHEMA.LIBRARY
+
+START_PLATE = LIBRARY.START_PLATE
+END_PLATE = LIBRARY.END_PLATE
+SCREEN_TYPE = SCREEN.SCREEN_TYPE
+
+
+# Import other constants
 
 API_ACTION = VOCAB.apilog.api_action
 ACCESS_LEVEL = VOCAB.screen.user_access_level_granted
@@ -392,6 +405,10 @@ class DBResourceTestCase(IResourceTestCase):
         resource_uri = '/'.join([BASE_URI_DB, 'screen', facility_id])
         return self.get_single_resource(resource_uri, data_for_get)
 
+    def get_library(self, short_name, data_for_get=None):
+        resource_uri = '/'.join([BASE_URI_DB, 'library', short_name])
+        return self.get_single_resource(resource_uri, data_for_get)
+
     def get_schema(self, resource_name, authentication=None, data=None):
         
         data_for_get = { 'includes': '*' }
@@ -617,14 +634,14 @@ class DBResourceTestCase(IResourceTestCase):
 
         logger.info('create library...')
         self.pool_library1 = self.create_library({
-            'start_plate': 50000, 
-            'end_plate': 50000,
-            'screen_type': 'rnai',
+            START_PLATE: 50000, 
+            END_PLATE: 50000,
+            SCREEN_TYPE: 'rnai',
             'is_pool': True })
         self.duplex_library1 = self.create_library({
-            'start_plate': 50001, 
-            'end_plate': 50004,
-            'screen_type': 'rnai' })
+            START_PLATE: 50001, 
+            END_PLATE: 50004,
+            SCREEN_TYPE: 'rnai' })
 
         logger.info('set some experimental wells...')
         # Create the duplex library wells first
@@ -633,8 +650,8 @@ class DBResourceTestCase(IResourceTestCase):
         resource_name = 'well'
         input_well_data = []
         for plate in range(
-            self.duplex_library1['start_plate'],
-            self.duplex_library1['end_plate']+1):
+            self.duplex_library1[START_PLATE],
+            self.duplex_library1[END_PLATE]+1):
             experimental_well_count = 384
             for i in range(0,experimental_well_count):
                 well_name = lims_utils.well_name_from_index(
@@ -683,8 +700,8 @@ class DBResourceTestCase(IResourceTestCase):
                 molar_concentration='0.001') 
             duplex_wells = []
             for duplex_plate in range(
-                    self.duplex_library1['start_plate'],
-                    self.duplex_library1['end_plate']+1):
+                    self.duplex_library1[START_PLATE],
+                    self.duplex_library1[END_PLATE]+1):
                 duplex_wells.append(
                     lims_utils.well_id(duplex_plate, input_well['well_name']))
             input_well['duplex_wells'] = duplex_wells
@@ -1033,7 +1050,6 @@ class LibraryResource(DBResourceTestCase):
                 parsed_searches = WellResource.parse_well_search(test_search)
                 logger.info('returns: %r', parsed_searches)
             except ValidationError, e:
-                logger.exception('e: %r', e)
                 if 'errors' not in expected_searches:
                     self.fail('Expected search is not an error: %r, %r' 
                         % (expected_searches,e))
@@ -1121,11 +1137,11 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = BASE_URI_DB + '/library'
         
         library1 = self.create_library({ 
-            'short_name': 'testlibrary1','start_plate': '1534', 
-            'end_plate': '1534', 'plate_size': '384' })
+            'short_name': 'testlibrary1',START_PLATE: '1534', 
+            END_PLATE: '1534', 'plate_size': '384' })
         library2 = self.create_library({ 
-            'short_name': 'testlibrary2','start_plate': '1535', 
-            'end_plate': '1537', 'plate_size': '384' })
+            'short_name': 'testlibrary2',START_PLATE: '1535', 
+            END_PLATE: '1537', 'plate_size': '384' })
         
         logger.info('Find the <undefined> library2 wells that were created...')
         resource_uri = '/'.join([
@@ -1198,13 +1214,13 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = BASE_URI_DB + '/library'
         
         library1 = self.create_library({ 
-            'screen_type': 'rnai',
-            'short_name': 'testlibrary1rnai','start_plate': '1534', 
-            'end_plate': '1534', 'plate_size': '384' })
+            SCREEN_TYPE: 'rnai',
+            'short_name': 'testlibrary1rnai',START_PLATE: '1534', 
+            END_PLATE: '1534', 'plate_size': '384' })
         library2 = self.create_library({ 
-            'screen_type': 'rnai',
-            'short_name': 'testlibrary2rnai','start_plate': '1535', 
-            'end_plate': '1537', 'plate_size': '384' })
+            SCREEN_TYPE: 'rnai',
+            'short_name': 'testlibrary2rnai',START_PLATE: '1535', 
+            END_PLATE: '1537', 'plate_size': '384' })
         
         logger.info('Find the <undefined> library2 wells that were created...')
         resource_uri = '/'.join([
@@ -1277,17 +1293,16 @@ class LibraryResource(DBResourceTestCase):
         resource_uri = BASE_URI_DB + '/library'
         
         library1 = self.create_library({ 
-            'short_name': 'testlibrary1','start_plate': '1534', 
-            'end_plate': '1534', 'plate_size': '384' })
+            'short_name': 'testlibrary1',START_PLATE: '1534', 
+            END_PLATE: '1534', 'plate_size': '384' })
         
         patch_uri = '/'.join([resource_uri,library1['short_name']]) 
         
         test_comment = 'Some test comment 123 xyz'
-        
         header_data = { HEADER_APILOG_COMMENT: test_comment}
         
         resp = self.api_client.patch(
-            patch_uri, format='json', #data={ 'objects': [ copywell_input] }, 
+            patch_uri, format='json', #data={ 'objects': [ _data ] }, 
             authentication=self.get_credentials(), **header_data )
         self.assertTrue(
             resp.status_code in [200], 
@@ -1338,15 +1353,15 @@ class LibraryResource(DBResourceTestCase):
         # 1. Create Library
         logger.info('create library...')
         library_item = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1001,
-            'screen_type': 'small_molecule',
+            START_PLATE: 1000, 
+            END_PLATE: 1001,
+            SCREEN_TYPE: 'small_molecule',
              })
 
         # 2. Patch some wells
         logger.info('set some experimental wells...')
         experimental_well_count = 384
-        plate = library_item['start_plate']
+        plate = library_item[START_PLATE]
         input_well_data = [
             self.create_small_molecule_test_well(
                 plate,i,library_well_type='experimental',
@@ -1380,7 +1395,7 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj[API_RESULT_DATA]
-        expected_count = 384*(library_item['end_plate']-library_item['start_plate']+1)
+        expected_count = 384*(library_item[END_PLATE]-library_item[START_PLATE]+1)
         self.assertEqual(
             len(returned_data), expected_count, 
             ('returned_data len:',
@@ -1422,7 +1437,7 @@ class LibraryResource(DBResourceTestCase):
             else:
                 self.fail('unexpected log: %r', library_log)
         
-        # 3.b Well APILOGS (should be empty for initial patch...)
+        # 3.b Well APILOGS (should have empty diffs for initial patch...)
         logger.info('Test well apilogs...')
         resp = self.api_client.get(
             apilog_uri, format='json', 
@@ -1435,19 +1450,21 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         well_patches = new_obj[API_RESULT_DATA]
-        
-        # For initial library load, well patches are not created;
-        self.assertEqual(len(well_patches),0, 
-            'Inital library load should not create patch logs: %r' % well_patches)
+
+        self.assertEqual(len(well_patches), 384)
+        for well_patch in well_patches:
+            self.assertEqual(well_patch[APILOG.API_ACTION], API_ACTION.CREATE, 
+                'wrong action: %r, %r' % (
+                    well_patch[APILOG.API_ACTION], well_patch))
         
         # 4. PATCH wells 
-        new_well_data = input_well_data[:]
+        patch_data = input_well_data[:]
         patched_count = 5
         for i in range(0,patched_count):
-            new_well_data[i]['smiles'] = 'xxx_test_smiles_%d' % i
+            patch_data[i]['smiles'] = 'xxx_test_smiles_%d' % i
 
         resp = self.api_client.patch(
-            well_patch_uri, format='sdf', data={ 'objects': new_well_data } , 
+            well_patch_uri, format='sdf', data={ 'objects': patch_data } , 
             authentication=self.get_credentials(), 
             **{ 'limit': 0, 'includes': '*'} )
         self.assertTrue(
@@ -1468,7 +1485,7 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj[API_RESULT_DATA]
-        expected_count = 384*(library_item['end_plate']-library_item['start_plate']+1)
+        expected_count = 384*(library_item[END_PLATE]-library_item[START_PLATE]+1)
         self.assertEqual(
             len(returned_data), expected_count, 
             ('returned_data len:',
@@ -1540,11 +1557,11 @@ class LibraryResource(DBResourceTestCase):
         # 1. Create Library
         logger.info('create library...')
         library_item = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1001,
-            'screen_type': 'small_molecule',
+            START_PLATE: 1000, 
+            END_PLATE: 1001,
+            SCREEN_TYPE: 'small_molecule',
              })
-        test_plate = library_item['start_plate']
+        test_plate = library_item[START_PLATE]
 
         # Patch tests
         
@@ -1577,13 +1594,14 @@ class LibraryResource(DBResourceTestCase):
         errors = response_obj['errors']
         
         # 1.a Bad well id
-        self.assertTrue('Row: 0' in errors)
-        error = errors['Row: 0']
+        line_key = SCHEMA.ERROR.LINE + ': %d'
+        self.assertTrue(line_key % 0 in errors)
+        error = errors[line_key % 0]
         self.assertTrue('well_id' in error)
         self.assertTrue('required' in error['well_id'])
 
-        self.assertTrue('Row: 1' in errors)
-        error = errors['Row: 1']
+        self.assertTrue(line_key % 1 in errors)
+        error = errors[line_key % 1]
         self.assertTrue('well_id' in error)
         self.assertTrue('bad well id' in error['well_id']) 
         
@@ -1620,10 +1638,11 @@ class LibraryResource(DBResourceTestCase):
         response_obj = self.deserialize(resp)
         self.assertTrue('errors' in response_obj)
         errors = response_obj['errors']
+        logger.info('errors: %r', errors)
         self.assertEqual(len(errors),len(new_data))
-        for well_id,error in errors.items():
+        for well_id,well_errors in errors:
             self.assertTrue(well_id in new_data)
-            self.assertTrue(WELL.LIBRARY_WELL_TYPE in error, 'bad error: %r' % error )
+            self.assertTrue(WELL.LIBRARY_WELL_TYPE in well_errors, 'bad well_errors: %r' % well_errors)
         
         # 3. Small Molecule input field errors
         # TODO
@@ -1668,6 +1687,7 @@ class LibraryResource(DBResourceTestCase):
             authentication=self.get_credentials(), 
             data={ 
                 'includes': '*',
+                'order_by': ['date_time'],
                 'limit': 0, 
                 APILOG.KEY: test_well_id,
         })
@@ -1675,9 +1695,12 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         logs = self.deserialize(resp)[API_RESULT_DATA]
-        self.assertTrue(len(logs), 1)
-        log = logs[0]
-        self.assertTrue(WELL.LIBRARY_WELL_TYPE in log['diffs'])
+        self.assertEqual(len(logs), 2)
+        log = logs[1]
+        
+        self.assertTrue(WELL.LIBRARY_WELL_TYPE in log['diffs'],
+            'log: %r, diffs: %r, should contain library_well_type' % (
+                log, log['diffs']))
         logger.info('apilog: %r', log)
 
         well_data = self.get_single_resource(well_patch_uri, {
@@ -1701,6 +1724,10 @@ class LibraryResource(DBResourceTestCase):
         well_data = self.get_single_resource(well_patch_uri, {
             WELL.WELL_ID: test_well_id})
         self.assertEqual(well_data[WELL.LIBRARY_WELL_TYPE], WELL_TYPE.UNDEFINED)
+        
+        # 5. TODO: experimental -> undefined/empty, after screen results are loaded
+        # - should generate an error
+        
         
     def validate_wells(self, input_data, output_data, fields):
         ''' 
@@ -1742,10 +1769,10 @@ class LibraryResource(DBResourceTestCase):
         end_plate = 1005
         plate_size = 384
         library_data = self.create_library({
-            'start_plate': start_plate, 
-            'end_plate': end_plate,
+            START_PLATE: start_plate, 
+            END_PLATE: end_plate,
             'plate_size': plate_size,
-            'screen_type': 'small_molecule' })
+            SCREEN_TYPE: 'small_molecule' })
         short_name = library_data['short_name']
         
         # 2. Create Library Wells: wells have various concentrations 
@@ -1803,8 +1830,8 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        start_plate = int(library_data['start_plate'])
-        end_plate = int(library_data['end_plate'])
+        start_plate = int(library_data[START_PLATE])
+        end_plate = int(library_data[END_PLATE])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj[API_RESULT_DATA]),number_of_plates)
         for plate_data in new_obj[API_RESULT_DATA]:
@@ -1889,10 +1916,10 @@ class LibraryResource(DBResourceTestCase):
         end_plate = 1005
         plate_size = 384
         library_data = self.create_library({
-            'start_plate': start_plate, 
-            'end_plate': end_plate,
+            START_PLATE: start_plate, 
+            END_PLATE: end_plate,
             'plate_size': plate_size,
-            'screen_type': 'small_molecule' })
+            SCREEN_TYPE: 'small_molecule' })
         short_name = library_data['short_name']
         
         # 2. Create Library Wells: wells all have the same concentration 
@@ -1947,8 +1974,8 @@ class LibraryResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        start_plate = int(library_data['start_plate'])
-        end_plate = int(library_data['end_plate'])
+        start_plate = int(library_data[START_PLATE])
+        end_plate = int(library_data[END_PLATE])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj[API_RESULT_DATA]),number_of_plates)
         for plate_data in new_obj[API_RESULT_DATA]:
@@ -2037,8 +2064,8 @@ class LibraryResource(DBResourceTestCase):
     
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
-        end_plate = int(library_data['end_plate'])
-        start_plate = int(library_data['start_plate'])
+        end_plate = int(library_data[END_PLATE])
+        start_plate = int(library_data[START_PLATE])
         short_name = library_data['short_name']
         plate_size = int(library_data['plate_size'])
 
@@ -2093,8 +2120,8 @@ class LibraryResource(DBResourceTestCase):
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
         
-        end_plate = library_data['end_plate']
-        start_plate = library_data['start_plate']
+        end_plate = library_data[END_PLATE]
+        start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
         
         # 1. Simple test
@@ -2184,9 +2211,9 @@ class LibraryResource(DBResourceTestCase):
             len(new_obj[API_RESULT_DATA]), expected_count , 
             str((len(new_obj[API_RESULT_DATA]), expected_count, new_obj)))
         for logvalue in new_obj[API_RESULT_DATA]:
-            diffs = json.loads(logvalue['diffs'])
-            self.assertTrue(diffs['bin']==[None, 'bin1'],
-                'wrong diff: %r' % diffs )
+#             diffs = json.loads(logvalue['diffs'])
+            self.assertTrue(logvalue['diffs']['bin']==[None, 'bin1'],
+                'wrong diff: %r' % logvalue['diffs'])
 
         # 2. remove plates from the range
         copy_plate_ranges = [
@@ -2259,8 +2286,8 @@ class LibraryResource(DBResourceTestCase):
         
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
-        end_plate = library_data['end_plate']
-        start_plate = library_data['start_plate']
+        end_plate = library_data[END_PLATE]
+        start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
         
         # 1. POST new data to the copyplates
@@ -2408,8 +2435,8 @@ class LibraryResource(DBResourceTestCase):
 
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
-        end_plate = library_data['end_plate']
-        start_plate = library_data['start_plate']
+        end_plate = library_data[END_PLATE]
+        start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
         
         plate_location_input = {
@@ -2526,9 +2553,10 @@ class LibraryResource(DBResourceTestCase):
             str((len(new_obj[API_RESULT_DATA]), expected_count, new_obj)))
         for logvalue in new_obj[API_RESULT_DATA]:
             if logvalue['parent_log_uri']:
-                diffs = json.loads(logvalue['diffs'])
-                self.assertTrue(diffs['bin']==[None, 'bin1'],
-                    'wrong diff: %r' % diffs )
+                logger.info('test for diffs: %r, %r', logvalue['diffs'], logvalue)
+#                 diffs = json.loads(logvalue['diffs'])
+                self.assertTrue(logvalue['diffs']['bin']==[None, 'bin1'],
+                    'wrong diff: %r' % logvalue['diffs'])
             else:
                 logger.info('parent log: %r', logvalue)
                 self.assertTrue(logvalue['key']=='librarycopyplate',
@@ -2540,8 +2568,8 @@ class LibraryResource(DBResourceTestCase):
         
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
-        end_plate = library_data['end_plate']
-        start_plate = library_data['start_plate']
+        end_plate = library_data[END_PLATE]
+        start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
         
         new_plate_data = {
@@ -2634,8 +2662,8 @@ class LibraryResource(DBResourceTestCase):
         
         (library_data, copy_data, plate_data) = \
             self.test10_create_library_copy_specific_wells()
-        end_plate = library_data['end_plate']
-        start_plate = library_data['start_plate']
+        end_plate = library_data[END_PLATE]
+        start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
 
         plate_location_input = {
@@ -2844,10 +2872,10 @@ class LibraryResource(DBResourceTestCase):
         logger.info('test6_load_small_molecule_file')
         
         library_item = self.create_library({ 
-            'start_plate': '1536', 
-            'end_plate': '1536', 
+            START_PLATE: '1536', 
+            END_PLATE: '1536', 
             'plate_size': '384',
-            'screen_type': 'small_molecule' })
+            SCREEN_TYPE: 'small_molecule' })
 
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -2967,7 +2995,7 @@ class LibraryResource(DBResourceTestCase):
                     result, 
                     ('not found', search,outputobj,'=== objects returned ===', 
                           returned_data ) ) 
-                result, msgs = assert_obj1_to_obj2(update_well, outputobj)
+                result, msgs = assert_obj1_to_obj2(update_well, outputobj, excludes=['_line'])
                 self.assertTrue(result, (msgs, update_well, outputobj))
                 self.assertTrue(
                     'library_well_type' in outputobj,
@@ -3039,10 +3067,10 @@ class LibraryResource(DBResourceTestCase):
         logger.info('test7_load_sirnai ...')
         
         library_item = self.create_library({ 
-            'start_plate': 50001,  
-            'end_plate': 50001, 
+            START_PLATE: 50001,  
+            END_PLATE: 50001, 
             'plate_size': '384',
-            'screen_type': 'rnai' })
+            SCREEN_TYPE: 'rnai' })
         resource_uri = BASE_URI_DB + '/library'
         
         filename = ('%s/db/static/test_data/libraries/clean_data_rnai.xlsx'
@@ -3055,18 +3083,18 @@ class LibraryResource(DBResourceTestCase):
         logger.info('test7_load_sirnai ...')
         
         library_item = self.create_library({ 
-            'start_plate': 55001,  
-            'end_plate': 55001, 
+            START_PLATE: 55001,  
+            END_PLATE: 55001, 
             'plate_size': '384',
-            'screen_type': 'rnai' })
+            SCREEN_TYPE: 'rnai' })
         resource_uri = BASE_URI_DB + '/library'
         
         filename = ('%s/db/static/test_data/libraries/dirty_data_rnai.xlsx'
                     % APP_ROOT_DIR )
         expected_in = 14 # rows to read in
         
-        start_plate = library_item['start_plate']
-        end_plate = library_item['end_plate']
+        start_plate = library_item[START_PLATE]
+        end_plate = library_item[END_PLATE]
 
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -3100,59 +3128,50 @@ class LibraryResource(DBResourceTestCase):
             response_obj = self.deserialize(resp)
             self.assertTrue('errors' in response_obj)
             errors = response_obj['errors']
+            errors = { x[0]:x[1] for x in errors }
+            logger.info('errors: %r', errors)
+            
+            # 2018 - Errors changed to an ordered list of tuple (key, {errors} )
 
-            expected_errors = {
-                "55001:A06": {
-                  "vendor_entrezgene_id": [
-                    "parse error: invalid literal for float(): 22848a"
-                  ]
-                }, 
-                "55001:A08": {
-                  "molar_concentration": [
-                    "parse error: Invalid literal for Decimal: u'1 uM'"
-                  ]
-                }, 
-                "55001:A09": {
-                  "library_well_type": "Reagent fields may only be specified for library_well_type in: (experimental, library_control)"
-                }, 
-                "55001:A11": {
-                  "library_well_type": [
-                    "'buffer1' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"
-                  ]
-                }, 
-                "55001:A15": {
-                  "vendor_identifier": "vendor_name and vendor_identifier must both be specified, or neither should be specified", 
-                  "vendor_name": "vendor_name and vendor_identifier must both be specified, or neither should be specified"
-                }, 
-                "55001:A20": {
-                  "vendor_identifier": "Required if sequence is specified"
-                }, 
-                "55001:A21": {
-                  "library_well_type": [
-                    "required"
-                  ]
-                }, 
-                "55001:A22": {
-                  "vendor_identifier": "vendor_name and vendor_identifier must both be specified, or neither should be specified", 
-                  "vendor_name": "vendor_name and vendor_identifier must both be specified, or neither should be specified"
-                }, 
-                "55001:A23": {
-                  "silencing_reagent_type": "Required if sequence is specified"
-                }, 
-                "55001:A24": {
-                  "mg_ml_concentration": "required for library_well_type=='experimental'", 
-                  "molar_concentration": "required for library_well_type=='experimental'", 
-                  "silencing_reagent_type": "Required if sequence is specified"
-                }, 
-                "60001:A01": {
-                  "well_id": [
-                    "well u'60001:A01' not found for this library u'TestRNA1'"
-                  ]
-                }, 
-                "Row: 8": {
-                  "well_id": "required"
-                },
-              }
+            expected_errors = [
+                [u'55001:A06', {
+                    u'vendor_entrezgene_id': [u"parse error: invalid literal for int() with base 10: '22848a'"], 
+                    u'line': 7}],
+                [u'55001:A08', {
+                    u'line': 6, 
+                    u'molar_concentration': [u"parse error: Invalid literal for Decimal: u'1 uM'"]}],
+                [u'55001:A09', {
+                    u'library_well_type': 
+                        u'Reagent fields may only be specified for a library_well_type in: '
+                        '(experimental, library_control), reagent fields specified: [vendor_identifier, vendor_name]', 
+                    u'line': 5}],
+                [u'55001:A11', {
+                    u'library_well_type': [
+                        u"'buffer1' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                    u'line': 12}],
+                [u'55001:A15', {
+                    u'vendor_identifier': 
+                        u'vendor_name and vendor_identifier must both be specified, or neither should be specified', 
+                        u'vendor_name': u'vendor_name and vendor_identifier must both be specified, or neither should be specified'}],
+                [u'55001:A20', {
+                    u'vendor_identifier': u'Required if sequence is specified'}],
+                [u'55001:A21', {
+                    u'library_well_type': [u'required'], 
+                    u'line': 3}],
+                [u'55001:A22', {
+                    u'vendor_identifier': u'vendor_name and vendor_identifier must both be specified, or neither should be specified', 
+                    u'vendor_name': u'vendor_name and vendor_identifier must both be specified, or neither should be specified'}],
+                [u'55001:A23', {
+                    u'silencing_reagent_type': u'Required if sequence is specified'}],
+                [u'55001:A24', {
+                    u'silencing_reagent_type': u'Required if sequence is specified', 
+                    u'molar_concentration': u"required for library_well_type = 'experimental'", 
+                    u'mg_ml_concentration': u"required for library_well_type = 'experimental'"}],
+                [u'60001:A01', {u'line': 9, u'well_id': u'Does not belong to this library'}],
+                [u'line: 8', {u'well_id': u'required'}]]
+
+            expected_errors = { x[0]:x[1] for x in expected_errors }
+            logger.info('expected_errors: %r', expected_errors)
             self.assertTrue(len(expected_errors)==len(errors), 
                 'Unexpected: %r, not found: %r' % (
                     {k:v for k,v in errors.items() if k not in expected_errors},
@@ -3178,20 +3197,20 @@ class LibraryResource(DBResourceTestCase):
         
         # create the duplex library
         library_item = self.create_library({ 
-            'start_plate': 50440,  
-            'end_plate': 50443, 
+            START_PLATE: 50440,  
+            END_PLATE: 50443, 
             'plate_size': '384',
-            'screen_type': 'rnai' })
+            SCREEN_TYPE: 'rnai' })
         
         self._load_xls_reagent_file(filename,library_item, 532, 1536 )
         filename = ( '%s/db/static/test_data/libraries/clean_rnai_pool.xlsx'
                      % APP_ROOT_DIR )
         # create the pool library
         library_item = self.create_library({ 
-            'start_plate': 50439,  
-            'end_plate': 50439, 
+            START_PLATE: 50439,  
+            END_PLATE: 50439, 
             'plate_size': '384',
-            'screen_type': 'rnai',
+            SCREEN_TYPE: 'rnai',
             'is_pool': True })
         
         self._load_xls_reagent_file(filename,library_item, 133, 384 )
@@ -3207,8 +3226,8 @@ class LibraryResource(DBResourceTestCase):
             % APP_ROOT_DIR )
         
         library_item = self.create_library({ 
-            'start_plate': 2037,  
-            'end_plate': 2037, 
+            START_PLATE: 2037,  
+            END_PLATE: 2037, 
             'plate_size': '384',
             'library_type': 'natural_products' })
         
@@ -3218,8 +3237,8 @@ class LibraryResource(DBResourceTestCase):
             self,filename,library_item, expected_in, expected_count):
         ''' Test the loading of an xls well/reagent file''' 
 
-        start_plate = library_item['start_plate']
-        end_plate = library_item['end_plate']
+        start_plate = library_item[START_PLATE]
+        end_plate = library_item[END_PLATE]
 
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -3302,7 +3321,268 @@ class LibraryResource(DBResourceTestCase):
         #         substance_id not in substance_ids, 
         #         ('substance_id not unique', substance_id, substance_ids))
         #     substance_ids.add(substance_id)
-                    
+         
+    def test20_preview_patching(self):
+        '''
+        NOTE: library loading is done in "preview" mode if the library has been
+        released ("is_released" is true).
+        - if "is_released" is false, then library loading is done without the 
+        preview
+        - Once the library "is_released", library loading patches are done in 
+        a 2-step process; first pass creates the "preview" logs only, all 
+        database changes are rolled back. The second pass "patch preview" will
+        load the preview logs of the content updates to the database.
+        
+        '''
+        
+        # 1. Create a library
+        logger.info('create library...')
+        library_item = self.create_library({
+            START_PLATE: 1000, 
+            END_PLATE: 1001,
+            SCREEN_TYPE: 'small_molecule',
+             })
+        test_plate = library_item[START_PLATE]
+        
+        # 2. load initial data
+        logger.info('set some experimental wells...')
+        experimental_well_count = 384
+        plate = library_item[START_PLATE]
+        input_well_data = [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental',
+                molar_concentration='0.000001',
+                vendor_name='vendor1') 
+            for i in range(0,experimental_well_count)]
+        well_patch_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],'well'])
+        resp = self.api_client.patch(
+            well_patch_uri, format='sdf', data={ 'objects': input_well_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        data_for_get={
+             'limit': 0, 
+            'includes': ['*','-structure_image'],
+            }
+        resource_name = 'reagent'
+        reagent_resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item[LIBRARY.SHORT_NAME],resource_name])
+        resp = self.api_client.get(
+            reagent_resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        original_wells_data = self.deserialize(resp)
+        original_wells_data = original_wells_data[API_RESULT_DATA]
+        self.assertEqual(len(original_wells_data), 2*384)
+        original_wells_data = { w[WELL.WELL_ID]: w for w in original_wells_data}
+        
+        # 3. release the library
+        
+        patch_data = {
+            LIBRARY.SHORT_NAME: library_item[LIBRARY.SHORT_NAME],
+            LIBRARY.IS_RELEASED: True
+            }
+        library_patch_uri = '/'.join([BASE_URI_DB, 'library'])
+        resp = self.api_client.patch(
+            library_patch_uri, format='json', data=patch_data , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        new_library_data = self.get_library(library_item[LIBRARY.SHORT_NAME])
+        self.assertTrue(new_library_data[LIBRARY.IS_RELEASED])
+        self.assertIsNone(new_library_data[LIBRARY.PREVIEW_LOG_ID])
+        
+        # 4. PATCH wells - now in preview mode
+        
+        patch_data = [{ WELL.WELL_ID:_data[WELL.WELL_ID] } for _data in input_well_data[:5]]
+        patched_count = 5
+        
+        patch_data[0][SMALL_MOLECULE_REAGENT.SMILES] = 'xxx_test_smiles_1'
+        patch_data[1][WELL.MOLAR_CONCENTRATION] = '0.000002'
+        patch_data[2][SMALL_MOLECULE_REAGENT.COMPOUND_NAME] = [
+            'fake compound name 1', 'fake compound name 2']
+        patch_data[3][SMALL_MOLECULE_REAGENT.MOLECULAR_WEIGHT] = '0.031111'
+        patch_data[4][REAGENT.VENDOR_IDENTIFIER] = 'xxxx1'
+        
+        # Set the param appModel.API_PARAM_PATCH_PREVIEW_MODE
+        # as extra post_data to be sent along with the upload.
+        # API_PARAM_PATCH_PREVIEW_MODE signals the WellResource to patch as 
+        # a preview.
+        original_comment = 'test patch preview'
+        
+        well_patch_preview_uri = well_patch_uri + '?%s=true' % API_PARAM_PATCH_PREVIEW_MODE
+        resp = self.api_client.patch(
+            well_patch_preview_uri, format='sdf', data={ 'objects': patch_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*',
+                HEADER_APILOG_COMMENT: original_comment })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        new_library_data = self.get_library(library_item[LIBRARY.SHORT_NAME])
+        logger.info('new_library_data: %r', new_library_data)
+        self.assertIsNotNone(new_library_data[LIBRARY.PREVIEW_LOG_ID])
+
+        # verify patching is disallowed until preview is addressed
+        resp = self.api_client.patch(
+            well_patch_preview_uri, format='sdf', data={ 'objects': patch_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*' })
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 4.a. verify preview view
+        reagent_preview_uri = reagent_resource_uri + '/preview/'
+        data_for_get={
+             'limit': 0, 
+            'includes': ['*','-structure_image'],
+            '%s__in' % WELL.WELL_ID: 
+                [w[WELL.WELL_ID] for w in patch_data]
+        }        
+        resp = self.api_client.get(
+            reagent_preview_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        preview_wells_data = self.deserialize(resp)
+        preview_wells_data = preview_wells_data[API_RESULT_DATA]
+        self.assertEqual(len(preview_wells_data), len(patch_data))
+        
+        preview_wells_data = { w[WELL.WELL_ID]: w for w in preview_wells_data }
+        # Implement equivalence for Decimal fields
+        decimal_fields = [WELL.MOLAR_CONCENTRATION, WELL.MG_ML_CONCENTRATION, 
+            SMALL_MOLECULE_REAGENT.MOLECULAR_WEIGHT]
+        for patch_well_data in patch_data:
+            well_id = patch_well_data[WELL.WELL_ID]
+            self.assertTrue(
+                well_id in preview_wells_data, 
+                'well %r not found in %r' % (well_id, preview_wells_data))
+            preview_well_data = preview_wells_data[well_id]
+            logger.info('test preview: %r', preview_well_data)
+            for k,v in patch_well_data.items():
+                new_val = preview_well_data[k]
+                if k in decimal_fields:
+                    v = Decimal(v)
+                    new_val = Decimal(new_val)
+                self.assertEqual(v, new_val)
+        
+        # 4.b verify that non-preview view does NOT show the updates
+        resp = self.api_client.get(
+            reagent_resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        non_preview_wells_data = self.deserialize(resp)
+        non_preview_wells_data = non_preview_wells_data[API_RESULT_DATA]
+        self.assertEqual(len(non_preview_wells_data), len(patch_data))
+        for well_data in non_preview_wells_data:
+            well_id = well_data[WELL.WELL_ID]
+            self.assertTrue(
+                well_id in original_wells_data, 
+                'well %r not found in original_wells_data' % well_id)
+            original_well_data = original_wells_data[well_id]
+            for k,v in original_well_data.items():
+                if well_data.get(k) is None:
+                    continue
+                new_val = well_data[k]
+                if k in decimal_fields:
+                    v = Decimal(v)
+                    new_val = Decimal(new_val)
+                self.assertEqual(v, new_val)
+        
+        # 4.c ApiLogs
+        # Look at the parent log
+        apilog = self.get_single_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get={
+                APILOG.ID: new_library_data[LIBRARY.PREVIEW_LOG_ID]} )
+        logger.info('Preview apilog: %r', apilog)
+        self.assertTrue(apilog[APILOG.IS_PREVIEW])
+        self.assertEqual(apilog[APILOG.CHILD_LOGS], len(patch_data))
+        self.assertEqual(apilog[APILOG.COMMENT], original_comment)
+        # TODO: look at the child logs
+        
+        # 5. apply the preview
+        preview_patch_url = '/'.join([
+            BASE_URI_DB, LIBRARY.resource_name, library_item[LIBRARY.SHORT_NAME], 
+            'well', 'apply_preview'])
+        new_comment = 'new patch preview comment'
+        resp = self.api_client.post(
+            preview_patch_url, format='json',  
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*',
+                HEADER_APILOG_COMMENT: new_comment })
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # 5.a verify that well data is now patched
+        resp = self.api_client.get(
+            reagent_resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        post_patch_wells_data = self.deserialize(resp)
+        post_patch_wells_data = post_patch_wells_data[API_RESULT_DATA]
+        post_patch_wells_data = { w[WELL.WELL_ID]: w for w in post_patch_wells_data }
+        decimal_fields = [WELL.MOLAR_CONCENTRATION, WELL.MG_ML_CONCENTRATION, 
+            SMALL_MOLECULE_REAGENT.MOLECULAR_WEIGHT]
+        for patch_well_data in patch_data:
+            well_id = patch_well_data[WELL.WELL_ID]
+            self.assertTrue(
+                well_id in post_patch_wells_data, 
+                'well %r not found in %r' % (well_id, post_patch_wells_data))
+            post_patched_well_data = post_patch_wells_data[well_id]
+            logger.info('test post_patched_well_data: %r', post_patched_well_data)
+            for k,v in patch_well_data.items():
+                new_val = post_patched_well_data[k]
+                if k in decimal_fields:
+                    v = Decimal(v)
+                    new_val = Decimal(new_val)
+                self.assertEqual(v, new_val)
+        
+        new_library_data = self.get_library(library_item[LIBRARY.SHORT_NAME])
+        self.assertIsNone(new_library_data[LIBRARY.PREVIEW_LOG_ID])
+        
+        # Find the final commit log
+        apilogs = self.get_list_resource(
+            BASE_REPORTS_URI + '/apilog', 
+            data_for_get={
+                APILOG.REF_RESOURCE_NAME: LIBRARY.resource_name, 
+                APILOG.KEY: library_item[LIBRARY.SHORT_NAME],
+                APILOG.API_ACTION: SCHEMA.VOCAB.apilog.api_action.POST
+                } )
+        logger.info('library apilogs: %r', apilogs)
+        self.assertEqual(len(apilogs), 1) # Should be only one POST log
+        apilog = apilogs[0]
+        self.assertFalse(apilog[APILOG.IS_PREVIEW])
+        self.assertEqual(apilog[APILOG.CHILD_LOGS], len(patch_data))
+        self.assertEqual(apilog[APILOG.COMMENT], new_comment)
+        
+        # TODO: examine child logs
+        
+        # TODO: delete the preview
+        
+        # TODO: verify the library may not be set to "unreleased" if assay wells are loaded
+
 
 class ScreenResultSerializerTest(TestCase):
     ''' Test serialization of the ScreenResult file'''
@@ -3663,9 +3943,9 @@ class ScreenResultResource(DBResourceTestCase):
         
         logger.info('create library...')
         library1 = self.create_library({
-            'start_plate': 1, 
-            'end_plate': 20,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 1, 
+            END_PLATE: 20,
+            SCREEN_TYPE: 'small_molecule' })
 
         logger.info('create and load well data...')
         plate = 1
@@ -3706,12 +3986,12 @@ class ScreenResultResource(DBResourceTestCase):
         
         logger.info('create library...')
         library1 = self.create_library({
-            'start_plate': 1, 
-            'end_plate': 20,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 1, 
+            END_PLATE: 20,
+            SCREEN_TYPE: 'small_molecule' })
 
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
 
         logger.info('create and load well data...')
         input_data = []
@@ -3948,7 +4228,7 @@ class ScreenResultResource(DBResourceTestCase):
         self._setup_test_config()
         
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
         self.screen1 = screen
         
         screen_facility_id = screen['facility_id']
@@ -4109,7 +4389,7 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info(
             'Mutual positives: Create another an overlapping screen result...')
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
         self.screen2 = screen
         screen_facility_id = screen['facility_id']
         logger.info('created screen %r', screen_facility_id)        
@@ -4244,9 +4524,9 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('test4_result_value_errors_from_file...')
         logger.info('create library...')
         library1 = self.create_library({
-            'start_plate': 1, 
-            'end_plate': 20,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 1, 
+            END_PLATE: 20,
+            SCREEN_TYPE: 'small_molecule' })
 
         logger.info('create and load well data...')
         input_data = []
@@ -4272,7 +4552,7 @@ class ScreenResultResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
 
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
         
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
@@ -4339,12 +4619,12 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('test5_data_column_errors...')
         logger.info('create library...')
         library1 = self.create_library({
-            'start_plate': 1, 
-            'end_plate': 20,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 1, 
+            END_PLATE: 20,
+            SCREEN_TYPE: 'small_molecule' })
 
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
         
         fields = {
             'E': {
@@ -4467,7 +4747,7 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('test6_duplicate_wells...')
 
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
         
         fields = {
             'E': {
@@ -4649,7 +4929,7 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('test6_duplicate_wells...')
 
         logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen = self.create_screen({ SCREEN_TYPE: 'small_molecule' })
         
         fields = {
             'E': {
@@ -4808,7 +5088,7 @@ class ScreenResource(DBResourceTestCase):
 
         logger.info('test1_create_screen...')        
         data = {
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
         }
         screen_item = self.create_screen(data=data)
@@ -4827,7 +5107,7 @@ class ScreenResource(DBResourceTestCase):
 
         logger.info('test1_create_screen...')        
         data = {
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
             'species': 'bacteria',
             'facility_id': '10'
@@ -4847,7 +5127,7 @@ class ScreenResource(DBResourceTestCase):
     def test1b_create_follow_up_screen(self):    
         logger.info('test1_create_screen...')        
         data = {
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
             'species': 'bacteria',
         }
@@ -4872,7 +5152,7 @@ class ScreenResource(DBResourceTestCase):
             'lab_head_id': screen_item['lab_head_id'],
             'collaborator_ids': screen_item['collaborator_ids'],
             'data_sharing_level': screen_item['data_sharing_level'],
-            'screen_type': screen_item['screen_type']
+            SCREEN_TYPE: screen_item[SCREEN_TYPE]
         }
         
         resource_uri = BASE_URI_DB + '/screen?override=true'
@@ -4904,7 +5184,7 @@ class ScreenResource(DBResourceTestCase):
         input_data = ScreenFactory.attributes()
         data = {
             'facility_id': '100000',
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
             'study_type': 'in_silico',
             'data_sharing_level': None,
             'lab_head_id': lab_head['screensaver_user_id'],
@@ -4966,14 +5246,14 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('create libraries...')
         library1 = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1005,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 1000, 
+            END_PLATE: 1005,
+            SCREEN_TYPE: 'small_molecule' })
 
         library2 = self.create_library({
-            'start_plate': 2000, 
-            'end_plate': 2040,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 2000, 
+            END_PLATE: 2040,
+            SCREEN_TYPE: 'small_molecule' })
 
         logger.info('set some experimental wells...')
         plate = 1000
@@ -5023,7 +5303,7 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('create screen...')        
         screen = self.create_screen({
-            'screen_type': 'small_molecule'
+            SCREEN_TYPE: 'small_molecule'
             })
 
         logger.info('1. Modify copy-wells (to be used for screening)')
@@ -5086,8 +5366,8 @@ class ScreenResource(DBResourceTestCase):
             '{library_short_name}:{copy_name}:{{start_plate}}-{{end_plate}}'
         plate_range1 = lps_format.format(**library_copy1).format(**library1)
         plate_range2 = lps_format.format(**library_copy2).format(
-                start_plate=library2['start_plate'],
-                end_plate=int(library2['start_plate']+10))
+                start_plate=library2[START_PLATE],
+                end_plate=int(library2[START_PLATE]+10))
         library_plates_screened = [ plate_range1, plate_range2 ]
         volume_to_transfer = "0.000000600"
         library_screening_input = {
@@ -5219,12 +5499,12 @@ class ScreenResource(DBResourceTestCase):
         # 2. deallocate (remove) the screening plate with the copy and check  
         # copywell volume has been adjusted
         plate_range1 = lps_format.format(**library_copy1).format(
-            start_plate=library1['start_plate']+1, end_plate=library1['end_plate'])
+            start_plate=library1[START_PLATE]+1, end_plate=library1[END_PLATE])
         plate_removed_key = '/'.join([ library1['short_name'],
-            library_copy1['copy_name'], str(library1['start_plate']) ])
+            library_copy1['copy_name'], str(library1[START_PLATE]) ])
         plate_range2 = lps_format.format(**library_copy2).format(
-                start_plate=library2['start_plate'],
-                end_plate=int(library2['start_plate']+10))
+                start_plate=library2[START_PLATE],
+                end_plate=int(library2[START_PLATE]+10))
         library_plates_screened = [ plate_range1, plate_range2 ]
         new_library_screening_input = library_screening_output.copy()
         new_library_screening_input['library_plates_screened'] = \
@@ -5302,7 +5582,7 @@ class ScreenResource(DBResourceTestCase):
         logger.info('apilog: %r', apilog)
         
         self.assertTrue('library_plates_screened_count' in apilog['diffs'])
-        self.assertTrue( '["17", "16"]' in apilog['diffs'])
+        self.assertEqual( ['17','16'], apilog['diffs']['library_plates_screened_count'])
 
         expected_child_logs = 2 #  1 plate log, 1 copywell log
         self.assertTrue(apilog['child_logs'], expected_child_logs)
@@ -5344,14 +5624,14 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('create library...')
         library1 = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1005,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 1000, 
+            END_PLATE: 1005,
+            SCREEN_TYPE: 'small_molecule' })
 
         library2 = self.create_library({
-            'start_plate': 2000, 
-            'end_plate': 2040,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 2000, 
+            END_PLATE: 2040,
+            SCREEN_TYPE: 'small_molecule' })
 
         logger.info('set some experimental wells...')
         plate = 1000
@@ -5419,15 +5699,15 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('create screen...')        
         screen = self.create_screen({
-            'screen_type': 'small_molecule'
+            SCREEN_TYPE: 'small_molecule'
             })
 
         lps_format = \
             '{library_short_name}:{copy_name}:{{start_plate}}-{{end_plate}}'
         plate_range1 = lps_format.format(**library_copy1).format(**library1)
         plate_range2 = lps_format.format(**library_copy2).format(
-                start_plate=library2['start_plate'],
-                end_plate=int(library2['start_plate']+10))
+                start_plate=library2[START_PLATE],
+                end_plate=int(library2[START_PLATE]+10))
         library_plates_screened = [ plate_range1, plate_range2 ]
         expected_plate_count = 6 + 11 # 1000-1005, 2000-2010
         
@@ -5486,8 +5766,8 @@ class ScreenResource(DBResourceTestCase):
         logger.info('3. test invalid plate range')
         key = 'library_plates_screened' 
         value = [ lps_format.format(**library_copy1).format(**{
-            'start_plate': library1['start_plate'],
-            'end_plate': int(library1['start_plate'])-1 }) ]
+            START_PLATE: library1[START_PLATE],
+            END_PLATE: int(library1[START_PLATE])-1 }) ]
         msg = 'invalid plate range in %r for  %r should fail' % (value,key)
         invalid_input3 = library_screening_input.copy()
         invalid_input3[key] =  value
@@ -5501,11 +5781,11 @@ class ScreenResource(DBResourceTestCase):
         key = 'library_plates_screened' 
         value = [ 
             lps_format.format(**library_copy2).format(**{
-                'start_plate': library2['start_plate'],
-                'end_plate': int(library2['start_plate'])+2 }),
+                START_PLATE: library2[START_PLATE],
+                END_PLATE: int(library2[START_PLATE])+2 }),
             lps_format.format(**library_copy2).format(**{
-                'start_plate': library2['start_plate']+1,
-                'end_plate': int(library2['start_plate'])+4 }),
+                START_PLATE: library2[START_PLATE]+1,
+                END_PLATE: int(library2[START_PLATE])+4 }),
         ]
         msg = '4 - overlapping plate ranges in %r for  %r should fail' % (value,key)
         logger.info('test %r', msg)
@@ -5575,7 +5855,7 @@ class ScreenResource(DBResourceTestCase):
         # retrieve plates from the server
         _data_for_get = { 
             'plate_number__range': 
-                [library1['start_plate'],library1['end_plate']],
+                [library1[START_PLATE],library1[END_PLATE]],
             'copy_name__eq': library_copy1['copy_name']
             }
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -5583,7 +5863,7 @@ class ScreenResource(DBResourceTestCase):
             plate_resource_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)
         new_obj = self.deserialize(resp)
-        expected_plates = library1['end_plate']-library1['start_plate']+1
+        expected_plates = library1[END_PLATE]-library1[START_PLATE]+1
         self.assertTrue(len(new_obj[API_RESULT_DATA]),expected_plates)
         
         expected_remaining_volume = (
@@ -5647,9 +5927,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('apilog: %r', apilog)
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
         self.assertTrue('library_plates_screened' in apilog['diff_keys'])
-        self.assertTrue(plate_range1 in apilog['diffs'], 
+        self.assertTrue(plate_range1 in apilog['diffs']['library_plates_screened'][1], 
             'plate_range1: %r not in diffs: %r'
-            % (plate_range1, apilog['diffs']))
+            % (plate_range1, apilog['diffs']['library_plates_screened']))
         
         self.assertTrue(apilog['child_logs'] == expected_plate_count, 
             'wrong child_logs count: %r' % apilog)
@@ -5677,11 +5957,11 @@ class ScreenResource(DBResourceTestCase):
             Decimal(library_screening_output[
                 'volume_transferred_per_well_from_library_plates']))
         self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
-        diffs = json.loads(apilog['diffs'])
-        logger.info('diffs: %r', diffs)
+#         diffs = json.loads(apilog['diffs'])
+        logger.info('diffs: %r', apilog['diffs'])
         self.assertEqual(
             expected_remaining_volume, 
-            Decimal(diffs['remaining_well_volume'][1]))
+            Decimal(apilog['diffs']['remaining_well_volume'][1]))
         
         # 11 Add a plate range:
         # Inspect PATCH logs after adding a plate range
@@ -5694,8 +5974,8 @@ class ScreenResource(DBResourceTestCase):
             }
         
         # add 6 more plates
-        added_plate_range_start = library2['start_plate']+15
-        added_plate_range_end = library2['start_plate']+20
+        added_plate_range_start = library2[START_PLATE]+15
+        added_plate_range_end = library2[START_PLATE]+20
         
         expected_updated_plate_count = 6
         extant_plate_count = expected_plate_count
@@ -5761,9 +6041,10 @@ class ScreenResource(DBResourceTestCase):
         apilog = apilogs[0]
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
         self.assertTrue('library_plates_screened' in apilog['diff_keys'])
-        self.assertTrue(added_plate_range in apilog['diffs'], 
+        self.assertTrue(added_plate_range 
+            in apilog['diffs']['library_plates_screened'][1], 
             'added_plate_range: %r not in diffs: %r'
-            % (added_plate_range, apilog['diffs']))
+            % (added_plate_range, apilog['diffs']['library_plates_screened'][1]))
         
         self.assertTrue(apilog['child_logs'] == 6, 
             'wrong child_logs count: %r' % apilog)
@@ -5788,11 +6069,11 @@ class ScreenResource(DBResourceTestCase):
             Decimal(library_screening_output2[
                 'volume_transferred_per_well_from_library_plates']))
         self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
-        diffs = json.loads(apilog['diffs'])
-        logger.info('diffs: %r', diffs)
+#         diffs = json.loads(apilog['diffs'])
+        logger.info('diffs: %r', apilog['diffs'])
         self.assertEqual(
             expected_remaining_volume, 
-            Decimal(diffs['remaining_well_volume'][1]))
+            Decimal(apilog['diffs']['remaining_well_volume'][1]))
         
         # 11.e check a modified plate
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -5853,7 +6134,7 @@ class ScreenResource(DBResourceTestCase):
         # retrieve plates from the server
         _data_for_get = { 
             'plate_number__range': 
-                [library1['start_plate'],library1['end_plate']],
+                [library1[START_PLATE],library1[END_PLATE]],
             'copy_name__eq': library_copy1['copy_name']
             }
         plate_resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -5861,7 +6142,7 @@ class ScreenResource(DBResourceTestCase):
             plate_resource_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)
         new_obj = self.deserialize(resp)
-        expected_plates = library1['end_plate']-library1['start_plate']+1
+        expected_plates = library1[END_PLATE]-library1[START_PLATE]+1
         self.assertTrue(len(new_obj[API_RESULT_DATA]),expected_plates)
         
         expected_remaining_volume = \
@@ -5887,13 +6168,13 @@ class ScreenResource(DBResourceTestCase):
         library_plates_screened = [
             single_plate_lps_format.format(**library_copy1).format(**library1),
             single_plate_lps_format.format(**library_copy2).format(
-                start_plate=library2['start_plate'])
+                start_plate=library2[START_PLATE])
         ]
         library_plates_screened_return_formatted = [
             single_plate_lps_return_format.format(
                 **library_copy1).format(**library1),
             single_plate_lps_return_format.format(**library_copy2).format(
-                start_plate=library2['start_plate'])
+                start_plate=library2[START_PLATE])
         ]
 
         library_screening_input4 = library_screening_input.copy()
@@ -5994,7 +6275,7 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('create screen...')        
         screen = self.create_screen({
-            'screen_type': 'small_molecule'
+            SCREEN_TYPE: 'small_molecule'
             })
         
         publication_data = {
@@ -6100,8 +6381,10 @@ class ScreenResource(DBResourceTestCase):
         apilog = apilogs[0]
         logger.info('publication log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
-        self.assertTrue('attached_filename' in apilog['diff_keys'])
-        self.assertTrue(base_filename in apilog['diffs'])
+        self.assertTrue(
+            SCHEMA.PUBLICATION.ATTACHED_FILENAME in apilog['diff_keys'])
+        self.assertTrue(
+            base_filename in apilog['diffs'][SCHEMA.PUBLICATION.ATTACHED_FILENAME][1])
         
         return publication_received
         
@@ -6164,7 +6447,7 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test5_pin_transfer_approval...')
         # Create a Screen
         data = {
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
         }
         screen_item = self.create_screen(data=data)
         
@@ -6243,7 +6526,7 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test6_service_activity...')
         # Create a Screen
         data = {
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
         }
         screen_item = self.create_screen(data=data)
         
@@ -6311,14 +6594,14 @@ class ScreenResource(DBResourceTestCase):
 
         # 1.B Create the test screens
         
-        start_plate = self.duplex_library1['start_plate']
-        end_plate = self.duplex_library1['end_plate']
+        start_plate = self.duplex_library1[START_PLATE]
+        end_plate = self.duplex_library1[END_PLATE]
         well_ids_to_create = []
         for plate_number in range(start_plate, end_plate+1):
             well_ids_to_create += ['%05d:A0%d' % (plate_number, i) for i in range(1,10)]
 
         screen1confirmed = self.create_screen({
-            'screen_type': 'rnai'
+            SCREEN_TYPE: 'rnai'
             })
         logger.info('created screen: %s', screen1confirmed['facility_id'])
         self.create_screen_result_for_test(
@@ -6330,7 +6613,7 @@ class ScreenResource(DBResourceTestCase):
                 '%05d:A05'%start_plate,
             ])
         screen2confirmed = self.create_screen({
-            'screen_type': 'rnai'
+            SCREEN_TYPE: 'rnai'
             })
         self.create_screen_result_for_test(
             screen2confirmed['facility_id'], well_ids_to_create,
@@ -6343,7 +6626,7 @@ class ScreenResource(DBResourceTestCase):
             ])
 
         screen3confirmed = self.create_screen({
-            'screen_type': 'rnai'
+            SCREEN_TYPE: 'rnai'
             })
         self.create_screen_result_for_test(
             screen3confirmed['facility_id'], well_ids_to_create,
@@ -6357,7 +6640,7 @@ class ScreenResource(DBResourceTestCase):
             ])
         
         screen4confirmed = self.create_screen({
-            'screen_type': 'rnai'
+            SCREEN_TYPE: 'rnai'
             })
         self.create_screen_result_for_test(
             screen4confirmed['facility_id'], well_ids_to_create,
@@ -6377,7 +6660,7 @@ class ScreenResource(DBResourceTestCase):
         lead_screener = self.create_screening_user(user_data)
         facility_id = '10'
         data = {
-            'screen_type': 'rnai',
+            SCREEN_TYPE: 'rnai',
             'title': 'Test Confirmed Positives Study',
             'study_type': 'in_silico',
             'facility_id': facility_id,
@@ -6418,7 +6701,7 @@ class ScreenResource(DBResourceTestCase):
             }
         for i,rv in enumerate(result_data['objects']):
             logger.info('result_value: %r', rv)
-            if rv['well_id'] == '%05d:A02' % self.pool_library1['start_plate']:
+            if rv['well_id'] == '%05d:A02' % self.pool_library1[START_PLATE]:
                 self.assertEqual(
                     rv[col_map['Weighted Average']], '2.5' )
                 self.assertEqual(
@@ -6433,7 +6716,7 @@ class ScreenResource(DBResourceTestCase):
                     rv[col_map['confirmed_3']], 1 )
                 self.assertEqual(
                     rv[col_map['confirmed_4']], 1 )
-            elif rv['well_id'] == '%05d:A03' % self.pool_library1['start_plate']:
+            elif rv['well_id'] == '%05d:A03' % self.pool_library1[START_PLATE]:
                 self.assertEqual(
                     rv[col_map['Weighted Average']], '1.33' )
                 self.assertEqual(
@@ -6448,7 +6731,7 @@ class ScreenResource(DBResourceTestCase):
                     rv[col_map['confirmed_3']], 1 )
                 self.assertEqual(
                     rv[col_map['confirmed_4']], 0 )
-            elif rv['well_id'] == '%05d:A04' % self.pool_library1['start_plate']:
+            elif rv['well_id'] == '%05d:A04' % self.pool_library1[START_PLATE]:
                 self.assertEqual(
                     rv[col_map['Weighted Average']], '0.5' )
                 self.assertEqual(
@@ -6463,7 +6746,7 @@ class ScreenResource(DBResourceTestCase):
                     rv[col_map['confirmed_3']], 0 )
                 self.assertEqual(
                     rv[col_map['confirmed_4']], 0 )
-            elif rv['well_id'] == '%05d:A05' % self.pool_library1['start_plate']:
+            elif rv['well_id'] == '%05d:A05' % self.pool_library1[START_PLATE]:
                 self.assertEqual(
                     rv[col_map['Weighted Average']], '1.0' )
                 self.assertEqual(
@@ -6491,9 +6774,9 @@ class ScreenResource(DBResourceTestCase):
         start_plate = 1000
         end_plate = 1002
         self.library1 = self.create_library({
-            'start_plate': start_plate, 
-            'end_plate': end_plate,
-            'screen_type': 'small_molecule' })
+            START_PLATE: start_plate, 
+            END_PLATE: end_plate,
+            SCREEN_TYPE: 'small_molecule' })
         experimental_well_count = 384
         input_well_data = []
         for plate in range(start_plate, end_plate+1):
@@ -6523,7 +6806,7 @@ class ScreenResource(DBResourceTestCase):
             well_ids_to_create += ['%05d:A0%d' % (plate_number, i) for i in range(1,10)]
         
         screen1confirmed = self.create_screen({
-            'screen_type': 'small_molecule'
+            SCREEN_TYPE: 'small_molecule'
             })
         logger.info('created screen: %s', screen1confirmed['facility_id'])
         self.create_screen_result_for_test(
@@ -6535,7 +6818,7 @@ class ScreenResource(DBResourceTestCase):
                 '%05d:A05'%start_plate,
             ])
         screen2confirmed = self.create_screen({
-            'screen_type': 'small_molecule'
+            SCREEN_TYPE: 'small_molecule'
             })
         self.create_screen_result_for_test(
             screen2confirmed['facility_id'], well_ids_to_create,
@@ -6553,7 +6836,7 @@ class ScreenResource(DBResourceTestCase):
         lead_screener = self.create_screening_user(user_data)
         facility_id = '10'
         data = {
-            'screen_type': 'small_molecule',
+            SCREEN_TYPE: 'small_molecule',
             'title': 'Test Reagent Counts Study',
             'study_type': 'in_silico',
             'facility_id': facility_id,
@@ -6658,20 +6941,20 @@ class CherryPickRequestResource(DBResourceTestCase):
 
         logger.info('create library...')
         self.library1 = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1005,
-            'screen_type': 'small_molecule',
+            START_PLATE: 1000, 
+            END_PLATE: 1005,
+            SCREEN_TYPE: 'small_molecule',
              })
         self.library2 = self.create_library({
-            'start_plate': 2000, 
-            'end_plate': 2040,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 2000, 
+            END_PLATE: 2040,
+            SCREEN_TYPE: 'small_molecule' })
 
         # library 3 will contain alternate reagents for library1
         self.library3 = self.create_library({
-            'start_plate': 3000, 
-            'end_plate': 3005,
-            'screen_type': 'small_molecule',
+            START_PLATE: 3000, 
+            END_PLATE: 3005,
+            SCREEN_TYPE: 'small_molecule',
             # Create a restricted library to test warnings
             'screening_status': VOCAB.library.screening_status.REQUIRES_PERMISSION 
             })
@@ -6679,9 +6962,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         # library4: source wells will be forced to another destination plate,
         # if "keep_source_cherry_picks_together" is true 
         self.library4 = self.create_library({
-            'start_plate': 4000, 
-            'end_plate': 4001,
-            'screen_type': 'small_molecule' })
+            START_PLATE: 4000, 
+            END_PLATE: 4001,
+            SCREEN_TYPE: 'small_molecule' })
         
         logger.info('set some experimental wells...')
         experimental_well_count = 384
@@ -6832,7 +7115,7 @@ class CherryPickRequestResource(DBResourceTestCase):
 
         logger.info('create screen...')        
         self.screen = self.create_screen({
-            'screen_type': 'small_molecule'
+            SCREEN_TYPE: 'small_molecule'
             })
     
     def _create_cherry_pick_request(self, screen, data=None):
@@ -6939,7 +7222,7 @@ class CherryPickRequestResource(DBResourceTestCase):
  
         logger.info('create rnai screen...')        
         self.rnai_screen = self.create_screen({
-            'screen_type': 'rnai'
+            SCREEN_TYPE: 'rnai'
             })    
 
         cpr_data = self._create_cherry_pick_request(self.rnai_screen)
@@ -7180,7 +7463,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             self.create_plate_range(
                 self.library1['short_name'], 
                 self.library1_copy3['copy_name'], 
-                self.library1['start_plate'], self.library1['end_plate'] )]
+                self.library1[START_PLATE], self.library1[END_PLATE] )]
         
         volume_to_transfer = Decimal(self.library1_copy3['max_plate_volume'])/5
 
@@ -7749,7 +8032,9 @@ class CherryPickRequestResource(DBResourceTestCase):
                 len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
             apilog = apilogs[0]
             self.assertTrue('date_volume_reserved' in apilog['diffs'])
-            self.assertTrue(expected_date in apilog['diffs'])
+            self.assertEqual(
+                expected_date,
+                apilog['diffs']['date_volume_reserved'][1])
             
         except AssertionError:
             logger.exception(
@@ -8531,15 +8816,18 @@ class CherryPickRequestResource(DBResourceTestCase):
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
-        logger.debug('date_volume_reserved logs: %r', apilogs)
+        logger.info('date_volume_reserved logs: %r', apilogs)
         
         # Find the deallocate log:
         deallocate_log = None
         for apilog in apilogs:
-            diffs = json.loads(apilog['diffs'])
-            logger.info('diffs: %r', diffs)
-            if diffs['date_volume_reserved'][1] is None:
-                deallocate_log = apilog
+            if 'date_volume_reserved' in apilog['diffs']:
+                logger.info('diffs: %r', apilog['diffs']['date_volume_reserved'])
+                if apilog['diffs']['date_volume_reserved'][1] is None:
+                    deallocate_log = apilog
+        logger.info('deallocate log: %r', deallocate_log)
+        self.assertIsNotNone(
+            deallocate_log, 'could not find deallocate log in: %r' % apilogs)
         data_for_get={ 
             'limit': 0, 
             'parent_log_id': deallocate_log['id']
@@ -9044,6 +9332,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             self.assertEqual(plating_data['plating_date'],cpap['plating_date'])
         
         #1.c Verify plating_date logs
+        logger.info('look for plating_date in the logs: %r', plating_data['plating_date'])
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
@@ -9057,7 +9346,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(
             len(apilogs)==1, 'wrong number apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        self.assertTrue(plating_data['plating_date'] in apilog['diffs'],
+        self.assertTrue('last_plating_activity_date' in apilog['diffs'])
+        self.assertEqual(
+            plating_data['plating_date'],
+            apilog['diffs']['last_plating_activity_date'][1],
             'wrong diffs: %r' % apilog)
         self.assertEqual(plating_data['comments'], apilog['comment'])
 
@@ -9071,8 +9363,11 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertEqual(len(apilogs),len(cpaps), 
             'wrong number cpap apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        self.assertTrue(plating_data['plating_date'] in apilog['diffs'],
-            'wrong diffs: %r' % apilog)
+        self.assertTrue('plating_date' in apilog['diffs'])
+        self.assertEqual(
+            plating_data['plating_date'],
+            apilog['diffs']['plating_date'][1],
+            'wrong diffs: plating_date: %r, %r' % (plating_data['plating_date'], apilog))
         self.assertEqual(plating_data['comments'], apilog['comment'])
         
         #2. Patch the screening date
@@ -9119,6 +9414,7 @@ class CherryPickRequestResource(DBResourceTestCase):
                 screening_data['screening_date'],cpap['screening_date'])
         
         #2.c Verify screening_date logs
+        logger.info('look for screening_date in the logs: %r', screening_data['screening_date'])
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
@@ -9132,7 +9428,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(len(apilogs)==1, 
             'wrong number apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        self.assertTrue(screening_data['screening_date'] in apilog['diffs'],
+        self.assertTrue('last_screening_activity_date' in apilog['diffs'])
+        self.assertEqual(
+            screening_data['screening_date'],
+            apilog['diffs']['last_screening_activity_date'][1],
             'wrong diffs: %r' % apilog)
         self.assertEqual(screening_data['comments'], apilog['comment'])
 
@@ -9146,7 +9445,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertEqual(len(apilogs),len(cpaps), 
             'wrong number cpap apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        self.assertTrue(screening_data['screening_date'] in apilog['diffs'],
+        self.assertTrue('screening_date' in apilog['diffs'])
+        self.assertEqual(
+            screening_data['screening_date'],
+            apilog['diffs']['screening_date'][1],
             'wrong diffs: %r' % apilog)
         self.assertEqual(screening_data['comments'], apilog['comment'])
         
@@ -9913,9 +10215,9 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
         self.assertTrue('status' in apilog['diff_keys'])
-        diffs = json.loads(apilog['diffs'])
-        self.assertTrue('status' in diffs)
-        self.assertTrue('activated' in diffs['status'])
+#         diffs = json.loads(apilog['diffs'])
+        self.assertTrue('status' in apilog['diffs'])
+        self.assertTrue('activated' in apilog['diffs']['status'])
         self.assertEqual(admin_performing_operation, apilog['username'],
             'wrong admin username recorded: %r'% apilog)
         
@@ -9974,9 +10276,9 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
         self.assertTrue('status' in apilog['diff_keys'])
-        diffs = json.loads(apilog['diffs'])
-        self.assertTrue('status' in diffs)
-        self.assertTrue('deactivated' in diffs['status'])
+#         diffs = json.loads(apilog['diffs'])
+        self.assertTrue('status' in apilog['diffs'])
+        self.assertTrue('deactivated' in apilog['diffs']['status'])
         self.assertEqual(admin_performing_operation, apilog['username'],
             'wrong admin username recorded: %r'% apilog)
         
@@ -10818,7 +11120,7 @@ class DataSharingLevel(DBResourceTestCase):
                 
                 # Create screens for each lab, by level
                 screen_data = {
-                    'screen_type': 'small_molecule',
+                    SCREEN_TYPE: 'small_molecule',
                     'lab_head_id': lab_head['screensaver_user_id'],
                     'lead_screener_id': lead_screener['screensaver_user_id'],
                     'collaborator_ids': [collaborator['screensaver_user_id'],],
@@ -10936,9 +11238,9 @@ class DataSharingLevel(DBResourceTestCase):
             logger.info('library not found, creating: %s', short_name)
             self.library1 = self.create_library({
                 'short_name': short_name,
-                'start_plate': 1, 
-                'end_plate': 20,
-                'screen_type': 'small_molecule' })
+                START_PLATE: 1, 
+                END_PLATE: 20,
+                SCREEN_TYPE: 'small_molecule' })
     
             logger.info('create wells...')
             plate = 1
@@ -11474,7 +11776,7 @@ class DataSharingLevel(DBResourceTestCase):
         else:
             self.assertEqual(SCREEN_AVAILABILITY.AVAILABLE, reported_screen[key])
             
-            data = { 'screen_type': reference_screen['screen_type'] }
+            data = { SCREEN_TYPE: reference_screen[SCREEN_TYPE] }
             reference_datacolumns = self.get_datacolumns(data=data)
             reference_datacolumns_by_key = {
                 dc['key']: dc for dc in reference_datacolumns }
@@ -12711,7 +13013,7 @@ class RawDataTransformer(DBResourceTestCase):
         self._setup_duplex_data(control_wells=all_controls)
         
         test_screen = self.create_screen({
-            'screen_type': 'rnai'
+            SCREEN_TYPE: 'rnai'
             })
         logger.info('created screen: %s', test_screen['facility_id'])
         
@@ -12720,9 +13022,9 @@ class RawDataTransformer(DBResourceTestCase):
         
         expected_matrices = []
         number_of_matrices = 12
-        start_plate = self.duplex_library1['start_plate']
+        start_plate = self.duplex_library1[START_PLATE]
         end_plate = start_plate + 3
-        if end_plate > self.duplex_library1['end_plate']:
+        if end_plate > self.duplex_library1[END_PLATE]:
             self.fail('duplex library does not have enough plates: %r' 
                 % self.duplex_library1)
         # Create a plate range that is not in numerical order and reversed

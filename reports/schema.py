@@ -47,6 +47,13 @@ class schema_obj(object):
             (k,getattr(cls,k)) for k in dir(cls) 
                 if k[0].isupper() and callable(getattr(cls, k)) is not True ))
 
+class ERROR(schema_obj):
+    # Note: there is no ErrorResource
+    resource_name = 'errors'
+    
+    LINE = 'line'
+
+
 # Define API resources
 class RESOURCE(schema_obj):
     ''' Constants for the Resource resource: constant field names'''
@@ -86,6 +93,20 @@ class FIELD(schema_obj):
     DATA_ACCESS_LEVEL = 'data_access_level'
     VIEW_GROUPS = 'view_groups' 
 
+class VOCABULARY(schema_obj):
+    resource_name = 'vocabulary'
+    
+    TITLE = 'title'
+    KEY = 'key'
+    SCOPE = 'scope'
+    ORDINAL = 'ordinal'
+    TITLE = 'title'
+    COMMENT = 'comment'
+    DESCRIPTION = 'description'
+    IS_RETIRED = 'is_retired'
+    #'expire_interval_days'
+    #'expire_notifiy_days'  
+
 class USER(schema_obj):
     resource_name = 'user'
     
@@ -98,6 +119,21 @@ class USER(schema_obj):
     IS_ACTIVE = 'is_active'
     IS_STAFF = 'is_staff'
     IS_SUPERUSER = 'is_superuser'
+    
+class USERGROUP(schema_obj):
+    resource_name = 'usergroup'
+    
+    NAME = 'name'
+    DESCRIPTION = 'description'
+    USERS = 'users'
+    SUPER_GROUPS = 'super_groups'
+    SUB_GROUPS = 'sub_groups'
+    PERMISSIONS = 'permissions'
+    ALL_SUB_GROUPS = 'all_sub_groups'
+    ALL_SUPER_GROUPS = 'all_super_groups'
+    ALL_USERS = 'all_users'
+    ALL_PERMISSIONS = 'all_permissions'
+    
     
 class PERMISSION(schema_obj):
     resource_name = 'permission'
@@ -154,6 +190,7 @@ class APILOG(schema_obj):
     PARENT_LOG_URI = 'parent_log_uri'
     PARENT_LOG_ID = 'parent_log_id'
     LOG_URI = 'log_uri'
+    IS_PREVIEW = 'is_preview'
 
     
 class VOCAB(schema_obj):

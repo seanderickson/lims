@@ -17,6 +17,7 @@ from reports import ParseError, ValidationError, LIST_DELIMITER_SQL_ARRAY
 from reports.serialize import parse_val
 from reports.serialize.xlsutils import sheet_cols, sheet_rows, \
     workbook_sheets, generic_xls_write_workbook
+from db.schema import SCREEN_RESULT
 
 
 logger = logging.getLogger(__name__)
@@ -454,6 +455,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
     logger.info('data_column_names_to_col_letter: %r', 
         data_column_names_to_col_letter)
 
+    logger.info('Build the data columns worksheet...')
     # Transpose/Pivot the field definitions into the output data_column sheet:
     # Row 0 - "Data" Worksheet Column
     # Row 1 - name
@@ -524,6 +526,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
         data_column_structure.append(OrderedDict(zip(header_row,row)))
 
     data['Data Columns'] = data_column_structure
+    logger.info('Data columns worksheet built.')
 
     # 3. Result Values sheet 
     def result_value_generator(result_values):
@@ -535,7 +538,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
             values using the ASSAY_WELL_CONTROL_TYPES mapping
         '''
         
-        logger.info('Write the result values sheet')
+        logger.info('Write the result values sheet...')
         header_row = []
         header_row.extend(RESULT_VALUE_FIELD_MAP.keys())
         header_row.extend([
@@ -552,8 +555,12 @@ def create_output_data(screen_facility_id, fields, result_values ):
             row = []
             
             row.extend(result_value['well_id'].split(':'))
-            if ( result_value.has_key('assay_well_control_type')
-                 and result_value['assay_well_control_type'] ):
+            
+            control_type = result_value.get(SCREEN_RESULT.ASSAY_CONTROL_TYPE)
+            if control_type:
+#             if ( result_value.has_key('assay_well_control_type')
+#                  and result_value['assay_well_control_type'] ):
+#                 logger.info('control_type: %r', control_type)
                 control_type = default_converter(
                     result_value['assay_well_control_type'])
                 # note: "empty", "experimental", "buffer" are values that can be

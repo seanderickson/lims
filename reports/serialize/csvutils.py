@@ -48,6 +48,7 @@ def input_spreadsheet_reader(iterable, list_delimiters=None, list_keys=None):
     '''
     Return an custom "DictReader" for row based input, representing a 
     csv-like input matrix.
+    @param iterable of rows; rows are simple lists of raw string values from file
     - The first row is interpreted as the keys to the (dict) for the entire read.
     - Supports nested lists; data that is either surrounded by brackets "[]", or designated
     by the "list_keys" parameter is read in as a list-of-values;

@@ -5,6 +5,7 @@ import cStringIO
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
 from decimal import Decimal
+from functools import wraps
 import hashlib
 import io
 import json
@@ -81,12 +82,14 @@ from lims.app_data import APP_PUBLIC_DATA
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
-    LIST_DELIMITER_SUB_ARRAY
+    CumulativeError, LIST_DELIMITER_SUB_ARRAY
 from reports import ValidationError, InformationError, _now
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_SUCCESS, API_RESULT_DATA, \
     API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
+    API_PARAM_PATCH_PREVIEW_MODE, API_PARAM_NO_BACKGROUND, API_PARAM_PREVIEW_LOGS, \
+    API_PARAM_SHOW_PREVIEW, \
     DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
     background_job
 from reports.api import ApiLogResource, UserGroupAuthorization, \
@@ -99,7 +102,7 @@ from reports.models import Vocabulary, ApiLog, UserProfile
 from reports.schema import DATE_FORMAT
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE, \
-    INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, csvutils
+    INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, csvutils, LimsJSONEncoder
 from reports.serialize.csvutils import convert_list_vals
 from reports.serialize.streaming_serializers import ChunkIterWrapper, \
     json_generator, cursor_generator, sdf_generator, generic_xlsx_response, \
@@ -113,7 +116,12 @@ from reports.sqlalchemy_resource import _concat, _concat_with_sep
 from reports.utils import sort_nicely, alphanum_key
 import schema as SCHEMA
 
+
+# Schema shortcuts
+
+FIELD = SCHEMA.FIELD
 WELL = SCHEMA.WELL
+SMALL_MOLECULE_REAGENT = SCHEMA.SMALL_MOLECULE_REAGENT
 
 WELL_TYPE = SCHEMA.VOCAB.well.library_well_type
 ASSAY_WELL_CONTROL = SCHEMA.VOCAB.assaywell.control_type
@@ -124,13 +132,13 @@ LCP_STATUS = SCHEMA.VOCAB.lab_cherry_pick.status
 SCREENING_STATUS = SCHEMA.VOCAB.library.screening_status
 API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
+##### API CONSTANTS
+# TODO: move to an API-accessible properties file
+
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 PSYCOPG_NULL = '\\N'
 MAX_SPOOLFILE_SIZE = 1024*1024
 MAX_WELL_FINDER_COUNT = 384*10000
-
-##### API CONSTANTS
-# TODO: move to an API-accessible properties file
 
 API_MSG_COPYWELLS_DEALLOCATED = 'Copy wells deallocated'
 API_MSG_COPYWELLS_ALLOCATED = 'Copy wells allocated'
@@ -4468,7 +4476,7 @@ class ScreenResultResource(DbApiResource):
         reagent_resource = self.get_reagent_resource(screenresult.screen.screen_type)
         base_reagent_tables = ['reagent','library','well']
         sub_columns = reagent_resource.build_sqlalchemy_columns(
-            base_fields, base_reagent_tables)
+            base_fields, base_query_tables=base_reagent_tables)
         for key,col in sub_columns.items():
             if key not in base_columns:
                 if DEBUG_SCREENRESULT: 
@@ -4567,7 +4575,7 @@ class ScreenResultResource(DbApiResource):
         # Get the reagent column definitions
         base_reagent_tables = ['reagent','library','well']
         sub_columns = reagent_resource.build_sqlalchemy_columns(
-            field_hash.values(), base_reagent_tables)
+            field_hash.values(), base_query_tables=base_reagent_tables)
         for key,col in sub_columns.items():
             if key not in columns:
                 columns[key] = col
@@ -4749,6 +4757,7 @@ class ScreenResultResource(DbApiResource):
         else:
             logger.info('do not use vocabularies')
 
+        # Custom serializer for screen results
         with get_engine().connect() as conn:
             if DEBUG_SCREENRESULT or logger.isEnabledFor(logging.DEBUG):
                 logger.info(
@@ -5222,7 +5231,7 @@ class ScreenResultResource(DbApiResource):
     def create_screen_result(self, request, screen, columns, result_values, **kwargs):
         '''
         Create screen results for the given screen (internal callers):
-        - if results exist, replaces them
+        - if results exist, replaces them.
         '''
         
         schema = self.build_schema(user=request.user)
@@ -5342,6 +5351,8 @@ class ScreenResultResource(DbApiResource):
 
             logger.debug(
                 'sheet_col_to_datacolumn: %r', sheet_col_to_datacolumn.keys())
+            
+            # Create Result Values
             try:
                 result_meta = self.create_result_values(
                     screen_result, result_values, sheet_col_to_datacolumn,
@@ -6558,13 +6569,15 @@ class CopyWellResource(DbApiResource):
 
             # specific setup 
             base_query_tables = [
-                'copy_well', 'copy', 'plate', 'well', 'library']
+                'copy_well', 'copy', 'plate', 'well', 'library', 'plate_location']
             
             _cw = self.bridge['copy_well']
             _c = self.bridge['copy']
             _l = self.bridge['library']
             _p = self.bridge['plate']
             _w = self.bridge['well']
+            _pl = self.bridge['plate_location']
+            
 
             # TODO: optimize query join order copy-plate, then all-copy-plate-well, 
             # then copy-plate-well to copy_well
@@ -6615,6 +6628,10 @@ class CopyWellResource(DbApiResource):
                 'cumulative_freeze_thaw_count': (
                     (func.coalesce(_p.c.screening_count,0) 
                         + func.coalesce(_p.c.cplt_screening_count,0))),
+                'location': (
+                    _concat_with_sep(
+                        (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-')
+                    ),
                 
                 
                 # 'adjustments': case([
@@ -6639,6 +6656,7 @@ class CopyWellResource(DbApiResource):
             j = j.join(_p, and_(
                 _p.c.copy_id == _c.c.copy_id,
                 _w.c.plate_number == _p.c.plate_number))
+            j = j.join(_pl, _p.c.plate_location_id==_pl.c.plate_location_id, isouter=True)
             j = j.join(_cw, and_(
                 _cw.c.well_id == _w.c.well_id,
                 _cw.c.copy_id == _c.c.copy_id), isouter=True )
@@ -6895,7 +6913,6 @@ class CopyWellResource(DbApiResource):
         plates_adjusted = set()
         # find copy-wells
         for lcp in lab_cherry_picks_to_deallocate:
-            logger.info('copywell to deallocate: %r', lcp)
             copy = lcp.copy
             if copy is None:
                 raise ProgrammingError(
@@ -8399,18 +8416,11 @@ class CherryPickRequestResource(DbApiResource):
         Create a new Cherry Pick Request
         - set the screener cherry picks if included
         '''
-        
-        
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
         fields = schema['fields']
-        initializer_dict = {}
-
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
-        
-        logger.info('patch CPR: %r', deserialized)
-        
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         logger.debug('param_hash: %r', param_hash)
@@ -8482,7 +8492,6 @@ class CherryPickRequestResource(DbApiResource):
                 raise ValidationError(
                     key=_key,
                     msg='does not exist: {val}'.format(val=_val))
-        logger.info('initializer_dict: %r', initializer_dict)
         _meta = {}
         try:
             if patch is not True:
@@ -8735,8 +8744,9 @@ class CherryPickRequestResource(DbApiResource):
         previous_date_reserved = cpr.date_volume_reserved
         cpr.date_volume_reserved = _now().date() 
         cpr.save()
-        parent_log.diffs = {
-            'date_volume_reserved': [previous_date_reserved, cpr.date_volume_reserved ]}
+        if previous_date_reserved != cpr.date_volume_reserved:
+            parent_log.diffs = {
+                'date_volume_reserved': [previous_date_reserved, cpr.date_volume_reserved ]}
         
         status_messages = []
         copywell_deallocation_meta = None
@@ -9046,7 +9056,7 @@ class CherryPickRequestResource(DbApiResource):
         parent_log.diffs.update({
             'number_plates': [previous_number_of_plates, len(assay_plates_created)]
             })
-        parent_log.json_field = _meta
+        parent_log.json_field = json.dumps(_meta, cls=LimsJSONEncoder)
         parent_log.save()
         
         return self.build_response(
@@ -9342,7 +9352,7 @@ class CherryPickRequestResource(DbApiResource):
 
         self.log_patch(request, original_cpr, new_cpr, parent_log, 
             excludes=['screener_cherry_picks'])
-        parent_log.json_field = meta
+        parent_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
         parent_log.save()
         logger.info('set_duplex_lab_cherry_picks: log: %r, %r', parent_log, parent_log.diffs)
         
@@ -9428,7 +9438,7 @@ class CherryPickRequestResource(DbApiResource):
             'cherry_pick_request_id': cpr_id })
         self.log_patch(request, original_cpr, new_cpr, parent_log, 
             excludes=['screener_cherry_picks'])
-        parent_log.json_field = meta
+        parent_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
         parent_log.save()
         logger.info('set_lab_cherry_picks: log: %r, %r', parent_log, parent_log.diffs)
         
@@ -9900,9 +9910,6 @@ class ScreenerCherryPickResource(DbApiResource):
             custom_columns=None):
         sub_columns = self.get_sr_resource().build_sqlalchemy_columns(fields)
         sub_columns.update(self.get_smr_resource().build_sqlalchemy_columns(fields))
-#         sub_columns['plate_number'] = (literal_column(
-#             "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
-#             .label('plate_number'))
         if custom_columns is not None:
             sub_columns.update(custom_columns)
         return DbApiResource.build_sqlalchemy_columns(self, 
@@ -9947,7 +9954,7 @@ class ScreenerCherryPickResource(DbApiResource):
             
         # Note: build schema for each request to use the subtype
         schema = self.build_schema(library_classification=cpr.screen.screen_type)
-        logger.info('schema  fields: %r', schema['fields'].keys())
+        logger.debug('schema  fields: %r', schema['fields'].keys())
         
         # general setup
          
@@ -9955,7 +9962,6 @@ class ScreenerCherryPickResource(DbApiResource):
         manual_field_includes.add('searched_well_id')
         manual_field_includes.add('selected')
         manual_field_includes.add('cherry_pick_request_id')
-        
         
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
@@ -10565,10 +10571,10 @@ class LabCherryPickResource(DbApiResource):
         self.get_cpr_resource().log_patch(
             request, original_cpr, new_cpr, log=parent_log)
         # Store the cpr.date_volume_reserved as a marker even if not changed
-        if 'date_volume_reserved' not in parent_log.diffs:
+        if cpr.date_volume_reserved and 'date_volume_reserved' not in parent_log.diffs:
             parent_log.diffs['date_volume_reserved'] = [
                 cpr.date_volume_reserved,cpr.date_volume_reserved]
-        parent_log.json_field = _meta
+        parent_log.json_field = json.dumps(_meta, cls=LimsJSONEncoder)
         parent_log.save()
 
         # TODO: not logging all lcp changes at this time; copywell child logs 
@@ -11653,7 +11659,7 @@ class CherryPickPlateResource(DbApiResource):
 
         if deserialize_meta:
             meta.update(deserialize_meta)
-        parent_log.json_field = meta
+        parent_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
         parent_log.save()
         
         return self.build_response(
@@ -18233,7 +18239,6 @@ class ScreenResource(DbApiResource):
             screen = Screen(**id_kwargs)
 
         initializer_dict = self.parse(deserialized,  schema=schema, create=create)
-        logger.info('initializer_dict: %r', initializer_dict)
             
         errors = self.validate(deserialized,  schema=schema, patch=not create)
         if errors:
@@ -20226,14 +20231,6 @@ class ScreensaverUserResource(DbApiResource):
         # natural ordering
         stmt = stmt.order_by(_su.c.last_name, _su.c.first_name)
             
-#         if self._meta.authorization.is_restricted_view(request.user):
-#             logger.info('create_authorized_user_filter')
-#             associated_users = \
-#                 self._meta.authorization.get_associated_users(request.user)
-#             stmt = stmt.where(
-#                 _su.c.screensaver_user_id.in_([
-#                     user.screensaver_user_id for user in associated_users]))
-        
         # general setup
          
         (stmt, count_stmt) = self.wrap_statement(
@@ -20761,6 +20758,8 @@ class LibraryResourceAuthorization(UserGroupAuthorization):
             ._is_resource_authorized(user, permission_type, **kwargs)
         if authorized is True:
             return True
+        if not user:
+            return False
         if permission_type == 'read':
             logger.info('Allow all libraries for all authenticated users at this time.')
             return user.is_active
@@ -20771,6 +20770,19 @@ class LibraryResourceAuthorization(UserGroupAuthorization):
     def is_restricted_view(self, user):
         return not self._is_resource_authorized(user, 'read')
         
+    def filter(self, user, filter_expression):
+        if self.is_restricted_view(user):
+            if DEBUG_AUTHORIZATION:
+                logger.info('create library filter for %r', user)
+            auth_filter = column('is_released') == True
+            if filter_expression is not None:
+                filter_expression = and_(filter_expression, auth_filter)
+            else:
+                filter_expression = auth_filter
+ 
+        return filter_expression
+    
+    
     # NOTE: 20170908 - Not used, all authenticated users may access - JAS/CS
     def get_authorized_library_screen_types(self, user):
         pass
@@ -21504,6 +21516,32 @@ class ReagentResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
 
+    @read_authorization
+    def get_preview_list(self, request, **kwargs):
+        ''' 
+        Preview view is a special view that will mix the preview logs, if they
+        exist, in with the query.
+        - Admins only
+        - released libraries only
+        '''
+        logger.info('ReagentResource: get_preview_list...')
+        library_short_name = kwargs.get('library_short_name', None)
+        library = Library.objects.get(short_name=library_short_name)
+        if library.is_released is not True:
+            raise Exception('Library has not been released')
+        library_data = self.get_library_resource()\
+            ._get_detail_response_internal(**{
+                'short_name': library.short_name })
+        if not library_data.get('preview_log_id'):
+            raise Exception('no preview found for %s', library_short_name)
+
+        kwargs[API_PARAM_SHOW_PREVIEW] = True
+        
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        
+        return self.build_list_response(request, **kwargs)
+
+        
     def _build_result_value_column(self, field_information):
         '''
         Each result value will be added to the query as a subquery select:
@@ -21610,324 +21648,278 @@ class ReagentResource(DbApiResource):
         # logger.info('compiled_stmt %s', compiled_stmt)            
         
         return spcs
+    
+    
+    def build_sqlalchemy_columns(
+        self, fields, user=None, base_query_tables=None, custom_columns=None, show_preview=False):
+
+        logger.info('build_sqlalchemy_columns, reagent resource: show_preview: %r, auth: %r', 
+                    show_preview, self._meta.authorization._is_resource_authorized(user, 'read'))
+        
+        columns = DbApiResource.build_sqlalchemy_columns(
+            self, fields, base_query_tables=base_query_tables, custom_columns=custom_columns)
+        logger.debug('columns: %r, fields: %r', columns.keys(), [f['key'] for f in fields])
+        if show_preview is True \
+            and self._meta.authorization._is_resource_authorized(user, 'read') \
+                is True:
+
+            # When show_preview is True, "preview" Apilog.logdiff.after values
+            # are overlayed on standard fields to generate a "preview" view
+
+            logger.info('building reagent/well preview columns...')
+
+            _apilog = self.bridge['reports_apilog']
+            _diff = self.bridge['reports_logdiff']
+
+            # decode the diffs
+            rnames = [
+                SCHEMA.REAGENT.resource_name, SCHEMA.WELL.resource_name,
+                SCHEMA.SMALL_MOLECULE_REAGENT.resource_name, 
+                SCHEMA.SILENCING_REAGENT.resource_name, ]
+                # TODO natural_product_reagent]
+            # Note: all well/reagent logs are logged for the "well" resource
+            logging_rname = WELL.resource_name
+            for field in fields:
+                key = field[FIELD.KEY]
+                editability = field.get('editability', [])
+                if 'u' not in editability:
+                    continue
+                
+                if field['scope'] in ['fields.%s'% rname for rname in rnames]:
+                    logger.debug('building preview field: %s', key)
+                    columns[key] = func.coalesce(
+                        select([_diff.c.after])
+                            .select_from(_apilog.join(_diff, _apilog.c.id==_diff.c.log_id))
+                            .where(_apilog.c.is_preview==True)
+                            .where(_apilog.c.ref_resource_name==logging_rname)
+                            .where(_apilog.c.key==literal_column('well.well_id'))
+                            .where(_diff.c.field_key==key).as_scalar(),
+                        cast(columns[key], sqlalchemy.sql.sqltypes.Text)).label(key)
+        return columns
         
         
     def get_query(self, 
         param_hash, user, library=None,
         cherry_pick_request_id_screener=None,
         cherry_pick_request_id_lab=None, well_ids=None, 
-        well_base_query=None, schema=None):
+        well_base_query=None, schema=None, show_preview=False):
         logger.info('get reagent query for user %r', user )
         
         if schema is None:
             logger.info('schema not specified, rebuilding...')
             schema = self.build_schema(user)
 
-        try:
-            
-            # general setup
-            manual_field_includes = set(param_hash.get('includes', []))
-            manual_field_includes.add('screen_type')
-            # always include plate number and well name for ordering
-            manual_field_includes.add('plate_number')
-            manual_field_includes.add('well_name')
-            manual_field_includes.discard('-plate_number') 
-            manual_field_includes.discard('-well_name') 
-            
-            plate_numbers = param_hash.pop('plate_number__in',None)
-
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
-            
-            if filter_expression is None\
-                and any([well_ids,plate_numbers,library,
-                    well_base_query is not None, cherry_pick_request_id_lab, 
-                    cherry_pick_request_id_screener]) is False:
-                logger.warn('No filters found: param_hash: %r', param_hash)
-                logger.warn('No filters found: schema: %r, fields: %r',
-                    schema['key'], schema['fields'].keys())
-                raise InformationError(
-                    key='Input filters ',
-                    msg='Please enter a filter expression to begin')
-            filter_expression = \
-                self._meta.authorization.filter(user,filter_expression)
-                 
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            logger.debug('field hash scopes: %r',
-                set([field.get('scope', None) 
-                    for field in field_hash.values()]))
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
-             
-            # specific setup 
+        # general setup
+        manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes.add('screen_type')
+        # always include plate number and well name for ordering
+        manual_field_includes.add('plate_number')
+        manual_field_includes.add('well_name')
+        manual_field_includes.discard('-plate_number') 
+        manual_field_includes.discard('-well_name') 
         
-            base_query_tables = ['well', 'reagent', 'library']
+        plate_numbers = param_hash.pop('plate_number__in',None)
 
-            _well = self.bridge['well']
-            _reagent = self.bridge['reagent']
-            _or = _reagent.alias('other_reagent')
-            _reagent2 = _reagent.alias('reagent2')
-            _sr = self.bridge['silencing_reagent']
-            _smr = self.bridge['small_molecule_reagent']
-            _molfile = self.bridge['molfile']
-            _library = self.bridge['library']
-            _scp = self.bridge['screener_cherry_pick']
-            _lcp = self.bridge['lab_cherry_pick']
-            
-            j = _well
-            if well_base_query is not None:
-                j = well_base_query
-                j = j.join(_well, _well.c.well_id==well_base_query.c.well_id )
-            j = j.join(
-                _reagent, _well.c.well_id == _reagent.c.well_id, isouter=True)
-            j = j.join(_library, _well.c.library_id == _library.c.library_id)
-                    
-            custom_columns = {}
-
-            # screening copy concentrations
-            
-            spcs = self.get_screening_concentration_cte(
-                well_base_query, well_ids, plate_numbers, library, 
-                cherry_pick_request_id_screener, cherry_pick_request_id_lab)
-            custom_columns['screening_mg_ml_concentration'] = case([
-                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                    select([spcs.c.mg_ml_concentration])
-                        .select_from(spcs)
-                        .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
-                else_=None)
-            custom_columns['screening_mg_ml_concentrations'] = case([
-                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                    select([func.array_to_string(
-                        func.array_agg(cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(spcs)
-                        .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
-                else_=None)
-            custom_columns['screening_molar_concentration'] = case([
-                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                    select([spcs.c.molar_concentration])
-                        .select_from(spcs)
-                        .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
-                else_=None)
-            custom_columns['screening_molar_concentrations'] = case([
-                (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                    select([func.array_to_string(
-                        func.array_agg(distinct(spcs.c.molar_concentration)),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(spcs)
-                        .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
-                else_=None)
-            
-            custom_columns['other_wells_with_reagent'] = (
-                select([func.array_to_string(func.array_agg(
-                    literal_column('well_id')), LIST_DELIMITER_SQL_ARRAY )])
-                .select_from(
-                    select([_or.c.well_id])
-                    .select_from(_or)
-                    .where(and_(
-                        _or.c.vendor_identifier==_reagent2.c.vendor_identifier,
-                        _or.c.vendor_name==_reagent2.c.vendor_name,
-                        _or.c.well_id != _reagent2.c.well_id))
-                    .where(_reagent2.c.vendor_identifier != '')
-                    .where(_reagent2.c.well_id == text('reagent.well_id'))
-                    .order_by(_reagent2.c.well_id)
-                    .alias('other_reagents'))
-                )
-            
-            # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
-
-            rna_restricted_fields = ['sequence','anti_sense_sequence']
-            fields_to_restrict = set(rna_restricted_fields)&set(field_hash.keys())
-            if fields_to_restrict \
-                and self._meta.authorization._is_resource_authorized(user, 'read') \
-                    is not True:
-                logger.info('RNAi fields to restrict: %r', fields_to_restrict)
-                for field in fields_to_restrict:
-                    if field == 'sequence':
-                        custom_columns['sequence'] = (
-                            select([
-                                case([
-                                    (_sr.c.is_restricted_sequence,None)],
-                                    else_=_sr.c.sequence)])
-                            .select_from(_sr)
-                            .where(_sr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                    if field == 'anti_sense_sequence':
-                        custom_columns['anti_sense_sequence'] = (
-                            select([
-                                case([
-                                    (_sr.c.is_restricted_sequence,None)],
-                                    else_=_sr.c.anti_sense_sequence)])
-                            .select_from(_sr)
-                            .where(_sr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-            smr_restricted_fields = ['smiles', 'inchi', 'molecular_formula',
-                'molecular_weight','molecular_mass','molfile']
-            fields_to_restrict = set(smr_restricted_fields)&set(field_hash.keys())
-            if fields_to_restrict \
-                and self._meta.authorization._is_resource_authorized(user, 'read') \
-                    is not True:
-                logger.info('SM fields to restrict: %r', fields_to_restrict)
-
-                for field in fields_to_restrict:
-                    if field == 'smiles':
-                        custom_columns['smiles'] = (
-                            select([
-                                case([
-                                    (_smr.c.is_restricted_structure,None)],
-                                    else_=_smr.c.smiles)])
-                            .select_from(_smr)
-                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                    if field == 'inchi':
-                        custom_columns['inchi'] = (
-                            select([
-                                case([
-                                    (_smr.c.is_restricted_structure,None)],
-                                    else_=_smr.c.inchi)])
-                            .select_from(_smr)
-                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                    if field == 'molecular_weight':
-                        custom_columns['molecular_weight'] = (
-                            select([
-                                case([
-                                    (_smr.c.is_restricted_structure,None)],
-                                    else_=_smr.c.molecular_weight)])
-                            .select_from(_smr)
-                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                    if field == 'molecular_mass':
-                        custom_columns['molecular_mass'] = (
-                            select([
-                                case([
-                                    (_smr.c.is_restricted_structure,None)],
-                                    else_=_smr.c.molecular_mass)])
-                            .select_from(_smr)
-                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                    if field == 'molecular_formula':
-                        custom_columns['molecular_formula'] = (
-                            select([
-                                case([
-                                    (_smr.c.is_restricted_structure,None)],
-                                    else_=_smr.c.molecular_formula)])
-                            .select_from(_smr)
-                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                    if field == 'molfile':
-                        custom_columns['molfile'] = (
-                            select([
-                                case([
-                                    (_smr.c.is_restricted_structure,None)],
-                                    else_=_molfile.c.molfile)])
-                            .select_from(_smr.join(
-                                _molfile, _smr.c.reagent_id==_molfile.c.reagent_id))
-                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                            )
-                        
-            if 'pool_well' in field_hash:
-                # NOTE: breaks OO inhertance composition
-                # Required for performance
-                _duplex_wells = self.bridge['silencing_reagent_duplex_wells']
-                _pool_reagent = self.bridge['reagent']
-                
-                inner_join = (
-                    _duplex_wells.join(
-                        _pool_reagent, _pool_reagent.c.reagent_id==
-                            _duplex_wells.c.silencingreagent_id)
-                    .join(_well, _duplex_wells.c.well_id==_well.c.well_id)
-                    .join(_library, _well.c.library_id==_library.c.library_id))
-                if well_base_query is not None:
-                    inner_join = inner_join.join(
-                        well_base_query, _well.c.well_id==well_base_query.c.well_id )
-                pool_wells = (
-                    select([
-                        _pool_reagent.c.well_id.label('pool_well_id'),
-                        _duplex_wells.c.well_id
-                        ])
-                    .select_from(inner_join))
-                if library:
-                    pool_wells = pool_wells.where(_well.c.library_id==library.library_id)
-                        
-                pool_wells = pool_wells.cte('pool_wells')
-                # NOTE: array_agg must be used
-                # Some duplex wells are pointed to by multiple pool wells:
-                # CPR44311, lcp report shows multple rows 
-                # returned from subquery
-                # e.g.: 50471:G08 - has 50599:I17,50599:I17...
-                # (Mouse4 Pools: Remaining Genome)
-                # 50448:C18 - has 50599:I17,50599:I17... 
-                # (Mouse4 Pools: Remaining Genome)
-
-                # j = j.join(
-                #     pool_wells, pool_wells.c.well_id==_well.c.well_id,
-                #     isouter=True )                                
-                custom_columns['pool_well'] = (
-                    select([func.array_to_string(
-                        func.array_agg(pool_wells.c.pool_well_id),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(pool_wells)
-                        .where(pool_wells.c.well_id==_well.c.well_id))
-            if 'is_pool' in field_hash:
-                custom_columns['is_pool'] = _library.c.is_pool
-                
-            if cherry_pick_request_id_screener is not None:
-                j = j.join(_scp,
-                    _scp.c.screened_well_id==_well.c.well_id)
-            if cherry_pick_request_id_lab is not None:
-                j = j.join(_lcp,
-                    _lcp.c.source_well_id==_well.c.well_id)
-    
-            for fi in field_hash.values():
-                if fi.get('is_datacolumn',False) is True:
-                    custom_columns[fi['key']] = self._build_result_value_column(fi)
-            
-            logger.info('build_sqlalchemy_columns: %r', base_query_tables)
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
-            
-            stmt = select(columns.values()).select_from(j)
-            if well_ids is not None:
-                stmt = stmt.where(_well.c.well_id.in_(well_ids))
-            if plate_numbers:
-                stmt = stmt.where(_well.c.plate_number.in_(plate_numbers))
-            if library:
-                stmt = stmt.where(_well.c.library_id == library.library_id) 
-            if cherry_pick_request_id_screener is not None:
-                stmt = stmt.where(
-                    _scp.c.cherry_pick_request_id
-                        ==cherry_pick_request_id_screener)
-            if cherry_pick_request_id_lab is not None:
-                stmt = stmt.where(
-                    _lcp.c.cherry_pick_request_id
-                        ==cherry_pick_request_id_lab)
-                
-            # general setup
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
+        
+        if filter_expression is None\
+            and any([well_ids,plate_numbers,library,
+                well_base_query is not None, cherry_pick_request_id_lab, 
+                cherry_pick_request_id_screener]) is False:
+            logger.warn('No filters found: param_hash: %r', param_hash)
+            logger.warn('No filters found: schema: %r, fields: %r',
+                schema['key'], schema['fields'].keys())
+            raise InformationError(
+                key='Input filters ',
+                msg='Please enter a filter expression to begin')
+        filter_expression = \
+            self._meta.authorization.filter(user,filter_expression)
              
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            if not order_clauses:
-                stmt = stmt.order_by("plate_number", "well_name")
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        logger.debug('field hash scopes: %r',
+            set([field.get('scope', None) 
+                for field in field_hash.values()]))
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        # specific setup 
+    
+        base_query_tables = ['well', 'reagent', 'library']
 
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
-            
-            return (field_hash, columns, stmt, count_stmt,filename)
+        _well = self.bridge['well']
+        _reagent = self.bridge['reagent']
+        _or = _reagent.alias('other_reagent')
+        _reagent2 = _reagent.alias('reagent2')
+        _sr = self.bridge['silencing_reagent']
+        _smr = self.bridge['small_molecule_reagent']
+        _molfile = self.bridge['molfile']
+        _library = self.bridge['library']
+        _scp = self.bridge['screener_cherry_pick']
+        _lcp = self.bridge['lab_cherry_pick']
+        
+        j = _well
+        if well_base_query is not None:
+            j = well_base_query
+            j = j.join(_well, _well.c.well_id==well_base_query.c.well_id )
+        j = j.join(
+            _reagent, _well.c.well_id == _reagent.c.well_id, isouter=True)
+        j = j.join(_library, _well.c.library_id == _library.c.library_id)
+                
+        custom_columns = {}
+
+        # screening copy concentrations
+        
+        spcs = self.get_screening_concentration_cte(
+            well_base_query, well_ids, plate_numbers, library, 
+            cherry_pick_request_id_screener, cherry_pick_request_id_lab)
+        custom_columns['screening_mg_ml_concentration'] = case([
+            (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                select([spcs.c.mg_ml_concentration])
+                    .select_from(spcs)
+                    .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
+            else_=None)
+        custom_columns['screening_mg_ml_concentrations'] = case([
+            (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                select([func.array_to_string(
+                    func.array_agg(cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(spcs)
+                    .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
+            else_=None)
+        custom_columns['screening_molar_concentration'] = case([
+            (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                select([spcs.c.molar_concentration])
+                    .select_from(spcs)
+                    .where(spcs.c.well_id==_well.c.well_id).limit(1).as_scalar() )],
+            else_=None)
+        custom_columns['screening_molar_concentrations'] = case([
+            (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                select([func.array_to_string(
+                    func.array_agg(distinct(spcs.c.molar_concentration)),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(spcs)
+                    .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
+            else_=None)
+        
+        custom_columns['other_wells_with_reagent'] = (
+            select([func.array_to_string(func.array_agg(
+                literal_column('well_id')), LIST_DELIMITER_SQL_ARRAY )])
+            .select_from(
+                select([_or.c.well_id])
+                .select_from(_or)
+                .where(and_(
+                    _or.c.vendor_identifier==_reagent2.c.vendor_identifier,
+                    _or.c.vendor_name==_reagent2.c.vendor_name,
+                    _or.c.well_id != _reagent2.c.well_id))
+                .where(_reagent2.c.vendor_identifier != '')
+                .where(_reagent2.c.well_id == text('reagent.well_id'))
+                .order_by(_reagent2.c.well_id)
+                .alias('other_reagents'))
+            )
                         
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
+        if 'pool_well' in field_hash:
+            # NOTE: breaks OO inhertance composition
+            # Required for performance
+            _duplex_wells = self.bridge['silencing_reagent_duplex_wells']
+            _pool_reagent = self.bridge['reagent']
+            
+            inner_join = (
+                _duplex_wells.join(
+                    _pool_reagent, _pool_reagent.c.reagent_id==
+                        _duplex_wells.c.silencingreagent_id)
+                .join(_well, _duplex_wells.c.well_id==_well.c.well_id)
+                .join(_library, _well.c.library_id==_library.c.library_id))
+            if well_base_query is not None:
+                inner_join = inner_join.join(
+                    well_base_query, _well.c.well_id==well_base_query.c.well_id )
+            pool_wells = (
+                select([
+                    _pool_reagent.c.well_id.label('pool_well_id'),
+                    _duplex_wells.c.well_id
+                    ])
+                .select_from(inner_join))
+            if library:
+                pool_wells = pool_wells.where(_well.c.library_id==library.library_id)
+                    
+            pool_wells = pool_wells.cte('pool_wells')
+            # NOTE: array_agg must be used
+            # Some duplex wells are pointed to by multiple pool wells:
+            # CPR44311, lcp report shows multple rows 
+            # returned from subquery
+            # e.g.: 50471:G08 - has 50599:I17,50599:I17...
+            # (Mouse4 Pools: Remaining Genome)
+            # 50448:C18 - has 50599:I17,50599:I17... 
+            # (Mouse4 Pools: Remaining Genome)
+
+            # j = j.join(
+            #     pool_wells, pool_wells.c.well_id==_well.c.well_id,
+            #     isouter=True )                                
+            custom_columns['pool_well'] = (
+                select([func.array_to_string(
+                    func.array_agg(pool_wells.c.pool_well_id),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(pool_wells)
+                    .where(pool_wells.c.well_id==_well.c.well_id))
+        if 'is_pool' in field_hash:
+            custom_columns['is_pool'] = _library.c.is_pool
+            
+        if cherry_pick_request_id_screener is not None:
+            j = j.join(_scp,
+                _scp.c.screened_well_id==_well.c.well_id)
+        if cherry_pick_request_id_lab is not None:
+            j = j.join(_lcp,
+                _lcp.c.source_well_id==_well.c.well_id)
+
+        for fi in field_hash.values():
+            if fi.get('is_datacolumn',False) is True:
+                custom_columns[fi['key']] = self._build_result_value_column(fi)
+
+
+        logger.debug('build_sqlalchemy_columns: %r', base_query_tables)
+        logger.debug('build_sqlalchemy_columns: includes: %r, fields: %r', 
+                    manual_field_includes, field_hash.keys())
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), user=user, base_query_tables=base_query_tables,
+            custom_columns=custom_columns, show_preview=show_preview)
+        
+        stmt = select(columns.values()).select_from(j)
+        if well_ids is not None:
+            stmt = stmt.where(_well.c.well_id.in_(well_ids))
+        if plate_numbers:
+            stmt = stmt.where(_well.c.plate_number.in_(plate_numbers))
+        if library:
+            stmt = stmt.where(_well.c.library_id == library.library_id) 
+        if cherry_pick_request_id_screener is not None:
+            stmt = stmt.where(
+                _scp.c.cherry_pick_request_id
+                    ==cherry_pick_request_id_screener)
+        if cherry_pick_request_id_lab is not None:
+            stmt = stmt.where(
+                _lcp.c.cherry_pick_request_id
+                    ==cherry_pick_request_id_lab)
+            
+            
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        if not order_clauses:
+            stmt = stmt.order_by("plate_number", "well_name")
+
+#             compiled_stmt = str(stmt.compile(
+#                 dialect=postgresql.dialect(),
+#                 compile_kwargs={"literal_binds": True}))
+#             logger.info('compiled_stmt %s', compiled_stmt)
+            
+        return (field_hash, columns, stmt, count_stmt,filename)
     
     @read_authorization
     def dispatch_search_vendor_and_compound(self, request, **kwargs):
@@ -21954,6 +21946,7 @@ class ReagentResource(DbApiResource):
             use_titles = False
         
         is_for_detail = kwargs.pop('is_for_detail', False)
+        show_preview = kwargs.pop(API_PARAM_SHOW_PREVIEW, False)
         
         # well search data is raw line based text entered by the user
         well_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
@@ -22034,12 +22027,39 @@ class ReagentResource(DbApiResource):
                 cherry_pick_request_id_screener=cherry_pick_request_id_screener,
                 cherry_pick_request_id_lab=cherry_pick_request_id_lab,
                 well_base_query=well_base_query, 
-                schema=schema)
+                schema=schema, show_preview=show_preview)
         
         rowproxy_generator = None
+        
+        if show_preview is True:
+            # When show_preview is True, "preview" Apilog.logdiff.after values
+            # are overlayed on standard fields:
+            # Create a Row proxy that will decode values embedded as JSON in the field
+            rnames = [
+                SCHEMA.REAGENT.resource_name, SCHEMA.WELL.resource_name,
+                SCHEMA.SMALL_MOLECULE_REAGENT.resource_name, 
+                SCHEMA.SILENCING_REAGENT.resource_name, ]
+                # TODO natural_product_reagent]
+            list_preview_fields = []
+            for field in field_hash.values():
+                key = field[FIELD.KEY]
+                if key not in columns:
+                    continue
+                editability = field.get('editability', [])
+                if 'u' not in editability:
+                    continue
+                if field['scope'] in ['fields.%s'% rname for rname in rnames]:
+                    if field[FIELD.DATA_TYPE] == SCHEMA.VOCAB.field.data_type.LIST:
+                        list_preview_fields.append(key)
+                    
+            if list_preview_fields:
+                rowproxy_generator = \
+                    ApiLogResource.create_apilog_preview_rowproxy_generator(
+                        list_preview_fields, rowproxy_generator)
+            
         if use_vocab is True:
             rowproxy_generator = \
-                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash, rowproxy_generator)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
             rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
                 field_hash, rowproxy_generator)
@@ -22061,6 +22081,8 @@ class ReagentResource(DbApiResource):
             is_for_detail=is_for_detail,
             rowproxy_generator=rowproxy_generator,
             title_function=title_function, meta=kwargs.get('meta', None))
+    
+    
     
     def delete_reagents_for_library(self, library):
         self.get_reagent_resource(library.classification).delete_reagents(library)
@@ -22156,7 +22178,7 @@ class SilencingReagentResource(ReagentResource):
         
         
     def build_sqlalchemy_columns(
-        self, fields, base_query_tables=None, custom_columns=None):
+        self, fields, user=None, base_query_tables=None, custom_columns=None, show_preview=False):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
@@ -22317,12 +22339,45 @@ class SilencingReagentResource(ReagentResource):
             if key == 'is_pool':
                 # NOTE: this has been moved to ReagentResource:
                 pass
+        
+        
+            # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
+
+        rna_restricted_fields = ['sequence','anti_sense_sequence']
+        fields_to_restrict = set(rna_restricted_fields)&set(
+            [field['key'] for field in fields])
+        if fields_to_restrict \
+            and self._meta.authorization._is_resource_authorized(user, 'read') \
+                is not True:
+            logger.info('RNAi fields to restrict: %r', fields_to_restrict)
+            for field in fields_to_restrict:
+                if field == 'sequence':
+                    custom_columns['sequence'] = (
+                        select([
+                            case([
+                                (sirna_table.c.is_restricted_sequence,None)],
+                                else_=sirna_table.c.sequence)])
+                        .select_from(sirna_table)
+                        .where(sirna_table.c.reagent_id==literal_column('reagent.reagent_id'))
+                        )
+                if field == 'anti_sense_sequence':
+                    custom_columns['anti_sense_sequence'] = (
+                        select([
+                            case([
+                                (sirna_table.c.is_restricted_sequence,None)],
+                                else_=sirna_table.c.anti_sense_sequence)])
+                        .select_from(sirna_table)
+                        .where(sirna_table.c.reagent_id==literal_column('reagent.reagent_id'))
+                        )
+        
         if DEBUG_BUILD_COLS: 
             logger.info('sirna custom_columns: %r', custom_columns.keys())
             logger.info('silencingreagent base_query_tables: %r', base_query_tables)    
-        return SqlAlchemyResource.build_sqlalchemy_columns(
-            self, fields, base_query_tables=base_query_tables, 
-            custom_columns=custom_columns)  
+        
+        
+        return super(SilencingReagentResource, self).build_sqlalchemy_columns(
+            fields, user=user, base_query_tables=base_query_tables, 
+            custom_columns=custom_columns, show_preview=show_preview)  
 
     @write_authorization
     @transaction.atomic
@@ -22336,14 +22391,12 @@ class SilencingReagentResource(ReagentResource):
         NOTE: patching will only be done in batch, from library/well
         '''
         logger.info('patch (%d) reagents for silencing_reagent ...', len(deserialized))
+        
+        metadata = {}
         schema = self.build_schema(request.user)
         fields = schema['fields']
 
-        cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, new_errors, raw_data=None):
-            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
-                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
-            cumulative_error.errors[well_id].update(new_errors)
+        cumulative_error = CumulativeError()
             
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
@@ -22368,12 +22421,14 @@ class SilencingReagentResource(ReagentResource):
                 if (i+1) % 1000 == 0:
                     logger.info('patched %d reagents', i+1)
             except ValidationError, e:
-                add_error(well.well_id, e.errors, raw_data=well_data)
+                cumulative_error.add_error(well.well_id, e.errors, 
+                    line=well_data.get(INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, i))
             
         if cumulative_error.errors:
             raise cumulative_error
         
         logger.info('patched %d reagents', i+1)
+        return metadata
 
     def _set_reagent_values(self, reagent, deserialized, is_patch, schema, fields):
         
@@ -22499,7 +22554,7 @@ class SmallMoleculeReagentResource(ReagentResource):
         SmallMoleculeReagent.objects.all().filter(well__library=library).delete()
 
     def build_sqlalchemy_columns(
-        self, fields, base_query_tables=None, custom_columns=None):
+        self, fields, user=None, base_query_tables=None, custom_columns=None, show_preview=False):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
@@ -22508,9 +22563,87 @@ class SmallMoleculeReagentResource(ReagentResource):
         in SilencingReagentResource
         
         '''
-        return SqlAlchemyResource.build_sqlalchemy_columns(
-            self, fields, base_query_tables=base_query_tables, 
-            custom_columns=custom_columns)  
+        
+        logger.info('build_sqlalchemy_columns for small_molecule_reagent: user: %r', user)
+        if custom_columns is None:
+            custom_columns = {}
+
+        smr_restricted_fields = ['smiles', 'inchi', 'molecular_formula',
+            'molecular_weight','molecular_mass','molfile']
+        fields_to_restrict = \
+            set(smr_restricted_fields)&set([field[FIELD.KEY] for field in fields])
+        if fields_to_restrict \
+            and self._meta.authorization._is_resource_authorized(user, 'read') \
+                is not True:
+            logger.info('SM fields to restrict: %r', fields_to_restrict)
+
+            _smr = self.bridge['small_molecule_reagent']
+            _reagent = self.bridge['reagent']
+            _molfile = self.bridge['molfile']
+            
+            for field in fields_to_restrict:
+                if field == 'smiles':
+                    custom_columns['smiles'] = (
+                        select([
+                            case([
+                                (_smr.c.is_restricted_structure,None)],
+                                else_=_smr.c.smiles)])
+                        .select_from(_smr)
+                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+                if field == 'inchi':
+                    custom_columns['inchi'] = (
+                        select([
+                            case([
+                                (_smr.c.is_restricted_structure,None)],
+                                else_=_smr.c.inchi)])
+                        .select_from(_smr)
+                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+                if field == 'molecular_weight':
+                    custom_columns['molecular_weight'] = (
+                        select([
+                            case([
+                                (_smr.c.is_restricted_structure,None)],
+                                else_=_smr.c.molecular_weight)])
+                        .select_from(_smr)
+                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+                if field == 'molecular_mass':
+                    custom_columns['molecular_mass'] = (
+                        select([
+                            case([
+                                (_smr.c.is_restricted_structure,None)],
+                                else_=_smr.c.molecular_mass)])
+                        .select_from(_smr)
+                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+                if field == 'molecular_formula':
+                    custom_columns['molecular_formula'] = (
+                        select([
+                            case([
+                                (_smr.c.is_restricted_structure,None)],
+                                else_=_smr.c.molecular_formula)])
+                        .select_from(_smr)
+                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+                if field == 'molfile':
+                    custom_columns['molfile'] = (
+                        select([
+                            case([
+                                (_smr.c.is_restricted_structure,None)],
+                                else_=_molfile.c.molfile)])
+                        .select_from(_smr.join(
+                            _molfile, _smr.c.reagent_id==_molfile.c.reagent_id))
+                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                        )
+
+        columns = super(SmallMoleculeReagentResource, self).build_sqlalchemy_columns(
+            fields, user=user, base_query_tables=base_query_tables, 
+            custom_columns=custom_columns, show_preview=show_preview)  
+
+        return columns
+
 
     @write_authorization
     @transaction.atomic
@@ -22527,12 +22660,9 @@ class SmallMoleculeReagentResource(ReagentResource):
         
         schema = self.build_schema(request.user)
         fields = schema['fields']
-
-        cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, new_errors, raw_data=None):
-            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
-                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
-            cumulative_error.errors[well_id].update(new_errors)
+        metadata = {}
+        
+        cumulative_error = CumulativeError()
         
         for i,well_data in enumerate(deserialized):
             well = well_data['well']
@@ -22550,17 +22680,22 @@ class SmallMoleculeReagentResource(ReagentResource):
                 reagent = reagent.smallmoleculereagent
                 logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
             try:
-                self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
+                well_metadata = \
+                    self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
+                if well_metadata:
+                    metadata[well_data[WELL.WELL_ID]] = well_metadata
                 if (i+1) % 1000 == 0:
                     logger.info('patched %d reagents', i+1)
             except ValidationError, e:
-                add_error(well.well_id, e.errors, raw_data=well_data)
+                cumulative_error.add_error(well.well_id, e.errors, 
+                          line=well_data.get(INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, i))
             
         if cumulative_error.errors:
-            logger.info('cumulative_errors...: %r', cumulative_error)
             raise cumulative_error
 
         logger.info('patched %d reagents', i+1)
+        
+        return metadata
 
     def parse(self, deserialized, create=False, fields=None, schema=None):
         _data = ReagentResource.parse(self, deserialized, create=create, fields=fields, schema=schema)
@@ -22578,6 +22713,7 @@ class SmallMoleculeReagentResource(ReagentResource):
 
         start_time = time.time()
         initializer_dict = self.parse(deserialized, create=not is_patch, fields=fields)
+        metadata = {}
         errors = self.validate(initializer_dict, patch=is_patch, fields=fields)
         if errors:
             raise ValidationError(errors)
@@ -22626,17 +22762,36 @@ class SmallMoleculeReagentResource(ReagentResource):
                 cid = SmallMoleculeChemblId.objects.create(
                     reagent=reagent, chembl_id=id)
                 cid.save()
-        if deserialized.get('molfile', None):
-            Molfile.objects.all().filter(reagent=reagent).delete()
-             
-            molfile = Molfile.objects.create(
-                reagent=reagent, molfile=deserialized['molfile'])
-            molfile.save()
+        new_molfile = deserialized.get('molfile', None)
+        if new_molfile:
+            # Compare md5sum for molfiles
+            molquery = Molfile.objects.all().filter(reagent=reagent)
+            if molquery.exists():
+                old_molfile = molquery[0]
+#                 m = hashlib.md5()
+#                 m.update(old_molfile)
+#                 oldkey = m.hexdigest()
+#                 m = hashlib.md5()
+#                 m.update(new_molfile)
+#                 newkey = m.hexdigest()
+#                 if oldkey != newkey:
+#                 metadata[SMALL_MOLECULE_REAGENT.MOLFILE] = [
+#                     oldkey, newkey]
+                molquery.delete()
+                
+                molfile = Molfile.objects.create(
+                    reagent=reagent, molfile=new_molfile)
+                molfile.save()
+            else:
+                molfile = Molfile.objects.create(
+                    reagent=reagent, molfile=new_molfile)
+                molfile.save()
+                
 
         self.patch_elapsedtime3 += (time.time() - start_time)
                 
         logger.debug('sm patch_obj done')
-        return reagent
+        return metadata
 
 class NaturalProductReagentResource(ReagentResource):
     # Consider folding the NaturalProductReagentResource into ReagentResource
@@ -22670,15 +22825,13 @@ class NaturalProductReagentResource(ReagentResource):
         - deserialized has been loaded with the well
         '''
         logger.info('patch (%d) reagents for natural_product ...', len(deserialized))
+        metadata = {}
         schema = self.build_schema(request.user)
         fields = schema['fields']
         logger.info('natural product reagent fields: %r', fields.keys())
-        cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, new_errors, raw_data=None):
-            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
-                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
-            cumulative_error.errors[well_id].update(new_errors)
+        cumulative_error = CumulativeError()
         for i,well_data in enumerate(deserialized):
+            
             well = well_data['well']
             is_patch = False
             if not well.reagents.exists():
@@ -22696,7 +22849,7 @@ class NaturalProductReagentResource(ReagentResource):
             initializer_dict = self.parse(well_data, fields=fields)
             errors = self.validate(initializer_dict, patch=is_patch, fields=fields)
             if errors:
-                add_error(well.well_id, errors, raw_data=well_data)
+                cumulative_error.add_error(well.well_id, errors, line=line)
             
             for key, val in initializer_dict.items():
                 if hasattr(reagent, key):
@@ -22707,11 +22860,12 @@ class NaturalProductReagentResource(ReagentResource):
                 logger.info('patched %d reagents', i+1)
 
         if cumulative_error.errors:
-            logger.info('cumulative_errors...: %r', cumulative_error)
             raise cumulative_error
         
         logger.info('patched %d reagents', i+1)
 
+        return metadata
+    
 class WellSerializer(LimsSerializer):
     
     def from_xls(self, content, root='objects', **kwargs):
@@ -22760,6 +22914,9 @@ class WellResource(DbApiResource):
 
     def prepend_urls(self):
         return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -22919,9 +23076,164 @@ class WellResource(DbApiResource):
          
     def post_list(self, request, **kwargs):
         return self.patch_list(request, **kwargs)
+
+    @write_authorization
+    def post_preview(self,request, **kwargs):
+        '''
+        If preview logs exist, apply them to the target wells.
+        
+        @see wrap_as_preview
+        '''
+        
+        
+        library_short_name = kwargs.get('library_short_name', None)
+        
+        logger.info('post_preview for library: %s', library_short_name)
+        
+        library = Library.objects.get(short_name=library_short_name)
+        if library.is_released is not True:
+            raise Exception('Library has not been released')
+        library_data = self.get_library_resource()\
+            ._get_detail_response_internal(**{
+                'short_name': library.short_name })
+        if not library_data.get('preview_log_id'):
+            raise Exception('no preview found for %s', library_short_name)
+
+        # Find the parent library log
+        
+        library_logs = self.get_apilog_resource()._get_list_response_internal(
+            **{
+                'is_preview': True,
+                'ref_resource_name': SCHEMA.LIBRARY.resource_name,
+                'key': library.short_name,
+                'includes': '*'
+            })
+        if len(library_logs) != 1:
+            logger.info('more than one preview library logs found: %r', library_logs)
+            raise ValidationError(key='library_short_name', 
+                msg='more than one preview found for: "%s"' % library.short_name)
+        library_log = library_logs[0]
+        logger.info('found the preview log: %r', library_log)
+        
+        # Get the child logs, and recreate the deserialized data
+        # Note: all well/reagent logs are logged for the "well" resource
+        well_logs = self.get_apilog_resource()._get_list_response_internal(
+            **{ 
+                SCHEMA.APILOG.PARENT_LOG_ID: library_log[SCHEMA.APILOG.ID],
+                'includes': '*'
+        })
+        
+        if not well_logs:
+            raise ValidationError(
+                key='library',
+                msg='No preview found for "%s"' % library.short_name)
+        
+        deserialized = []
+
+        errors = {}
+        for log in well_logs:
+            key = log[SCHEMA.APILOG.KEY]
+            diffs = log.get(SCHEMA.APILOG.DIFFS, None)
+            well_diff_errors = []
+            if diffs:
+                _repost_dict = { WELL.WELL_ID: key }
+                for key, diff in diffs.items():
+                    if len(diff) == 2:
+                        _repost_dict[key] = diff[1]
+                    else:
+                        well_diff_errors.append('Diff corrupted: %r', diff)
+                if well_diff_errors:
+                    errors[key] = well_diff_errors
+                else:
+                    deserialized.append(_repost_dict)
+            logger.debug('created post data: %r', _repost_dict)
+        if errors:
+            raise ValidationError(errors)
     
+        kwargs[API_PARAM_PATCH_PREVIEW_MODE] = False
+        kwargs[API_PARAM_NO_BACKGROUND] = True
+        kwargs['servicing_preview'] = True
+        kwargs['data'] = deserialized
+
+        if HEADER_APILOG_COMMENT not in request.META:
+            logger.info('xxx kwargs[HEADER_APILOG_COMMENT]: %r', kwargs[HEADER_APILOG_COMMENT])
+            kwargs[HEADER_APILOG_COMMENT] = library_log[SCHEMA.APILOG.COMMENT]
+        
+        log_json_meta = library_log.get('json_field', None)
+        logger.info('json_field: %r', log_json_meta)
+        if log_json_meta:
+            log_json_meta = json.loads(log_json_meta)
+            logger.info('adding json_field: %r', log_json_meta)
+            kwargs['meta'] = log_json_meta
+            # TODO: store the filename on the log
+            # TODO: full control over the log
+            
+        result = self.patch_list(request, **kwargs)
+
+        logger.info('Remove the Apilogs with the preview flag...')
+        ApiLog.objects.get(id=library_log[SCHEMA.APILOG.ID]).delete()
+        # Django ORM will delete the child logs with the foreign key 
+        # default "ON DELETE CASCADE"
+        
+        return result
+    
+    
+    def wrap_as_preview(_func):
+        '''
+        Wrapper function: 
+        
+        If the API_PARAM_PATCH_PREVIEW_MODE parameter is passed, and the 
+        preview_logs are passed back, these are saved to to enable a 
+        "preview" view of the commit.
+
+        NOTE: For a "released" library, all Library Reagent uploads will be 
+        committed to a "preview". 
+        In a "preview" upload:
+        - the server will save ApiLog "preview" logs only;
+        - (all normal updates are rolled back)
+        - patch logs can later be confirmed and applied by the admin.
+
+        
+        A preview contains all the upload diff data on 
+        the server and may be viewed, applied ("released"), or deleted by the 
+        Administrator users.
+        
+        @see post_preview
+        '''
+     
+        @wraps(_func)
+        def _inner(self, *args, **kwargs):
+            request = args[0]
+     
+            param_hash = self._convert_request_to_dict(request)
+            param_hash.update(kwargs)
+            
+            is_preview_mode = parse_val(
+                param_hash.get(API_PARAM_PATCH_PREVIEW_MODE, False),
+                API_PARAM_PATCH_PREVIEW_MODE, 'boolean')
+            logger.info('API_PARAM_PATCH_PREVIEW_MODE: %r', is_preview_mode)
+            
+            preview_logs = []
+            if is_preview_mode is True:
+                kwargs[API_PARAM_PREVIEW_LOGS] = preview_logs    
+    
+            result = _func(self, *args, **kwargs)
+             
+            if is_preview_mode is True and preview_logs:
+                
+                # TODO: wrap in a transaction
+                logger.info('preview logs to save: %d', len(preview_logs))
+                for log in preview_logs:
+                    log.is_preview = True
+                    log.save()
+            
+            return result
+         
+        return _inner
+
     @write_authorization
     @background_job
+    @wrap_as_preview
     @un_cache        
     @transaction.atomic
     def patch_list(self, request, **kwargs):
@@ -22942,8 +23254,29 @@ class WellResource(DbApiResource):
             raise BadRequest('library_short_name is required')
         library = Library.objects.get(
             short_name=kwargs['library_short_name'])
+        
+        library_data = self.get_library_resource()\
+            ._get_detail_response_internal(**{
+                'short_name': library.short_name
+                })
+        
+        if library_data.get('preview_log_id') \
+            and kwargs.get('servicing_preview',False) is not True:
+            raise ValidationError(
+                key='library', 
+                msg='%s has a pending preview release that must be committed or deleted'
+                ' before further changes may be made' % library.short_name)
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        
+        is_preview_mode = parse_val(
+            param_hash.get(API_PARAM_PATCH_PREVIEW_MODE, False),
+            API_PARAM_PATCH_PREVIEW_MODE, 'boolean')
+        
         logger.info(
-            'patch_list: WellResource: library: %r...', library.short_name)
+            'patch_list: WellResource: library: %r, %r: %r...', 
+            library.short_name, API_PARAM_PATCH_PREVIEW_MODE, is_preview_mode)
 
         reagent_resource = self.get_reagent_resource(library.classification)  
         schema = reagent_resource.build_schema(request.user)
@@ -22951,98 +23284,22 @@ class WellResource(DbApiResource):
             k:v for k,v in schema['fields'].items()
                 if v['scope'] != 'fields.well' }
         logger.info('reagent_specific_fields: %r', reagent_specific_fields.keys())
-         
-        deserialized, deserialize_meta = self.deserialize(request, schema=schema)
+
+        # allow for internal data to be passed
+        deserialized = kwargs.pop('data', None)
+        deserialize_meta = None
+        if not deserialized:
+            deserialized, deserialize_meta = self.deserialize(request, schema=schema)
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
-        
-        cumulative_error = ValidationError(errors=defaultdict(dict))
-        def add_error(well_id, new_errors, raw_data=None):
-            if raw_data and INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY in raw_data:
-                new_errors['line'] = raw_data[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY]
-            cumulative_error.errors[well_id].update(new_errors)
-        
-        # 1. Validate all patched entries and collect well_ids    
-        kwargs_for_log = kwargs.copy()
-        id_attribute = WELL.WELL_ID
-        ids = set()
-        valid_data = []
-        for row,data in enumerate(deserialized):
-            debug_key = data.get(INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY,None)
-            if debug_key is None:
-                debug_key = 'Row: %d' % row
-            else:
-                debug_key = 'Line: {}'.format(debug_key)
-            id = data.get(id_attribute,None)
-            if not id:
-                well_name = data.get('well_name', None)
-                plate_number = data.get('plate_number', None)
-                if well_name and plate_number:                
-                    well_id = lims_utils.well_id(plate_number, well_name)
-                    if not well_id:
-                        add_error(debug_key, {
-                            WELL.WELL_ID: 'parse error: {}:{}'.format(plate_number, well_name)},
-                        raw_data=data)
-                        continue
-                    else:
-                        if well_id in ids:
-                            add_error(
-                                well_id, { debug_key: 'duplicate' })
-                        else:
-                            data[WELL.WELL_ID] = well_id
-                            valid_data.append(data)
-                            ids.add(well_id)
-                else:
-                    add_error(debug_key, { WELL.WELL_ID: 'required'})
-                    continue
-            else:
-                well_id = lims_utils.parse_well_id(id)
-                if not well_id:
-                    add_error(
-                        debug_key, 
-                        { WELL.WELL_ID: 
-                            'Well ID: "{}" does not fit the pattern {}'\
-                                .format(id, WELL.WELL_ID_PATTERN_MSG) })
-                    continue
-                else:
-                    if well_id in ids:
-                        add_error(well_id, {debug_key: 'duplicate'})
-                    else:
-                        data[WELL.WELL_ID] = well_id
-                        valid_data.append(data)
-                        ids.add(well_id)
 
-        if ids:
-            
-            # build plate-well map
-            plate_well_map = defaultdict(set)
-            
-            for id in ids:
-                plate_well_map[lims_utils.well_id_plate_number(id)]\
-                    .add(lims_utils.well_id_name(id))
-            
-            search_data = []
-            full_plates = set()
-            for plate,wells in plate_well_map.items():
-                if len(wells) == int(library.plate_size):
-                    full_plates.add(int(plate))
-                    del plate_well_map[plate]
-                else:
-                    search_data.append({
-                        'plates': [plate,],
-                        'well_names': list(wells)
-                    })
-            logger.info('search terms: plates: %d, plate-wells: %d',len(full_plates),len(plate_well_map))
-            
-            if full_plates:
-                search_data.append({ 'plates': list(full_plates) })
-            
-            kwargs_for_log[SCHEMA.API_PARAM_NESTED_SEARCH] = search_data
+        # Track cumulative parsing and validation errors        
+        cumulative_error = CumulativeError()
         
-            logger.info('search data: %r', search_data)
-    
-        logger.info('valid data to patch: %d', len(valid_data))
-        
+        # 1. Validate all patch entries and collect well_ids
+        valid_data, errors = self._find_valid_entries(deserialized)
+        if errors:
+            cumulative_error._update_from(errors)
         if not valid_data:
             if cumulative_error.errors:
                 raise cumulative_error
@@ -23050,13 +23307,38 @@ class WellResource(DbApiResource):
                 raise ValidationError(key='objects', msg='no valid well IDs')
         
         # 2. Fetch original data for logging state
-         
-        logger.debug('get original reagent state, for logging: %r',kwargs_for_log)
-        kwargs_for_log['includes'] = ['*', '-molfile','-structure_image']
-        # NOTE: do not consider "undefined" wells for diff logs (create actions 
-        # will not be logged.
+
+        # build a plate-well map for search
+        plate_well_map = defaultdict(set)
+        for well_id in valid_data.keys():
+            plate_number = lims_utils.well_id_plate_number(well_id)
+            well_name = lims_utils.well_id_name(well_id)
+            plate_well_map[plate_number].add(well_name)
+        
+        search_data = []
+        full_plates = set()
+        for plate,wells in plate_well_map.items():
+            if len(wells) == int(library.plate_size):
+                full_plates.add(int(plate))
+                del plate_well_map[plate]
+            else:
+                search_data.append({
+                    'plates': [plate,],
+                    'well_names': list(wells)
+                })
+        if full_plates:
+            search_data.append({ 'plates': list(full_plates) })
+
+        logger.info('search data: %r', search_data)
+        kwargs_for_log = kwargs.copy()
+        kwargs_for_log[SCHEMA.API_PARAM_NESTED_SEARCH] = search_data
+        kwargs_for_log['includes'] = ['*', 'molfile','-structure_image']
+        
+        # UNDEFINED wells will be considered a "CREATE" instance
+        # ( NOTE: if in preview mode and library is released, 
+        # will generate full create logs )
         kwargs_for_log['library_well_type__ne'] = WELL_TYPE.UNDEFINED
-        # Fetch original state for logging
+
         original_data = reagent_resource\
             ._get_list_response_internal(**kwargs_for_log)
         original_data = { data['well_id']:data for data in original_data }
@@ -23066,175 +23348,148 @@ class WellResource(DbApiResource):
         library_log = self.make_log(request, **kwargs)
         library_log.ref_resource_name = 'library'
         library_log.key = library.short_name
-        library_log.uri = '/'.join([library_log.ref_resource_name, library_log.key])
-        # kwargs.update({ 'parent_log': library_log })
+        library_log.uri = '/'.join([
+            library_log.ref_resource_name, library_log.key])
  
         logger.info('Cache library wells for patch...') 
         well_map = dict((well.well_id, well) 
             for well in library.well_set.all())
         if len(well_map) == 0:
+            # Note: wells can only be created on library creation
             raise BadRequest('Library wells have not been created')
         
         # 3. Patch well specific data
          
         logger.info('patch wells, count: %d', len(valid_data))
-        # Note: wells can only be created on library creation
         fields = { key:field for key,field in schema['fields'].items()
             if field['scope'] == 'fields.%s'% 'well'
                 and 'u' in field['editability'] }
         reagent_data = []
-        for i,well_data in enumerate(valid_data):
-            well_id = well_data.get('well_id', None)
-            logger.debug('%r: well_data to patch: %r', well_id, well_data)
+        for i,(well_id,well_data) in enumerate(valid_data.items()):
+            line = well_data.get(INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, i)
             
             well_data['library_short_name'] = kwargs['library_short_name']
+            well = well_map.get(well_id, None)
+            if not well:
+                cumulative_error.add_error(
+                    well_id, {'well_id': 'Does not belong to this library'}, 
+                    line=line)
+                continue
             try:
-             
-                if not well_id:
-                    raise ValidationError(
-                        key='well_id',
-                        msg='well_id is required')
-                
-                well = well_map.get(well_id, None)
-                if not well:
-                    raise ValidationError(
-                        key='well_id',
-                        msg=('well %r not found for this library %r'
-                            % (well_id, well_data['library_short_name']))
-                    )
-
                 initializer_dict = self.parse(well_data, fields=fields)
-                errors = self.validate(initializer_dict, patch=True, fields=fields)
-                if errors:
-                    raise ValidationError(errors)
-
-                # Check for state changes:
-                
-                new_well_type = initializer_dict.pop(WELL.LIBRARY_WELL_TYPE, None)
-                if well.library_well_type == WELL_TYPE.UNDEFINED:
-                    
-                    if not new_well_type:
-                        raise ValidationError(
-                            key=WELL.LIBRARY_WELL_TYPE, msg='required')
-                    well.library_well_type = new_well_type
-                    # Note: other well fields are required on initialization 
-                    # to non-undefined type:
-                    # "concentration" is recommended
-                elif new_well_type and new_well_type != well.library_well_type:
-                    
-                    # Delete the well to remove all old information
-                    well.delete()
-                    
-                    well = Well.objects.create(
-                        well_id = well_id,
-                        well_name = lims_utils.well_id_name(well_id),
-                        plate_number = lims_utils.well_id_plate_number(well_id),
-                        library=library, 
-                        library_well_type = new_well_type
-                    )
-                    
-                    if new_well_type == WELL_TYPE.UNDEFINED:
-                        continue
-                    
-                    # #####
-                    # # SS1: only allows: Set well to UNDEFINED
-                    # logger.info('RESET well: %s to %r', well_id, WELL_TYPE.UNDEFINED)
-                    # if new_well_type != WELL_TYPE.UNDEFINED:
-                    #     raise ValidationError(
-                    #         key=WELL.LIBRARY_WELL_TYPE, 
-                    #         msg='%s may only be reset to %r' 
-                    #             % (WELL.LIBRARY_WELL_TYPE, WELL_TYPE.UNDEFINED))
-                    # if any(initializer_dict.values()):
-                    #     raise ValidationError({
-                    #         k: 'No values may be set for %r type' % WELL_TYPE.UNDEFINED 
-                    #             for k in initializer_dict.keys() 
-                    #     })
-                    # # Reset to undefined:
-                    # well.delete()
-                    # well = Well.objects.create(
-                    #     well_id = well_id,
-                    #     well_name = lims_utils.well_id_name(well_id),
-                    #     plate_number = lims_utils.well_id_plate_number(well_id),
-                    #     library=library, 
-                    #     library_well_type = WELL_TYPE.UNDEFINED, 
-                    #     )
-                    # continue;
-                    # # Well has been reset to UNDEFINED
-                    # #####
-
-                well_data['well'] = well
-                logger.debug('well: %r: %r', well_id, initializer_dict)
-                    
-                logger.debug('set well data: %r', initializer_dict)
-                for key, val in initializer_dict.items():
-                    if hasattr(well, key):
-                        setattr(well, key, val)
-                
-                well.save()
-                
-                duplex_wells = []
-                if well_data.get('duplex_wells', None):
-                    if not library.is_pool:
-                        raise ValidationError(
-                            key='duplex_wells',
-                            msg='library is not a pool libary: %r' % library.short_name)
-                    
-                    # TODO: batch get/set all of the duplex wells as well
-                    well_ids = well_data['duplex_wells']
-                    for well_id in well_ids:
-                        try:
-                            duplex_wells.append(Well.objects.get(well_id=well_id))
-                        except:
-                            raise ValidationError(
-                                key='duplex_well not found',
-                                msg='well: %r, pool well: %r' % (well.well_id, well_id))
-                    well_data['duplex_wells'] = duplex_wells
-
-                # Pass on the reagent patch data only for experimental wells
-                REAGENT_WELL_TYPES = [WELL_TYPE.EXPERIMENTAL, WELL_TYPE.LIBRARY_CONTROL]
-                if well.library_well_type in REAGENT_WELL_TYPES:
-                    reagent_data.append(well_data)
-                else:
-                    # If the well is not expermimental (or control), then check
-                    # to make sure user is not trying to set reagent values
-                    reagent_test_data = reagent_resource.parse(
-                        well_data, fields=reagent_specific_fields)
-                    if DEBUG_LIB_LOAD is True:
-                        logger.info('reagent specific fields: %r', reagent_specific_fields.keys())
-                        logger.info('reagent_test_data: %r', reagent_test_data)
-                    value_fields = [k for k,v in reagent_test_data.items() 
-                                    if v is False or v]
-                    if DEBUG_LIB_LOAD is True:
-                        logger.info('value fields: %r', value_fields)
-                    if value_fields:
-                        raise ValidationError({
-                            WELL.LIBRARY_WELL_TYPE: 
-                                'Reagent fields may only be specified for '
-                                'library_well_type in: (%s)'
-                                    % ', '.join(REAGENT_WELL_TYPES),
-                            'Reagent Fields specified': value_fields
-                        })
-                    
-                if (i+1) % 1000 == 0:
-                    logger.info('patched %d wells', i+1)
             except ValidationError, e:
-                logger.exception('well error: %r', e)
-                add_error(well_id, e.errors, raw_data=well_data)
+                cumulative_error.add_error(well_id, e.errors, line=line)
+                continue
+            
+            errors = self.validate(initializer_dict, patch=True, fields=fields)
+            if errors:
+                cumulative_error.add_error(well_id, errors, line=line)
+                continue
+
+            # Check for state changes:
+            new_well_type = initializer_dict.pop(WELL.LIBRARY_WELL_TYPE, None)
+            if well.library_well_type == WELL_TYPE.UNDEFINED:
+                
+                if not new_well_type:
+                    cumulative_error.add_error(well_id, {
+                        WELL.LIBRARY_WELL_TYPE: 'required' }, 
+                        line=line)
+                    continue
+                        
+                well.library_well_type = new_well_type
+            elif new_well_type and new_well_type != well.library_well_type:
+                
+#                 # FIXME: 20180713 - should allow reset to undefined
+#                 if new_well_type == WELL_TYPE.UNDEFINED:
+#                     add_error(well_id, {
+#                         WELL.LIBRARY_WELL_TYPE : 
+#                             '"%s" is not allowed' % WELL_TYPE.UNDEFINED }, 
+#                         raw_data=well_data)
+#                     continue
+                
+                # Delete the well to remove all old information
+                well.delete()
+                
+                well = Well.objects.create(
+                    well_id = well_id,
+                    well_name = lims_utils.well_id_name(well_id),
+                    plate_number = lims_utils.well_id_plate_number(well_id),
+                    library=library, 
+                    library_well_type = new_well_type
+                )
+                    
+            well_data['well'] = well
+            for key, val in initializer_dict.items():
+                if hasattr(well, key):
+                    setattr(well, key, val)
+            
+            well.save()
+            
+            duplex_wells = []
+            if well_data.get('duplex_wells', None):
+                if not library.is_pool:
+                    cumulative_error.add_error(well_id, {
+                        'duplex_wells':'library is not a pool libary: %r' 
+                            % library.short_name}, line=line)
+                    continue
+                
+                # TODO: batch get/set all of the duplex wells as well
+                for duplex_well_id in well_data['duplex_wells']:
+                    try:
+                        duplex_wells.append(Well.objects.get(well_id=duplex_well_id))
+                    except:
+                        cumulative_error.add_error(well_id, {
+                            'duplex_wells': 'well: %r not found' % duplex_well_id },
+                            line=line)
+                        
+                well_data['duplex_wells'] = duplex_wells
+                
+            # Pass on the reagent patch data only for experimental wells
+            REAGENT_WELL_TYPES = [WELL_TYPE.EXPERIMENTAL, WELL_TYPE.LIBRARY_CONTROL]
+            if well.library_well_type in REAGENT_WELL_TYPES:
+                reagent_data.append(well_data)
+                
+            else:
+                # If the well is not expermimental (or control), then check
+                # to make sure user is not trying to set reagent values
+                reagent_test_data = reagent_resource.parse(
+                    well_data, fields=reagent_specific_fields)
+                if DEBUG_LIB_LOAD is True:
+                    logger.info('reagent specific fields: %r', reagent_specific_fields.keys())
+                    logger.info('reagent_test_data: %r', reagent_test_data)
+                value_fields = [k for k,v in reagent_test_data.items() 
+                                if v is False or v]
+                if DEBUG_LIB_LOAD is True:
+                    logger.info('value fields: %r', value_fields)
+                if value_fields:
+                    cumulative_error.add_error(well_id, {
+                        WELL.LIBRARY_WELL_TYPE: 
+                            ['Reagent fields may only be specified for a '
+                            'library_well_type in: (%s) ' 
+                                % ', '.join(REAGENT_WELL_TYPES),
+                            'reagent fields specified: [%s]' 
+                                %', '.join(value_fields)]
+                        }, line=line)
+                    
+            if (i+1) % 1000 == 0:
+                logger.info('patched %d wells', i+1)
                 
         logger.info('patched %d wells', i+1)
 
         # 4. Patch reagent specific data
         
+        reagent_patch_metadata = None
         if reagent_data:
             try:
-                logger.info('patch (%d) reagents for: %r',len(reagent_data), library.classification)
-                reagent_resource._patch_wells(request, reagent_data)
-            except ValidationError, e:
-                if cumulative_error.errors:
-                    for well_id, error_dict in e.errors.items():
-                        cumulative_error.errors[well_id].update(error_dict)
-                else:
-                    cumulative_error = e
+                logger.info('patch (%d) reagents for: %r',
+                            len(reagent_data), library.classification)
+                reagent_patch_metadata = \
+                    reagent_resource._patch_wells(request, reagent_data)
+                    
+                # FIXME: 20180710 - reagent_patch_metadata created but not 
+                # needed to track molfile changes
+            except CumulativeError, e:
+                cumulative_error.update_from(e)
         else:
             logger.info('no reagent data to patch')
             
@@ -23271,7 +23526,7 @@ class WellResource(DbApiResource):
             if well_id not in cumulative_error.errors:
                 errors = self.final_validation(reagent_resource,well_data)
                 if errors:
-                    add_error(well_id, errors)
+                    cumulative_error.add_error(well_id, errors)
         if cumulative_error.errors:
             sorted_wells = sorted(cumulative_error.errors.keys())
             sorted_errors = list()
@@ -23286,16 +23541,25 @@ class WellResource(DbApiResource):
                 logger.info('cumulative_errors...: %r', cumulative_error)
             raise cumulative_error
 
-        # NOTE: original data excludes "undefined" wells:
-        # - logging will not show initial patch of wells
-        # - exclude the undefined wells that are patched
-        patched_new_data = { well_id:well_data
-            for well_id,well_data in new_data.items() if well_id in original_data}
+        # TODO: 20180710 efficient Test for molfile changes
         
+        full_create_log = False
+        if library.is_released is True:
+            full_create_log = is_preview_mode
+        
+        logger.info('full_create_log: %r', full_create_log)
         logs = self.log_patches(
-            request, original_data.values(), patched_new_data.values(),
-            excludes=['substance_id'], #, 'is_restricted_structure']
-            parent_log = library_log)
+            request, original_data.values(), new_data.values(),
+            excludes=['substance_id'], parent_log=library_log, 
+            full_create_log=full_create_log)
+
+        if not logs:
+            if deserialize_meta:
+                errors = deserialize_meta
+            else:
+                errors = {}
+            errors.update({ 'state': 'patch file contains no updates'})
+            raise ValidationError(errors)
 
         patch_count = len(valid_data)
         # Update: for wells, only measure what has diffed
@@ -23322,8 +23586,12 @@ class WellResource(DbApiResource):
             library_log.save()
         
         # Final result reporting
+        meta = kwargs.get('meta', {})
+
+        if deserialize_meta:
+            meta.update(deserialize_meta)
         
-        meta = { 
+        meta.update({ 
             API_MSG_RESULT: { 
                 API_MSG_SUBMIT_COUNT: patch_count, 
                 API_MSG_UPDATED: update_count, 
@@ -23332,18 +23600,83 @@ class WellResource(DbApiResource):
                 API_MSG_ACTION: library_log.api_action, 
                 API_MSG_COMMENTS: library_log.comment
             }
-        }
+        })
         logger.info('wells patch complete: %r', meta)
         
-        if deserialize_meta:
-            meta.update(deserialize_meta)
+            
+        library_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
+        library_log.save()
+
         
+        if is_preview_mode is True and library.is_released is True:
+            # After release, each load will be a "preview":
+            # -- only the logs will be committed until the preview is released.
+            if API_PARAM_PREVIEW_LOGS in kwargs:
+                kwargs[API_PARAM_PREVIEW_LOGS].append(library_log)
+                kwargs[API_PARAM_PREVIEW_LOGS].extend(logs)
+            
+                logger.info('transaction rollback for preview mode...')
+                transaction.set_rollback(True)
+            else:
+                raise ProgrammingError(
+                    'patching in preview mode requires %r param' 
+                        % API_PARAM_PREVIEW_LOGS )
         if not self._meta.always_return_data:
             return self.build_response(
                 request, {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
         else:
             return self.build_response(
                 request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+
+    def _find_valid_entries(self, deserialized):  
+
+        errors = defaultdict(dict)
+        
+        id_attribute = WELL.WELL_ID
+        valid_data = {}
+        
+        DEBUG_LINE_KEY = 'line: {}'
+        
+        for row,data in enumerate(deserialized):
+            line = data.get(INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, row)
+            debug_key = DEBUG_LINE_KEY.format(line)
+            id = data.get(id_attribute,None)
+            if not id:
+                well_name = data.get('well_name', None)
+                plate_number = data.get('plate_number', None)
+                if well_name and plate_number:                
+                    well_id = lims_utils.well_id(plate_number, well_name)
+                    if not well_id:
+                        errors[debug_key].update({
+                            WELL.WELL_ID: 'parse error: {}:{}'.format(
+                                plate_number, well_name)})
+                        continue
+                    else:
+                        if well_id in valid_data:
+                            errors[well_id].update({ debug_key: 'duplicate' })
+                        else:
+                            data[WELL.WELL_ID] = well_id
+                            valid_data[well_id] = data
+                else:
+                    errors[debug_key].update({ WELL.WELL_ID: 'required'})
+                    continue
+            else:
+                well_id = lims_utils.parse_well_id(id)
+                if not well_id:
+                    errors[debug_key].update({ WELL.WELL_ID: 
+                        'Well ID: "{}" does not fit the pattern {}'\
+                            .format(id, WELL.WELL_ID_PATTERN_MSG) })
+                    continue
+                else:
+                    if well_id in valid_data:
+                        errors[well_id].update({ debug_key: 'duplicate' })
+                    else:
+                        data[WELL.WELL_ID] = well_id
+                        valid_data[well_id] = data
+    
+        logger.info('valid data to patch: %d', len(valid_data))
+        
+        return (valid_data, errors)
 
     def final_validation(self, reagent_resource, well_data):
         ''' Perform final validations on the data generated after loading'''
@@ -23357,7 +23690,6 @@ class WellResource(DbApiResource):
             msg = 'required for %s = %r' % (
                 WELL.LIBRARY_WELL_TYPE, WELL_TYPE.EXPERIMENTAL)
             if mgml is None and molar is None:
-                logger.info('well_data: %r', well_data)
                 errors[WELL.MG_ML_CONCENTRATION] = msg
                 errors[WELL.MOLAR_CONCENTRATION] = msg
             
@@ -23703,7 +24035,6 @@ class WellResource(DbApiResource):
                     _well.c.well_name.in_(parsed_search['wellnames']),
                     clause)
             clauses.append(clause)
-        logger.info('plates only: %r', plates_only)
         if plates_only:
             clauses.append(_well.c.plate_number.in_(plates_only))
         if wellids:
@@ -23839,19 +24170,38 @@ class LibraryResource(DbApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
+
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/well%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_wellview'),
                 name="api_dispatch_library_wellview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
+                 r"/well/apply_preview%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_well_apply_preview'),
+                name="api_dispatch_library_well_apply_preview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
+                 r"/well/delete_preview%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_well_delete_preview'),
+                name="api_dispatch_library_well_apply_preview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
+                 r"/well/preview%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_well_preview_view'),
+                name="api_dispatch_library_well_preview"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/reagent%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_reagentview'),
                 name="api_dispatch_library_reagentview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
+                 r"/reagent/preview/%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_well_preview_view'),
+                name="api_dispatch_library_reagent_preview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/reagent/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_reagent_schema'),
                 name="api_get_reagent_schema"),
+            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/version%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_libraryversionview'),
@@ -23877,6 +24227,48 @@ class LibraryResource(DbApiResource):
     def dispatch_library_wellview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_well_resource().dispatch('list', request, **kwargs)    
+
+    def dispatch_library_well_apply_preview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return self.get_well_resource().dispatch('preview', request, **kwargs)    
+
+    def dispatch_library_well_preview_view(self, request, **kwargs):
+#         kwargs['library_short_name'] = kwargs.pop('short_name')
+#         return self.get_well_resource().dispatch('preview', request, **kwargs)    
+        short_name = kwargs.pop('short_name')
+        kwargs['library_short_name'] = short_name
+        library = Library.objects.get(short_name=short_name)
+        return self.get_reagent_resource(library.screen_type)\
+            .dispatch('preview_list', request, **kwargs)
+   
+
+    @write_authorization
+    @transaction.atomic
+    def dispatch_library_well_delete_preview(self, request, **kwargs):
+        short_name = kwargs.pop('short_name')
+        kwargs['library_short_name'] = short_name
+        
+        if not request.method.lower() == 'post':
+            raise BadRequest('Only POST is allowed')
+        
+        library_data = self._get_detail_response_internal(
+            short_name=short_name)
+        if not library_data:
+            raise Http404
+        
+        preview_log_id = library_data.get(SCHEMA.LIBRARY.PREVIEW_LOG_ID)
+        if not preview_log_id:
+            raise Http404('No preview found for library %r' % short_name)
+        try:
+            parent_preview_log = ApiLog.objects.get(id=preview_log_id)
+            parent_preview_log.delete()
+            self.clear_cache(request)
+            self.get_apilog_resource().clear_cache(request)
+        except ObjectNotFound, e:
+            raise Http404('Preview: %r for library %r not located' % (
+                preview_log_id, short_name))
+         
+        return HttpResponse(status=204)
                     
     def dispatch_library_reagentview(self, request, **kwargs):
         short_name = kwargs.pop('short_name')
@@ -23927,9 +24319,14 @@ class LibraryResource(DbApiResource):
         
         try:
             # general setup
-            
+            exact_fields = set(param_hash.get('exact_fields',[]))
             manual_field_includes = set(param_hash.get('includes', []))
-            manual_field_includes.add('comment_array')
+            if exact_fields:
+                if 'comment_array' in exact_fields:
+                    manual_field_includes.add('comment_array')
+            else:
+                manual_field_includes.add('comment_array')
+                
             if is_for_detail:
                 manual_field_includes.add('concentration_types')
  
@@ -23963,6 +24360,7 @@ class LibraryResource(DbApiResource):
                 self._meta.resource_name)
             _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
             _well = self.bridge['well']
+            _apilog = self.bridge['reports_apilog']
             custom_columns = {
                 'comment_array': (
                     select([func.array_to_string(
@@ -23979,6 +24377,14 @@ class LibraryResource(DbApiResource):
                         LIST_DELIMITER_SQL_ARRAY) ])
                     .select_from(_comment_apilogs)
                     .where(_comment_apilogs.c.key==_l.c.short_name)),
+                'preview_log_id': (
+                    select([_apilog.c.id])
+                        .select_from(_apilog)
+                        .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
+                        .where(_apilog.c.key == _l.c.short_name)
+                        .where(_apilog.c.is_preview == True)
+                        .limit(1)
+                    ),
                 'copy_plate_count': literal_column(
                     '(select count(distinct(p.plate_id))'
                     '    from plate p join copy c using(copy_id)'
@@ -24142,25 +24548,40 @@ class LibraryResource(DbApiResource):
         Library.objects.get(**id_kwargs).delete()
     
     
-    def validate(self, _dict, patch=False, schema=None, fields=None):
+    def validate(self, _dict, patch=False, schema=None, fields=None, library=None):
         errors = DbApiResource.validate(self, _dict, patch=patch, schema=schema, fields=fields)
     
         if patch is False:
-            
-            if 'start_plate' not in _dict:
-                errors['start_plate'] = ['required',]
-            elif 'end_plate' not in _dict:
-                errors['end_plate'] = ['required',]
+            start_plate = _dict.get(SCHEMA.LIBRARY.START_PLATE)
+            end_plate = _dict.get(SCHEMA.LIBRARY.END_PLATE)
+            if not start_plate:
+                errors[SCHEMA.LIBRARY.START_PLATE] = ['required',]
+            elif not end_plate:
+                errors[SCHEMA.LIBRARY.END_PLATE] = ['required',]
             else:
-                if _dict['start_plate'] > _dict['end_plate']:
-                    raise ValidationError(key='start_plate', msg='start and end plate range is out of order')
+                if start_plate > end_plate:
+                    raise ValidationError(
+                        key=SCHEMA.LIBRARY.START_PLATE, 
+                        msg='start and end plate range is out of order')
                 well_test = Well.objects.all().filter(
-                    plate_number__range=(_dict['start_plate'],_dict['end_plate']))
+                    plate_number__range=(start_plate, end_plate))
                 if well_test.exists():
                     msg = 'part of range is already allocated to another library'
-                    errors['start_plate'] = [msg]
-                    errors['end_plate'] = [msg]
-                    
+                    errors[SCHEMA.LIBRARY.START_PLATE] = [msg]
+                    errors[SCHEMA.LIBRARY.END_PLATE] = [msg]
+        else:
+            is_released = _dict.get(SCHEMA.LIBRARY.IS_RELEASED)
+            if library.is_released is True and is_released is False:
+                # TODO: original_data may be passed from ApiResource.patch
+                library_data = self._get_detail_response_internal(short_name=library.short_name)
+                preview_log_id = library_data.get(SCHEMA.LIBRARY.PREVIEW_LOG_ID)
+                if preview_log_id:
+                    errors[SCHEMA.LIBRARY.IS_RELEASED] = \
+                        'Pending well import preview must be released or deleted'
+                        
+                # check for extant data: if assay wells are loaded, 
+                # IS_RELEASED may not be false
+                
         return errors
     
     @write_authorization
@@ -24173,68 +24594,63 @@ class LibraryResource(DbApiResource):
         id_kwargs = self.get_id(deserialized, validate=True, schema=schema, **kwargs)
         # create/update the library
         create = False
+        library = None
         try:
-            library = None
-            try:
-                library = Library.objects.get(**id_kwargs)
-            except ObjectDoesNotExist, e:
-                create = True
-                logger.info('Library %s does not exist, creating', id_kwargs)
-                library = Library(**id_kwargs)
+            library = Library.objects.get(**id_kwargs)
+        except ObjectDoesNotExist, e:
+            create = True
+            logger.info('Library %s does not exist, creating', id_kwargs)
+            library = Library(**id_kwargs)
 
-            initializer_dict = self.parse(deserialized, create=create, schema=schema)
-            errors = self.validate(initializer_dict, schema=schema,patch=not create)
-            if errors:
-                raise ValidationError(errors)
-            
-            for key, val in initializer_dict.items():
-                if hasattr(library, key):
-                    setattr(library, key, val)
-            
-            library.save()
-
-            # now create the wells
-            if create is True:
-                plate_size = int(library.plate_size)
+        initializer_dict = self.parse(deserialized, create=create, schema=schema)
+        errors = self.validate(initializer_dict, schema=schema,patch=not create, library=library)
+        if errors:
+            raise ValidationError(errors)
         
-                try:
-                    i = 0
-                    logger.info('bulk create wells: plates: %s-%s, plate_size: %d', 
-                        library.start_plate, library.end_plate, plate_size)
-                    for plate in range(
-                            int(library.start_plate), int(library.end_plate) + 1):
-                        bulk_create_wells = []
-                        for index in range(0, plate_size):
-                            well = Well()
-                            well.well_name = lims_utils.well_name_from_index(
-                                index, plate_size)
-                            well.well_id = lims_utils.well_id(plate, well.well_name)
-                            well.library = library
-                            well.plate_number = plate
-                            well.library_well_type = WELL_TYPE.UNDEFINED
-                            bulk_create_wells.append(well)
-                            i += 1
-                            if i % 1000 == 0:
-                                logger.info('created %d wells', i)
-                        Well.objects.bulk_create(bulk_create_wells)
-                    logger.info(
-                        'created %d wells for library %r, %r',
-                        i, library.short_name, library.library_id)
-                except Exception, e:
-                    logger.exception('on library wells create')
-                    raise e
+        for key, val in initializer_dict.items():
+            if hasattr(library, key):
+                setattr(library, key, val)
+        
+        library.save()
 
-            logger.info('patch_obj done')
-
-            # clear the cached schema because plate range have updated
-            self.get_cache().delete(self._meta.resource_name + ':schema')
-            
-            return { API_RESULT_OBJ: library }
-            
-        except Exception, e:
-            logger.exception('on patch detail')
-            raise e  
+        # now create the wells
+        if create is True:
+            plate_size = int(library.plate_size)
     
+            try:
+                i = 0
+                logger.info('bulk create wells: plates: %s-%s, plate_size: %d', 
+                    library.start_plate, library.end_plate, plate_size)
+                for plate in range(
+                        int(library.start_plate), int(library.end_plate) + 1):
+                    bulk_create_wells = []
+                    for index in range(0, plate_size):
+                        well = Well()
+                        well.well_name = lims_utils.well_name_from_index(
+                            index, plate_size)
+                        well.well_id = lims_utils.well_id(plate, well.well_name)
+                        well.library = library
+                        well.plate_number = plate
+                        well.library_well_type = WELL_TYPE.UNDEFINED
+                        bulk_create_wells.append(well)
+                        i += 1
+                        if i % 1000 == 0:
+                            logger.info('queued %d wells to create', i)
+                    Well.objects.bulk_create(bulk_create_wells)
+                logger.info(
+                    'created %d wells for library %r, %r',
+                    i, library.short_name, library.library_id)
+            except Exception, e:
+                logger.exception('on library wells create')
+                raise e
+
+        logger.info('patch_obj done')
+
+        # clear the cached schema because plate range have updated
+        self.get_cache().delete(self._meta.resource_name + ':schema')
+        
+        return { API_RESULT_OBJ: library }
+            
 
 class ResourceResource(reports.api.ResourceResource):
     '''

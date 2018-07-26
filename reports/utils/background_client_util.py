@@ -65,7 +65,7 @@ def execute_from_python(job_id, sbatch=False):
 
     run_sh_args = [
         python_environ_script, background_process_script, 
-        '--job_id', str(job_id), '--c', credential_file, '-vv']
+        '--job_id', str(job_id), '--c', credential_file]
     full_args = []
     
     if sbatch is True:

@@ -162,7 +162,10 @@ def parse_val(value, key, data_type, options=None):
         raise ValidationError(key=key,msg='parse error: %s' % msg)
 
 def parse_json_field(val, key, json_field_type):
-    'Parse input field values for composing the nested json field'
+    '''
+    Parse input field values for composing the nested json field in a 
+    MetaHash table.
+    '''
     logger.debug('parse_json_field: %r, %r, %r', val,key,json_field_type)
     # FIXME: now that tastypie is removed, 
     # json_field_type should equal data_type

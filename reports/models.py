@@ -45,6 +45,7 @@ def dict_strip_unicode_keys(uni_dict):
 
 
 class MetaManager(models.Manager):
+    ''' Special manager for the MetaHash table '''
 
     def __init__(self, **kwargs):
         super(MetaManager,self).__init__(**kwargs)
@@ -198,6 +199,8 @@ class ApiLog(models.Model):
     # Nested fields are defined in the json_field
     json_field = models.TextField(null=True)
     
+    is_preview = models.BooleanField(default=False)
+    
     class Meta:
         unique_together = (('ref_resource_name', 'key', 'date_time'))    
 
@@ -232,34 +235,53 @@ class ApiLog(models.Model):
         return json.dumps(obj_as_dict, cls=LimsJSONEncoder)
 
     def save(self, **kwargs):
-        ''' override to convert json fields '''
+        ''' 
+        Override to store/encode the diffs:
+        - before/after are stored as the string representation of the field 
+        value.
+        - if the field value is a list, store the JSON representation.
+        '''
         
-        # ONLY on first save, create the associated logdiffs
         is_new = self.pk is None
         models.Model.save(self, **kwargs)
         
+        def encode_before_after(val):
+            if val is None:
+                return val
+            if isinstance(val, (list,tuple)):
+                val = json.dumps(val, cls=LimsJSONEncoder)
+            else:
+                val = str(val)
+            return val
+        
         if is_new:
+            logger.debug('logging new diffs: %r', self.diffs)
             bulk_create_diffs = []
             for key,diffs in self.diffs.items():
                 assert isinstance(diffs, (list,tuple))
                 assert len(diffs) == 2
+                before = encode_before_after(diffs[0])
+                after = encode_before_after(diffs[1])
                 bulk_create_diffs.append(LogDiff(
                     log=self,
                     field_key = key,
                     field_scope = 'fields.%s' % self.ref_resource_name,
-                    before=diffs[0],
-                    after=diffs[1]))
+                    before=before,
+                    after=after))
             LogDiff.objects.bulk_create(bulk_create_diffs)
         else:
+            logger.debug('logging update diffs: %r', self.diffs)
             # Note: this option should not be used for bulk creation
             for key,diffs in self.diffs.items():
                 assert isinstance(diffs, (list,tuple))
                 assert len(diffs) == 2
+                before = encode_before_after(diffs[0])
+                after = encode_before_after(diffs[1])
                 found = False
                 for logdiff in self.logdiff_set.all():
                     if logdiff.field_key == key:
-                        logdiff.before = diffs[0]
-                        logdiff.after = diffs[1]
+                        logdiff.before=before
+                        logdiff.after=after
                         logdiff.save()
                         found = True
                 if not found:
@@ -267,8 +289,8 @@ class ApiLog(models.Model):
                         log=self,
                         field_key = key,
                         field_scope = 'fields.%s' % self.ref_resource_name,
-                        before=diffs[0],
-                        after=diffs[1])
+                        before=before,
+                        after=after)
                         
     @staticmethod
     def bulk_create(logs):
@@ -351,7 +373,7 @@ class MetaHash(models.Model):
     def set_field(self, field, value):
         temp = self.get_field_hash()
         temp[field] = value;
-        self.json_field = json.dumps(temp)
+        self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
     def is_json(self):
         """
@@ -424,7 +446,7 @@ class Vocabulary(models.Model):
     def set_field(self, field, value):
         temp = self.get_field_hash()
         temp[field] = value;
-        self.json_field = json.dumps(temp)
+        self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
     def __repr__(self):
         return (

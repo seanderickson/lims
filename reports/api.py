@@ -35,6 +35,7 @@ from django.http.request import HttpRequest
 from django.http.response import HttpResponse, Http404, HttpResponseBase, \
     HttpResponseNotFound
 from django.test.client import RequestFactory
+import six
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
@@ -48,6 +49,7 @@ from tastypie.http import HttpNoContent
 from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
 
+from db.support import lims_utils
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError, API_RESULT_ERROR
@@ -59,13 +61,12 @@ from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, Job
 import reports.schema as SCHEMA
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
-    SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE
+    SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE, \
+    LimsJSONEncoder
 from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 import reports.utils.background_client_util as background_client_util
 import reports.utils.background_processor as background_processor
-from db.support import lims_utils
-
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,12 @@ API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
 
 API_PARAM_OVERRIDE = 'override'
+# API_PARAM_NO_PREVIEW = 'no_preview'
+API_PARAM_PATCH_PREVIEW_MODE = 'patch_with_preview'
+API_PARAM_SHOW_PREVIEW = 'show_preview'
+API_PARAM_PREVIEW_LOGS = 'preview_logs'
+API_PARAM_NO_BACKGROUND = 'no_background'
+
 API_MSG_SUBMIT_COUNT = 'Data submitted'
 API_MSG_RESULT = 'Result'
 API_MSG_WARNING = 'Warning'
@@ -122,6 +129,8 @@ class UserGroupAuthorization(Authorization):
     def _is_resource_authorized(
         self, user, permission_type, resource_name=None, **kwargs):
         
+        if not user:
+            return False
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
                 self.resource_name, user, permission_type)
@@ -380,11 +389,13 @@ def read_authorization(_func):
 
     return _inner
 
+
 def background_job(_func):
     '''
     Wrapper function to defer request to offline background job processor:
     
-    - if SCHEMA.JOB.JOB_PROCESSING_FLAG is set, service the job_id indicated,
+    - if SCHEMA.JOB.JOB_PROCESSING_FLAG is set as a request parameter, 
+    service the job_id indicated,
     - else create a new [pending, submitted] Job
     
     @see reports.api.JobResource
@@ -395,7 +406,18 @@ def background_job(_func):
     def _inner(self, *args, **kwargs):
         request = args[0]
         
+        
+        no_background = kwargs.get(API_PARAM_NO_BACKGROUND, False)
+        no_background = parse_val(no_background, API_PARAM_NO_BACKGROUND, 'boolean')
+        
         if settings.BACKGROUND_PROCESSING is not True:
+            logger.info(
+                'background processing is turned off because of '
+                'settings.BACKGROUND_PROCESSING')
+            return _func(self, *args, **kwargs)
+        elif no_background is True:
+            logger.info('background processing is turned off because '
+                        'API_PARAM_NO_BACKGROUND: %r is set', API_PARAM_NO_BACKGROUND)
             return _func(self, *args, **kwargs)
         else:
             logger.info('background processing request...')
@@ -739,7 +761,7 @@ class ApiResource(SqlAlchemyResource):
         result = self._get_list_response(request, **kwargs)
         return result
 
-    def _patch_internal(self, data, user=None, **kwargs):
+    def _patch_detail_internal(self, data, user=None, **kwargs):
         '''
         Note: requires the target resource to support the "data" kwarg; this
         bypasses deserialization for this request.
@@ -748,7 +770,7 @@ class ApiResource(SqlAlchemyResource):
         request = self.request_factory.generic(
             'PATCH', '.', HTTP_ACCEPT=JSON_MIMETYPE )
         if user is None:
-            logger.debug('_patch_internal, no user')
+            logger.debug('_patch_detail_internal, no user')
             class User:
                 id = 0
                 is_superuser = True
@@ -767,6 +789,41 @@ class ApiResource(SqlAlchemyResource):
         kwargs['data'] = data
         
         response = self.patch_detail(
+            request,
+            format='json',
+            **kwargs)
+        _data = self.get_serializer().deserialize(
+            LimsSerializer.get_content(response), JSON_MIMETYPE)
+        return _data
+    
+    def _patch_list_internal(self, data, user=None, **kwargs):
+        '''
+        Note: requires the target resource to support the "data" kwarg; this
+        bypasses deserialization for this request.
+        '''
+
+        request = self.request_factory.generic(
+            'PATCH', '.', HTTP_ACCEPT=JSON_MIMETYPE )
+        if user is None:
+            logger.debug('_patch_detail_internal, no user')
+            class User:
+                id = 0
+                is_superuser = True
+                username = 'internal_request'
+                def is_authenticated(self):
+                    return True
+            request.user = User()
+        else:
+            request.user = user
+        
+        logger.info('execute internal patch: %r', kwargs)
+        
+        if 'schema' not in kwargs:
+            kwargs['schema'] = self.build_schema(user=user)
+        
+        kwargs['data'] = data
+        
+        response = self.patch_list(
             request,
             format='json',
             **kwargs)
@@ -861,7 +918,12 @@ class ApiResource(SqlAlchemyResource):
         if DEBUG_PARSE:
             logger.info('parse: %r:%r', self._meta.resource_name, schema is None)
             logger.info('parse: %r', deserialized)
-       
+
+        if not deserialized or not isinstance(deserialized, dict):
+            logger.warn('no deserialized data found')
+            return {}
+#             raise ValidationError(key='deserialized', msg='No detail data found')
+               
         errors = {}
         mutable_fields = fields        
         if fields is None:
@@ -1007,16 +1069,19 @@ class ApiResource(SqlAlchemyResource):
         # includes='*' from get_list_internal
         includes = set()
         kwargs_for_log['visibilities'] = ['d','l']
+        ids = defaultdict(set)
         for _data in deserialized:
             id_kwargs = self.get_id(_data, schema=schema)
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
             if id_kwargs:
                 includes |= set(_data.keys())
                 for idkey,idval in id_kwargs.items():
+                    
                     id_param = '%s__in' % idkey
-                    id_vals = kwargs_for_log.get(id_param, set())
-                    id_vals.add(idval)
-                    kwargs_for_log[id_param] = id_vals
+                    ids[id_param].add(idval)
+        if not ids:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(ids)
         kwargs_for_log['includes'] = list(includes)
         try:
             logger.info('get original state, for logging... %r', kwargs_for_log.keys())
@@ -1234,7 +1299,6 @@ class ApiResource(SqlAlchemyResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
 
-        logger.info('deserialized: %r', deserialized)
         # Unspool the generator in memory
         # Note: Memory performance optimizations should override post_list;
         # e.g. see WellResource.patch_list
@@ -1276,6 +1340,7 @@ class ApiResource(SqlAlchemyResource):
         # includes='*' from get_list_internal
         includes = set()
         kwargs_for_log['visibilities'] = ['d','l']
+        ids = defaultdict(set)
         for _data in deserialized:
             logger.info('_data: %r', _data)
             id_kwargs = self.get_id(_data, schema=schema)
@@ -1284,9 +1349,10 @@ class ApiResource(SqlAlchemyResource):
                 includes |= set(_data.keys())
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
-                    id_vals = kwargs_for_log.get(id_param, set())
-                    id_vals.add(idval)
-                    kwargs_for_log[id_param] = id_vals
+                    ids[id_param].add(idval)
+        if not ids:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(ids)
         kwargs_for_log['includes'] = list(includes)
         try:
             logger.debug('get original state, for logging...')
@@ -1380,8 +1446,8 @@ class ApiResource(SqlAlchemyResource):
         if not schema:
             raise Exception('schema not initialized')
 
-        if not deserialized:
-            return {}
+#         if not deserialized:
+#             return {}
         
         kwargs_for_log = self.get_id(deserialized,validate=False,schema=schema,**kwargs)
         
@@ -1484,8 +1550,8 @@ class ApiResource(SqlAlchemyResource):
         if not schema:
             raise Exception('schema not initialized')
         
-        if not deserialized:
-            return {}
+#         if not deserialized:
+#             return {}
         
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
@@ -1923,15 +1989,14 @@ class ApiResource(SqlAlchemyResource):
                             return '{} {}{}'.format(
                                 lims_utils.convert_decimal(
                                     val,default_unit, options.get('decimals',3)),
-                                symbol,
-                                options['symbol'])
+                                symbol, options['symbol'])
                     else:
                         
                         return self.row[key]
             for row in cursor:
                 yield Row(row)
         return siunit_rowproxy_generator
-    
+
     @staticmethod    
     def create_vocabulary_rowproxy_generator(field_hash, extant_generator=None):
         '''
@@ -1954,6 +2019,7 @@ class ApiResource(SqlAlchemyResource):
             def __getitem__(self, key):
                 if self.row[key] is None:
                     return None
+                
                 if key in vocabularies:
                     if self.row[key] not in vocabularies[key]:
                         if str(self.row[key]) not in vocabularies[key]:
@@ -1967,6 +2033,26 @@ class ApiResource(SqlAlchemyResource):
                             return vocabularies[key][str(self.row[key])]['title']
                     else:
                         return vocabularies[key][self.row[key]]['title']
+                else:
+                    return self.row[key]
+                
+                
+                
+                if key in vocabularies:
+                    raw_val = self.row[key]
+                    if raw_val is None or not str(raw_val):
+                        return raw_val
+                    vocab = vocabularies[key].get(raw_val,
+                        vocabularies[key].get(str(raw_val)))
+                    if vocab is None:
+                        logger.error(
+                            ('Unknown vocabulary:'
+                             ' scope:%s key:%s val:%r, keys defined: %r'),
+                            field_hash[key]['vocabulary_scope_ref'], key, 
+                            raw_val,vocabularies[key].keys() )
+                        return raw_val
+                    else:
+                        return vocab[SCHEMA.VOCABULARY.TITLE]
                 else:
                     return self.row[key]
         
@@ -2018,8 +2104,11 @@ class ApiResource(SqlAlchemyResource):
  
         if HEADER_APILOG_COMMENT in request.META:
             log.comment = request.META[HEADER_APILOG_COMMENT]
-            if DEBUG_PATCH_LOG is True:
-                logger.info('log comment: %r', log.comment)
+            logger.debug('HEADER_APILOG_COMMENT in request.META: %r', log.comment)
+        elif kwargs and HEADER_APILOG_COMMENT in kwargs:
+            log.comment = kwargs[HEADER_APILOG_COMMENT]
+            logger.debug('HEADER_APILOG_COMMENT in kwargs: %r', log.comment)
+        
         if kwargs:
             for key, value in kwargs.items():
                 if hasattr(log, key):
@@ -2067,14 +2156,21 @@ class ApiResource(SqlAlchemyResource):
         if log is None:
             log = self.make_log(
                 request, attributes=new_dict, id_attribute=id_attribute, **kwargs)
-        if HEADER_APILOG_COMMENT in request.META:
-            log.comment = request.META[HEADER_APILOG_COMMENT]
+        if not log.comment:
+            if HEADER_APILOG_COMMENT in request.META:
+                log.comment = request.META[HEADER_APILOG_COMMENT]
+            elif kwargs and HEADER_APILOG_COMMENT in kwargs:
+                log.comment = kwargs[HEADER_APILOG_COMMENT]
+        if log.comment is not None and DEBUG_PATCH_LOG is True:
+            logger.info('log comment: %r', log.comment)
+
+        
         if not log.key:
             self.make_log_key(log, new_dict, id_attribute=id_attribute,
                 **kwargs)
 
-        if 'parent_log' in kwargs:
-            log.parent_log = kwargs.get('parent_log', None)
+        log.parent_log = kwargs.get('parent_log', None)
+        
         if prev_dict:
             log.diffs = compare_dicts(prev_dict,new_dict, excludes,exclude_patterns)
             if not log.diffs:
@@ -2100,10 +2196,14 @@ class ApiResource(SqlAlchemyResource):
                 log.diffs = { 
                     key: [None,val] for key,val in new_dict.items() 
                         if val is not None }
+                if log.diffs and excludes:
+                    for key in excludes:
+                        if key in log.diffs:
+                            del log.diffs[key]
             if DEBUG_PATCH_LOG:
-                logger.info('create, api log: %r: %r', log, log.diffs)
+                logger.info('CREATE, api log: %r: %r', log, log.diffs)
             else:
-                logger.info('CREATE: %r', log.uri) 
+                logger.debug('CREATE: %r', log.uri) 
     
         if DEBUG_PATCH_LOG:
             logger.info('log patch done: %r', log)
@@ -2236,9 +2336,13 @@ class ApiLogResource(ApiResource):
     @read_authorization
     def get_detail(self, request, **kwargs):
 
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+
         id = kwargs.get('id', None)
         if id:
-            return self.get_list(request, **kwargs)
+            return self.build_list_response(request, **kwargs)
+#             return self.get_list(request, **kwargs)
             
         ref_resource_name = kwargs.get('ref_resource_name', None)
         if not ref_resource_name:
@@ -2256,8 +2360,6 @@ class ApiLogResource(ApiResource):
             logger.info('no date_time provided')
             raise NotImplementedError('must provide a date_time parameter')
 
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
     @classmethod
@@ -2289,7 +2391,76 @@ class ApiLogResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
         return self.build_list_response(request, **kwargs)
+            
+            
+    @staticmethod
+    def decode_before_after(val):
+        '''
+        Decode list values stored as JSON in the LogDiff.before/after fields
+        - convert empty strings to None
+        '''
+        if val is None:
+            return None
+        if isinstance(val, six.string_types):
+            if not val:
+                return None
 
+            # NOTE: all data for diffs are stored as string 
+            # - only nested lists require decoding
+            if len(val) > 2 and val[0] == '[':
+                # Indicates that a json representation of the original list
+                # value was stored in the diff
+                
+                # FIXME: logdiff was using repr to generate before/after;
+                # remove the unicode specifier and fix quotes
+                # - this was fixed 20180710, so this can be removed
+                val = re.sub(r"'",'"',val )
+                val = re.sub(r'''u(['"])''',r'\1',val )
+                try:
+                    # try to decode nested list values
+                    val = json.loads(val)
+                except Exception, e:
+                    logger.exception(
+                        'on json loads for list value: %r, %r, %r', 
+                        val, type(val), e)
+        return val
+
+
+    @staticmethod    
+    def create_apilog_preview_rowproxy_generator(list_preview_fields, extant_generator=None):
+        '''
+        Create a Row proxy that will decode list values embedded as JSON:
+        - generator wraps a sqlalchemy.engine.ResultProxy (cursor)
+        - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
+        - the wrapper will decode list values embedded as JSON in the specified 
+        list_preview_fields
+        - convert empty strings to None
+        - returns the regular row[key] value for other columns
+        
+        '''
+        logger.info('create_apilog_preview_rowproxy_generator: %r', list_preview_fields)
+        class Row:
+            def __init__(self, row):
+                self.row = row
+            def has_key(self, key):
+                return self.row.has_key(key)
+            def keys(self):
+                return self.row.keys();
+            def __getitem__(self, key):
+                val = self.row[key]
+                if isinstance(val, six.string_types) and not val:
+                    return None
+                if key in list_preview_fields:
+                    val = ApiLogResource.decode_before_after(val)
+                return val
+        
+        def preview_rowproxy_generator(cursor):
+            if extant_generator is not None:
+                cursor = extant_generator(cursor)
+            for row in cursor:
+                yield Row(row)
+        return preview_rowproxy_generator
+    
         
     def build_list_response(self,request, **kwargs):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
@@ -2434,6 +2605,7 @@ class ApiLogResource(ApiResource):
                         break
             if 'diffs' in filter_hash:
                 raise NotImplementedError('Diff filtering is not implemented')
+            
                 
             # general setup
             stmt = stmt.order_by('ref_resource_name','key', 'date_time')
@@ -2453,17 +2625,15 @@ class ApiLogResource(ApiResource):
                 query = (
                     select([
                         _logdiff.c.field_key,
-                        array([_logdiff.c.before,_logdiff.c.after])])
+                        _logdiff.c.before,_logdiff.c.after])
                     .select_from(_logdiff))
                 
-
                 def diff_generator(cursor):
                     if generator:
                         cursor = generator(cursor)
                     class Row:
                         def __init__(self, row):
                             self.row = row
-                                    
                         def has_key(self, key):
                             if key == 'diffs': 
                                 return True
@@ -2474,8 +2644,14 @@ class ApiLogResource(ApiResource):
                             if key == 'diffs':
                                 _diffs = conn.execute(
                                     query.where(_logdiff.c.log_id==row['id']))
-                                diff_dict = { x[0]:x[1] for x in _diffs }
-                                return json.dumps(diff_dict)
+                                if _diffs:
+                                    val = {}
+                                    for x in _diffs:
+                                        diffkey = x[0]
+                                        before = ApiLogResource.decode_before_after(x[1])
+                                        after = ApiLogResource.decode_before_after(x[2])
+                                        val[diffkey] = [before, after]
+                                    return val
                             else:
                                 return self.row[key]
                     conn = get_engine().connect()
@@ -2490,10 +2666,10 @@ class ApiLogResource(ApiResource):
             if 'diffs' in field_hash:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+#             compiled_stmt = str(stmt.compile(
+#                 dialect=postgresql.dialect(),
+#                 compile_kwargs={"literal_binds": True}))
+#             logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
@@ -5650,10 +5826,11 @@ class JobResource(ApiResource):
         
         try:
             logger.info('create a new job...')
-            job_patch_result = self._patch_internal(job_data)
+            job_patch_result = self._patch_detail_internal(job_data)
             logger.info('job patch result: %r', job_patch_result)
             new_job_data = job_patch_result[API_RESULT_DATA][0]
         except ValidationError, e:
+            logger.exception('on create job')
             response = self.build_error_response(
                 request, { API_RESULT_ERROR: e.errors }, **kwargs)
             raise BackgroundJobImmediateResponse(response)
@@ -5704,7 +5881,7 @@ class JobResource(ApiResource):
                 JOB.STATE: SCHEMA.VOCAB.job.state.FAILED,
                 JOB.RESPONSE_CONTENT: 'Exception created: %r'% e 
                 }
-            job_patch_result = self._patch_internal(job_patch)
+            job_patch_result = self._patch_detail_internal(job_patch)
             logger.info('job setup exception patched: %r', 
                 job_patch_result)
             raise
@@ -5738,7 +5915,7 @@ class JobResource(ApiResource):
                 JOB.RESPONSE_CONTENT: json.dumps(content),
                 JOB.RESPONSE_STATUS_CODE: response.status_code,
                 JOB.DATE_TIME_COMPLETED: _now().isoformat() }
-            job_patch_result = self._patch_internal(job_patch)
+            job_patch_result = self._patch_detail_internal(job_patch)
             logger.info('job patch result: %r', job_patch_result)
             new_job_data = job_patch_result[API_RESULT_DATA][0]
         else:
@@ -5754,7 +5931,7 @@ class JobResource(ApiResource):
                 JOB.RESPONSE_STATUS_CODE: response.status_code,
                 JOB.DATE_TIME_COMPLETED: _now().isoformat(),
                 }
-            job_patch_result = self._patch_internal(job_patch)
+            job_patch_result = self._patch_detail_internal(job_patch)
             logger.info('job patch result: %r', job_patch_result)
             new_job_data = job_patch_result[API_RESULT_DATA][0]
         return new_job_data
@@ -5785,7 +5962,7 @@ class JobResource(ApiResource):
                     JOB.STATE: SCHEMA.VOCAB.job.state.SUBMITTED,
                     JOB.PROCESS_ID: output,
                     JOB.DATE_TIME_SUBMITTED: _now().isoformat() }
-                job_patch_result = self._patch_internal(job_patch)
+                job_patch_result = self._patch_detail_internal(job_patch)
                 logger.info('submitted job: %r', job_patch_result)
                 job_data = job_patch_result[API_RESULT_DATA][0]
                 
@@ -5799,7 +5976,7 @@ class JobResource(ApiResource):
                 JOB.DATE_TIME_COMPLETED: _now().isoformat(),
                 JOB.PROCESS_MESSAGES: e.output 
             }
-            job_patch_result = self._patch_internal(job_patch)
+            job_patch_result = self._patch_detail_internal(job_patch)
             logger.info('submitted job: %r', job_patch_result)
             job_data = job_patch_result[API_RESULT_DATA][0]
             return job_data
@@ -5812,13 +5989,21 @@ class JobResource(ApiResource):
                 JOB.DATE_TIME_COMPLETED: _now().isoformat(),
                 JOB.PROCESS_MESSAGES: str(e) 
             }
-            job_patch_result = self._patch_internal(job_patch)
+            job_patch_result = self._patch_detail_internal(job_patch)
             logger.info('submitted job: %r', job_patch_result)
             job_data = job_patch_result[API_RESULT_DATA][0]
             return job_data
             
     @transaction.atomic    
     def setup_job_processing_request(self, job_id, ):
+        ''' Use the job_id to recreate the original request to be sent to the
+        original resource.
+        
+        @return recreated_job_request original request with post data
+        @return job_patch_result metadata for the current job after setting to
+        "processing" state
+        '''
+        
         JOB = SCHEMA.JOB
         post_data_directory = \
             settings.BACKGROUND_PROCESSOR['post_data_directory']
@@ -5877,7 +6062,7 @@ class JobResource(ApiResource):
             JOB.DATE_TIME_PROCESSING: _now().isoformat(),
             JOB.PROCESS_ENV: json.dumps(process_env)
          }
-        job_patch_result = self._patch_internal(job_patch)
+        job_patch_result = self._patch_detail_internal(job_patch)
         logger.debug('done setting job state to processing: %r', 
             job_patch_result)
         return recreated_job_request, job_patch_result

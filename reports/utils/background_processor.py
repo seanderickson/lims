@@ -16,7 +16,8 @@ from django.test.client import RequestFactory
 import django.test.client
 import django.utils.http
 
-from reports import HEADER_APILOG_COMMENT, ValidationError
+from reports import HEADER_APILOG_COMMENT, ValidationError,\
+    HEADER_APILOG_COMMENT_CLIENT
 from reports.schema import API_RESULT_DATA
 import reports.schema as SCHEMA
 from reports.serialize import MULTIPART_MIMETYPE, JSON_MIMETYPE
@@ -55,6 +56,8 @@ def create_request_from_job(job_data, raw_data=''):
         params = json.loads(params)
     else:
         params = {}
+    params[HEADER_APILOG_COMMENT_CLIENT] = comment
+    params[HEADER_APILOG_COMMENT] = comment
     
     if raw_data:
         if DEBUG_BACKGROUND is True:

@@ -594,7 +594,7 @@ class CursorSerializer(BaseSerializer):
         i=0
         cols = [col[0] for col in _cursor.description]
         
-        logger.info('begin serializing')
+        logger.info('begin serializing, use OrderedDict')
         for row in _cursor.fetchall():
             if i!=0:
                 raw_data.write(',\n')

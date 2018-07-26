@@ -250,7 +250,7 @@ class ApiLog(models.Model):
                 return val
             if isinstance(val, (list,tuple)):
                 val = json.dumps(val, cls=LimsJSONEncoder)
-            else:
+            elif not isinstancer(val, six.string_types):
                 val = str(val)
             return val
         

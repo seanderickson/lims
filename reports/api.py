@@ -1550,27 +1550,27 @@ class ApiResource(SqlAlchemyResource):
         if not schema:
             raise Exception('schema not initialized')
         logger.info('deserialized: %r', deserialized)
+        
+        id_attribute = schema['id_attribute']
+        id_kwargs = self.get_id(
+            deserialized, validate=False, schema=schema, **kwargs)
+
+        if not id_kwargs:
+            return {}
+        
+        # NOTE: creating a log, even if no data have changed (may be comment only)
+        log = self.make_log(request, schema=schema)
+
+        original_data = self._get_detail_response_internal(**id_kwargs)
+        if not log.key:
+            self.make_log_key(log, original_data, id_attribute=id_attribute,
+                schema=schema, **kwargs)
+        logger.debug('original data: %r', original_data)
+        log.save()
+
         if not deserialized:
             return {}
         
-        id_attribute = schema['id_attribute']
-        kwargs_for_log = self.get_id(
-            deserialized, validate=True, schema=schema, **kwargs)
-
-        # NOTE: creating a log, even if no data have changed (may be comment only)
-        log = self.make_log(request, schema=schema)
-        original_data = None
-        if kwargs_for_log:
-            try:
-                original_data = self._get_detail_response_internal(**kwargs_for_log)
-                if not log.key:
-                    self.make_log_key(log, original_data, id_attribute=id_attribute,
-                        schema=schema, **kwargs)
-                logger.debug('original data: %r', original_data)
-            except Exception, e: 
-                logger.exception('exception when querying for existing obj: %s', 
-                    kwargs_for_log)
-        log.save()
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         meta = {}
         if API_RESULT_META in patch_result:
@@ -1582,11 +1582,11 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('build patch detail: %r', obj)
         
         for id_field in id_attribute:
-            if id_field not in kwargs_for_log:
+            if id_field not in id_kwargs:
                 val = getattr(obj, id_field,None)
                 if val is not None:
-                    kwargs_for_log['%s' % id_field] = val
-        new_data = self._get_detail_response_internal(**kwargs_for_log)
+                    id_kwargs['%s' % id_field] = val
+        new_data = self._get_detail_response_internal(**id_kwargs)
         logger.debug('new_data: %r', new_data)
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 

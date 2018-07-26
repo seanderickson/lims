@@ -287,7 +287,7 @@ def equivocal(val1, val2, skip_null_values=False, key=None):
         ', val1: %r:%r, val2: %r:%r', type(val1),val1, type(val2), val2)
     return False, ('val1', val1, 'val2', val2)
     
-def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri'], skip_null_values=False):
+def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri', '_line'], skip_null_values=False):
     '''
     For testing equality of the (CSV) input to API returned values
     @param obj1 input
@@ -331,10 +331,11 @@ def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri'], skip_null_values
                         val1, val2)
     
     keys_to_search = original_keys
-    logger.debug('keys to test: %r: %r', keys_to_search, skip_null_values)
+    logger.info('keys to test: %r: %r', keys_to_search, skip_null_values)
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key], skip_null_values=skip_null_values, key=key)
         if not result:
+            logger.info('key: %r not equal: %r to %r', key, obj1[key], obj2[key])
             return False, ('msgs', msgs,'key', key, obj1[key], obj2[key], 
                 'obj1', obj1, 'obj2', obj2)
             
@@ -920,11 +921,9 @@ M  END'''            }
                         'final_data',final_data)))
                 
                 logger.info('check final records...')
-                keys_not_to_check=[]
                 for i,inputobj in enumerate(input_data):
-                    logger.info('check %d, %r', i, inputobj)
                     result, outputobj = find_obj_in_list(
-                        inputobj,final_data, excludes=keys_not_to_check )
+                        inputobj,final_data)
                     
                     logger.info('result: %r', result)
                     if not result:

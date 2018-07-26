@@ -1309,17 +1309,17 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         patch_response = self.deserialize(resp)
         logger.info('patch_response: %r', patch_response)
-        self.assertTrue(API_RESULT_DATA in patch_response)
-        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
-        patch_response = patch_response[API_RESULT_DATA][0]
-        self.assertTrue('comment_array' in patch_response, 
-            'patch_response: %r' % patch_response)
-        comment_array = patch_response['comment_array']
+
+        new_library_data = self.get_library(
+            library1[LIBRARY.SHORT_NAME], { 'includes': ['comment_array'] })
+        self.assertTrue('comment_array' in new_library_data, 
+            'new_library_data: %r' % new_library_data)
+        comment_array = new_library_data['comment_array']
         self.assertTrue(comment_array and len(comment_array)==1, 
-            'no comment array: %r' % patch_response)
-        self.assertTrue(test_comment in patch_response['comment_array'][0], 
+            'no comment array: %r' % new_library_data)
+        self.assertTrue(test_comment in new_library_data['comment_array'][0], 
             'test_comment: %r not found in library response obj: %r' % (
-                test_comment, patch_response))
+                test_comment, new_library_data))
 
         test_comment2 = 'another test comment...'
         
@@ -1331,20 +1331,19 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        patch_response = self.deserialize(resp)
-        self.assertTrue(API_RESULT_DATA in patch_response)
-        self.assertEqual(len(patch_response[API_RESULT_DATA]), 1)        
-        patch_response = patch_response[API_RESULT_DATA][0]
-        self.assertTrue('comment_array' in patch_response, 
-            'patch_response: %r' % patch_response)
-        comment_array = patch_response['comment_array']
+
+        new_library_data = self.get_library(
+            library1[LIBRARY.SHORT_NAME], { 'includes': ['comment_array'] })
+        self.assertTrue('comment_array' in new_library_data, 
+            'new_library_data: %r' % new_library_data)
+        comment_array = new_library_data['comment_array']
         self.assertTrue(len(comment_array),2)
         self.assertTrue(test_comment in comment_array[1], 
             'test_comment: %r not found in library response obj: %r' % (
-                test_comment, patch_response))
+                test_comment, new_library_data))
         self.assertTrue(test_comment2 in comment_array[0], 
             'test_comment2: %r not found in library response obj: %r' % (
-                test_comment2, patch_response))
+                test_comment2, new_library_data))
         
     def test2a_patch_library_wells(self):
         ''' Test patching of individual wells '''

@@ -471,6 +471,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             })
           );
 
+// TODO: image only downloads
 //        var imageDownload = $([
 //          '<button class="btn btn-default btn-sm pull-right" role="button" ',
 //          'id="Download images as a zip file" title="Download images" >',
@@ -510,13 +511,159 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         
+        var extraControls = [];
+        var showPreviewControl = $([
+          '<label class="checkbox-inline" ', 
+          ' style="margin-left: 10px;" ',
+          'title="Show the preview view of the pending load for the library wells" >',
+          '  <input id="show_preview_control" type="checkbox">Show Preview&nbsp;',
+          '</label>'
+        ].join(''));
+        
+        var applyPreviewButton = $([
+           '<a class="btn btn-default btn-sm pull-down" ',
+             'role="button" id="apply_preview_control" >',
+             'Apply Preview</a>'
+           ].join(''));
+        
+        var deletePreviewButton = $([
+           '<a class="btn btn-default btn-sm pull-down" ',
+             'role="button" id="delete_preview_control" >',
+             'Delete Preview</a>'
+           ].join(''));
+        
+        if (self.library && _.isNumber(self.library.get('preview_log_id'))){
+           extraControls.push(showPreviewControl);
+           extraControls.push(applyPreviewButton);
+           extraControls.push(deletePreviewButton);
+        }
+        
         var viewArgs = _.extend({},self.args,{
           resource: newResource,
           collection: collection,
-          url: url
+          url: url,
+          extraControls: extraControls
         });
 
         var view = new WellListView(viewArgs);
+        
+        showPreviewControl.click(function(e){
+          var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+          if (e.target.checked) {
+            searchHash['show_preview'] = 'true';
+            var new_url = url + '/preview';
+            view._options.url = new_url;
+            view.collection.url = new_url;
+            console.log('re-render preview view...');
+            console.log('set show_preview to the search hash...');
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+          } else {
+            view.collection.url = url;
+            if (_.has(searchHash,'show_preview')) {
+              delete searchHash['show_preview'];
+              console.log('remove show_preview to the search hash...');
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+            }
+          }
+        });
+        var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
+        if (_.has(initialSearchHash, 'show_preview')
+            && initialSearchHash.show_preview.toLowerCase()=='true'
+            && _.isNumber(self.library.get('preview_log_id'))) {
+          showPreviewControl.find('input[type="checkbox"]').prop('checked',true);
+          
+          var new_url = url + '/preview';
+          view._options.url = new_url;
+          view.collection.url = new_url;
+          view.collection.fetch();
+        }
+        
+        applyPreviewButton.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+
+          function apply_preview(comment){
+            
+            console.log('apply_preview...');
+            var headers = {};
+            if (comment){
+              headers[appModel.HEADER_APILOG_COMMENT] = comment;
+            }
+            var patch_url = _.result(self.library, 'url') + '/well/apply_preview';
+            console.log('applying preview...', patch_url);
+            $.ajax({
+              url: patch_url,    
+              //data: data,
+              cache: false,
+              contentType: false, // defaults to multipart/form-data when using formdata
+              dataType: 'json', // what is expected back from the server
+              processData: false, // do not process data being sent
+              type: 'POST',
+              headers: headers
+            }).done(function(data, textStatus, jqXHR){ 
+  
+              // refresh
+              self.library.fetch({ reset: true }).done(function(){
+                console.log('re-fetched the library...');
+              });
+              var newStack = ['library', self.library.key, 'well']
+              appModel.setUriStack(newStack);
+              appModel.showConnectionResult(data, {
+                title: 'Success'
+              });
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              appModel.jqXHRfail.apply(this,arguments); 
+            });
+            
+          };
+          
+          appModel.getModel(
+            'apilog', self.library.get('preview_log_id'), function(preview_log){
+            
+            console.log('got preview log', preview_log);
+            
+            appModel.showOkCommentForm({
+              commentValue: preview_log.get('comment'),
+              ok: function(formValues){
+                apply_preview(formValues['comments']);
+              },
+              okText: 'Release',
+              title: 'Release the library: "'
+                + Iccbl.getTitleFromTitleAttribute(self.library,self.library.resource) + '" ?' 
+            });
+          
+          });
+          
+
+        });
+
+        deletePreviewButton.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          var post_url = _.result(self.library, 'url') + '/well/delete_preview';
+          console.log('delete preview...', post_url);
+          $.ajax({
+            url: post_url,    
+            //data: data,
+            cache: false,
+            contentType: false, // defaults to multipart/form-data when using formdata
+            dataType: 'json', // what is expected back from the server
+            processData: false, // do not process data being sent
+            type: 'POST'
+          }).done(function(data, textStatus, jqXHR){ 
+            self.library.fetch({ reset: true }).done(function(){
+              console.log('re-fetched the library...');
+            });
+            var newStack = ['library', self.library.key, 'well']
+            appModel.setUriStack(newStack);
+            appModel.showConnectionResult(data, {
+              title: 'Success'
+            });
+          }).fail(function(jqXHR, textStatus, errorThrown){
+            appModel.jqXHRfail.apply(this,arguments); 
+          });
+        });
+        
         self.listenTo(view, 'update_title', function(val) {
           if(val) {
             self.$('#content_title').html(newResource.title + ': <small>' + val + '</small>');

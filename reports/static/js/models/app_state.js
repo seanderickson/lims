@@ -1385,7 +1385,7 @@ define([
           try{
             callBack(model);
           } catch (e) {
-            console.log('uncaught error: ' + e);
+            console.log('uncaught error: ', e);
             self.error('error displaying model: ' + model + ', '+ e);
           }
         }
@@ -1753,7 +1753,7 @@ define([
         options['title'] = title;
       }
       var sep = '<br/>';
-//      var bodyMsg = this.print_dict(jsonObj, sep);
+      //      var bodyMsg = this.print_dict(jsonObj, sep);
       var bodyMsg = this.print_json(jsonObj);
       var rowCount = (bodyMsg.match(new RegExp(sep, "g")) || []).length;
       if (rowCount > Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG){
@@ -1774,6 +1774,10 @@ define([
       Iccbl.appModel.showModalMessage(options);
     },
     
+    
+    /**
+     * Uses stock JSON.stringify to generate display information in a modal dialog.
+     */
     showJsonDirect: function(jsonObj, options){
       console.log('showJsonMessages: ', jsonObj);
       var options = _.extend({
@@ -2110,12 +2114,13 @@ define([
         okText: 'Ok',
         cancelText: 'Cancel and return to page',
         title: 'Save changes?',
-        requireComment: false
+        requireComment: false,
+        commentValue: null
       };
       var options = _.extend({}, defaultOptions, options);
       var schema = {
         comments: {
-          title: 'Comment',
+          title: 'Comment (optional)',
           key: 'comments',
           type: 'TextArea',
           editorClass: 'input-full',
@@ -2125,11 +2130,17 @@ define([
       
       if (options.requireComment == true) {
         schema['comments']['validators'] =['required'];
+        schema['comments']['title'] = 'Comment';
       }
       var FormFields = Backbone.Model.extend({
         schema: schema
       });
-      var formFields = new FormFields();
+      
+      var defaultValue = {};
+      if (options.commentValue){
+        defaultValue['comments'] = options.commentValue;
+      }
+      var formFields = new FormFields(defaultValue);
       var form = new Backbone.Form({
         model: formFields,
         template: self._form_template //_.template(form_template.join(''))
@@ -2717,6 +2728,8 @@ define([
   appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
   appState.API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero';
   appState.API_PARAM_OVERRIDE = 'override';
+  appState.API_PARAM_PATCH_PREVIEW_MODE = 'patch_with_preview';
+  
   appState.MSG_SEARCH_SIZE_EXCEEDED = 
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';

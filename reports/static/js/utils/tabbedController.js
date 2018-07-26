@@ -125,7 +125,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
       
     },
 
-    change_to_tab: function(key) {
+    change_to_tab: function(key, newdelegateStack) {
       var self = this;
       console.log('change_to_tab: ' + key);
       appModel.clearErrors();
@@ -139,7 +139,12 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
         } else {
           this.consumedStack = [];
         }
-        var delegateStack = _.clone(this.uriStack);
+        
+        var delegateStack = newdelegateStack || _.clone(this.uriStack);
+//        if (!_.isUndefined(newdelegateStack)){
+//          delegateStack = newdelegateStack;
+//        }
+        
         this.uriStack = [];
         var method = this[this.tabbed_resources[key]['invoke']];
         if (_.isFunction(method)) {

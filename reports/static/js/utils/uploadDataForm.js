@@ -15,7 +15,7 @@ function($, _, Iccbl, appModel, EditView) {
      * jqXHR.fail(function( jqXHR, textStatus, errorThrown ) {});
      * jqXHR.always(function( data|jqXHR, textStatus, jqXHR|errorThrown ) { });
      */
-    postUploadFileDialog: function(url, content_types){
+    postUploadFileDialog: function(url, content_types, post_data){
 
       var promise = $.Deferred();
       
@@ -146,9 +146,13 @@ function($, _, Iccbl, appModel, EditView) {
               }
             });
             
-            // TODO - add "download for update" option to the download dialog
-            
             data.append(values['type'],file);
+            
+            if (post_data){
+              _.each(_.keys(post_data), function(key){
+                data.append(key, post_data[key]);
+              });
+            }
             
             $.ajax({
               url: url,    
@@ -163,7 +167,7 @@ function($, _, Iccbl, appModel, EditView) {
               promise.resolveWith(this,arguments); 
             }).fail(function(jqXHR, textStatus, errorThrown){
               promise.rejectWith(this,arguments);
-            })
+            });
           
             return true;
           }

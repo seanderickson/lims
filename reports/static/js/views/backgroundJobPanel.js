@@ -186,15 +186,12 @@ define([
         if (state == 'pending'){
           $el.removeClass('alert-success alert-danger');
           $el.addClass('alert alert-info')
-          
         }else if (state=='submitted'){
           $el.removeClass('alert-success alert-danger');
           $el.addClass('alert alert-info')
-          
         }else if (state=='processing'){
           $el.removeClass('alert-success alert-danger');
           $el.addClass('alert alert-info')
-          
         }else if (state=='completed'){
           $el.removeClass('alert-info');
           $el.addClass('alert alert-success alert-dismissible')

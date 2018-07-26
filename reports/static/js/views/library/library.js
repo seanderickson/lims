@@ -64,10 +64,172 @@ define([
       'click button#upload': 'upload',
 //      'click button#download': 'download',
     },
+    
+    afterRender: function(){
+      var self = this;
+      TabbedController.prototype.afterRender.apply(this,arguments);
+
+      function showRelease(){
+        $('#content_title_message').find('#release_message').remove();
+        
+        if (self.model.get('is_released') == true){
+          return;
+        }
+
+        var helpMsg = [
+              'Library has not been set to "released":',
+              '- data will not be available to screeners,',
+              '- Contents will be loaded without a preview,',
+              '- All other functions and logging are unaffected.'];
+        var releaseMessage = $(
+          '<div id="release_message" class="alert alert-info"></div>')
+            .html('Library has not been');
+        releaseMessage.attr('title', helpMsg.join('\n'));
+        
+        var releaseLibraryInfo = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "Info"
+        }).text('released');
+        releaseMessage.append('&nbsp;');
+        releaseMessage.append(releaseLibraryInfo);
+        
+        var releaseLibraryLink = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "Set the library to released"
+        }).text('[release now]');
+        releaseMessage.append('&nbsp;');
+        releaseMessage.append(releaseLibraryLink);
+        
+        $('#content_title_message').append(releaseMessage);
+        
+        releaseLibraryInfo.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          
+          appModel.showModalMessage({
+            'title': 'Library is not released',
+            'body': helpMsg.join('<br/>')
+          });
+        });
+        
+        releaseLibraryLink.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+
+          appModel.showOkCommentForm({
+            ok: function(formValues){
+              var options = {
+                patch: true
+              };
+              var comment = formValues['comment'];
+              if (comment){
+                options['headers'] = {};
+                options['headers'][appModel.HEADER_APILOG_COMMENT] = comment;
+              }
+              self.model.set('is_released',true);
+              self.model.save({'is_released': true}, options)
+                .done(function(data, textStatus, jqXHR){ 
+                  console.log('done releasing...');
+                  self.render();
+                }).fail(function() { 
+                  Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+                });
+            },
+            okText: 'Release',
+            title: 'Release the library: "'
+              + Iccbl.getTitleFromTitleAttribute(self.model,self.model.resource) + '" ?' 
+          });
+
+        });
+        
+      };
+      
+      function showPreview(){
+        $('#content_title_message').find('#preview_message').remove();
+        var preview_log_id = self.model.get('preview_log_id');
+        
+        if (!_.isNumber(preview_log_id)){
+          return;
+        }
+        var previewMessage = $(
+          '<div id="preview_message" class="alert alert-info"></div>')
+            .html('Library has a pending well import. ');
+        var showPreviewLink = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "show the wells preview view"
+        }).text('[view]');
+        previewMessage.append(showPreviewLink);
+        
+        var showPreviewDetails = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "Show the loading details"
+        }).text('[information]');
+        previewMessage.append('&nbsp;');
+        previewMessage.append(showPreviewDetails);
+        $('#content_title_message').append(previewMessage);
+
+        showPreviewLink.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          self.change_to_tab('well', ['search','show_preview=true']);
+        });
+        showPreviewDetails.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          
+          appModel.getModel('apilog', preview_log_id, function(preview_log){
+
+            var json_preview_log = preview_log.toJSON();
+            appModel.showJsonMessages(json_preview_log,{ 
+              title: 'Preview Log Details'
+            })
+          });
+
+          // TODO: alternate, redirect
+          //var uriStack = ['apilog', 'order','-date_time', appModel.URI_PATH_SEARCH];
+          //var search = {};
+          //search['ref_resource_name'] = self.model.resource.key;
+          //search['key'] = self.model.key;
+          //search['is_preview'] = 'true';
+          //uriStack.push(appModel.createSearchString(search));
+          //console.log('route: ', uriStack);
+          //appModel.setUriStack(uriStack);
+        });
+      };
+
+      showPreview();
+      showRelease();
+      
+      self.model.on('sync', showPreview);
+      self.model.on('sync', showRelease);
+    },
 
     /**
-     * Note: for library, upload and download operate on the library contents, 
-     * (reagents) and not on the library entity itself.
+     * Upload Library Contents:
+     * (Override)
+     * 
+     * 
+     * NOTE: For a "released" library, all Library Reagent uploads will be 
+     * committed to a "preview". 
+     * In a "preview" upload:
+     * - the server will save ApiLog "preview" logs only;
+     * - (all normal updates are rolled back)
+     * - patch logs can later be confirmed and applied by the admin.
+
+     * 
+     * A preview contains all the upload diff data on 
+     * the server and may be viewed, applied ("released"), or deleted by the 
+     * Administrator users.
+     * 
+     * @see appModel.API_PARAM_PATCH_PREVIEW_MODE
      */
     upload: function(e){
       e.preventDefault();
@@ -78,16 +240,29 @@ define([
       if( this.model.get('screen_type') == 'small_molecule') {
         content_types.push('sdf');
       }
-      UploadDataForm.postUploadFileDialog(url, content_types)
+
+      // Only one upload preview may be stored on the server at one time
+      if (_.isNumber(self.model.get('preview_log_id'))){
+        appModel.showModalMessage({
+          title: 'Library has a pending preview release',
+          body: ['Library has a pending preview loaded:',
+            'The current preview must be either released or deleted before ',
+            'other well data may be loaded'].join('<br/>')
+        });
+        return;
+      }
+      
+      // Set the param appModel.API_PARAM_PATCH_PREVIEW_MODE
+      // as extra post_data to be sent along with the upload.
+      // API_PARAM_PATCH_PREVIEW_MODE signals the WellResource to patch as 
+      // a preview.
+      var options = {};
+      if (self.model.get('is_released') == true){
+        options[appModel.API_PARAM_PATCH_PREVIEW_MODE] = true;
+      }
+      
+      UploadDataForm.postUploadFileDialog(url, content_types, options)
         .done(function(data, textStatus, jqXHR){
-//          self.model.fetch({ reset: true }).done(function(){
-//            console.log('re-render library...');
-//            self.render();
-//          });
-//          appModel.showConnectionResult(data, {
-//            title: 'Upload success'
-//          });
-          
           
           function refreshOnUpdate(){
             // Must refetch and render, once for the containing tabbed layout,
@@ -96,9 +271,6 @@ define([
               reset: true,
               success: function() {
                 self.render();
-//                appModel.showConnectionResult(data, {
-//                  title: 'Upload success'
-//                });
               }
             }).fail(function() { 
               Iccbl.appModel.jqXHRfail.apply(this,arguments); 
@@ -181,6 +353,7 @@ define([
       }
       
       // Custom library model validation: plate range
+      // FIXME: 20180710 - not working
       this.model.validate = function(attrs) {
         var errs = {};
         console.log('validating: ', attrs); 
@@ -223,6 +396,7 @@ define([
             comment__is_blank: false
           };
           appModel.createCommentTable(self.model,search_data, $('#comment_table'));
+          
         }
       });;
 

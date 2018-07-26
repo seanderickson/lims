@@ -331,11 +331,11 @@ def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri', '_line'], skip_nu
                         val1, val2)
     
     keys_to_search = original_keys
-    logger.info('keys to test: %r: %r', keys_to_search, skip_null_values)
+    logger.debug('keys to test: %r: %r', keys_to_search, skip_null_values)
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key], skip_null_values=skip_null_values, key=key)
         if not result:
-            logger.info('key: %r not equal: %r to %r', key, obj1[key], obj2[key])
+            logger.debug('key: %r not equal: %r to %r', key, obj1[key], obj2[key])
             return False, ('msgs', msgs,'key', key, obj1[key], obj2[key], 
                 'obj1', obj1, 'obj2', obj2)
             

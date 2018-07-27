@@ -8224,7 +8224,7 @@ class CherryPickRequestResource(DbApiResource):
                 ),
             'restricted_libraries': (
                 select([func.array_to_string(func.array_agg(_concat(
-                    _restricted_libraries.c.screening_status,':',_restricted_libraries.c.short_name)
+                    _restricted_libraries.c.screening_status,': ',_restricted_libraries.c.short_name)
                     ),LIST_DELIMITER_SQL_ARRAY)])
                 .select_from(_restricted_libraries)
                 .where(_restricted_libraries.c.cherry_pick_request_id
@@ -11382,7 +11382,7 @@ class CherryPickPlateResource(DbApiResource):
                                      sqlalchemy.sql.sqltypes.Text),
                                 '/',
                                 cast(_cpap.c.plate_ordinal,sqlalchemy.sql.sqltypes.Text)))
-                        .where(_diff.c.field_key=='plating_date')
+                        .where(_diff.c.field_key.in_(['plating_date', 'plated_by_name']))
                         .order_by(desc(_apilog.c.date_time))
                         .limit(1)
                     ),
@@ -11399,7 +11399,7 @@ class CherryPickPlateResource(DbApiResource):
                                 '/',
                                 cast(_cpap.c.plate_ordinal,
                                     sqlalchemy.sql.sqltypes.Text)))
-                        .where(_diff.c.field_key=='screening_date')
+                        .where(_diff.c.field_key.in_(['screening_date', 'screened_by_name']))
                         .order_by(desc(_apilog.c.date_time))
                         .limit(1)
                     ),
@@ -11504,6 +11504,7 @@ class CherryPickPlateResource(DbApiResource):
         screened_cpaps = []
         for update_cpap in deserialized:
             initializer_dict = self.parse(update_cpap, schema=schema)
+            logger.info('initializer_dict: %r', initializer_dict)
             plate_ordinal = parse_val(
                 update_cpap.get('plate_ordinal', None), 'plate_ordinal', 'integer')
             if plate_ordinal is None:
@@ -11538,9 +11539,10 @@ class CherryPickPlateResource(DbApiResource):
                         user = ScreensaverUser.objects.get(username=plated_by_username)
                     
                     # FIXME: check that user has cherrypickrequest/write permission
-                    
+                    logger.info('set cpap user: %r', user)
                     cpap.plated_by = user
                     cpap.plating_date = plating_date
+                    
                     cpap.save()
                     plated_cpaps.append(cpap)
                 except ObjectDoesNotExist:
@@ -11647,16 +11649,21 @@ class CherryPickPlateResource(DbApiResource):
         patch_logs = self.log_patches(
             request, original_cpap_data, new_cpap_data, schema=schema, 
             parent_log=parent_log)
-        meta = {}
-        plated_changed_count = len([
-            x for x in patch_logs if 'plating_date' in x.diffs])
-        if plated_changed_count > 0:
-            meta[API_MSG_CPR_PLATES_PLATED] = plated_changed_count
-        screened_changed_count = len([
-            x for x in patch_logs if 'screening_date' in x.diffs])
-        if screened_changed_count > 0:
-            meta[API_MSG_CPR_PLATES_SCREENED] = screened_changed_count
-
+        meta = {
+            API_MSG_RESULT: API_MSG_SUCCESS }
+        if patch_logs:
+            plating_fields = set(['plating_date', 'plated_by_username', 'plating_comments'])
+            screening_fields = set(['screening_date', 'screened_by_username', 'screening_comments'])
+            plated_changed_count = len([
+                x for x in patch_logs if plating_fields & set(x.diffs.keys()) ])
+            if plated_changed_count > 0:
+                meta[API_MSG_CPR_PLATES_PLATED] = plated_changed_count
+            screened_changed_count = len([
+                x for x in patch_logs if screening_fields & set(x.diffs.keys()) ])
+            if screened_changed_count > 0:
+                meta[API_MSG_CPR_PLATES_SCREENED] = screened_changed_count
+            
+        logger.info('meta: %r', meta)
         if deserialize_meta:
             meta.update(deserialize_meta)
         parent_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
@@ -22986,21 +22993,20 @@ class WellResource(DbApiResource):
     def get_schema(self, request, **kwargs):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.debug('param hash: %r', param_hash)
         
-        if not 'library_short_name' in param_hash:
+        library_short_name = param_hash.get('library_short_name')
+        if library_short_name is None:
             return self.build_response(request, 
                 self.build_schema(request.user,**kwargs),
                 **param_hash)
         
-        library_short_name = kwargs.pop('library_short_name')
         try:
             library = Library.objects.get(short_name=library_short_name)
             return self.build_response(
                 request, 
                 self.build_schema(request.user,
                     library_classification=library.classification),
-                **kwargs)
+                **param_hash)
             
         except Library.DoesNotExist, e:
             raise Http404(
@@ -23701,40 +23707,37 @@ class WellResource(DbApiResource):
 
         with get_engine().connect() as conn:
             sql = (
-                'with count_comparison as ( '
-                '    with screenings as ( '
-                '        select distinct(library_screening_id)  '
-                '        from assay_plate ap, library  '
-                '        where ap.plate_number between start_plate and end_plate   '
-                '        and library_id = %s ) '
+                'update library_screening '
+                'set screened_experimental_well_count = current_count '
+                'from '
+                ' ( '
                 '    select '
                 '    activity_id, '
                 '    screened_experimental_well_count, '
                 '    count(distinct(well_id)) current_count '
                 '    from assay_plate ap '
                 '    join library_screening ls on(activity_id=library_screening_id) '
-                '    join screenings on(ls.activity_id=screenings.library_screening_id) '
+                '    join ( '
+                '        select distinct(library_screening_id)  '
+                '        from assay_plate ap, library  '
+                '        where ap.plate_number between start_plate and end_plate   '
+                '        and library_id = %s ) as screenings on(ls.activity_id=screenings.library_screening_id) '
                 '    join well on(well.plate_number=ap.plate_number) '
+
                 "    where well.library_well_type='experimental' "
                 '    group by ls.activity_id, screened_experimental_well_count  '
-                ') '
-                'update library_screening '
-                'set screened_experimental_well_count = current_count '
-                'from count_comparison  '
+                ') as count_comparison  '
                 'where count_comparison.activity_id=library_screening.activity_id '
                 'and library_screening.screened_experimental_well_count != current_count; '
                 )
+            logger.info('execute sql: %r (%d)', sql, library.library_id)
             conn.execute(sql, (library.library_id))
             sql = (
-                'with screen_update as ( '
-                '    with screens as ( '
-                '            select distinct(screen_id)  '
-                '            from library_screening ls  '
-                '            join assay_plate on(activity_id=library_screening_id) '
-                '            join plate using(plate_id) '
-                '            join copy using(copy_id) '
-                '            where copy.library_id = %s '
-                '    ) '
+                'update screen '
+                'set screened_experimental_well_count = current_count, '
+                '  unique_screened_experimental_well_count = current_unique_count '
+                'from '
+                ' ( '
                 '    select '
                 '    screen.screen_id, '
                 '    screen.facility_id, '
@@ -23745,7 +23748,14 @@ class WellResource(DbApiResource):
                 '    from well w,  '
                 '    screen join assay_plate ap using(screen_id) '
                 '    join plate p using(plate_id)  '
-                '    join screens on(screens.screen_id=screen.screen_id) '
+                '    join ( '
+                '            select distinct(screen_id)  '
+                '            from library_screening ls  '
+                '            join assay_plate on(activity_id=library_screening_id) '
+                '            join plate using(plate_id) '
+                '            join copy using(copy_id) '
+                '            where copy.library_id = %s '
+                '    ) as screens on(screens.screen_id=screen.screen_id) '
                 "    where w.library_well_type = 'experimental' "
                 '    and ap.replicate_ordinal = 0 '
                 '    and w.plate_number = p.plate_number '
@@ -23753,15 +23763,12 @@ class WellResource(DbApiResource):
                 '    screen.screen_id, '
                 '    screen.facility_id, '
                 '    screen.screened_experimental_well_count, '
-                '    screen.unique_screened_experimental_well_count ) '
-                'update screen '
-                'set screened_experimental_well_count = current_count, '
-                '  unique_screened_experimental_well_count = current_unique_count '
-                'from screen_update '
+                '    screen.unique_screened_experimental_well_count ) as screen_update '
                 'where screen_update.screen_id=screen.screen_id '
                 'and ( screen_update.screened_experimental_well_count!= current_count or  '
                 '      screen_update.unique_screened_experimental_well_count != current_unique_count ); '
                 )
+            logger.info('execute sql: %r (%d)', sql, library.library_id)
             conn.execute(sql, (library.library_id))
 
 

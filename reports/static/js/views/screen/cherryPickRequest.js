@@ -78,8 +78,8 @@ define([
         permission: 'cherrypickrequest'
       },
       transformer: {
-        description : 'Transform Raw Data',
         title : 'Transform Raw Data',
+        description : 'Convert raw data input matrices into a plate/well matrix',
         invoke : 'setRawDataTransformer',
         permission: 'rawdatatransform'
       },
@@ -1021,8 +1021,6 @@ define([
               var values = _form.getValue();
               console.log('form submitted', values, selectedEntries);
               
-              var plate_updates = [];
-                    
               var SubmitCollection = Backbone.Collection.extend({
                 url: selectionCollection.url
               });
@@ -1086,6 +1084,13 @@ define([
             }).join(',') +
             ', change the plating date?',
           ok: function(event){
+            // FIXME: known bug, if user cancels the plating dialog, and then
+            // tries to return to it, it does not render
+            
+            //$('#modal').one('hidden.bs.modal',  function () {
+            //  console.log('hidden.bs.modal', arguments);
+            //  appModel.getAdminUserOptions(dialogFunction, 'cherrypickrequest');    
+            //});
             $('#modal').modal('hide');
             appModel.getAdminUserOptions(dialogFunction, 'cherrypickrequest');    
           }
@@ -1161,8 +1166,6 @@ define([
             var values = _form.getValue();
             console.log('form submitted', values, selectedEntries);
             
-            var plate_updates = [];
-                  
             var SubmitCollection = Backbone.Collection.extend({
               url: selectionCollection.url
             });
@@ -1170,6 +1173,7 @@ define([
             submitCollection.each(function(model){
                model.set('plating_date', values['plating_date']);
                model.set('plated_by_username', values['plated_by_username']);
+               model.unset('plated_by_id'); // only use username
             });
 
             var headers = {};

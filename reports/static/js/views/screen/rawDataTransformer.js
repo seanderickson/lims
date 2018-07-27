@@ -65,6 +65,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
       self.downloadButton = $([
         '<button type="button" class="btn btn-default btn-xs" ',
+        ' title="Download the file with the transformed data, if upload has been completed" ',
         'id="download_button" >download</button>',
       ].join(''));
           
@@ -82,6 +83,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       self.uploadButton = $([
         '<button type="button" class="btn btn-default btn-xs" ',
+        ' title="Upload and transform the set of input files that have been specified below" ',
         'id="upload_button" >upload</button>',
       ].join(''));
       self.uploadButton.click(self.submitUpload);
@@ -625,6 +627,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       // Show combined assay controls
       var show_all_assay_controls_button = $([
         '<a class="btn btn-default btn-sm" ',
+          ' title="Show a combined view of assay positive, negative, and other controls" ',
           'role="button" id="show_all_assay_controls_button" >',
           'Show All Assay Controls</a>'
         ].join(''));
@@ -649,12 +652,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
 
       var show_all_assay_and_library_controls_button = $([
         '<a class="btn btn-default btn-sm" ',
+          ' title="Show a combined view of assay and library controls in the specified library plate size" ',
           'role="button" id="show_all_assay_and_library_controls_button" >',
           'Show All Assay and Library Controls</a>'
         ].join(''));
       if (self.show_library_controls === false){
         show_all_assay_and_library_controls_button = $([
           '<a class="btn btn-default btn-sm" ',
+          ' title="SHow a all of the assay controls in the specified library plate size" ',
             'role="button" id="show_all_assay_and_library_controls_button" >',
             'Show All Controls in Library Plate Format</a>'
           ].join(''));

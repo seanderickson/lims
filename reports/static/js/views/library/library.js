@@ -157,7 +157,7 @@ define([
         }
         var previewMessage = $(
           '<div id="preview_message" class="alert alert-info"></div>')
-            .html('Library has a pending well import. ');
+            .html('Library has a well import preview. ');
         var showPreviewLink = $('<a>', {
           tabIndex : -1,
           href : "#",

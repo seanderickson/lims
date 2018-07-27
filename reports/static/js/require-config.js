@@ -59,7 +59,7 @@ require.config({
         deps: ['jquery'],
     },
     'bootstrap-datepicker': {
-      deps: ['jquery','bootstrap'],
+      deps: ['bootstrap'],
       exports: 'bootstrap-datepicker'
     },
     backbone_stickit: { deps: ["backbone"] },

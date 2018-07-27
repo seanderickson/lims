@@ -2622,6 +2622,7 @@ class ApiLogResource(ApiResource):
                 bridge = self.bridge
                 _apilog = bridge['reports_apilog']
                 _logdiff = bridge['reports_logdiff']
+                conn = get_engine().connect()
                 query = (
                     select([
                         _logdiff.c.field_key,
@@ -2652,9 +2653,16 @@ class ApiLogResource(ApiResource):
                                         after = ApiLogResource.decode_before_after(x[2])
                                         val[diffkey] = [before, after]
                                     return val
+                            elif key == 'json_field':
+                                val = self.row[key]
+                                if val:
+                                    try:
+                                        return json.loads(val)
+                                    except:
+                                        logger.exception('error decoding json from json_field: %r',val)
+                                return val
                             else:
                                 return self.row[key]
-                    conn = get_engine().connect()
                     try:
                         for row in cursor:
                             yield Row(row)
@@ -2663,7 +2671,9 @@ class ApiLogResource(ApiResource):
                         
                 return diff_generator
             
-            if 'diffs' in field_hash:
+            diffs = field_hash.get('diffs')
+            json_field = field_hash.get('json_field')
+            if diffs or json_field:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
 #             compiled_stmt = str(stmt.compile(

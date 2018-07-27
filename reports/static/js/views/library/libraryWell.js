@@ -171,7 +171,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           if(this.model.has('structure_image')){
             $('#generic-detail-stickit-container').append(
                 '<img style="position: absolute; top: 8em; right: 3em" src="' 
-                + self.model.get('structure_image') + '" alt="image" />');
+                + self.model.get('structure_image') + '" alt="structure image" />');
             $('#structure_image').closest('tr').remove();
           }
           

@@ -21,6 +21,7 @@ define([
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
   'views/activityListView',
+  'views/apilogView',
   'utils/uploadDataForm',
   'test/detailTest',
   'utils/wellSelector',
@@ -34,10 +35,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView,
          LibraryWellsView, LibraryWellView,
          ScreenView, LibraryScreeningView, CherryPickRequestView,
-         PlateLocationView, UserAdminView, 
-         UserView, UserGroupAdminView, ActivityListView, UploadDataForm, DetailTestView, 
-         WellSelectorView, SearchBox, layout, 
-         welcomeLayout, welcomeScreenerLayout, aboutLayout) {
+         PlateLocationView, UserAdminView, UserView, UserGroupAdminView, 
+         ActivityListView, ApilogView, UploadDataForm, DetailTestView, 
+         WellSelectorView, SearchBox, layout, welcomeLayout, 
+         welcomeScreenerLayout, aboutLayout) {
   
   var VIEWS = {
     'ListView': ListView, 
@@ -56,7 +57,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'WellSelectorView': WellSelectorView,
     'ActivityListView': ActivityListView,
     'LibraryWellsView': LibraryWellsView,
-    'LibraryWellView': LibraryWellView
+    'LibraryWellView': LibraryWellView,
+    'ApilogView': ApilogView
   };
   
   var ContentView = Iccbl.UriContainerView.extend({

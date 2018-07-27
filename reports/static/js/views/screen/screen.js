@@ -1121,7 +1121,7 @@ define([
           return;
         }
         collection.each(function(model) {
-          var diffs = JSON.parse(model.get('diffs'));
+          var diffs = model.get('diffs');
           if (!_.isEmpty(diffs.status[1])){
             model.set(
               'status', 

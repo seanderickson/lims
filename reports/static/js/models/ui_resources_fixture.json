@@ -526,6 +526,9 @@
     "labaffiliation": {
       "detailView": "DetailView"
     },
+    "apilog": {
+      "detailView": "ApilogView"
+    },
     "detail_test": {
       "header_message": "Detail Test View",
       "title": "Detail Test View",

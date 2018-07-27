@@ -1622,32 +1622,37 @@ define([
      * JSON.stringify
      */
     print_json: function(obj){
-      var record_separator = '==========\n'
-      // Convert single list values into strings
-
+      var str;
       function replacer(key, val){
+        // Convert single list values into strings
         if (_.isArray(val) && val.length==1){
           return val[0];
         }else{
           return val;
         }
       };
-      var str = JSON.stringify(obj, replacer, 2);
-      
-      // remove escapes around quotes
-      str = str.replace(/\\(["'])/g, '$1');
-      // remove python unicode literal
-      str = str.replace(/u(['"])/g,'$1');
-      // remove single quotes
-      str = str.replace(/"/g,'');
-      // remove object brackets
-      str = str.replace(/[{}]+/g,'');
-      // remove list brackets
-      str = str.replace(/[\[\]]+/g, '');
-      // remove empty lines
-      str = str.replace(/^\s*$\n+/gm,'');
-      // remove single comma on a line
-      str = str.replace(/^\s*,\s*$/gm,'')
+      try
+      {
+        str = JSON.stringify(obj, replacer, 2);
+        
+        // remove escapes around quotes
+        str = str.replace(/\\(["'])/g, '$1');
+        // remove python unicode literal
+        str = str.replace(/u(['"])/g,'$1');
+        // remove single quotes
+        str = str.replace(/"/g,'');
+        // remove object brackets
+        str = str.replace(/[{}]+/g,'');
+        // remove list brackets
+        str = str.replace(/[\[\]]+/g, '');
+        // remove empty lines
+        str = str.replace(/^\s*$\n+/gm,'');
+        // remove single comma on a line
+        str = str.replace(/^\s*,\s*$/gm,'')
+      }catch(e){
+        console.log('print_json', e, obj);
+        str = '' + obj;
+      }
         
       return str;
     },
@@ -2579,7 +2584,8 @@ define([
                   console.log('cancel button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide'); 
-                  options.cancel();
+//                  options.cancel();
+                  options.cancel(event);
               },
               'click #modal-ok':function(event) {
                   console.log('ok button click event, '); 
@@ -2589,10 +2595,11 @@ define([
                     return;
                   }
                   $('#modal').modal('hide');
+//                  $('#modal').modal({show:false})
               }
           },
       });
-      modalDialog.render();
+      modalDialog.render(); //.$el.css('display','block');
       if(!_.isUndefined(options.view)){
         modalDialog.$el.find('.modal-body').append(options.view);
       }
@@ -2606,7 +2613,8 @@ define([
       $modal = $('#modal');
       $modal.empty();
       $modal.html(modalDialog.$el);
-      $modal.on('show.bs.modal', function () {
+//      modalDialog.$el.show();
+      $modal.one('show.bs.modal', function () {
         // $('.modal-content').css('height',$( window ).height()*0.95);
         $('.modal-content').css('height', 'auto');
         $('.modal-content').css('max-height','100%');
@@ -2634,14 +2642,20 @@ define([
       } else {
         $('#modal_footer').hide();
       }
-      $modal.on('shown.bs.modal', function () {
+      $modal.one('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();
+//        $modal.css('display','block');
       });
       $modal.modal({
         backdrop: 'static',
         keyboard: false, // prevent the escape key from closing the modal
         show: true
       });
+    $('#modal').one('hidden.bs.modal', '.modal', function () {
+      console.log('hidden.bs.modal', arguments);
+    });
+//      $('#modal').modal({show:true});
+//      $modal.css('display','block');
       return modalDialog;
     },
     

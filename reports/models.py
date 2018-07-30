@@ -196,7 +196,7 @@ class ApiLog(models.Model):
     
     parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
     
-    # Nested fields are defined in the json_field
+    # json_field stores meta information
     json_field = models.TextField(null=True)
     
     is_preview = models.BooleanField(default=False)
@@ -233,7 +233,21 @@ class ApiLog(models.Model):
             diffs[dl.field_key] = [dl.before,dl.after]
         obj_as_dict['diffs'] = dict(diffs)
         return json.dumps(obj_as_dict, cls=LimsJSONEncoder)
-
+    
+    @staticmethod
+    def _encode_before_after(val):
+        '''
+        All diff values are stored as strings unless they represent list values:
+        - in this case the JSON representation of the list is stored. 
+        '''
+        if val is None:
+            return val
+        if isinstance(val, (list,tuple)):
+            val = json.dumps(val, cls=LimsJSONEncoder)
+        elif not isinstance(val, six.string_types):
+            val = str(val)
+        return val
+        
     def save(self, **kwargs):
         ''' 
         Override to store/encode the diffs:
@@ -243,16 +257,16 @@ class ApiLog(models.Model):
         '''
         
         is_new = self.pk is None
-        models.Model.save(self, **kwargs)
         
-        def encode_before_after(val):
-            if val is None:
-                return val
-            if isinstance(val, (list,tuple)):
-                val = json.dumps(val, cls=LimsJSONEncoder)
-            elif not isinstance(val, six.string_types):
-                val = str(val)
-            return val
+        logger.debug('encode json field: log: %r', self.json_field)
+        if self.json_field:
+            if isinstance(self.json_field, dict):
+                try:
+                    self.json_field = json.dumps(self.json_field, cls=LimsJSONEncoder)
+                except:
+                    logger.exception('error with json_field value encoding: %r - %r', 
+                        e, json_field)
+        models.Model.save(self, **kwargs)
         
         if is_new:
             logger.debug('logging new diffs: %r', self.diffs)
@@ -260,8 +274,8 @@ class ApiLog(models.Model):
             for key,diffs in self.diffs.items():
                 assert isinstance(diffs, (list,tuple))
                 assert len(diffs) == 2
-                before = encode_before_after(diffs[0])
-                after = encode_before_after(diffs[1])
+                before = self._encode_before_after(diffs[0])
+                after = self._encode_before_after(diffs[1])
                 bulk_create_diffs.append(LogDiff(
                     log=self,
                     field_key = key,
@@ -275,8 +289,8 @@ class ApiLog(models.Model):
             for key,diffs in self.diffs.items():
                 assert isinstance(diffs, (list,tuple))
                 assert len(diffs) == 2
-                before = encode_before_after(diffs[0])
-                after = encode_before_after(diffs[1])
+                before = self._encode_before_after(diffs[0])
+                after = self._encode_before_after(diffs[1])
                 found = False
                 for logdiff in self.logdiff_set.all():
                     if logdiff.field_key == key:
@@ -305,6 +319,16 @@ class ApiLog(models.Model):
                     conn.execute(
                         'select last_value from reports_apilog_id_seq;')
                         .scalar() or 0)
+                
+                for log in logs:
+                    if log.json_field:
+                        if isinstance(log.json_field, dict):
+                            try:
+                                log.json_field = json.dumps(log.json_field, cls=LimsJSONEncoder)
+                            except:
+                                logger.exception('error with json_field value encoding: %r - %r', 
+                                    e, log.json_field)
+                
                 ApiLog.objects.bulk_create(logs)
                 #NOTE: Before postgresql & django 1.10 only: 
                 # ids must be manually created on bulk create
@@ -319,8 +343,8 @@ class ApiLog(models.Model):
                                 log=log,
                                 field_key = key,
                                 field_scope = 'fields.%s' % log.ref_resource_name,
-                                before=logdiffs[0],
-                                after=logdiffs[1])
+                                before=ApiLog._encode_before_after(logdiffs[0]),
+                                after=ApiLog._encode_before_after(logdiffs[1]))
                         )
                 LogDiff.objects.bulk_create(bulk_create_diffs)
             
@@ -364,7 +388,7 @@ class MetaHash(models.Model):
         if field in self._meta.get_all_field_names():
             return getattr(self,field)
         temp = self.get_field_hash()
-        if(field in temp):
+        if field in temp:
             return temp[field]
         else:
             logger.debug('unknown field: ' + field + ' for ' + str(self))

@@ -2199,7 +2199,8 @@ class LibraryResource(DBResourceTestCase):
             resource_uri, format='json', 
             authentication=self.get_credentials(), 
             data={ 
-                'limit': 0, 
+                'limit': 0,
+                'includes': ['diffs'], 
                 'ref_resource_name': 'librarycopyplate'})
         self.assertTrue(
             resp.status_code in [200], 
@@ -2210,7 +2211,6 @@ class LibraryResource(DBResourceTestCase):
             len(new_obj[API_RESULT_DATA]), expected_count , 
             str((len(new_obj[API_RESULT_DATA]), expected_count, new_obj)))
         for logvalue in new_obj[API_RESULT_DATA]:
-#             diffs = json.loads(logvalue['diffs'])
             self.assertTrue(logvalue['diffs']['bin']==[None, 'bin1'],
                 'wrong diff: %r' % logvalue['diffs'])
 
@@ -2541,7 +2541,7 @@ class LibraryResource(DBResourceTestCase):
             data={ 
                 'limit': 0, 
                 'ref_resource_name': 'librarycopyplate',
-                'includes': ['added_keys']})
+                'includes': ['diffs']})
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
@@ -2552,8 +2552,6 @@ class LibraryResource(DBResourceTestCase):
             str((len(new_obj[API_RESULT_DATA]), expected_count, new_obj)))
         for logvalue in new_obj[API_RESULT_DATA]:
             if logvalue['parent_log_uri']:
-                logger.info('test for diffs: %r, %r', logvalue['diffs'], logvalue)
-#                 diffs = json.loads(logvalue['diffs'])
                 self.assertTrue(logvalue['diffs']['bin']==[None, 'bin1'],
                     'wrong diff: %r' % logvalue['diffs'])
             else:
@@ -5956,8 +5954,6 @@ class ScreenResource(DBResourceTestCase):
             Decimal(library_screening_output[
                 'volume_transferred_per_well_from_library_plates']))
         self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
-#         diffs = json.loads(apilog['diffs'])
-        logger.info('diffs: %r', apilog['diffs'])
         self.assertEqual(
             expected_remaining_volume, 
             Decimal(apilog['diffs']['remaining_well_volume'][1]))
@@ -6068,7 +6064,6 @@ class ScreenResource(DBResourceTestCase):
             Decimal(library_screening_output2[
                 'volume_transferred_per_well_from_library_plates']))
         self.assertTrue('remaining_well_volume' in apilog['diff_keys'])
-#         diffs = json.loads(apilog['diffs'])
         logger.info('diffs: %r', apilog['diffs'])
         self.assertEqual(
             expected_remaining_volume, 
@@ -6371,6 +6366,7 @@ class ScreenResource(DBResourceTestCase):
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
+            'includes': ['*'],
             'ref_resource_name': 'publication', 
         }
         apilogs = self.get_list_resource(
@@ -8020,6 +8016,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'limit': 0, 
             'ref_resource_name': 'cherrypickrequest', 
             'key': cpr_data['cherry_pick_request_id'],
+            'includes': ['*'],
             'diff_keys': 'date_volume_reserved' 
         }
         apilogs = self.get_list_resource(
@@ -8170,6 +8167,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'limit': 0, 
             'ref_resource_name': 'cherrypickrequest', 
             'key': cpr_data['cherry_pick_request_id'],
+            'includes': ['*'],
             'diff_keys': 'screener_cherry_pick_count' 
         }
         apilogs = self.get_list_resource(
@@ -8811,6 +8809,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'limit': 0, 
             'ref_resource_name': 'cherrypickrequest', 
             'key': cpr_id,
+            'includes': ['*'],
             'diff_keys': 'date_volume_reserved' 
         }
         apilogs = self.get_list_resource(
@@ -8829,6 +8828,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             deallocate_log, 'could not find deallocate log in: %r' % apilogs)
         data_for_get={ 
             'limit': 0, 
+            'includes': ['*'],
             'parent_log_id': deallocate_log['id']
         }
         apilogs = self.get_list_resource(
@@ -9246,7 +9246,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         logger.info('lab_cherry_pick_updates apilogs for cpr: %r', cpr_id)
         selection_update_log = None
         for apilog in apilogs:
-            if test_wellid_to_change in apilog['json_field']:
+            # dump the field for easy searching
+            json_field = json.dumps(apilog['json_field'])
+            if test_wellid_to_change in json_field:
                 selection_update_log = apilog
                 self.assertTrue(test_patch_comment in apilog['comment'],
                     '%r' % apilog)
@@ -9255,6 +9257,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         data_for_get={ 
             'limit': 0, 
+            'includes': ['*'],
             'parent_log_id': selection_update_log['id']
         }
         apilogs = self.get_list_resource(
@@ -9337,6 +9340,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'limit': 0, 
             'ref_resource_name': 'cherrypickrequest', 
             'key': cpr_id,
+            'includes': ['*'],
             'diff_keys': 'last_plating_activity_date' 
         }
         apilogs = self.get_list_resource(
@@ -9354,6 +9358,7 @@ class CherryPickRequestResource(DBResourceTestCase):
 
         data_for_get={ 
             'limit': 0, 
+            'includes': ['*'],
             'parent_log_id': apilog['id']
         }
         apilogs = self.get_list_resource(
@@ -9419,6 +9424,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             'limit': 0, 
             'ref_resource_name': 'cherrypickrequest', 
             'key': cpr_id,
+            'includes': ['*'],
             'diff_keys': 'last_screening_activity_date' 
         }
         apilogs = self.get_list_resource(
@@ -9436,6 +9442,7 @@ class CherryPickRequestResource(DBResourceTestCase):
 
         data_for_get={ 
             'limit': 0, 
+            'includes': ['*'],
             'parent_log_id': apilog['id']
         }
         apilogs = self.get_list_resource(
@@ -10203,6 +10210,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'userchecklist', 
+            'includes': ['*'],
             'key__contains': test_su_id + '/' + new_obj['name']
         }
         apilogs = self.get_list_resource(
@@ -10264,6 +10272,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'userchecklist', 
+            'includes': ['*'],
             'key__contains': test_su_id + '/' + new_obj['name']
         }
         apilogs = self.get_list_resource(

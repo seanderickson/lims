@@ -2143,6 +2143,8 @@ class ApiResource(SqlAlchemyResource):
         @param full_create_log create a diff log showing initial state on create
         @param log_empty_diffs creates a log even if there are no diffs, if there 
             is a comment to record
+        NOTE: the log entry is not saved in this function and must be saved by
+        the calling function
         '''
         default_exclude_patterns = ['comment_array']
         if exclude_patterns is None:

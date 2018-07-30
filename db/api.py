@@ -9056,6 +9056,7 @@ class CherryPickRequestResource(DbApiResource):
         parent_log.diffs.update({
             'number_plates': [previous_number_of_plates, len(assay_plates_created)]
             })
+        # TODO: ApiLog.save() will encode the json_field if it is a dict
         parent_log.json_field = json.dumps(_meta, cls=LimsJSONEncoder)
         parent_log.save()
         
@@ -9821,7 +9822,7 @@ class ScreenerCherryPickResource(DbApiResource):
         log.key = str(cpr.cherry_pick_request_id)
         log.uri = '/'.join([
             'screen',cpr.screen.facility_id,log.ref_resource_name,log.key])        
-        log.json_field = result_message
+        log.json_field = json.dumps(result_message, cls=LimsJSONEncoder)
         self.get_cpr_resource().log_patch(
             request, original_cpr_data,new_cpr_data, 
             excludes=['screener_cherry_picks'])
@@ -23168,7 +23169,7 @@ class WellResource(DbApiResource):
         log_json_meta = library_log.get('json_field', None)
         logger.info('json_field: %r', log_json_meta)
         if log_json_meta:
-            log_json_meta = json.loads(log_json_meta)
+#             log_json_meta = json.loads(log_json_meta)
             logger.info('adding json_field: %r', log_json_meta)
             kwargs['meta'] = log_json_meta
             # TODO: store the filename on the log
@@ -23610,7 +23611,8 @@ class WellResource(DbApiResource):
         logger.info('wells patch complete: %r', meta)
         
             
-        library_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
+#         library_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
+        library_log.json_field = meta
         library_log.save()
 
         

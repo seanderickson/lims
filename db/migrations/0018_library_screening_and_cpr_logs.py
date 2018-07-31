@@ -712,7 +712,9 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
                         'data': { 'cherry_pick_liquid_transfer.activity_id': 
                             wva['cplt_id'] }
                     }
+                    temp_json = cpr_parent_log.json_field
                     cpr_parent_log.save()
+                    cpr_parent_log.json_field = temp_json
                     cpr_logs[cpr_id] = cpr_parent_log
     
                 plate_key = '/'.join([
@@ -903,7 +905,10 @@ def create_cherry_pick_plating_logs(apps, schema_editor):
                     'status': cplt.status 
                 }
             }
+            temp_json = cpr_parent_log.json_field
             cpr_parent_log.save()
+            cpr_parent_log.json_field = temp_json
+
             cpr_parent_logs[cpr.cherry_pick_request_id] = cpr_parent_log
             
         activity.apilog_uri = cpr_parent_log.log_uri
@@ -934,7 +939,9 @@ def create_cherry_pick_plating_logs(apps, schema_editor):
                         'status': cplt.status 
                     }
                 }
+                temp_json = cpr_parent_log.json_field
                 cpr_parent_log.save()
+                cpr_parent_log.json_field = temp_json
                 cpr_parent_logs[cpr.cherry_pick_request_id] = cpr_parent_log
                     
         for cpap in cplt.cherrypickassayplate_set.all():
@@ -1035,7 +1042,9 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
                 }
             }
             
+            temp_json = cpr_parent_log.json_field
             cpr_parent_log.save()
+            cpr_parent_log.json_field = temp_json
             cpr_parent_logs[cpr.cherry_pick_request_id] = cpr_parent_log
 
         # NOTE: hack: use the json_field to store the previous activity_id:
@@ -1064,7 +1073,9 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
                         'cherry_pick_screening.activity_id': activity.activity_id,
                     }
                 }
+                temp_json = cpr_parent_log.json_field
                 cpr_parent_log.save()
+                cpr_parent_log.json_field = temp_json
                 cpr_parent_logs[cpr.cherry_pick_request_id] = cpr_parent_log
 
         activity.apilog_uri = cpr_parent_log.log_uri

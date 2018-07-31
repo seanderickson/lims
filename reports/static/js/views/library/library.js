@@ -69,7 +69,7 @@ define([
       var self = this;
       TabbedController.prototype.afterRender.apply(this,arguments);
 
-      function showRelease(){
+      function showReleaseMessage(){
         $('#content_title_message').find('#release_message').remove();
         
         if (self.model.get('is_released') == true){
@@ -148,7 +148,7 @@ define([
         
       };
       
-      function showPreview(){
+      function showPreviewMessage(){
         $('#content_title_message').find('#preview_message').remove();
         var preview_log_id = self.model.get('preview_log_id');
         
@@ -157,20 +157,22 @@ define([
         }
         var previewMessage = $(
           '<div id="preview_message" class="alert alert-info"></div>')
-            .html('Library has a well import preview. ');
+            .html('Library has a preview version of well data loaded. ');
         var showPreviewLink = $('<a>', {
           tabIndex : -1,
           href : "#",
           class: 'alert-link',
-          title: "show the wells preview view"
+          title: "Show the well view of the preview data"
         }).text('[view]');
         previewMessage.append(showPreviewLink);
         
+        var previewUriStack= ['#apilog', self.model.get('preview_log_key')]
         var showPreviewDetails = $('<a>', {
           tabIndex : -1,
-          href : "#",
+          href : previewUriStack.join('/'),
           class: 'alert-link',
-          title: "Show the loading details"
+          target: '_blank',
+          title: "Display the API log for the preview load operation"
         }).text('[information]');
         previewMessage.append('&nbsp;');
         previewMessage.append(showPreviewDetails);
@@ -181,35 +183,51 @@ define([
           e.stopPropagation();
           self.change_to_tab('well', ['search','show_preview=true']);
         });
-        showPreviewDetails.click(function(e){
-          e.preventDefault();
-          e.stopPropagation();
-          
-          appModel.getModel('apilog', preview_log_id, function(preview_log){
-
-            var json_preview_log = preview_log.toJSON();
-            appModel.showJsonMessages(json_preview_log,{ 
-              title: 'Preview Log Details'
-            })
-          });
-
-          // TODO: alternate, redirect
-          //var uriStack = ['apilog', 'order','-date_time', appModel.URI_PATH_SEARCH];
-          //var search = {};
-          //search['ref_resource_name'] = self.model.resource.key;
-          //search['key'] = self.model.key;
-          //search['is_preview'] = 'true';
-          //uriStack.push(appModel.createSearchString(search));
-          //console.log('route: ', uriStack);
-          //appModel.setUriStack(uriStack);
-        });
+        
+        appModel.getModel('apilog', self.model.get('preview_log_key'), 
+          function(preview_log){
+            showPreviewDetails.attr('title', 
+              appModel.print_json(preview_log.pick(
+                ['date_time', 'username','user_id','key', 'api_action',
+                  'child_logs','comment', 'diff','json_field'])));
+          }
+        );
+        
+        
+//        showPreviewDetails.click(function(e){
+//          e.preventDefault();
+//          e.stopPropagation();
+//          
+//          var uriStack = ['#apilog', self.model.get('preview_log_key')]
+//          
+////          window.open(uriStack.join('/'), '_blank');
+//          
+////          
+////          appModel.getModel('apilog', preview_log_id, function(preview_log){
+////
+////            var json_preview_log = preview_log.toJSON();
+////            appModel.showJsonMessages(json_preview_log,{ 
+////              title: 'Preview Log Details'
+////            })
+////          });
+//
+//          // TODO: alternate, redirect
+//          //var uriStack = ['apilog', 'order','-date_time', appModel.URI_PATH_SEARCH];
+//          //var search = {};
+//          //search['ref_resource_name'] = self.model.resource.key;
+//          //search['key'] = self.model.key;
+//          //search['is_preview'] = 'true';
+//          //uriStack.push(appModel.createSearchString(search));
+//          //console.log('route: ', uriStack);
+//          //appModel.setUriStack(uriStack);
+//        });
       };
 
-      showPreview();
-      showRelease();
+      showPreviewMessage();
+      showReleaseMessage();
       
-      self.model.on('sync', showPreview);
-      self.model.on('sync', showRelease);
+      self.model.on('sync', showPreviewMessage);
+      self.model.on('sync', showReleaseMessage);
     },
 
     /**

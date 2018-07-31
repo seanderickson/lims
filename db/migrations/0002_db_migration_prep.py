@@ -273,6 +273,11 @@ class Migration(migrations.Migration):
             name='substance_id',
             field=models.CharField(null=True,max_length=8),
         ),
+        migrations.AddField(
+            model_name='reagent',
+            name='comment',
+            field=models.TextField(null=True),
+        ),
         migrations.AlterField(
             model_name='silencingreagent',
             name='is_restricted_sequence',

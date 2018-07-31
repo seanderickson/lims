@@ -23103,7 +23103,7 @@ class WellResource(DbApiResource):
         library_data = self.get_library_resource()\
             ._get_detail_response_internal(**{
                 'short_name': library.short_name })
-        if not library_data.get('preview_log_id'):
+        if not library_data.get(SCHEMA.LIBRARY.PREVIEW_LOG_ID):
             raise Exception('no preview found for %s', library_short_name)
 
         # Find the parent library log
@@ -24388,6 +24388,16 @@ class LibraryResource(DbApiResource):
                     .where(_comment_apilogs.c.key==_l.c.short_name)),
                 'preview_log_id': (
                     select([_apilog.c.id])
+                        .select_from(_apilog)
+                        .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
+                        .where(_apilog.c.key == _l.c.short_name)
+                        .where(_apilog.c.is_preview == True)
+                        .limit(1)
+                    ),
+                'preview_log_key': (
+                    select([_concat_with_sep((_apilog.c.ref_resource_name,
+                        _apilog.c.key,func.to_char(_apilog.c.date_time,
+                            'YYYY-MM-DD\"T\"HH24:MI:SS.MS')), '/')])
                         .select_from(_apilog)
                         .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
                         .where(_apilog.c.key == _l.c.short_name)

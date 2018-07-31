@@ -69,13 +69,13 @@
     },
 
     "user": {
-      "header_message": "Reports users",
-      "title": "Reports Users",
+      "header_message": "Users (reports)",
+      "title": "Users (report API view)",
       "list_view": "ListView",
       "detailView": "UserAdminView",
       "api_resource": "user",
       "url_root": "/reports/api/v1",
-      "description": "Reports user"
+      "description": "Users (report API view)"
     },
     "usergroup": {
         "header_message": "User Groups",

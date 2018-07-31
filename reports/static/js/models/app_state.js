@@ -1645,10 +1645,10 @@ define([
         str = str.replace(/[{}]+/g,'');
         // remove list brackets
         str = str.replace(/[\[\]]+/g, '');
-        // remove empty lines
-        str = str.replace(/^\s*$\n+/gm,'');
         // remove single comma on a line
         str = str.replace(/^\s*,\s*$/gm,'')
+        // remove empty lines
+        str = str.replace(/^\s*$\n+/gm,'');
       }catch(e){
         console.log('print_json', e, obj);
         str = '' + obj;

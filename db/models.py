@@ -1220,6 +1220,8 @@ class Reagent(models.Model):
     vendor_name_synonym = models.TextField(null=True)
     vendor_batch_id = models.TextField(null=True)
     
+    comment = models.TextField(null=True)
+    
     # TODO: deprecated
     # library_contents_version = \
     #     models.ForeignKey('LibraryContentsVersion', null=True)

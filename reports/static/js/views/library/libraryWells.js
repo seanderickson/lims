@@ -515,21 +515,23 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var showPreviewControl = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',
-          'title="Show the preview view of the pending load for the library wells" >',
-          '  <input id="show_preview_control" type="checkbox">Show Preview&nbsp;',
+          'title="Show the preview data for the library wells" >',
+          '  <input id="show_preview_control" type="checkbox">Show Preview Data&nbsp;',
           '</label>'
         ].join(''));
         
         var applyPreviewButton = $([
            '<a class="btn btn-default btn-sm pull-down" ',
+             'title="Release (commit to the database) the preview data for the library wells" ',
              'role="button" id="apply_preview_control" >',
-             'Apply Preview</a>'
+             'Release</a>'
            ].join(''));
         
         var deletePreviewButton = $([
            '<a class="btn btn-default btn-sm pull-down" ',
+             'title="Delete the preview data for the library wells" ',
              'role="button" id="delete_preview_control" >',
-             'Delete Preview</a>'
+             'Delete</a>'
            ].join(''));
         
         if (self.library && _.isNumber(self.library.get('preview_log_id'))){
@@ -628,7 +630,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
                 apply_preview(formValues['comments']);
               },
               okText: 'Release',
-              title: 'Release the library: "'
+              title: 'Release the library content preview data shown for: "'
                 + Iccbl.getTitleFromTitleAttribute(self.library,self.library.resource) + '" ?' 
             });
           

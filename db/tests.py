@@ -1547,7 +1547,9 @@ class LibraryResource(DBResourceTestCase):
             self.assertEqual(well_patch['diff_keys'], ['smiles'])
         
     def test2b_patching_errors(self):
-        ''' Test error handling when patching '''
+        ''' Test error handling when patching:
+        - tests small_molecule
+        '''
         
         WELL_TYPE = VOCAB.well.library_well_type
         SM_REAGENT = SCHEMA.SMALL_MOLECULE_REAGENT
@@ -2863,7 +2865,7 @@ class LibraryResource(DBResourceTestCase):
 #     def test61_small_molecule_delete_compound_name(self):
 #         # TODO: test that sm.compound names can be removed
 #         pass
-    
+            
     def test6_load_small_molecule_file(self):
         
         logger.info('test6_load_small_molecule_file')
@@ -3059,6 +3061,92 @@ class LibraryResource(DBResourceTestCase):
                                 "vendor_batch_id", "compound_name", "smiles"]))
             # TODO: check parent_log - library log/ version
     
+    
+    def test6a_load_dirty_small_molecule_file(self):
+
+        logger.info('test6a_load_dirty_small_molecule_file')
+        
+        library_item = self.create_library({ 
+            START_PLATE: '1536', 
+            END_PLATE: '1536', 
+            'plate_size': '384',
+            SCREEN_TYPE: 'small_molecule' })
+
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        filename = (
+            '%s/db/static/test_data/libraries/dirty_data_small_molecule.sdf'
+                % APP_ROOT_DIR )
+
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
+
+        expected_errors = [
+            [u'01536:A01', {
+                u'line': 1, 
+                u'mg_ml_concentration': [u"parse error: Invalid literal for Decimal: u'bad_value'"]}],
+            [u'01536:A03', {
+                u'library_well_type': [u"'experimentalxxx' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                u'line': 131}],
+            [u'01536:A04', {
+                u'pubchem_cid': [u"parse error: invalid literal for int() with base 10: '558309aaa'"], 
+                u'line': 208}],
+            [u'01536:A06', {
+                u'line': 388, 
+                u'chembank_id': [u"parse error: invalid literal for int() with base 10: '1665724aa'"]}],
+            [u'01536:A08', {
+                u'line': 471, 
+                u'molecular_mass': [u"parse error: Invalid literal for Decimal: u'bbb368.46602'"]}],
+            [u'01536:A09', {
+                u'line: 607': u'duplicate', 
+                u'library_well_type': [u"'void' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                u'line': 576}],              
+            [u'line: 301', {
+                u'well_id': u'required'}]]
+
+        logger.info('Open and PUT file: %r', filename)
+        with open(filename) as input_file:
+            
+            input_data = self.serializer.from_sdf(input_file.read())
+            input_data = input_data['objects']
+            expected_count = 9
+            self.assertEqual(
+                len(input_data), expected_count, 
+                str(('initial serialization of ',filename,'found',
+                    len(input_data), 'expected',expected_count,
+                    'input_data',input_data)))
+            
+            logger.debug('======Submitting patch file: %r, uri: %r ...', 
+                filename, resource_uri)
+            resp = self.api_client.put(
+                resource_uri, format='sdf', data=input_data, 
+                authentication=self.get_credentials(), **data_for_get )
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code, self.get_content(resp)))
+            response_obj = self.deserialize(resp)
+            self.assertTrue('errors' in response_obj)
+            errors = response_obj['errors']
+            errors = { x[0]:x[1] for x in errors }
+            logger.info('errors: %r', errors)
+            
+            expected_errors = { x[0]:x[1] for x in expected_errors }
+            logger.info('expected_errors: %r', expected_errors)
+            self.assertTrue(len(expected_errors)==len(errors), 
+                'Unexpected: %r, not found: %r' % (
+                    {k:v for k,v in errors.items() if k not in expected_errors},
+                    {k:v for k,v in expected_errors.items() if k not in errors }
+                    ))
+            for id, error in errors.items():
+                expected_error = expected_errors[id]
+                for key,val in expected_error.items():
+                    self.assertTrue(
+                        key in error, 
+                        'id: %r, error key: %r not found' %(id, key))
+                    # NOTE: error message may vary, not checking at this time
+                    # self.assertEqual(error[key],expected_error[key])
+            
     def test7_load_sirnai(self):
 
         logger.info('test7_load_sirnai ...')

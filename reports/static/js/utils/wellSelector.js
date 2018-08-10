@@ -100,14 +100,14 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout) {
     },
       
     renderSelection: function(){
-      var selected = self.isColumnSelected();
-      self.checkbox().prop('checked', selected);
+      var selected = this.isColumnSelected();
+      this.checkbox().prop('checked', selected);
       this.$el.toggleClass("selected", selected);
     },
     
     render : function() {
       WellColumnSelectorHeader.__super__.render.apply(this);
-      var isSelected = self.isColumnSelected();
+      var isSelected = this.isColumnSelected();
       var columnSelector = $('<input type="checkbox" style="display: none;" >');
       this.$el.prepend(columnSelector);
       this.renderSelection();

@@ -836,18 +836,18 @@ class PlateLocationResource(DbApiResource):
         update_log = self.log_patch(request, original_data,new_data,**kwargs)
         if update_log:
             update_log.save()
-        patch_count = len(patched_plate_logs)
+        # patch_count = len(patched_plate_logs)
         update_count = len([x for x in patched_plate_logs if x.diffs ])
-        unchanged_count = patch_count - update_count
+        #unchanged_count = patch_count - update_count
         action = update_log.api_action if update_log else 'Unchanged'
         if action == API_ACTION.CREATE:
             action += ': ' + update_log.key
         meta = { 
             API_MSG_RESULT: { 
                 'Plate location': action,
-                API_MSG_SUBMIT_COUNT : patch_count, 
+                # API_MSG_SUBMIT_COUNT : patch_count, 
                 API_MSG_UPDATED: update_count, 
-                API_MSG_UNCHANGED: unchanged_count, 
+                # API_MSG_UNCHANGED: unchanged_count, 
                 API_MSG_COMMENTS: log.comment
             }
         }
@@ -932,7 +932,8 @@ class PlateLocationResource(DbApiResource):
             log = self.get_librarycopyplate_resource().log_patch( 
                 request,prev_dict,new_dict,
                 **{ 'parent_log': kwargs.get('parent_log', None),
-                    'full': True,
+                    'full_create_log': False,
+                    'log_empty_diffs': False,
                     'id_attribute': lcp_id_attribute } )
             if log: 
                 plate_logs.append(log)
@@ -1948,7 +1949,19 @@ class LibraryCopyPlateResource(DbApiResource):
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
             
-            order_params = param_hash.get('order_by', [])
+            order_params = set(param_hash.get('order_by', []))
+            
+            if 'location' in order_params or '-location' in order_params:
+                temp = []
+                for v in order_params:
+                    if v == 'location':
+                        temp.extend(['room','freezer','shelf','bin'])
+                    elif v == '-location':
+                        temp.extend(['-room','-freezer','-shelf','-bin'])
+                    else:
+                        temp.append(v)
+                order_params = temp
+            
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_hash.keys(), manual_field_includes,
                 param_hash.get('visibilities'),

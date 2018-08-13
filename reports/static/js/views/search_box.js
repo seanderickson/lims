@@ -139,7 +139,7 @@ define([
       ///// Compound Name, Facility or Vendor ID
       var schema2a = {};
       schema2a['searchVal'] = {
-        title: 'Compound Name or Vendor ID',
+        title: 'Search for compound name, vendor ID',
         key: 'searchVal',
         help: 'enter each compound name or vendor ID on a separate line',
         placeholder: 'enter each compound name or vendor ID on a separate line',

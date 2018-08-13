@@ -558,9 +558,6 @@ def create_output_data(screen_facility_id, fields, result_values ):
             
             control_type = result_value.get(SCREEN_RESULT.ASSAY_CONTROL_TYPE)
             if control_type:
-#             if ( result_value.has_key('assay_well_control_type')
-#                  and result_value['assay_well_control_type'] ):
-#                 logger.info('control_type: %r', control_type)
                 control_type = default_converter(
                     result_value['assay_well_control_type'])
                 # note: "empty", "experimental", "buffer" are values that can be

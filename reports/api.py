@@ -1691,9 +1691,9 @@ class ApiResource(SqlAlchemyResource):
     @un_cache 
     @transaction.atomic       
     def delete_list(self, request, **kwargs):
-        logger.info('delete list...')
-        raise NotImplementedError('delete_list is not implemented for %s'
-            % self._meta.resource_name )
+        msg = 'delete_list is not implemented for %s' % self._meta.resource_name
+        logger.info(msg)
+        raise NotImplementedError(msg)
 
     @write_authorization
     @un_cache 
@@ -3057,8 +3057,13 @@ class FieldResource(ApiResource):
     @un_cache        
     @transaction.atomic    
     def delete_list(self, request, **kwargs):
-        MetaHash.objects.all().filter(scope__icontains='fields.').delete()
-
+        logger.info('delete_list for fields...')
+        query = MetaHash.objects.all().filter(scope__icontains='fields.')
+        if query.exists():
+            query.delete()
+        return HttpResponse(status=204)
+    
+    
     @write_authorization
     @un_cache        
     @transaction.atomic    
@@ -3501,6 +3506,7 @@ class ResourceResource(ApiResource):
     @transaction.atomic       
     def delete_list(self, request, **kwargs):
         MetaHash.objects.all().filter(scope='resource').delete()
+        return HttpResponse(status=204)
 
     @write_authorization
     @un_cache 
@@ -3894,7 +3900,8 @@ class VocabularyResource(ApiResource):
     @transaction.atomic       
     def delete_list(self, request, **kwargs):
         Vocabulary.objects.all().delete()
-
+        return HttpResponse(status=204)
+    
     @write_authorization
     @un_cache 
     @transaction.atomic       

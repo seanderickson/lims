@@ -2,8 +2,7 @@
 from __future__ import unicode_literals
 
 from django.conf.urls import patterns, url, include
-from reports.api_base import Api
-from db import views
+
 from db.api import ScreensaverUserResource, ScreenResource, \
     ScreenResultResource, StudyResource, \
     DataColumnResource, LibraryResource, \
@@ -12,11 +11,12 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
     CopyWellResource, UserChecklistResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
-    AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
-    UserAgreementResource, PublicationResource,PlateLocationResource,\
+    AttachedFileResource, ServiceActivityResource, LibraryScreeningResource, \
+    UserAgreementResource, PublicationResource, PlateLocationResource, \
     LabAffiliationResource, RawDataTransformerResource
-
 import db.api
+import db.views
+from reports.api_base import Api
 
 
 v1_api = Api(api_name='v1')
@@ -49,16 +49,18 @@ v1_api.register(RawDataTransformerResource())
 v1_api.register(db.api.ResourceResource())
 
 urlpatterns = patterns('',
-    url(r'^$', views.main, name="home"),
+    url(r'^$', db.views.main, name="home"),
     url(r'^screen_raw_data_transform/(?P<screen_facility_id>\S+)$',
-        'db.views.screen_raw_data_transform', name="screen_raw_data_transform" ),
+        db.views.screen_raw_data_transform, name="screen_raw_data_transform" ),
     url(r'^cpr_raw_data_transform/(?P<cherry_pick_request_id>\S+)$',
-        'db.views.cpr_raw_data_transform', name="cpr_raw_data_transform" ),
-    url(r'^smiles_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
-    url(r'^well_image/(?P<well_id>\S+)$','db.views.well_image', name="well_image" ),
+        db.views.cpr_raw_data_transform, name="cpr_raw_data_transform" ),
+    url(r'^smiles_image/(?P<well_id>\S+)$',db.views.smiles_image,
+        name="smiles_image" ),
+    url(r'^well_image/(?P<well_id>\S+)$',db.views.well_image, 
+        name="well_image" ),
     url(r'^attachedfile/(?P<attached_file_id>\d+)/content$',
-        'db.views.attached_file', name="attached_file" ),
+        db.views.attached_file, name="attached_file" ),
     url(r'^publication/(?P<publication_id>\d+)/attached_file$',
-        'db.views.publication_attached_file', name="publication_attached_file" ),
+        db.views.publication_attached_file, name="publication_attached_file" ),
     (r'^api/', include(v1_api.urls)),
 )

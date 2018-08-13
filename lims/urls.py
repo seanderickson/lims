@@ -2,6 +2,8 @@ from django.conf.urls import patterns, include, url
 from lims import views
 
 from django.contrib import admin
+import django.contrib.auth.views
+
 admin.autodiscover()
 
 urlpatterns = patterns('',
@@ -13,7 +15,8 @@ urlpatterns = patterns('',
     # that is, reports/templates/login.html version; 
     # this is done because at this time only the reports project has
     # all of the necessary css and javascript installed
-    (r'^accounts/login/$', 'django.contrib.auth.views.login', {'template_name': 'login.html'}),
+    url(r'^accounts/login/$', django.contrib.auth.views.login, 
+        {'template_name': 'login.html'}, name='login'),
     url(r'^accounts/logout/$', views.logout_page, name='logout'),
     
     url(r'^lims/$', views.main, name="home"),

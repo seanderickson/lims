@@ -69,12 +69,18 @@ MEDIA_URL = ''
 
 # /accounts/login is the default
 LOGIN_URL = '/accounts/login/'
+# Default if "next" is not given as a request param
+LOGIN_REDIRECT_URL='/lims/'
+
 
 # Timeout, in seconds; will cause user logout: 4 hours
 # NOTE: this will not log the browser out until a request is made.
 SESSION_COOKIE_AGE = 60*60*4
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-SESSION_COOKIE_SECURE = True
+# NOTE: SSL may only be enforced on the production server
+# SECURE_SSL_REDIRECT = True
+# SESSION_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
 
 # Absolute path to the directory static files should be collected to.
 # Don't put anything in this directory yourself; store your static files
@@ -135,8 +141,6 @@ ROOT_URLCONF = 'lims.urls'
 # Python dotted path to the WSGI application used by Django's runserver.
 WSGI_APPLICATION = 'lims.wsgi.application'
 
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-
 TEMPLATE_DIRS = [
     os.path.join(PROJECT_ROOT, 'lims','templates'),
     os.path.join(PROJECT_ROOT, 'reports','templates'),
@@ -160,9 +164,6 @@ INSTALLED_APPS = (
 
 # turn off migrations during testing (just make the database from models.py)
 SOUTH_TESTS_MIGRATE = False
-
-# Default if "next" is not given as a request param
-LOGIN_REDIRECT_URL='/lims'
 
 # directory for temp files created on download
 TEMP_FILE_DIR='/tmp'

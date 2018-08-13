@@ -21,6 +21,18 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT
 DEBUG = False
 TEMPLATE_DEBUG = DEBUG
 
+# If not True, then only staff may log in to the system
+# see reports/auth.py
+IS_PRODUCTION_READY = False
+
+# NOTE: SSL may only be enforced on the production server
+# NOTE: the migration app uses insecure HTTP to initialize, 
+# TODO: enable these settings when in production
+if IS_PRODUCTION_READY is True:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
 ADMINS = (
     ('Admin', 'admin@email.com'),
 )

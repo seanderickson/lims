@@ -29,7 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 from reports.utils.django_requests import convert_request_method_to_put
 from db.support.data_converter import default_converter
 from reports import ValidationError, InformationError, BadRequestError, \
-    BackgroundJobImmediateResponse, API_RESULT_ERROR
+    BackgroundJobImmediateResponse, LoginFailedException, API_RESULT_ERROR
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import BaseSerializer, LimsSerializer
@@ -454,6 +454,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         auth_result = self._meta.authentication.is_authenticated(request)
         if auth_result is not True:
             raise PermissionDenied
+        return auth_result
 
     def dispatch_list(self, request, **kwargs):
         """
@@ -544,13 +545,18 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+            except LoginFailedException as e:
+                logger.info('LoginFailedException ex: %r', e)
+                data = {
+                    'Login Failed: ': '%s' % e }
+                response = self.build_error_response(
+                    request, data, response_class=HttpResponseForbidden, **kwargs)
             except PermissionDenied as e:
                 logger.info('PermissionDenied ex: %r', e)
                 data = {
-                    'Permission Denied: ': '%r'%e }
+                    'Permission Denied: ': '%s' % e }
                 response = self.build_error_response(
                     request, data, response_class=HttpResponseForbidden, **kwargs)
-    
             except ObjectDoesNotExist as e:
                 logger.info('not found: %r', e)
                 response = self.build_error_response(

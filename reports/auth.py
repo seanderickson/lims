@@ -3,8 +3,10 @@ import logging
 import re
 from django.conf import settings
 from django.contrib.auth.models import User
+
+from reports import LoginFailedException
 import reports.hms.auth
-from django.core.exceptions import PermissionDenied
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,28 +63,29 @@ class CustomAuthenticationBackend():
                     except User.DoesNotExist, e:
                         msg = 'no such user with the id: %r' % username
                         logger.warn(msg)
-                        raise PermissionDenied(msg)
+                        raise LoginFailedException(msg)
                 else:
                     msg = (
                         'logging in as another user requires superuser privileges'
                         ', user: %r') % superuser
                     logger.warn(msg)
-                    raise PermissionDenied(msg)
+                    raise LoginFailedException(msg)
             return None
         else:
             user = self._inner_authenticate(username, password)
             if IS_PRODUCTION_READY is not True:
-                if user.is_staff is not True:
+                if user.is_staff is not True or user.is_superuser is not True:
                     msg = ('login not allowed for non-staff users when '
                         '"settings.IS_PRODUCTION_READY" is not set; user: %r'
                         % user)
                     logger.warn(msg)
-                    raise PermissionDenied(msg)
+                    raise LoginFailedException(msg)
+            logger.info('auth returns logged in user: %r', user)
             return user
 
     def _inner_authenticate(self, username=None, password=None):
         if username is None:
-            raise PermissionDenied('username not set')
+            raise LoginFailedException('username not set')
         username = username.lower()
         logger.debug('inner_authenticate: %r', username)
         try:
@@ -92,28 +95,29 @@ class CustomAuthenticationBackend():
                     logger.info('logged in user %r using password',username)
                     return user
                 else:
-                    msg = 'user password authentication failed: %r' % username
+                    msg = 'User password authentication failed: %r' % username
                     logger.info(msg)
-                    raise PermissionDenied(msg)
+                    raise LoginFailedException(msg)
             if(reports.hms.auth.authenticate(username, password)):
-                logger.info('user %r authenticated with the ecommons server', user)
+                logger.info('user %r authenticated with the ecommons server', username)
                 if(user.is_active):
                     return user
                 else:
-                    msg = 'user authenticated, but is not active: %r' % user
+                    msg = 'User authenticated, but is not set to active: %s' % username
                     logger.warn(msg)
-                    raise PermissionDenied(msg)
+                    raise LoginFailedException(msg)
             else:
-                msg = 'user not authenticated with the ecommons server: %r' % user
+                # Note: reports.hms.auth.authenticate raises an Exception instead
+                msg = 'User not authenticated with the ecommons server: %s' % username
                 logger.warn(msg)
-                raise PermissionDenied(msg)
+                raise LoginFailedException(msg)
         except User.DoesNotExist, e:
-            msg = 'no such user with the id: %r' % username
+            msg = 'No user found with the id: %r' % username
             logger.warn(msg)
-            raise PermissionDenied(msg)
+            raise LoginFailedException(msg)
         except Exception, e:
             logger.warn('auth ex: %r', e)
-            raise PermissionDenied(e)
+            raise LoginFailedException(e)
 
     def get_user(self, user_id):
         try:

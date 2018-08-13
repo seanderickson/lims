@@ -30,7 +30,7 @@ def ldap_authenticate(ecommons_id, ecommons_password):
         return True
     except ldap3.LDAPBindError, e:
         logger.info('ldap3.LDAPBindError: %r', e)
-        return False
+        raise
     except Exception, e:
         logger.exception('LDAP exception: %r', e)
         raise

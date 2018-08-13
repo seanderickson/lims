@@ -102,6 +102,8 @@ class BackgroundJobImmediateResponse(Exception):
     def __init__(self, httpresponse):
         self.httpresponse = httpresponse
 
+class LoginFailedException(django.core.exceptions.ValidationError):
+    pass
 
 def _now():
     d = django.utils.timezone.now()

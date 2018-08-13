@@ -48,9 +48,6 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
-from tastypie.authentication import MultiAuthentication
-from tastypie.exceptions import BadRequest
-from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
 import unicodecsv
 import xlsxwriter
@@ -79,11 +76,11 @@ from db.support.plate_matrix_transformer import Collation
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from lims.app_data import APP_PUBLIC_DATA
+from reports import BadRequestError, ValidationError, InformationError, _now
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
     CumulativeError, LIST_DELIMITER_SUB_ARRAY
-from reports import ValidationError, InformationError, _now
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_SUCCESS, API_RESULT_DATA, \
@@ -96,8 +93,8 @@ from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, \
     UserResourceAuthorization, FieldResource
 import reports.api
-from reports.api_base import un_cache, IccblBasicAuthentication, \
-    IccblSessionAuthentication
+from reports.api_base import un_cache, MultiAuthentication, \
+    IccblBasicAuthentication, IccblSessionAuthentication
 from reports.models import Vocabulary, ApiLog, UserProfile
 from reports.schema import DATE_FORMAT
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
@@ -114,15 +111,17 @@ from reports.serializers import LimsSerializer, \
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat, _concat_with_sep
 from reports.utils import sort_nicely, alphanum_key
+from reports.utils.django_requests import convert_request_method_to_put
 import schema as SCHEMA
 
 
 # Schema shortcuts
-
 FIELD = SCHEMA.FIELD
 WELL = SCHEMA.WELL
 SMALL_MOLECULE_REAGENT = SCHEMA.SMALL_MOLECULE_REAGENT
 
+SCREEN_TYPE = SCHEMA.VOCAB.screen.screen_type
+USER_ROLE = SCHEMA.VOCAB.screen.user_role
 WELL_TYPE = SCHEMA.VOCAB.well.library_well_type
 ASSAY_WELL_CONTROL = SCHEMA.VOCAB.assaywell.control_type
 SCREEN_AVAILABILITY = SCHEMA.VOCAB.screen.screen_result_availability
@@ -175,13 +174,7 @@ API_MSG_CPR_PLATES_SCREENED = 'Plates screened'
 API_MSG_CPR_PLATED_CANCEL_DISALLOWED = 'Plating reservation may not be canceled after plates are plated'
 
 API_MSG_CPR_CONCENTRATIONS = 'concentration_warnings'
-# VOCAB_LCP_STATUS_SELECTED = 'selected'
-# VOCAB_LCP_STATUS_NOT_SELECTED = 'not_selected'
-# VOCAB_LCP_STATUS_UNFULFILLED = 'unfulfilled'
-# VOCAB_LCP_STATUS_PLATED = 'plated'
-VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator'
-VOCAB_SCREEN_TYPE_SM = 'small_molecule'
-VOCAB_SCREEN_TYPE_RNAI = 'rnai'
+
 # API_PARAM_PLATE_MAPPING_OVERRIDE = 'plate_mapping_override'
 API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents'
 API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections'
@@ -323,7 +316,7 @@ class DbApiResource(reports.api.ApiResource):
             conn.execute(text(
                 'CREATE INDEX wdc_screen_id '
                 'on well_data_column_positive_index(screen_id);'))
-            # TODO: determine if indexes would help.
+
             # Note: foreign keys are not needed and complicate delete
             # 'CREATE TABLE well_data_column_positive_index ('
             # ' "well_id" text NOT NULL REFERENCES "well" ("well_id") '
@@ -359,6 +352,7 @@ class DbApiResource(reports.api.ApiResource):
                 ' "overlap_screen_id" integer NOT NULL '
                 ');'
             ))
+            
             # Note: foreign keys are not needed and complicate delete
             # 'CREATE TABLE screen_overlap ('
             # ' "screen_id" integer NOT NULL '
@@ -648,9 +642,9 @@ class PlateLocationResource(DbApiResource):
                 param = urllib.unquote(param).decode('utf-8')
                 logger.info('param library_copy: %r', param)
                 if '/' not in param or len(param.split('/')) !=2:
-                    raise BadRequest(
-                        'library_copy parameter must be of the form '
-                        '"{library_short_name}/{copy_name}"')
+                    raise BadRequestError({
+                        'library_copy': 'must be of the form '
+                            '"{library_short_name}/{copy_name}"' })
                 param = param.split('/')
                 try:
                     library_copy = Copy.objects.get(
@@ -815,12 +809,14 @@ class PlateLocationResource(DbApiResource):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
         id_attribute = schema['id_attribute']
-        kwargs_for_log = self.get_id(deserialized, schema=schema, validate=True,**kwargs)
+        kwargs_for_log = self.get_id(
+            deserialized, schema=schema, validate=True,**kwargs)
 
         original_data = None
         if kwargs_for_log:
             try:
-                original_data = self._get_detail_response_internal(**kwargs_for_log)
+                original_data = \
+                    self._get_detail_response_internal(**kwargs_for_log)
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', 
                     kwargs_for_log)
@@ -870,7 +866,8 @@ class PlateLocationResource(DbApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        id_kwargs = self.get_id(deserialized, schema=schema, validate=True, **kwargs)
+        id_kwargs = \
+            self.get_id(deserialized, schema=schema, validate=True, **kwargs)
 
         create = False
         try:
@@ -900,7 +897,6 @@ class PlateLocationResource(DbApiResource):
                 'library_short_name': plate.copy.library.short_name,
                 'copy_name': plate.copy.name,
                 'plate_number': str(plate.plate_number)
-#                     'plate_number': str(plate.plate_number).zfill(5)
             }
             plate_log_hash[plate.plate_id] = [plate_dict, plate_dict.copy()]
             
@@ -917,7 +913,6 @@ class PlateLocationResource(DbApiResource):
                 'library_short_name': plate.copy.library.short_name,
                 'copy_name': plate.copy.name,
                 'plate_number': str(plate.plate_number)
-#                     'plate_number': str(plate.plate_number).zfill(5)
             }
             if plate.plate_location:
                 plate_dict.update({
@@ -942,7 +937,6 @@ class PlateLocationResource(DbApiResource):
                     'id_attribute': lcp_id_attribute } )
             if log: 
                 plate_logs.append(log)
-        logger.info('logs created, saving...')
         ApiLog.bulk_create(plate_logs)
         logger.info('plate logs saved %r', len(plate_logs))
         
@@ -1407,7 +1401,8 @@ class LibraryCopyPlateResource(DbApiResource):
             well_c = well_c.where(_w.c.library_id==library_id)
         if copy_id is not None:
             well_c = well_c.where(_w.c.library_id==
-                (select([distinct(_c.c.library_id)]).where(_c.c.copy_id==copy_id).as_scalar()))
+                ( select([distinct(_c.c.library_id)])
+                    .where(_c.c.copy_id==copy_id).as_scalar()))
         well_c = well_c.cte('well_concentrations')
 
         # NOTE: this method of calculating plate volumes requires that plates
@@ -1709,7 +1704,8 @@ class LibraryCopyPlateResource(DbApiResource):
                         LIST_DELIMITER_SQL_ARRAY),
                     ])
                     .select_from(
-                        select([_concat_with_sep((_c.c.name,_c.c.comments),': ').label('comments')])
+                        select([_concat_with_sep(
+                            (_c.c.name,_c.c.comments),': ').label('comments')])
                         .select_from(_c.join(
                             _assay_plates_inner,_c.c.copy_id
                                 ==_assay_plates_inner.c.copy_id))
@@ -1848,7 +1844,8 @@ class LibraryCopyPlateResource(DbApiResource):
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id is not None:
             authorized = self.get_cpr_resource()._meta.authorization\
-                .has_cherry_pick_read_authorization(request.user, cherry_pick_request_id)
+                .has_cherry_pick_read_authorization(
+                    request.user, cherry_pick_request_id)
             if authorized is False:
                 raise PermissionDenied
             param_hash['cpr'] = cherry_pick_request_id
@@ -1925,13 +1922,15 @@ class LibraryCopyPlateResource(DbApiResource):
                 with get_engine().connect() as conn:
                     plate_ids = [x[0] for x in 
                         conn.execute(
-                            self.get_screen_librarycopyplate_subquery(for_screen_facility_id))]
+                            self.get_screen_librarycopyplate_subquery(
+                                for_screen_facility_id))]
             if library_screening_id is not None:
                 manual_field_includes.add('assay_plate_count')
                 with get_engine().connect() as conn:
                     plate_ids = [x[0] for x in 
                         conn.execute(
-                            self.get_libraryscreening_plate_subquery(library_screening_id))]
+                            self.get_libraryscreening_plate_subquery(
+                                library_screening_id))]
 
             # Parse plate search OR-clauses:
             # POST data: line delimited plate-range text entered by the user
@@ -1980,7 +1979,6 @@ class LibraryCopyPlateResource(DbApiResource):
             _c = self.bridge['copy']
             _l = self.bridge['library']
             _ls = self.bridge['library_screening']
-#             _la = self.bridge['lab_activity']
             _a = self.bridge['activity']
             _ap = self.bridge['assay_plate']
             _screen = self.bridge['screen']
@@ -2189,8 +2187,6 @@ class LibraryCopyPlateResource(DbApiResource):
                         .where(_ap.c.library_screening_id==library_screening_id)
                 ),
                 
-
-            
             stmt = select(columns.values()).select_from(j)
             
             if plate_ids is not None:
@@ -2298,7 +2294,7 @@ class LibraryCopyPlateResource(DbApiResource):
         #         response=HttpForbidden(
         #             'user: %s, permission: %s/%s not found' 
         #             % (request.user,self._meta.resource_name,'write')))
-        convert_post_to_put(request)
+        convert_request_method_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
@@ -2315,11 +2311,14 @@ class LibraryCopyPlateResource(DbApiResource):
             location_data = json.loads(location_data)
 
         if plate_info_data is not None and location_data is not None:
-            raise BadRequest('batch info: edit only one of %r'
-                % ['plate_info', 'plate_location'])
+            msg = 'batch info: edit only one of %r' % ['plate_info', 'plate_location']
+            raise ValidationError({
+                'plate_info': msg,
+                'plate_location': msg })
         elif plate_info_data is None and location_data is None:
-            raise BadRequest('"data" must contain one of %r'
-                % ['plate_info', 'plate_location'])
+            msg = '"data" must contain one of %r' % ['plate_info', 'plate_location']
+            raise ValidationError({
+                'plate_info': msg, 'plate_location': msg })
         
         # Use the rest of the POST data for the plate search
         nested_search_data = param_hash.pop(SCHEMA.API_PARAM_NESTED_SEARCH, None)
@@ -2400,7 +2399,8 @@ class LibraryCopyPlateResource(DbApiResource):
             original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
                 raise Http404
-            logger.info('got the plate objects for search data: %d', len(original_data))
+            logger.info('got the plate objects for search data: %d',
+                len(original_data))
             logger.debug('plates for batch edit %r', 
                 ['{copy_name}/{plate_number}'.format(**lcp)
                     for lcp in original_data])
@@ -2566,11 +2566,11 @@ class LibraryCopyPlateResource(DbApiResource):
 
 class UserAgreementResource(DbApiResource):
     
-    VOCAB_USER_AGREEMENT_SM = 'sm'
-    VOCAB_USER_AGREEMENT_RNAI = 'rnai'
+    VOCAB_USER_AGREEMENT_SM = SCHEMA.VOCAB.user_agreement.type.SM
+    VOCAB_USER_AGREEMENT_RNAI = SCHEMA.VOCAB.user_agreement.type.RNAI
     
-    VOCAB_FILE_TYPE_SMUA = 'iccb_l_small_molecule_user_agreement'
-    VOCAB_FILE_TYPE_RNAI = 'iccb_l_rnai_user_agreement'
+    VOCAB_FILE_TYPE_SMUA = SCHEMA.VOCAB.user_agreement.file_type.SMUA
+    VOCAB_FILE_TYPE_RNAI = SCHEMA.VOCAB.user_agreement.file_type.RNAI
     
     class Meta:
 
@@ -2835,32 +2835,6 @@ class UserAgreementResource(DbApiResource):
     def post_list(self, request, schema=None, **kwargs):
         raise NotImplementedError
 
-#     @write_authorization
-#     @un_cache
-#     @transaction.atomic
-#     def patch_list(self, request, **kwargs):
-# 
-#         result = super(UserAgreementResource, self).patch_list(request, **kwargs)
-# 
-#         param_hash = self._convert_request_to_dict(request)
-#         if 'test_only' in param_hash:
-#             logger.info('test_only flag: %r', kwargs.get('test_only'))    
-#             raise InformationError('successful patch, "test_only" flag is set, rollback...')
-#         
-#         return result
-#     
-#     @write_authorization
-#     @un_cache
-#     @transaction.atomic
-#     def patch_detail(self, request, **kwargs):
-#         result = super(UserAgreementResource, self).patch_detail(request, **kwargs)
-#         param_hash = self._convert_request_to_dict(request)
-#         if 'test_only' in param_hash:
-#             logger.info('test_only flag: %r', kwargs.get('test_only'))    
-#             raise InformationError('successful patch, "test_only" flag is set, rollback...')
-#         
-#         return result
-    
     @write_authorization
     @un_cache        
     @transaction.atomic
@@ -3304,7 +3278,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
-                if ( screen.screen_type == VOCAB_SCREEN_TYPE_SM
+                if ( screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE
                      and screen.data_sharing_level < DSL.PRIVATE ):
                     if screen.data_sharing_level == current_dsl:
                         logger.info(
@@ -3328,7 +3302,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
-                if ( screen.screen_type == VOCAB_SCREEN_TYPE_RNAI
+                if ( screen.screen_type == SCREEN_TYPE.RNAI
                      and screen.data_sharing_level < DSL.PRIVATE ):
                     if screen.data_sharing_level == current_dsl:
                         logger.info(
@@ -3355,9 +3329,9 @@ class ScreenAuthorization(UserGroupAuthorization):
         authorized_screens.update(user_screens)
         
         # 20180627: TODO: should allow access only to screen type for user?
-        has_rnai = any([x.screen_type == SCHEMA.VOCAB.screen.screen_type.RNAI
+        has_rnai = any([x.screen_type == SCREEN_TYPE.RNAI
                         for x in user_screens])
-        has_sm = any([x.screen_type == SCHEMA.VOCAB.screen.screen_type.SMALL_MOLECULE
+        has_sm = any([x.screen_type == SCREEN_TYPE.SMALL_MOLECULE
                         for x in user_screens])
         if DEBUG_SCREEN_ACCESS:
             logger.info('user: %r, has_rnai: %r, has_sm: %r', 
@@ -3365,12 +3339,12 @@ class ScreenAuthorization(UserGroupAuthorization):
         if has_sm:
             public_screens = Screen.objects.all()\
                 .filter(data_sharing_level=DSL.SHARED)\
-                .filter(screen_type=SCHEMA.VOCAB.screen.screen_type.SMALL_MOLECULE)
+                .filter(screen_type=SCREEN_TYPE.SMALL_MOLECULE)
             authorized_screens.update(public_screens)
         if has_rnai:
             public_screens = Screen.objects.all()\
                 .filter(data_sharing_level=DSL.SHARED)\
-                .filter(screen_type=SCHEMA.VOCAB.screen.screen_type.RNAI)
+                .filter(screen_type=SCREEN_TYPE.RNAI)
             authorized_screens.update(public_screens)
 
         has_sm_data_deposited = self.has_sm_data_deposited(screensaver_user)
@@ -3378,14 +3352,14 @@ class ScreenAuthorization(UserGroupAuthorization):
         
         if has_sm_data_deposited:
             visible_screens = (
-                Screen.objects.all().filter(screen_type=VOCAB_SCREEN_TYPE_SM)
+                Screen.objects.all().filter(screen_type=SCREEN_TYPE.SMALL_MOLECULE)
                     .filter(data_sharing_level__lt=DSL.PRIVATE))
             logger.info('update with visible small_molecule screens: %r', 
                         [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
         if has_rna_data_deposited:
             visible_screens = (
-                Screen.objects.all().filter(screen_type=VOCAB_SCREEN_TYPE_RNAI)
+                Screen.objects.all().filter(screen_type=SCREEN_TYPE.RNAI)
                     .filter(data_sharing_level__lt=DSL.PRIVATE))
             logger.info('update with visible rna screens: %r', 
                         [x.facility_id for x in visible_screens])
@@ -3419,11 +3393,11 @@ class ScreenAuthorization(UserGroupAuthorization):
     
     def get_user_effective_data_sharing_level(self, screensaver_user, screen_type):
         effective_dsl = 0
-        if screen_type==VOCAB_SCREEN_TYPE_RNAI \
+        if screen_type==SCREEN_TYPE.RNAI \
             and self.has_rna_data_deposited(screensaver_user) is True:
             effective_dsl = self.get_user_data_sharing_level(
                 screensaver_user, self.VOCAB_USER_AGREEMENT_RNAI)
-        if screen_type==VOCAB_SCREEN_TYPE_SM \
+        if screen_type==SCREEN_TYPE.SMALL_MOLECULE \
             and self.has_sm_data_deposited(screensaver_user) is True:
             effective_dsl =  self.get_user_data_sharing_level(
                 screensaver_user, self.VOCAB_USER_AGREEMENT_SM)
@@ -3471,9 +3445,9 @@ class ScreenAuthorization(UserGroupAuthorization):
             logger.info('my screens: %r, %r', username, my_screen_facility_ids)
 
         user_effective_sm_dsl = self.get_user_effective_data_sharing_level(
-            screensaver_user, VOCAB_SCREEN_TYPE_SM)
+            screensaver_user, SCREEN_TYPE.SMALL_MOLECULE)
         user_effective_rna_dsl = self.get_user_effective_data_sharing_level(
-            screensaver_user, VOCAB_SCREEN_TYPE_RNAI)
+            screensaver_user, SCREEN_TYPE.RNAI)
         if DEBUG_SCREEN_ACCESS:
             logger.info('my dsls: %r, %r, %r', username, 
                 user_effective_sm_dsl,user_effective_rna_dsl)
@@ -3482,13 +3456,13 @@ class ScreenAuthorization(UserGroupAuthorization):
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
                     == user_effective_sm_dsl and
-                screen_overlapping_table[facility_id]['screen_type'] == VOCAB_SCREEN_TYPE_SM            
+                screen_overlapping_table[facility_id]['screen_type'] == SCREEN_TYPE.SMALL_MOLECULE            
             ])
         my_qualified_rnai_facility_ids = set([
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
                     == user_effective_rna_dsl and 
-                screen_overlapping_table[facility_id]['screen_type'] == VOCAB_SCREEN_TYPE_RNAI            
+                screen_overlapping_table[facility_id]['screen_type'] == SCREEN_TYPE.RNAI            
             ])
 
         
@@ -3503,10 +3477,10 @@ class ScreenAuthorization(UserGroupAuthorization):
                 facility_id=None, data_sharing_level=None, 
                 screen_type=None, overlapping_positive_screens=None ):
 
-            if screen_type == VOCAB_SCREEN_TYPE_RNAI:
+            if screen_type == SCREEN_TYPE.RNAI:
                 user_effective_dsl = user_effective_rna_dsl
                 my_qualified_facility_ids = my_qualified_rnai_facility_ids
-            elif screen_type == VOCAB_SCREEN_TYPE_SM:
+            elif screen_type == SCREEN_TYPE.SMALL_MOLECULE:
                 user_effective_dsl = user_effective_sm_dsl
                 my_qualified_facility_ids = my_qualified_sm_facility_ids
             else:
@@ -4027,7 +4001,6 @@ class ScreenResultResource(DbApiResource):
     @read_authorization
     def get_list(self, request, **kwargs):
         logger.info('get_list: %r', kwargs)
-#         raise InformationError('just some test error')
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
         
@@ -4620,16 +4593,16 @@ class ScreenResultResource(DbApiResource):
         try:
             limit = int(limit)
         except ValueError:
-            raise BadRequest(
-                "Invalid limit '%s' - positive integer required." % limit)
+            raise BadRequestError({
+                'limit': 'Please provide a positive integer: %r' % limit})
         param_hash['limit'] = limit
         
         offset = param_hash.get('offset', 0)
         try:
             offset = int(offset)
         except ValueError:
-            raise BadRequest(
-                "Invalid offset '%s' - positive integer required." % offset)
+            raise BadRequestError({
+                'offset': 'Please provide a positive integer: %r' % offset })
         if offset < 0:    
             offset = -offset
         param_hash['offset'] = offset
@@ -4824,7 +4797,8 @@ class ScreenResultResource(DbApiResource):
                     'attachment; filename=%s.csv' % filename
                 return response
             else: 
-                raise BadRequest('content_type not implemented: %r' % content_type)
+                raise BadRequestError({
+                    'content_type': 'not implemented: %r' % content_type })
     
     def get_mutual_positives_columns(self, screen_result_id):
         logger.info('get_mutual_positives_columns...')
@@ -4980,11 +4954,11 @@ class ScreenResultResource(DbApiResource):
                 field['visibility'] = [VOCAB.field.visibility.NONE]
             newfields.update(current_fields)
             
-            if screenresult.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
+            if screenresult.screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
                 if 'compound_name' in newfields:
                     newfields['compound_name']['visibility'] = ['l','d']
                     newfields['compound_name']['ordinal'] = 12
-            elif screenresult.screen.screen_type == VOCAB_SCREEN_TYPE_RNAI:
+            elif screenresult.screen.screen_type == SCREEN_TYPE.RNAI:
                 if 'facility_entrezgene_id' in newfields:
                     newfields['facility_entrezgene_id']['visibility'] = ['l','d']
                     newfields['facility_entrezgene_id']['ordinal'] = 10
@@ -5161,7 +5135,7 @@ class ScreenResultResource(DbApiResource):
     @transaction.atomic
     def delete_detail(self, request, **kwargs):
         if 'screen_facility_id' not in kwargs:
-            raise BadRequest('screen_facility_id is required')
+            raise BadRequestError(key='screen_facility_id', msg = 'required')
         screen_facility_id = kwargs['screen_facility_id']
         # Clear cache: note "all" because mutual positive columns can change
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
@@ -5185,7 +5159,8 @@ class ScreenResultResource(DbApiResource):
             screen_log.uri = '/'.join(['screen', screen_log.key])
             screen_log.save()
         else:
-            raise BadRequest('no screen result to delete')
+            raise BadRequestError( 
+                key='screen_facility_id', msg = 'no screen result to delete')
 
         return HttpResponse(status=204)
             
@@ -5196,7 +5171,7 @@ class ScreenResultResource(DbApiResource):
     def patch_detail(self, request, **kwargs):
         
         if 'screen_facility_id' not in kwargs:
-            raise BadRequest('screen_facility_id is required')
+            raise BadRequestError(key='screen_facility_id', msg = 'required')
         screen_facility_id = kwargs['screen_facility_id']
         screen = Screen.objects.get(facility_id=screen_facility_id)
 
@@ -6370,7 +6345,7 @@ class DataColumnResource(DbApiResource):
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
         # that the DataColumn may be patched external from the Screen Result
         if screen_result is None:
-            raise BadRequest('screen_result is required')
+            raise BadRequestError(key='screen_result', msg = 'required')
         logger.debug('patch_obj %s', deserialized)
         
         schema = kwargs.pop('schema', None)
@@ -7347,7 +7322,7 @@ class CherryPickRequestResource(DbApiResource):
         
         request_method = request.method.lower()
         if request_method != 'get':
-            raise BadRequest('Only GET is allowed')
+            raise BadRequestError(key='method', msg='Only GET is allowed')
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -8716,8 +8691,8 @@ class CherryPickRequestResource(DbApiResource):
         
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
-        convert_post_to_put(request)
+            raise BadRequestError(key='method', msg='Only POST is allowed')
+        convert_request_method_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         cherry_pick_request_id = param_hash['cherry_pick_request_id']
@@ -9071,8 +9046,8 @@ class CherryPickRequestResource(DbApiResource):
         
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
-        convert_post_to_put(request)
+            raise BadRequestError(key='method', msg='Only POST is allowed')
+        convert_request_method_to_put(request)
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -9148,8 +9123,8 @@ class CherryPickRequestResource(DbApiResource):
         
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
-        convert_post_to_put(request)
+            raise BadRequestError(key='method', msg='Only POST is allowed')
+        convert_request_method_to_put(request)
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -9262,8 +9237,8 @@ class CherryPickRequestResource(DbApiResource):
         logger.info('dispatch_set_duplex_lab_cherry_picks')
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
-        convert_post_to_put(request)
+            raise BadRequestError(key='method', msg='Only POST is allowed')
+        convert_request_method_to_put(request)
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -9376,8 +9351,8 @@ class CherryPickRequestResource(DbApiResource):
         logger.info('dispatch_set_lab_cherry_picks')
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
-        convert_post_to_put(request)
+            raise BadRequestError(key='method', msg='Only POST is allowed')
+        convert_request_method_to_put(request)
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -9634,7 +9609,7 @@ class ScreenerCherryPickResource(DbApiResource):
             raise Exception('schema not initialized')
         
         if 'cherry_pick_request_id' not in kwargs:
-            raise BadRequest('cherry_pick_request_id')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=kwargs['cherry_pick_request_id'])
         logger.info(
@@ -9664,8 +9639,9 @@ class ScreenerCherryPickResource(DbApiResource):
             'cherry_pick_request_id': kwargs['cherry_pick_request_id'],
             API_PARAM_SHOW_OTHER_REAGENTS: True })
         if not original_data: 
-            raise BadRequest(
-                'Can not set Screener Cherry Picks using patch; '
+            raise BadRequestError(
+                key='method',
+                msg='Can not set Screener Cherry Picks using patch; '
                 'must use the cherry pick request selection patch instead')
         
         original_selections = { scp_data['screened_well_id']: scp_data
@@ -9929,11 +9905,10 @@ class ScreenerCherryPickResource(DbApiResource):
             use_titles = False
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
         extra_params = {}
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id is None:
-            raise BadRequest('cherry_pick_request_id is required')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cherry_pick_request_id)
         extra_params['CPR']=cherry_pick_request_id
@@ -10246,8 +10221,8 @@ class LabCherryPickResource(DbApiResource):
             raise Exception('schema not initialized')
         cw_formatter = LabCherryPickResource.LCP_COPYWELL_KEY
         
-        # TODO: only needed for POST
-        convert_post_to_put(request)
+        # TODO: should be handled by IccblBaseResource.dispatch ?
+        convert_request_method_to_put(request)
         
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -10260,7 +10235,7 @@ class LabCherryPickResource(DbApiResource):
         id_attribute = schema['id_attribute']
 
         if 'cherry_pick_request_id' not in kwargs:
-            raise BadRequest('cherry_pick_request_id')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         cpr_id = kwargs['cherry_pick_request_id']
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cpr_id)
@@ -10656,7 +10631,7 @@ class LabCherryPickResource(DbApiResource):
         ''' Generate an HttpResponse for the plate_mapping specific schema '''
         
         if not 'cherry_pick_request_id' in kwargs:
-            raise BadRequest('cherry_pick_request_id is required')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         
         return self.build_response(
             request, 
@@ -10668,7 +10643,7 @@ class LabCherryPickResource(DbApiResource):
         # Note: build schema for each request to use the subtype
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if cherry_pick_request_id is None:
-            raise BadRequest('cherry_pick_request_id is required')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cherry_pick_request_id)
         schema = self.build_schema(
@@ -10783,7 +10758,7 @@ class LabCherryPickResource(DbApiResource):
         extra_params = {}
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id is None:
-            raise BadRequest('cherry_pick_request_id is required')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         extra_params['CPR'] = cherry_pick_request_id
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cherry_pick_request_id)
@@ -11464,7 +11439,7 @@ class CherryPickPlateResource(DbApiResource):
         if not schema:
             raise Exception('schema not initialized')
         if 'cherry_pick_request_id' not in kwargs:
-            raise BadRequest('cherry_pick_request_id')
+            raise BadRequestError(key='cherry_pick_request_id', msg='required')
         cpr_id = kwargs['cherry_pick_request_id']
         cpr = CherryPickRequest.objects.get(
             cherry_pick_request_id=cpr_id)
@@ -14270,7 +14245,7 @@ class LibraryScreeningResource(ActivityResource):
                     if _row['remaining_well_volume']:
                         vol_min = LSR.MIN_WELL_VOL_RNAI
                         error_key = LSR.MSG_INSUFFICIENT_VOL
-                        if screen.screen_type == VOCAB_SCREEN_TYPE_SM:
+                        if screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
                             vol_min = LSR.MIN_WELL_VOL_SMALL_MOLECULE
                             error_key += (' (req %s)' 
                                 % lims_utils.convert_decimal(vol_min,1e-6, 1))
@@ -15059,7 +15034,9 @@ class LibraryScreeningResource(ActivityResource):
         # get new state, for logging
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         if not new_data:
-            raise BadRequest('no data found for the new obj created by post: %r', obj)
+            raise InformationError(
+                key='method', 
+                msg='no data found for the new obj created by post: %r' % obj)
         self.log_patch(
             request, original_data,new_data,log=log, 
             full_create_log=True, **kwargs)
@@ -15093,7 +15070,7 @@ class LibraryScreeningResource(ActivityResource):
         initializer_dict = {}
         ls_log = kwargs.get('log', None)
         if ls_log is None:
-            raise BadRequest(
+            raise ProgrammingError(
                 'library screening log should be created by the callee of patch_obj')
 
         param_hash = self._convert_request_to_dict(request)
@@ -15294,10 +15271,10 @@ class LibraryScreeningResource(ActivityResource):
                 for plate in plates]
         
         min_plate_volume_after_transfer = 0
-        if library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_RNAI:
+        if library_screening.screen.screen_type == SCREEN_TYPE.RNAI:
             min_plate_volume_after_transfer = \
                 self.MIN_WELL_VOL_RNAI
-        elif library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
+        elif library_screening.screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
             min_plate_volume_after_transfer = \
                 self.MIN_WELL_VOL_SMALL_MOLECULE
             
@@ -15666,7 +15643,7 @@ class LibraryScreeningResource(ActivityResource):
             # Modified 20170605 - overdraw volume but warn
             plates_insufficient_volume = sorted(plates_insufficient_volume)
             # msg = '%d plates' % len(plates_insufficient_volume)
-            # if library_screening.screen.screen_type == VOCAB_SCREEN_TYPE_SM:
+            # if library_screening.screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
             #     extra_msg = (' (%s uL is required for Small Molecule)'
             #         %  lims_utils.convert_decimal(
             #             self.MIN_WELL_VOL_SMALL_MOLECULE, 1e-6, 1))
@@ -15731,7 +15708,7 @@ class LibraryScreeningResource(ActivityResource):
             'Library Screening may not be deleted - remove plates to negate')
         #         
         #         if log is None:
-        #             raise BadRequest('log must be set: %r', kwargs)
+        #             raise ProgrammingError('log must be set: %r', kwargs)
         #         
         #         activity_id = kwargs.get('activity_id', None)
         #         if activity_id:
@@ -15840,11 +15817,8 @@ class RawDataTransformerResource(DbApiResource):
     @read_authorization
     def get_detail(self, request, **kwargs):
 
-        cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
-        screen_facility_id = kwargs.get('screen_facility_id', None)
-        
-        if screen_facility_id is None and cherry_pick_request_id is None:
-            raise Http404('No screen or Cherry Pick Request Specified')
+        cherry_pick_request_id = kwargs.get('cherry_pick_request_id')
+        screen_facility_id = kwargs.get('screen_facility_id')
         
         screen = None
         if screen_facility_id:
@@ -15855,7 +15829,6 @@ class RawDataTransformerResource(DbApiResource):
             
         # TODO: 20180227 - verify rebuild of schema
         schema = kwargs.pop('schema')
-        logger.info('TODO: 20180227 - verify rebuild of schema for raw data transformer')
         schema = self.build_schema()
 
         _data = {}
@@ -15866,14 +15839,7 @@ class RawDataTransformerResource(DbApiResource):
         else:
             query = query.filter(screen=screen)
             _data['screen_facility_id'] = screen.facility_id
-#         else:
-#             query = query.filter(screen__isnull=True)
-#         if cpr:
-#             query = query.filter(cherry_pick_request=cpr)
-#             _data['cherry_pick_request_id'] = cpr.cherry_pick_request_id
-#         else:
-#             query = query.filter(cherry_pick_request__isnull=True)    
-            
+
         if not query.exists():
             raise Http404
         
@@ -17347,7 +17313,6 @@ class ScreenResource(DbApiResource):
         kwargs['visibilities'] = 'billing'
         return self.dispatch('detail', request, **kwargs)    
 
-#     @background_job
     @read_authorization
     def get_detail(self, request, **kwargs):
         facility_id = kwargs.get('facility_id', None)
@@ -17594,8 +17559,11 @@ class ScreenResource(DbApiResource):
             .where(_ap.c.replicate_ordinal == 0)
             .group_by(_ap.c.screen_id))
         if facility_id:
-            assay_plate_screening_count = assay_plate_screening_count.where(_screen.c.facility_id == facility_id )
-        assay_plate_screening_count = assay_plate_screening_count.cte('assay_plate_screening_count')    
+            assay_plate_screening_count = \
+                assay_plate_screening_count.where(
+                    _screen.c.facility_id == facility_id )
+        assay_plate_screening_count = \
+            assay_plate_screening_count.cte('assay_plate_screening_count')    
         # Altered - 20160408 
         # per discussion with JS, no need to try to link presumed assay_plates
         # from the screen_result to (screening visit) assay_plates;
@@ -17916,7 +17884,8 @@ class ScreenResource(DbApiResource):
                         select([_publication.c.title])
                         .select_from(_publication)
                         .order_by(_publication.c.publication_id)
-                        .where(_publication.c.screen_id == literal_column('screen.screen_id'))
+                        .where(_publication.c.screen_id 
+                            == literal_column('screen.screen_id'))
                     .alias('inner'))),
                 'publication_ids': (
                     select([
@@ -17927,7 +17896,8 @@ class ScreenResource(DbApiResource):
                         select([_publication.c.publication_id])
                         .select_from(_publication)
                         .order_by(_publication.c.publication_id)
-                        .where(_publication.c.screen_id == literal_column('screen.screen_id'))
+                        .where(_publication.c.screen_id 
+                            == literal_column('screen.screen_id'))
                     .alias('inner'))),
                 'attached_files': (
                     select([
@@ -18539,9 +18509,9 @@ class StudyResource(ScreenResource):
 
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
+            raise BadRequestError(key='method', msg='Only POST is allowed')
 
-        convert_post_to_put(request)
+        convert_request_method_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
@@ -18693,9 +18663,9 @@ class StudyResource(ScreenResource):
 
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
+            raise BadRequestError(key='method', msg='Only POST is allowed')
 
-        convert_post_to_put(request)
+        convert_request_method_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
@@ -18917,9 +18887,9 @@ class StudyResource(ScreenResource):
 
         request_method = request.method.lower()
         if request_method != 'post':
-            raise BadRequest('Only POST is allowed')
+            raise BadRequestError(key='method', msg='Only POST is allowed')
 
-        convert_post_to_put(request)
+        convert_request_method_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
@@ -19927,8 +19897,6 @@ class ScreensaverUserResource(DbApiResource):
         
         bridge = get_tables()
         _su = bridge['screensaver_user']
-#         _up = bridge['reports_userprofile']
-#         _au = bridge['auth_user']
         
         j = _su
         user_table = (
@@ -20391,6 +20359,9 @@ class ScreensaverUserResource(DbApiResource):
     def patch_obj(self, request, deserialized, **kwargs):
 
         DEBUG_USER_PATCH = False or logger.isEnabledFor(logging.DEBUG)
+        
+        PI_ROLE = USER_ROLE.PRINCIPAL_INVESTIGATOR
+        
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -20521,10 +20492,10 @@ class ScreensaverUserResource(DbApiResource):
                 try:
                     lab_head = ScreensaverUser.objects.get(
                         screensaver_user_id=lab_head_id)
-                    if lab_head.classification != VOCAB_USER_CLASSIFICATION_PI:
+                    if lab_head.classification != PI_ROLE:
                         raise ValidationError(
                             'Chosen lab head "user.classification must be %r '
-                            % VOCAB_USER_CLASSIFICATION_PI)
+                            % PI_ROLE)
                 except ObjectDoesNotExist, e:
                     raise ValidationError(
                         key=_key,
@@ -20533,16 +20504,16 @@ class ScreensaverUserResource(DbApiResource):
             key = 'classification'
             classification = initializer_dict.get(key,None)
             if classification:
-                if classification == VOCAB_USER_CLASSIFICATION_PI:
+                if classification == PI_ROLE:
                     if lab_head_id is not None:
                         raise ValidationError(
                             key='lab_head_id',
                             msg='Classification may not be % for lab member'
-                                % VOCAB_USER_CLASSIFICATION_PI)
-                elif screensaver_user.classification == VOCAB_USER_CLASSIFICATION_PI:
+                                % PI_ROLE)
+                elif screensaver_user.classification == PI_ROLE:
                     raise ValidationError(
                         key=key, msg='May not be changed from %r'
-                            % VOCAB_USER_CLASSIFICATION_PI)
+                            % PI_ROLE)
                     
             for key, val in initializer_dict.items():
                 if hasattr(screensaver_user, key):
@@ -20615,17 +20586,17 @@ class ScreensaverUserResource(DbApiResource):
                     key='permissions',
                     msg='May only be set for staff users')
 
-            if screensaver_user.classification == VOCAB_USER_CLASSIFICATION_PI:
+            if screensaver_user.classification == PI_ROLE:
                 if screensaver_user.lab_affiliation is None:
                     # should already be set
                     raise ValidationError(
                         key='lab_affiliation_id',
                         msg='Must be set if classification is %r'
-                            % VOCAB_USER_CLASSIFICATION_PI)
+                            % PI_ROLE)
                 if screensaver_user.lab_head != screensaver_user:
                     screensaver_user.lab_head = screensaver_user
             
-            if screensaver_user.classification != VOCAB_USER_CLASSIFICATION_PI:
+            if screensaver_user.classification != PI_ROLE:
                 
                 lab_head = screensaver_user.lab_head
                 if lab_head is None:
@@ -20633,7 +20604,7 @@ class ScreensaverUserResource(DbApiResource):
                         'lab_head_id': 'Must be set for non staff',
                         'classification': 
                             'Must be %r if non staff and not a lab member'
-                                % VOCAB_USER_CLASSIFICATION_PI })
+                                % PI_ROLE })
                 
                 lab_head_user_agreements = \
                     UserAgreement.objects.all().filter(screensaver_user=lab_head)
@@ -20674,19 +20645,19 @@ class ScreensaverUserResource(DbApiResource):
             lab_members = []
             # may empty
             if lab_member_ids:
-                if screensaver_user.classification != VOCAB_USER_CLASSIFICATION_PI:
+                if screensaver_user.classification != PI_ROLE:
                     raise ValidationError(
                         key='lab_member_ids',
-                        msg='User classification must be %r' % VOCAB_USER_CLASSIFICATION_PI)
+                        msg='User classification must be %r' % PI_ROLE)
             for lab_member_id in lab_member_ids:
                 try:
                     lab_member = ScreensaverUser.objects.get(
                         screensaver_user_id=lab_member_id)
-                    if lab_member.classification == VOCAB_USER_CLASSIFICATION_PI:
+                    if lab_member.classification == PI_ROLE:
                         raise ValidationError(
                             key='lab_member_ids',
                             msg='User is a %r and cannot be added as a lab member'
-                                % VOCAB_USER_CLASSIFICATION_PI)
+                                % PI_ROLE)
                     
                     lab_members.append(lab_member)
                     
@@ -20710,10 +20681,6 @@ class ScreensaverUserResource(DbApiResource):
                                                 key='lab_member_ids',
                                                 msg=msg%member_ua.data_sharing_level)
                     
-#                     lab_member.sm_data_sharing_level = \
-#                         screensaver_user.sm_data_sharing_level
-#                     lab_member.rnai_data_sharing_level = \
-#                         screensaver_user.rnai_data_sharing_level
                 except ObjectDoesNotExist:
                     raise ValidationError(
                         key=_key,
@@ -20798,7 +20765,7 @@ class LibraryResourceAuthorization(UserGroupAuthorization):
         # 
         # # TODO: review requirements
         # screen_types = set()
-        # SM_TYPE = VOCAB_SCREEN_TYPE_SM
+        # SM_TYPE = SCREEN_TYPE.SMALL_MOLECULE
         # RNAI_TYPE = 'rnai'
         # if screensaver_user.sm_data_sharing_level is not None:
         #     screen_types.add(SM_TYPE)
@@ -20956,8 +20923,11 @@ class ReagentResource(DbApiResource):
                 'no library found for short_name: %r' % library_short_name)
 
                 
-    def build_schema(self, user, extra_dc_ids=None, library_classification=None, **kwargs):
-        schema = deepcopy(super(ReagentResource, self).build_schema(user=user, **kwargs))
+    def build_schema(
+        self, user, extra_dc_ids=None, library_classification=None, **kwargs):
+
+        schema = deepcopy(
+            super(ReagentResource, self).build_schema(user=user, **kwargs))
         
         if library_classification:
             if library_classification == 'rnai':
@@ -21080,8 +21050,9 @@ class ReagentResource(DbApiResource):
                 'well_id__in': other_wells })
         return data
         
-    ##### FIXME: read_authorization
     def get_annotations(self, well_id):
+        # NOTE: study annotations are available to all authorized users:
+        # - there is no study specific authorization
 
         screens = {}        
         for rv in (ResultValue.objects
@@ -21121,10 +21092,16 @@ class ReagentResource(DbApiResource):
         return final_data
         
     def get_duplex_data(self, request, well_id=None, schema=None):
+        '''
+        NOTE: authorization is handled by the schema definition - if the user 
+        does not have access to the duplex_wells, then the field will not be 
+        visible in the schema.
+        '''
         
         if schema is None:
             well = Well.objects.get(well_id=well_id)
-            logger.info('building schema for well: %r, %r', well_id,well.library.classification)
+            logger.info('building schema for well: %r, %r', 
+                well_id,well.library.classification)
             schema = self.build_schema(
                 user=request.user, 
                 library_classification=well.library.classification)
@@ -21174,9 +21151,10 @@ class ReagentResource(DbApiResource):
                     
                     result = conn.execute(stmt.where(_aw.c.well_id==dw.well_id))
                     if logger.isEnabledFor(logging.DEBUG):
-                        compiled_stmt = str(stmt.where(_aw.c.well_id==dw.well_id).compile(
-                            dialect=postgresql.dialect(),
-                            compile_kwargs={"literal_binds": True}))
+                        compiled_stmt = \
+                            str(stmt.where(_aw.c.well_id==dw.well_id).compile(
+                                dialect=postgresql.dialect(),
+                                compile_kwargs={"literal_binds": True}))
                         logger.info('stmt: %r', compiled_stmt)
                         
                     for screen_cp_data in cursor_generator(result, fields):
@@ -21185,7 +21163,8 @@ class ReagentResource(DbApiResource):
                         if self.get_study_resource()._meta.authorization\
                             .has_screen_read_authorization(
                                 request.user,screen_cp_data['facility_id']) is False:
-                            logger.info('cp data denied for: %r: %r', request.user, screen_cp_data)
+                            logger.info('cp data denied for: %r: %r', 
+                                request.user, screen_cp_data)
                         else:
                             screen_row = data_per_screen.setdefault(
                                 screen_cp_data['facility_id'],
@@ -21211,14 +21190,6 @@ class ReagentResource(DbApiResource):
         -- must be authenticated and authorized
         '''
         logger.info('dispatch_well_detail_report')
-        
-        # self.is_authenticated(request)
-        # 
-        # resource_name = kwargs.pop('resource_name', self._meta.resource_name)
-        # authorized = self._meta.authorization._is_resource_authorized(
-        #     request.user, 'read', **kwargs)
-        # if authorized is not True:
-        #     raise PermissionDenied
         
         if request.method.lower() != 'get':
             return self.dispatch('detail', request, **kwargs)
@@ -21278,7 +21249,6 @@ class ReagentResource(DbApiResource):
         }
         
         # 2. Fetch annotation (study), duplex, and other well data
-        # - NOTE: user viewing restrictions are applied
         if content_type != SDF_MIMETYPE:
             annotation_data = self.get_annotations(well_id)
             if annotation_data:
@@ -21291,7 +21261,6 @@ class ReagentResource(DbApiResource):
                 final_data['other_wells'] = other_wells
                 
         # 3. Format the well data report
-        
         def format_report_data(data):
             
             list_brackets = LIST_BRACKETS
@@ -21394,7 +21363,8 @@ class ReagentResource(DbApiResource):
                     well_row1.extend(['','',])
                     well_row2.extend(['Screen','Screen Title',])
 
-                well_title_row.extend(['Duplex Well %r' % i for i in range(1,len(wells)+1)])
+                well_title_row.extend(
+                    ['Duplex Well %r' % i for i in range(1,len(wells)+1)])
                 formatted_data.append(well_title_row)
                 
                 row.extend(wells)
@@ -21582,8 +21552,8 @@ class ReagentResource(DbApiResource):
         return rv_select
 
     def get_screening_concentration_cte(self, 
-            well_base_query=None, well_ids=None, plate_numbers=None, library=None,
-            cherry_pick_request_id_screener=None, 
+            well_base_query=None, well_ids=None, plate_numbers=None, 
+            library=None, cherry_pick_request_id_screener=None, 
             cherry_pick_request_id_lab=None, alias_qualifier=None):
         _well = self.bridge['well']
         _copy = self.bridge['copy']
@@ -21598,7 +21568,8 @@ class ReagentResource(DbApiResource):
                 #       and_(_cw.c.well_id==_well.c.well_id, 
                 #            _cw.c.copy_id==_copy.c.copy_id),isouter=True))
         if well_base_query is not None:
-            pc_join = pc_join.join(well_base_query, _well.c.well_id==well_base_query.c.well_id )
+            pc_join = pc_join.join(
+                well_base_query, _well.c.well_id==well_base_query.c.well_id )
         if cherry_pick_request_id_screener is not None:
             pc_join = pc_join.join(_scp,
                 _scp.c.screened_well_id==_well.c.well_id)
@@ -21630,11 +21601,14 @@ class ReagentResource(DbApiResource):
         
         
         if well_ids is not None:
-            _plate_concentrations= _plate_concentrations.where(_well.c.well_id.in_(well_ids))
+            _plate_concentrations = \
+                _plate_concentrations.where(_well.c.well_id.in_(well_ids))
         if plate_numbers:
-            _plate_concentrations = _plate_concentrations.where(_well.c.plate_number.in_(plate_numbers))
+            _plate_concentrations = \
+                _plate_concentrations.where(_well.c.plate_number.in_(plate_numbers))
         if library:
-            _plate_concentrations = _plate_concentrations.where(_well.c.library_id == library.library_id) 
+            _plate_concentrations = \
+                _plate_concentrations.where(_well.c.library_id == library.library_id) 
         if cherry_pick_request_id_screener is not None:
             _plate_concentrations = stmt.where(
                 _scp.c.cherry_pick_request_id
@@ -21644,7 +21618,8 @@ class ReagentResource(DbApiResource):
                 _plate_concentrations.c.cherry_pick_request_id
                     ==cherry_pick_request_id_lab)
         
-        spcs = _plate_concentrations.where(_copy.c.usage_type== 'library_screening_plates')
+        spcs = _plate_concentrations.where(
+            _copy.c.usage_type== 'library_screening_plates')
         alias_name = 'spcs'
         if alias_qualifier:
             alias_name += '_'+ alias_qualifier
@@ -21659,10 +21634,12 @@ class ReagentResource(DbApiResource):
     
     
     def build_sqlalchemy_columns(
-        self, fields, user=None, base_query_tables=None, custom_columns=None, show_preview=False):
+        self, fields, user=None, base_query_tables=None, custom_columns=None, 
+        show_preview=False):
 
-        logger.info('build_sqlalchemy_columns, reagent resource: show_preview: %r, auth: %r', 
-                    show_preview, self._meta.authorization._is_resource_authorized(user, 'read'))
+        logger.info(
+            'build_sqlalchemy_columns, reagent resource: show_preview: %r, auth: %r', 
+            show_preview, self._meta.authorization._is_resource_authorized(user, 'read'))
         
         columns = DbApiResource.build_sqlalchemy_columns(
             self, fields, base_query_tables=base_query_tables, custom_columns=custom_columns)
@@ -21796,8 +21773,8 @@ class ReagentResource(DbApiResource):
             else_=None)
         custom_columns['screening_mg_ml_concentrations'] = case([
             (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                select([func.array_to_string(
-                    func.array_agg(cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
+                select([func.array_to_string(func.array_agg(
+                    cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
                     LIST_DELIMITER_SQL_ARRAY)])
                     .select_from(spcs)
                     .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
@@ -21890,7 +21867,6 @@ class ReagentResource(DbApiResource):
             if fi.get('is_datacolumn',False) is True:
                 custom_columns[fi['key']] = self._build_result_value_column(fi)
 
-
         logger.debug('build_sqlalchemy_columns: %r', base_query_tables)
         logger.debug('build_sqlalchemy_columns: includes: %r, fields: %r', 
                     manual_field_includes, field_hash.keys())
@@ -21913,7 +21889,6 @@ class ReagentResource(DbApiResource):
             stmt = stmt.where(
                 _lcp.c.cherry_pick_request_id
                     ==cherry_pick_request_id_lab)
-            
             
         # general setup
          
@@ -21962,8 +21937,8 @@ class ReagentResource(DbApiResource):
         if well_search_data is not None:
             logger.info('well_search_data: %r', well_search_data)
             if param_hash.pop('vendor_and_compound_search', False) is True:
-                well_base_query = WellResource.create_vendor_compound_name_base_query(well_search_data)
-                well_base_query = well_base_query.cte('well_base_query')
+                well_base_query = \
+                    WellResource.create_vendor_compound_name_base_query(well_search_data)
             else:
                 parsed_searches = WellResource.parse_well_search(well_search_data)
                 well_base_query = WellResource.create_well_base_query(parsed_searches)
@@ -21971,9 +21946,10 @@ class ReagentResource(DbApiResource):
         if parsed_well_search_data is not None:
             if well_base_query is not None:
                 raise Exception('May not specify both %r and %r', 
-                                SCHEMA.API_PARAM_SEARCH, SCHEMA.API_PARAM_NESTED_SEARCH)
+                    SCHEMA.API_PARAM_SEARCH, SCHEMA.API_PARAM_NESTED_SEARCH)
             else:
-                well_base_query = WellResource.create_well_base_query(parsed_well_search_data)
+                well_base_query = \
+                    WellResource.create_well_base_query(parsed_well_search_data)
         if well_base_query is not None:
             well_base_query = well_base_query.cte('well_base_query')
 
@@ -22067,7 +22043,8 @@ class ReagentResource(DbApiResource):
             
         if use_vocab is True:
             rowproxy_generator = \
-                DbApiResource.create_vocabulary_rowproxy_generator(field_hash, rowproxy_generator)
+                DbApiResource.create_vocabulary_rowproxy_generator(
+                    field_hash, rowproxy_generator)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
             rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
                 field_hash, rowproxy_generator)
@@ -22366,7 +22343,8 @@ class SilencingReagentResource(ReagentResource):
                                 (sirna_table.c.is_restricted_sequence,None)],
                                 else_=sirna_table.c.sequence)])
                         .select_from(sirna_table)
-                        .where(sirna_table.c.reagent_id==literal_column('reagent.reagent_id'))
+                        .where(sirna_table.c.reagent_id
+                            == literal_column('reagent.reagent_id'))
                         )
                 if field == 'anti_sense_sequence':
                     custom_columns['anti_sense_sequence'] = (
@@ -22375,7 +22353,8 @@ class SilencingReagentResource(ReagentResource):
                                 (sirna_table.c.is_restricted_sequence,None)],
                                 else_=sirna_table.c.anti_sense_sequence)])
                         .select_from(sirna_table)
-                        .where(sirna_table.c.reagent_id==literal_column('reagent.reagent_id'))
+                        .where(sirna_table.c.reagent_id
+                            == literal_column('reagent.reagent_id'))
                         )
         
         if DEBUG_BUILD_COLS: 
@@ -22552,7 +22531,8 @@ class SmallMoleculeReagentResource(ReagentResource):
     def get_debug_times(self):
         
         logger.info('sm reagent times: %r, %r, %r', 
-            self.patch_elapsedtime1, self.patch_elapsedtime2, self.patch_elapsedtime3)
+            self.patch_elapsedtime1, self.patch_elapsedtime2, 
+            self.patch_elapsedtime3)
         self.patch_elapsedtime1 = 0
         self.patch_elapsedtime2 = 0
         self.patch_elapsedtime3 = 0
@@ -22562,7 +22542,8 @@ class SmallMoleculeReagentResource(ReagentResource):
         SmallMoleculeReagent.objects.all().filter(well__library=library).delete()
 
     def build_sqlalchemy_columns(
-        self, fields, user=None, base_query_tables=None, custom_columns=None, show_preview=False):
+        self, fields, user=None, base_query_tables=None, 
+        custom_columns=None, show_preview=False):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
@@ -22572,7 +22553,8 @@ class SmallMoleculeReagentResource(ReagentResource):
         
         '''
         
-        logger.info('build_sqlalchemy_columns for small_molecule_reagent: user: %r', user)
+        logger.info(
+            'build_sqlalchemy_columns for small_molecule_reagent: user: %r', user)
         if custom_columns is None:
             custom_columns = {}
 
@@ -22689,7 +22671,8 @@ class SmallMoleculeReagentResource(ReagentResource):
                 logger.debug('found reagent: %r, %r', reagent.well_id, reagent)
             try:
                 well_metadata = \
-                    self._set_reagent_values(reagent, well_data, is_patch, schema, fields)
+                    self._set_reagent_values(
+                        reagent, well_data, is_patch, schema, fields)
                 if well_metadata:
                     metadata[well_data[WELL.WELL_ID]] = well_metadata
                 if (i+1) % 1000 == 0:
@@ -22706,7 +22689,9 @@ class SmallMoleculeReagentResource(ReagentResource):
         return metadata
 
     def parse(self, deserialized, create=False, fields=None, schema=None):
-        _data = ReagentResource.parse(self, deserialized, create=create, fields=fields, schema=schema)
+        
+        _data = ReagentResource.parse(self, deserialized, create=create, 
+            fields=fields, schema=schema)
 
         # Add in special parsing for the nested list integers        
         for key,val in _data.items():
@@ -22795,7 +22780,6 @@ class SmallMoleculeReagentResource(ReagentResource):
                     reagent=reagent, molfile=new_molfile)
                 molfile.save()
                 
-
         self.patch_elapsedtime3 += (time.time() - start_time)
                 
         logger.debug('sm patch_obj done')
@@ -23062,7 +23046,7 @@ class WellResource(DbApiResource):
         Put list will replace all the library reagents
         '''
         if 'library_short_name' not in kwargs:
-            raise BadRequest('library_short_name is required')
+            raise BadRequestError(key='library_short_name', msg='required')
         library = Library.objects.get(
             short_name=kwargs['library_short_name'])
         logger.info('put wells for library: %r, deleting reagents...', library)
@@ -23163,13 +23147,11 @@ class WellResource(DbApiResource):
         kwargs['data'] = deserialized
 
         if HEADER_APILOG_COMMENT not in request.META:
-            logger.info('xxx kwargs[HEADER_APILOG_COMMENT]: %r', kwargs[HEADER_APILOG_COMMENT])
             kwargs[HEADER_APILOG_COMMENT] = library_log[SCHEMA.APILOG.COMMENT]
         
         log_json_meta = library_log.get('json_field', None)
         logger.info('json_field: %r', log_json_meta)
         if log_json_meta:
-#             log_json_meta = json.loads(log_json_meta)
             logger.info('adding json_field: %r', log_json_meta)
             kwargs['meta'] = log_json_meta
             # TODO: store the filename on the log
@@ -23258,7 +23240,7 @@ class WellResource(DbApiResource):
         # only one well is attached to the reagent
          
         if 'library_short_name' not in kwargs:
-            raise BadRequest('library_short_name is required')
+            raise BadRequestError(key='library_short_name', msg='required')
         library = Library.objects.get(
             short_name=kwargs['library_short_name'])
         
@@ -23363,7 +23345,8 @@ class WellResource(DbApiResource):
             for well in library.well_set.all())
         if len(well_map) == 0:
             # Note: wells can only be created on library creation
-            raise BadRequest('Library wells have not been created')
+            raise BadRequestError(
+                key='library_short_name', msg='Library wells have not been created')
         
         # 3. Patch well specific data
          
@@ -23610,11 +23593,8 @@ class WellResource(DbApiResource):
         })
         logger.info('wells patch complete: %r', meta)
         
-            
-#         library_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
         library_log.json_field = meta
         library_log.save()
-
         
         if is_preview_mode is True and library.is_released is True:
             # After release, each load will be a "preview":
@@ -23631,10 +23611,12 @@ class WellResource(DbApiResource):
                         % API_PARAM_PREVIEW_LOGS )
         if not self._meta.always_return_data:
             return self.build_response(
-                request, {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+                request, { API_RESULT_META: meta }, 
+                response_class=HttpResponse, **kwargs)
         else:
             return self.build_response(
-                request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+                request,  { API_RESULT_META: meta }, 
+                response_class=HttpResponse, **kwargs)
 
     def _find_valid_entries(self, deserialized):  
 
@@ -23723,7 +23705,8 @@ class WellResource(DbApiResource):
                 '        select distinct(library_screening_id)  '
                 '        from assay_plate ap, library  '
                 '        where ap.plate_number between start_plate and end_plate   '
-                '        and library_id = %s ) as screenings on(ls.activity_id=screenings.library_screening_id) '
+                '        and library_id = %s ) as screenings '
+                '            on(ls.activity_id=screenings.library_screening_id) '
                 '    join well on(well.plate_number=ap.plate_number) '
 
                 "    where well.library_well_type='experimental' "
@@ -23805,7 +23788,8 @@ class WellResource(DbApiResource):
             search_items.add(_line)
         
         if not search_items:
-            raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg='no search lines found')
+            raise ValidationError(
+                key=SCHEMA.API_PARAM_SEARCH, msg='no search lines found')
 
         logger.info('found: %d compound or vendor names in %r', 
             len(search_items), parsed_lines)
@@ -23998,7 +23982,8 @@ class WellResource(DbApiResource):
             s) 
             for s in compressed_searches]
         decorated.sort(key=itemgetter(0,1,2))
-        compressed_searches = [s for sort_well_ids,sort_plates,sort_ranges,s in decorated]
+        compressed_searches = \
+            [s for sort_well_ids,sort_plates,sort_ranges,s in decorated]
         return compressed_searches
         
     @classmethod
@@ -24258,7 +24243,7 @@ class LibraryResource(DbApiResource):
         kwargs['library_short_name'] = short_name
         
         if not request.method.lower() == 'post':
-            raise BadRequest('Only POST is allowed')
+            raise BadRequestError(key='method', msg='Only POST is allowed')
         
         library_data = self._get_detail_response_internal(
             short_name=short_name)
@@ -24567,8 +24552,11 @@ class LibraryResource(DbApiResource):
         Library.objects.get(**id_kwargs).delete()
     
     
-    def validate(self, _dict, patch=False, schema=None, fields=None, library=None):
-        errors = DbApiResource.validate(self, _dict, patch=patch, schema=schema, fields=fields)
+    def validate(
+        self, _dict, patch=False, schema=None, fields=None, library=None):
+        
+        errors = DbApiResource.validate(
+            self, _dict, patch=patch, schema=schema, fields=fields)
     
         if patch is False:
             start_plate = _dict.get(SCHEMA.LIBRARY.START_PLATE)
@@ -24592,7 +24580,8 @@ class LibraryResource(DbApiResource):
             is_released = _dict.get(SCHEMA.LIBRARY.IS_RELEASED)
             if library.is_released is True and is_released is False:
                 # TODO: original_data may be passed from ApiResource.patch
-                library_data = self._get_detail_response_internal(short_name=library.short_name)
+                library_data = \
+                    self._get_detail_response_internal(short_name=library.short_name)
                 preview_log_id = library_data.get(SCHEMA.LIBRARY.PREVIEW_LOG_ID)
                 if preview_log_id:
                     errors[SCHEMA.LIBRARY.IS_RELEASED] = \
@@ -24622,7 +24611,8 @@ class LibraryResource(DbApiResource):
             library = Library(**id_kwargs)
 
         initializer_dict = self.parse(deserialized, create=create, schema=schema)
-        errors = self.validate(initializer_dict, schema=schema,patch=not create, library=library)
+        errors = self.validate(
+            initializer_dict, schema=schema,patch=not create, library=library)
         if errors:
             raise ValidationError(errors)
         
@@ -24684,7 +24674,9 @@ class ResourceResource(reports.api.ResourceResource):
             resources = self.get_cache().get('dbresources')
         if not resources:
 
-            resources = super(ResourceResource, self)._build_resources(user=user, use_cache=False)
+            resources = \
+                super(ResourceResource, self)._build_resources(
+                    user=user, use_cache=False)
         
             for key,resource in resources.items():
                 self.extend_resource_specific_data(resource)

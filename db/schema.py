@@ -75,6 +75,24 @@ class DATA_COLUMN(schema_obj):
 
     USER_ACCESS_LEVEL_GRANTED = 'user_access_level_granted'
 
+class SCREEN_RESULT(schema_obj):
+    resource_name = 'screenresult'
+    
+    WELL_ID = 'well_id'
+    PLATE_NUMBER = 'plate_number'
+    WELL_NAME = 'well_name'
+    LIBRARY_SHORT_NAME = 'short_name'
+    LIBRARY_WELL_TYPE = 'library_well_type'
+    VENDOR_NAME = 'vendor_name'
+    VENDOR_ID = 'vendor_identifier'
+    ASSAY_CONTROL_TYPE = 'assay_well_control_type'
+    SCREEN_FACILITY_ID = 'screen_facility_id'
+    #     'screen_title'
+    #     'mouseover'
+    IS_POSITIVE = 'is_positive'
+    CONFIRMED_POSITIVE_VALUE = 'confirmed_positive_value'
+    EXCLUDE = 'exclude'
+
 class LIBRARY(schema_obj):    
     resource_name = 'library'
 
@@ -95,6 +113,49 @@ class LIBRARY(schema_obj):
     VERSION_NUMBER = 'version_number'
     IS_RELEASED = 'is_released'
     PREVIEW_LOG_ID = 'preview_log_id'
+
+class COPY(schema_obj):
+    resource_name = 'librarycopy'
+    
+    COPY_NAME = 'copy_name'
+    USAGE_TYPE = 'usage_type'
+    COMMENTS = 'comments'
+    LIBRARY_SHORT_NAME = 'library_short_name'
+    SCREEN_TYPE = 'screen_type'
+
+class PLATE(schema_obj):
+    resource_name = 'librarycopyplate'
+    
+    PLATE_NUMBER = 'plate_number'
+    COPY_NAME = 'copy_name'
+    PLATE_TYPE = 'plate_type'
+    STATUS = 'status'
+    STATUS_DATE = 'status_date'
+    STATUS_PERFORMED_BY = 'status_performed_by'
+    STATUS_PERFORMED_BY_USERNAME = 'status_performed_by_username'
+    IS_ACTIVE = 'is_active'
+    
+    ROOM = 'room'
+    FREEZER = 'freezer'
+    SHELF = 'shelf'
+    BIN = 'bin'
+    LOCATION = 'location'
+    
+    LIBRARY_SHORT_NAME = 'library_short_name'
+
+    PLATE_RANGE_FORMAT = \
+            '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
+    PLATE_RANGE_SINGLE_PLATE_FORMAT = \
+            '{library_short_name}:{copy_name}:{plate_number}'
+
+class PLATE_LOCATION(schema_obj):
+    resource = 'plate_location'
+    
+    ROOM = 'room'
+    FREEZER = 'freezer'
+    SHELF = 'shelf'
+    BIN = 'bin'
+    LOCATION = 'location'
     
 class ACTIVITY(schema_obj):
     resource_name = 'activity'
@@ -114,31 +175,6 @@ class LIBRARY_SCREENING(ACTIVITY):
     
     LIBRARY_PLATES_SCREENED = 'library_plates_screened'
     
-    # Format for entries in the LIBRARY_PLATES_SCREENED array
-    PLATE_RANGE_FORMAT = \
-            '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
-    PLATE_RANGE_SINGLE_PLATE_FORMAT = \
-            '{library_short_name}:{copy_name}:{plate_number}'
-    
-
-class SCREEN_RESULT(schema_obj):
-    resource_name = 'screenresult'
-    
-    WELL_ID = 'well_id'
-    PLATE_NUMBER = 'plate_number'
-    WELL_NAME = 'well_name'
-    LIBRARY_SHORT_NAME = 'short_name'
-    LIBRARY_WELL_TYPE = 'library_well_type'
-    VENDOR_NAME = 'vendor_name'
-    VENDOR_ID = 'vendor_identifier'
-    ASSAY_CONTROL_TYPE = 'assay_well_control_type'
-    SCREEN_FACILITY_ID = 'screen_facility_id'
-    #     'screen_title'
-    #     'mouseover'
-    IS_POSITIVE = 'is_positive'
-    CONFIRMED_POSITIVE_VALUE = 'confirmed_positive_value'
-    EXCLUDE = 'exclude'
-
 
 class SCREENSAVER_USER(USER):
     resource_name = 'screensaveruser'
@@ -382,6 +418,10 @@ class VOCAB(reports.schema.VOCAB):
             ACTIVE = 'active'
             EXPIRED = 'expired'
             INACTIVE = 'inactive'
+
+        class file_type(schema_obj):
+            SMUA = 'iccb_l_small_molecule_user_agreement'
+            RNAI = 'iccb_l_rnai_user_agreement'
 
     class lab_cherry_pick(schema_obj):
 

@@ -1403,6 +1403,7 @@ class Library(models.Model):
     
     experimental_well_count = models.IntegerField(null=True)
     is_pool = models.NullBooleanField(null=True)
+    
     created_by = models.ForeignKey('ScreensaverUser', null=True)
     owner_screener = models.ForeignKey('ScreensaverUser', null=True, 
         related_name='owned_library')

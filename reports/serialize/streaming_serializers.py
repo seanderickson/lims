@@ -21,7 +21,6 @@ from django.conf import settings
 from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse, Http404
 import six
-from tastypie.exceptions import ImmediateHttpResponse, BadRequest
 import unicodecsv
 import xlsxwriter
 
@@ -35,6 +34,7 @@ import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
+from django.db.utils import ProgrammingError
 
 
 logger = logging.getLogger(__name__)
@@ -161,11 +161,6 @@ def image_generator(rows, image_keys, request):
                         row[key] = fullpath
                     except Http404, e:
                         logger.debug('no image found at: %r', val)
-                        row[key] = None
-                    # TODO: remove tastypie exceptions
-                    except ImmediateHttpResponse, e:
-                        logger.info(
-                            'no image found at: %r, %r', val, str(e._response))
                         row[key] = None
                     except Exception, e:
                         logger.exception(
@@ -340,7 +335,7 @@ def get_xls_response(
     for in testing, and in ScreenResultSerializer - 20160419.
     '''
     if not isinstance(data, dict):
-        raise BadRequest(
+        raise ProgrammingError(
             'unknown data for xls serialization: %r, must be a dict of '
             'sheet_row entries' % type(data))
  

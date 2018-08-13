@@ -4,7 +4,6 @@ from collections import OrderedDict
 import io
 import logging
 
-# from tastypie.exceptions import BadRequest
 import xlrd
 import xlsxwriter
 

@@ -26,7 +26,7 @@ from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from django.conf import settings
-from tastypie.test import ResourceTestCase, TestApiClient
+# from tastypie.test import TestApiClient
 import xlrd
 import xlsxwriter
 
@@ -50,7 +50,7 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
-    VOCAB_USER_CLASSIFICATION_PI, WellResource
+    WellResource
 
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
@@ -64,7 +64,7 @@ import db.support.raw_data_reader
 from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory, LabAffiliationFactory
 from reports import ValidationError, HEADER_APILOG_COMMENT, _now, \
-    API_RESULT_ERROR
+    API_RESULT_ERROR, HTTP_PARAM_AUTH, DJANGO_ACCEPT_PARAM
 from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
     API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
     API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_NOT_ALLOWED, \
@@ -75,7 +75,7 @@ from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
     xlsutils, LimsJSONEncoder
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
-from reports.tests import IResourceTestCase, equivocal, DJANGO_ACCEPT_PARAM
+from reports.tests import IResourceTestCase, equivocal, TestApiClient
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
 import copy
@@ -280,7 +280,7 @@ class DBResourceTestCase(IResourceTestCase):
 
     def create_plate_range(self, library_short_name, copy_name, start_plate, end_plate):
         
-        return SCHEMA.LIBRARY_SCREENING.PLATE_RANGE_FORMAT.format(
+        return SCHEMA.PLATE.PLATE_RANGE_FORMAT.format(
             library_short_name=library_short_name, copy_name=copy_name,
             start_plate=start_plate, end_plate=end_plate )
         
@@ -455,7 +455,8 @@ class DBResourceTestCase(IResourceTestCase):
         if data:
             input_data.update(data)
 
-        input_data['classification'] = VOCAB_USER_CLASSIFICATION_PI
+        input_data['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
+#         input_data['classification'] = VOCAB_USER_CLASSIFICATION_PI
         input_data['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
 
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
@@ -495,7 +496,7 @@ class DBResourceTestCase(IResourceTestCase):
         test_comment = 'test update comment for user agreement'
         authentication=self.get_credentials()
         post_kwargs = { 'limit': 0, 'includes': ['*'] }
-        post_kwargs['HTTP_AUTHORIZATION'] = authentication
+        post_kwargs[HTTP_PARAM_AUTH] = authentication
         post_kwargs[HEADER_APILOG_COMMENT] = test_comment
         post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
@@ -829,7 +830,7 @@ class DBResourceTestCase(IResourceTestCase):
             input_data_put, XLSX_MIMETYPE)
 
         data_for_get = { 'limit': 0, 'includes': ['*'] }
-        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         logger.info('PUT screen result to the server...')
@@ -858,7 +859,7 @@ class DBResourceTestCase(IResourceTestCase):
             authentication=self.get_credentials()
         
         data_for_get = { 'limit': 0, 'includes': ['*'] }
-        data_for_get['HTTP_AUTHORIZATION'] = authentication
+        data_for_get[HTTP_PARAM_AUTH] = authentication
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get[DJANGO_ACCEPT_PARAM] = XLSX_MIMETYPE
         resource_name = 'screenresult'
@@ -965,8 +966,6 @@ def setUpModule():
 def tearDownModule():
 
     logger.info('=== teardown Module')
-#     Vocabulary.objects.all().filter(scope__contains='labaffiliation.').delete()
-#     LabAffiliation.objects.all().delete()
     # 20171111 - no global teardown; only teardown on each instance to allow
     # selective teardown and to allow skipping teardown
     # ScreensaverUser.objects.all().delete()
@@ -1084,6 +1083,7 @@ class LibraryResource(DBResourceTestCase):
             
     
     def test_c_reagent_compound_name_vendor_search(self):
+        # TODO
         pass
     
     def test_a_plate_search_parser(self):
@@ -1567,7 +1567,8 @@ class LibraryResource(DBResourceTestCase):
         # Patch tests
         
         def make_well_id(index):
-            well_name = lims_utils.well_name_from_index(well_index, library_item['platesize'])
+            well_name = lims_utils.well_name_from_index(
+                well_index, library_item['platesize'])
             return lims_utils.well_id(test_plate, well_name)
 
         # 1. Missing or bad well ids
@@ -1629,7 +1630,7 @@ class LibraryResource(DBResourceTestCase):
         ]
         new_data = {w['well_id']:w for w in new_data }
         resp = self.api_client.patch(
-            well_patch_uri, format='json', data={ 'objects': new_data.values() } , 
+            well_patch_uri, format='json', data={'objects': new_data.values()}, 
             authentication=self.get_credentials(), 
             **{ 'limit': 0, 'includes': '*'} )
         self.assertTrue(
@@ -1643,7 +1644,9 @@ class LibraryResource(DBResourceTestCase):
         self.assertEqual(len(errors),len(new_data))
         for well_id,well_errors in errors:
             self.assertTrue(well_id in new_data)
-            self.assertTrue(WELL.LIBRARY_WELL_TYPE in well_errors, 'bad well_errors: %r' % well_errors)
+            self.assertTrue(
+                WELL.LIBRARY_WELL_TYPE in well_errors, 
+                'bad well_errors: %r' % well_errors)
         
         # 3. Small Molecule input field errors
         # TODO
@@ -1678,7 +1681,6 @@ class LibraryResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         response_obj = self.deserialize(resp)
         logger.info('patch well type to empty, response: %r', response_obj)
-        
         
         # logs
         apilog_uri = '/'.join([BASE_REPORTS_URI, APILOG.resource_name])
@@ -1809,7 +1811,6 @@ class LibraryResource(DBResourceTestCase):
             'copy_name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': Decimal('0.000040')
-        
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
@@ -2126,7 +2127,8 @@ class LibraryResource(DBResourceTestCase):
         short_name = library_data['short_name']
         
         # 1. Simple test
-        lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
+#         lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
+        lps_format = SCHEMA.PLATE.PLATE_RANGE_FORMAT
         copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
@@ -2310,7 +2312,7 @@ class LibraryResource(DBResourceTestCase):
             }
         # NOTE: the tastypie client does not correctly encode the multipart
         # form data for a POST, so the django client is used
-        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get = {HTTP_PARAM_AUTH: self.get_credentials()}
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         logger.info('POST new data to the copyplates...')
@@ -2379,7 +2381,7 @@ class LibraryResource(DBResourceTestCase):
                 'library_short_name': library_data['short_name'],
                 'copy_name': copy_data['copy_name'] })
             }
-        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get = {HTTP_PARAM_AUTH: self.get_credentials()}
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
@@ -2460,7 +2462,7 @@ class LibraryResource(DBResourceTestCase):
 
         # NOTE: the tastypie client does not correctly encode the multipart
         # form data for a POST, so the django client is used
-        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get = {HTTP_PARAM_AUTH: self.get_credentials()}
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
         resp = self.django_client.post(
@@ -2745,7 +2747,8 @@ class LibraryResource(DBResourceTestCase):
                     % (plate_location_input))
 
         # Verify that the plate range is set on the location:
-        lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
+#         lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
+        lps_format = SCHEMA.PLATE.PLATE_RANGE_FORMAT
         expected_copy_plate_ranges = [
             lps_format.format(
                 library_short_name=library_data['short_name'],
@@ -4067,7 +4070,7 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('test1_load_example_file...')
         
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
-        default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        default_data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         
         logger.info('create library...')
         library1 = self.create_library({
@@ -4308,7 +4311,7 @@ class ScreenResultResource(DBResourceTestCase):
         
         logger.info('test2_load_valid_input...')
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
-        default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        default_data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         
         self._setup_test_config()
         
@@ -4467,7 +4470,7 @@ class ScreenResultResource(DBResourceTestCase):
 
         logger.info('test3_mutual_positives...')
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
-        default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        default_data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         
         self.test2_load_valid_input()
          
@@ -4642,7 +4645,7 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
-        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         
         file = 'ScreenResultRVErrorsTest.xlsx'
         file_out = 'ScreenResultRVErrorsTest_out.xlsx'
@@ -4783,7 +4786,7 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get = { 'limit': 0, 'includes': ['*'] }
         data_for_get['CONTENT_TYPE'] = JSON_MIMETYPE
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
-        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         
         resource_name = 'screenresult'
         screen_facility_id = screen['facility_id']
@@ -4982,7 +4985,7 @@ class ScreenResultResource(DBResourceTestCase):
         input_data_put = self.sr_serializer.serialize(
             input_data_put, XLSX_MIMETYPE)
         data_for_get = {}
-        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         logger.info('PUT screen result to the server...')
@@ -5129,7 +5132,7 @@ class ScreenResultResource(DBResourceTestCase):
         input_data_put = self.sr_serializer.serialize(
             input_data_put, XLSX_MIMETYPE)
         data_for_get = {}
-        data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        data_for_get[HTTP_PARAM_AUTH] = self.get_credentials()
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         logger.info('PUT screen result to the server...')
@@ -6244,6 +6247,7 @@ class ScreenResource(DBResourceTestCase):
         
         logger.info('test valid single plate input...')
 
+        # Special plate format (allow double format call)
         single_plate_lps_format = '{library_short_name}:{copy_name}:{{start_plate}}'
         single_plate_lps_return_format = \
             '{library_short_name}:{copy_name}:{{start_plate}}-{{start_plate}}'
@@ -6385,7 +6389,7 @@ class ScreenResource(DBResourceTestCase):
             BASE_URI_DB, 'screen',screen['facility_id'],'publications'])
         authentication=self.get_credentials()
         kwargs = {}
-        kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs[HTTP_PARAM_AUTH] = authentication
         kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
 
         # Add an attached file and post the publication
@@ -9875,7 +9879,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 1.B.1 Create lab affiliation
         lab_affiliation = self.create_lab_affiliation()
         simple_user_input['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
-        simple_user_input['classification'] = VOCAB_USER_CLASSIFICATION_PI
+        simple_user_input['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
 
         # 1.B.2 Create user with only ecommons
         resp = self.api_client.post(
@@ -9933,7 +9937,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         user1_input_data = { 
             'first_name': 'FirstNameUniq1',
             'last_name': 'LastNameUniq1',
-            'classification': VOCAB_USER_CLASSIFICATION_PI,
+            'classification': VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR,
             'lab_affiliation_id': lab_affiliation['lab_affiliation_id']
         }
         resp = self.api_client.post(
@@ -10054,7 +10058,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'lab_head_id' in lab_head, 
             'Lab head does not contain "lab_head_id": %r' % lab_head)
         self.assertEqual(lab_head['screensaver_user_id'], lab_head['lab_head_id'])
-        self.assertEqual(lab_head['classification'], VOCAB_USER_CLASSIFICATION_PI)
+        self.assertEqual(lab_head['classification'], VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR)
         
         # 1.A Verify not allowed: Change the Lab Head classification to "unassigned"
         lab_head_update = {
@@ -10411,7 +10415,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         authentication=self.get_credentials()
         kwargs = {}
-        kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs[HTTP_PARAM_AUTH] = authentication
         kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
         logger.info('Post attached file item: %r', attachedfile_item_post)
@@ -10479,7 +10483,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_su_id
         authentication=self.get_credentials()
         kwargs = {}
-        kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs[HTTP_PARAM_AUTH] = authentication
         kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         file = 'iccbl_sm_user_agreement_march2015.pdf'
         filename = \
@@ -10606,7 +10610,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         test_comment = 'test update comment for user agreement'
         authentication=self.get_credentials()
         post_kwargs = { 'limit': 0, 'includes': ['*'] }
-        post_kwargs['HTTP_AUTHORIZATION'] = authentication
+        post_kwargs[HTTP_PARAM_AUTH] = authentication
         post_kwargs[HEADER_APILOG_COMMENT] = test_comment
         post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = \
@@ -13217,7 +13221,7 @@ class RawDataTransformer(DBResourceTestCase):
             raw_data_transform_input['input_file_%d_%s' % (0,k)] = v
 
         # 4. POST
-        data_for_get = {'HTTP_AUTHORIZATION': self.get_credentials()}
+        data_for_get = {HTTP_PARAM_AUTH: self.get_credentials()}
         data_for_get[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         resource_uri = '/'.join([
             BASE_URI_DB, 'rawdatatransform',test_screen['facility_id']])

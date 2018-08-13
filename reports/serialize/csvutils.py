@@ -50,12 +50,16 @@ def input_spreadsheet_reader(iterable, list_delimiters=None, list_keys=None):
     csv-like input matrix.
     @param iterable of rows; rows are simple lists of raw string values from file
     - The first row is interpreted as the keys to the (dict) for the entire read.
-    - Supports nested lists; data that is either surrounded by brackets "[]", or designated
-    by the "list_keys" parameter is read in as a list-of-values;
+    @param list_keys if specified then only these keys are interpreted as list
+    values: otherwise, data that is surrounded by brackets "[]"
+    are read in as a list-of-values;
     - separated by the "list_delimiters".
     '''
+    
     list_keys = list_keys or []
     list_keys = set(list_keys)
+    if list_keys:
+        logger.info('read csv, using list_keys: %r', list_keys)
     list_delimiters = list_delimiters or [LIST_DELIMITER_CSV,]
     list_delim_regex = re.compile(r'[%s]+' % ''.join(list_delimiters))
     i = 0 
@@ -70,7 +74,15 @@ def input_spreadsheet_reader(iterable, list_delimiters=None, list_keys=None):
                     if val[0] == '\\' and val[1] == '[':
                         # this could denote an escaped bracket, i.e. for a regex
                         item[key] = val[1:]
-                    elif key in list_keys or val[0]=='[':
+
+                    if key in list_keys:
+                        item[key] = []
+                        val = val.strip('"[] ')
+                        for x in list_delim_regex.split(val):
+                            x = x.strip()
+                            if x:
+                                item[key].append(x)
+                    elif val[0]=='[':
                         list_keys.add(key)
                         item[key] = []
                         val = val.strip('"[] ')

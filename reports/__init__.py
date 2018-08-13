@@ -26,6 +26,13 @@ HTTP_PARAM_DATA_INTERCHANGE = 'data_interchange'
 
 API_RESULT_ERROR = SCHEMA.ERROR.resource_name
 
+# NOTE: the simulated django client requests expect the HTTP Header "Accept" to 
+# be stored in the variable "HTTP_ACCEPT"
+DJANGO_ACCEPT_PARAM = 'HTTP_ACCEPT'
+
+HTTP_PARAM_AUTH = 'HTTP_AUTHORIZATION'
+HTTP_PARAM_CONTENT_TYPE = 'CONTENT_TYPE'
+
 # Header custom comment field
 HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
 # Header for custom comment to be used from clients 
@@ -86,6 +93,15 @@ class InformationError(ValidationError):
 
 class ParseError(ValidationError):
     pass
+
+class BadRequestError(ValidationError):
+    pass
+
+class BackgroundJobImmediateResponse(Exception):
+    
+    def __init__(self, httpresponse):
+        self.httpresponse = httpresponse
+
 
 def _now():
     d = django.utils.timezone.now()

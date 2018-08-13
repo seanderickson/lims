@@ -172,7 +172,7 @@ def screen_raw_data_transform(
             response = HttpResponse(status=404)
         else:
             logger.info('attempt to stream file: %r', rdt.temp_output_filename)
-            response = stream_raw_data_file(
+            response = _stream_raw_data_file(
                 request, rdt.temp_output_filename,rdt.output_filename)
     except ObjectDoesNotExist:
         response = HttpResponse(status=404)
@@ -195,14 +195,14 @@ def cpr_raw_data_transform(
             response = HttpResponse(status=404)
         else:
             logger.info('attempt to stream file: %r', rdt.temp_output_filename)
-            response = stream_raw_data_file(
+            response = _stream_raw_data_file(
                 request, rdt.temp_output_filename,rdt.output_filename)
     except ObjectDoesNotExist:
         response = HttpResponse(status=404)
     
     return process_response(request, response)
 
-def stream_raw_data_file(request, filename, output_filename):
+def _stream_raw_data_file(request, filename, output_filename):
 
     with open(filename) as temp_file:
         temp_file.seek(0, os.SEEK_END)

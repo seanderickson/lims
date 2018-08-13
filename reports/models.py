@@ -31,7 +31,7 @@ def dict_strip_unicode_keys(uni_dict):
 
     Useful for converting a dict to a kwarg-able format.
     
-    # Copy of tastypie method, included to remove dependency
+    # see tastypie.dict_strip_unicode_keys for original implementation.
     """
     if six.PY3:
         return uni_dict
@@ -237,6 +237,7 @@ class ApiLog(models.Model):
     @staticmethod
     def _encode_before_after(val):
         '''
+        Encode LogDiff.before and after values:
         All diff values are stored as strings unless they represent list values:
         - in this case the JSON representation of the list is stored. 
         '''

@@ -28,6 +28,28 @@ CONTENTTYPE_HEADERS =   {
 
 logger = logging.getLogger(__name__)
 
+
+# Based off of ``tastypie.resources.convert_post_to_put``. Similarly BSD-licensed.
+def convert_request_method_to_put(request):
+    
+    if request.method == 'PUT':
+        
+        if hasattr(request, '_post'):
+            del(request._post)
+            del(request._files)
+
+        try:
+            request.method = 'POST'
+            request._load_post_and_files()
+            request.method = 'PUT'
+        except AttributeError:
+            request.META['REQUEST_METHOD'] = 'POST'
+            request._load_post_and_files()
+            request.META['REQUEST_METHOD'] = 'PUT'
+        setattr(request, 'PUT', request.POST)
+
+    return request
+
 def get_logged_in_session(username, password, base_url, 
                           login_form=None,
                           headers={}):

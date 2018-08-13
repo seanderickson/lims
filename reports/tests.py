@@ -57,6 +57,7 @@ import re
 import sys
 import unittest
 import urlparse
+from datetime import datetime
 
 import dateutil.parser
 from django.conf import settings
@@ -69,13 +70,15 @@ from django.test.client import Client, FakePayload
 from django.test.runner import DiscoverRunner
 from django.test.testcases import SimpleTestCase
 
-from reports import HEADER_APILOG_COMMENT
+from reports import HEADER_APILOG_COMMENT, DJANGO_ACCEPT_PARAM, \
+    HTTP_PARAM_AUTH, HTTP_PARAM_CONTENT_TYPE
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
 from reports.dump_obj import dumpObj
 from reports.models import MetaHash, UserGroup, \
     UserProfile, ApiLog, Permission, Job
 import reports.schema as SCHEMA
-from reports.serialize import parse_val, JSON_MIMETYPE
+from reports.serialize import parse_val, JSON_MIMETYPE, CSV_MIMETYPE,\
+    MULTIPART_MIMETYPE
 import reports.serialize.csvutils as csvutils
 from reports.serialize.sdfutils import MOLDATAKEY
 from reports.serializers import CSVSerializer, SDFSerializer, \
@@ -89,9 +92,6 @@ logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
 
-# NOTE: the simulated django client requests expect the HTTP Header "Accept" to 
-# be stored in the variable "HTTP_ACCEPT"
-DJANGO_ACCEPT_PARAM = 'HTTP_ACCEPT'
 
 # Required for non-staff users to log in
 settings.IS_PRODUCTION_READY = True
@@ -168,7 +168,15 @@ def equivocal(val1, val2, skip_null_values=False, key=None):
     - either object has been converted to a string,
     - with lists, ordering has changed, or members have been converted to 
     their string representation.
+    
+    @param skip_null_values if the original value is null, skip this test and
+        return True in all cases (this can be used to bypass "default" values, 
+        or other calculated values that can accept an input)
+    
+    
     NOTE: skip_null_values added to address fields with parent "ref" set
+    NOTE: skip_null_values also used for spreadsheet inputs for bootstrap,
+        where some fields will apply a default "False" for all empty inputs.
     '''
     if DEBUG:
         logger.info('equivocal: %r, %r', val1, val2)
@@ -1108,7 +1116,11 @@ class IResourceTestCase(SimpleTestCase):
     password = 'pass'
     general_user_password = 'testpass1'
     
-    
+    default_data_for_get = {
+        'limit': 0, 
+        'includes': '*'
+    }
+
     """
     Override the Django SimpleTestCase, not using the TransactionTestCase
     necessary so that the SqlAlchemy connection can see the same database as the 
@@ -1130,13 +1142,6 @@ class IResourceTestCase(SimpleTestCase):
         self.api_client = TestApiClient(serializer=self.serializer)       
 
         # TODO: replace all tastypie.test.TestApiClient clients with the
-        # django.test.client.Client instances:
-        # Tastypie mucks with the HEADERS and uses the non-standard "format" arg:
-        # resp = self.sr_api_client.get(
-        #     resource_uri, authentication=self.get_credentials(), 
-        #     format='xlsx', **data_for_get)
-        # Tastypie PUT/POST requires that the data be serialized before posting,
-        # and does not create the multipart/form-data header
         self.django_client = Client()
         settings.BACKGROUND_PROCESSING = False
             
@@ -1179,12 +1184,8 @@ class IResourceTestCase(SimpleTestCase):
     def _create_resource(
             self,input_data,resource_uri,resource_test_uri, 
             data_for_get= None, expect_fail=False, excludes=[]):
-        
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*',
-            DJANGO_ACCEPT_PARAM: 'application/json'
-        }
+
+        _data_for_get = self.default_data_for_get.copy()
         if data_for_get:
             _data_for_get.update(data_for_get)
             
@@ -1224,10 +1225,7 @@ class IResourceTestCase(SimpleTestCase):
         return new_obj
     
     def get_list_resource(self, resource_uri, data_for_get=None):
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*'
-        }
+        _data_for_get = self.default_data_for_get.copy()
         if data_for_get:
             _data_for_get.update(data_for_get)
         logger.info('get from %r... %r', resource_uri, _data_for_get)
@@ -1247,13 +1245,11 @@ class IResourceTestCase(SimpleTestCase):
         Retrieve a single item from the resource_uri
         -- assertion failure if unsuccessful
         '''
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*'
-        }
+        _data_for_get = self.default_data_for_get.copy()
         if data_for_get:
             _data_for_get.update(data_for_get)
         logger.info('get from %r... %r', resource_uri, _data_for_get)
+        
         resp = self.api_client.get(
             resource_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)
@@ -1283,17 +1279,31 @@ class IResourceTestCase(SimpleTestCase):
         return self.get_single_resource(resource_uri)
         
     def _patch_test(
-        self,resource_name, filename, keys_not_to_check=['resource_uri'], 
-        id_keys_to_check=[], data_for_get={}):
+        self,resource_name, filename, keys_not_to_check=None, 
+        id_keys_to_check=None, data_for_get=None, headers=None ):
         '''
-        @param data_for_get - dict of extra header information to send with the 
-        GET request
+        @param data_for_get - dict of query params for get check
+        @param headers dict of extra header information to send with the 
+            PATCH/GET request
         '''
         logger.info('_patch test: %r, %r', resource_name, filename)
-        data_for_get.setdefault('limit', 999 )
-        data_for_get.setdefault('includes', '*' )
-        data_for_get[HEADER_APILOG_COMMENT] =  'patch_test: %s' % filename
         resource_uri = BASE_URI + '/' + resource_name
+
+        _keys_not_to_check = ['resource_uri']
+        if keys_not_to_check:
+            _keys_not_to_check.extend(keys_not_to_check)
+
+        _headers = { 
+            DJANGO_ACCEPT_PARAM: JSON_MIMETYPE,
+            HTTP_PARAM_AUTH: self.get_credentials(),
+            HEADER_APILOG_COMMENT: 'patch_test: %s' % filename
+        }
+        if headers:
+            _headers.update(headers)
+
+        _data_for_get = self.default_data_for_get.copy()
+        if data_for_get:
+            _data_for_get.update(data_for_get)
         
         logger.debug('===resource_uri: %r', resource_uri)
         with open(filename) as bootstrap_file:
@@ -1302,19 +1312,21 @@ class IResourceTestCase(SimpleTestCase):
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             input_data = input_data[API_RESULT_DATA]
             input_data = [x for x in input_data]
+            bootstrap_file.seek(0)
             
             logger.info('Submitting patch... %r: %r', filename, resource_uri)
-            resp = self.api_client.patch(
-                resource_uri, format='csv', data={ API_RESULT_DATA: input_data }, 
-                authentication=self.get_credentials(), **data_for_get )
+
+            _headers[HTTP_PARAM_CONTENT_TYPE] = CSV_MIMETYPE
+            
+            resp = self.django_client.patch(
+                resource_uri, data=bootstrap_file.read(), 
+                **_headers)
             self.assertTrue(
                 resp.status_code <= 204, 
                 (resp.status_code, self.get_content(resp)))
             logger.info('get: %r,%r, %r', resource_uri, data_for_get, id_keys_to_check)
-            resp = self.api_client.get(
-                resource_uri, format='json', 
-                authentication=self.get_credentials(), 
-                data=data_for_get)
+            resp = self.django_client.get(
+                resource_uri, data=_data_for_get, **_headers)
             self.assertTrue(
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
@@ -1328,7 +1340,7 @@ class IResourceTestCase(SimpleTestCase):
                 result, outputobj = find_obj_in_list(
                     inputobj,final_data, 
                     id_keys_to_check=id_keys_to_check, 
-                    excludes=keys_not_to_check )
+                    excludes=_keys_not_to_check )
                 logger.debug('objects returned: %r', final_data)
                 self.assertTrue(
                     result, 
@@ -1336,16 +1348,13 @@ class IResourceTestCase(SimpleTestCase):
                 # once found, perform equality based on all keys (in obj1)
                 logger.debug('found: %r: %r', inputobj.get('scope'), inputobj.get('key'))
 
-                # For fields patches only:
-                # NOTE: skip_null_values added to address fields with parent "ref" set
-                skip_null_values = False
-                if 'scope' in inputobj and 'fields.' in inputobj.get('scope'):
-                    ref = inputobj.get('ref')
-                    if ref is not None:
-                        logger.info('%r: ref: %r',inputobj.get('key'), ref)
-                        skip_null_values = True
+                # NOTE: on skip_null_values == True
+                # Not checking auto-populated fields at this stage:
+                # these include, fields set by a parent "ref", fields set by a 
+                # default value.
+
                 result, msg = assert_obj1_to_obj2(inputobj, outputobj,
-                    excludes=keys_not_to_check, skip_null_values=skip_null_values)
+                    excludes=_keys_not_to_check, skip_null_values=True)
                 self.assertTrue(result,
                     'not equal: %r: %r - %r' % ( msg, inputobj, outputobj))
             
@@ -1353,36 +1362,54 @@ class IResourceTestCase(SimpleTestCase):
             return (input_data, final_data) 
 
     def _put_test(
-        self, resource_name, filename, keys_not_to_check=['resource_uri'], 
-        id_keys_to_check=[], data_for_get={}):
+        self, resource_name, filename, keys_not_to_check=None, 
+        id_keys_to_check=None, data_for_get=None, headers=None):
         '''
         id_keys_to_check if the resource data has been loaded, 
             then these are id keys to check to see if they are being used in 
             the returned resource_uri field
         '''
-        data_for_get.setdefault('limit', 0 )
-        data_for_get.setdefault('includes', '*' )
-        data_for_get.setdefault( 
-            HEADER_APILOG_COMMENT, 'put_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
 
+        _keys_not_to_check = ['resource_uri']
+        if keys_not_to_check:
+            _keys_not_to_check.extend(keys_not_to_check)
+        _headers = { 
+            DJANGO_ACCEPT_PARAM: JSON_MIMETYPE,
+            HTTP_PARAM_AUTH: self.get_credentials(),
+            HEADER_APILOG_COMMENT: 'put_test: %s' % filename
+        }
+        if headers:
+            _headers.update(headers)
+
+        _data_for_get = self.default_data_for_get.copy()
+        if data_for_get:
+            _data_for_get.update(data_for_get)
+        
+        logger.info('put_test: %r, %r', _data_for_get, _headers)
+
         with open(filename) as bootstrap_file:
-            # NOTE: have to deserialize the input, because the TP test method 
-            # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             input_data = input_data[API_RESULT_DATA]
             input_data = [x for x in input_data]
+            bootstrap_file.seek(0)
+            _headers[HTTP_PARAM_CONTENT_TYPE] = CSV_MIMETYPE
             
-            resp = self.api_client.put(
-                resource_uri, format='csv', data={ API_RESULT_DATA: input_data }, 
-                authentication=self.get_credentials(), **data_for_get )
+            logger.info('put_test: %r', resource_uri)
+            resp = self.django_client.put(
+                resource_uri, data=bootstrap_file.read(), 
+                **_headers)
+#             resp = self.api_client.put(
+#                 resource_uri, format='csv', data={ API_RESULT_DATA: input_data }, 
+#                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
                 resp.status_code <= 204, 
                 '%r: %r' % (resp.status_code, self.get_content(resp)))
-            logger.info('get: %r', resource_uri)
-            resp = self.api_client.get(
-                resource_uri, format='json', 
-                authentication=self.get_credentials(), data=data_for_get)
+            logger.info('get: %r, %r, %r', resource_uri, _data_for_get, _headers)
+        
+            resp = self.django_client.get(
+                resource_uri, data=_data_for_get, **_headers)
+            
             self.assertTrue(
                 resp.status_code in [200], 
                 '%r: %r' % (resp.status_code, self.get_content(resp)))
@@ -1402,7 +1429,7 @@ class IResourceTestCase(SimpleTestCase):
                 result, outputobj = find_obj_in_list(
                     inputobj,final_data,
                     id_keys_to_check=id_keys_to_check,
-                    excludes=keys_not_to_check)
+                    excludes=_keys_not_to_check)
                 self.assertTrue(
                     result, 
                     'not found: %r: %r' % (outputobj, final_data))
@@ -1587,7 +1614,7 @@ class TestApiClient(object):
             kwargs['data'] = data
 
         if authentication is not None:
-            kwargs['HTTP_AUTHORIZATION'] = authentication
+            kwargs[HTTP_PARAM_AUTH] = authentication
 
         return self.client.get(uri, **kwargs)
 
@@ -1611,7 +1638,7 @@ class TestApiClient(object):
             kwargs['data'] = self.serializer.serialize(data, content_type)
 
         if authentication is not None:
-            kwargs['HTTP_AUTHORIZATION'] = authentication
+            kwargs[HTTP_PARAM_AUTH] = authentication
 
         return self.client.post(uri, **kwargs)
 
@@ -1634,7 +1661,7 @@ class TestApiClient(object):
             kwargs['data'] = self.serializer.serialize(data, content_type)
 
         if authentication is not None:
-            kwargs['HTTP_AUTHORIZATION'] = authentication
+            kwargs[HTTP_PARAM_AUTH] = authentication
 
         return self.client.put(uri, **kwargs)
 
@@ -1657,7 +1684,7 @@ class TestApiClient(object):
             kwargs['data'] = self.serializer.serialize(data, content_type)
 
         if authentication is not None:
-            kwargs['HTTP_AUTHORIZATION'] = authentication
+            kwargs[HTTP_PARAM_AUTH] = authentication
 
         # Django doesn't support PATCH natively.
         parsed = urlparse.urlparse(uri)
@@ -1694,7 +1721,7 @@ class TestApiClient(object):
             kwargs['data'] = data
 
         if authentication is not None:
-            kwargs['HTTP_AUTHORIZATION'] = authentication
+            kwargs[HTTP_PARAM_AUTH] = authentication
 
         return self.client.delete(uri, **kwargs)
     
@@ -1820,6 +1847,7 @@ class TestApiInit(IResourceTestCase):
         }
         resp = self.api_client.get(
             resource_uri, format='json', 
+            data = data_for_get, 
             authentication=self.get_credentials(), )
         new_obj = self.deserialize(resp)
         self.assertTrue(
@@ -2164,8 +2192,8 @@ class VocabularyResource(IResourceTestCase):
             {'scope': 'test.vocab', 'key': 'test3', 'ordinal': 3, 
              'description': 'test3 vocab', 'title': 'Test 3' },
         ]
+        uri = BASE_URI + '/vocabulary'
         try:       
-            uri = BASE_URI + '/vocabulary'
             resp = self.api_client.patch(uri, 
                 format='json', data={ API_RESULT_DATA: test_vocabs }, 
                 authentication=self.get_credentials())
@@ -2206,7 +2234,6 @@ class UserUsergroupSharedTest(object):
         logger.info('test1_create_user_with_permissions...')
         
         filename = os.path.join(self.directory,'test_data/users1.csv')
-        from datetime import datetime
         data_for_get = { HEADER_APILOG_COMMENT: 
             'patch_test: file: %s, %s' % (filename, datetime.now().isoformat()),
             'includes': '*' }
@@ -2523,8 +2550,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         # now patch this user's usergroups, 
         # removing the user from the group 'testgroup3,2'
         # which will remove the permissions for the "apilog" resource as well 
-        user_patch = {
-            'usergroups': ['testGroup1'] };
+        user_patch = { 'usergroups': ['testGroup1'] }
 
         logger.debug(
             'reset this users groups and remove testGroup1: %r', user_patch)
@@ -2536,8 +2562,9 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             resp.status_code <= 204, 
             (resp.status_code, self.get_content(resp)))  
         
-        # check the user settings/groups
         uri = BASE_URI + '/user/' + username
+
+        logger.info('check the user settings/groups for %r', uri)
         resp = self.api_client.get(
             uri,format='json', data={'includes': '*'}, 
             authentication=self.get_credentials() )
@@ -2607,6 +2634,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         logger.debug('now set the new group: %r', usergroup_patch)
         uri = BASE_URI + '/usergroup'
         
+        # First, patch/get as superuser
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())
@@ -2621,9 +2649,8 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         final_data = new_obj[API_RESULT_DATA]
         final_data = [x for x in final_data]
         
-        
         result, outputobj = find_all_obj_in_list(
-            usergroup_patch[API_RESULT_DATA],final_data,
+            usergroup_patch,final_data,
             id_keys_to_check=['name']) #, excludes=keys_not_to_check )
         self.assertTrue(
             result, 
@@ -2678,9 +2705,10 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             'name': 'testGroup6',
             'sub_groups': ['testGroup5'] },
         ]}
-        
+
         logger.debug('now set the new groups: %r', usergroup_patch)
         uri = BASE_URI + '/usergroup'
+        
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())
@@ -2765,6 +2793,7 @@ class JobResource(IResourceTestCase):
             'permissions': ['resource/job/write'] };
         uri = BASE_URI + '/user/' + username
         logger.debug('add permission to user: %r: %r', user_patch, uri)
+        
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())

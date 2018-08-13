@@ -28,12 +28,10 @@ from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Q
-from django.db.models.aggregates import Max
 from django.db.utils import ProgrammingError
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse, Http404, HttpResponseBase, \
-    HttpResponseNotFound
+from django.http.response import HttpResponse, Http404
 from django.test.client import RequestFactory
 import six
 from sqlalchemy import select, asc, text
@@ -43,20 +41,16 @@ from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct, exists
 from sqlalchemy.sql.selectable import Alias
-from tastypie.authentication import MultiAuthentication
-from tastypie.exceptions import BadRequest
-from tastypie.http import HttpNoContent
-from tastypie.resources import convert_post_to_put
 from tastypie.utils.urls import trailing_slash
 
 from db.support import lims_utils
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError, API_RESULT_ERROR
-from reports import ValidationError, _now
+from reports import ValidationError, BadRequestError, \
+    BackgroundJobImmediateResponse, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization, \
-    IccblSessionAuthentication, IccblBasicAuthentication, \
-    BackgroundJobImmediateResponse
+    MultiAuthentication, IccblSessionAuthentication, IccblBasicAuthentication
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, Job
 import reports.schema as SCHEMA
@@ -101,6 +95,7 @@ API_MSG_ACTION = 'Action'
 API_MSG_SUCCESS = 'Success'
 
 DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_FIELDS = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
 
@@ -686,7 +681,6 @@ class ApiResource(SqlAlchemyResource):
             kwargs.setdefault('limit', 0)
             response = self.get_list(
                 request,
-#                 format='json',
                 includes=includes,
                 **kwargs)
             _data = self.get_serializer().deserialize(
@@ -712,7 +706,6 @@ class ApiResource(SqlAlchemyResource):
         try:
             response = self.get_detail(
                 request,
-#                 format='json',
                 includes=includes,
                 **kwargs)
             _data = {}
@@ -946,8 +939,8 @@ class ApiResource(SqlAlchemyResource):
         initializer_dict = {}
         for key,field in mutable_fields.items():
             alias = field.get('alias')
-            _val = None
-            if key in deserialized or alias in deserialized:
+            
+            if key in deserialized or alias in deserialized:            
                 _val = deserialized.get(key,deserialized.get(alias,None))
                 if _val is not None:
                     try:
@@ -958,10 +951,16 @@ class ApiResource(SqlAlchemyResource):
                     except ValidationError, e:
                         logger.info('error: %r', e)
                         errors.update(e.errors)
+                
+                # TODO: review the workflow intended for applying a default
+                # value to a field: should this be handled by the client instead?
+                # - are there any good workflows to justify this?
+                # * used by the field initialization process
                 if _val is None:
                     _val = field.get('default',None)
                     if _val == '': 
                         _val = None
+                        
                 initializer_dict[key] = _val
         
         if errors:
@@ -978,8 +977,8 @@ class ApiResource(SqlAlchemyResource):
         DEBUG_SEARCH = False or logger.isEnabledFor(logging.DEBUG)
          
         if SCHEMA.API_PARAM_COMPLEX_SEARCH_ID not in kwargs:
-            raise BadRequest('param "%s" is required' 
-                % SCHEMA.API_PARAM_COMPLEX_SEARCH_ID)
+            raise BadRequestError({
+                SCHEMA.API_PARAM_COMPLEX_SEARCH_ID: 'required' })
         search_ID = kwargs[SCHEMA.API_PARAM_COMPLEX_SEARCH_ID]
          
         all_params = self._convert_request_to_dict(request)
@@ -996,10 +995,10 @@ class ApiResource(SqlAlchemyResource):
             if search_ID in request.session:
                 raw_search_data = request.session[search_ID]
             else:
-                raise BadRequest(
-                    'search param: "%s" is missing for Search: %r, %s/%s'
-                    % (SCHEMA.API_PARAM_SEARCH, search_ID, 
-                        self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH))
+                raise BadRequestError({
+                    SCHEMA.API_PARAM_SEARCH: 
+                    'required for search: %r, %s/%s' % (search_ID, 
+                        self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH)})
         
         if DEBUG_SEARCH:
             logger.info('complex search: %: %r', SCHEMA.API_PARAM_SEARCH, raw_search_data)
@@ -1084,7 +1083,8 @@ class ApiResource(SqlAlchemyResource):
         kwargs_for_log.update(ids)
         kwargs_for_log['includes'] = list(includes)
         try:
-            logger.info('get original state, for logging... %r', kwargs_for_log.keys())
+            logger.info('get original state, for logging... %r', 
+                { k:v for k,v in kwargs_for_log.items() if k != 'schema'} )
             original_data = self._get_list_response_internal(**kwargs_for_log)
             logger.info('original state retrieved: %d', len(original_data))
         except Exception as e:
@@ -1201,6 +1201,8 @@ class ApiResource(SqlAlchemyResource):
             logger.exception('original state not obtained')
             original_data = []
 
+        logger.info('put list kwargs_for_log: %r', 
+            {k:v for k,v in kwargs_for_log.items() if k != 'schema' })
         logger.debug('put list %s, %s',deserialized,kwargs)
 
         # TODO: review REST actions:
@@ -1225,7 +1227,7 @@ class ApiResource(SqlAlchemyResource):
         # After patch, the id keys must be present
         for idkey in id_attribute:
             id_param = '%s__in' % idkey
-            ids = set(kwargs_for_log[id_param])
+            ids = set(kwargs_for_log.get(id_param,[]))
             for new_obj in new_objs:
                 if hasattr(new_obj, idkey):
                     idval = getattr(new_obj, idkey)
@@ -1377,7 +1379,7 @@ class ApiResource(SqlAlchemyResource):
         # After patch, the id keys must be present
         for idkey in id_attribute:
             id_param = '%s__in' % idkey
-            ids = set(kwargs_for_log[id_param])
+            ids = set(kwargs_for_log.get(id_param,[]))
             for new_obj in new_objs:
                 if hasattr(new_obj, idkey):
                     idval = getattr(new_obj, idkey)
@@ -1496,8 +1498,8 @@ class ApiResource(SqlAlchemyResource):
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('new post data: %r', new_data)
         if not new_data:
-            raise BadRequest(
-                'no data found for the new obj created by post: %r', obj)
+            raise BadRequestError({
+                'POST': 'no data found for the new obj created by post: %r' % obj })
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
             id_attribute=id_attribute, schema=schema, **kwargs)
@@ -1733,9 +1735,6 @@ class ApiResource(SqlAlchemyResource):
 
         # Log
         logger.info('deleted: %s' %kwargs_for_log)
-#         log_comment = None
-#         if HEADER_APILOG_COMMENT in request.META:
-#             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         # 20170601 - no diffs for delete
         # log.diffs = { k:[v,None] for k,v in original_data.items()}
@@ -2944,16 +2943,14 @@ class FieldResource(ApiResource):
             try:
                 limit = int(limit)
             except Exception:
-                raise BadRequest(
-                    "Invalid limit '%s' provided. Please provide a positive integer." 
-                    % limit)
+                raise BadRequestError({
+                    'limit': 'Please provide a positive integer: %r' % limit})
             offset = param_hash.get('offset', 0 )
             try:
                 offset = int(offset)
             except Exception:
-                raise BadRequest(
-                    "Invalid offset '%s' provided. Please provide a positive integer." 
-                    % offset)
+                raise BadRequestError({
+                    'offset': 'Please provide a positive integer: %r' % offset })
             if offset < 0:    
                 offset = -offset
             
@@ -3011,6 +3008,11 @@ class FieldResource(ApiResource):
             for field in field_hash.values():
                 key = field_key.format(**field)
                 if key in fields:
+                    # FIXME: is this exception needed? seems to mess up program
+                    # flow; in particular for the "bootstrap" case of field
+                    # initialization, re: fields.field/key
+                    # throwing an exception forces _get_list_response (internal)
+                    # return an empty response.
                     raise Exception('field key is already defined: %r', key)
                 fields[key] = field
             
@@ -3081,8 +3083,9 @@ class FieldResource(ApiResource):
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
         
-        logger.debug('patch_obj: %r: %r', request.user, self._meta.resource_name)
-        logger.debug('deserialized: %r', deserialized)
+        if DEBUG_FIELDS:
+            logger.debug('patch_obj: %r: %r', request.user, self._meta.resource_name)
+            logger.info('deserialized: %r', deserialized)
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -3092,56 +3095,61 @@ class FieldResource(ApiResource):
             return {}
 
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
+        if DEBUG_FIELDS:
+            logger.info('id_kwargs: %r', id_kwargs)
         
-        initializer_dict = {}
-        for key in fields.keys():
-            if key in deserialized:
-                initializer_dict[key] = parse_val(
-                    deserialized.get(
-                        key,None), key,fields[key].get('data_type','string')) 
+        initializer_dict = self.parse(deserialized, schema=schema, create=True)
+
+        if DEBUG_FIELDS:
+            logger.info('initializer_dict: %r', initializer_dict)
+        
         if not initializer_dict:
             return {}
+
+        field = None
         try:
-            field = None
-            try:
-                field = MetaHash.objects.get(**id_kwargs)
-                errors = self.validate(deserialized, patch=True, schema=schema)
-                if errors:
-                    raise ValidationError(errors)
-            except ObjectDoesNotExist, e:
-                logger.debug(
+            field = MetaHash.objects.get(**id_kwargs)
+            if DEBUG_FIELDS:
+                logger.info('got field: %r: %r', id_kwargs, field)
+            errors = self.validate(deserialized, patch=True, schema=schema)
+            if errors:
+                if DEBUG_FIELDS:
+                    logger.info('field validation errors for: %r: %r', 
+                        id_kwargs, errors)
+                raise ValidationError(errors)
+        except ObjectDoesNotExist, e:
+            if DEBUG_FIELDS:
+                logger.info(
                     'Metahash field %s does not exist, creating', id_kwargs)
-                field = MetaHash(**id_kwargs)
-                errors = self.validate(deserialized, patch=False, schema=schema)
-                if errors:
-                    raise ValidationError(errors)
+            field = MetaHash(**id_kwargs)
+            errors = self.validate(initializer_dict, patch=False, schema=schema)
+            if errors:
+                raise ValidationError(errors)
 
-            for key,val in initializer_dict.items():
-                if hasattr(field,key):
-                    setattr(field,key,val)
+        for key,val in initializer_dict.items():
+            if hasattr(field,key):
+                setattr(field,key,val)
+        
+        if field.json_field:
+            json_obj = json.loads(field.json_field)
+        else:
+            json_obj = {}
+        
+        for key,val in initializer_dict.items():
+            fieldinformation = fields[key]
+            if fieldinformation.get('json_field_type', None):
+                json_obj[key] = parse_json_field(
+                    val, key, fieldinformation['json_field_type'])
+                
+        field.json_field = json.dumps(json_obj)
+        if DEBUG_FIELDS:
+            logger.info('save: %r: as %r', 
+                id_kwargs, field)
+        field.save()
+                
+        logger.debug('patch_obj done')
+        return { API_RESULT_OBJ: field }
             
-            if field.json_field:
-                json_obj = json.loads(field.json_field)
-            else:
-                json_obj = {}
-            
-            for key,val in initializer_dict.items():
-                fieldinformation = fields[key]
-                if fieldinformation.get('json_field_type', None):
-                    json_obj[key] = parse_json_field(
-                        val, key, fieldinformation['json_field_type'])
-                    
-            field.json_field = json.dumps(json_obj)
-            logger.debug('save: %r, as %r', deserialized, field)
-            field.save()
-                    
-            logger.debug('patch_obj done')
-            return { API_RESULT_OBJ: field }
-            
-        except Exception, e:
-            logger.exception('on patch detail')
-            raise e  
-
 
 class ResourceResource(ApiResource):
     
@@ -3207,7 +3215,8 @@ class ResourceResource(ApiResource):
         resources = self._build_resources_internal(user)
         
         if resource_key not in resources:
-            raise BadRequest('Resource is not initialized: %r' % resource_key)
+            raise BadRequestError({
+                'resource': 'Resource is not initialized: %r' % resource_key })
         
         schema =  resources[resource_key]
         if DEBUG_RESOURCES:
@@ -3321,7 +3330,8 @@ class ResourceResource(ApiResource):
             
         if is_superuser:
             return schema
-
+        
+        # Qualify user's authorization to filter fields
         if user is not None:
             usergroups = set([x.name for x in user.userprofile.get_all_groups()])
         schema = deepcopy(schema)
@@ -5329,7 +5339,6 @@ class PermissionResource(ApiResource):
         # create all of the permissions on startup
         resources = MetaHash.objects.filter(
             Q(scope='resource')|Q(scope__contains='fields.'))
-#         query = self._meta.queryset._clone()
         query = Permission.objects.all()
         permissionTypes = Vocabulary.objects.all().filter(
             scope='permission.type')
@@ -5710,10 +5719,6 @@ class JobResource(ApiResource):
         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, schema=schema, validate=False,**kwargs)
-        if not kwargs_for_log:
-            for k in id_attribute:
-                if k in kwargs:
-                    kwargs_for_log[k] = kwargs[k] 
         original_data = None
         if kwargs_for_log:
             try:

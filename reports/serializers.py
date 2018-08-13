@@ -14,11 +14,11 @@ from django.http.response import StreamingHttpResponse
 from django.utils.encoding import smart_text, force_text
 import mimeparse
 import six
-from tastypie.exceptions import BadRequest
 import unicodecsv
 import xlrd
 
 from db.support import screen_result_importer
+from reports import BadRequestError
 from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE, \
     JSON_MIMETYPE, CSV_MIMETYPE, to_simple, LimsJSONEncoder
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, dict_to_rows
@@ -28,6 +28,7 @@ from reports.serialize.streaming_serializers import generic_xlsx_response, \
     get_xls_response
 from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
+
 
 # NOTE: Django creates an "HTTP_ACCEPT" member in the request.META dictionary
 # for the HTTP Header "Accept"
@@ -144,11 +145,14 @@ class BaseSerializer(object):
                     logger.debug('"HTTP ACCEPT" - content_type: %r', content_type)
     
                     if not content_type:
-                        raise BadRequest(
-                            "no best match format for HTTP ACCEPT: %r"
-                            % http_accept)
+                        raise BadRequestError(
+                            key='content_type',
+                            msg="no best match format for HTTP ACCEPT: %r"
+                                % http_accept)
                 except ValueError:
-                    raise BadRequest('Invalid Accept header: %r', http_accept)
+                    raise BadRequestError(
+                        key='http_accept',
+                        msg='Invalid Accept header: %r' % http_accept)
             elif request.META and request.META.get('CONTENT_TYPE', '*/*') != '*/*':
                 content_type = request.META.get('CONTENT_TYPE', '*/*')
                 if DEBUG_ACCEPT_CONTENT_TYPE:
@@ -156,9 +160,10 @@ class BaseSerializer(object):
             else:
                 logger.error('get_accept_content_type: request.META: %r',
                     request.META)
-                raise BadRequest(
-                    'no CONTENT_TYPE or HTTP ACCEPT header found: %r, %r' 
-                    % (request.META, format))
+                raise BadRequestError({
+                    'content_type': 'not found',
+                    'http_accept': 'not found'
+                    })
         if DEBUG_ACCEPT_CONTENT_TYPE:
             logger.info('content type: %r', content_type)
         return content_type
@@ -203,9 +208,7 @@ class BaseSerializer(object):
             if DEBUG_CONTENT_TYPE:
                 logger.info('"HTTP_ACCEPT" - content_type: %r', content_type)
         if not content_type:
-            raise BadRequest(
-                'No content type found for request: %r, %r'
-                % (request, request.META))
+            raise BadRequestError(key='content_type', msg='not found')
         return content_type
 
     def serialize(self, data, content_type):
@@ -214,7 +217,7 @@ class BaseSerializer(object):
         if desired_format is None:
             msg = ( 'unknown serialize content_type: %r or format: %r, options: %r'
                     % (content_type, desired_format, self.content_types.values()))
-            raise BadRequest(msg)
+            raise BadRequestError(key='content_type', msg=msg)
         serialized = getattr(self, "to_%s" % desired_format)(data)
         return serialized
     
@@ -224,7 +227,7 @@ class BaseSerializer(object):
         if desired_format is None:
             msg = ( 'unknown deserialize content_type: %r or format: %r, options: %r'
                     % (content_type, desired_format, self.content_types.values()))
-            raise BadRequest(msg)
+            raise BadRequestError(key='content_type', msg=msg)
 
         if not content:
             return {}
@@ -509,7 +512,7 @@ class CursorSerializer(BaseSerializer):
     def to_csv(self, obj, options=None):
         raw_data = cStringIO.StringIO()
 
-        # this is an unexpected way to get this error, look into tastypie
+        # FIXME: review error dict wrapping now that tastypie is removed
         if(isinstance(obj,dict) and 'error_message' in obj):
         
             logger.warn('report error: %r', obj)

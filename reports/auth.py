@@ -3,7 +3,7 @@ import logging
 import re
 from django.conf import settings
 from django.contrib.auth.models import User
-from reports.hms.auth import authenticate
+import reports.hms.auth
 from django.core.exceptions import PermissionDenied
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ class CustomAuthenticationBackend():
                     msg = 'user password authentication failed: %r' % username
                     logger.info(msg)
                     raise PermissionDenied(msg)
-            if(authenticate(username, password)):
+            if(reports.hms.auth.authenticate(username, password)):
                 logger.info('user %r authenticated with the ecommons server', user)
                 if(user.is_active):
                     return user

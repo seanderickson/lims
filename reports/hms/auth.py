@@ -72,7 +72,7 @@ def authenticateOld(ecommons_id, ecommons_password):
 <NotBefore>%s</NotBefore>
 <NotAfter>%s</NotAfter>
 </ValidityInterval>
-<RequestApp>HMSLINCS</RequestApp>
+<RequestApp>HMSICCBL</RequestApp>
 <AuthNData>
 <Id>%s</Id>
 <Password>%s</Password>

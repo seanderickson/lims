@@ -25,12 +25,11 @@ from sqlalchemy.sql.expression import column, join, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.functions import func
 import sqlalchemy.sql.sqltypes
-from tastypie.exceptions import BadRequest, ImmediateHttpResponse
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     HTTP_PARAM_RAW_LISTS, HTTP_PARAM_DATA_INTERCHANGE, HTTP_PARAM_USE_TITLES, \
-    HTTP_PARAM_USE_VOCAB
+    HTTP_PARAM_USE_VOCAB, BadRequestError
 from reports.api_base import IccblBaseResource, un_cache
 import reports.schema as SCHEMA
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
@@ -197,109 +196,100 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.info('field access levels: %r', 
                 [ str((key,field.get('data_access_level', None))) 
                     for key,field in schema_fields.items()])
-        try:
-            if exact_fields:
-                temp = { key:field for key,field in schema_fields.items()
-                    if key in exact_fields or key in filter_fields 
-                        or key in manual_field_includes }
-            else:
-                # Calculate the visible fields
-                temp = {}
-                for key,field in schema_fields.items():
-                    field_visibilities = set(field.get('visibility',[]))
-                    is_visible = False
+
+        if exact_fields:
+            temp = { key:field for key,field in schema_fields.items()
+                if key in exact_fields or key in filter_fields 
+                    or key in manual_field_includes }
+        else:
+            # Calculate the visible fields
+            temp = {}
+            for key,field in schema_fields.items():
+                field_visibilities = set(field.get('visibility',[]))
+                is_visible = False
+                if DEBUG_VISIBILITY is True:
+                    logger.info('key: %r, visibility: %r', key, field_visibilities)
+                if key in manual_field_includes:
+                    is_visible = True
                     if DEBUG_VISIBILITY is True:
-                        logger.info('key: %r, visibility: %r', key, field_visibilities)
-                    if key in manual_field_includes:
+                        logger.info('key: %r, manual', key)
+                elif VISIBILITY.NONE not in field_visibilities:
+                    if '*' in manual_field_includes:
                         is_visible = True
                         if DEBUG_VISIBILITY is True:
-                            logger.info('key: %r, manual', key)
-                    elif VISIBILITY.NONE not in field_visibilities:
-                        if '*' in manual_field_includes:
+                            logger.info('key: %r, *', key)
+                    elif field_visibilities:
+                        if field_visibilities & visibilities:
                             is_visible = True
                             if DEBUG_VISIBILITY is True:
-                                logger.info('key: %r, *', key)
-                        elif field_visibilities:
-                            if field_visibilities & visibilities:
-                                is_visible = True
-                                if DEBUG_VISIBILITY is True:
-                                    logger.info('key: %r, visibilities: %r', 
-                                        key, field_visibilities & visibilities)
-                    if '-%s' % key in manual_field_includes:
-                        is_visible = False
+                                logger.info('key: %r, visibilities: %r', 
+                                    key, field_visibilities & visibilities)
+                if '-%s' % key in manual_field_includes:
+                    is_visible = False
 
-                    if DEBUG_VISIBILITY is True:
-                        logger.info('key: %r, is_visible: %r', key, is_visible)
-                    
-                    if is_visible is True:
-                        temp[key] = field
+                if DEBUG_VISIBILITY is True:
+                    logger.info('key: %r, is_visible: %r', key, is_visible)
                 
-                # temp = { key:field for key,field in schema_fields.items() 
-                #     if ((field.get('visibility', None) 
-                #             and visibilities & set(field['visibility'])) 
-                #         or field['key'] in manual_field_includes
-                #         or '*' in manual_field_includes ) }
-                # 
-                # # manual excludes
-                # temp = { key:field for key,field in temp.items() 
-                #     if '-%s' % key not in manual_field_includes }
+                if is_visible is True:
+                    temp[key] = field
             
-            # dependency fields
-            dependency_fields = set()
-            for field in temp.values():
-        
-                if field.get('value_template', None):
-                    dependency_fields.update(
-                        re.findall(
-                            r'{([a-zA-Z0-9_-]+)}', field['value_template']))
-                if field.get('display_options', None):
-                    dependency_fields.update(
-                        re.findall(
-                            r'{([a-zA-Z0-9_-]+)}', field['display_options']))
-                if field.get('dependencies',None):
-                    dependency_fields.update(field.get('dependencies'))
-                logger.debug('field: %s, dependencies: %s', field['key'],
-                    field.get('dependencies',[]))
-            if DEBUG_VISIBILITY:
-                logger.info('dependency_fields %s', dependency_fields)
-            if dependency_fields:
-                temp.update({ key:field 
-                    for key,field in schema_fields.items() 
-                        if key in dependency_fields })
+            # temp = { key:field for key,field in schema_fields.items() 
+            #     if ((field.get('visibility', None) 
+            #             and visibilities & set(field['visibility'])) 
+            #         or field['key'] in manual_field_includes
+            #         or '*' in manual_field_includes ) }
+            # 
+            # # manual excludes
+            # temp = { key:field for key,field in temp.items() 
+            #     if '-%s' % key not in manual_field_includes }
             
-            # filter_fields
-            if filter_fields:
-                temp.update({ key:field 
-                    for key,field in schema_fields.items() 
-                        if key in filter_fields })
-            # order params
-            if order_params:
-                temp.update({ key:field 
-                    for key,field in schema_fields.items() 
-                        if ( key in order_params or '-%s'%key in order_params) })
-            
-            field_hash = OrderedDict(sorted(temp.iteritems(), 
-                key=lambda x: x[1].get('ordinal',999))) 
+        # dependency fields
+        dependency_fields = set()
+        for field in temp.values():
     
-            if DEBUG_VISIBILITY:
-                logger.info('field_hash final: %s', field_hash.keys())
+            if field.get('value_template', None):
+                dependency_fields.update(
+                    re.findall(
+                        r'{([a-zA-Z0-9_-]+)}', field['value_template']))
+            if field.get('display_options', None):
+                dependency_fields.update(
+                    re.findall(
+                        r'{([a-zA-Z0-9_-]+)}', field['display_options']))
+            if field.get('dependencies',None):
+                dependency_fields.update(field.get('dependencies'))
+            logger.debug('field: %s, dependencies: %s', field['key'],
+                field.get('dependencies',[]))
+        if DEBUG_VISIBILITY:
+            logger.info('dependency_fields %s', dependency_fields)
+        if dependency_fields:
+            temp.update({ key:field 
+                for key,field in schema_fields.items() 
+                    if key in dependency_fields })
         
-            if not field_hash:
-                logger.info('no fields found: %r, %r', field_hash.keys(), 
-                    manual_field_includes)
-                response = HttpResponse('no fields specified')
-                response.status_code = 400
-                raise ImmediateHttpResponse(
-                    response=response)
+        # filter_fields
+        if filter_fields:
+            temp.update({ key:field 
+                for key,field in schema_fields.items() 
+                    if key in filter_fields })
+        # order params
+        if order_params:
+            temp.update({ key:field 
+                for key,field in schema_fields.items() 
+                    if ( key in order_params or '-%s'%key in order_params) })
+        
+        field_hash = OrderedDict(sorted(temp.iteritems(), 
+            key=lambda x: x[1].get('ordinal',999))) 
+
+        if DEBUG_VISIBILITY:
+            logger.info('field_hash final: %s', field_hash.keys())
+    
+        if not field_hash:
             
-            return field_hash
+            raise BadRequestError(
+                key='field', msg='required')
+                
+        return field_hash
         
-        except ImmediateHttpResponse:
-            raise
-        
-        except Exception, e:
-            logger.exception('on get_visible_fields')
-            raise e 
 
     def build_sqlalchemy_columns(
             self, fields, base_query_tables=None, custom_columns=None):
@@ -975,9 +965,8 @@ class SqlAlchemyResource(IccblBaseResource):
         try:
             limit = int(limit)
         except Exception:
-            raise BadRequest(
-                "Invalid limit '%s' provided. Please provide a positive integer." 
-                % limit)
+            raise BadRequestError({
+                'limit': 'Please provide a positive integer: %r' % limit})
         if limit > 0:    
             stmt = stmt.limit(limit)
         if is_for_detail:
@@ -987,9 +976,8 @@ class SqlAlchemyResource(IccblBaseResource):
         try:
             offset = int(offset)
         except Exception:
-            raise BadRequest(
-                "Invalid offset '%s' provided. Please provide a positive integer." 
-                % offset)
+            raise BadRequestError({
+                'offset': 'Please provide a positive integer: %r' % offset })
         if offset < 0:    
             offset = -offset
         stmt = stmt.offset(offset)
@@ -1180,8 +1168,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.csv' % output_filename
             else:
-                msg = 'unknown content_type: %r' % content_type
-                raise BadRequest(msg)
+                raise BadRequestError({
+                    'content_type': 'unknown content_type: %r' % content_type })
             return response
 
         except Exception, e:

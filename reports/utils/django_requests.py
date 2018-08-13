@@ -29,7 +29,7 @@ CONTENTTYPE_HEADERS =   {
 logger = logging.getLogger(__name__)
 
 
-# Based off of ``tastypie.resources.convert_post_to_put``. Similarly BSD-licensed.
+# Based off of tastypie.resources.convert_post_to_put
 def convert_request_method_to_put(request):
     
     if request.method == 'PUT':

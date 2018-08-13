@@ -6,11 +6,13 @@ from functools import wraps
 import logging
 import re
 
+import django.core.urlresolvers
 from django.conf import settings
-from django.conf.urls import url, patterns
+from django.conf.urls import url, patterns, include
 from django.contrib.auth import authenticate
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied,\
+    ImproperlyConfigured
 import django.core.exceptions
 from django.core.signals import got_request_exception
 from django.http.response import HttpResponseBase, HttpResponse, \
@@ -23,7 +25,6 @@ from django.utils.crypto import constant_time_compare
 from django.utils.encoding import force_text
 from django.utils.http import same_origin
 from django.views.decorators.csrf import csrf_exempt
-from tastypie.utils.urls import trailing_slash
 
 from reports.utils.django_requests import convert_request_method_to_put
 from db.support.data_converter import default_converter
@@ -31,7 +32,7 @@ from reports import ValidationError, InformationError, BadRequestError, \
     BackgroundJobImmediateResponse, API_RESULT_ERROR
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
-from reports.serializers import BaseSerializer
+from reports.serializers import BaseSerializer, LimsSerializer
 
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def un_cache(_func):
 
     return _inner
 
-# Authentication Classes taken from Tastypie
+# Authentication Classes taken from tastypie.authentication
 
 class Authentication(object):
     """
@@ -100,9 +101,6 @@ class MultiAuthentication(object):
     def is_authenticated(self, request, **kwargs):
         """
         Identifies if the user is authenticated to continue or not.
-
-        Should return either ``True`` if allowed, ``False`` if not or an
-        ``HttpResponse`` if you need something custom.
         """
         unauthorized = False
 
@@ -111,7 +109,6 @@ class MultiAuthentication(object):
 
             if check:
                 if isinstance(check, HttpResponse):
-#                 if isinstance(check, HttpUnauthorized):
                     unauthorized = unauthorized or check
                 else:
                     request._authentication_backend = backend
@@ -411,10 +408,10 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         """
         return [
             url(r"^(?P<resource_name>%s)%s$" % (
-                self._meta.resource_name, trailing_slash()), 
+                self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
             url(r"^(?P<resource_name>%s)/schema%s$" % (
-                self._meta.resource_name, trailing_slash()), 
+                self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
         ]
 
@@ -439,7 +436,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         """
         urls = [            
             url(r"^(?P<resource_name>%s)/clear_cache%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_clear_cache'), name="api_clear_cache"),
         ]
         urls += self.prepend_urls()
@@ -575,8 +572,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     # A real, non-expected exception.
                     # Handle the case where the full traceback is more helpful
                     # than the serialized error.
-                    if settings.DEBUG \
-                        and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+                    if settings.DEBUG:
                         
                         logger.warn('raise full exception for %r', e)
                         raise
@@ -830,4 +826,105 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         return self.build_error_response(
             request, data, response_class=response_class)
         
-        
+
+
+class Api(object):
+
+    def __init__(self, api_name="v1"):
+        self.api_name = api_name
+        self._registry = {}
+
+    def register(self, resource):
+        resource_name = getattr(resource._meta, 'resource_name', None)
+
+        if resource_name is None:
+            raise ImproperlyConfigured(
+                'Resource %r must define a "resource_name".' % resource)
+
+        self._registry[resource_name] = resource
+
+
+    def unregister(self, resource_name):
+        if resource_name in self._registry:
+            del(self._registry[resource_name])
+
+    def wrap_view(self, view):
+        def wrapper(request, *args, **kwargs):
+            try:
+                return getattr(self, view)(request, *args, **kwargs)
+            except BadRequestError:
+                return HttpResponseBadRequest()
+        return wrapper
+
+    def prepend_urls(self):
+        """
+        A hook for adding your own URLs or matching before the default URLs.
+        """
+        return []
+
+    @property
+    def urls(self):
+        """
+        Provides URLconf details for the ``Api`` and all registered
+        ``Resources`` beneath it.
+        """
+        pattern_list = [
+            url(
+                r"^(?P<api_name>%s)%s$" % (self.api_name, TRAILING_SLASH), 
+                self.wrap_view('top_level'), 
+                name="api_%s_top_level" % self.api_name),
+        ]
+
+        for name in sorted(self._registry.keys()):
+            self._registry[name].api_name = self.api_name
+            pattern_list.append(
+                url(r"^(?P<api_name>%s)/" % self.api_name, 
+                    include(self._registry[name].urls)))
+
+        urlpatterns = self.prepend_urls()
+
+
+        urlpatterns += pattern_list
+        return urlpatterns
+
+    def top_level(self, request, api_name=None):
+        """
+        A view that returns a serialized list of all resources registers
+        to the ``Api``. Useful for discovery.
+        """
+        fullschema = parse_val(
+            request.GET.get('fullschema', False),
+            'fullschema', 'boolean')
+
+        available_resources = {}
+
+        if api_name is None:
+            api_name = self.api_name
+
+        for name, resource in self._registry.items():
+            if not fullschema:
+                schema = self._build_reverse_url("api_get_schema", kwargs={
+                    'api_name': api_name,
+                    'resource_name': name,
+                })
+            else:
+                schema = resource.build_schema()
+
+            available_resources[name] = {
+                'list_endpoint': 
+                    self._build_reverse_url("api_dispatch_list", kwargs={
+                        'api_name': api_name,
+                        'resource_name': name,
+                    }),
+                'schema': schema,
+            }
+
+        serializer = LimsSerializer()
+        content_type = serializer.get_accept_content_type(request)
+        serialized =  serializer.serialize(available_resources, content_type)
+        return HttpResponse(
+            content=serialized, 
+            content_type=content_type)
+
+    def _build_reverse_url(self, name, args=None, kwargs=None):
+        return django.core.urlresolvers.reverse(name, args=args, kwargs=kwargs)

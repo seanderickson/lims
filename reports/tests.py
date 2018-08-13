@@ -1140,8 +1140,6 @@ class IResourceTestCase(SimpleTestCase):
         self.csv_serializer=CSVSerializer() 
         self.serializer = LimsSerializer()
         self.api_client = TestApiClient(serializer=self.serializer)       
-
-        # TODO: replace all tastypie.test.TestApiClient clients with the
         self.django_client = Client()
         settings.BACKGROUND_PROCESSING = False
             

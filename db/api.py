@@ -48,7 +48,6 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
 import sqlalchemy.sql.sqltypes
-from tastypie.utils.urls import trailing_slash
 import unicodecsv
 import xlsxwriter
 
@@ -94,7 +93,7 @@ from reports.api import ApiLogResource, UserGroupAuthorization, \
     UserResourceAuthorization, FieldResource
 import reports.api
 from reports.api_base import un_cache, MultiAuthentication, \
-    IccblBasicAuthentication, IccblSessionAuthentication
+    IccblBasicAuthentication, IccblSessionAuthentication, TRAILING_SLASH
 from reports.models import Vocabulary, ApiLog, UserProfile
 from reports.schema import DATE_FORMAT
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
@@ -520,13 +519,13 @@ class PlateLocationResource(DbApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/(?P<room>[\w \-<>]+)"
                 r"/(?P<freezer>[\w \-<>]+)"
                 r"/(?P<shelf>[\w \-<>]+)"
                 r"/(?P<bin>[\w <>]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
@@ -1086,24 +1085,24 @@ class LibraryCopyPlateResource(DbApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/batch_edit%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('batch_edit'), name="api_lcp_batch_edit"),
             url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
                 % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
-                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,trailing_slash()),
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,TRAILING_SLASH),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
                 r"/(?P<copy_name>[\w.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
@@ -2600,16 +2599,16 @@ class UserAgreementResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
 #             url((r"^(?P<resource_name>%s)/" 
 #                  r"(?P<user_agreement_id>([\d]+))%s$")
-#                     % (self._meta.resource_name, trailing_slash()),
+#                     % (self._meta.resource_name, TRAILING_SLASH),
 #                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<screensaver_user_id>([\d]+))/"
                  r"(?P<type>(\w+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ] 
 
@@ -3969,16 +3968,16 @@ class ScreenResultResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/"
                 r"(?P<screen_facility_id>\w+)/" 
                 r"(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/"
                 r"(?P<screen_facility_id>\w+)/"
                 r"schema%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/"
                 r"(?P<screen_facility_id>\w+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
 
@@ -6002,19 +6001,19 @@ class DataColumnResource(DbApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<data_column_id>\d+)%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/screen/"
                  r"(?P<screen_facility_id>([\w]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
             url((r"^(?P<resource_name>%s)/for_screen/"
                  r"(?P<for_screen_facility_id>([\w]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_datacolumn_other_screens_view'), 
                 name="api_dispatch_datacolumn_other_screens_view"),
         ]    
@@ -6430,25 +6429,25 @@ class CopyWellResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
                 % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
-                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID, trailing_slash()),
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID, TRAILING_SLASH),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
                 r"/(?P<copy_name>[\w.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
                 r"/(?P<copy_name>[\w.\-\+: ]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
 
@@ -7190,97 +7189,97 @@ class CherryPickRequestResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/screener_cherry_pick%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screener_cherry_pick_view'),
                 name="api_dispatch_screener_cherry_pick_view"),
             url((r"^(?P<resource_name>%s)/(?P<cherry_pick_request_id>[\d]+)"
                  r"/screener_cherry_pick/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_scp_schema'),
                 name="api_get_scp_schema"),
 
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/warnings%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_cpr_warnings'),
                 name="api_dispatch_cpr_warnings_view"),
             
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/lab_cherry_pick%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_lab_cherry_pick_view'),
                 name="api_dispatch_lab_cherry_pick_view"),
             url((r"^(?P<resource_name>%s)/(?P<cherry_pick_request_id>[\d]+)"
                  r"/lab_cherry_pick/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_lcp_schema'),
                 name="api_get_lcp_schema"),
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/source_plate%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_source_plate_view'),
                 name="api_dispatch_source_plate_view"),
 
             url((r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)" 
                  r"/cherry_pick_plate%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_cherry_pick_plate_view'),
                 name="api_dispatch_cherry_pick_plate_view"),
             
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)/set_lab_cherry_picks%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_set_lab_cherry_picks'), 
                 name="api_dispatch_set_lab_cherry_picks"),
 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)/set_duplex_lab_cherry_picks%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_set_duplex_lab_cherry_picks'), 
                 name="api_dispatch_set_duplex_lab_cherry_picks"),
 
 #             url(r"^(?P<resource_name>%s)"
 #                 r"/(?P<cherry_pick_request_id>[\d]+)/plate_lab_cherrypicks%s$" 
-#                     % (self._meta.resource_name, trailing_slash()),
+#                     % (self._meta.resource_name, TRAILING_SLASH),
 #                 self.wrap_view('dispatch_plate_lab_cherrypicks'), 
 #                 name="api_dispatch_plate_lab_cherrypicks"),
 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)/reserve_map_lab_cherry_picks%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_reserve_map_lab_cherry_picks'), 
                 name="api_dispatch_reserve_map_lab_cherry_picks"),
                 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)/cancel_reservation%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_cancel_reservation'), 
                 name="api_dispatch_cancel_reservation"),
                 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)/delete_lab_cherry_picks%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_delete_lab_cherry_picks'), 
                 name="api_delete_lab_cherry_picks"),
                 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)"
                 r"/plate_mapping_file%s$"
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view(
                     'get_plate_mapping_file'), 
                     name="api_get_plate_mapping_file"),
@@ -7288,14 +7287,14 @@ class CherryPickRequestResource(DbApiResource):
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)"
                 r"/lab_cherry_pick_plating%s$"
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view(
                     'dispatch_lab_cherry_pick_plating'), 
                     name="api_dispatch_lab_cherry_pick_plating"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)"
                 r"/lab_cherry_pick_plating/schema%s$"
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view(
                     'get_lab_cherry_pick_plating_schema'), 
                     name="get_get_lab_cherry_pick_plating_schema"),
@@ -9577,13 +9576,13 @@ class ScreenerCherryPickResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)"
                 r"/(?P<source_well_id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
@@ -10200,13 +10199,13 @@ class LabCherryPickResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)"
                 r"/(?P<source_well_id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
         
@@ -11230,13 +11229,13 @@ class CherryPickPlateResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)"
                 r"/(?P<plate_ordinal>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
@@ -11681,22 +11680,22 @@ class LibraryCopyResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
            url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w.\-\+: ]+)"
                  r"/(?P<copy_name>[^/]+)%s$")  
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
                 % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
-                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID, trailing_slash()),
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID, TRAILING_SLASH),
                 self.wrap_view('search'), name="api_search"),
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w.\-\+: ]+)"
                  r"/(?P<copy_name>[^/]+)"
                  r"/plate%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_librarycopyplateview'),
                 name="api_dispatch_librarycopy_plateview"),
         ]    
@@ -12238,11 +12237,11 @@ class PublicationResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<publication_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ] 
         
@@ -12649,25 +12648,25 @@ class AttachedFileResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<attached_file_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/user/(?P<screensaver_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
             url(r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
             url((r"^(?P<resource_name>%s)/user/(?P<screensaver_user_id>([\d]+))" 
                  r"/(?P<attached_file_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))" 
                  r"/(?P<attached_file_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ] 
         
@@ -13230,11 +13229,11 @@ class ActivityResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<activity_id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
     
@@ -13663,17 +13662,17 @@ class ServiceActivityResource(ActivityResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<activity_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
             url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
 
@@ -13990,20 +13989,20 @@ class LibraryScreeningResource(ActivityResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<activity_id>([\d]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<activity_id>([\d]+))/plates%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_plates_screened_view'),
                 name="api_dispatch_plates_screened_view"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<activity_id>([\d]+))/libraries%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_libraries_screened_view'),
                 name="api_dispatch_libraries_screened_view"),
         ]  
@@ -15791,16 +15790,16 @@ class RawDataTransformerResource(DbApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<screen_facility_id>([\w]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<screen_facility_id>([\w]+))/"
                  r"(?P<cherry_pick_request_id>(\d+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
     
@@ -17009,97 +17008,97 @@ class ScreenResource(DbApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/ui%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_detail_uiview'), 
                 name="api_dispatch_screen_detail_uiview"),
 
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/libraries%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_libraryview'),
                 name="api_dispatch_screen_libraryview"),
 
             # FIXME: screen/{facility_id}/cherrypickrequest is the canonical form
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/cherrypicks%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_cherrypickview'),
                 name="api_dispatch_screen_cherrypickview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/cherrypickrequest%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_cherrypickview'),
                 name="api_dispatch_screen_cherrypickrequest"),
                 
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/plates_screened%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_plates_screened_view'),
                 name="api_dispatch_plates_screened_view"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/copyplatesloaded%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_lcp_loadedview'),
                 name="api_dispatch_screen_lcp_loadedview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/billing%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_billingview'),
                 name="api_dispatch_screen_billingview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/datacolumns%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_datacolumnview'),
                 name="api_dispatch_screen_datacolumnview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/activities%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_activityview'),
                 name="api_dispatch_screen_activityview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/libraryscreening%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_screeningview'),
                 name="api_dispatch_screen_screeningview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w]+))/screenresult%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_screenresultview'),
                 name="api_dispatch_screen_screenresultview"),
             url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))/attachedfiles%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_attachedfileview'),
                 name="api_dispatch_screen_attachedfileview"),
             url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
                  r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_attachedfiledetailview'),
                 name="api_dispatch_screen_attachedfiledetailview"),
             url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))/publications%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_publicationview'),
                 name="api_dispatch_screen_publicationview"),
             url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
                  r"/publications/(?P<publication_id>([\d]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_screen_publicationdetailview'),
                 name="api_dispatch_screen_publicationdetailview"),
             url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
                  r"/plate_range_search%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_plate_range_search_view'), 
                 name="api_dispatch_plate_range_search_view"),
             url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
                  r"/plate_range_search/(?P<activity_id>(\d+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_plate_range_search_view'), 
                 name="api_dispatch_plate_range_search_view"),
         ]    
@@ -18466,17 +18465,17 @@ class StudyResource(ScreenResource):
         urls = [
             url(r"^(?P<resource_name>%s)"
                 r"/create_confirmed_positive_study%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_create_confirmed_positive_study'), 
                 name="api_dispatch_create_confirmed_positive_study"),
             url(r"^(?P<resource_name>%s)"
                 r"/create_screened_count_study%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_create_screened_count_study_v2'), 
                 name="api_dispatch_create_screened_count_study"),
             url(r"^(?P<resource_name>%s)"
                 r"/create_screened_count_study_v1%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_create_screened_count_study_v1'), 
                 name="api_dispatch_create_screened_count_study_v1"),
         ] + urls
@@ -19236,14 +19235,14 @@ class UserChecklistResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/" 
                  r"(?P<name>([\w_]+))%s$")
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
 
@@ -19547,10 +19546,10 @@ class LabAffiliationResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/(?P<lab_affiliation_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
 
@@ -19756,71 +19755,71 @@ class ScreensaverUserResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/groups%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_groupview'),
                 name="api_dispatch_user_groupview"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/groups%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_groupview'),
                 name="api_dispatch_user_groupview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/checklist%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_checklistview'),
                 name="api_dispatch_user_checklistview"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/checklist%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_checklistview'),
                 name="api_dispatch_user_checklistview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/attachedfiles%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_attachedfileview'),
                 name="api_dispatch_user_attachedfileview"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/attachedfiles%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_attachedfileview'),
                 name="api_dispatch_user_attachedfileview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/useragreement%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_useragreement_view'),
                 name="api_dispatch_useragreement_view"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/useragreement%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_useragreement_view'),
                 name="api_dispatch_useragreement_view"),
             url((r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))"
                  r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_attachedfiledetailview'),
                 name="api_dispatch_user_attachedfiledetailview"),
             url((r"^(?P<resource_name>%s)/(?P<username>([\w]+))"
                  r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_attachedfiledetailview'),
                 name="api_dispatch_user_attachedfiledetailview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/serviceactivities%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_serviceactivityview'),
                 name="api_dispatch_user_serviceactivityview"),
             url((r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))"
                  r"/serviceactivities/(?P<activity_id>([\d]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_serviceactivitydetailview'),
                 name="api_dispatch_user_serviceactivitydetailview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/activities%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_activityview'),
                 name="api_dispatch_user_activityview"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/screens%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_user_screenview'),
                 name="api_dispatch_user_screenview"),
         ]    
@@ -20822,39 +20821,39 @@ class ReagentResource(DbApiResource):
         
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/%s/(?P<%s>[\d]+)%s$" 
                 % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
-                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,trailing_slash()),
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,TRAILING_SLASH),
                 self.wrap_view('search'), name="api_search"),
             
             url(r"^(?P<resource_name>%s)/compound_search%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_search_vendor_and_compound'), 
                 name="api_search_vendor_and_compound"),            
             url(r"^(?P<resource_name>%s)/compound_search/%s/(?P<%s>[\d]+)%s$" 
                 % (self._meta.resource_name, SCHEMA.URI_PATH_COMPLEX_SEARCH, 
-                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,trailing_slash()),
+                    SCHEMA.API_PARAM_COMPLEX_SEARCH_ID,TRAILING_SLASH),
                 self.wrap_view('dispatch_search_vendor_and_compound'), 
                 name="api_search_vendor_and_compound"),
                 
             # url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
-            #         % (self._meta.resource_name, trailing_slash()),
+            #         % (self._meta.resource_name, TRAILING_SLASH),
             #     self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<well_id>\d{1,5}\:?[a-zA-Z]{1,2}\d{1,2})%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
                 r"/other_wells%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_other_wells'), 
                 name="api_dispatch_other_wells"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
                 r"/report%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_well_detail_report'), 
                 name="api_dispatch_well_detail_report"),
         ]
@@ -22907,25 +22906,25 @@ class WellResource(DbApiResource):
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
                 r"/annotations%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_well_annotations_view'), 
                     name="api_dispatch_well_annotations_view"),
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
                  r"/duplex_wells%s$" )
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_well_duplex_view'), 
                     name="api_dispatch_well_duplex_view"),
         ]
@@ -24111,93 +24110,93 @@ class LibraryResource(DbApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/plate/(?P<plate_number>[^/]+)%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
-                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/plate%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copywellview'),
                 name="api_dispatch_library_copywellview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywellhistory/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copywellhistoryview'),
                 name="api_dispatch_library_copywellhistoryview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
-                 r"/copywell%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/copywell%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copywellview'),
                 name="api_dispatch_library_copywellview"),
 
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)%s$") 
-                 % (self._meta.resource_name, trailing_slash()),
+                 % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copyview'),
                 name="api_dispatch_library_copyview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/copy%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/copy%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copyview'),
                 name="api_dispatch_library_copyview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/plate%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/plate/(?P<plate_number>[^/]+)%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
 
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/well%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/well%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_wellview'),
                 name="api_dispatch_library_wellview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/well/apply_preview%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/well/apply_preview%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_well_apply_preview'),
                 name="api_dispatch_library_well_apply_preview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/well/delete_preview%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/well/delete_preview%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_well_delete_preview'),
                 name="api_dispatch_library_well_apply_preview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/well/preview%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/well/preview%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_well_preview_view'),
                 name="api_dispatch_library_well_preview"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/reagent%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/reagent%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_reagentview'),
                 name="api_dispatch_library_reagentview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/reagent/preview/%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/reagent/preview/%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_library_well_preview_view'),
                 name="api_dispatch_library_reagent_preview"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/reagent/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_reagent_schema'),
                 name="api_get_reagent_schema"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
-                 r"/version%s$") % (self._meta.resource_name, trailing_slash()),
+                 r"/version%s$") % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_libraryversionview'),
                 name="api_dispatch_libraryversionview"),
         ]    

@@ -1,8 +1,8 @@
 from __future__ import unicode_literals
 from django.conf.urls import patterns, url, include
 from reports import views
-from tastypie.api import Api
 
+from reports.api_base import Api
 from reports.api import VocabularyResource, ResourceResource,\
     ApiLogResource, UserResource, UserGroupResource, PermissionResource, \
     FieldResource, JobResource

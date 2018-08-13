@@ -41,7 +41,6 @@ from sqlalchemy.sql import and_, or_, not_, asc, desc, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct, exists
 from sqlalchemy.sql.selectable import Alias
-from tastypie.utils.urls import trailing_slash
 
 from db.support import lims_utils
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
@@ -50,7 +49,8 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 from reports import ValidationError, BadRequestError, \
     BackgroundJobImmediateResponse, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization, \
-    MultiAuthentication, IccblSessionAuthentication, IccblBasicAuthentication
+    MultiAuthentication, IccblSessionAuthentication, IccblBasicAuthentication, \
+    TRAILING_SLASH
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, Job
 import reports.schema as SCHEMA
@@ -646,20 +646,12 @@ class ApiResource(SqlAlchemyResource):
 
     @read_authorization
     def get_detail(self, request, **kwargs):
-        '''
-        Override the Tastypie 
-        operations will be handled using SqlAlchemy
-        '''
         raise NotImplemented(
             'get_detail must be implemented for resource: %r' 
             % self._meta.resource_name)
     
     @read_authorization
     def get_list(self, request, **kwargs):
-        '''
-        Override the Tastypie 
-        operations will be handled using SqlAlchemy
-        '''
         raise NotImplemented(
             'get_list must be implemented for resource: %r' 
             % self._meta.resource_name)
@@ -2304,29 +2296,29 @@ class ApiLogResource(ApiResource):
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/clear_cache%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_clear_cache'), name="api_clear_cache"),
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/children%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_apilog_childview'), 
                 name="api_dispatch_apilog_childview"),
             url((r"^(?P<resource_name>%s)/children"
                  r"/(?P<ref_resource_name>[\w\d_.\-:]+)"
                  r"/(?P<key>[\w\d_.\-\+: \/]+)"
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_apilog_childview2'), 
                 name="api_dispatch_apilog_childview2"),
             url((r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)"
                  r"/(?P<key>[\w\d_.\-\+: \/]+)"
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
         
@@ -2754,10 +2746,10 @@ class FieldResource(ApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.]+)/(?P<key>[\w\d_]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
     
@@ -3179,13 +3171,13 @@ class ResourceResource(ApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/app_data%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_app_data'), name="api_get_app_data"),
             url(r"^(?P<resource_name>%s)/(?P<key>[\w\d_.\-\+: ]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
         
@@ -3621,14 +3613,14 @@ class VocabularyResource(ApiResource):
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),            
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/"
                  r"(?P<key>[\w\d_.\-\+:]+)%s$" ) 
-                        % (self._meta.resource_name, trailing_slash()), 
+                        % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
 
@@ -4160,18 +4152,18 @@ class UserResource(ApiResource):
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),            
             
             url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_user_groupview'), 
                 name="api_dispatch_user_groupview"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/permissions%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_user_permissionview'), 
                 name="api_dispatch_user_permissionview"),
             ]    
@@ -5269,29 +5261,29 @@ class UserGroupResource(ApiResource):
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
+                % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('get_schema'), name="api_get_schema"),            
             
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/users%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_group_userview'), 
                 name="api_dispatch_group_userview"),
             url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/permissions%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_group_permissionview'), 
                 name="api_dispatch_group_permissionview"),
             url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/supergroups%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_group_supergroupview'), 
                 name="api_dispatch_group_supergroupview"),
             url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/subgroups%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_group_subgroupview'), 
                 name="api_dispatch_group_subgroupview"),
             ]
@@ -5359,11 +5351,11 @@ class PermissionResource(ApiResource):
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
+                    % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/"
                  r"(?P<key>[\w\d_.\-\+:]+)/(?P<type>[\w\d_.\-\+:]+)%s$" ) 
-                        % (self._meta.resource_name, trailing_slash()), 
+                        % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
     
@@ -5567,14 +5559,14 @@ class JobResource(ApiResource):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<id>(\d+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
+                    % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/test_job%s$" 
-                % (self._meta.resource_name, trailing_slash()),
+                % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('test_job'), name="api_test_job"),
         ]
     

@@ -81,12 +81,7 @@ LOGGING = {
             'handlers': ['console'],
             'propagate': True,
             'level': 'INFO',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
+        },
     }
 }
 

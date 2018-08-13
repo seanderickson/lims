@@ -70,6 +70,12 @@ MEDIA_URL = ''
 # /accounts/login is the default
 LOGIN_URL = '/accounts/login/'
 
+# Timeout, in seconds; will cause user logout: 4 hours
+# NOTE: this will not log the browser out until a request is made.
+SESSION_COOKIE_AGE = 60*60*4
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_SECURE = True
+
 # Absolute path to the directory static files should be collected to.
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
@@ -145,17 +151,12 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'tastypie', # manual says this is "not necessary, but useful"
     'reports',
     'lims',
     # NOTE: initial reports migration: may require removal of "db" to solve
     # circular dependency
     'db',
 )
-
-# for tastypie: will evaluate resource URIs the same with or without the trailing slash
-APPEND_SLASH=True
-TASTYPIE_ALLOW_MISSING_SLASH=True
 
 # turn off migrations during testing (just make the database from models.py)
 SOUTH_TESTS_MIGRATE = False

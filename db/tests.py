@@ -26,7 +26,6 @@ from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from django.conf import settings
-# from tastypie.test import TestApiClient
 import xlrd
 import xlsxwriter
 

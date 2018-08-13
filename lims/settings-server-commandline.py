@@ -89,12 +89,7 @@ LOGGING = {
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
+        },
     }
 }
 

@@ -2,8 +2,7 @@
 from __future__ import unicode_literals
 
 from django.conf.urls import patterns, url, include
-from tastypie.api import Api
-
+from reports.api_base import Api
 from db import views
 from db.api import ScreensaverUserResource, ScreenResource, \
     ScreenResultResource, StudyResource, \

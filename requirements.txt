@@ -5,7 +5,7 @@ SQLAlchemy >=1.0.9,<1.1
 aldjemy #==0.6.0
 argparse #1.2.1
 # distribute>=0.6.24
-django-tastypie >=0.12.2,<0.13
+django-tastypie #>=0.12.2,<0.13
 fake-factory==0.7.4
 factory-boy==2.7.0
 #factory-boy #2.6.0
@@ -18,7 +18,6 @@ prettytable >= 0.7
 # libpq-dev and python-dev for header files
 # psycopg2-binary requires no build
 # NOTE(2): many sub packages require "psycopg2" at this time; so hold off on this update for now (20180628)
-#psycopg2 >=2.6
 psycopg2>=2.7,<2.8
 python-dateutil #==2.4.2
 pytz #==2015.7

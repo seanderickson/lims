@@ -72,7 +72,7 @@ define([
       function showReleaseMessage(){
         $('#content_title_message').find('#release_message').remove();
         
-        if (self.model.get('is_released') == true){
+        if (self.model.isNew() || self.model.get('is_released') == true){
           return;
         }
 

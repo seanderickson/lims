@@ -2648,7 +2648,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         final_data = [x for x in final_data]
         
         result, outputobj = find_all_obj_in_list(
-            usergroup_patch,final_data,
+            usergroup_patch[API_RESULT_DATA],final_data,
             id_keys_to_check=['name']) #, excludes=keys_not_to_check )
         self.assertTrue(
             result, 

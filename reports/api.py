@@ -345,9 +345,8 @@ def write_authorization(_func):
         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if not self._meta.authorization._is_resource_authorized(
             request.user,'write', **kwargs):
-            logger.info('write auth failed for: %r, %r', 
-                request.user, resource_name)
-            msg = 'write auth failed for: %r, %r' % (request.user, resource_name)
+            msg = 'write auth failed for user: %r, resource: %r' \
+                % (request.user, resource_name)
             logger.warn(msg)
             raise PermissionDenied(msg)
         if resource_name != 'screenresult':
@@ -3063,7 +3062,6 @@ class FieldResource(ApiResource):
             query.delete()
         return HttpResponse(status=204)
     
-    
     @write_authorization
     @un_cache        
     @transaction.atomic    
@@ -4256,7 +4254,7 @@ class UserResource(ApiResource):
                         ]).\
                     select_from(_p.join(_upp,_p.c.id==_upp.c.permission_id)).
                     where(text('reports_userprofile.id')==_upp.c.userprofile_id).
-                    order_by('permission').alias('inner_perms')),
+                    order_by(text('permission')).alias('inner_perms')),
             'usergroups': 
                 select([func.array_to_string(
                         func.array_agg(text('inner_groups.name')), 
@@ -4291,7 +4289,7 @@ class UserResource(ApiResource):
                             ==text('reports_userprofile.id'),
                         _p.c.id==text('any(uap.all_permissions)'))
                         ).\
-                    order_by('permission').alias('innerp')),
+                    order_by(text('permission')).alias('innerp')),
             }
 
         return custom_columns
@@ -4659,7 +4657,6 @@ class UserGroupResource(ApiResource):
 
     def clear_cache(self, request, **kwargs):
         ApiResource.clear_cache(self, request, **kwargs)
-#         self.get_resource_resource().clear_cache()
         
     def get_permission_resource(self):
         if not self.permission_resource:
@@ -5094,7 +5091,7 @@ class UserGroupResource(ApiResource):
                         .select_from(
                             _p.join(_ugp,_p.c.id==_ugp.c.permission_id))
                         .where(_ugp.c.usergroup_id==text('reports_usergroup.id'))
-                        .order_by('permission')
+                        .order_by(text('permission'))
                         .alias('innerperm')
                     )),
                 'users': (
@@ -5154,7 +5151,7 @@ class UserGroupResource(ApiResource):
                         .where(
                             group_all_permissions.c.usergroup_id==
                                 text('reports_usergroup.id'))
-                        .order_by('permission')
+                        .order_by(text('permission'))
                         .alias('allperm')
                     )),
                 'all_super_groups': (

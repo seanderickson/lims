@@ -5,7 +5,7 @@ import io
 import logging
 
 from PIL import Image
-import dateutil
+import dateutil.parser
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve

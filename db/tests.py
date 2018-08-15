@@ -2485,10 +2485,10 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(plate_location_msg in meta[API_MSG_RESULT])
         plate_location_result = meta[API_MSG_RESULT][plate_location_msg]
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in plate_location_result, '%r' % plate_location_result)
-        self.assertTrue(plate_location_result[API_MSG_SUBMIT_COUNT]==6, 
+            API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
+        self.assertTrue(plate_location_result[API_MSG_UPDATED]==6, 
             'Wrong %r count: %r' 
-            % (API_MSG_SUBMIT_COUNT,plate_location_result))
+            % (API_MSG_UPDATED,plate_location_result))
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -7898,23 +7898,12 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(API_RESULT_META in _data)
         _meta = _data[API_RESULT_META]
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
-        copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
         plate_copy1a = '1000:%s' % self.library1_copy1a['copy_name']
         plate_copy_l2_c1 = '2001:%s' % self.library2_copy1['copy_name']
         plate_copy_l4_c1 = '4000:%s' % self.library4_copy1['copy_name']
-        
-        for msg in copy_plate_assigned_msg:
-            if plate_copy1a in msg:
-                self.assertEqual(6, msg[1])
-            elif plate_copy_l2_c1 in msg:
-                self.assertEqual(3, msg[1])
-            elif plate_copy_l4_c1 in msg:
-                self.assertEqual(6, msg[1])
-            else:
-                self.fail(
-                    'unknown platecopy has been assigned: %r, '
-                    'expected platecopies: %r'
-                    % (msg,[plate_copy1a,plate_copy_l2_c1,plate_copy_l4_c1]))
+        self.assertEqual(
+            set(_meta[API_MSG_LCP_PLATES_ASSIGNED]),
+            set([plate_copy1a,plate_copy_l2_c1,plate_copy_l4_c1]))
         
         self.assertTrue(API_MSG_LCP_ASSAY_PLATES_CREATED in _meta )
         expected_assay_plates = 3
@@ -7995,18 +7984,9 @@ class CherryPickRequestResource(DBResourceTestCase):
         plate_copy_l2_c1 = '2001:%s' % self.library2_copy1['copy_name']
         plate_copy_l4_c1 = '4000:%s' % self.library4_copy1['copy_name']
         
-        for msg in copy_plate_assigned_msg:
-            if plate_copy1a in msg:
-                self.assertEqual(6, msg[1])
-            elif plate_copy_l2_c1 in msg:
-                self.assertEqual(3, msg[1])
-            elif plate_copy_l4_c1 in msg:
-                self.assertEqual(6, msg[1])
-            else:
-                self.fail(
-                    'unknown platecopy has been assigned: %r, '
-                    'expected platecopies: %r'
-                    % (msg,[plate_copy1a,plate_copy_l2_c1,plate_copy_l4_c1]))
+        self.assertEqual(
+            set(_meta[API_MSG_LCP_PLATES_ASSIGNED]),
+            set([plate_copy1a,plate_copy_l2_c1,plate_copy_l4_c1]))
         
         self.assertTrue(API_MSG_LCP_ASSAY_PLATES_CREATED in _meta )
         expected_assay_plates = 3
@@ -8718,23 +8698,15 @@ class CherryPickRequestResource(DBResourceTestCase):
             copywell_1000_a01 in volume_overrides[0])
 
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
-        copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
-        expected_copyplate_assignments = {
-            '1000:%s'%self.library1_copy1['copy_name']: 5,
-            '1000:%s'%self.library1_copy4['copy_name']: 1,
-            '2001:%s'%self.library2_copy1['copy_name']: 3,
-            '4000:%s'%self.library4_copy1['copy_name']: 6
-            }
-        logger.info(
-            'check expected_copyplate_assignments: %r', 
+        expected_copyplate_assignments = set([
+            '1000:%s'%self.library1_copy1['copy_name'],
+            '1000:%s'%self.library1_copy4['copy_name'],
+            '2001:%s'%self.library2_copy1['copy_name'],
+            '4000:%s'%self.library4_copy1['copy_name']
+            ])
+        self.assertEqual(
+            set(_meta[API_MSG_LCP_PLATES_ASSIGNED]),
             expected_copyplate_assignments)
-        logger.info('actual: %r', copy_plate_assigned_msg)
-        for copyname,assigned_count in expected_copyplate_assignments.items():
-            found = False
-            for msg in copy_plate_assigned_msg:
-                if copyname in msg:
-                    self.assertEqual(
-                        expected_copyplate_assignments[copyname],msg[1])
 
         self.assertTrue(API_MSG_LCP_ASSAY_PLATES_CREATED in _meta )
         expected_assay_plates = 3
@@ -8804,7 +8776,6 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         self.assertTrue(API_RESULT_ERROR in _data)
         self.assertTrue(API_PARAM_OVERRIDE in _data[API_RESULT_ERROR])
-#         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _data[API_RESULT_ERROR])
 
         # 2.C cancel plating reservation
         cpaps = self._get_cpaps(cpr_id)
@@ -9036,25 +9007,16 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(API_RESULT_META in _data)
         _meta = _data[API_RESULT_META]
         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _meta)
-        copy_plate_assigned_msg = _meta[API_MSG_LCP_PLATES_ASSIGNED]
-        expected_copyplate_assignments = {
-            '1000:%s'%self.library1_copy1['copy_name']: 4,
-            '1000:%s'%self.library1_copy4['copy_name']: 2,
-            '2001:%s'%self.library2_copy1['copy_name']: 3,
-            '4000:%s'%self.library4_copy1['copy_name']: 6
-            }
-        logger.info(
-            'check expected_copyplate_assignments: %r', 
+        expected_copyplate_assignments = set([
+            '1000:%s'%self.library1_copy1['copy_name'],
+            '1000:%s'%self.library1_copy4['copy_name'],
+            '2001:%s'%self.library2_copy1['copy_name'],
+            '4000:%s'%self.library4_copy1['copy_name']
+            ])
+        self.assertEqual(
+            set(_meta[API_MSG_LCP_PLATES_ASSIGNED]),
             expected_copyplate_assignments)
-        logger.info('actual: %r', copy_plate_assigned_msg)
-        for copyname,assigned_count in expected_copyplate_assignments.items():
-            found = False
-            for msg in copy_plate_assigned_msg:
-                if copyname in msg:
-                    expected_count = expected_copyplate_assignments[copyname]
-                    self.assertEqual(expected_count,msg[1],
-                        'copy: %r expected: %r, %r' 
-                            % (copyname, expected_count, msg))
+
         self.assertTrue(API_MSG_LCP_ASSAY_PLATES_CREATED in _meta )
         expected_assay_plates = 3
         self.assertTrue(
@@ -9210,7 +9172,6 @@ class CherryPickRequestResource(DBResourceTestCase):
         
         self.assertTrue(API_RESULT_ERROR in _data)
         self.assertTrue(API_PARAM_OVERRIDE in _data[API_RESULT_ERROR])
-#         self.assertTrue(API_MSG_LCP_PLATES_ASSIGNED in _data[API_RESULT_ERROR])
 
         # 2.B Try to change the LCP assignment after plating,
         # now using the API_PARAM_OVERRIDE==True

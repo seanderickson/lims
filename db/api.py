@@ -844,6 +844,8 @@ class PlateLocationResource(DbApiResource):
         meta = { 
             API_MSG_RESULT: { 
                 'Plate location': action,
+                # Note remove submitted/unchanged count, inaccurate because
+                # all plates for the location are "submitted"
                 # API_MSG_SUBMIT_COUNT : patch_count, 
                 API_MSG_UPDATED: update_count, 
                 # API_MSG_UNCHANGED: unchanged_count, 
@@ -2463,6 +2465,7 @@ class LibraryCopyPlateResource(DbApiResource):
             _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), JSON_MIMETYPE)
             results = _data[API_RESULT_META][API_MSG_RESULT]
+            logger.info('results plate location patch: %r', results)
             meta = { 
                 API_MSG_RESULT: { 
                     'Plate Location Result: %s' % plate_location_name: results,
@@ -9028,7 +9031,7 @@ class CherryPickRequestResource(DbApiResource):
 #             (plate_copy, len(lcp_by_plate_copy[plate_copy]))
 #                 for plate_copy in plate_copies] 
         _meta = {
-            API_MSG_LCP_PLATES_ASSIGNED: ', '.join(plate_copies),
+            API_MSG_LCP_PLATES_ASSIGNED: plate_copies,
             API_MSG_LCP_ASSAY_PLATES_CREATED: cpap_assignments
         }
         _meta.update(copywell_reservation_meta)

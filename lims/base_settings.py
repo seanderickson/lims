@@ -191,6 +191,9 @@ MIN_WELLS_TO_CLEAR_INDEXES = 3e5
 # see reports/auth.py
 IS_PRODUCTION_READY = False
 
+# For use when authenticating
+BASIC_AUTH_REALM='screensaver'
+
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',

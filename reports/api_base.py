@@ -6,15 +6,15 @@ from functools import wraps
 import logging
 import re
 
-import django.core.urlresolvers
 from django.conf import settings
-from django.conf.urls import url, patterns, include
-from django.contrib.auth import authenticate
+from django.conf.urls import url, include
+import django.contrib.auth
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist, PermissionDenied,\
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, \
     ImproperlyConfigured
 import django.core.exceptions
 from django.core.signals import got_request_exception
+import django.core.urlresolvers
 from django.http.response import HttpResponseBase, HttpResponse, \
     HttpResponseNotFound, Http404, HttpResponseForbidden, HttpResponseBadRequest, \
     HttpResponseServerError
@@ -26,13 +26,29 @@ from django.utils.encoding import force_text
 from django.utils.http import same_origin
 from django.views.decorators.csrf import csrf_exempt
 
-from reports.utils.django_requests import convert_request_method_to_put
 from db.support.data_converter import default_converter
 from reports import ValidationError, InformationError, BadRequestError, \
     BackgroundJobImmediateResponse, LoginFailedException, API_RESULT_ERROR
+from reports.auth import DEBUG_AUTHENTICATION
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import BaseSerializer, LimsSerializer
+from reports.utils.django_requests import convert_request_method_to_put
+
+# NOTE: API design is based loosely on the tastypie project: 
+# see attributions, e.g.:
+
+# From tastypie.compat
+# Compatability for salted vs unsalted CSRF tokens;
+# Django 1.10's _sanitize_token also hashes it, so it can't be compared directly.
+# Solution is to call _sanitize_token on both tokens, then unsalt or noop both
+try:
+    from django.middleware.csrf import _unsalt_cipher_token
+    def unsalt_token(token):
+        return _unsalt_cipher_token(token)
+except ImportError:
+    def unsalt_token(token):
+        return token
 
 
 logger = logging.getLogger(__name__)
@@ -60,134 +76,93 @@ def un_cache(_func):
 
     return _inner
 
-# Authentication Classes taken from tastypie.authentication
-
 class Authentication(object):
-    """
-    A simple base class to establish the protocol for auth.
-    """
     def __init__(self):
         pass
 
     def is_authenticated(self, request, **kwargs):
+        '''
+        @return True if successful authentication is performed
+        '''
         return True
 
-    def get_identifier(self, request):
-        """
-        Provides a unique string identifier for the requestor.
-
-        This implementation returns a combination of IP address and hostname.
-        """
-        return "%s_%s" % (request.META.get('REMOTE_ADDR', 'noaddr'), 
-            request.META.get('REMOTE_HOST', 'nohost'))
-
-#     def check_active(self, user):
-#         """
-#         Ensures the user has an active account.
-# 
-#         Optimized for the ``django.contrib.auth.models.User`` case.
-#         """
-#         return user.is_active
-
-
 class MultiAuthentication(object):
-    """
-    An authentication backend that tries a number of backends in order.
-    """
-    def __init__(self, *backends, **kwargs):
+    '''
+    Authenticate using the given authentication_clients, in order.
+    '''
+    def __init__(self, *authentication_clients, **kwargs):
+        '''
+        @param authentication_clients in order, to try
+        '''
         super(MultiAuthentication, self).__init__(**kwargs)
-        self.backends = backends
+        self.authentication_clients = authentication_clients
 
     def is_authenticated(self, request, **kwargs):
-        """
-        Identifies if the user is authenticated to continue or not.
-        """
-        unauthorized = False
 
-        for backend in self.backends:
-            check = backend.is_authenticated(request, **kwargs)
-
-            if check:
-                if isinstance(check, HttpResponse):
-                    unauthorized = unauthorized or check
-                else:
-                    request._authentication_backend = backend
-                    return check
-
-        return unauthorized
-
-    def get_identifier(self, request):
-        """
-        Provides a unique string identifier for the requestor.
-
-        This implementation returns a combination of IP address and hostname.
-        """
-        try:
-            return request._authentication_backend.get_identifier(request)
-        except AttributeError:
-            return 'nouser'
-
-      
+        for authentication_client in self.authentication_clients:
+            
+            if DEBUG_AUTHENTICATION:
+                logger.info('try authentication: %r', authentication_client)
+                
+            auth_result = authentication_client.is_authenticated(request, **kwargs)
+            
+            if DEBUG_AUTHENTICATION:
+                logger.info('authentication_client: %r, result: %r',
+                    authentication_client, auth_result)
+            
+            if auth_result is True:
+                return True
+            
+        return False
+    
 class IccblBasicAuthentication(Authentication):
-    """
-    Handles HTTP Basic auth against a specific auth backend if provided,
-    or against all configured authentication backends using the
-    ``authenticate`` method from ``django.contrib.auth``.
-
-    Optional keyword arguments:
-
-    ``backend``
-        If specified, use a specific ``django.contrib.auth`` backend instead
-        of checking all backends specified in the ``AUTHENTICATION_BACKENDS``
-        setting.
-    ``realm``
-        The realm to use in the ``HttpUnauthorized`` response.  Default:
-        ``screensaver``.
+    '''
+    Handles HTTP Basic auth using django.contrib.auth.authenticate
+    
     NOTE: modified from tastypie.authentication.BasicAuthentication:
     - modified to support the format <superuser_username>:<username>:<password>
-    format used by the LIMS to support login "as user" by the superuser.
-    """
-    def __init__(self, backend=None, realm='screensaver', **kwargs):
+    format used by the LIMS to support login 'as user' by the superuser.
+    '''
+    def __init__(self, **kwargs):
         super(IccblBasicAuthentication, self).__init__(**kwargs)
-        self.backend = backend
-        self.realm = realm
-
-    def _unauthorized(self):
-        response = HttpResponse(status=401)
-        # FIXME: Sanitize realm.
-        response['WWW-Authenticate'] = 'Basic Realm="%s"' % self.realm
-        return response
 
     def is_authenticated(self, request, **kwargs):
-        """
-        Checks a user's basic auth credentials against the current
-        Django auth backend.
-
-        Should return either ``True`` if allowed, ``False`` if not or an
-        ``HttpResponse`` if you need something custom.
-        """
-        if not request.META.get('HTTP_AUTHORIZATION'):
+        '''
+        Checks a user's basic auth credentials using
+        django.contrib.auth.authenticate
+        
+        @return True if successful authentication is performed
+        '''
+        
+        header_authorization = request.META.get('HTTP_AUTHORIZATION')
+        if not header_authorization:
+            if DEBUG_AUTHENTICATION:
+                logger.info('HTTP_AUTHORIZATION header not found')
             return False
-            # return self._unauthorized()
 
         try:
-            (auth_type, data) = request.META['HTTP_AUTHORIZATION'].split()
+            (auth_type, data) = header_authorization.split()
             if auth_type.lower() != 'basic':
-                return self._unauthorized()
+                if DEBUG_AUTHENTICATION:
+                    logger.info('HTTP_AUTHORIZATION type is not "basic"')
+                return False
             user_pass = base64.b64decode(data).decode('utf-8')
         except Exception,e:
-            logger.exception('auth fail: %r', e)
-            return self._unauthorized()
+            logger.exception('auth fail on decoding user/password: %r', e)
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'failed to decode basic auth header'})
         
         bits = user_pass.split(':')
         if len(bits) > 3:
             logger.error('user-pass split returns > 3 strings: %d', len(bits))
-            return self._unauthorized()
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'failed to decode basic auth header: '
+                    'user:password format'})
         elif len(bits) == 3:
-            # Special case, supports proxy login by superuser "as" user using format:
+            # Special case, supports proxy login by superuser 'as' user using format:
             # <superuser_username>:<username>:<password>
             # recombine the <superuser_username>:<username> and allow the 
-            # reports.auth backend to process using the 
+            # django.contrib.auth.authenticate backend to process using the 
             # reports.auth.USER_PROXY_LOGIN_PATTERN 
             username = '%s:%s' % (bits[0],bits[1])
             password = bits[2]
@@ -196,141 +171,108 @@ class IccblBasicAuthentication(Authentication):
             password = bits[1]
         else:
             logger.error('user-pass split returns only one element')
-            return self._unauthorized()
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'failed to decode basic auth header: '
+                    'user:password format'})
 
-        if self.backend:
-            user = self.backend.authenticate(username=username, password=password)
-        else:
-            user = authenticate(username=username, password=password)
+        if DEBUG_AUTHENTICATION:
+            logger.info(
+                'calling django.contrib.auth.authenticate for user %r', username)
+        user = django.contrib.auth.authenticate(
+            username=username, password=password)
 
         if user is None:
             logger.info('no user found for: %s', username)
-            return self._unauthorized()
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'unknown user: %s' % username })
 
         if user.is_active is not True:
             logger.info('user is not active: %s', username)
-            return False
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'user is not active: %s' % username })
 
         request.user = user
         return True
 
-    def get_identifier(self, request):
-        """
-        Provides a unique string identifier for the requestor.
-
-        This implementation returns the user's basic auth username.
-        """
-        return request.META.get('REMOTE_USER', 'nouser')
-
 class IccblSessionAuthentication(Authentication):
-    """
-    Replaces Tastypie authentication.SessionAuthentication:
-    - update to support Django >1.4 "csrfmiddlewaretoken"
-    @see django.middleware.csrf
+    '''
+    Use the Django session to validate that the current user is authenticated.
     
-    From tastypie comments:
+    Note: see tastypie.authentication.SessionAuthentication for original 
+    implementation - updated to support Django >1.4 "csrfmiddlewaretoken".
     
-    Cargo-culted from Django 1.3/1.4's ``django/middleware/csrf.py``.
-    An authentication mechanism that piggy-backs on Django sessions.
-
-    This is useful when the API is talking to Javascript on the same site.
-    Relies on the user being logged in through the standard Django login
-    setup.
-
-    Requires a valid CSRF token.
-    """
+    Note: Requires a valid CSRF token, "csrfmiddlewaretoken" may be passed as a 
+    POST parameter
+    
+    @see django.middleware.csrf (used as a guide)
+    
+    '''
     def is_authenticated(self, request, **kwargs):
-        """
+        '''
         Checks to make sure the user is logged in & has a Django session.
-        """
-        try:
-            csrf_token = _sanitize_token(
-                    request.COOKIES[settings.CSRF_COOKIE_NAME])
-        except KeyError:
-            logger.error('Check that basic auth is working; '
-                'requires user.is_active flag be set')
-            logger.error('cookies: %r', request.COOKIES)
-            logger.error('reject: NO CSRF cookie: %r', settings.CSRF_COOKIE_NAME)
-            return False
-
+        '''
         if request.method in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
             return request.user.is_authenticated()
 
         if getattr(request, '_dont_enforce_csrf_checks', False):
+            logger.info('_dont_enforce_csrf_checks is set...')
             return request.user.is_authenticated()
-        
-        if request.is_secure():
-            # Suppose user visits http://example.com/
-            # An active network attacker (man-in-the-middle, MITM) sends a
-            # POST form that targets https://example.com/detonate-bomb/ and
-            # submits it via JavaScript.
-            #
-            # The attacker will need to provide a CSRF cookie and token, but
-            # that's no problem for a MITM and the session-independent
-            # nonce we're using. So the MITM can circumvent the CSRF
-            # protection. This is true for any HTTP connection, but anyone
-            # using HTTPS expects better! For this reason, for
-            # https://example.com/ we need additional protection that treats
-            # http://example.com/ as completely untrusted. Under HTTPS,
-            # Barth et al. found that the Referer header is missing for
-            # same-domain requests in only about 0.2% of cases or less, so
-            # we can use strict Referer checking.
-            referer = force_text(
-                request.META.get('HTTP_REFERER'),
-                strings_only=True,
-                errors='replace'
-            )
-            if referer is None:
-                logger.error('reject: %s', REASON_NO_REFERER)
-                return False
 
-            # Note that request.get_host() includes the port.
-            good_referer = 'https://%s/' % request.get_host()
-            if not same_origin(referer, good_referer):
-                reason = REASON_BAD_REFERER % (referer, good_referer)
-                logger.error('reject: %s', reason)
-                return False
-
+        csrf_token = _sanitize_token(request.COOKIES.get(settings.CSRF_COOKIE_NAME))
         if csrf_token is None:
-            # No CSRF cookie. For POST requests, we insist on a CSRF cookie,
-            # and in this way we can avoid all CSRF attacks, including login
-            # CSRF.
+            # No CSRF cookie. For POST requests, required.
             logger.error('reject: NO CSRF cookie')
             return False
+        elif DEBUG_AUTHENTICATION:
+            logger.info('Found cookie: %r: %r',
+                settings.CSRF_COOKIE_NAME, csrf_token)
 
-        # Check non-cookie token for match.
-        request_csrf_token = ""
-        if request.method == "POST":
+        if request.is_secure():
+            if DEBUG_AUTHENTICATION:
+                logger.info('perform secure session check.')
+            referer = request.META.get('HTTP_REFERER')
+
+            if referer is None:
+                return False
+
+            good_referer = 'https://%s/' % request.get_host()
+
+            if not same_origin(referer, good_referer):
+                return False
+
+        request_csrf_token = ''
+        if request.method == 'POST':
+            # Look for POSTED csrf token:
+            # Use the >1.4 Django Forms token key: "csrfmiddlewaretoken"
             try:
                 request_csrf_token = request.POST.get('csrfmiddlewaretoken', '')
+                if DEBUG_AUTHENTICATION:
+                    logger.info(
+                        'SessionAuthentication: POST csrf token (%r): %r', 
+                        'csrfmiddlewaretoken', request_csrf_token)
             except IOError:
                 # Handle a broken connection before we've completed reading
-                # the POST data. process_view shouldn't raise any
-                # exceptions, so we'll ignore and serve the user a 403
+                # the POST data. 
                 # (assuming they're still listening, which they probably
                 # aren't because of the error).
                 pass
 
-        if request_csrf_token == "":
-            # Fall back to X-CSRFToken, to make things easier for AJAX,
-            # and possible for PUT/DELETE.
+        if request_csrf_token == '':
+            # Fall back to X-CSRFToken, used by Ajax clients
             request_csrf_token = request.META.get('HTTP_X_CSRFTOKEN', '')
+            if DEBUG_AUTHENTICATION:
+                logger.info(
+                    'SessionAuthentication: POST csrf token (%r): %r', 
+                    'HTTP_X_CSRFTOKEN', request_csrf_token)
 
-        if not constant_time_compare(request_csrf_token, csrf_token):
-            logger.error('%r != %r', request_csrf_token, csrf_token)
-            logger.error('reject: %s', REASON_BAD_TOKEN)
+        request_csrf_token = _sanitize_token(request_csrf_token)
+
+        if not constant_time_compare(unsalt_token(request_csrf_token),
+                                     unsalt_token(csrf_token)):
+            logger.warn('CSRF tokens do not match: %r', request)
             return False
-        
+
         return request.user.is_authenticated()
-
-    def get_identifier(self, request):
-        """
-        Provides a unique string identifier for the requestor.
-
-        This implementation returns the user's username.
-        """
-
-        return getattr(request.user, get_username_field())       
 
 
 class Authorization(object):
@@ -347,12 +289,12 @@ class Authorization(object):
 
 
 class ResourceOptions(object):
-    """
+    '''
     A configuration class for ``Resource``.
 
     Provides sane defaults and the logic needed to augment these settings with
     the internal ``class Meta`` used on ``Resource`` subclasses.
-    """
+    '''
     serializer = BaseSerializer()
     authentication = Authentication()
     authorization = Authorization()
@@ -391,11 +333,11 @@ class DeclarativeMetaclass(type):
         return new_class
 
 class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
-    """
+    '''
     see tastypie.resources.Resource:
     -- use StreamingHttpResponse or the HttpResponse
     -- control application specific caching
-    """
+    '''
 
     def __init__(self, api_name=None):
 
@@ -403,16 +345,16 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             self._meta.api_name = api_name
 
     def base_urls(self):
-        """
+        '''
         The standard URLs this ``Resource`` should respond to.
-        """
+        '''
         return [
-            url(r"^(?P<resource_name>%s)%s$" % (
+            url(r'^(?P<resource_name>%s)%s$' % (
                 self._meta.resource_name, TRAILING_SLASH), 
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)/schema%s$" % (
+                self.wrap_view('dispatch_list'), name='api_dispatch_list'),
+            url(r'^(?P<resource_name>%s)/schema%s$' % (
                 self._meta.resource_name, TRAILING_SLASH), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
+                self.wrap_view('get_schema'), name='api_get_schema'),
         ]
 
     def dispatch_clear_cache(self, request, **kwargs):
@@ -420,69 +362,67 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         return self.build_response(request, 'ok', **kwargs)
 
     def prepend_urls(self):
-        """
+        '''
         A hook for adding your own URLs or matching before the default URLs.
-        """
+        '''
         return []
 
     @property
     def urls(self):
-        """
+        '''
         The endpoints this ``Resource`` responds to.
 
         Mostly a standard URLconf, this is suitable for either automatic use
         when registered with an ``Api`` class or for including directly in
         a URLconf should you choose to.
-        """
+        '''
         urls = [            
-            url(r"^(?P<resource_name>%s)/clear_cache%s$" 
+            url(r'^(?P<resource_name>%s)/clear_cache%s$' 
                 % (self._meta.resource_name, TRAILING_SLASH), 
-                self.wrap_view('dispatch_clear_cache'), name="api_clear_cache"),
+                self.wrap_view('dispatch_clear_cache'), name='api_clear_cache'),
         ]
         urls += self.prepend_urls()
         urls += self.base_urls()
-        urlpatterns = patterns('',
-            *urls
-        )
-        return urlpatterns
+        return urls
     
     def is_authenticated(self, request):
-        """
-        Note: authentication will raise a PermissionDenied error if if fails
-        """
+        '''
+        Returns True or raises an Exception for authentication failures
+        '''
         
         auth_result = self._meta.authentication.is_authenticated(request)
         if auth_result is not True:
-            raise PermissionDenied
+            logger.info('auth_result: %r', auth_result)
+            raise LoginFailedException('auth result: %r', auth_result)
         return auth_result
 
     def dispatch_list(self, request, **kwargs):
-        """
+        '''
         A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
         the entire list of resources.
 
         Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
+        '''
         return self.dispatch('list', request, **kwargs)
 
     def dispatch_detail(self, request, **kwargs):
-        """
+        '''
         A view for handling the various HTTP methods (GET/POST/PUT/DELETE) on
         a single resource.
 
         Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
+        '''
         return self.dispatch('detail', request, **kwargs)
 
     def dispatch(self, request_type, request, **kwargs):
-        """
+        '''
         From original Tastypie structure:
         - lookup the API method
         # TODO: does very little at this point; refactor into wrap_view
-        """
+        '''
         
         request_method = request.method.lower()
-        method_name = "%s_%s" % (request_method, request_type)
+        method_name = '%s_%s' % (request_method, request_type)
         method = getattr(self, method_name, None)
 
         if method is None:
@@ -517,7 +457,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     e.httpresponse)
                 response = e.httpresponse
             except BadRequestError as e:
-                # The message is the first/only arg
                 logger.exception('Bad request exception: %r', e)
                 response = self.build_error_response(
                     request, e.errors, **kwargs)
@@ -538,32 +477,42 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+            except LoginFailedException as e:
+                logger.info('LoginFailedException ex: %r', e)
+                if hasattr(e, 'error_dict'):
+                    data = { API_RESULT_ERROR: e.message_dict }
+                else:
+                    data = { 'Login failed': str(e) }
+                response = self.build_error_response(
+                    request, data, status_code=401, **kwargs)
+                if request.META.get('HTTP_AUTHORIZATION'):
+                    response['WWW-Authenticate'] = \
+                        'Basic realm="%s"' % settings.BASIC_AUTH_REALM
+
             except django.core.exceptions.ValidationError as e:
                 logger.exception('Django validation error: %s', e)
+                if hasattr(e, 'error_dict'):
+                    data = { API_RESULT_ERROR: e.message_dict }
+                else:
+                    data = { API_RESULT_ERROR: str(e) }
                 response = self.build_error_response(
-                    request, { API_RESULT_ERROR: e.message_dict }, **kwargs)
+                    request, data, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % API_RESULT_ERROR
-            except LoginFailedException as e:
-                logger.info('LoginFailedException ex: %r', e)
-                data = {
-                    'Login Failed: ': '%s' % e }
-                response = self.build_error_response(
-                    request, data, response_class=HttpResponseForbidden, **kwargs)
             except PermissionDenied as e:
-                logger.info('PermissionDenied ex: %r', e)
+                logger.exception('PermissionDenied ex: %r', e)
                 data = {
                     'Permission Denied: ': '%s' % e }
                 response = self.build_error_response(
                     request, data, response_class=HttpResponseForbidden, **kwargs)
             except ObjectDoesNotExist as e:
-                logger.info('not found: %r', e)
+                logger.exception('not found: %r', e)
                 response = self.build_error_response(
                     request, { 'msg': '%r' % e }, 
                     response_class=HttpResponseNotFound, **kwargs)
             except Http404 as e:
-                logger.info('not found: %r', e)
+                logger.exception('not found: %r', e)
                 response = self.build_error_response(
                     request, { 'msg': '%r' % e }, 
                     response_class=HttpResponseNotFound, **kwargs)
@@ -595,14 +544,14 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
     
     
     def wrap_view(self, view):
-        """
+        '''
         Handle common operations for views:
         - authentication
         - exception handling
         - client side cache headers
         - download cookie
         
-        """
+        '''
 
         # NOTE: csrf is enforced by SessionAuthentication, all resources
         @csrf_exempt
@@ -814,8 +763,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
         if settings.DEBUG:
             data = {
-                "error_message": _print_exception_message(exception),
-                "traceback": the_trace,
+                'error_message': _print_exception_message(exception),
+                'traceback': the_trace,
             }
             return self.build_error_response(
                 request, data, response_class=response_class)
@@ -826,8 +775,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         got_request_exception.send(self.__class__, request=request)
 
         data = {
-            "SERVER_ERROR": 
-                "Sorry, this request could not be processed. Please try again later.",
+            'SERVER_ERROR': 
+                'Sorry, this request could not be processed. Please try again later.',
         }
         return self.build_error_response(
             request, data, response_class=response_class)
@@ -836,7 +785,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
 
 class Api(object):
 
-    def __init__(self, api_name="v1"):
+    def __init__(self, api_name='v1'):
         self.api_name = api_name
         self._registry = {}
 
@@ -863,28 +812,28 @@ class Api(object):
         return wrapper
 
     def prepend_urls(self):
-        """
+        '''
         A hook for adding your own URLs or matching before the default URLs.
-        """
+        '''
         return []
 
     @property
     def urls(self):
-        """
+        '''
         Provides URLconf details for the ``Api`` and all registered
         ``Resources`` beneath it.
-        """
+        '''
         pattern_list = [
             url(
-                r"^(?P<api_name>%s)%s$" % (self.api_name, TRAILING_SLASH), 
+                r'^(?P<api_name>%s)%s$' % (self.api_name, TRAILING_SLASH), 
                 self.wrap_view('top_level'), 
-                name="api_%s_top_level" % self.api_name),
+                name='api_%s_top_level' % self.api_name),
         ]
 
         for name in sorted(self._registry.keys()):
             self._registry[name].api_name = self.api_name
             pattern_list.append(
-                url(r"^(?P<api_name>%s)/" % self.api_name, 
+                url(r'^(?P<api_name>%s)/' % self.api_name, 
                     include(self._registry[name].urls)))
 
         urlpatterns = self.prepend_urls()
@@ -894,10 +843,10 @@ class Api(object):
         return urlpatterns
 
     def top_level(self, request, api_name=None):
-        """
+        '''
         A view that returns a serialized list of all resources registers
         to the ``Api``. Useful for discovery.
-        """
+        '''
         fullschema = parse_val(
             request.GET.get('fullschema', False),
             'fullschema', 'boolean')
@@ -909,7 +858,7 @@ class Api(object):
 
         for name, resource in self._registry.items():
             if not fullschema:
-                schema = self._build_reverse_url("api_get_schema", kwargs={
+                schema = self._build_reverse_url('api_get_schema', kwargs={
                     'api_name': api_name,
                     'resource_name': name,
                 })
@@ -918,7 +867,7 @@ class Api(object):
 
             available_resources[name] = {
                 'list_endpoint': 
-                    self._build_reverse_url("api_dispatch_list", kwargs={
+                    self._build_reverse_url('api_dispatch_list', kwargs={
                         'api_name': api_name,
                         'resource_name': name,
                     }),

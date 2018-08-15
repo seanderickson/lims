@@ -10,7 +10,7 @@ import reports.hms.auth
 
 logger = logging.getLogger(__name__)
 
-IS_PRODUCTION_READY = settings.IS_PRODUCTION_READY or False
+DEBUG_AUTHENTICATION = False
 
 USER_PROXY_LOGIN_PATTERN = re.compile(r'(\w+)\:(\w+)')
 USER_PROXY_ADMIN_GROUP = 'screensaverUserAdmin'
@@ -51,9 +51,9 @@ class CustomAuthenticationBackend():
                         if is_allowed:
                             logger.info('user: %r is in the group: %r',
                                 superuser,USER_PROXY_ADMIN_GROUP)
-                    except Exception:
-                        logger.info('user %r is not in the %r group',
-                            superuser,USER_PROXY_ADMIN_GROUP)
+                    except Exception, e:
+                        logger.exception(
+                            'Unexpected error querying user groups: %r', e)
                 if is_allowed:
                     try:
                         user = User.objects.get(username=logged_in_as)
@@ -65,16 +65,16 @@ class CustomAuthenticationBackend():
                         logger.warn(msg)
                         raise LoginFailedException(msg)
                 else:
-                    msg = (
-                        'logging in as another user requires superuser privileges'
-                        ', user: %r') % superuser
+                    msg = 'Log in as user: %r fails for user %r: '\
+                        'Must be a superuser, or member of group: %r'
+                    msg = msg % (logged_in_as, superuser, USER_PROXY_ADMIN_GROUP)
                     logger.warn(msg)
                     raise LoginFailedException(msg)
             return None
         else:
             user = self._inner_authenticate(username, password)
-            if IS_PRODUCTION_READY is not True:
-                if user.is_staff is not True or user.is_superuser is not True:
+            if settings.IS_PRODUCTION_READY is not True:
+                if not any([user.is_staff,user.is_superuser]):
                     msg = ('login not allowed for non-staff users when '
                         '"settings.IS_PRODUCTION_READY" is not set; user: %r'
                         % user)
@@ -83,11 +83,10 @@ class CustomAuthenticationBackend():
             logger.info('auth returns logged in user: %r', user)
             return user
 
-    def _inner_authenticate(self, username=None, password=None):
-        if username is None:
-            raise LoginFailedException('username not set')
+    def _inner_authenticate(self, username, password):
         username = username.lower()
-        logger.debug('inner_authenticate: %r', username)
+        if DEBUG_AUTHENTICATION:
+            logger.info('inner_authenticate: %r', username)
         try:
             user = User.objects.get(username=username)
             if user.has_usable_password():
@@ -99,11 +98,12 @@ class CustomAuthenticationBackend():
                     logger.info(msg)
                     raise LoginFailedException(msg)
             if(reports.hms.auth.authenticate(username, password)):
-                logger.info('user %r authenticated with the ecommons server', username)
+                logger.info(
+                    'user %r authenticated with the ecommons server', username)
                 if(user.is_active):
                     return user
                 else:
-                    msg = 'User authenticated, but is not set to active: %s' % username
+                    msg = 'User authenticated, but is not active: %s' % username
                     logger.warn(msg)
                     raise LoginFailedException(msg)
             else:

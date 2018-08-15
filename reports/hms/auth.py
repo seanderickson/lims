@@ -1,3 +1,6 @@
+# HMS ICCB-L Ecommons Authentication
+
+
 import argparse
 import logging
 import requests
@@ -36,6 +39,9 @@ def ldap_authenticate(ecommons_id, ecommons_password):
         raise
 
 def authenticate(ecommons_id, ecommons_password):
+    '''
+    Authenticate with the eCommons Server using the credentials
+    '''
     return ldap_authenticate(ecommons_id, ecommons_password)
 
 def authenticateOld(ecommons_id, ecommons_password):

@@ -18,7 +18,6 @@ from wsgiref.util import FileWrapper
 from zipfile import ZipFile
 
 from django.conf import settings
-from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse, Http404
 import six
 import unicodecsv

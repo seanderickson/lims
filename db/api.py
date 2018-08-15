@@ -161,9 +161,8 @@ API_MSG_LCPS_UNFULFILLED = 'Unfulfilled'
 API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume'
 API_MSG_LCPS_VOLUME_OVERRIDDEN = 'Insufficient volume overridden'
 API_MSG_LCPS_REMOVED = 'Lab Cherry Picks Removed'
-API_MSG_LCP_PLATES_ASSIGNED = 'Copy Plate assigned'
-API_MSG_LCP_SOURCE_PLATES_ALLOCATED = 'Source plates having wells allocated'
-API_MSG_LCP_SOURCE_PLATES_DEALLOCATED = 'Source plates having wells deallocated'
+API_MSG_LCP_PLATES_ASSIGNED = 'Source plates'
+API_MSG_LCP_SOURCE_PLATES_ALLOCATED = 'Source plate count'
 API_MSG_LCP_ASSAY_PLATES_PLATED = 'Cherry pick assay plates (plated)'
 API_MSG_LCP_ASSAY_PLATES_CREATED = 'Cherry pick assay plates (created)'
 API_MSG_CPR_ASSAY_PLATES_REMOVED = 'Cherry pick assay plates (removed)'
@@ -6978,7 +6977,6 @@ class CopyWellResource(DbApiResource):
         return { 
             'CPR #': cpr.cherry_pick_request_id,
             API_MSG_COPYWELLS_DEALLOCATED: len(copywells_deallocated),
-            API_MSG_LCP_SOURCE_PLATES_DEALLOCATED: len(plates_adjusted)
          }
         
         
@@ -8374,7 +8372,7 @@ class CherryPickRequestResource(DbApiResource):
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('original: %r, new: %r', original_data, new_data)
         log = self.log_patch(
-            request, original_data,new_data,log=log, full_create_log=True, 
+            request, original_data,new_data,log=log, full_create_log=False, 
             excludes=['screener_cherry_picks'],
             **kwargs_for_log)
         # Set the log URI using the containing screen URI
@@ -8524,7 +8522,6 @@ class CherryPickRequestResource(DbApiResource):
                         API_MSG_NOT_ALLOWED: 
                             ('Screener cherry picks may not be reassigned after '
                              'plates have been plated'),
-                        API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                 })
                 
@@ -8749,7 +8746,6 @@ class CherryPickRequestResource(DbApiResource):
             if plated_assay_plates_query.exists():
                 raise ValidationError({
                     API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
-                    API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                     API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
             })
             raise ValidationError({
@@ -9028,11 +9024,11 @@ class CherryPickRequestResource(DbApiResource):
                 for ap in assay_plates_created ]
         
         plate_copies = sorted(lcp_by_plate_copy.keys())
-        copy_plate_assigned_msg = [
-            (plate_copy, len(lcp_by_plate_copy[plate_copy]))
-                for plate_copy in plate_copies] 
+#         copy_plate_assigned_msg = [
+#             (plate_copy, len(lcp_by_plate_copy[plate_copy]))
+#                 for plate_copy in plate_copies] 
         _meta = {
-            API_MSG_LCP_PLATES_ASSIGNED: copy_plate_assigned_msg,
+            API_MSG_LCP_PLATES_ASSIGNED: ', '.join(plate_copies),
             API_MSG_LCP_ASSAY_PLATES_CREATED: cpap_assignments
         }
         _meta.update(copywell_reservation_meta)
@@ -17204,6 +17200,7 @@ class ScreenResource(DbApiResource):
                             'ref_resource_name': 'screen',
                             'diff_keys': 'status',
                             'order_by': ['-date_time'],
+                            'includes': ['diffs']
                             })
                     _data['status_data'] = _status_data
                 

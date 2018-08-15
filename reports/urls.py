@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from django.conf.urls import patterns, url, include
+from django.conf.urls import url, include
 
 from reports.api_base import Api
 from reports.api import VocabularyResource, ResourceResource,\
@@ -17,7 +17,7 @@ v1_api.register(JobResource())
 
 v1_api.register(FieldResource())
 
-urlpatterns = patterns('',
-#     url(r'^$', views.main, name="home"),
-    (r'^api/', include(v1_api.urls)),
-)
+# #     url(r'^$', views.main, name="home"),
+urlpatterns = [
+    url(r'^api/', include(v1_api.urls)),
+]

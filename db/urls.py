@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from django.conf.urls import patterns, url, include
+from django.conf.urls import url, include
 
 from db.api import ScreensaverUserResource, ScreenResource, \
     ScreenResultResource, StudyResource, \
@@ -48,7 +48,8 @@ v1_api.register(LabAffiliationResource())
 v1_api.register(RawDataTransformerResource())
 v1_api.register(db.api.ResourceResource())
 
-urlpatterns = patterns('',
+# urlpatterns = patterns('',
+urlpatterns = [
     url(r'^$', db.views.main, name="home"),
     url(r'^screen_raw_data_transform/(?P<screen_facility_id>\S+)$',
         db.views.screen_raw_data_transform, name="screen_raw_data_transform" ),
@@ -62,5 +63,6 @@ urlpatterns = patterns('',
         db.views.attached_file, name="attached_file" ),
     url(r'^publication/(?P<publication_id>\d+)/attached_file$',
         db.views.publication_attached_file, name="publication_attached_file" ),
-    (r'^api/', include(v1_api.urls)),
-)
+    url(r'^api/', include(v1_api.urls)),
+]
+

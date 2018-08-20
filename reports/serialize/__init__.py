@@ -8,7 +8,7 @@ from PIL import Image
 import dateutil.parser
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.core.urlresolvers import resolve
+from django.urls import resolve
 from django.utils.encoding import force_text
 import pytz
 import six
@@ -118,7 +118,6 @@ def parse_val(value, key, data_type, options=None):
                         key=key, 
                         msg='abs(%d) > %d (PostGreSQL integer max value)' 
                             % (val, INTEGER_POSTGRES_MAX))
-            
             return val
         elif data_type == 'date':
             if isinstance(value, datetime.date):

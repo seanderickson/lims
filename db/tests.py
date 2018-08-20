@@ -19,7 +19,7 @@ import unittest
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.urlresolvers import resolve
+from django.urls import resolve
 from django.db import connection
 from django.db.utils import ProgrammingError
 from django.test import TestCase
@@ -9755,6 +9755,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         AttachedFile.objects.all().delete()
         ServiceActivity.objects.all().delete()
         logger.info('delete users, including: %r', self.username)
+        Screen.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username=self.username).delete()
           
         UserGroup.objects.all().delete()

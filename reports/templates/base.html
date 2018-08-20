@@ -113,8 +113,8 @@
 
 <body>
   <script language="javascript" type="text/javascript">
-    window.logged_in = "{{ user.is_authenticated }}";
-    window.is_superuser = "{{ user.is_superuser }}";
+    window.logged_in = "{{ user.is_authenticated|yesno:"true,false" }}"==="true";
+    window.is_superuser = "{{ user.is_superuser|yesno:"true,false" }}"==="true";
     window.user = "{{ user }}"
   </script>
   <!-- navbar reports -->

@@ -25,7 +25,7 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2', 
+        'ENGINE': 'django.db.backends.postgresql', 
         'NAME': 'screensaverlims',
         'USER': 'screensaverlims',
         'PASSWORD': '',

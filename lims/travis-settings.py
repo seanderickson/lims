@@ -25,7 +25,7 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2', 
+        'ENGINE': 'django.db.backends.postgresql', 
         'NAME': 'postgres',
         # The following settings are not used with sqlite3:
         'USER': 'postgres',
@@ -170,7 +170,7 @@ class DisableMigrations(object):
         return True
 
     def __getitem__(self, item):
-        return "notmigrations"
+        return None
 
 if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
     MIGRATION_MODULES = DisableMigrations()

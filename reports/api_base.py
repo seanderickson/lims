@@ -14,13 +14,13 @@ from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, \
     ImproperlyConfigured
 import django.core.exceptions
 from django.core.signals import got_request_exception
-import django.core.urlresolvers
 from django.http.response import HttpResponseBase, HttpResponse, \
     HttpResponseNotFound, Http404, HttpResponseForbidden, HttpResponseBadRequest, \
     HttpResponseServerError
 from django.middleware.csrf import _sanitize_token, REASON_NO_REFERER, \
-    REASON_BAD_REFERER, REASON_BAD_TOKEN, REASON_MALFORMED_REFERER,\
+    REASON_BAD_REFERER, REASON_BAD_TOKEN, REASON_MALFORMED_REFERER, \
     REASON_INSECURE_REFERER
+import django.urls
 from django.utils import six
 from django.utils.crypto import constant_time_compare
 from django.utils.encoding import force_text
@@ -213,11 +213,11 @@ class IccblSessionAuthentication(Authentication):
         Checks to make sure the user is logged in & has a Django session.
         '''
         if request.method in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
-            return request.user.is_authenticated()
+            return bool(request.user.is_authenticated)
 
         if getattr(request, '_dont_enforce_csrf_checks', False):
             logger.info('_dont_enforce_csrf_checks is set...')
-            return request.user.is_authenticated()
+            return bool(request.user.is_authenticated)
 
         csrf_token = _sanitize_token(request.COOKIES.get(settings.CSRF_COOKIE_NAME))
         if csrf_token is None:
@@ -276,7 +276,7 @@ class IccblSessionAuthentication(Authentication):
             logger.warn('CSRF tokens do not match: %r', request)
             return False
 
-        return request.user.is_authenticated()
+        return bool(request.user.is_authenticated)
 
     def _django_csrf_check(self, request):
         '''
@@ -449,7 +449,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         auth_result = self._meta.authentication.is_authenticated(request)
         if auth_result is not True:
             logger.info('auth_result: %r', auth_result)
-            raise LoginFailedException('auth result: %r', auth_result)
+            raise LoginFailedException('auth result: %r' % auth_result)
         return auth_result
 
     def dispatch_list(self, request, **kwargs):
@@ -938,4 +938,4 @@ class Api(object):
             content_type=content_type)
 
     def _build_reverse_url(self, name, args=None, kwargs=None):
-        return django.core.urlresolvers.reverse(name, args=args, kwargs=kwargs)
+        return django.urls.reverse(name, args=args, kwargs=kwargs)

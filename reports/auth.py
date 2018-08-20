@@ -10,7 +10,7 @@ import reports.hms.auth
 
 logger = logging.getLogger(__name__)
 
-DEBUG_AUTHENTICATION = False
+DEBUG_AUTHENTICATION = True
 
 USER_PROXY_LOGIN_PATTERN = re.compile(r'(\w+)\:(\w+)')
 USER_PROXY_ADMIN_GROUP = 'screensaverUserAdmin'
@@ -21,7 +21,7 @@ class CustomAuthenticationBackend():
     use eCommons.
     """
 
-    def authenticate(self, username=None, password=None):
+    def authenticate(self, request, username=None, password=None):
         '''
         Authenticate the user given by the username and password.
         

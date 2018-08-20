@@ -42,7 +42,7 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2', 
+        'ENGINE': 'django.db.backends.postgresql', 
         'NAME': 'devscreensaver2', 
         'USER': 'devscreensaver2web',
         'PASSWORD': '',

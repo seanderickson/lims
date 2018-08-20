@@ -22,7 +22,7 @@ SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
 #                         'NAME': ':memory'}
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'test_screensaverlims',
         'USER': '',
         'PASSWORD': '',
@@ -43,7 +43,7 @@ class DisableMigrations(object):
         return True
 
     def __getitem__(self, item):
-        return "notmigrations"
+        return None
 
 if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
     print 'tests in progres, no migrations...'

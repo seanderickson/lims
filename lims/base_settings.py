@@ -50,6 +50,7 @@ USE_TZ = True
 LOGIN_URL = '/accounts/login/'
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/lims/'
+LOGOUT_REDIRECT_URL='/lims/'
 
 # Timeout, in seconds; will cause user logout: 8 hours
 # NOTE: this will not log the browser out until a request is made.
@@ -90,7 +91,7 @@ TEMPLATES = [
 ]
 
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

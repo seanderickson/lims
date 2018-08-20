@@ -19,11 +19,11 @@ from django.http.response import HttpResponseBase, HttpResponse, \
     HttpResponseNotFound, Http404, HttpResponseForbidden, HttpResponseBadRequest, \
     HttpResponseServerError
 from django.middleware.csrf import _sanitize_token, REASON_NO_REFERER, \
-    REASON_BAD_REFERER, REASON_BAD_TOKEN
+    REASON_BAD_REFERER, REASON_BAD_TOKEN, REASON_MALFORMED_REFERER,\
+    REASON_INSECURE_REFERER
 from django.utils import six
 from django.utils.crypto import constant_time_compare
 from django.utils.encoding import force_text
-from django.utils.http import same_origin
 from django.views.decorators.csrf import csrf_exempt
 
 from db.support.data_converter import default_converter
@@ -35,9 +35,10 @@ from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
 from reports.serializers import BaseSerializer, LimsSerializer
 from reports.utils.django_requests import convert_request_method_to_put
 
+
+# from django.utils.http import same_origin
 # NOTE: API design is based loosely on the tastypie project: 
 # see attributions, e.g.:
-
 # From tastypie.compat
 # Compatability for salted vs unsalted CSRF tokens;
 # Django 1.10's _sanitize_token also hashes it, so it can't be compared directly.
@@ -204,7 +205,7 @@ class IccblSessionAuthentication(Authentication):
     Note: Requires a valid CSRF token, "csrfmiddlewaretoken" may be passed as a 
     POST parameter
     
-    @see django.middleware.csrf (used as a guide)
+    @see django.middleware.csrf v1.8 (used as a guide)
     
     '''
     def is_authenticated(self, request, **kwargs):
@@ -230,15 +231,18 @@ class IccblSessionAuthentication(Authentication):
         if request.is_secure():
             if DEBUG_AUTHENTICATION:
                 logger.info('perform secure session check.')
-            referer = request.META.get('HTTP_REFERER')
-
-            if referer is None:
+            
+            if self._django_csrf_check(request) is not True:
                 return False
-
-            good_referer = 'https://%s/' % request.get_host()
-
-            if not same_origin(referer, good_referer):
-                return False
+#             referer = request.META.get('HTTP_REFERER')
+# 
+#             if referer is None:
+#                 return False
+# 
+#             good_referer = 'https://%s/' % request.get_host()
+# 
+#             if not same_origin(referer, good_referer):
+#                 return False
 
         request_csrf_token = ''
         if request.method == 'POST':
@@ -274,7 +278,59 @@ class IccblSessionAuthentication(Authentication):
 
         return request.user.is_authenticated()
 
+    def _django_csrf_check(self, request):
+        '''
+        Taken from django.middleware.csrf:
+        @see django.middleware.csrf
+        '''
+        
+        referer = force_text(
+            request.META.get('HTTP_REFERER'),
+            strings_only=True,
+            errors='replace'
+        )
+        if referer is None:
+            logger.error('csrf reject: %s', REASON_NO_REFERER)
+            return False
+        
+        from django.utils.six.moves.urllib.parse import urlparse
 
+        referer = urlparse(referer)
+
+        # Make sure we have a valid URL for Referer.
+        if '' in (referer.scheme, referer.netloc):
+            logger.error('csrf reject: %s', REASON_MALFORMED_REFERER)
+            return False
+
+        # Ensure that our Referer is also secure.
+        if referer.scheme != 'https':
+            logger.error('csrf reject: %s', REASON_INSECURE_REFERER)
+            return False
+
+        # If there isn't a CSRF_COOKIE_DOMAIN, assume we need an exact
+        # match on host:port. If not, obey the cookie rules.
+        if settings.CSRF_COOKIE_DOMAIN is None:
+            # request.get_host() includes the port.
+            good_referer = request.get_host()
+        else:
+            good_referer = settings.CSRF_COOKIE_DOMAIN
+            server_port = request.get_port()
+            if server_port not in ('443', '80'):
+                good_referer = '%s:%s' % (good_referer, server_port)
+
+        # Here we generate a list of all acceptable HTTP referers,
+        # including the current host since that has been validated
+        # upstream.
+        good_hosts = list(settings.CSRF_TRUSTED_ORIGINS)
+        good_hosts.append(good_referer)
+
+        if not any(is_same_domain(referer.netloc, host) for host in good_hosts):
+            reason = REASON_BAD_REFERER % referer.geturl()
+            logger.info('csrf reject: %r', reason)
+            return False
+        
+        return True
+        
 class Authorization(object):
 
     def _is_resource_authorized(

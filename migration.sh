@@ -228,7 +228,7 @@ function django_syncdb {
   # note; some of the system migrations (auth, sites, admin, contenttypes ) will
   # generate errors due to interdependencies; these appear to resolve themselves - 20151030
   
-  for x in sites auth contenttypes admin sessions tastypie reports;
+  for x in sites auth contenttypes admin sessions reports;
   do
     echo "migrate app: $x ..." >> "$LOGFILE"
     $DJANGO_CMD migrate $x; #  --fake-initial; 

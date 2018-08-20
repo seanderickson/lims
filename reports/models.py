@@ -114,11 +114,13 @@ class MetaManager(models.Manager):
             logger.warn('field definitions not found for: %r',
                 field_definition_scope)
             return {}
-        logger.debug('field_definition_table: %r', field_definition_table)
+        logger.debug('field_definition_table: %r', 
+            [field.key for field in field_definition_table])
         # the objects themselves are stored in the metahash table as well
         unparsed_objects = \
             MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
-        logger.debug('unparsed_objects: %r', unparsed_objects)
+        logger.debug('unparsed_objects: %r', 
+            [field.key for field in unparsed_objects])
         parsed_objects = OrderedDict()
         for unparsed_object in unparsed_objects:
             parsed_object = {}
@@ -194,7 +196,8 @@ class ApiLog(models.Model):
     
     comment = models.TextField(null=True)
     
-    parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
+    parent_log = models.ForeignKey(
+        'self', related_name='child_logs', null=True, on_delete=models.CASCADE)
     
     # json_field stores meta information
     json_field = models.TextField(null=True)
@@ -377,7 +380,7 @@ class MetaHash(models.Model):
     class Meta:
         unique_together = (('scope', 'key'))    
     
-    def get_field_hash(self):
+    def get_json_field_hash(self):
         if self.json_field:
             if not self.loaded_field: 
                 self.loaded_field = json.loads(self.json_field)
@@ -386,17 +389,19 @@ class MetaHash(models.Model):
             return {}
     
     def get_field(self, field):
-        if field in self._meta.get_all_field_names():
+        field_names = set([
+            f.name for f in self._meta.get_fields()])
+        if field in field_names:
             return getattr(self,field)
-        temp = self.get_field_hash()
+        temp = self.get_json_field_hash()
         if field in temp:
             return temp[field]
         else:
-            logger.debug('unknown field: ' + field + ' for ' + str(self))
+            logger.debug('unknown field: %s',field)
             return None
     
-    def set_field(self, field, value):
-        temp = self.get_field_hash()
+    def set_json_field(self, field, value):
+        temp = self.get_json_field_hash()
         temp[field] = value;
         self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
@@ -453,14 +458,14 @@ class Vocabulary(models.Model):
     class Meta:
         unique_together = (('scope', 'key'))    
     
-    def get_field_hash(self):
+    def get_json_field_hash(self):
         if self.json_field:
             return json.loads(self.json_field)
         else:
             return {}
     
     def get_field(self, field):
-        temp = self.get_field_hash()
+        temp = self.get_json_field_hash()
         if(field in temp):
             return temp[field]
         else:
@@ -468,8 +473,8 @@ class Vocabulary(models.Model):
             logger.debug('%r, field not found: %r',self, field) 
             return None
             
-    def set_field(self, field, value):
-        temp = self.get_field_hash()
+    def set_json_field(self, field, value):
+        temp = self.get_json_field_hash()
         temp[field] = value;
         self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
@@ -619,7 +624,8 @@ class UserProfile(models.Model):
 
 class Job(models.Model):
 
-    user_requesting = models.ForeignKey('UserProfile')
+    user_requesting = models.ForeignKey(
+        'UserProfile', on_delete=models.PROTECT)
     
     # Unique URI for the resource action being serviced
     uri = models.TextField()

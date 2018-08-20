@@ -6877,7 +6877,7 @@ class CopyWellResource(DbApiResource):
         if copywell_volume_warnings:
             logger.info('%r:%r', 
                 API_MSG_LCPS_INSUFFICIENT_VOLUME, copywell_volume_warnings)
-            meta[API_MSG_LCPS_INSUFFICIENT_VOLUME] = copywell_volume_warnings
+            meta[API_MSG_LCPS_INSUFFICIENT_VOLUME] = copywell_volume_warnings or '0'
         meta[API_MSG_COPYWELLS_ALLOCATED] = len(copywells_allocated)
         return meta
             

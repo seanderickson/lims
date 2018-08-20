@@ -7,7 +7,6 @@ import re
 from django.conf import settings
 from django.db import connection
 from django.db import models
-from django.db.models.deletion import SET_NULL
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
@@ -26,11 +25,13 @@ class Activity(models.Model):
     date_created = models.DateTimeField(default=timezone.now)
     comments = models.TextField(null=True)
     performed_by = models.ForeignKey(
-        'ScreensaverUser', related_name='activities_performed')
+        'ScreensaverUser', related_name='activities_performed',
+        on_delete=models.CASCADE)
     date_of_activity = models.DateField()
     created_by = models.ForeignKey(
         'ScreensaverUser', null=True, 
-        related_name='activities_created')
+        related_name='activities_created',
+        on_delete=models.CASCADE)
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
 
@@ -48,13 +49,15 @@ class Activity(models.Model):
 class ServiceActivity(Activity):
     
     activitylink = models.OneToOneField(
-        Activity, primary_key=True, parent_link=True,db_column='activity_id')
-#     activity = models.OneToOneField(Activity, primary_key=True)
+        Activity, primary_key=True, parent_link=True, on_delete=models.CASCADE, 
+        db_column='activity_id')
     service_activity_type = models.TextField()
     
     # NOTE: SS Version 2: require either serviced screen or serviced user
-    serviced_screen = models.ForeignKey('Screen', null=True)
-    serviced_user = models.ForeignKey('ScreensaverUser', null=True)
+    serviced_screen = models.ForeignKey(
+        'Screen', null=True, on_delete=models.CASCADE)
+    serviced_user = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.CASCADE)
     
     funding_support = models.TextField(null=True)
     
@@ -72,8 +75,9 @@ class ServiceActivity(Activity):
 class LabActivity(Activity):
 
     activitylink = models.OneToOneField(
-        Activity, primary_key=True, parent_link=True,db_column='activity_id')
-    screen = models.ForeignKey('Screen')
+        Activity, primary_key=True, parent_link=True, on_delete=models.CASCADE,
+        db_column='activity_id')
+    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
     volume_transferred_per_well_from_library_plates = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
     molar_concentration = models.DecimalField(
@@ -92,8 +96,8 @@ class LabActivity(Activity):
 class Screening(LabActivity):
     
     labactivitylink = models.OneToOneField(
-        LabActivity, primary_key=True, parent_link=True,
-        db_column='activity_id')
+        LabActivity, primary_key=True, parent_link=True, 
+        on_delete=models.CASCADE, db_column='activity_id')
     assay_protocol = models.TextField()
     number_of_replicates = models.IntegerField(null=True)
     assay_protocol_type = models.TextField()
@@ -117,7 +121,8 @@ class Screening(LabActivity):
 class LibraryScreening(Screening):
     
     screeninglink = models.OneToOneField(
-        'Screening', primary_key=True, parent_link=True,db_column='activity_id')
+        'Screening', primary_key=True, parent_link=True, 
+        on_delete=models.CASCADE, db_column='activity_id')
     abase_testset_id = models.TextField()
     is_for_external_library_plates = models.BooleanField(default=False)
     screened_experimental_well_count = models.IntegerField(default=0)
@@ -137,7 +142,8 @@ class LibraryScreening(Screening):
 # Deprecated - migrate
 class AdministrativeActivity(models.Model):
     
-    activity = models.OneToOneField(Activity, primary_key=True)
+    activity = models.OneToOneField(
+        Activity, primary_key=True, on_delete=models.CASCADE)
     administrative_activity_type = models.TextField()
     class Meta:
         db_table = 'administrative_activity'
@@ -145,15 +151,17 @@ class AdministrativeActivity(models.Model):
 # Deprecate - remove after plate well volume migration
 class WellVolumeCorrectionActivity(models.Model):
     
-    activity = models.OneToOneField('AdministrativeActivity', primary_key=True)
+    activity = models.OneToOneField(
+        'AdministrativeActivity', primary_key=True, on_delete=models.CASCADE)
     class Meta:
         db_table = 'well_volume_correction_activity'
 
 # Deprecate - migration
 class LibraryUpdateActivity(models.Model):
     
-    library = models.ForeignKey('Library')
-    update_activity = models.ForeignKey(AdministrativeActivity)
+    library = models.ForeignKey('Library', on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(
+        AdministrativeActivity, on_delete=models.CASCADE)
     class Meta:
         db_table = 'library_update_activity'
 
@@ -168,48 +176,56 @@ class PlateUpdateActivity(models.Model):
 # Deprecate - migration
 class ScreenResultUpdateActivity(models.Model):
     
-    screen_result = models.ForeignKey('ScreenResult')
-    update_activity = models.ForeignKey(AdministrativeActivity)
+    screen_result = models.ForeignKey('ScreenResult', on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(AdministrativeActivity,
+        on_delete=models.CASCADE)
     class Meta:
         db_table = 'screen_result_update_activity'
 
 # Deprecate - migration
 class ScreenUpdateActivity(models.Model):
     
-    screen = models.ForeignKey('Screen')
-    update_activity = models.ForeignKey(AdministrativeActivity)
+    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(
+        AdministrativeActivity, on_delete=models.CASCADE)
     class Meta:
         db_table = 'screen_update_activity'
 
 # Deprecate - migration
 class ScreensaverUserUpdateActivity(models.Model):
     
-    screensaver_user = models.ForeignKey('ScreensaverUser')
-    update_activity = models.ForeignKey(AdministrativeActivity)
+    screensaver_user = models.ForeignKey(
+        'ScreensaverUser', on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(
+        AdministrativeActivity, on_delete=models.CASCADE)
     class Meta:
         db_table = 'screensaver_user_update_activity'
 
 # Deprecate - migration
 class ActivityUpdateActivity(models.Model):
     
-    activity = models.ForeignKey(Activity)
-    update_activity = models.ForeignKey('AdministrativeActivity')
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(
+        'AdministrativeActivity', on_delete=models.CASCADE)
     class Meta:
         db_table = 'activity_update_activity'
 
 # Deprecate - migration
 class AttachedFileUpdateActivity(models.Model):
     
-    attached_file = models.ForeignKey('AttachedFile')
-    update_activity = models.ForeignKey(AdministrativeActivity)
+    attached_file = models.ForeignKey('AttachedFile', on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(
+        AdministrativeActivity, on_delete=models.CASCADE)
     class Meta:
         db_table = 'attached_file_update_activity'
 
 # Deprecate - migration
 class ChecklistItemEventUpdateActivity(models.Model):
     
-    checklist_item_event = models.ForeignKey('ChecklistItemEvent')
-    update_activity = models.ForeignKey(AdministrativeActivity)
+    checklist_item_event = models.ForeignKey(
+        'ChecklistItemEvent', on_delete=models.CASCADE)
+    update_activity = models.ForeignKey(
+        AdministrativeActivity, on_delete=models.CASCADE)
     class Meta:
         db_table = 'checklist_item_event_update_activity'
 
@@ -227,7 +243,8 @@ class EquipmentUsed(models.Model):
     protocol = models.TextField()
     description = models.TextField()
     equipment = models.TextField()
-    lab_activity = models.ForeignKey('LabActivity')
+    lab_activity = models.ForeignKey(
+        'LabActivity', on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'equipment_used'
@@ -248,12 +265,14 @@ class AssayPlate(models.Model):
     
     assay_plate_id = models.AutoField(primary_key=True)
     replicate_ordinal = models.IntegerField(db_index=True)
-    screen = models.ForeignKey('Screen')
-    plate = models.ForeignKey('Plate', null=True)
+    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
+    plate = models.ForeignKey('Plate', null=True, on_delete=models.CASCADE)
     plate_number = models.IntegerField(db_index=True)
-    library_screening = models.ForeignKey('LibraryScreening', null=True)
+    library_screening = models.ForeignKey('LibraryScreening', null=True,
+        on_delete=models.CASCADE)
     screen_result_data_loading = \
-        models.ForeignKey(AdministrativeActivity, null=True)
+        models.ForeignKey(AdministrativeActivity, null=True, 
+            on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'assay_plate'
@@ -273,8 +292,9 @@ class AssayWell(models.Model):
     assay_well_id = models.AutoField(primary_key=True)
     assay_well_control_type = models.TextField(null=True,)
     is_positive = models.BooleanField(default=False, db_index=True)
-    screen_result = models.ForeignKey('ScreenResult')
-    well = models.ForeignKey('Well')
+    screen_result = models.ForeignKey(
+        'ScreenResult', on_delete=models.CASCADE)
+    well = models.ForeignKey('Well', on_delete=models.CASCADE)
     confirmed_positive_value = models.TextField(null=True,)
     
     # New field
@@ -299,7 +319,8 @@ class AttachedFile(models.Model):
     type = models.TextField()
     # Fixme: created_by should be non-null
     created_by = models.ForeignKey(
-        'ScreensaverUser', null=True, related_name='attachedfilecreated')
+        'ScreensaverUser', null=True, related_name='attachedfilecreated',
+        on_delete=models.SET_NULL)
     file_date = models.DateField(null=True)
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
@@ -322,8 +343,10 @@ class AttachedFile(models.Model):
 
 class UserChecklist(models.Model):
     
-    screensaver_user = models.ForeignKey('ScreensaverUser', null=False)
-    admin_user = models.ForeignKey('ScreensaverUser', null=False, 
+    screensaver_user = models.ForeignKey(
+        'ScreensaverUser', null=False, on_delete=models.CASCADE)
+    admin_user = models.ForeignKey(
+        'ScreensaverUser', null=False, on_delete=models.CASCADE,
         related_name='userchecklistitems_created')
     name = models.TextField()
     is_checked = models.BooleanField()
@@ -343,10 +366,12 @@ class UserChecklist(models.Model):
 
 class UserAgreement(models.Model):
     
-    screensaver_user = models.ForeignKey('ScreensaverUser', null=False)
+    screensaver_user = models.ForeignKey(
+        'ScreensaverUser', null=False, on_delete=models.CASCADE)
     type = models.TextField()
     data_sharing_level = models.IntegerField(null=True)
-    file = models.ForeignKey('AttachedFile', null=True)
+    file = models.ForeignKey(
+        'AttachedFile', null=True, on_delete=models.CASCADE)
     date_active = models.DateField(null=True)
     date_expired = models.DateField(null=True)
     date_notified = models.DateField(null=True)
@@ -365,18 +390,20 @@ class UserAgreement(models.Model):
 class CherryPickRequest(models.Model):
     
     cherry_pick_request_id = models.AutoField(primary_key=True)
-    screen = models.ForeignKey('Screen')
+    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
 
     transfer_volume_per_well_requested = \
         models.DecimalField(null=True, max_digits=10, decimal_places=9)
-    requested_by = models.ForeignKey('ScreensaverUser', 
+    requested_by = models.ForeignKey(
+        'ScreensaverUser', on_delete=models.CASCADE,
         related_name='requested_cherry_pick')
     date_requested = models.DateField()
 
     transfer_volume_per_well_approved = \
         models.DecimalField(null=True, max_digits=10, decimal_places=9)
-    volume_approved_by = models.ForeignKey('ScreensaverUser', 
-        null=True, related_name='approved_cherry_pick')
+    volume_approved_by = models.ForeignKey(
+        'ScreensaverUser', null=True, related_name='approved_cherry_pick',
+        on_delete=models.SET_NULL)
     date_volume_approved = models.DateField(null=True)
 
     comments = models.TextField(null=True)
@@ -409,10 +436,9 @@ class CherryPickRequest(models.Model):
     # Legacy Field
     date_publicly_available = models.DateTimeField(null=True)
     # Legacy Field
-    created_by = \
-        models.ForeignKey('ScreensaverUser', null=True,
-            related_name='created_cherry_pick')
-
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, related_name='created_cherry_pick',
+        on_delete=models.CASCADE)
     
     # TODO: not used
     max_skipped_wells_per_plate = models.IntegerField(null=True)
@@ -445,7 +471,8 @@ class CherryPickRequest(models.Model):
 # DEPRECATED, replaced by cpr.wells_to_leave_empty
 class CherryPickRequestEmptyWell(models.Model):
     
-    cherry_pick_request = models.ForeignKey(CherryPickRequest)
+    cherry_pick_request = models.ForeignKey(
+        CherryPickRequest, on_delete=models.CASCADE)
     well_name = models.CharField(max_length=255)
     class Meta:
         db_table = 'cherry_pick_request_empty_well'
@@ -454,13 +481,15 @@ class ScreenerCherryPick(models.Model):
     
     screener_cherry_pick_id = models.AutoField(primary_key=True)
     cherry_pick_request = models.ForeignKey(
-        'CherryPickRequest', related_name='screener_cherry_picks')
-    screened_well = models.ForeignKey('Well')
+        'CherryPickRequest', related_name='screener_cherry_picks',
+        on_delete=models.CASCADE)
+    screened_well = models.ForeignKey('Well', on_delete=models.CASCADE)
     
     # New
     selected = models.NullBooleanField(null=True)
-    searched_well = models.ForeignKey('Well', 
-        related_name='searched_screener_cherry_pick', null=False)
+    searched_well = models.ForeignKey(
+        'Well', related_name='searched_screener_cherry_pick', null=False,
+        on_delete=models.CASCADE)
     
     class Meta:
         db_table = 'screener_cherry_pick'
@@ -473,23 +502,30 @@ class ScreenerCherryPick(models.Model):
                self.cherry_pick_request.cherry_pick_request_id,
                self.screened_well.well_id))
 
-# Purpose: 
-# LabCherryPick is the "deconvoluted" well corresponding to the ScreenerCherryPick:
-# - in the case of SiRNA "pool" wells being mapped to "duplex" wells
-# - will be the same well in the case of the Small Molecule libraries
 class LabCherryPick(models.Model):
+    '''
+    LabCherryPick is the "deconvoluted" well corresponding to the 
+    ScreenerCherryPick:
+    - in the case of SiRNA "pool" wells being mapped to "duplex" wells
+    - all others will be the same well 
+    (Small Molecule libraries, non-pool libraries)
+    
+    '''
     
     lab_cherry_pick_id = models.AutoField(primary_key=True)
     cherry_pick_request = models.ForeignKey(
-        'CherryPickRequest', related_name='lab_cherry_picks')
-    screener_cherry_pick = models.ForeignKey('ScreenerCherryPick')
-    source_well = models.ForeignKey('Well')
-    cherry_pick_assay_plate = \
-        models.ForeignKey('CherryPickAssayPlate', null=True, on_delete=SET_NULL)
+        'CherryPickRequest', related_name='lab_cherry_picks',
+        on_delete=models.CASCADE)
+    screener_cherry_pick = models.ForeignKey(
+        'ScreenerCherryPick', on_delete=models.CASCADE)
+    source_well = models.ForeignKey('Well', on_delete=models.CASCADE)
+    cherry_pick_assay_plate = models.ForeignKey(
+        'CherryPickAssayPlate', null=True, on_delete=models.SET_NULL)
     assay_plate_row = models.IntegerField(null=True)
     assay_plate_column = models.IntegerField(null=True)
     
-    copy = models.ForeignKey('Copy', null=True, 
+    copy = models.ForeignKey(
+        'Copy', null=True, on_delete=models.SET_NULL, 
         related_name='copy_lab_cherry_picks')
     
     is_manually_selected = models.NullBooleanField()
@@ -514,25 +550,28 @@ class LabCherryPick(models.Model):
 class CherryPickAssayPlate(models.Model):
     
     cherry_pick_assay_plate_id = models.AutoField(primary_key=True)
-    cherry_pick_request = models.ForeignKey('CherryPickRequest',
-        related_name='cherry_pick_assay_plates')
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', related_name='cherry_pick_assay_plates',
+        on_delete=models.CASCADE)
     plate_ordinal = models.IntegerField()
     assay_plate_type = models.TextField()
 
     # New - when set, the assay plate is "plated"
     plating_date = models.DateField(null=True)
-    plated_by = models.ForeignKey('ScreensaverUser', 
-        null=True, related_name='plated_cherry_pick_plates')
+    plated_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT,
+        related_name='plated_cherry_pick_plates')
 
     screening_date = models.DateField(null=True)
-    screened_by = models.ForeignKey('ScreensaverUser', 
-        null=True, related_name='screened_cherry_pick_plates')
+    screened_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT,
+        related_name='screened_cherry_pick_plates')
     
     # Deprecated
     # status = models.TextField(null=True)
     attempt_ordinal = models.IntegerField()
-    cherry_pick_liquid_transfer = \
-        models.ForeignKey('CherryPickLiquidTransfer', null=True)
+    cherry_pick_liquid_transfer = models.ForeignKey(
+        'CherryPickLiquidTransfer', null=True, on_delete=models.SET_NULL)
     legacy_plate_name = models.TextField(null=True)
     
     # TODO: created to distinguish between:
@@ -556,7 +595,8 @@ class CherryPickAssayPlate(models.Model):
 class RnaiCherryPickRequest(models.Model):
     
     cherry_pick_request = \
-        models.OneToOneField(CherryPickRequest, primary_key=True)
+        models.OneToOneField(
+            CherryPickRequest, primary_key=True, on_delete=models.CASCADE)
     
     class Meta:
         db_table = 'rnai_cherry_pick_request'
@@ -567,8 +607,10 @@ class RnaiCherryPickRequest(models.Model):
 # Deprecate - migration
 class CherryPickRequestUpdateActivity(models.Model):
     
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    update_activity = models.OneToOneField('AdministrativeActivity', unique=True)
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', on_delete=models.CASCADE)
+    update_activity = models.OneToOneField(
+        'AdministrativeActivity', unique=True, on_delete=models.CASCADE)
     class Meta:
         db_table = 'cherry_pick_request_update_activity'
 
@@ -580,8 +622,9 @@ class CherryPickScreening(Screening):
     
     screeninglink = models.OneToOneField(
         'Screening', primary_key=True, parent_link=True, 
-        db_column='activity_id')
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+        db_column='activity_id', on_delete=models.CASCADE)
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'cherry_pick_screening'
@@ -598,10 +641,11 @@ class CherryPickScreening(Screening):
 # TODO: record plating as a status on cherry pick/CPAP
 class CherryPickLiquidTransfer(LabActivity):
     
-    cherry_pick_request = models.ForeignKey('CherryPickRequest', null=False)
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', on_delete=models.CASCADE, null=False)
     labactivitylink = models.OneToOneField(
         'LabActivity', primary_key=True, parent_link=True, 
-        db_column='activity_id')
+        db_column='activity_id', on_delete=models.CASCADE)
     status = models.TextField()
     
     class Meta:
@@ -621,12 +665,13 @@ class CherryPickLiquidTransfer(LabActivity):
 class WellVolumeAdjustment(models.Model):
     
     well_volume_adjustment_id = models.AutoField(primary_key=True)
-    well = models.ForeignKey('Well')
-    lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True)
-    well_volume_correction_activity = \
-        models.ForeignKey('WellVolumeCorrectionActivity', null=True)
+    well = models.ForeignKey('Well', on_delete=models.CASCADE)
+    lab_cherry_pick = models.ForeignKey(
+        'LabCherryPick', null=True, on_delete=models.CASCADE)
+    well_volume_correction_activity = models.ForeignKey(
+        'WellVolumeCorrectionActivity', on_delete=models.CASCADE, null=True)
     volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
-    copy = models.ForeignKey('Copy')
+    copy = models.ForeignKey('Copy', on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'well_volume_adjustment'
@@ -645,8 +690,10 @@ class WellVolumeAdjustment(models.Model):
 # TODO: deprecate: use a status on the CherryPick instead
 class CherryPickAssayPlateScreeningLink(models.Model):
     
-    cherry_pick_assay_plate = models.ForeignKey(CherryPickAssayPlate)
-    cherry_pick_screening = models.ForeignKey('CherryPickScreening')
+    cherry_pick_assay_plate = models.ForeignKey(
+        CherryPickAssayPlate, on_delete=models.CASCADE)
+    cherry_pick_screening = models.ForeignKey(
+        'CherryPickScreening', on_delete=models.CASCADE)
     class Meta:
         db_table = 'cherry_pick_assay_plate_screening_link'
 
@@ -679,7 +726,8 @@ class Screen(models.Model):
     facility_id = models.TextField(unique=True)
     
     parent_screen = models.ForeignKey(
-        'Screen', null=True, related_name='follow_up_screen')
+        'Screen', null=True, related_name='follow_up_screen',
+        on_delete=models.PROTECT)
     
     # REMOVE for SS2 - study_type replaces this as a marker
     project_phase = models.TextField(null=True)
@@ -696,9 +744,11 @@ class Screen(models.Model):
     title = models.TextField(null=False)
     summary = models.TextField()
 
-    lead_screener = models.ForeignKey('ScreensaverUser', null=True, 
+    lead_screener = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT,
         related_name='led_screen')
-    lab_head = models.ForeignKey('ScreensaverUser', null=True,
+    lab_head = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT,
         related_name='lab_head_screen')
     collaborators = models.ManyToManyField('ScreensaverUser', 
         related_name='collaborating_screens')
@@ -731,7 +781,8 @@ class Screen(models.Model):
     pubchem_assay_id = models.IntegerField(null=True)
 
     pin_transfer_admin_activity = models.ForeignKey(
-        'Activity', null=True, related_name='pin_transfer_approved_screen')
+        'Activity', null=True, on_delete=models.PROTECT, 
+        related_name='pin_transfer_approved_screen')
 #     # New
 #     pin_transfer_approved_by = models.ForeignKey('ScreensaverUser', null=True)
 #     pin_transfer_approval_comment = models.TextField(null=True)
@@ -757,7 +808,8 @@ class Screen(models.Model):
     date_charged = models.DateField(null=True)
     billing_comments = models.TextField(null=True)
     
-    created_by = models.ForeignKey('ScreensaverUser', null=True)
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT)
     
     screened_experimental_well_count = \
         models.IntegerField(null=False, default=0)
@@ -782,7 +834,8 @@ class Screen(models.Model):
     ####
     
     image_url = models.TextField(null=True)
-    well_studied = models.ForeignKey('Well', null=True)
+    # FIXME: is well_studied used?
+    well_studied = models.ForeignKey('Well', null=True, on_delete=models.CASCADE)
     species = models.TextField(null=True)
 
     transfection_agent = models.TextField(null=True);
@@ -825,7 +878,7 @@ class Screen(models.Model):
             % (self.facility_id, self.title))
 
 class ScreenBillingItem(models.Model):
-    screen = models.ForeignKey(Screen)
+    screen = models.ForeignKey(Screen, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=9, decimal_places=2)
     date_sent_for_billing = models.DateField(null=True)
     item_to_be_charged = models.TextField()
@@ -836,7 +889,8 @@ class ScreenBillingItem(models.Model):
 
 # NEW
 class ScreenFundingSupports(models.Model):
-    screen = models.ForeignKey(Screen, related_name='fundingsupports')
+    screen = models.ForeignKey(
+        Screen, on_delete=models.CASCADE, related_name='fundingsupports')
     funding_support = models.TextField()
     
     class Meta:
@@ -845,7 +899,8 @@ class ScreenFundingSupports(models.Model):
         
 # NEW
 class ScreenCellLines(models.Model):
-    screen = models.ForeignKey(Screen, related_name='celllines')
+    screen = models.ForeignKey(
+        Screen, related_name='celllines', on_delete=models.CASCADE)
     cell_line = models.TextField()
     
     class Meta:
@@ -856,9 +911,11 @@ class ScreenResult(models.Model):
     
     screen_result_id = models.AutoField(primary_key=True)
     replicate_count = models.IntegerField(default=0)
-    screen = models.OneToOneField(Screen, unique=True)
+    screen = models.OneToOneField(
+        Screen, unique=True, on_delete=models.CASCADE)
     date_created = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey('ScreensaverUser', null=True)
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT)
     channel_count = models.IntegerField(null=True, default=0)
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
@@ -906,8 +963,9 @@ class ResultValue(models.Model):
     
     is_positive = models.NullBooleanField(null=True)
     value = models.TextField(null=True)
-    data_column = models.ForeignKey('DataColumn', null=True)
-    well = models.ForeignKey('Well', null=True)
+    data_column = models.ForeignKey(
+        'DataColumn', null=True, on_delete=models.CASCADE)
+    well = models.ForeignKey('Well', null=True, on_delete=models.CASCADE)
     class Meta:
         # FIXME: no primary key defined:
         # - the natural primary key is the (well,datacolumn)
@@ -917,7 +975,7 @@ class ResultValue(models.Model):
 class DataColumn(models.Model):
 
     data_column_id = models.AutoField(primary_key=True)
-    screen_result = models.ForeignKey('ScreenResult')
+    screen_result = models.ForeignKey('ScreenResult', on_delete=models.CASCADE)
     ordinal = models.IntegerField()
     replicate_ordinal = models.IntegerField(null=True)
     assay_phenotype = models.TextField()
@@ -957,8 +1015,8 @@ class ScreensaverUser(models.Model):
     screensaver_user_id = models.AutoField(primary_key=True)
     
     date_created = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey('self', null=True,
-        related_name='created_user')
+    created_by = models.ForeignKey(
+        'self', null=True, on_delete=models.PROTECT, related_name='created_user')
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     comments = models.TextField(null=True)
@@ -993,12 +1051,14 @@ class ScreensaverUser(models.Model):
     # screening_room_user fields
     classification = models.TextField(null=True)
     lab_head = models.ForeignKey(
-        'ScreensaverUser', null=True, related_name='lab_members')
+        'ScreensaverUser', null=True, related_name='lab_members',
+        on_delete=models.PROTECT)
     
     # lab_head fields
     # If this field, if set, designates user as a "Lab Head"
     lab_affiliation = models.ForeignKey(
-        'LabAffiliation', null=True, related_name='lab_heads')
+        'LabAffiliation', null=True, related_name='lab_heads',
+        on_delete=models.SET_NULL)
     lab_head_appointment_category = models.TextField(null=True)
     lab_head_appointment_department = models.TextField(null=True)
     lab_head_appointment_update_date = models.DateField(null=True)
@@ -1030,11 +1090,11 @@ class LabAffiliation(models.Model):
 # TODO: remove, see migrations 0004, 0007
 class ScreeningRoomUser(models.Model):
     
-    screensaver_user = \
-        models.OneToOneField('ScreensaverUser', primary_key=True)
+    screensaver_user = models.OneToOneField(
+        'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
     # TODO: remove after all migrations
     user_classification = models.TextField()
-    lab_head = models.ForeignKey('LabHead', null=True)
+    lab_head = models.ForeignKey('LabHead', null=True, on_delete=models.CASCADE)
     
     coms_crhba_permit_number = models.TextField()
     coms_crhba_permit_principal_investigator = models.TextField()
@@ -1058,7 +1118,8 @@ class ScreeningRoomUser(models.Model):
 # TODO: Remove, see migration 0004
 class AdministratorUser(models.Model):
     
-    screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
+    screensaver_user = models.OneToOneField(
+        'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
     class Meta:
         db_table = 'administrator_user'
     
@@ -1066,8 +1127,10 @@ class AdministratorUser(models.Model):
 # TODO: remove after all migrations completed; screensaver_user.lab_head_id replaces       
 class LabHead(models.Model):
     
-    screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
-    lab_affiliation = models.ForeignKey('LabAffiliation', null=True)
+    screensaver_user = models.OneToOneField(
+        'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
+    lab_affiliation = models.ForeignKey(
+        'LabAffiliation', null=True, on_delete=models.CASCADE)
     lab_head_appointment_category = models.TextField(null=True)
     lab_head_appointment_department = models.TextField(null=True)
     lab_head_appointment_update_date = models.DateField(null=True)
@@ -1084,7 +1147,8 @@ class LabHead(models.Model):
 # New
 class UserFacilityUsageRole(models.Model):
     
-    screensaver_user = models.ForeignKey('ScreensaverUser')
+    screensaver_user = models.ForeignKey(
+        'ScreensaverUser', on_delete=models.CASCADE)
     facility_usage_role = models.TextField()
     class Meta:
         db_table = 'user_facility_usage_role'
@@ -1094,7 +1158,8 @@ class UserFacilityUsageRole(models.Model):
 # TODO: obsoleted by UserFacilityUsageRole: remove after migrating
 class ScreeningRoomUserFacilityUsageRole(models.Model):
     
-    screening_room_user = models.ForeignKey(ScreeningRoomUser)
+    screening_room_user = models.ForeignKey(
+        ScreeningRoomUser, on_delete=models.CASCADE)
     facility_usage_role = models.TextField()
     class Meta:
         db_table = 'screening_room_user_facility_usage_role'
@@ -1102,7 +1167,8 @@ class ScreeningRoomUserFacilityUsageRole(models.Model):
 # TODO: remove, see migration 0004 / 0005
 class ScreensaverUserRole(models.Model):
     
-    screensaver_user = models.ForeignKey(ScreensaverUser)
+    screensaver_user = models.ForeignKey(
+        ScreensaverUser, on_delete=models.CASCADE)
     screensaver_user_role = models.TextField()
     
     class Meta:
@@ -1129,7 +1195,7 @@ class Well(models.Model):
     well_name = models.TextField()
     facility_id = models.TextField(null=True)
     library_well_type = models.TextField()
-    library = models.ForeignKey('Library')
+    library = models.ForeignKey('Library', on_delete=models.CASCADE)
     is_deprecated = models.BooleanField(default=False)
     deprecation_reason = models.TextField(null=True)
     
@@ -1185,8 +1251,10 @@ class CachedQuery(models.Model):
 class WellQueryIndex(models.Model):
     ''' For caching large resultvalue queries '''
      
-    well = models.ForeignKey('Well', null=False)
-    query = models.ForeignKey('CachedQuery', null=False)
+    well = models.ForeignKey(
+        'Well', null=False, on_delete=models.CASCADE)
+    query = models.ForeignKey(
+        'CachedQuery', null=False, on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'well_query_index'
@@ -1226,7 +1294,8 @@ class Reagent(models.Model):
     # library_contents_version = \
     #     models.ForeignKey('LibraryContentsVersion', null=True)
 
-    well = models.ForeignKey('Well', null=True, related_name='reagents')
+    well = models.ForeignKey(
+        'Well', null=True, on_delete=models.CASCADE, related_name='reagents')
 
     class Meta:
         db_table = 'reagent'
@@ -1240,14 +1309,17 @@ class Reagent(models.Model):
 class SilencingReagent(Reagent):
     
     reagentlink = models.OneToOneField(
-        'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
+        'Reagent', primary_key=True, parent_link=True, on_delete=models.CASCADE,
+        db_column='reagent_id')
     sequence = models.TextField(null=True)
     anti_sense_sequence = models.TextField(null=True)
     silencing_reagent_type = models.TextField(null=True)
     vendor_gene = models.OneToOneField(
-        'Gene', unique=True, null=True, related_name='vendor_reagent')
+        'Gene', unique=True, null=True, on_delete=models.CASCADE, 
+        related_name='vendor_reagent')
     facility_gene = models.OneToOneField(
-        'Gene', unique=True, null=True, related_name='facility_reagent')
+        'Gene', unique=True, null=True, on_delete=models.CASCADE, 
+        related_name='facility_reagent')
     duplex_wells = models.ManyToManyField('Well')
     is_restricted_sequence = models.NullBooleanField(default=False)
 
@@ -1279,7 +1351,7 @@ class Gene(models.Model):
 
 class GeneGenbankAccessionNumber(models.Model):
     
-    gene = models.ForeignKey(Gene)
+    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
     genbank_accession_number = models.TextField()
     class Meta:
         unique_together = (('gene', 'genbank_accession_number'))    
@@ -1292,7 +1364,7 @@ class GeneGenbankAccessionNumber(models.Model):
 
 class GeneSymbol(models.Model):
     
-    gene = models.ForeignKey(Gene)
+    gene = models.ForeignKey(Gene, on_delete=models.CASCADE)
     entrezgene_symbol = models.TextField()
     ordinal = models.IntegerField()
     class Meta:
@@ -1303,7 +1375,8 @@ class GeneSymbol(models.Model):
 class SmallMoleculeReagent(Reagent):
 
     reagentlink = models.OneToOneField(
-        'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
+        'Reagent', primary_key=True, parent_link=True,
+        on_delete=models.CASCADE, db_column='reagent_id')
     inchi = models.TextField(null=True)
     molecular_formula = models.TextField(null=True)
     molecular_mass = \
@@ -1325,7 +1398,8 @@ class SmallMoleculeReagent(Reagent):
 class Molfile(models.Model):
     
     molfile = models.TextField()
-    reagent = models.OneToOneField('Reagent', unique=True, primary_key=True)
+    reagent = models.OneToOneField(
+        'Reagent', unique=True, primary_key=True, on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'molfile'
@@ -1333,14 +1407,15 @@ class Molfile(models.Model):
 class NaturalProductReagent(Reagent):
     
     reagentlink = models.OneToOneField(
-        'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
+        'Reagent', primary_key=True, parent_link=True, 
+        on_delete=models.CASCADE, db_column='reagent_id')
 
     class Meta:
         db_table = 'natural_product_reagent'
 
 class SmallMoleculeChembankId(models.Model):
     
-    reagent = models.ForeignKey('Reagent')
+    reagent = models.ForeignKey('Reagent', on_delete=models.CASCADE)
     chembank_id = models.IntegerField()
     
     class Meta:
@@ -1348,7 +1423,7 @@ class SmallMoleculeChembankId(models.Model):
 
 class SmallMoleculeChemblId(models.Model):
     
-    reagent = models.ForeignKey('Reagent')
+    reagent = models.ForeignKey('Reagent', on_delete=models.CASCADE)
     chembl_id = models.IntegerField()
     
     class Meta:
@@ -1356,7 +1431,7 @@ class SmallMoleculeChemblId(models.Model):
 
 class SmallMoleculeCompoundName(models.Model):
     
-    reagent = models.ForeignKey('Reagent')
+    reagent = models.ForeignKey('Reagent', on_delete=models.CASCADE)
     compound_name = models.TextField()
     ordinal = models.IntegerField()
     
@@ -1365,7 +1440,7 @@ class SmallMoleculeCompoundName(models.Model):
 
 class SmallMoleculePubchemCid(models.Model):
     
-    reagent = models.ForeignKey('Reagent')
+    reagent = models.ForeignKey('Reagent', on_delete=models.CASCADE)
     pubchem_cid = models.IntegerField()
     
     class Meta:
@@ -1374,7 +1449,8 @@ class SmallMoleculePubchemCid(models.Model):
 class SmallMoleculeCherryPickRequest(models.Model):
     
     cherry_pick_request = \
-        models.OneToOneField(CherryPickRequest, primary_key=True)
+        models.OneToOneField(
+            CherryPickRequest, primary_key=True, on_delete=models.CASCADE)
     
     class Meta:
         db_table = 'small_molecule_cherry_pick_request'
@@ -1404,17 +1480,19 @@ class Library(models.Model):
     experimental_well_count = models.IntegerField(null=True)
     is_pool = models.NullBooleanField(null=True)
     
-    created_by = models.ForeignKey('ScreensaverUser', null=True)
-    owner_screener = models.ForeignKey('ScreensaverUser', null=True, 
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT)
+    owner_screener = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT,
         related_name='owned_library')
     solvent = models.TextField()
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     
     version_number = models.IntegerField(default=0)
-    loaded_by = models.ForeignKey('ScreensaverUser',
-                                  related_name='libraries_loaded',
-                                  null=True)
+    loaded_by = models.ForeignKey(
+        'ScreensaverUser', on_delete=models.PROTECT, 
+        related_name='libraries_loaded', null=True)
     
     is_released = models.BooleanField(default=False)
     
@@ -1441,12 +1519,13 @@ class Library(models.Model):
 class Copy(models.Model):
 
     usage_type = models.TextField()
-    library = models.ForeignKey('Library')
+    library = models.ForeignKey('Library', on_delete=models.CASCADE)
     name = models.TextField()
     copy_id = models.AutoField(primary_key=True)
     comments = models.TextField()
     date_created = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey('ScreensaverUser', null=True)
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT)
     date_plated = models.DateField(null=True)
     
     # Deprecated - verify removal once UI is approved - Jen
@@ -1475,11 +1554,13 @@ class Plate(models.Model):
     well_volume = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
     
-    copy = models.ForeignKey(Copy)
+    copy = models.ForeignKey(Copy, on_delete=models.CASCADE)
     facility_id = models.TextField()
     date_created = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey('ScreensaverUser', null=True)
-    plate_location = models.ForeignKey('PlateLocation', null=True)
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.PROTECT)
+    plate_location = models.ForeignKey(
+        'PlateLocation', null=True, on_delete=models.PROTECT)
     status = models.TextField()
     stock_plate_number = models.IntegerField(null=True)
     quadrant = models.IntegerField(null=True)
@@ -1521,9 +1602,9 @@ class Plate(models.Model):
 
 class CopyWell(models.Model):
 
-    plate = models.ForeignKey('Plate')
-    copy = models.ForeignKey('Copy')
-    well = models.ForeignKey('Well')
+    plate = models.ForeignKey('Plate', on_delete=models.CASCADE)
+    copy = models.ForeignKey('Copy', on_delete=models.CASCADE)
+    well = models.ForeignKey('Well', on_delete=models.CASCADE)
     volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
     initial_volume = \
         models.DecimalField(null=True, max_digits=10, decimal_places=9)
@@ -1569,7 +1650,7 @@ class PlateLocation(models.Model):
 class AbaseTestset(models.Model):
     
     abase_testset_id = models.IntegerField(primary_key=True)
-    screen = models.ForeignKey('Screen')
+    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
     testset_name = models.TextField()
     comments = models.TextField()
     testset_date = models.DateField()
@@ -1579,8 +1660,10 @@ class AbaseTestset(models.Model):
 class RawDataTransform(models.Model):
     ''' Store meta data for a raw data input transformation ''' 
     
-    screen = models.OneToOneField('Screen', null=True)
-    cherry_pick_request = models.OneToOneField('CherryPickRequest', null=True)
+    screen = models.OneToOneField(
+        'Screen', null=True, on_delete=models.CASCADE)
+    cherry_pick_request = models.OneToOneField(
+        'CherryPickRequest', null=True, on_delete=models.CASCADE)
     
     plate_ranges = models.TextField(null=True)
     output_filename = models.TextField(null=True)
@@ -1601,7 +1684,8 @@ class RawDataTransform(models.Model):
 class RawDataInputFile(models.Model):
     ''' Store meta data for a raw data input file transformation ''' 
     
-    raw_data_transform = models.ForeignKey('RawDataTransform')
+    raw_data_transform = models.ForeignKey(
+        'RawDataTransform', on_delete=models.CASCADE)
     ordinal = models.IntegerField()
     
     collation_order = models.TextField(null=True)
@@ -1642,10 +1726,12 @@ class ChecklistItemEvent(models.Model):
     date_performed = models.DateField(null=True)
     is_expiration = models.BooleanField()
     checklist_item_id = models.IntegerField()
-    screening_room_user = models.ForeignKey('ScreeningRoomUser')
+    screening_room_user = models.ForeignKey(
+        'ScreeningRoomUser', on_delete=models.CASCADE)
     is_not_applicable = models.BooleanField()
     date_created = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey('ScreensaverUser', null=True)
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.CASCADE)
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
 
@@ -1656,7 +1742,8 @@ class ChecklistItemEvent(models.Model):
 # Deprecated
 class ScreenKeyword(models.Model):
     
-    screen = models.ForeignKey('Screen', related_name='keywords')
+    screen = models.ForeignKey(
+        'Screen', related_name='keywords', on_delete=models.CASCADE)
     keyword = models.TextField()
     
     class Meta:

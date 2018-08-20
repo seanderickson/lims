@@ -4,16 +4,17 @@ from argparse import ArgumentError
 import argparse
 from collections import defaultdict, OrderedDict
 import datetime
+import json
 import logging
 import os.path
 from urlparse import urlparse
 
-import dateutil
+import dateutil.parser
 from django.conf import settings
 import pytz
 from requests.packages import urllib3
 
-from db.schema import get_href, get_vocab_title, replace_vocabularies,\
+from db.schema import get_href, get_vocab_title, replace_vocabularies, \
     replace_html_values, DB_API_URI, DATE_FORMAT
 import db.schema
 from reports import InformationError, HEADER_APILOG_COMMENT_CLIENT
@@ -25,7 +26,6 @@ from reports.utils.admin_emailer import Emailer, read_email_template, \
 from reports.utils.django_requests import get_resource, get_resource_listing, \
     get_resource_schema
 import reports.utils.django_requests as django_requests
-import json
 
 
 logger = logging.getLogger(__name__)

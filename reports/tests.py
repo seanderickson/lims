@@ -70,6 +70,7 @@ from django.test.client import Client, FakePayload
 from django.test.runner import DiscoverRunner
 from django.test.testcases import SimpleTestCase
 
+
 from reports import HEADER_APILOG_COMMENT, DJANGO_ACCEPT_PARAM, \
     HTTP_PARAM_AUTH, HTTP_PARAM_CONTENT_TYPE
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
@@ -1110,7 +1111,16 @@ class LogCompareTest(TestCase):
         self.assertTrue(diff_dict['two']==['value2a', 'value2b'])
         
 
-class IResourceTestCase(SimpleTestCase):
+class IResourceTestCase(unittest.TestCase):
+    '''
+    Note: unittest.TestCase does not wrap tests in a transaction, like the 
+    django.test.TestCase(TransactionTestCase) does. It is the responsibility
+    of each TestCase.tearDown() to remove all test data.
+    
+    This strategy is used so the init data: (Resource, Field, Vocabulary 
+    metadata, test user data), created by _bootstrap_init_files(), will not be 
+    wiped after each test.
+    '''
    
     username = 'testsuper'
     password = 'pass'
@@ -1122,15 +1132,7 @@ class IResourceTestCase(SimpleTestCase):
     }
 
     """
-    Override the Django SimpleTestCase, not using the TransactionTestCase
-    necessary so that the SqlAlchemy connection can see the same database as the 
-    django test code (Django ORM).
-
-    Serves as a base class for tests, and, through _bootstrap_init_files, 
-    as the setup for this module.
-
-    FIXME: initialize the SqlAlchemyResource inside the transactions so that 
-    the normal TransactionTestCase can be used.
+    
     """
     def __init__(self,*args,**kwargs):
     
@@ -1157,7 +1159,7 @@ class IResourceTestCase(SimpleTestCase):
         
         self._run_api_init_actions(
             input_actions_file, reinit_pattern=reinit_pattern)
-
+        
     def create_basic(self, username, password):
         """
         Creates & returns the HTTP ``Authorization`` header for use with BASIC

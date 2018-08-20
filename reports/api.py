@@ -1490,13 +1490,17 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('new post data: %r', new_data)
         if not new_data:
             raise BadRequestError({
-                'POST': 'no data found for the new obj created by post: %r' % obj })
+                'POST': 'no data found for the new obj created by post: %r' % meta })
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
             id_attribute=id_attribute, schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
             logger.debug('post log: %r', patched_log)
+            meta[API_MSG_RESULT] = API_MSG_SUCCESS
+        else:
+            logger.info('no post log')
+            meta[API_MSG_WARNING] = 'No Changes were detected'
 
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
@@ -1586,6 +1590,7 @@ class ApiResource(SqlAlchemyResource):
             id_attribute=id_attribute, schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
+            meta[API_MSG_RESULT] = API_MSG_SUCCESS
             logger.debug('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
@@ -2979,24 +2984,25 @@ class FieldResource(ApiResource):
         ''' Internal callers - build the schema.fields hash
         '''
         
-        logger.info('build_fields for scope: %r', scopes)
+        logger.info('build_fields for scopes: %r', scopes)
         if not scopes:
             scopes = MetaHash.objects.all()\
                 .filter(scope__icontains='fields.')\
                 .values_list('scope',flat=True).distinct()
-            if not scopes.exists():
+            if not scopes.exists(): 
                 # bootstrap case
                 scopes = ['fields.field',]
 
         fields = {}
         field_key = '{scope}/{key}'
-        for scope in scopes:
+        for scope in set(scopes):
+            logger.debug('build scope: %r', scope)
             field_hash = deepcopy(
                 MetaHash.objects.get_and_parse(
                     scope=scope, field_definition_scope='fields.field', 
                     clear=True))
-            
-            for field in field_hash.values():
+            for kvalue, field in field_hash.items():
+                
                 key = field_key.format(**field)
                 if key in fields:
                     # FIXME: is this exception needed? seems to mess up program
@@ -3004,7 +3010,8 @@ class FieldResource(ApiResource):
                     # initialization, re: fields.field/key
                     # throwing an exception forces _get_list_response (internal)
                     # return an empty response.
-                    raise Exception('field key is already defined: %r', key)
+                    raise Exception(
+                        'field key is already defined: %r: %r' % (key, field))
                 fields[key] = field
             
         recursion_test = list()

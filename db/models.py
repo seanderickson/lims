@@ -559,12 +559,12 @@ class CherryPickAssayPlate(models.Model):
     # New - when set, the assay plate is "plated"
     plating_date = models.DateField(null=True)
     plated_by = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.PROTECT,
+        'ScreensaverUser', null=True, on_delete=models.SET_NULL,
         related_name='plated_cherry_pick_plates')
 
     screening_date = models.DateField(null=True)
     screened_by = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.PROTECT,
+        'ScreensaverUser', null=True, on_delete=models.SET_NULL,
         related_name='screened_cherry_pick_plates')
     
     # Deprecated
@@ -727,7 +727,7 @@ class Screen(models.Model):
     
     parent_screen = models.ForeignKey(
         'Screen', null=True, related_name='follow_up_screen',
-        on_delete=models.PROTECT)
+        on_delete=models.CASCADE)
     
     # REMOVE for SS2 - study_type replaces this as a marker
     project_phase = models.TextField(null=True)
@@ -781,7 +781,7 @@ class Screen(models.Model):
     pubchem_assay_id = models.IntegerField(null=True)
 
     pin_transfer_admin_activity = models.ForeignKey(
-        'Activity', null=True, on_delete=models.PROTECT, 
+        'Activity', null=True, on_delete=models.CASCADE, 
         related_name='pin_transfer_approved_screen')
 #     # New
 #     pin_transfer_approved_by = models.ForeignKey('ScreensaverUser', null=True)
@@ -809,7 +809,7 @@ class Screen(models.Model):
     billing_comments = models.TextField(null=True)
     
     created_by = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.PROTECT)
+        'ScreensaverUser', null=True, on_delete=models.CASCADE)
     
     screened_experimental_well_count = \
         models.IntegerField(null=False, default=0)
@@ -1016,7 +1016,7 @@ class ScreensaverUser(models.Model):
     
     date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey(
-        'self', null=True, on_delete=models.PROTECT, related_name='created_user')
+        'self', null=True, on_delete=models.SET_NULL, related_name='created_user')
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     comments = models.TextField(null=True)
@@ -1052,7 +1052,7 @@ class ScreensaverUser(models.Model):
     classification = models.TextField(null=True)
     lab_head = models.ForeignKey(
         'ScreensaverUser', null=True, related_name='lab_members',
-        on_delete=models.PROTECT)
+        on_delete=models.SET_NULL)
     
     # lab_head fields
     # If this field, if set, designates user as a "Lab Head"
@@ -1481,9 +1481,9 @@ class Library(models.Model):
     is_pool = models.NullBooleanField(null=True)
     
     created_by = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.PROTECT)
+        'ScreensaverUser', null=True, on_delete=models.SET_NULL)
     owner_screener = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.PROTECT,
+        'ScreensaverUser', null=True, on_delete=models.SET_NULL,
         related_name='owned_library')
     solvent = models.TextField()
     date_loaded = models.DateTimeField(null=True)
@@ -1491,7 +1491,7 @@ class Library(models.Model):
     
     version_number = models.IntegerField(default=0)
     loaded_by = models.ForeignKey(
-        'ScreensaverUser', on_delete=models.PROTECT, 
+        'ScreensaverUser', on_delete=models.SET_NULL, 
         related_name='libraries_loaded', null=True)
     
     is_released = models.BooleanField(default=False)
@@ -1558,9 +1558,9 @@ class Plate(models.Model):
     facility_id = models.TextField()
     date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.PROTECT)
+        'ScreensaverUser', null=True, on_delete=models.SET_NULL)
     plate_location = models.ForeignKey(
-        'PlateLocation', null=True, on_delete=models.PROTECT)
+        'PlateLocation', null=True, on_delete=models.SET_NULL)
     status = models.TextField()
     stock_plate_number = models.IntegerField(null=True)
     quadrant = models.IntegerField(null=True)

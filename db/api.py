@@ -16318,46 +16318,48 @@ class RawDataTransformerResource(DbApiResource):
             
             workbook = xlsxwriter.Workbook(temp_file) #, {'constant_memory': True})
             
-            input_file_data = []
-            for ordinal, filekey in enumerate(sorted(request.FILES.keys())):
-                logger.info('read file: %d, %r', ordinal, filekey)
-                input_file = request.FILES[filekey]
-        
-                (matrices, rdif, counter) = \
-                    read_input_matrices(rdt, ordinal, filekey, input_file)
-                input_file_data.append((matrices, rdif, counter))
+            try:
+            
+                input_file_data = []
+                for ordinal, filekey in enumerate(sorted(request.FILES.keys())):
+                    logger.info('read file: %d, %r', ordinal, filekey)
+                    input_file = request.FILES[filekey]
+            
+                    (matrices, rdif, counter) = \
+                        read_input_matrices(rdt, ordinal, filekey, input_file)
+                    input_file_data.append((matrices, rdif, counter))
+    
+                    _matrix_read_meta = OrderedDict((
+                        ('Ordinal', rdif.ordinal), 
+                        ('Filename', rdif.filename), 
+                        ('Collation', rdif.collation_order),
+                        ('Readout Type', rdif.readout_title)
+                    ))
+                    _matrix_read_meta['Matrices'] = len(matrices)
+                    if aps > lps:
+                        _matrix_read_meta['Matrices read (1536 well)'] = len(matrices)/4
+                    elif aps < lps:
+                        _matrix_read_meta['Matrices read (96 well)'] = len(matrices)*4
+                    logger.info('read matrices: %d', len(matrices))
+                    
+                    for k,v in counter.counter_hash.items():
+                        _matrix_read_meta[k.title() + 's'] = ', '.join([str(x) for x in v])
+                    _meta['File %d' % (rdif.ordinal+1)] = _matrix_read_meta
+                    logger.info('Raw data transform file read meta: %r', _matrix_read_meta)
+                    
+                if screen:
+                    self.write_screen_xlsx(
+                        rdt, plate_numbers, input_file_data, workbook, wells, rnai_columns_to_write)
+                elif cpr:
+                    self.write_cpr_xlsx(
+                        rdt, plate_numbers, input_file_data, workbook, lcp_copywells, 
+                        control_well_named_ranges,rnai_columns_to_write)
+                else:
+                    raise ProgrammingError('no screen or cpr')
 
-                _matrix_read_meta = OrderedDict((
-                    ('Ordinal', rdif.ordinal), 
-                    ('Filename', rdif.filename), 
-                    ('Collation', rdif.collation_order),
-                    ('Readout Type', rdif.readout_title)
-                ))
-                _matrix_read_meta['Matrices'] = len(matrices)
-                if aps > lps:
-                    _matrix_read_meta['Matrices read (1536 well)'] = len(matrices)/4
-                elif aps < lps:
-                    _matrix_read_meta['Matrices read (96 well)'] = len(matrices)*4
-                logger.info('read matrices: %d', len(matrices))
-                
-                for k,v in counter.counter_hash.items():
-                    _matrix_read_meta[k.title() + 's'] = ', '.join([str(x) for x in v])
-                _meta['File %d' % (rdif.ordinal+1)] = _matrix_read_meta
-                logger.info('Raw data transform file read meta: %r', _matrix_read_meta)
-                
-            if screen:
-                self.write_screen_xlsx(
-                    rdt, plate_numbers, input_file_data, workbook, wells, rnai_columns_to_write)
-            elif cpr:
-                self.write_cpr_xlsx(
-                    rdt, plate_numbers, input_file_data, workbook, lcp_copywells, 
-                    control_well_named_ranges,rnai_columns_to_write)
-            else:
-                raise ProgrammingError('no screen or cpr')
-
-                
-            workbook.close()
-            temp_file.close()
+            finally:
+                workbook.close()
+                temp_file.close()
             
             rdt.temp_output_filename = temp_file.name
             rdt.save()
@@ -23727,7 +23729,7 @@ class WellResource(DbApiResource):
                 'where count_comparison.activity_id=library_screening.activity_id '
                 'and library_screening.screened_experimental_well_count != current_count; '
                 )
-            logger.info('execute sql: %r (%d)', sql, library.library_id)
+            logger.debug('execute sql: %r (%d)', sql, library.library_id)
             conn.execute(sql, (library.library_id))
             sql = (
                 'update screen '
@@ -23765,7 +23767,7 @@ class WellResource(DbApiResource):
                 'and ( screen_update.screened_experimental_well_count!= current_count or  '
                 '      screen_update.unique_screened_experimental_well_count != current_unique_count ); '
                 )
-            logger.info('execute sql: %r (%d)', sql, library.library_id)
+            logger.debug('execute sql: %r (%d)', sql, library.library_id)
             conn.execute(sql, (library.library_id))
 
 

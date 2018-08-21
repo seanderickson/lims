@@ -183,14 +183,14 @@ class IccblBasicAuthentication(Authentication):
             username=username, password=password)
 
         if user is None:
-            logger.info('no user found for: %s', username)
+            logger.info('no user found for: "%s"', username)
             raise LoginFailedException({
                 'HTTP_AUTHORIZATION': 'unknown user: %s' % username })
 
         if user.is_active is not True:
             logger.info('user is not active: %s', username)
             raise LoginFailedException({
-                'HTTP_AUTHORIZATION': 'user is not active: %s' % username })
+                'HTTP_AUTHORIZATION': 'user is not active: "%s"' % username })
 
         request.user = user
         return True

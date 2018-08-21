@@ -94,7 +94,7 @@ class CustomAuthenticationBackend():
                     logger.info('logged in user %r using password',username)
                     return user
                 else:
-                    msg = 'User password authentication failed: %r' % username
+                    msg = 'User password authentication failed: "%s"' % username
                     logger.info(msg)
                     raise LoginFailedException(msg)
             if(reports.hms.auth.authenticate(username, password)):
@@ -103,7 +103,7 @@ class CustomAuthenticationBackend():
                 if(user.is_active):
                     return user
                 else:
-                    msg = 'User authenticated, but is not active: %s' % username
+                    msg = 'User authenticated, but is not active: "%s"' % username
                     logger.warn(msg)
                     raise LoginFailedException(msg)
             else:
@@ -112,7 +112,7 @@ class CustomAuthenticationBackend():
                 logger.warn(msg)
                 raise LoginFailedException(msg)
         except User.DoesNotExist, e:
-            msg = 'No user found with the id: %r' % username
+            msg = 'No user found for: "%s"' % username
             logger.warn(msg)
             raise LoginFailedException(msg)
         except Exception, e:

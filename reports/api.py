@@ -5345,20 +5345,23 @@ class PermissionResource(ApiResource):
         query = Permission.objects.all()
         permissionTypes = Vocabulary.objects.all().filter(
             scope='permission.type')
-        for r in resources:
-            found = False
-            for perm in query:
-                if perm.scope==r.scope and perm.key==r.key:
-                    found = True
-            if not found:
-                logger.debug('initialize permission: %r:%r'
-                    % (r.scope, r.key))
-                for ptype in permissionTypes:
-                    p = Permission.objects.create(
-                        scope=r.scope, key=r.key, type=ptype.key)
-                    p.save()
-                    logger.debug('bootstrap created permission %s' % p)
-
+        try:
+            for r in resources:
+                found = False
+                for perm in query:
+                    if perm.scope==r.scope and perm.key==r.key:
+                        found = True
+                if not found:
+                    logger.debug('initialize permission: %r:%r'
+                        % (r.scope, r.key))
+                    for ptype in permissionTypes:
+                        p = Permission.objects.create(
+                            scope=r.scope, key=r.key, type=ptype.key)
+                        p.save()
+                        logger.debug('bootstrap created permission %s' % p)
+        except Exception, e:
+            logger.info('startup exception, %r', e)
+            
     def prepend_urls(self):
         return [
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 

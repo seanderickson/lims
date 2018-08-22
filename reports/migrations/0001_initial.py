@@ -170,7 +170,10 @@ class Migration(migrations.Migration):
                 ('date_time_completed', models.DateTimeField(null=True)),
                 ('response_content', models.TextField(null=True)),
                 ('response_status_code', models.IntegerField(null=True)),
-                ('user_requesting', models.ForeignKey(to='reports.UserProfile')),
+                ('user_requesting', 
+                    models.ForeignKey(
+                        to='reports.UserProfile',
+                        on_delete=models.PROTECT)),
             ],
         ),
         

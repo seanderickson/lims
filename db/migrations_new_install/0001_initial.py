@@ -903,17 +903,18 @@ class Migration(migrations.Migration):
                 'db_table': 'well',
             },
         ),
-        migrations.CreateModel(
-            name='WellQueryIndex',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('query', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='db.CachedQuery')),
-                ('well', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='db.Well')),
-            ],
-            options={
-                'db_table': 'well_query_index',
-            },
-        ),
+# NOTE: well_query_index is created by db.api
+#         migrations.CreateModel(
+#             name='WellQueryIndex',
+#             fields=[
+#                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+#                 ('query', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='db.CachedQuery')),
+#                 ('well', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='db.Well')),
+#             ],
+#             options={
+#                 'db_table': 'well_query_index',
+#             },
+#         ),
         migrations.CreateModel(
             name='WellVolumeAdjustment',
             fields=[

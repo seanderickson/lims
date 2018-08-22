@@ -1,4 +1,4 @@
-Django >=1.9.13
+Django ~=1.11
 Pillow ~=5.2.0
 SQLAlchemy ~=1.2.10
 aldjemy ~=0.8.0

@@ -290,6 +290,7 @@ def migrate_transformer_logs(apps, schema_editor, sql, colkeys):
     logger.info('stats: %d activities, input_files: %d, %d screens, %d cprs', 
         i, input_file_count, len(facility_ids),len(cpr_ids) )
 
+    logger.info('Summary of vocab fields seen')
 
     logger.info('transform_fields: %r', transform_fields)
     logger.info('input_file_fields: %r', input_file_fields)

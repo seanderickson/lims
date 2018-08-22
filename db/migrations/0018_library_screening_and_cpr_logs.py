@@ -13,6 +13,8 @@ from django.db import migrations, models
 from db.migrations import create_log_time, _child_log_from
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
+from db.models import CherryPickLiquidTransfer, CherryPickScreening,\
+    CherryPickAssayPlate, LibraryScreening, CherryPickRequest
 
 
 logger = logging.getLogger(__name__)
@@ -490,8 +492,6 @@ def create_library_screening_logs(apps, schema_editor):
             
         logger.info('created library screening logs: %d', count)
 
-    LibraryScreening = apps.get_model('db', 'LibraryScreening')
-     
     for i,screening in enumerate( LibraryScreening.objects.all()
         .order_by('screeninglink__labactivitylink__activitylink__date_of_activity')):
         if not screening.assayplate_set.exists():
@@ -522,8 +522,6 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
     - TODO: Cherry Pick Assay Plate created logs? (TODO for API also)
     2. For manual well volume correction activities
     '''
-    CherryPickLiquidTransfer = apps.get_model('db', 'CherryPickLiquidTransfer')
-    CherryPickRequest = apps.get_model('db', 'CherryPickRequest')
 
     # Strategy:
     # build hash cpr-> plates
@@ -861,8 +859,6 @@ def create_cherry_pick_plating_logs(apps, schema_editor):
     - child logs: for each Cherry Pick Assay Plate
     NOTE: keep CherryPickLiquidTransfer entries -> LabActivity (for now)
    '''
-    CherryPickLiquidTransfer = apps.get_model('db', 'CherryPickLiquidTransfer')
-    
     i = 0
     liquid_transfers = CherryPickLiquidTransfer.objects.all().order_by()
     logger.info('create logs for %d liquid_transfers', len(liquid_transfers))
@@ -991,8 +987,6 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
     - child logs: for each Cherry Pick Assay Plate
     Note: keep CherryPickScreening entries (for now)
    '''
-    CherryPickScreening = apps.get_model('db', 'CherryPickScreening')
-    CherryPickAssayPlate = apps.get_model('db', 'CherryPickAssayPlate')
     cpap_to_cps_sql = '''
         select cherry_pick_assay_plate_id
         from cherry_pick_assay_plate_screening_link

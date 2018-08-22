@@ -258,7 +258,7 @@ function premigratedb {
   
   # check which migrations are completed 
   # - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '[X]' | awk '{print $2}')
+  completed_migrations=$($DJANGO_CMD showmigrations db | grep '[X]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0001'
@@ -296,7 +296,7 @@ function migratedb {
   echo "running migrations: $(ts) ..." >> "$LOGFILE"
 
   # check which migrations are completed - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '\[X\]' | awk '{print $2}')
+  completed_migrations=$($DJANGO_CMD showmigrations db | grep '\[X\]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0007'
@@ -341,60 +341,59 @@ function migratedb {
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
-    migration='0014'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    migration='0015'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-          -f ./db/migrations/manual/0015_post_migrate.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    migration='0016'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-          -f ./db/migrations/manual/0016_create_copy_wells.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    
-    migration='0017'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    
-    migration='0018'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    
-    migration='0019'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    
-    migration='0020'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    
+  migration='0014'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  migration='0015'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+        -f ./db/migrations/manual/0015_post_migrate.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  migration='0016'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+        -f ./db/migrations/manual/0016_create_copy_wells.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0017'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0018'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0019'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0020'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
 
-    migration='0021'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
+  migration='0021'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
     
 
 # TEMP: 20170614 disable post migrations; leaves vestigal fields/tables in place TODO: reinstate    
@@ -412,7 +411,6 @@ function migratedb {
 #      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
 #      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
 #    fi
-  fi
     
   echo "migrations completed: $(ts) " >> "$LOGFILE"
 
@@ -437,7 +435,7 @@ function bootstrap {
   
   BOOTSTRAP_PORT=${BOOTSTRAP_PORT:-55999}
   
-  echo "run a local dev server on port $BOOTSTRAP_PORT..."
+  echo "run a local dev server on port $BOOTSTRAP_PORT..." >> "$LOGFILE"
   
   nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
   --noreload $BOOTSTRAP_PORT  &
@@ -445,14 +443,14 @@ function bootstrap {
   server_pid=$!
   if [[ "$?" -ne 0 ]]; then
     runserver_status =$?
-    echo "bootstrap error, dev runserver status: $runserver_status"
+    echo "bootstrap error, dev runserver status: $runserver_status" >> "$LOGFILE"
     exit $runserver_status
   fi
 #  echo "wait for server process: ($!) to start..."
 #  wait $server_pid
   sleep 3
   
-  echo "bootstrap the metahash data..."
+  echo "bootstrap the metahash data..." >> "$LOGFILE"
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./reports/static/api_init/ \
     -f ./reports/static/api_init/api_init_actions.csv \
@@ -471,6 +469,7 @@ function bootstrap {
     error "bootstrap db failed: $?"
   fi
 
+  echo "PATCH the db/static/api_init/labaffiliation_updates.csv file..."  >> "$LOGFILE"
   curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
     -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/labaffiliation \
     --data-binary @db/static/api_init/labaffiliation_updates.csv >>"$LOGFILE" 2>&1

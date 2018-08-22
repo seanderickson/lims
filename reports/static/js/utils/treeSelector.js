@@ -1,14 +1,20 @@
 define([
   'jquery',
   'underscore',
+  'backbone',
   'backgrid',
   'iccbl_backgrid',
   'models/app_state',
   'templates/tree_selector.html',
   'jquery_bonsai'
 ], 
-function($, _, Backgrid, Iccbl, appModel,
+function($, _, Backgrid, Backbone, Iccbl, appModel,
     selector_tree_layout) {
+
+  // NOTE: Webpack 3 patch:
+  // Bind the Backbone.Layout object (and Backbone.Form) using the webpack 
+  // assetsPluginInstance
+  Backbone.Layout = LayoutManager;
 
   /**
    * Constructs a tree component for selecting objects from a collection.

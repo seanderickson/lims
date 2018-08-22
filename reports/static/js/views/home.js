@@ -11,7 +11,7 @@ define([
         },
 
         render : function() {
-            this.el.innerHTML = "Hello World!";
+            this.el.innerHTML = "TBD";
             return this;
         }
     });

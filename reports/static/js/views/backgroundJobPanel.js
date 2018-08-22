@@ -38,7 +38,7 @@ define([
             return;
           }
           self.model.fetch({global: false })
-            .success(function(model){
+            .done(function(model){
               console.log('new model', model);
               self.afterRender();
             })

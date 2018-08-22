@@ -4,6 +4,12 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
     function($, _, Backbone, Backgrid, BackboneForms,
              BackgridFilter, BackgridSelectAll, layoutmanager ) {
 
+// NOTE: Webpack 3 patch:
+// Bind the Backbone.Layout object (and Backbone.Form) using the webpack 
+// assetsPluginInstance
+Backbone.Layout = LayoutManager;
+Backbone.Form = BackboneForm;
+
 var root = window;
   
 var Iccbl = root.Iccbl = {
@@ -2995,7 +3001,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
     
-    Backbone.View.prototype.initialize.apply(this,arguments);
+    Backbone.Layout.prototype.initialize.apply(this,arguments);
   },
   
   /**

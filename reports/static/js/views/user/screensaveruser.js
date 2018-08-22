@@ -1281,7 +1281,7 @@ define([
           
           // Do not allow return to +add 
           delegateStack.shift();
-          self.setServiceActivities(delegateStack);
+          self.setActivities(delegateStack);
           return;
         }
 
@@ -1368,111 +1368,6 @@ define([
       }
     },
     
-//    setServiceActivities: function(delegateStack) {
-//      var self = this;
-//      var saResource = appModel.getResource('serviceactivity');
-//      saResource.fields['serviced_user_id']['editability'] = [];
-//      saResource.fields['activity_class']['visibility'] = [];
-//      
-//      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
-//          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
-//        
-//        if (delegateStack[0]!='+add') {
-//          var activity_id = delegateStack.shift();
-//          self.consumedStack.push(activity_id);
-//          var _key = activity_id
-//          appModel.getModelFromResource(saResource, _key, function(model){
-//            view = new ServiceActivityView({
-//              model: model, 
-//              user: self.model,
-//              uriStack: _.clone(delegateStack)
-//            });
-//            Backbone.Layout.setupView(view);
-//            self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//            self.setView("#tab_container", view ).render();
-//          });        
-//          return;
-//          
-//        } else {
-//          
-//          // Do not allow return to +add 
-//          delegateStack.shift();
-//          self.setServiceActivities(delegateStack);
-//          return;
-//        }
-//
-//      }else{
-//        // List view
-//        // FIXME: refactor with ActivityListView
-//        (function listView(){
-//          var view, url;
-//          var extraControls = [];
-//          var addServiceActivityButton = $([
-//            '<a class="btn btn-default btn-sm pull-down" ',
-//              'role="button" id="add_button" href="#">',
-//              'Add</a>'
-//            ].join(''));
-//          var showDeleteButton = $([
-//            '<a class="btn btn-default btn-sm pull-down" ',
-//              'role="button" id="showDeleteButton" href="#">',
-//              'Delete</a>'
-//            ].join(''));
-//          var showHistoryButton = $([
-//            '<a class="btn btn-default btn-sm pull-down" ',
-//              'role="button" id="showHistoryButton" href="#">',
-//              'History</a>'
-//            ].join(''));
-//          
-//          addServiceActivityButton.click(function(e){
-//            e.preventDefault();
-//            self.addServiceActivity();
-//          });
-//          showHistoryButton.click(function(e){
-//            e.preventDefault();
-//            var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
-//            var search = {};
-//            search['ref_resource_name'] = 'serviceactivity';
-//            search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
-//            newUriStack.push(appModel.createSearchString(search));
-//            var route = newUriStack.join('/');
-//            console.log('history route: ' + route);
-//            appModel.router.navigate(route, {trigger: true});
-//            self.remove();
-//          });
-//          if(appModel.hasPermission(saResource.key, 'edit')){
-//            extraControls.unshift(addServiceActivityButton);
-//          }
-//          if(appModel.hasPermission(saResource.key, 'edit')){
-//            extraControls.unshift(showDeleteButton);
-//          }
-//          extraControls.unshift(showHistoryButton);
-//          console.log('extraControls',extraControls);
-//          url = [self.model.resource.apiUri, 
-//                     self.model.key,
-//                     'serviceactivities'].join('/');
-//          view = new ActivityListView({ 
-//            uriStack: _.clone(delegateStack),
-//            resource: saResource,
-//            resource: saResource,
-//            url: url,
-//            extraControls: extraControls
-//          });
-//          showDeleteButton.click(function(e){
-//            e.preventDefault();
-//            if (! view.grid.columns.findWhere({name: 'deletor'})){
-//              view.grid.columns.unshift({ 
-//                name: 'deletor', label: 'Delete', text:'X', 
-//                description: 'delete record', 
-//                cell: Iccbl.DeleteCell, sortable: false });
-//            }
-//          });
-//          Backbone.Layout.setupView(view);
-//          self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//          self.setView("#tab_container", view ).render();
-//        })();
-//      }
-//    },
-    
     addServiceActivity: function() {
       var self = this;
       
@@ -1482,7 +1377,7 @@ define([
       var defaults = {
         serviced_user_id: self.model.get('screensaver_user_id'),
         serviced_user: self.model.get('name'),
-        performed_by_username: appModel.getCurrentUser().username
+//        performed_by_user_id: appModel.getCurrentUser().screensaver_user_id
       };
       var newModel = appModel.newModelFromResource(saResource, defaults);
       var view = new ServiceActivityView({
@@ -1494,10 +1389,9 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
 
-      self.consumedStack = ['serviceactivity'];
+      self.consumedStack = ['activity'];
       self.reportUriStack([]);
       view.reportUriStack(['+add']);
-
     },
     
     setAttachedFiles: function(delegateStack) {

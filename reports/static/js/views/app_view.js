@@ -19,6 +19,7 @@ define([
       
       initialize: function(args) {
         this.listenTo(appModel, 'change:messages', this.setMessages);
+        
         _.bindAll(this,'setMessages','setBackgroundJobs');
       },
       
@@ -97,6 +98,19 @@ define([
           }
           self.listenTo(
             appModel.getJobCollection(), 'add remove', self.setBackgroundJobs);
+
+          $('#about').click(function(e){
+            e.preventDefault();
+            console.log('about click...');
+            appModel.setUriStack(['about']);
+          });
+          $('#home').click(function(e){
+            e.preventDefault();
+            console.log('home click...');
+            appModel.setUriStack(['home']);
+          });
+          
+        
         };
         
         postRender();

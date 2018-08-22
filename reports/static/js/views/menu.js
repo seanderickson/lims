@@ -16,6 +16,7 @@ define([
 
       initialize: function(attributes, options) {
         console.log('initialize menu.js');
+        this._classname = 'MenuView';
         this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
       },
       

@@ -41,7 +41,7 @@ def bundle_context_processor(request):
         
             assets = json.loads(f.read())
             
-            logger.info('bundle assets: %r', assets )
+            logger.debug('bundle assets: %r', assets )
             if 'main' not in assets:
                 raise Exception(
                     'bundle filename: %r, does not contain a "main" entry: %r', 

@@ -18,6 +18,7 @@ define([
   'views/list2',
   'utils/uploadDataForm',
   'utils/tabbedController'
+  
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, LibraryCopyView, 
             LibraryWellView, LibraryWellsView, DetailLayout, DetailView, EditView, ListView, 
             UploadDataForm, TabbedController ) {
@@ -35,6 +36,8 @@ define([
       if (appModel.getCurrentUser().is_staff !== true){
         this.tabbed_resources['well'] = tabbed_resources['well'];
       }
+      
+      console.log('LibraryView initialized');
       
     },
     
@@ -62,10 +65,12 @@ define([
     events: {
       'click ul.nav-tabs >li': 'click_tab',
       'click button#upload': 'upload',
-//      'click button#download': 'download',
     },
     
     afterRender: function(){
+      
+      console.log('LibraryView.afterRender called...')
+      
       var self = this;
       TabbedController.prototype.afterRender.apply(this,arguments);
 
@@ -134,7 +139,7 @@ define([
               self.model.save({'is_released': true}, options)
                 .done(function(data, textStatus, jqXHR){ 
                   console.log('done releasing...');
-                  self.render();
+                  self.setDetail([]);
                 }).fail(function() { 
                   Iccbl.appModel.jqXHRfail.apply(this,arguments); 
                 });
@@ -193,34 +198,6 @@ define([
           }
         );
         
-        
-//        showPreviewDetails.click(function(e){
-//          e.preventDefault();
-//          e.stopPropagation();
-//          
-//          var uriStack = ['#apilog', self.model.get('preview_log_key')]
-//          
-////          window.open(uriStack.join('/'), '_blank');
-//          
-////          
-////          appModel.getModel('apilog', preview_log_id, function(preview_log){
-////
-////            var json_preview_log = preview_log.toJSON();
-////            appModel.showJsonMessages(json_preview_log,{ 
-////              title: 'Preview Log Details'
-////            })
-////          });
-//
-//          // TODO: alternate, redirect
-//          //var uriStack = ['apilog', 'order','-date_time', appModel.URI_PATH_SEARCH];
-//          //var search = {};
-//          //search['ref_resource_name'] = self.model.resource.key;
-//          //search['key'] = self.model.key;
-//          //search['is_preview'] = 'true';
-//          //uriStack.push(appModel.createSearchString(search));
-//          //console.log('route: ', uriStack);
-//          //appModel.setUriStack(uriStack);
-//        });
       };
 
       showPreviewMessage();
@@ -287,9 +264,10 @@ define([
             // and then (during render), will refetch again for the table view
             self.model.fetch({
               reset: true,
-              success: function() {
-                self.render();
-              }
+            }).done(function() {
+              console.log('re-rendering library view...');
+//              self.render();
+              self.setDetail([]);
             }).fail(function() { 
               Iccbl.appModel.jqXHRfail.apply(this,arguments); 
             });

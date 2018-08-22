@@ -424,8 +424,8 @@ define([
             $('#generic-detail-buttonpanel-left').append(adminControl);
             adminControl.click(function(e){
               e.preventDefault();
-              self.isAdmin = !self.isAdmin;
-              self.render();
+              outerSelf.isAdmin = !outerSelf.isAdmin;
+              outerSelf.setDetail(delegateStack);
             });
           }
         },

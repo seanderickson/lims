@@ -321,7 +321,7 @@ define([
         },
         
         /**
-         * Override save to handle librar overrides
+         * Override save to handle library overrides
          */
         save: function(changedAttributes, options){
           var inner_self = this;

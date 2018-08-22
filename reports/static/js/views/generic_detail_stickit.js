@@ -11,9 +11,15 @@ define([
     'templates/generic-detail-stickit.html'
 ], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
       appModel, DetailView, detailTemplate) {
+
+  // NOTE: Webpack 3 patch:
+  // Manually add the Stickit.ViewMixin object to the Backbone.Layout prototype
+  // (the Stickit object is bound using the webpack assetsPluginInstance).
+  _.extend(Backbone.Layout.prototype, Stickit.ViewMixin);
 	
 	var DetailView = Backbone.Layout.extend({
-	  
+
+
 	  attributes: { id: 'generic-detail-stickit-container' },
 	  
 	  /**

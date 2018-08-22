@@ -2351,6 +2351,7 @@ define([
         }
       });
       var view = new View();
+      Backbone.Layout.setupView(view);
       self.setView('#tab_container', view).render();
     }, // end showScpSearchForm
     

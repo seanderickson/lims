@@ -39,7 +39,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          ActivityListView, ApilogView, UploadDataForm, DetailTestView, 
          WellSelectorView, SearchBox, layout, welcomeLayout, 
          welcomeScreenerLayout, aboutLayout) {
-  
+
   var VIEWS = {
     'ListView': ListView, 
     'DetailView': DetailLayout, 
@@ -62,12 +62,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   };
   
   var ContentView = Iccbl.UriContainerView.extend({
-    
+
     template: _.template(layout),
     
-    initialize: function() {
+    initialize: function(args) {
       console.log('initialize content.js', arguments);
       Iccbl.UriContainerView.prototype.initialize.apply(this,arguments);
+      this._classname = 'ContentView';
       this.title = null;
       this.consumedStack = [];
       this.objects_to_destroy = [];
@@ -165,13 +166,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.$('#content_title').html(title);
         self.$('#content_title_row').show();
       }
-      titleFunc();
       model.on('sync', function(model){
         // TODO: it would be better to watch just the title attribute
         titleFunc();
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView('#content', view).render();
+      self.setViewInternal(view, titleFunc);
       self.objects_to_destroy.push(view);
     
     }, // end showDetail
@@ -202,22 +202,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.consumedStack.push(uriStack.shift());
         
         var _key = Iccbl.popKeyFromStack(resource, uriStack, self.consumedStack);
-//        url += '/children/' + _key;
         url = [resource.apiUri, 'children', _key].join('/');
-        
-        
         this.$('#content_title').html('Child logs for: ' + _key);
         this.$('#content_title_row').show();
       }
-      else{
-//        if (!_.isEmpty(_.intersection(uriStack, 
-//              [appModel.URI_PATH_COMPLEX_SEARCH,appModel.URI_PATH_ENCODED_SEARCH]))){
-//          this.$('#content_title').html(resource.title + ' listing');
-//          this.$('#content_title_row').show();
-//        }
-      }
       
-      console.log('collection url', url);
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
@@ -283,7 +272,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);
-      self.setView('#content', view ).render();
+      self.setViewInternal(view);
       self.objects_to_destroy.push(view);
 
     }, // end showList
@@ -308,6 +297,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.off();
       appModel.clearErrors();
 
+    },
+
+    beforeRender: function(){
+    },
+    
+    afterRender: function(){
+      var self = this;
+      if (self.subView){
+        self.setView('#content', self.subView).render();
+      }
+      if (self.titleFunction){
+        titleFunction();
+      }
+    },
+    
+    setViewInternal: function(view, titleFunction){
+      // NOTE: jQuery 3 breaks layoutmanager render/afterRender event handling:
+      // For the initial application build, watch the 
+      // "Backbone.Layout.hasRendered" flag to determine if the view has 
+      // rendered yet; if not set this.subView use wait for the "afterRender" callback.
+      this.subView = view;
+      this.titleFunction = titleFunction;
+      if (this.hasRendered){
+        this.setView('#content', view).render();
+        if (titleFunction) titleFunction();
+      }
     },
 
     // Main view control method
@@ -349,7 +364,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         
         var WelcomeView = Backbone.Layout.extend({
-          template: _.template(template), 
+          template: _.template(welcomeLayout), 
           serialize: function(){
             var appData = appModel.getAppData();
             return {
@@ -361,18 +376,25 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         $('#navbar').children().removeClass('active');
         $('#navbar').children('#home').addClass('active');
         var view = new WelcomeView();
-        self.setView('#content', view).render();
+        Backbone.Layout.setupView(view);
+        self.setViewInternal(view);
+        self.reportUriStack([]);
         return;
       }
       
       if (uiResourceId == 'about'){
-        var WelcomeView = Backbone.Layout.extend({
-          template: _.template(aboutLayout)
+        var AboutView = Backbone.Layout.extend({
+          template: _.template(aboutLayout),
+          initialize: function(){
+            this._classname = 'AboutView';
+          }
         });
         $('#navbar').children().removeClass('active');
         $('#navbar').children('#about').addClass('active');
-        var view = new WelcomeView();
-        self.setView('#content', view).render();
+        var view = new AboutView();
+        self.objects_to_destroy.push(view);
+        self.setViewInternal(view);
+        self.reportUriStack([]);
         return;
       }
       if (!_.isEmpty(uriStack) 

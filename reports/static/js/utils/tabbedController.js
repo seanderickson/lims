@@ -10,12 +10,22 @@ define([
 ], 
 function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout) {
 
+  // NOTE: Webpack 3 patch:
+  // Bind the Backbone.Layout object (and Backbone.Form) using the webpack 
+  // assetsPluginInstance
+  Backbone.Layout = LayoutManager;
+  Backbone.Form = BackboneForm;
+
   var TabbedController = Backbone.Layout.extend({
     
     template: _.template(tabbedTemplate),
 
     initialize: function(args) {
       var self = this;
+
+      Backbone.Layout.prototype.initialize.apply(this,arguments);
+
+      
       this.tabViews = {}; 
       this.uriStack = args.uriStack;
       this.consumedStack = [];

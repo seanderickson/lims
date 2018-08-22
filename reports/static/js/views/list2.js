@@ -986,28 +986,6 @@ define([
       );
     },
       
-//      Aborted attempt to follow:
-//      https://github.com/santomegonzalo/backgrid.fixedheader
-//    _scrollingContainer: function(evt) {
-//      var self = this;
-//      var $element = $(evt.target);
-//      var top = $element.scrollTop();
-//      var left = $element.scrollLeft();
-//      
-//      self.container.find('.backgrid-fixed-header').css('margin-left', -Math.abs(left));
-//      
-//      if( self.container.find('.backgrid-fixed-content').scrollTop() 
-//          >= self.container.find('.backgrid-fixed-content').find('.backgrid').height() 
-//            - self.container.find('.backgrid-fixed-content').height() - 100) {
-//        $.event.trigger('BackgridContainer:scrollEnd');
-//      }
-//    },
-//    _resize: function(evt) {
-//      var self = this;
-//      var width = self.container.find('.backgrid-fixed-content').find('.backgrid').width();
-//      self.container.find('.backgrid-fixed-header').width(width);
-//    },
-
     afterRender: function(){
       var self = this;
       var fetched = false;
@@ -1025,28 +1003,6 @@ define([
       var finalGrid = self.finalGrid = this.grid.render();
       self.objects_to_destroy.push(finalGrid);
       self.$("#table-div").append(finalGrid.el);
-      
-      //Aborted attempt to follow:
-      //https://github.com/santomegonzalo/backgrid.fixedheader
-      //var container = self.container = self.$("#table-div");
-      //
-      //$(window).bind('resize', self._resize);
-      //container.append('<div class="backgrid-fixed-header"></div>');
-      //container.append('<div class="backgrid-fixed-content"></div>');      
-      //container.find('.backgrid-fixed-content').bind('scroll', self._scrollingContainer);      
-      //
-      //this.grid.collection.bind("add", function(){
-      //  self._resize();
-      //});      
-      //
-      //self.grid.render();
-      //self.gridHeader.render();
-      //
-      //container.find('.backgrid-fixed-header').append(self.gridHeader.$el);
-      //container.find('.backgrid-fixed-content').append(self.grid.$el);
-      //
-      ////      self.gridHeader.$el.find('tbody').hide(); //addClass('remove_body');
-      ////      self.grid.$el.find('thead').hide(); // addClass('remove_header');
       
       if(self.collection instanceof Backbone.PageableCollection){
         self.$("#paginator-div").append(self.paginator.render().$el);

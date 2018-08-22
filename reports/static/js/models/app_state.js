@@ -693,7 +693,7 @@ define([
 //      return options;
     },
     
-    getUsersInGroupOptions: function(usergroup, callBack){
+    getUserIdsInGroupOptions: function(usergroup, callBack){
       var self = this;
       var prop = 'usergroup_' + usergroup + '_Options';
       var options = this.get(prop);
@@ -701,9 +701,9 @@ define([
         this.getUsersInGroup(usergroup, function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            var username = user.get('username');
+            var user_id = user.get('screensaver_user_id');
             var name = user.get('name');
-            options.push({ val: username, label: name });
+            options.push({ val: user_id, label: name });
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();
@@ -2374,6 +2374,7 @@ define([
           });
           postform.append(hiddenField);
         });
+        // Add the Django "csrfmiddlewaretoken" to the post form
         postform.append($('<input/>', {
           type: 'hidden',
           name: "csrfmiddlewaretoken",

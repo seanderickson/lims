@@ -43,7 +43,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           }
           var urlPath = [];
           if (self.user) {
-            urlPath = [self.user.resource.key,self.user.key,'serviceactivity'];
+            urlPath = [self.user.resource.key,self.user.key,'activity'];
           } else if (self.screen){
             urlPath = [self.screen.resource.key,self.screen.key,'activities'];
           }
@@ -103,7 +103,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         
       function setupEditView(callback){
         var resource = self.model.resource;
-        appModel.getUsersInGroupOptions('serviceActivityPerformers', function(options){
+        appModel.getUserIdsInGroupOptions('serviceActivityPerformers', function(options){
           resource.fields['performed_by_user_id'].choiceHash = options;
   
           if (self.user ){

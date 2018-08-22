@@ -2,7 +2,7 @@
  * Application loading script for the Iccbl-lims app.
  */
 
-require('css/external/bootstrap_custom_build/css/bootstrap.css');
+require('external/bootstrap_custom_build/css/bootstrap.css');
 //require('bootstrap/dist/css/bootstrap.css');
 
 require('backgrid/lib/backgrid.css');
@@ -10,11 +10,10 @@ require('backgrid-paginator/backgrid-paginator.css');
 require('backgrid-filter/backgrid-filter.css');
 require('multiselect/css/multi-select.css');
 require('bootstrap-datepicker/dist/css/bootstrap-datepicker3.css');
-require('jquery-chosen/chosen.css');
 require('bootstrap-chosen/bootstrap-chosen.css');
 require('jquery-bonsai/jquery.bonsai.css');
-require('css/jquery.bonsai.overrides.css');
-require('css/hmsiccbl.css');
+require('jquery.bonsai.overrides.css');
+require('hmsiccbl.css');
 
 require([ // now load application code
     'jquery',
@@ -25,16 +24,16 @@ require([ // now load application code
     'views/app_view',
     'router',
     'models/reports_ui_resources_fixture.json', 
-    'models/reports_menu_fixture.json', 
     'models/ui_resources_fixture.json', 
+    'models/reports_menu_fixture.json', 
     'models/menu_fixture.json', 
     'models/menu_fixture_screener.json', 
     'bootstrap'
   ],
 function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, 
-  reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw,
-  screener_menu_raw ) {
-  
+  reports_ui_resources, app_ui_resources, reports_menu, app_menu,
+  screener_menu_resource ) {
+
   console.log('init screensaver/reports...')
   
   
@@ -58,24 +57,19 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   };
 
   // Check logged in status
-  if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
+  if(_.isUndefined(window.logged_in) || window.logged_in != true ){
     console.log('window.logged_in: ' + window.logged_in );
     window.location='/accounts/login/?next=' + 
       window.location.pathname + window.location.hash;
     return;
   }
   
-  // Bootstrap the resources hash
-  var ui_resources = JSON.parse(reports_ui_resources_raw);
-  _.extend(ui_resources, JSON.parse(ui_resources_raw));
-  appModel.set('ui_resources', ui_resources);
+  _.extend(reports_ui_resources, app_ui_resources);
+  appModel.set('ui_resources', reports_ui_resources);
 
-  // Bootstrap the menu hash
-  var menu_resource = JSON.parse(menu_raw);
-  _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
-  appModel.set('menu', menu_resource);
+  _.extend(app_menu['submenus'], reports_menu['submenus']);
+  appModel.set('menu', app_menu);
 
-  var screener_menu_resource = JSON.parse(screener_menu_raw);
   appModel.set('screener_menu', screener_menu_resource);
 
   var loadCount = 0
@@ -113,11 +107,11 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
           }
       },
       statusCode: {
-      401: function(err){
-        console.log('Login Failed.', err.responseJSON);
-        authErrorHandler(err);
-      }
-    }      
+        401: function(err){
+          console.log('Login Failed.', err.responseJSON);
+          authErrorHandler(err);
+        }
+      }      
   });
 
   $(document).bind("ajaxSend", function(event, jqxhr, settings){

@@ -1,4 +1,4 @@
-
+from __future__ import unicode_literals 
 ###
 # Performs form based interaction with the API
 # - useful if the HTTP server doesn't support basic authentication

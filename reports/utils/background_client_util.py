@@ -1,3 +1,4 @@
+from __future__ import unicode_literals 
 ##############################################################################
 # Command line background job processing utility:
 # - services a background job from the command line using the 

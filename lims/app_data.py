@@ -1,3 +1,4 @@
+from __future__ import unicode_literals 
 
 class APP_PUBLIC_DATA:
     ''' Include public data about the application'''

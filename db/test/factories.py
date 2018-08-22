@@ -1,3 +1,5 @@
+from __future__ import unicode_literals 
+
 import factory
 import db.models
 from django.utils.timezone import now

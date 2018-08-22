@@ -1,35 +1,63 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import base64
 from functools import wraps
 import logging
 import re
 
 from django.conf import settings
+from django.conf.urls import url, include
+import django.contrib.auth
 from django.core.cache import cache
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, \
+    ImproperlyConfigured
 import django.core.exceptions
-from django.http.response import HttpResponseBase, HttpResponse,\
-    HttpResponseNotFound, Http404
-from django.utils.cache import patch_cache_control, patch_vary_headers
+from django.core.signals import got_request_exception
+from django.http.response import HttpResponseBase, HttpResponse, \
+    HttpResponseNotFound, Http404, HttpResponseForbidden, HttpResponseBadRequest, \
+    HttpResponseServerError
+from django.middleware.csrf import _sanitize_token, REASON_NO_REFERER, \
+    REASON_BAD_REFERER, REASON_BAD_TOKEN, REASON_MALFORMED_REFERER, \
+    REASON_INSECURE_REFERER
+import django.urls
+from django.utils import six
+from django.utils.crypto import constant_time_compare
+from django.utils.encoding import force_text
 from django.views.decorators.csrf import csrf_exempt
-from tastypie.exceptions import ImmediateHttpResponse, BadRequest, NotFound
-from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent,\
-    HttpApplicationError
-from tastypie.resources import Resource, convert_post_to_put, sanitize
 
-from reports import ValidationError, InformationError
+from db.support.data_converter import default_converter
+from reports import ValidationError, InformationError, BadRequestError, \
+    BackgroundJobImmediateResponse, LoginFailedException, API_RESULT_ERROR
+from reports.auth import DEBUG_AUTHENTICATION
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
-from django.core.exceptions import ObjectDoesNotExist
-from django.core.signals import got_request_exception
-from django.utils import six
-from reports.serializers import BaseSerializer
-from tastypie.authentication import Authentication
-from tastypie.cache import NoCache
-from django.conf.urls import url, patterns
-from tastypie.utils.urls import trailing_slash
+from reports.serializers import BaseSerializer, LimsSerializer
+from reports.utils.django_requests import convert_request_method_to_put
+
+
+# from django.utils.http import same_origin
+# NOTE: API design is based loosely on the tastypie project: 
+# see attributions, e.g.:
+# From tastypie.compat
+# Compatability for salted vs unsalted CSRF tokens;
+# Django 1.10's _sanitize_token also hashes it, so it can't be compared directly.
+# Solution is to call _sanitize_token on both tokens, then unsalt or noop both
+try:
+    from django.middleware.csrf import _unsalt_cipher_token
+    def unsalt_token(token):
+        return _unsalt_cipher_token(token)
+except ImportError:
+    def unsalt_token(token):
+        return token
+
 
 logger = logging.getLogger(__name__)
 
+DEBUG = False
+DEBUG_WRAPPER = True
+
+TRAILING_SLASH = '/?'
 
 def un_cache(_func):
     '''
@@ -38,8 +66,9 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.debug('decorator un_cache: %s, %s', self, _func )
-        self.clear_cache()
+        logger.debug('decorator un_cache: %r, %r, %r', 
+            self, _func,args )
+        self.clear_cache(None, **kwargs)
         self.set_caching(False)
         result = _func(self, *args, **kwargs)
         self.set_caching(True)
@@ -48,24 +77,283 @@ def un_cache(_func):
 
     return _inner
 
+class Authentication(object):
+    def __init__(self):
+        pass
+
+    def is_authenticated(self, request, **kwargs):
+        '''
+        @return True if successful authentication is performed
+        '''
+        return True
+
+class MultiAuthentication(object):
+    '''
+    Authenticate using the given authentication_clients, in order.
+    '''
+    def __init__(self, *authentication_clients, **kwargs):
+        '''
+        @param authentication_clients in order, to try
+        '''
+        super(MultiAuthentication, self).__init__(**kwargs)
+        self.authentication_clients = authentication_clients
+
+    def is_authenticated(self, request, **kwargs):
+
+        for authentication_client in self.authentication_clients:
+            
+            if DEBUG_AUTHENTICATION:
+                logger.info('try authentication: %r', authentication_client)
+                
+            auth_result = authentication_client.is_authenticated(request, **kwargs)
+            
+            if DEBUG_AUTHENTICATION:
+                logger.info('authentication_client: %r, result: %r',
+                    authentication_client, auth_result)
+            
+            if auth_result is True:
+                return True
+            
+        return False
+    
+class IccblBasicAuthentication(Authentication):
+    '''
+    Handles HTTP Basic auth using django.contrib.auth.authenticate
+    
+    NOTE: modified from tastypie.authentication.BasicAuthentication:
+    - modified to support the format <superuser_username>:<username>:<password>
+    format used by the LIMS to support login 'as user' by the superuser.
+    '''
+    def __init__(self, **kwargs):
+        super(IccblBasicAuthentication, self).__init__(**kwargs)
+
+    def is_authenticated(self, request, **kwargs):
+        '''
+        Checks a user's basic auth credentials using
+        django.contrib.auth.authenticate
+        
+        @return True if successful authentication is performed
+        '''
+        
+        header_authorization = request.META.get('HTTP_AUTHORIZATION')
+        if not header_authorization:
+            if DEBUG_AUTHENTICATION:
+                logger.info('HTTP_AUTHORIZATION header not found')
+            return False
+
+        try:
+            (auth_type, data) = header_authorization.split()
+            if auth_type.lower() != 'basic':
+                if DEBUG_AUTHENTICATION:
+                    logger.info('HTTP_AUTHORIZATION type is not "basic"')
+                return False
+            user_pass = base64.b64decode(data).decode('utf-8')
+        except Exception,e:
+            logger.exception('auth fail on decoding user/password: %r', e)
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'failed to decode basic auth header'})
+        
+        bits = user_pass.split(':')
+        if len(bits) > 3:
+            logger.error('user-pass split returns > 3 strings: %d', len(bits))
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'failed to decode basic auth header: '
+                    'user:password format'})
+        elif len(bits) == 3:
+            # Special case, supports proxy login by superuser 'as' user using format:
+            # <superuser_username>:<username>:<password>
+            # recombine the <superuser_username>:<username> and allow the 
+            # django.contrib.auth.authenticate backend to process using the 
+            # reports.auth.USER_PROXY_LOGIN_PATTERN 
+            username = '%s:%s' % (bits[0],bits[1])
+            password = bits[2]
+        elif len(bits) == 2:
+            username = bits[0]
+            password = bits[1]
+        else:
+            logger.error('user-pass split returns only one element')
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'failed to decode basic auth header: '
+                    'user:password format'})
+
+        if DEBUG_AUTHENTICATION:
+            logger.info(
+                'calling django.contrib.auth.authenticate for user %r', username)
+        user = django.contrib.auth.authenticate(
+            username=username, password=password)
+
+        if user is None:
+            logger.info('no user found for: "%s"', username)
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'unknown user: %s' % username })
+
+        if user.is_active is not True:
+            logger.info('user is not active: %s', username)
+            raise LoginFailedException({
+                'HTTP_AUTHORIZATION': 'user is not active: "%s"' % username })
+
+        request.user = user
+        return True
+
+class IccblSessionAuthentication(Authentication):
+    '''
+    Use the Django session to validate that the current user is authenticated.
+    
+    Note: see tastypie.authentication.SessionAuthentication for original 
+    implementation - updated to support Django >1.4 "csrfmiddlewaretoken".
+    
+    Note: Requires a valid CSRF token, "csrfmiddlewaretoken" may be passed as a 
+    POST parameter
+    
+    @see django.middleware.csrf v1.8 (used as a guide)
+    
+    '''
+    def is_authenticated(self, request, **kwargs):
+        '''
+        Checks to make sure the user is logged in & has a Django session.
+        '''
+        if request.method in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
+            return bool(request.user.is_authenticated)
+
+        if getattr(request, '_dont_enforce_csrf_checks', False):
+            logger.info('_dont_enforce_csrf_checks is set...')
+            return bool(request.user.is_authenticated)
+
+        csrf_token = _sanitize_token(request.COOKIES.get(settings.CSRF_COOKIE_NAME))
+        if csrf_token is None:
+            # No CSRF cookie. For POST requests, required.
+            logger.error('reject: NO CSRF cookie')
+            return False
+        elif DEBUG_AUTHENTICATION:
+            logger.info('Found cookie: %r: %r',
+                settings.CSRF_COOKIE_NAME, csrf_token)
+
+        if request.is_secure():
+            if DEBUG_AUTHENTICATION:
+                logger.info('perform secure session check.')
+            
+            if self._django_csrf_check(request) is not True:
+                return False
+#             referer = request.META.get('HTTP_REFERER')
+# 
+#             if referer is None:
+#                 return False
+# 
+#             good_referer = 'https://%s/' % request.get_host()
+# 
+#             if not same_origin(referer, good_referer):
+#                 return False
+
+        request_csrf_token = ''
+        if request.method == 'POST':
+            # Look for POSTED csrf token:
+            # Use the >1.4 Django Forms token key: "csrfmiddlewaretoken"
+            try:
+                request_csrf_token = request.POST.get('csrfmiddlewaretoken', '')
+                if DEBUG_AUTHENTICATION:
+                    logger.info(
+                        'SessionAuthentication: POST csrf token (%r): %r', 
+                        'csrfmiddlewaretoken', request_csrf_token)
+            except IOError:
+                # Handle a broken connection before we've completed reading
+                # the POST data. 
+                # (assuming they're still listening, which they probably
+                # aren't because of the error).
+                pass
+
+        if request_csrf_token == '':
+            # Fall back to X-CSRFToken, used by Ajax clients
+            request_csrf_token = request.META.get('HTTP_X_CSRFTOKEN', '')
+            if DEBUG_AUTHENTICATION:
+                logger.info(
+                    'SessionAuthentication: POST csrf token (%r): %r', 
+                    'HTTP_X_CSRFTOKEN', request_csrf_token)
+
+        request_csrf_token = _sanitize_token(request_csrf_token)
+
+        if not constant_time_compare(unsalt_token(request_csrf_token),
+                                     unsalt_token(csrf_token)):
+            logger.warn('CSRF tokens do not match: %r', request)
+            return False
+
+        return bool(request.user.is_authenticated)
+
+    def _django_csrf_check(self, request):
+        '''
+        Taken from django.middleware.csrf:
+        @see django.middleware.csrf
+        '''
+        
+        referer = force_text(
+            request.META.get('HTTP_REFERER'),
+            strings_only=True,
+            errors='replace'
+        )
+        if referer is None:
+            logger.error('csrf reject: %s', REASON_NO_REFERER)
+            return False
+        
+        from django.utils.six.moves.urllib.parse import urlparse
+
+        referer = urlparse(referer)
+
+        # Make sure we have a valid URL for Referer.
+        if '' in (referer.scheme, referer.netloc):
+            logger.error('csrf reject: %s', REASON_MALFORMED_REFERER)
+            return False
+
+        # Ensure that our Referer is also secure.
+        if referer.scheme != 'https':
+            logger.error('csrf reject: %s', REASON_INSECURE_REFERER)
+            return False
+
+        # If there isn't a CSRF_COOKIE_DOMAIN, assume we need an exact
+        # match on host:port. If not, obey the cookie rules.
+        if settings.CSRF_COOKIE_DOMAIN is None:
+            # request.get_host() includes the port.
+            good_referer = request.get_host()
+        else:
+            good_referer = settings.CSRF_COOKIE_DOMAIN
+            server_port = request.get_port()
+            if server_port not in ('443', '80'):
+                good_referer = '%s:%s' % (good_referer, server_port)
+
+        # Here we generate a list of all acceptable HTTP referers,
+        # including the current host since that has been validated
+        # upstream.
+        good_hosts = list(settings.CSRF_TRUSTED_ORIGINS)
+        good_hosts.append(good_referer)
+
+        if not any(is_same_domain(referer.netloc, host) for host in good_hosts):
+            reason = REASON_BAD_REFERER % referer.geturl()
+            logger.info('csrf reject: %r', reason)
+            return False
+        
+        return True
+        
 class Authorization(object):
 
-    def _is_resource_authorized(self, resource_name, user, permission_type):
+    def _is_resource_authorized(
+        self, user, permission_type, resource_name=None, **kwargs):
+
+        if resource_name is None:
+            resource_name = self.resource_name
+          
         raise NotImplementedError(
             '_is_resource_authorized must be implemented for %s, %s, %s',
             resource_name, user, permission_type)
 
+
 class ResourceOptions(object):
-    """
+    '''
     A configuration class for ``Resource``.
 
     Provides sane defaults and the logic needed to augment these settings with
     the internal ``class Meta`` used on ``Resource`` subclasses.
-    """
+    '''
     serializer = BaseSerializer()
     authentication = Authentication()
     authorization = Authorization()
-    cache = NoCache()
     api_name = None
     resource_name = None
     alt_resource_name = None
@@ -93,19 +381,19 @@ class ResourceOptions(object):
 class DeclarativeMetaclass(type):
 
     def __new__(cls, name, bases, attrs):
-        new_class = super(DeclarativeMetaclass, cls).__new__(cls, name, bases, attrs)
+        new_class = \
+            super(DeclarativeMetaclass, cls).__new__(cls, name, bases, attrs)
         opts = getattr(new_class, 'Meta', None)
         new_class._meta = ResourceOptions(opts)
 
         return new_class
 
-
 class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
-    """
-    Override tastypie.resources.Resource:
+    '''
+    see tastypie.resources.Resource:
     -- use StreamingHttpResponse or the HttpResponse
     -- control application specific caching
-    """
+    '''
 
     def __init__(self, api_name=None):
 
@@ -113,430 +401,541 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             self._meta.api_name = api_name
 
     def base_urls(self):
-        """
+        '''
         The standard URLs this ``Resource`` should respond to.
-        """
+        '''
         return [
-            url(r"^(?P<resource_name>%s)%s$" % (
-                self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)/schema%s$" % (
-                self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<%s>.*?)%s$" % (
-                self._meta.resource_name, self._meta.detail_uri_name, 
-                trailing_slash()), self.wrap_view('dispatch_detail'), 
-                name="api_dispatch_detail"),
+            url(r'^(?P<resource_name>%s)%s$' % (
+                self._meta.resource_name, TRAILING_SLASH), 
+                self.wrap_view('dispatch_list'), name='api_dispatch_list'),
+            url(r'^(?P<resource_name>%s)/schema%s$' % (
+                self._meta.resource_name, TRAILING_SLASH), 
+                self.wrap_view('get_schema'), name='api_get_schema'),
         ]
+
+    def dispatch_clear_cache(self, request, **kwargs):
+        self.clear_cache(request, **kwargs)
+        return self.build_response(request, 'ok', **kwargs)
+
     def prepend_urls(self):
-        """
+        '''
         A hook for adding your own URLs or matching before the default URLs.
-        """
+        '''
         return []
 
     @property
     def urls(self):
-        """
+        '''
         The endpoints this ``Resource`` responds to.
 
         Mostly a standard URLconf, this is suitable for either automatic use
         when registered with an ``Api`` class or for including directly in
         a URLconf should you choose to.
-        """
-        urls = self.prepend_urls()
+        '''
+        urls = [            
+            url(r'^(?P<resource_name>%s)/clear_cache%s$' 
+                % (self._meta.resource_name, TRAILING_SLASH), 
+                self.wrap_view('dispatch_clear_cache'), name='api_clear_cache'),
+        ]
+        urls += self.prepend_urls()
         urls += self.base_urls()
-        urlpatterns = patterns('',
-            *urls
-        )
-        return urlpatterns
+        return urls
     
     def is_authenticated(self, request):
-        """
-        Handles checking if the user is authenticated and dealing with
-        unauthenticated users.
-
-        Mostly a hook, this uses class assigned to ``authentication`` from
-        ``Resource._meta``.
-        """
-        # Authenticate the request as needed.
+        '''
+        Returns True or raises an Exception for authentication failures
+        '''
+        
         auth_result = self._meta.authentication.is_authenticated(request)
+        if auth_result is not True:
+            logger.info('auth_result: %r', auth_result)
+            raise LoginFailedException('auth result: %r' % auth_result)
+        return auth_result
 
-        if isinstance(auth_result, HttpResponse):
-            raise ImmediateHttpResponse(response=auth_result)
-
-        if not auth_result is True:
-            raise ImmediateHttpResponse(response=http.HttpUnauthorized())
-
-    def error_response(self, request, errors, response_class=None):
-        """
-        Extracts the common "which-format/serialize/return-error-response"
-        cycle.
-
-        Should be used as much as possible to return errors.
-        """
-        if response_class is None:
-            response_class = http.HttpBadRequest
-
-        desired_format = None
-
-        if request:
-            if request.GET.get('callback', None) is None:
-                try:
-                    desired_format = self.determine_format(request)
-                except BadRequest:
-                    pass  # Fall through to default handler below
-            else:
-                # JSONP can cause extra breakage.
-                desired_format = 'application/json'
-
-        if not desired_format:
-            desired_format = self._meta.default_format
-
-        try:
-            serialized = self.serialize(request, errors, desired_format)
-        except BadRequest as e:
-            error = "Additional errors occurred, but serialization of those errors failed."
-
-            if settings.DEBUG:
-                error += " %s" % e
-
-            return response_class(content=error, content_type='text/plain')
-
-        return response_class(
-            content=serialized, content_type=build_content_type(desired_format))
-    
     def dispatch_list(self, request, **kwargs):
-        """
+        '''
         A view for handling the various HTTP methods (GET/POST/PUT/DELETE) over
         the entire list of resources.
 
         Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
+        '''
         return self.dispatch('list', request, **kwargs)
 
     def dispatch_detail(self, request, **kwargs):
-        """
+        '''
         A view for handling the various HTTP methods (GET/POST/PUT/DELETE) on
         a single resource.
 
         Relies on ``Resource.dispatch`` for the heavy-lifting.
-        """
+        '''
         return self.dispatch('detail', request, **kwargs)
 
     def dispatch(self, request_type, request, **kwargs):
-        """
+        '''
         From original Tastypie structure:
         - lookup the API method
-        - authenticate
-        Other modifications:
-        - use of the "downloadID" cookie
-        """
+        # TODO: does very little at this point; refactor into wrap_view
+        '''
         
         request_method = request.method.lower()
-        method = getattr(self, "%s_%s" 
-            % (request_method, request_type), None)
+        method_name = '%s_%s' % (request_method, request_type)
+        method = getattr(self, method_name, None)
 
         if method is None:
-            raise ImmediateHttpResponse(response=HttpNotImplemented())
+            raise Http404('"%s" is not implemented for "%s"' 
+                % (method_name, self._meta.resource_name))
 
-#         self.is_authenticated(request)
-        convert_post_to_put(request)
-        logger.info('calling method: %s.%s_%s', 
-            self._meta.resource_name, request_method, request_type)
+        convert_request_method_to_put(request)
         response = method(request, **kwargs)
-
-        # # If what comes back isn't a ``HttpResponse``, assume that the
-        # # request was accepted and that some action occurred. This also
-        # # prevents Django from freaking out.
-        if not isinstance(response, HttpResponseBase):
-            return HttpNoContent()
         
-        # Custom ICCB parameter: set cookie to tell the browser javascript
-        # UI that the download request is finished
-        downloadID = request.GET.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.debug('no downloadID: %s' % request.GET )
-
+        # FIXME: remove this, require all types to return a response
+        if not isinstance(response, HttpResponseBase):
+            return HttpResponseNotFound()
+        
         return response
 
-    def wrap_view(self, view):
-        """
-        Override the tastypie implementation to handle our own ValidationErrors.
-        """
-
-        @csrf_exempt
-        def wrapper(request, *args, **kwargs):
-            DEBUG_WRAPPER = True
-            try:
-                callback = getattr(self, view)
-                if DEBUG_WRAPPER:
-                    msg = ()
-                    if kwargs:
-                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
-                            if len(str(kwargs[key]))<100]
-                    logger.info('callback: %r, %r', view, msg)
-                    logger.info('request: %r', request)
-                else:
-                    logger.info('callback: %r, %r', callback, view)
-                
-                self.is_authenticated(request)
+    def exception_handler(self,_func):
+        '''
+        Exception handler wrapper for IccblBaseResource classes
+        '''
         
-                response = callback(request, *args, **kwargs)
-                # Our response can vary based on a number of factors, use
-                # the cache class to determine what we should ``Vary`` on so
-                # caches won't return the wrong (cached) version.
-                varies = getattr(self._meta.cache, "varies", [])
-
-                if varies:
-                    patch_vary_headers(response, varies)
-
-                if self._meta.cache.cacheable(request, response):
-                    if self._meta.cache.cache_control():
-                        # If the request is cacheable and we have a
-                        # ``Cache-Control`` available then patch the header.
-                        patch_cache_control(response, **self._meta.cache.cache_control())
-
-                if request.is_ajax() and not response.has_header("Cache-Control"):
-                    # IE excessively caches XMLHttpRequests, so we're disabling
-                    # the browser cache here.
-                    # See http://www.enhanceie.com/ie/bugs.asp for details.
-                    patch_cache_control(response, no_cache=True)
-
-                return response
-            except BadRequest as e:
-                # The message is the first/only arg
+        @wraps(_func)
+        def _inner(self, *args, **kwargs):
+            logger.debug('self: %r, func: %r, args: %r, kwargs: %r', 
+                self, _func, args, kwargs)
+            
+            request = args[0]
+            try:
+                response = _func(*args, **kwargs)
+            
+            except BackgroundJobImmediateResponse as e:
+                logger.info('BackgroundJobImmediateResponse returned: %r', 
+                    e.httpresponse)
+                response = e.httpresponse
+            except BadRequestError as e:
                 logger.exception('Bad request exception: %r', e)
-                data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-                return self.build_error_response(request, data, **kwargs)
+                response = self.build_error_response(
+                    request, e.errors, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
             except InformationError as e:
                 logger.exception('Information error: %r', e)
                 response = self.build_error_response(
-                    request, { 'Messages': e.errors }, **kwargs)
+                    request, e.errors, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-            
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
             except ValidationError as e:
                 logger.exception('Validation error: %r', e)
                 response = self.build_error_response(
-                    request, { 'errors': e.errors }, **kwargs)
+                    request, { API_RESULT_ERROR: e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+            except LoginFailedException as e:
+                logger.info('LoginFailedException ex: %r', e)
+                if hasattr(e, 'error_dict'):
+                    data = { API_RESULT_ERROR: e.message_dict }
+                else:
+                    data = { 'Login failed': str(e) }
+                response = self.build_error_response(
+                    request, data, status_code=401, **kwargs)
+                if request.META.get('HTTP_AUTHORIZATION'):
+                    response['WWW-Authenticate'] = \
+                        'Basic realm="%s"' % settings.BASIC_AUTH_REALM
+
             except django.core.exceptions.ValidationError as e:
                 logger.exception('Django validation error: %s', e)
+                if hasattr(e, 'error_dict'):
+                    data = { API_RESULT_ERROR: e.message_dict }
+                else:
+                    data = { API_RESULT_ERROR: str(e) }
                 response = self.build_error_response(
-                    request, { 'errors': e.message_dict }, **kwargs)
+                    request, data, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % 'errors'
-                    downloadID = request.GET.get('downloadID', None)
-                    if downloadID:
-                        logger.info('set cookie "downloadID" %r', downloadID )
-                        response.set_cookie('downloadID', downloadID)
-                    else:
-                        logger.debug('no downloadID: %s' % request.GET )
-                return response
-                
+                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
+            except PermissionDenied as e:
+                logger.exception('PermissionDenied ex: %r', e)
+                data = {
+                    'Permission Denied: ': '%s' % e }
+                response = self.build_error_response(
+                    request, data, response_class=HttpResponseForbidden, **kwargs)
+            except ObjectDoesNotExist as e:
+                logger.exception('not found: %r', e)
+                response = self.build_error_response(
+                    request, { 'msg': '%r' % e }, 
+                    response_class=HttpResponseNotFound, **kwargs)
+            except Http404 as e:
+                logger.exception('not found: %r', e)
+                response = self.build_error_response(
+                    request, { 'msg': '%r' % e }, 
+                    response_class=HttpResponseNotFound, **kwargs)
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):
                     # A specific response was specified
-                    return e.response
+                    response = e.response
+                else:
+                    logger.exception('Unhandled exception: %r', e)
+    
+                    # A real, non-expected exception.
+                    # Handle the case where the full traceback is more helpful
+                    # than the serialized error.
+                    if settings.DEBUG:
+                        
+                        logger.warn('raise full exception for %r', e)
+                        raise
+    
+                    # Rather than re-raising, we're going to things similar to
+                    # what Django does. The difference is returning a serialized
+                    # error message.
+                    logger.exception('handle 500 error %r...', str(e))
+                    response = self._handle_500(request, e)
+            
+            return response
+        return _inner
 
-                logger.exception('Unhandled exception: %r', e)
+    
+    
+    def wrap_view(self, view):
+        '''
+        Handle common operations for views:
+        - authentication
+        - exception handling
+        - client side cache headers
+        - download cookie
+        
+        '''
 
-                # A real, non-expected exception.
-                # Handle the case where the full traceback is more helpful
-                # than the serialized error.
-                if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-                    logger.warn('raise tastypie full exception for %r', e)
-                    raise
+        # NOTE: csrf is enforced by SessionAuthentication, all resources
+        @csrf_exempt
+        def wrapper(request, *args, **kwargs):
+            response = None
+            callback = getattr(self, view)
+            if DEBUG_WRAPPER:
+                msg = ()
+                if kwargs:
+                    msg = [ (key,str(kwargs[key])[:100]) 
+                        for key in kwargs.keys() ]
+                logger.info(
+                    'wrap_view: %r, method: %r, user: %r, request: %r, '
+                    'kwargs: %r', 
+                    view, request.method, request.user, request, msg)
+            else:
+                logger.info('wrap_view: %r, %r', view, request)
+            
+            # re-wrap to include authentication
+            def _inner(*args, **kwargs):
+                self.is_authenticated(request)
+                return callback(*args,**kwargs)
+            
+            response = self.exception_handler(_inner)(self,request, *args, **kwargs)
 
-                # Rather than re-raising, we're going to things similar to
-                # what Django does. The difference is returning a serialized
-                # error message.
-                logger.exception('handle 500 error %r...', str(e))
-                return self._handle_500(request, e)
-
+            # Custom ICCB parameter: set cookie to tell the browser javascript
+            # UI that the download request is finished
+            downloadID = request.GET.get('downloadID', None)
+            if downloadID:
+                logger.info('set cookie "downloadID" %r', downloadID )
+                response.set_cookie('downloadID', downloadID)
+            else:
+                logger.debug('no downloadID: %s' % request.GET )
+             
+            return response
         return wrapper
-
-    def clear_cache(self):
-        logger.debug('clearing the cache from resource: %s (all caches cleared)' 
-            % self._meta.resource_name)
-        cache.clear()
-
+    
     def set_caching(self,use_cache):
+        logger.debug('set_caching: %r, %r', use_cache, self._meta.resource_name)
         self.use_cache = use_cache
 
-    def deserialize(self, request, format=None):
+    def get_cache(self):
+        raise NotImplementedError('get_cache must be implemented: %r', self._meta.resource_name)
+
+    def deserialize(self, request, format=None, schema=None):
         
-        content_type = self._meta.serializer.get_content_type(request, format)
-        logger.info('content_type: %r', content_type)
+        # TODO: refactor to use delegate deserialize to the serializer class:
+        # - allow Resource classes to compose functionality vs. inheritance
+        
+        if format is not None:
+            content_type = self.get_serializer() \
+                               .get_content_type_for_format(format)
+        else:
+            content_type = self.get_serializer().get_content_type(request)
+        logger.info('deserialize for content_type: %r', content_type)
+        
+        if schema is None:
+            schema = self.build_schema(user=request.user)
+        # NOTE: Injecting information about the list fields, so that they
+        # can be properly parsed (this is a custom serialization format)
+        list_keys = [x for x,y in schema['fields'].items() 
+            if y.get('data_type') == 'list']
+            
+        
         if content_type.startswith('multipart'):
+            if not request.FILES:
+                logger.error('No "FILES" found with multipart content.')
+                raise BadRequestError({
+                    'ContentType':
+                    'No "FILES" found with multipart content: %r' % content_type
+                })
+                
             logger.info('request.Files.keys: %r', request.FILES.keys())
-            # process *only* one attached file
+            
+            # NOTE: may process *only* one attached file per upload
             if len(request.FILES.keys()) != 1:
-                raise BadRequest({ 
+                raise BadRequestError({ 
                     'FILES': 'File upload supports only one file at a time',
                     'filenames': request.FILES.keys(),
                 })
              
+            # FIXME: rework to use the multipart Content-Type here
             if 'sdf' in request.FILES:  
                 file = request.FILES['sdf']
-                return self._meta.serializer.deserialize(
-                    file.read(), SDF_MIMETYPE)
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), SDF_MIMETYPE), 
+                    { 'filename': file.name })
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
-                
-                schema = self.build_schema()
-                list_keys = [x for x,y in schema['fields'].items() 
-                    if y.get('data_type') == 'list']
-                return self._meta.serializer.deserialize(
-                    file.read(), XLS_MIMETYPE, **{ 'list_keys': list_keys})
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), XLS_MIMETYPE, list_keys=list_keys), 
+                    { 'filename': file.name } )
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
-
-                schema = self.build_schema()
-                list_keys = [x for x,y in schema['fields'].items() 
-                    if y.get('data_type') == 'list']
-                
-                return self._meta.serializer.deserialize(
-                    file.read(), CSV_MIMETYPE, **{ 'list_keys': list_keys})
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), CSV_MIMETYPE, list_keys=list_keys), 
+                    { 'filename': file.name } )
             else:
-                raise BadRequest(
-                    'Unsupported multipart file key: %r', request.FILES.keys())
+                raise BadRequestError({
+                    'Files':
+                    'Unsupported multipart file keys: %r' % request.FILES.keys()})
         
-        logger.info('use deserializer: %r', content_type)
-        
-        if content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
-            # NOTE: must inject information about the list fields, so that they
-            # can be properly parsed (this is a custom serialization format)
-            schema = self.build_schema()
-            list_keys = [x for x,y in schema['fields'].items() 
-                if y.get('data_type') == 'list']
-            return self._meta.serializer.deserialize(
-                request.body,content_type,
-                **{ 'list_keys': list_keys})
+        elif content_type in [XLS_MIMETYPE,XLSX_MIMETYPE,CSV_MIMETYPE]:
+            return (
+                self.get_serializer().deserialize(
+                    request.body,content_type, list_keys=list_keys), None )
         else:
-            return self._meta.serializer.deserialize(request.body,content_type)
+            return self.get_serializer().deserialize(request.body,content_type), None
             
-    def serialize(self, request, data, format=None):
-        content_type = self._meta.serializer.get_accept_content_type(request, format)
-        return self._meta.serializer.serialize(data, content_type)
+    def serialize(self, data, content_type):
+        logger.debug('serialize to: %r', content_type)
+        return self.get_serializer().serialize(data, content_type)
 
-    def _get_filename(self, schema, kwargs, filename=''):
-        filekeys = [filename]
-        if 'id_attribute' in schema:
-            filekeys.extend([ str(kwargs[key]) for 
-                key in schema['id_attribute'] if key in kwargs ])
-        else:
-            _dict = {key:val for key,val in kwargs.items() 
-                if key not in [
-                    'visibilities','exact_fields','api_name','resource_name',
-                    'includes','order_by']}
-            for i,(x,y) in enumerate(_dict.items()):
-                filekeys.append(str(x))
-                filekeys.append(str(y))
-                if i == 10:
-                    break
-        filekeys = [x for x in filekeys if x.strip() ]
-        filekeys.insert(0,self._meta.resource_name)
-        filename = '_'.join(filekeys)
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.debug('get_filename: %r, %r' % (filename, kwargs))
+    def _get_filename(self, readable_filter_hash, schema, filename=None, **extra):
+        MAX_VAL_LENGTH = 20
+        file_elements = [self._meta.resource_name]
+        if filename is not None:
+            file_elements.append(filename)
+        if extra is not None:
+            for key,val in extra.items():
+                file_elements.append(str(key))
+                if val is not None:
+                    val = default_converter(str(val))
+                    val = val[:MAX_VAL_LENGTH]
+                    file_elements.append(val)
+        for key,val in readable_filter_hash.items():
+            if key not in schema['id_attribute']:
+                file_elements.append(str(key))
+            val = default_converter(str(val))
+            val = val[:MAX_VAL_LENGTH]
+            file_elements.append(val)
+                
+        if len(file_elements) > 1:
+            # Add an extra separator for the resource name
+            file_elements.insert(1,'_')
+            
+        filename = '_'.join(file_elements)
+        logger.info('filename: %r', filename)
+        MAX_FILENAME_LENGTH = 128
+        filename = filename[:128]
         return filename
     
-    def get_content_type(self, request, format=None):
-         
-        return self._meta.serializer.get_content_type(request,format=format)
- 
-    def get_accept_content_type(self, request, format=None):
-         
-        return self._meta.serializer.get_accept_content_type(request,format=format)
+    def get_serializer(self):
+        return self._meta.serializer
         
-    def build_response(self, request, data, response_class=HttpResponse, **kwargs):
-        
-        content_type = self._meta.serializer.get_content_type(
-            request, format=kwargs.get('format', None))
-        # FIXME: "data" must be a dict {'objects': [data] } for xls, csv serialization
-        serialized = self.serialize(request, data, format=kwargs.get('format', None))
+    def build_response(self, request, data, response_class=HttpResponse, 
+                       format=None, **kwargs):
+        if format is not None:
+            content_type = \
+                self.get_serializer().get_content_type_for_format(format)
+        else:
+            content_type = \
+                self.get_serializer().get_accept_content_type(request)
+        logger.debug(
+            'build response for data: %r, content type: %r', data, content_type)
+        serialized = self.serialize(data, content_type)
         response = response_class(
             content=serialized, 
             content_type=content_type)
+        
+        # FIXME: filename is not being set well here:
+        # - used for downloads; reports.api resources use
+        # this method to serialize; all others use streaming serializers.
+
+        format = self.get_serializer().get_format_for_content_type(content_type)
+        if format != 'json':
+            filename = kwargs.get('filename', None)
+            if filename is None:
+                filename = self._meta.resource_name
+            if format == 'csv': 
+                filename += '.csv'
+            elif format == 'xls': 
+                filename += '.xls'
+            response['Content-Disposition'] = \
+                'attachment; filename=%s' % filename
         if 'status_code' in kwargs:
             response.status_code = kwargs['status_code']
+            
+        logger.debug('response: %r: %r', response, response.status_code)
         return response 
     
-    def build_error_response(self, request, data, response_class=HttpBadRequest, **kwargs):
-        format = 'json'
-        if kwargs and 'format' in kwargs:
-            format = kwargs['format']
+    def build_error_response(
+            self, request, data, response_class=HttpResponseBadRequest, **kwargs):
+
         try:
             return self.build_response(
-                request, data, response_class=response_class, format=format)
+                request, data, response_class=response_class, **kwargs)
         except Exception, e:
             logger.exception('On trying to serialize the error response: %r, %r',
                 data, e)
-            return HttpBadRequest(content=data, content_type='text/plain')
+            return HttpResponseBadRequest(content=data, content_type='text/plain')
+
+    def _print_exception_message(text):
+        # from tastypie.resources.sanitize
+        return escape(six.text_type(exception))\
+            .replace('&#39;', "'").replace('&quot;', '"')
 
     def _handle_500(self, request, exception):
-        ''' Override Tastypie for serialization'''
+        ''' 
+        '''
         import traceback
         import sys
         the_trace = '\n'.join(traceback.format_exception(*(sys.exc_info())))
-        response_class = HttpApplicationError
+        response_class = HttpResponseServerError
         response_code = 500
-
-        NOT_FOUND_EXCEPTIONS = (NotFound, ObjectDoesNotExist, Http404)
-
-        if isinstance(exception, NOT_FOUND_EXCEPTIONS):
-            response_class = HttpResponseNotFound
-            response_code = 404
 
         if settings.DEBUG:
             data = {
-                "error_message": sanitize(six.text_type(exception)),
-                "traceback": the_trace,
+                'error_message': _print_exception_message(exception),
+                'traceback': the_trace,
             }
-            return self.build_error_response(request, data, response_class=response_class)
-
-        # When DEBUG is False, send an error message to the admins (unless it's
-        # a 404, in which case we check the setting).
-        send_broken_links = getattr(settings, 'SEND_BROKEN_LINK_EMAILS', False)
-
-        if not response_code == 404 or send_broken_links:
-            log = logging.getLogger('django.request.tastypie')
-            log.error('Internal Server Error: %s' % request.path, exc_info=True,
-                      extra={'status_code': response_code, 'request': request})
+            return self.build_error_response(
+                request, data, response_class=response_class)
+        
+        # TODO: configure logging email on errors
 
         # Send the signal so other apps are aware of the exception.
         got_request_exception.send(self.__class__, request=request)
 
-        # Prep the data going out.
         data = {
-            "error_message": getattr(
-                settings, 
-                'TASTYPIE_CANNED_ERROR', 
-                "Sorry, this request could not be processed. Please try again later."),
+            'SERVER_ERROR': 
+                'Sorry, this request could not be processed. Please try again later.',
         }
-        return self.build_error_response(request, data, response_class=response_class)
+        return self.build_error_response(
+            request, data, response_class=response_class)
         
-       
+
+
+class Api(object):
+
+    def __init__(self, api_name='v1'):
+        self.api_name = api_name
+        self._registry = {}
+
+    def register(self, resource):
+        resource_name = getattr(resource._meta, 'resource_name', None)
+
+        if resource_name is None:
+            raise ImproperlyConfigured(
+                'Resource %r must define a "resource_name".' % resource)
+
+        self._registry[resource_name] = resource
+
+
+    def unregister(self, resource_name):
+        if resource_name in self._registry:
+            del(self._registry[resource_name])
+
+    def wrap_view(self, view):
+        def wrapper(request, *args, **kwargs):
+            try:
+                return getattr(self, view)(request, *args, **kwargs)
+            except BadRequestError:
+                return HttpResponseBadRequest()
+        return wrapper
+
+    def prepend_urls(self):
+        '''
+        A hook for adding your own URLs or matching before the default URLs.
+        '''
+        return []
+
+    @property
+    def urls(self):
+        '''
+        Provides URLconf details for the ``Api`` and all registered
+        ``Resources`` beneath it.
+        '''
+        pattern_list = [
+            url(
+                r'^(?P<api_name>%s)%s$' % (self.api_name, TRAILING_SLASH), 
+                self.wrap_view('top_level'), 
+                name='api_%s_top_level' % self.api_name),
+        ]
+
+        for name in sorted(self._registry.keys()):
+            self._registry[name].api_name = self.api_name
+            pattern_list.append(
+                url(r'^(?P<api_name>%s)/' % self.api_name, 
+                    include(self._registry[name].urls)))
+
+        urlpatterns = self.prepend_urls()
+
+
+        urlpatterns += pattern_list
+        return urlpatterns
+
+    def top_level(self, request, api_name=None):
+        '''
+        A view that returns a serialized list of all resources registers
+        to the ``Api``. Useful for discovery.
+        '''
+        fullschema = parse_val(
+            request.GET.get('fullschema', False),
+            'fullschema', 'boolean')
+
+        available_resources = {}
+
+        if api_name is None:
+            api_name = self.api_name
+
+        for name, resource in self._registry.items():
+            if not fullschema:
+                schema = self._build_reverse_url('api_get_schema', kwargs={
+                    'api_name': api_name,
+                    'resource_name': name,
+                })
+            else:
+                schema = resource.build_schema()
+
+            available_resources[name] = {
+                'list_endpoint': 
+                    self._build_reverse_url('api_dispatch_list', kwargs={
+                        'api_name': api_name,
+                        'resource_name': name,
+                    }),
+                'schema': schema,
+            }
+
+        serializer = LimsSerializer()
+        content_type = serializer.get_accept_content_type(request)
+        serialized =  serializer.serialize(available_resources, content_type)
+        return HttpResponse(
+            content=serialized, 
+            content_type=content_type)
+
+    def _build_reverse_url(self, name, args=None, kwargs=None):
+        return django.urls.reverse(name, args=args, kwargs=kwargs)

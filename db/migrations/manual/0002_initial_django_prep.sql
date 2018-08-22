@@ -44,6 +44,13 @@ update screen set status_date = si.status_date
 /** insert into reports_apilog ( user_id, username, ref_resource_name, key, uri, date_time, api_action, diff_keys, diffs) **/
 /** select 1, 'sde4', 'screen', s.facility_id, '/db/api/v1/screen/'||s.facility_id, '["status","status_date"]', ' **/
 
+/**
+  *** Add id field to cherry_pick_request_empty_well  ***
+  Purpose: add an id to capture the natural ordering of the cherry_pick_request_empty_well table; 
+  because the table has no ID, Django ORM doesn't know what to do with it -
+  and the South migration cannot do it either.
+**/
+
 
 /**
   *** Add id field to gene_symbol ***
@@ -170,8 +177,6 @@ alter table :_table add primary key(id);
 alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
 alter sequence :_table_sequence owned by :_table.id;
 
-
-
 \set _table screen_keyword
 \set _unique_constraint screen_id,keyword
 
@@ -190,8 +195,6 @@ alter table :_table add primary key(id);
 /** Set the default nextval for Django ORM (AutoField) usage. **/
 alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
 alter sequence :_table_sequence owned by :_table.id;
-
-
 
 /**
   *** Add id field to silencing_reagent_duplex_wells ***
@@ -216,7 +219,6 @@ alter table silencing_reagent_duplex_wells
     alter column id set default nextval('silencing_reagent_duplex_wells_sequence'::regclass);
 alter sequence silencing_reagent_duplex_wells_sequence 
     owned by silencing_reagent_duplex_wells.id;
-
 
 alter table silencing_reagent_duplex_wells 
     RENAME COLUMN silencing_reagent_id to silencingreagent_id;
@@ -426,6 +428,9 @@ CREATE INDEX "data_column_derived_from_columns_from_dc_idx"
   ON "data_column_derived_from_columns" ("from_datacolumn_id");
 CREATE INDEX "data_column_derived_from_columns_to_dc_idx" 
   ON "data_column_derived_from_columns" ("to_datacolumn_id");
+  
+  
+DROP TABLE data_column_derived_from_link;
 
 /**
 20160408
@@ -441,7 +446,52 @@ TODO: verify that the ldld here is the same as the sr.date_loaded
 update screen_result set date_loaded = TODO: 
 **/
 
+/**
+ * Django is not setting this in migration 0002
+**/
 ALTER TABLE assay_well ALTER COLUMN is_positive SET default false;
+
+/** 
+20170413 Delete "data_loading" assay plates:
+- these plates were created exclusively to track data loading replicate counts,
+- per JAS we will no longer track these values
+- accounting algorithm in SS1 is inaccurate
+**/
+delete from assay_plate 
+  where screen_result_data_loading_id is not null 
+  and library_screening_id is null;
+
+/**
+ * Alter the assay_plate unique index:
+ * - Django migration command for this is not working on orchestra/postgreSQL 8.4
+ * current UNIQUE(library_screening_id, plate_number, replicate_ordinal)
+ **/
+DROP INDEX assay_plate_unique_index;
+ALTER TABLE assay_plate 
+  ADD CONSTRAINT assay_plate_unique_index
+  UNIQUE(library_screening_id, plate_id, replicate_ordinal); 
+
+/** Django (<2.0?) will not set field defaults in migrations **/
+ALTER TABLE screen_result ALTER COLUMN experimental_well_count set default 0;
+ALTER TABLE screen_result ALTER COLUMN replicate_count set default 0;
+ALTER TABLE screen_result ALTER COLUMN channel_count set default 0;
+
+ALTER TABLE assay_well ALTER COLUMN is_positive set default false;
+
+ALTER TABLE data_column ALTER COLUMN is_follow_up_data set default false;
+ALTER TABLE data_column ALTER COLUMN is_derived set default false;
+
+ALTER TABLE cherry_pick_request ALTER COLUMN is_randomized_assay_plate_layout set default false;
+ALTER TABLE cherry_pick_request ALTER COLUMN keep_source_plate_cherry_picks_together set default false;
+
+ALTER TABLE library ALTER COLUMN version_number set default 0;
+
+ALTER TABLE silencing_reagent ALTER COLUMN is_restricted_sequence set default false;
+
+ALTER TABLE small_molecule_reagent ALTER COLUMN is_restricted_structure set default false;
+
+ALTER TABLE plate ALTER COLUMN screening_count set default 0;
+ALTER TABLE plate ALTER COLUMN cplt_screening_count set default 0;
 
 DROP TABLE cell_lineage;
 DROP TABLE cell_related_projects;
@@ -455,5 +505,10 @@ DROP TABLE gene_old_entrezgene_id;
 DROP TABLE gene_old_entrezgene_symbol;
 DROP TABLE silencing_reagent_non_targetted_genbank_accession_number;
 
+/**
+ * Drop not-null constraint on study type: this is handled in 0002 as well, 
+ * but is failing to be effective on the orchestra server
+ **/
+alter table screen alter column study_type drop not null;
 
 COMMIT;

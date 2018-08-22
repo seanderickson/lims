@@ -42,18 +42,16 @@ define([
     
     tagname: 'siuniteditor',
     
-//    defaultValue: 0,
-    
     fieldTemplate: _.template([
-      '<div data-editor class="form-control col-sm-10" title="<%= help %>"  >'
+      '<div data-editor class="form-control col-sm-4" title="<%= help %>"  >'
       ].join('')),
     unitFieldTemplate: _.template([
       '<div data-editor title="<%= help %>"  >'
       ].join('')),
 
     formTemplate: _.template([
-      '<form class="iccbl-nested-form" >',
-      '<div class="input-group ">',
+      '<form class="iccbl-nested-form siunit" >',
+      '<div class="input-group" >',
       '   <div data-fields="number" />',
       '   <div class="input-group-addon iccbl-nested-form-unit" data-fields="unit"/>',
       '</div>',
@@ -226,6 +224,7 @@ define([
     remove: function() {
       this.nestedForm.remove();
       Backbone.View.prototype.remove.call(this);
+      // TODO: check remove all listeners
     },
   
     _observeFormEvents: function() {
@@ -260,7 +259,14 @@ define([
   var DatePicker = Backbone.Form.editors.Base.extend({
 
     tagName: 'datepicker',
-
+    template: [
+         '<div class="input-group date" >',
+         '  <input type="text" class="form-control"  >',
+         '  <span class="input-group-addon" id="datepicker-icon" >',
+         '    <i class="glyphicon glyphicon-th"  ></i>',
+         '  </span>',
+         '</div>'                                             
+      ].join(''),
     events: {
         'change': function() {
             // The 'change' event should be triggered whenever something happens
@@ -328,14 +334,7 @@ define([
     
     render: function() {
       var el = $(this.el);
-      el.html([
-         '<div class="input-group date" >',
-         '  <input type="text" class="form-control">',
-         '  <span class="input-group-addon" id="datepicker-icon" >',
-         '    <i class="glyphicon glyphicon-th"  ></i>',
-         '  </span>',
-         '</div>'                                             
-      ].join(''));
+      el.html(this.template);
 
       var input = $('input', el);
       input.datepicker({
@@ -512,7 +511,13 @@ define([
       this.$el.attr('multiple', 'multiple');
       this.setOptions(this.schema.options);
       return this;
+    },
+    getValue: function(){
+      var val = this.$el.val();
+      
+      return val == "" ? null: val
     }
+    
   });
   
   var ChosenMultiSelect = Backbone.Form.editors.Select.extend({
@@ -526,6 +531,12 @@ define([
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
+    },
+    
+    getValue: function(){
+      var val = this.$el.val();
+      
+      return val == "" ? null: val
     }
   });
   
@@ -549,17 +560,47 @@ define([
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
+    },
+    
+    getValue: function(){
+      var val = this.$el.val();
+      
+      return val == "" ? null: val
     }
+  
+  });
+
+  var TextArea2 = Backbone.Form.editors.TextArea.extend({
+    render: function() {
+      TextArea2.__super__.render.apply(this,arguments);
+      this.$el.attr('placeholder', this.schema.placeholder);
+      return this;
+    },        
   });
   
-  
   var EditView = Backbone.Form.extend({
+    
+    /**
+     * @param resource - the API resource schema,
+     * @param modelFields (optional) specific resource_schema.fields to use
+     * @param editSchemaOverrides - (optional) Backbone.Form schema definitions, 
+     *  by field.key; values override Backbone.Form schema generated from the 
+     *  resource_schema
+     */
     initialize: function(args) {
 
       console.log('Editview initialize: ', args);
       var self = this;
-      
+      this.resource = args.resource || this.model.resource;
+      this.modelFields = args.modelFields || this.resource.fields;
       this.uriStack = args.uriStack;
+      this.editSchemaOverrides = args.editSchemaOverrides || {};
+      
+      if (!_.isUndefined(args.isCreate)){
+        this.isCreate = args.isCreate;
+      } else {
+        this.isCreate = false;
+      }
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
       this.saveSuccessCallBack = args.saveSuccessCallBack;
@@ -567,23 +608,18 @@ define([
       if (!_.isBoolean(this.fullSaveOnEdit)) {
         this.fullSaveOnEdit = false;
       }
-      
-      this.modelSchema = args.modelSchema || this.model.resource;
-      this.modelFields = args.modelFields || this.modelSchema.fields;
-      
       if (args.editVisibleKeys) {
         this.editVisibleKeys = args.editVisibleKeys;
       } else {
-        this.editVisibleKeys = this.modelSchema.allEditVisibleKeys();
+        this.editVisibleKeys = this.resource.allEditVisibleKeys();
       }
-      this.groupedKeys = this.modelSchema.groupedKeys(this.editVisibleKeys);
-      
+      this.groupedKeys = this.resource.groupedKeys(this.editVisibleKeys);
       if (args.editableKeys) {
         this.editableKeys = args.editableKeys;
       } else { 
-        this.editableKeys = this.modelSchema.updateKeys();
-        if (args.isCreate || this.model.isNew()) {
-          this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
+        this.editableKeys = this.resource.updateKeys();
+        if (this.isCreate || this.model.isNew()) {
+          this.editableKeys = _.union(this.editableKeys,this.resource.createKeys());
         }
       }
       this.finalEditableKeys = [];
@@ -602,8 +638,9 @@ define([
       }
       
       // The delegateModel/View is used to display visible, but not editable fields
-      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
-      delegateModel.resource = this.model.resource;
+      //      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
+      //      delegateModel.resource = this.model.resource;
+      var delegateModel = this.model;
       this.delegateDetailView = new DetailView({ model: delegateModel });
       
       if (args.editTemplate) {
@@ -611,14 +648,15 @@ define([
       } else {
         this.template = _.template(editTemplate);
       }
-      
+      _.bindAll(this, 'save','save_fail','save_success','process_errors');
+
       // NOTE: due to a phantomjs js bug, must convert arguments to a real array
       Backbone.Form.prototype.initialize.apply(this,Array.prototype.slice.apply(arguments));
       
     },
     
     events: {
-      'click button#save': 'save',
+      'click button#save': 'click_save',
       'click button#cancel': 'cancel'
     },
     
@@ -736,13 +774,31 @@ define([
           },
         'textarea':
           {
-            type: Backbone.Form.editors.TextArea.extend({
+            type: TextArea2.extend({
               initialize: function() {
                 Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
                 if (_.has(this.schema,'rows')) {
                   this.$el.attr('rows',this.schema['rows']);
                 }
+                // TODO: how to do cols? (not this)
+                //if (_.has(this.schema,'cols')) {
+                //  this.$el.attr('cols',this.schema['cols']);
+                //}
+              },
+              
+              getValue: function() {
+                value = this.$el.val();
+                
+                // Cleanup strings containing newlines: 
+                // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
+                // NOTE: JSON does not officially support control-characters, so 
+                // newlines should be escaped/unescaped on send/receive in the API (TODO)
+                if (_.isString(value)) {
+                  value = value.replace(/(\r\n|\n|\r)/gm,"\n");
+                }
+                return value;
               }
+        
             }),
             editorClass: 'form-control',
             template: self.altTextAreaFieldTemplate,
@@ -803,7 +859,7 @@ define([
         var fi = self.modelFields[key];
         var cell_options = fi.display_options;
 
-        var fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
+        var fieldSchema = _.extend({}, defaultFieldSchema);
         
         fieldSchema['title'] = fi.title;
         var tooltip = fi.description;
@@ -818,14 +874,16 @@ define([
           fieldSchema['type'] = DisabledField.extend({
             initialize: function() {
               DisabledField.__super__.initialize.apply(this,arguments);
-              this.binding = self.delegateDetailView.createBinding(key,fi)
+              this.binding = self.delegateDetailView.createBinding(key,fi);
             }
           });
           fieldSchema['editorClass'] = 'form-control-disabled';
 
         } else {
           
-          console.log('build edit schema for key: ',key);
+          if (appModel.DEBUG){
+            console.log('build edit schema for key: ',key);
+          }
           self.finalEditableKeys.push(key);
           if (_.has(typeMap, fi.data_type)) {
             _.extend(fieldSchema, typeMap[fi.data_type]);
@@ -834,7 +892,19 @@ define([
             _.extend(fieldSchema, typeMap[fi.display_type]);
           }
           if (_.has(typeMap, fi.edit_type)) {
-            _.extend(fieldSchema, typeMap[fi.edit_type]);
+            if (fi.edit_type == 'select' && fi.data_type == 'integer'){
+              var baseEditor = typeMap[fi.edit_type]['type'];
+              var editor = baseEditor.extend({
+                getValue: function(){
+                  var value = baseEditor.__super__.getValue.apply(this, arguments);
+                  return value == "" ? null : parseFloat(value);
+                }
+              });
+              _.extend(fieldSchema, typeMap[fi.edit_type], {type: editor});
+            }else{
+              _.extend(fieldSchema, typeMap[fi.edit_type]);
+            }
+            
           }
           
           if (cell_options) {
@@ -851,10 +921,14 @@ define([
           }
           fieldSchema.validators = self._createValidators(fi);
           
-          console.log('editSchema for key created: ', key, editSchema[key]);
-          
+          if (appModel.DEBUG){
+            console.log('editSchema for key created: ', key, editSchema[key]);
+          }
         }
-
+        if (_.has(self.editSchemaOverrides, key)){
+          fieldSchema = _.extend(fieldSchema, self.editSchemaOverrides[key]);
+        }
+        editSchema[key] = fieldSchema;
       });      
       
       console.log('editSchema created');
@@ -938,7 +1012,7 @@ define([
       
       if (!_.isUndefined(fi.regex) && !_.isEmpty(fi.regex)) {
         validator = { type: 'regexp', regexp: new RegExp(fi.regex) };
-        console.log('create RegExp: ', fi.regex, validator );
+        console.log('create RegExp: ', fi.key, fi.regex, validator );
         if (!_.isUndefined(fi.validation_message) && !_.isEmpty(fi.validation_message)) {
           validator.message = fi.validation_message;
           // TODO: rework, if req'd, to use tokenized strings (will need 
@@ -954,22 +1028,33 @@ define([
     },
     
     _createVocabularyChoices: function(fi) {
-      var choiceHash = fi.choices || [];
-      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
+      // 1. start with fieldinformation.choices
+      // 2. override with fieldinformation.vocabulary:
+      // 2.a from fieldinformation.vocabulary, if available
+      // 2.b fetch and add vocabulary from server
+      var choiceHash = fi.choiceHash || [];
+      if (_.isEmpty(choiceHash)) {
+        //  TODO 20171204 - test using the fi.choices to override
+        //      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
         choiceHash = []
         // replace the fi.choices with the vocabulary, if available
         try{
           var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice) {
             if (vocabulary[choice].is_retired) {
-              console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+              if (appModel.DEBUG) {
+                console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+              }
             } else {
-              choiceHash.push({ val: choice, label: vocabulary[choice].title });
+              choiceHash.push({ 
+                val: choice, 
+                label: vocabulary[choice].title,
+                ordinal: vocabulary[choice].ordinal });
             }
           });
-          if (fi.edit_type == 'select' && !fi.required ) {
-            choiceHash.unshift({ val: '', label: ''});
-          }
+          choiceHash = _.sortBy(choiceHash, function(choice){
+            return choice.ordinal;
+          });
         }catch(e) {
           var msg = 'Vocabulary unavailable: field: ' + fi.key +  
             ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
@@ -977,6 +1062,10 @@ define([
           appModel.error(msg);
         }
       }
+      if (fi.edit_type == 'select' && !fi.required ) {
+        choiceHash.unshift({ val: '', label: ''});
+      }
+
       return choiceHash;
     },
     
@@ -1047,17 +1136,21 @@ define([
           var that = this,
               $selectableSearch = that.$selectableUl.prev(),
               $selectionSearch = that.$selectionUl.prev(),
-              selectableSearchString = '#'+that.$container.attr('id')+' .ms-elem-selectable:not(.ms-selected)',
-              selectionSearchString = '#'+that.$container.attr('id')+' .ms-elem-selection.ms-selected';
+              selectableSearchString = '#'+that.$container.attr('id')
+                +' .ms-elem-selectable:not(.ms-selected)',
+              selectionSearchString = '#'+that.$container.attr('id')
+                +' .ms-elem-selection.ms-selected';
 
-          that.qs1 = $selectableSearch.quicksearch(selectableSearchString).on('keydown', function(e) {
+          that.qs1 = $selectableSearch.quicksearch(selectableSearchString)
+            .on('keydown', function(e) {
             if (e.which === 40) {
               that.$selectableUl.focus();
               return false;
             }
           });
 
-          that.qs2 = $selectionSearch.quicksearch(selectionSearchString).on('keydown', function(e) {
+          that.qs2 = $selectionSearch.quicksearch(selectionSearchString)
+            .on('keydown', function(e) {
             if (e.which == 40) {
               that.$selectionUl.focus();
               return false;
@@ -1114,10 +1207,9 @@ define([
             return true;
           }
         }
-        
+        prev = model.previous(key);
         // equate null to empty string, object, or array
         if (_.isNull(value)) {
-          prev = model.previous(key);
           if (_.isNull(prev)) return true;
           if (_.isObject(prev) || _.isString(prev) || _.isArray(prev)) {
             return _.isEmpty(prev);
@@ -1125,12 +1217,16 @@ define([
         }
         if (_.isObject(value) || _.isString(value) || _.isArray(value)) {
           if (_.isEmpty(value)) {
-            prev = model.previous(key);
             if (_.isNull(prev)) return true;
             if (_.isObject(prev) || _.isString(prev) || _.isArray(prev)) {
               return _.isEmpty(prev);
             }
           }
+        }
+        
+        // NOTE: array values are assumed to be unordered for generic_edit
+        if (_.isArray(value) && _.isArray(prev)){
+          return _.isEqual(value.sort(), prev.sort());
         }
         
         // Cleanup strings containing newlines: 
@@ -1151,16 +1247,90 @@ define([
     
     cancel: function(e) {
       e.preventDefault();
+      appModel.clearPagePending();
       this.remove();
       appModel.router.back();
     }, 
     
-    save: function( event ) {
-      event.preventDefault();
+    commit: function(options) {
+      return EditView.__super__.commit.apply(this, arguments);
+    },
+    
+    /**
+     * Default save success action
+     */
+    save_success: function(data, textStatus, jqXHR){
       var self = this;
-      var errors, changedAttributes, url,
+      if (! self.model.isNew()){
+        console.log('save success show detail page...');
+        var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
+        appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+      } else {
+        console.log('model key is empty after save', data, self.model);
+        this.remove();
+        appModel.router.back();
+      }
+    },
+    
+    process_errors: function(errors) {
+      var self = this;
+      console.log('errors in response:', errors, _.keys(errors));
+      var non_field_errors = {};
+      _.each(_.keys(errors), function(key) {
+        var error = errors[key];
+        console.log('error:', key, error, _.has(self.fields,key));
+        if (_.has(self.fields, key)) {
+          var final_error  = appModel.print_dict(error);
+          console.log('error processed as', error, final_error);
+          self.fields[key].setError(final_error);
+          $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+          console.log('added error for: "', key, '", val: "', 
+            self.fields[key].getValue(), '"');
+        }else{
+          non_field_errors[key] = error;
+        }
+      });
+      console.log('non-field errors', non_field_errors);
+      return non_field_errors;
+    },
+    
+    save_fail: function(jqXHR, textStatus, errorThrown) { 
+      var self = this;
+      if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
+        var errors = _.result(jqXHR.responseJSON,'errors',null);
+        if (errors) {
+          var non_field_errors = self.process_errors(errors);
+          if (!_.isEmpty(non_field_errors)){
+            appModel.showJsonMessages(non_field_errors);
+          }
+        } else {
+          Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+        }
+      } else {
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+      }
+    },
+    
+    save: function(changedAttributes, options){
+      var self = this;
+      console.log('save', this.model);
+      this.model.save(changedAttributes, options)
+        .done(function(data, textStatus, jqXHR){ 
+          appModel.clearPagePending();
+          self.save_success.apply(this,arguments);
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) { 
+          self.save_fail.apply(this,arguments);
+        });
+    },
+    
+    click_save: function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var self = this;
+      var errors, changedAttributes,
         options = {};
-      var headers = options['headers'] = {};
+      console.log('click_save');
       
       $('.has-error').removeClass('has-error');
       $('[data-error]').empty();
@@ -1171,7 +1341,8 @@ define([
           var error = errors[key];
           if (_.has(self.fields, key)) {
             $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-            console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
+            console.log('added error for: "', key, '", val: "', 
+              self.fields[key].getValue(), '"');
           } else if (key=='_others') {
             var other_errors = errors[key];
             _.each(other_errors, function(error_obj) {
@@ -1183,7 +1354,8 @@ define([
                     .find('[data-error]').append('<br/>' + other_error);
                 } else {
                   self.$el.append(
-                  '<div data-error class="text-danger">' + other_key + ': ' + other_error + '</div>');
+                  '<div data-error class="text-danger">' + other_key 
+                    + ': ' + other_error + '</div>');
                 }
               });
             });
@@ -1192,8 +1364,10 @@ define([
         return;
       }
       
-      if (self.fullSaveOnEdit) {
-        changedAttributes = null; // force a full save
+      // NOTE: backbone will save all attributes if model.isNew
+      // so changedAttributes will have no effect.
+      if (self.fullSaveOnEdit ) {
+        changedAttributes = null; 
       } else {
         changedAttributes = self._getChangedAttributes(this.model);
         if (! changedAttributes || _.isEmpty(changedAttributes)) {
@@ -1207,103 +1381,42 @@ define([
       // Wait for the server before setting the new attributes on the model
       options['wait'] = true;
       
-      // Fixup the URL - if it points to the model instance, make it point to 
-      // the API resource only: tastypie wants this
-      // Note: this is happening if the model was fetched specifically for this
-      // page, and has the url used to fetch it, rather than the collection url.
-      url = options['url'] || _.result(this.model, 'url');
-      // TODO: this should be optional (for most resources, to have url end with '/'
-      if ( url && url.charAt(url.length-1) != '/') {
-        url += '/';
-      }
-      
       if (!  self.model.isNew()) {
         options['patch'] = true;
-      }        
+      }else{
+        // If new, then add any previous attributes that are non-null (defaults)
+        _.each(_.pairs(self.model.previousAttributes()),function(pair){
+          var key = pair[0];
+          var value = pair[1];
+          if (!_.isUndefined(value) && !_.isNull(value)){
+            if (!_.has(changedAttributes,key)){
+              changedAttributes[key] = value;
+            }
+          }
+        });
+        // Backbone will always send the whole model if it is new,
+        // unfortunately, backbone-forms reports empty text fields as empty strings;
+        // so sending the entire model also sends these empty strings.
+        // To get arouund this, use option.attrs to define the explicit
+        // attrs to send.
+        options.attrs = changedAttributes;
+      }      
       
-      //      // Determine PATCH (update) or POST (create)
-      //      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
-      //      if (!_.contains(this.uriStack, '+add') && options['key'] ) {
-      //        self.model.idAttribute = self.model.resource['id_attribute'];
-      //        options['patch'] = true;
-      //        // TODO: check if creating new or updating here
-      //        // set the id specifically on the model: backbone requires this to 
-      //        // determine whether a "POST" or "PATCH" will be used
-      //        this.model.id = options['key'];
-      //      }
+      var headers = options['headers'] = {};
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {
-        appModel.showOkCommentForm( title, function(values) {
-          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+        appModel.showOkCommentForm({
+          title: 'Enter a comment (optional)', 
+          ok: function(values) {
+            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+            self.save(changedAttributes, options);
+          }
         });
+      }else{
+        self.save(changedAttributes, options);
       }
-      if (!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)) {
-        this.saveCallBack(this.model,headers,options, url);
-      } else {
-        console.log('save, changedAttributes: ', changedAttributes);
-        // NOTE: if model.isNew() (post), backbone save will send all attributes, 
-        // else, (patch) only changedAtributes are sent.
-        this.model.save(changedAttributes, options)
-          .success(function(model, resp) {
-            console.log('success');
-            if (self.saveSuccessCallBack) {
-              self.saveSuccessCallBack(model);
-            } else {
-              // Note removed 201611 - force a reload of all edits, 
-              // will run extra render operations
-              //if (!options['patch']) {
-                // this is an +add event
-                model = new Backbone.Model(model);
-                var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
-                model.key = self.model.resource.key + '/' + key;
-                appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
-              //} else {
-              //  // just remove the edit view and use the model to refresh
-              //  console.log('trigger remove');
-              //  self.trigger('remove');
-              //}
-            }
-          })
-          .done(function(model, resp) {
-            // TODO: done replaces success as of jq 1.8
-            console.log('model saved');
-          })
-          // NOTE: chained, fail behaves like $.ajax().fail(jqXHR, textstatus, errorThrown)
-          // whereas the error callback takes (model, response, options)
-          .fail(function(jqXHR, textStatus, errorThrown) { 
-            
-            if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
-              var errors = _.result(jqXHR.responseJSON,'errors',null);
-              if (errors) {
-                console.log('errors in response:', errors);
-                _.each(_.keys(errors), function(key) {
-                  var error = errors[key];
-                  if (_.has(self.fields, key)) {
-                    self.fields[key].setError(error);
-                  }
-                  $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-                  console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
-                });
-                return;
-              }
-            }
-            if (options['patch']) {
-              self.model.fetch();
-            } else {
-              self.remove();
-              appModel.router.back();
-            }
-            Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-            console.log('trigger remove');
-            self.trigger('remove');
-          })
-          .always(function() {
-            // always replaces complete as of jquery 1.8
-          });
-      }
+    },      
       
-    },
-    
     /**
      * Child view bubble up URI stack change event
      */
@@ -1318,8 +1431,9 @@ define([
   EditView.DatePicker = DatePicker;
   EditView.DisabledField = DisabledField;
   EditView.SIunitEditor = SIunitEditor;
+  EditView.TextArea2 = TextArea2;
   EditView.CheckPositiveValidator = CheckPositiveValidator;
   EditView.CheckPositiveNonZeroValidator = CheckPositiveNonZeroValidator;
-  
+  Iccbl.EditView = EditView;
 	return EditView;
 });

@@ -22,7 +22,9 @@ body {
   }
 }  
 
-
+.btn.disabled, a.btn.disabled {
+    pointer-events: auto;
+}
 /** 
   Sticky footer styles:
   - note: reapply this style in the webpack-injected css here.
@@ -47,19 +49,19 @@ body {
 
 
 #title {
-	  word-wrap:break-word;
+	word-wrap: break-word;
 }
 
 .label-cell {
-    color: black;
+  color: black;
 }
 
 .panel-heading .accordion-toggle:after {
-    /* symbol for "opening" panels */
-    font-family: 'Glyphicons Halflings';  /* essential for enabling glyphicon */
-    content: "\e114";    /* adjust as needed, taken from bootstrap.css */
-    float: right;        /* adjust as needed */
-    color: grey;         /* adjust as needed */
+  /* symbol for "opening" panels */
+  font-family: 'Glyphicons Halflings';  /* essential for enabling glyphicon */
+  content: "\e114";    /* adjust as needed, taken from bootstrap.css */
+  float: right;        /* adjust as needed */
+  color: grey;         /* adjust as needed */
 }
 .panel-heading .accordion-toggle.collapsed:after {
     /* symbol for "collapsed" panels */
@@ -84,6 +86,12 @@ body {
 media="screen"
 .input-group-addon, .input-group-btn, .input-group .form-control {
 display: inherit;
+}
+
+.siunit .input-group div.form-control ,
+.siunit .input-group .form-control input {
+ border-top-left-radius: 4px;
+ border-bottom-left-radius: 4px;
 }
 
 div#application_div > .one-space {
@@ -111,6 +119,11 @@ div#application_div > .one-space {
 }
 .panel {
  margin-bottom: 5px;
+}
+.alert,.alert-dismissable {
+  padding: 5px;
+  padding-right: 35px;
+  margin-bottom: 0px;
 }
 
 .menu {
@@ -173,6 +186,66 @@ div.backgrid-paginator {
   outline: 1px solid green;
 }
 
+.backgrid td.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
+.backgrid th.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
+.backgrid .delete-cell {
+  text-align: center;
+}
+
+/** wellselector **/
+
+.wellselector thead th,
+.wellselector td {
+  border-collapse: separate;
+  border-spacing: 1px;
+  border: 1px solid silver;
+  text-align: center;
+}
+
+.wellselector td {
+  padding: 1px 1px 1px 1px;
+  background-color: #f0f0f0;
+}
+
+td.wellselector {
+  width: auto;
+  background-color: aqua;
+}
+
+td.wellselector.select-row-cell {
+  width: auto;
+  background-color: inherit;
+  padding: 5px;
+  font-weight: bold;
+}
+
+td.wellselector.selected {
+  background-color: rgba(255, 0, 0, 1);
+}
+
+td.wellselector.select-row-cell.selected {
+  background-color: rgba(255, 0, 0, .3);
+}
+
+th.wellselector.selected {
+  background-color: rgba(255, 0, 0, .3);
+}
+
+/** Styles for the SCP, LCP table selector **/
+table.selector_table tr.selector_row_group {
+  border-top: 2px solid black;
+  background-color: lightcyan;
+}
+table.selector_table tr.selected {
+  background-color: rgba(0, 255, 37, 0.33);
+}
+
 
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 
@@ -227,7 +300,8 @@ dl dd {
 }
 
 .form-horizontal .control-label{
-  padding-top: 7px; 
+  padding-top: 4px; 
+  padding-bottom: 7px; 
 }
 .form-horizontal *{
 	min-height: 0px; 
@@ -268,6 +342,7 @@ ul.chosen-choices {
 /*   border: 0px; */
 }
 
+
 .iccbl-headerfield-number select{
 /*   padding: 0 0 0 0 !important; */
   width: 3em !important;
@@ -294,7 +369,7 @@ todo: these selectors should be redone
 }
 
 .iccbl-nested-form input{
-  padding-left: 12px !important;
+  padding-left: 5px !important;
   border-top: 0px;
 }
 
@@ -319,6 +394,25 @@ td.text-wrap-cell {
   text-overflow: inherit;
   white-space: inherit;
   vertical-align: top;
+  min-width: 250px;
+}
+
+td.text-wrap-cell-narrow {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: top;
+  min-width: 200px;
+}
+
+td.text-wrap-cell-extra-narrow {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: top;
+  min-width: 100px;
+}
+
+.backgrid.nested-table th {
+ white-space: normal;
 }
 
 .ms-container ul{
@@ -345,3 +439,117 @@ td.text-wrap-cell {
  width: 150px;
 }
 
+#filter-icon {
+  display: block; 
+}
+.expanded #filter-icon {
+  display: none; 
+}
+.filtered #filter-icon {
+  display: none; 
+}
+#expand-filter-icon {
+  display: none; 
+}
+.expanded #expand-filter-icon {
+  display: none; 
+}
+.filtered #expand-filter-icon {
+  display: block; 
+}
+.expanded.filtered #expand-filter-icon {
+  display: none; 
+}
+#collapse-filter-icon {
+  display: none; 
+}
+.expanded #collapse-filter-icon {
+  display: block; 
+}
+#expand-filter-icon-text {
+  white-space: normal;
+  font-family: sans-serif;
+}
+
+td.dl-title.admin-field {
+ color: maroon;
+}
+
+.glyphicon-comment {
+  padding-left: 1ch;
+}
+
+table.backgrid.left-align td{
+  text-align: left;
+}
+/** scrollable table (fixed headers) attempt **/
+/* .backgrid table { */
+/* border-collapse: collapse; */
+/* } */
+
+/* .backgrid th, td { */
+/* border: 1px solid; */
+/* padding: .3vw; */
+/* width: 12.6vw; */
+/* text-align: center; */
+/* font-size: 2vw; */
+/* } */
+
+/* .backgrid thead, tfoot, tbody { */
+/* display: block;  */
+/* } */
+
+/* .backgrid tbody {  */
+/* overflow-y: scroll;  */
+/* max-height: 80vh; */
+/* } */
+
+.welcome-title {
+  font-size: x-large;
+  font-weight: bold;
+}
+.welcome-message {
+  font-size: medium;
+}
+
+.extra-small-table {
+ font-size: 7px;
+}
+
+.textarea-noscroll {
+  word-wrap: normal;
+}
+.textarea-noscroll::-webkit-scrollbar {
+  display: none;
+}
+
+.loading-ellipsis {
+/*   font-size: 30px; */
+}
+
+.loading-ellipsis:after {
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: bottom;
+  /** NOTE: it is good to synchronize this animation with loading refresh rate **/
+  -webkit-animation: ellipsis steps(4,end) 5000ms infinite;      
+  animation: ellipsis steps(4,end) 5000ms infinite;
+  content: "\2026"; /* ascii code for the ellipsis character */
+  width: 0px;
+}
+
+@keyframes ellipsis {
+  to {
+    width: 1.25em;    
+  }
+}
+
+@-webkit-keyframes ellipsis {
+  to {
+    width: 1.25em;    
+  }
+}
+.modal-backdrop
+{
+    opacity:0.5 !important;
+}

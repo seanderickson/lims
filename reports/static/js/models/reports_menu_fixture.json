@@ -25,6 +25,9 @@
         },
         "permission":{
             "view": "list"
+        },
+        "job":{
+            "view": "list"
         }
       }
     }

@@ -2,25 +2,27 @@ define([
   'jquery',
   'underscore',
   'backbone',
+  'backgrid',
   'layoutmanager',
   'iccbl_backgrid',
   'models/app_state',
   'views/list2',
   'views/generic_detail_layout',
+  'views/generic_detail_stickit', 
   'views/generic_edit',
   'utils/uploadDataForm',
   'templates/genericResource.html'
 ], 
-function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, UploadDataForm, layout) {
+function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
+         DetailView, EditView, UploadDataForm, layout) {
   
   var LibraryCopyPlateView = Backbone.Layout.extend({
     
     template: _.template(layout),
     
     initialize: function(args) {
-      this._args = args;
       this._classname = 'libraryCopyPlate';
+      this._args = args;
       this.resource = args.resource;
       this.uriStack = args.uriStack;
       this.library = args.library;
@@ -45,7 +47,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var library = this.library;
       var copy = this.copy;
       var resourceId = 'librarycopyplate';
-      var resource = appModel.getResource(resourceId);
+      
+      var resource = _.result(self._args, 'resource', appModel.getResource(resourceId));
 
       if (self.model){
         self.showDetail(self.model);
@@ -60,12 +63,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       } else {
         // List view
         var url = resource.apiUri;
+        if (self._args.url){
+          url = self._args.url;
+        }
         if (self.library && self.copy) {
           url = [ 
               library.resource.apiUri,library.key,'copy',copy.get('copy_name'),
               'plate'].join('/');
         }
-        console.log('url: ', url);
         this.consumedStack = [];
         this.showList(resource, url);
       }
@@ -74,10 +79,29 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showDetail: function(model) {
       var self = this;
       var uriStack = _.clone(this.uriStack);
+      
+      var detailView = DetailView.extend({
+        afterRender: function() {
+          DetailView.prototype.afterRender.apply(this,arguments);
+          var search_data = {
+            key: model.key,
+            ref_resource_name: model.resource.key,
+            comment__is_blank: false
+          };
+          appModel.createCommentTable(model,search_data, $('#comment_table'));
+        }
+      });
+      
+      // TODO: 20170407 - Plate.is_active flag management
+      // - disable if status != 'available'
+      // - set to false if status is changed to !available
+      // extend EditView and add a change listener/custom validation
+      
       var view = new DetailLayout({ 
         model: model, 
         uriStack: uriStack,
-        title: 'Plate ' + model.get('plate_number')
+        title: 'Plate ' + model.get('plate_number'),
+        DetailView: detailView
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#resource_content', view).render();
@@ -85,10 +109,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
     showList: function(resource, url) {
       var self = this;
-      var uriStack = _.clone(this.uriStack);
       resource = appModel.cloneResource(resource);
       
-      console.log('uriStack', uriStack);
+      var extraIncludes = [];
+      var commentColumns = ['library_comment_array','comment_array','copy_comments'];
       var showEditLocationButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="batch_edit_locations_button" href="#">',
@@ -108,18 +132,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       '<a class="btn btn-default btn-sm pull-down" ',
         'role="button" id="patch_resource" href="#">',
         'Upload data</a>'
-      ].join(''));   
+      ].join(''));
+      
+      var showCommentsControl = $([
+          '<label class="checkbox-inline" ', 
+          ' style="margin-left: 10px;" ',
+          'title="Show comments" >',
+          '  <input id="show_comments" ',
+          '    type="checkbox">show comments',
+          '</label>'
+        ].join(''));
 
-      var extraControls = [];
+      var extraControls = _.result(self._args, 'extraControls', []);
       if (appModel.hasPermission(resource.key, 'write')){
-        extraControls = [
-         showEditLocationButton, showEditPlatesButton, showHistoryButton,
-         showUploadButton];
+        // FIXME: 20170519 History button not working with filters
+        //extraControls = extraControls.concat([
+        // showEditLocationButton, showEditPlatesButton, showHistoryButton,
+        // showUploadButton]);
+        extraControls = extraControls.concat([
+         showEditLocationButton, showEditPlatesButton, 
+         showUploadButton]);
       }
+      extraControls.push(showCommentsControl);
       
       showHistoryButton.click(function(e) {
         e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
         var search = {};
         search['ref_resource_name'] = 'librarycopyplate';
         if (self.library && self.copy) {
@@ -127,6 +165,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             self.library.get('short_name'),
             self.copy.get('copy_name')].join('/');
         }
+        // FIXME: 20170519 History button not working with filters
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
         console.log('history route: ' + route);
@@ -147,18 +186,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             });
           
           if (_.contains(concentration_types, 'mg_ml')){
-            resource.fields['mg_ml_concentration']['visibility'] = ['l','d'];
-            if (self.copy && self.copy.get('has_copywell_concentrations')) {
-              resource.fields['min_mg_ml_concentration']['visibility'] = ['l','d'];
-              resource.fields['max_mg_ml_concentration']['visibility'] = ['l','d'];
-            }
+            resource.fields['min_mg_ml_concentration']['visibility'] = ['l','d'];
+            resource.fields['max_mg_ml_concentration']['visibility'] = ['l','d'];
           }
           if (_.contains(concentration_types, 'molar')){
-            resource.fields['molar_concentration']['visibility'] = ['l','d'];
-            if (self.copy && self.copy.get('has_copywell_concentrations')) {
-              resource.fields['min_molar_concentration']['visibility'] = ['l','d'];
-              resource.fields['max_molar_concentration']['visibility'] = ['l','d'];
-            }
+            resource.fields['min_molar_concentration']['visibility'] = ['l','d'];
+            resource.fields['max_molar_concentration']['visibility'] = ['l','d'];
           }
         }
         _.each(_.pick(resource['fields'], 
@@ -171,19 +204,55 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             } else {
               field['visibility'] = [];
             }
-        });
+        });        
+        if(self.copy && self.copy.get('has_copywell_volumes')){
+          resource['fields']['remaining_well_volume']['visibility'] = [];
+        }
         
       }  
+      if (!_.isEmpty(self.library) || !_.isEmpty(self.copy)){
+        extraIncludes = _.union(
+          extraIncludes,commentColumns);
+        showCommentsControl.find('input[type="checkbox"]')
+          .prop('checked', true);
+      }
+      resource.fields['library_short_name']['backgridCellType'] =
+        Iccbl.CommentArrayLinkCell.extend({
+          comment_attribute: 'library_comment_array',
+          title_function: function(model){
+            return 'Comments for library: ' + model.get('library_short_name');
+          }
+        });
+      resource.fields['copy_name']['backgridCellType'] =
+        Iccbl.LinkCell.extend({
+          'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}',
+          render: function(){
+            var self = this;
+            Iccbl.LinkCell.prototype.render.apply(this, arguments);
+            var comments = this.model.get('copy_comments');
+            if (!_.isEmpty(comments)){
+              this.$el.attr('title', comments);
+              this.$el.append(Iccbl.createCommentIcon(
+                comments,
+                'Comments for Copy: ' 
+                  + self.model.get('library_short_name') + '/'
+                  + self.model.get('source_copy_name')
+                ));
+            }
+            return this;
+          }
+        });
       
       resource.fields['plate_number'].backgridCellType = 
-        Iccbl.LinkCell.extend(_.extend({},
+        Iccbl.CommentArrayLinkCell.extend(_.extend({},
           resource.fields['plate_number'].display_options,
           {
+            comment_attribute: 'comment_array',
             linkCallback: function(e){
               e.preventDefault();
               // re-fetch the full model
               plate_number = this.model.get('plate_number');
-              this.consumedStack = [plate_number];
+              self.consumedStack = [plate_number];
               _key = [this.model.get('library_short_name'),
                       this.model.get('copy_name'),
                       plate_number].join('/');
@@ -192,15 +261,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             }
           }));
       
-      // TODO: extending the passed args to get the "search_data", or other 
-      // passed args, grab options explicitly instead 201608
-      options = _.extend({
-        uriStack: uriStack,
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: extraControls
-        }, self._args ) ;
+      options = 
+      options = _.extend({}, self._args, {
+          resource: resource,
+          url: url,
+          extraControls: extraControls,
+          extraIncludes: extraIncludes
+        });
+      
       var view = new ListView(options);
       showEditLocationButton.click(function(e) {
         e.preventDefault();
@@ -224,11 +292,24 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             appModel.jqXHRfail.apply(this,arguments); 
           });
       });
+      showCommentsControl.find('input[type=checkbox]').change(function(e) {
+        e.preventDefault();
+        if (showCommentsControl.find('input[type=checkbox]').prop('checked')){
+          view.collection.extraIncludes = _.union(extraIncludes,commentColumns);
+          view.collection.fetch();
+        } else {
+          view.collection.extraIncludes = [];
+          view.collection.fetch();
+        }
+      });
+      
       self.listenTo(view, 'update_title', function(val) {
         if(val) {
           this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+          $('#content_title_row').show();
         } else {
           this.$('#content_title').html(resource.title);
+          $('#content_title_row').show();
         }
       });
         
@@ -240,15 +321,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     batchEditPlatesDialog: function(listView) {
       var self = this;
       console.log('batch edit plates dialog...');
-      // find any extra search data
-      post_data = {};
-      if(_.has(listView._options, 'search_data')) {
-        console.log('search data found on the list._options: ', listView._options.search_data);
-        // endcode for the post_data arg; post data elements are sent 
-        // as urlencoded values via a POST form for simplicity
-        post_data['search_data'] = JSON.stringify(listView._options.search_data);  
-      }
+
       // Construct the form
+      
       var initfun = function() {
         var formSchema = {};
         var fieldTemplate = appModel._field_template;
@@ -262,7 +337,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options: appModel.getVocabularySelectOptions('plate.status'),
           template: fieldTemplate 
         };
-        
         formSchema['plate_type'] = {
           title: 'Plate Type',
           key: 'plate_type',
@@ -271,7 +345,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options: appModel.getVocabularySelectOptions('plate.type'),
           template: fieldTemplate 
         };
-        
         formSchema['remaining_well_volume'] = {
           title: 'Remaining Well Volume',
           key: 'well_volume',
@@ -370,18 +443,42 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         function submitForm(values, callback) {
           var headers = {};
           headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+          
           delete values['comments']
-          var post_data = {
-            data: { 'plate_info': values },
-            search_data: listView._options.search_data 
+          
+          console.log('values', values);
+          
+          // Batch edit is a POST operation:
+          // Instead of sending all plates to be PATCHED:
+          // - send plate search data in the form of (raw_search_data, 
+          // nested_search_data, URL params for the sqlalchemy filters);
+          // - and send the (plate_location data or plate_info data) with the data
+          // to modify for all of the plates matching the search
+          var post_data = new FormData();
+          post_data.append('plate_info', JSON.stringify(values));
+          
+          var search_data_found = false;
+          var search_data = listView.getSearchData();
+          if (!_.isUndefined(search_data)){
+            post_data.append(appModel.API_PARAM_SEARCH, search_data);
+            search_data_found = true;
+          }
+          var nested_search_data = {};
+          if (self.library){
+            nested_search_data['library_short_name'] = self.library.get('short_name');
+          }
+          if (self.copy){
+            nested_search_data['copy_name'] = self.copy.get('copy_name');
+          }
+          if (!_.isEmpty(nested_search_data)){
+            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
+            search_data_found = true;
           }
           
-          if (self.library && self.copy) {
-            search_data = _.result(post_data,'search_data', {});
-            search_data['library_short_name'] = self.library.get('short_name');
-            search_data['copy_name'] = self.copy.get('copy_name');
-            post_data['search_data'] = search_data;
-          }            
+          if (search_data_found !== true){
+            appModel.error('Error, no search data for batch edit');
+            return;
+          }
           
           var url = self.resource.apiUri + '/batch_edit';
           
@@ -392,40 +489,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
           $.ajax({
             url: url,    
-            data: JSON.stringify(post_data),
             cache: false,
-            contentType: 'application/json',
+            contentType: false,
+            processData: false,
             dataType: 'json', // what is expected back from the server
-            processData: false, // do not process data being sent
-            type: 'PATCH',
+            data: post_data,
+            type: 'POST',
             headers: headers
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data) {
+            appModel.showConnectionResult(data, {
+              title: 'Batch Edit Plates Success'
+            });
+
             listView.collection.fetch();
             
-            if (_.isObject(data) && !_.isString(data)) {
-              data = _.result(_.result(data,'meta',data),'Result',data);
-              var msg_rows = appModel.dict_to_rows(data);
-              var bodyMsg = msg_rows;
-              if (_.isArray(msg_rows) && msg_rows.length > 1) {
-                bodyMsg = _.map(msg_rows, function(msg_row) {
-                  return msg_row.join(': ');
-                }).join('<br>');
-              }
-              var title = 'Upload success';
-              appModel.showModalMessage({
-                body: bodyMsg,
-                title: title  
-              });
-            } else {
-              console.log('ajax should have been parsed data as json', data);
-              appModel.showModalMessage({
-                title: 'Batch edit success',
-                okText: 'ok',
-                body: 'Records: ' + listView.collection.state.totalRecords + ', ' + data
-              });
-            }
             if (callback) {
               callback();
             }
@@ -486,15 +565,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     batchEditLocationsDialog: function(listView) {
       var self = this;
-      console.log('batch edit plates dialog...');
-      // find any extra search data
-      post_data = {};
-      if(_.has(listView._options, 'search_data')) {
-        console.log('search data found on the list._options: ', listView._options.search_data);
-        // endcode for the post_data arg; post data elements are sent 
-        // as urlencoded values via a POST form for simplicity
-        post_data['search_data'] = JSON.stringify(listView._options.search_data);  
-      }
+      console.log('batch edit locations dialog...');
       // Construct the form
       var initfun = function() {
         var plateLocationTree = appModel.getPlateLocationTree();
@@ -616,18 +687,37 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           var headers = {};
           headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
           
-          var post_data = {
-            data: { 'plate_location': values },
-            search_data: listView._options.search_data 
+          // Batch edit is a POST operation:
+          // Instead of sending all plates to be PATCHED:
+          // - send plate search data in the form of (appModel.API_PARAM_SEARCH, 
+          // nested_search_data, URL params for the sqlalchemy filters);
+          // - and send the (plate_location data or plate_info data) with the data
+          // to modify for all of the plates matching the search
+          var post_data = new FormData();
+          post_data.append('plate_location', JSON.stringify(values));
+          
+          var search_data_found = false;
+          var search_data = listView.getSearchData();
+          if (!_.isUndefined(search_data)){
+            post_data.append(appModel.API_PARAM_SEARCH, search_data);
+            search_data_found = true;
+          }
+          var nested_search_data = {};
+          if (self.library){
+            nested_search_data['library_short_name'] = self.library.get('short_name');
+          }
+          if (self.copy){
+            nested_search_data['copy_name'] = self.copy.get('copy_name');
+          }
+          if (!_.isEmpty(nested_search_data)){
+            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
+            search_data_found = true;
           }
           
-          if (self.library && self.copy) {
-            search_data = _.result(post_data,'search_data', {});
-            search_data['library_short_name'] = self.library.get('short_name');
-            search_data['copy_name'] = self.copy.get('copy_name');
-            post_data['search_data'] = search_data;
-          }            
-          
+          if (search_data_found !== true){
+            appModel.error('Error, no search data for batch edit');
+            return;
+          }
           var url = self.resource.apiUri + '/batch_edit';
           
           var listParamString = listView.getCollectionUrl();
@@ -637,41 +727,21 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
           $.ajax({
             url: url,    
-            data: JSON.stringify(post_data),
             cache: false,
-            contentType: 'application/json',
+            contentType: false,
+            processData: false,
             dataType: 'json', // what is expected back from the server
-            processData: false, // do not process data being sent
-            type: 'PATCH',
+            data: post_data,
+            type: 'POST',
             headers: headers
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data) {
+            appModel.showConnectionResult(data, {
+              title: 'Batch Edit Locations Success'
+            });
             listView.collection.fetch();
             
-            // TODO: refactor - display response
-            if (_.isObject(data) && !_.isString(data)) {
-              data = _.result(_.result(data,'meta',data),'Result',data);
-              var msg_rows = appModel.dict_to_rows(data);
-              var bodyMsg = msg_rows;
-              if (_.isArray(msg_rows) && msg_rows.length > 1) {
-                bodyMsg = _.map(msg_rows, function(msg_row) {
-                  return msg_row.join(': ');
-                }).join('<br>');
-              }
-              var title = 'Upload success';
-              appModel.showModalMessage({
-                body: bodyMsg,
-                title: title  
-              });
-            } else {
-              console.log('ajax should have been parsed data as json', data);
-              appModel.showModalMessage({
-                title: 'Batch edit success',
-                okText: 'ok',
-                body: 'Records: ' + listView.collection.state.totalRecords + ', ' + data
-              });
-            }
             if (callback) {
               callback();
             }
@@ -691,7 +761,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               });
               return false;
             }            
-            // TODO: construct the batch url and submit
             var values = form.getValue()
             
             if (_.isUndefined(findPlateLocation(
@@ -714,10 +783,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
       };
-      console.log('call init...');
       $(this).queue([appModel.getPlateLocationTree,initfun]);
-
-    },
+    }
     
   });
 

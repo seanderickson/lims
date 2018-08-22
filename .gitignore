@@ -15,7 +15,6 @@ lims/settings.py
 temp
 logs
 reports/static/js/libs
-reports/static/css/external
 reports/static/bower/bower_components
 **/node_modules/**
 **/bower_components/**

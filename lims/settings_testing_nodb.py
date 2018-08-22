@@ -19,7 +19,7 @@ except ImportError:
 import os.path
 
 
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
+print 'PROJECT_ROOT: ', PROJECT_ROOT
 
 
 # make tests faster
@@ -59,7 +59,7 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/iccbl-testing.log",
+            'filename': os.path.join(PROJECT_ROOT, 'logs','iccbl-testing.log'),
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',
@@ -125,11 +125,6 @@ LOGGING = {
             'handlers': ['console'],
             'propagate': True,
             'level': 'DEBUG',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
         },        
     }
 }

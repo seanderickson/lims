@@ -1,3 +1,7 @@
+from __future__ import unicode_literals 
+# HMS ICCB-L Ecommons Authentication
+
+
 import argparse
 import logging
 import requests
@@ -7,9 +11,41 @@ from datetime import datetime
 from urllib import unquote_plus
 import getpass
 
+import ldap3
+
 logger = logging.getLogger(__name__)
 
+
+LDAP_SERVER = 'gal.med.harvard.edu'
+LDAP_USER_PREFIX = 'med\\'
+
+def ldap_authenticate(ecommons_id, ecommons_password):
+
+    try:
+        logger.info('attempt to use ldap server %r to authenticate: %r', 
+                    LDAP_SERVER, ecommons_id)
+        server = ldap3.Server(LDAP_SERVER, use_ssl=True)
+        conn = ldap3.Connection(
+            server, 
+            user=LDAP_USER_PREFIX + ecommons_id, 
+            password=ecommons_password, auto_bind=True)
+        logger.info('connection success: who_am_i: %r', 
+                    conn.extend.standard.who_am_i())
+        return True
+    except ldap3.LDAPBindError, e:
+        logger.info('ldap3.LDAPBindError: %r', e)
+        raise
+    except Exception, e:
+        logger.exception('LDAP exception: %r', e)
+        raise
+
 def authenticate(ecommons_id, ecommons_password):
+    '''
+    Authenticate with the eCommons Server using the credentials
+    '''
+    return ldap_authenticate(ecommons_id, ecommons_password)
+
+def authenticateOld(ecommons_id, ecommons_password):
     """
     Performs authentication of a user using their eCommons ID and password. 
 
@@ -43,7 +79,7 @@ def authenticate(ecommons_id, ecommons_password):
 <NotBefore>%s</NotBefore>
 <NotAfter>%s</NotAfter>
 </ValidityInterval>
-<RequestApp>HMSLINCS</RequestApp>
+<RequestApp>HMSICCBL</RequestApp>
 <AuthNData>
 <Id>%s</Id>
 <Password>%s</Password>

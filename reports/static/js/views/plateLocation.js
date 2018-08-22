@@ -63,7 +63,7 @@ function($, _, Backbone, Backgrid, layoutmanager, typeahead, Iccbl, appModel,
           var options = {
             data_for_get: {
               limit: 1,
-              key: Iccbl.getKey(self.model),
+              key: Iccbl.getIdFromIdAttribute(self.model, self.model.resource),
               ref_resource_name: self.model.resource.key,
               diff_keys__icontains: '"copy_plate_ranges"',
               order_by: ['-date_time']

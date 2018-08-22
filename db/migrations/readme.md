@@ -23,14 +23,21 @@ meta:
 
 0001 - initial
 
-- should be faked, if the datbase is already existent, or,
+- should be faked, if the database is already existent, or,
 -- if new project, run only this migration. 
 -- Note: this migration represents the legacy Screensaver schema; all updates
 -- to the schema are contained in subsequent migrations.
 ./manage.py migrate db 0001 --fake  
 
+0002 migration prep:
+  * perform migrations required to make the legacy screensaver database conform
+  to the 0001 initial migration schema
+  * manual/0002.sql - perform migrations that cannot be performed using Django
+  
+0003 migration prep:
+  * controlled vocabularies
 
-0002_screen_status:
+0006 screen_status:
 
 Creates a status field on on Screen; this will replace the screen_status table
 ./manage.py migrate db 0002
@@ -43,15 +50,6 @@ Screen table with the latest status.
   and the South migration cannot do it either.
 
 
-psql -Uuser database -f ./migrations/manual/0003_screen_status.sql
-
-0003_screen_status:
-
-**NOTE: "manual/0003_screen_status.sql" must be run before 
-"0003_screen_status.py" is run, in order to convert the table to have an id 
-field so that the Django ORM can read it.
-
-
 migrate the screen_status_item table to the "status" field of the screen object 
 and create the needed ApiLog entries to record the history
 
@@ -62,7 +60,7 @@ screening_room_user to onetoone
 * change screen field on screen_result to OneToOne
 * add screensaver_user field to django auth.user
 
-0005_create_django_users
+0004 create_django_users
 
 * create an entry in the django auth.user table for every screensaver_user that
 has email and:
@@ -70,7 +68,7 @@ has email and:
 2) login_id: username=login_id
 3) otherwise, skip
 
-0006_screensaver_user_permissions:
+0005 usergroups:
 
 * create a m2m table joining permissions to screensaver_user
 

@@ -1,8 +1,14 @@
 define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
-        'backgrid_filter', 'backgrid_paginator', 
+        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all',
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
-             BackgridFilter, layoutmanager ) {
+             BackgridFilter, BackgridSelectAll, layoutmanager ) {
+
+// NOTE: Webpack 3 patch:
+// Bind the Backbone.Layout object (and Backbone.Form) using the webpack 
+// assetsPluginInstance
+Backbone.Layout = LayoutManager;
+Backbone.Form = BackboneForm;
 
 var root = window;
   
@@ -10,23 +16,137 @@ var Iccbl = root.Iccbl = {
     VERSION : "0.0.1",
     appModel : "This value will be initialized on app start"
 };
-var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+
+// Constants
+
+var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/; // MM/DD/YYYY
 var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
 var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 
 
+var SEARCH_LINE_SPLITTING_PATTERN = 
+  Iccbl.SEARCH_LINE_SPLITTING_PATTERN = /[\n;\|]+/
 /**
- * Format a string of containing "replacement fields" surrounded by 
- * curly braces '{}'. Replacement fields are used as keys to lookup the 
- * replacement values in the valueHash.
+ * PLATE_COPY_RANGE_SPLITTING_PATTERN
+ * Split a raw plate range input into elements:
+ * - separated by space or comma, except, 
+ * - numbers separated by (spaces) and dash interpreted as a plate range
+ * - quoted strings preserved; to be interpreted as copy names
+ * - quoted strings may contain spaces and special chars if quoted
+ */
+var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTERN = 
+  /\'.*?\'|\".*?\"|\d+\s*\-\s*\d+|[^\,\s]+/g;
+var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/;
+var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = /^(\d+)\s*-\s*(\d+)$/;
+
+var WELL_ID_PATTERN = Iccbl.WELL_ID_PATTERN = /^(\d{1,5}):?(([a-zA-Z]{1,2})(\d{1,2}))$/
+var WELL_PATTERN = Iccbl.WELL_PATTERN = /^([a-zA-Z]{1,2})(\d{1,2})$/i;
+var COL_PATTERN = Iccbl.COL_PATTERN = /^(col:)?\s*(\d{1,2})$/i;
+var ROW_PATTERN = Iccbl.ROW_PATTERN = /^(row:)?\s*([a-zA-Z]{1,2})$/i;
+
+var PLATE_RANGE_KEY_SPECIFIER = Iccbl.PLATE_RANGE_KEY_SPECIFIER
+  = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
+var PLATE_RANGE_KEY_PATTERN = 
+  Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
+var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
+  = /^(([^:]+):)?([\d\-]+)$/;
+var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
+/** 
+ * COPY_NAME_PATTERN:
+ * -must start with an alpha char
+ * FIXME: does not support embedded commas
+ * - fixme is to clean the copy names in the database to remove commas
+ */
+var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^["']?[A-Za-z]+[\w\- :]*["']?$/
+
+// Utility Functions
+
+/**
+ * Convert a plate row index to an standard plate layout letter.
+ * @param i 0 based row index
+ */
+var rowToLetter = Iccbl.rowToLetter = function(i){
+//  console.log('rowToLetter: ', i);
+  if (i<26){
+    return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i];
+  } else {
+    var rem = i%26;
+    var part = parseInt(i/26)-1;
+    return rowToLetter(part) + rowToLetter(rem);
+  }
+};
+
+/**
+ * @return 0 based row index for the row letter
+ */
+var letterToRow = Iccbl.letterToRow = function(rowletter){
+  if (rowletter.length == 1){
+    return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.indexOf(rowletter.toUpperCase());
+  } else {
+    return letterToRow(rowletter.charAt(rowletter.length-1))
+      + 26*(letterToRow(rowletter.slice(0,rowletter.length-1))+1)
+  }
+};
+
+var getRows = Iccbl.getRows = function(plateSize){
+  return parseInt(Math.sqrt(2*plateSize/3));
+};
+
+var getCols = Iccbl.getCols = function(plateSize){
+  return parseInt(Math.sqrt(3*plateSize/2));
+};
+
+/**
+ * @param row 0 based index
+ * @param col - 0 based index
+ */
+var getWellName = Iccbl.getWellName = function(row, col){
+  var wellName = rowToLetter(row);
+  col = col+1;
+  if ( col<10 ) {
+    wellName += '0' + col;
+  } else {
+    wellName += col;
+  }
+  return wellName
+};
+
+/**
+ * @return [row, col] 0 based row and col indexes
+ */
+var getWellRowCol = Iccbl.getWellRowCol = function(wellName){
+  var rowLetter = WELL_PATTERN.exec(wellName)[1];
+  var row = letterToRow(rowLetter);
+  var col = parseInt(WELL_PATTERN.exec(wellName)[2])-1;
+  return [row,col];
+}
+
+/**
+ * String padding utility
+ */
+function lpad(str, length, padstr) {
+  var paddingLen = length - (str + '').length;
+  paddingLen =  paddingLen < 0 ? 0 : paddingLen;
+  var padding = '';
+  for (var i = 0; i < paddingLen; i++) {
+    padding = padding + padstr;
+  }
+  return padding + str;
+}
+
+/**
+ * String formatting utility
  * 
- * Replace all {tokens} in the string with model/object attributes. - fallback to
- * "token" if model attribute is not set.
+ * Format a string with embedded replacement fields.
+ * 
+ * "replacment fields" are surrounded by braces '{}'. 
+ * Each replacement field is used as a key to lookup values in the object.
  * 
  * @param object - either a Backbone.Model, or a object
- * @param - defaul_val - value to use if the matched token is not found in the model
+ * @param defaul_val value to use if the matched token is not found in the model
  * - this can be used to replace any token with a given default value
+ * - if default_val is not provided, the replacement_field is left in the string.
  */
 var formatString = Iccbl.formatString = function(
     stringWithTokens, 
@@ -51,11 +171,11 @@ var formatString = Iccbl.formatString = function(
       }
     });
   return interpolatedString;
-}
-
+};
 
 /**
- * Returns the instance of the function referred to by the string.
+ * Convert a string to a function.
+ * @return function instance referred to by the string
  */
 var stringToFunction = Iccbl.stringToFunction = function(str) {
   if (!str) return;
@@ -73,8 +193,27 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
 };
 
 
+/** 
+ * Round by first converting to whole number, to avoid floating point number
+ * arithmetic errors:
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round
+ */
+var round = Iccbl.round = function round(number, precision) {
+  var shift = function (number, precision, reverseShift) {
+    if (reverseShift) {
+      precision = -precision;
+    }  
+    var numArray = ("" + number).split("e");
+  return +(numArray[0] + "e" + (numArray[1] ? (+numArray[1] + precision) : precision));
+  };
+  return shift(Math.round(shift(number, precision, false)), precision, true);
+}    
+
+
 /**
  * Parse a string date value, ignoring the time and timezone.
+ * 
+ * @return Date
  * TODO: see Backgrid.DateFormatter.convert() method and refactor
  */
 var dateParse = Iccbl.dateParse = function dateParse(rawData){
@@ -84,11 +223,11 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
   if ((rawData + '').trim() === '') return null;
 
   if(ICCBL_DATE_RE.test(rawData)){
-    var DDMMYYYY = ICCBL_DATE_RE.exec(rawData) || [];
+    var MMDDYYYY = ICCBL_DATE_RE.exec(rawData) || [];
     var jsDate = new Date(
-      DDMMYYYY[3] * 1 || 0,
-      DDMMYYYY[2] * 1 - 1 || 0,
-      DDMMYYYY[1] * 1 || 0);
+      MMDDYYYY[3] * 1 || 0,
+      MMDDYYYY[1] * 1 - 1 || 0,
+      MMDDYYYY[2] * 1 || 0);
     console.log('date: raw: ', rawData, 'converted', jsDate);
     return jsDate;
   }else{
@@ -106,11 +245,12 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
   }
 };
 
-
 /**
- * Returns the ISO string date part of the Date object, ignoring the timezone.
- * - for internal representation of dates and communicating dates to the server.
+ * Generate an ISO date string from a JavaScript Date.
+ * 
  * @param jsDate a JavaScript Date object
+ * @return ISO date string for the Date object, ignoring the timezone.
+ * - for internal representation of dates and communicating dates to the server.
  */
 var getISODateString = Iccbl.getISODateString = function(jsDate){
   return jsDate && _.isDate(jsDate) ? jsDate.toISOString().split('T')[0] : jsDate;
@@ -121,14 +261,15 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
   //  return date;
 };
 
-
 /**
- * Returns the "ICCBL" formatted date part of the Date object, ignoring the timezone.
- * "ICCBL" format is "MM/DD/YYYY"
- * - for display of dates in the UI
+ * Generate a date string from a Javascript Date.
+ * 
  * @param jsDate a JavaScript Date object
+ * @return string representation of the Date object, ignoring the timezone.
+ * - "ICCBL" format is "MM/DD/YYYY"
  */
 var getIccblDateString = Iccbl.getDateString = function(jsDate){
+
   if (!jsDate) return jsDate;
   if (!_.isDate(jsDate)){
     // attempt to parse the date
@@ -140,99 +281,1089 @@ var getIccblDateString = Iccbl.getDateString = function(jsDate){
       + '/' + lpad(jsDate.getFullYear(), 4, 0) );
 };
 
-
-var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
-  defaults: {
-    // current app uri
-    path: '',
-    // current app uri, as array
-    actualStack: [],
-    // unprocessed uri elements
-    currentStack: [],
-    
-    level: 0,
-    // resources pop'd, one per level
-    resources: [],
-    // keys pop'd, one per level
-    keys: []  
-  },
-  
-  initialize: function(options) {
-    this.path = options.path;
-    this.actualStack = options.path.split('/');
-    
-  },
-  
-  pop: function() {
-  },
-  
-});
-
+/** 
+ * Matrix convolution/deconvolution Utilities:
+ * - Convolution: converting (96,384) to (384,1536)
+ * - Deconvolution: converting (1536,384) to (384,96)
+ **/
 
 /**
- * Sort the list of field keys using the associated ordinal for the key in the 
- * fieldHash
+ * Map (1536,384)-well row,col to (384,96)-well output quadrant
+ * @param row 0 based
+ * @param col 0 based
  */
-var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
-  var sorted = _(keys).sort(function(a, b) {
-    if (!_.has(fieldHash, a) || !_.has(fieldHash, b)) {
-      if (_.has(fieldHash, b)) {
-        return -1;
-      } else if (_.has(fieldHash, a)) {
-        return 1;
-      }
-      return 0;
-    }
-    order_a = fieldHash[a]['ordinal'];
-    // TODO: need an edit order by
-    order_b = fieldHash[b]['ordinal'];
-    if (_.isNumber(order_a) && _.isNumber(order_b)) {
-      return order_a - order_b;
-    } else if (_.isNumber(order_a)) {
-      return -1;
-    } else if (_.isNumber(order_b)) {
-      return 1;
-    } else {
-      return 0;
-    }
-  });
-  return sorted;
+var deconvoluteQuadrant = Iccbl.deconvoluteQuadrant = function(source_ps, dest_ps, row, col){
+
+  var factor = source_ps/dest_ps
+  if (factor != 4){
+    throw 'Deconvolute may only be used for source_ps/dest_ps == 4: ' + 
+      source_ps + '/' + dest_ps;
+  }
+  return col%(factor/2) +  (row%(factor/2))*(factor/2);
 };
 
+/**
+ * Map (1536,384-)well input row to (384-)well output row
+ * @param row 0 based
+ * @param col 0 based
+ */
+var deconvoluteRow = Iccbl.deconvoluteRow = function(source_ps, dest_ps,row, col){
+  
+  var dest_matrix_number = deconvoluteQuadrant(source_ps, dest_ps, row, col)
+  var factor = source_ps/dest_ps  
+  return Math.trunc(row/(factor/2))+ row%(factor/2)-Math.trunc(dest_matrix_number/(factor/2));
+};
 
 /**
- * Convert the app model "current_options" object into a route fragment "key"
+ * Map (1536,384)-well input col to (384,96)-well output col
+ * @param row 0 based
+ * @param col 0 based
  */
-var getKey = Iccbl.getKey = function(options) {
-  var route_fragment = '';
+var deconvoluteCol = Iccbl.deconvoluteCol = function(source_ps, dest_ps, row, col){
+    
+  var dest_matrix_number = deconvoluteQuadrant(source_ps, dest_ps, row, col);
+  var factor = source_ps/dest_ps  
+  return Math.trunc(col/Math.trunc(factor/2))+ col%(factor/2)-dest_matrix_number%(factor/2);
+};
+
+/**
+ * Map (96,384)-well input row to (384,1536)-well output row
+ * @param row 0 based
+ * @param col 0 based
+ */
+var convoluteRow = Iccbl.convoluteRow = function(source_ps, dest_ps, source_matrix_quadrant,row){
+  var factor = dest_ps/source_ps;  
+  if (factor != 4){
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+      dest_ps + '/' + source_ps;
+  }
+  if (!_.contains([0,1,2,3], source_matrix_quadrant)){
+    throw 'source_matrix_quadrant must be 0<=n<4: ' + source_matrix_quadrant;
+  }
+  return row * factor/2 + Math.trunc(source_matrix_quadrant/(factor/2))
+};
+    
+/**
+ * Map (96,384)-well input col to (384,1536)-well output col
+ * @param row 0 based
+ * @param col 0 based
+ */
+var convoluteCol = Iccbl.convoluteCol = function(source_ps, dest_ps, source_matrix_quadrant, col){
+  var factor = dest_ps/source_ps;  
+  if (factor != 4){
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+      dest_ps + '/' + source_ps;
+  }
+  return col * factor/2 + source_matrix_quadrant%(factor/2)
   
-  if (_.isString(options)) {
-    route_fragment += options;
-      
-  // an array is just a set of keys, to be separated by slashes
-  } else if (_.isArray(options)) {
-    route_fragment = _.reduce(options, function(route, option) {
-      if (!_.isNull(option)) {
-        if (!_.isEmpty(route)){
-          route += '/';
-        }
-        route += option;
+};
+
+/**
+ * Map a well from (96,384) plate format to (384,1536) plate format.
+ * returns 4 wells for each quadrant
+ */
+var convoluteWell = Iccbl.convoluteWell = function(source_ps, dest_ps, wellName){
+  var factor = dest_ps/source_ps;  
+  if (factor != 4){
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+      dest_ps + '/' + source_ps;
+  }
+  var convolutedWells = [];
+  var row_col = Iccbl.getWellRowCol(wellName);
+  for (var quadrant = 0;quadrant<factor;quadrant++){
+    var newRowIndex = Iccbl.convoluteRow(source_ps,dest_ps,quadrant,row_col[0]);
+    var newColIndex = Iccbl.convoluteCol(source_ps,dest_ps,quadrant,row_col[1]);
+    convolutedWells.push(Iccbl.getWellName(newRowIndex,newColIndex));
+  }
+  return convolutedWells;
+};
+
+/**
+ * Map a list of wells from (96,384) plate format to (384,1536) plate format.
+ */
+var convoluteWells = Iccbl.convoluteWells = function(source_ps, dest_ps, wells){
+  var convolutedWells = [];
+  _.each(wells, function(wellName){
+    convolutedWells = convolutedWells.concat(convoluteWell(source_ps,dest_ps,wellName));
+  });
+  console.log('wells convoluted', wells, source_ps,dest_ps, convolutedWells);
+  convolutedWells.sort();
+  return convolutedWells;
+};
+
+/**
+ * Map a well from (384,1536) plate format to (96,384) plate format.
+ * @return [quadrant, new_wellname]
+ **/
+var deconvoluteWell = Iccbl.deconvoluteWell = function(source_ps, dest_ps, wellName){
+  var row_col = Iccbl.getWellRowCol(wellName);
+  var row = row_col[0], col = row_col[1];
+  var plateQuadrant = Iccbl.deconvoluteQuadrant(source_ps, dest_ps, row, col);
+  var newRowIndex = Iccbl.deconvoluteRow(source_ps, dest_ps, row, col);
+  var newColIndex = Iccbl.deconvoluteCol(source_ps, dest_ps, row, col);
+  return [plateQuadrant, Iccbl.getWellName(newRowIndex,newColIndex)];
+};
+
+/**
+ * Map a list of wells from (384,1536) plate format to (96,384) plate format.
+ * 
+ * @return map of the plateQuadrant->deconvolutedWells 
+ *  where plateQuadrant is in [0,1,2,3]
+ */
+var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wells){
+  var deconvolutedPlateQuadrantWells = {
+    0: [], 1:[], 2:[], 3:[]
+  };
+  console.log('deconvoluteWells...');
+  _.each(wells, function(wellName){
+    var quadrant_new_well = deconvoluteWell(source_ps,dest_ps, wellName);
+    var quadrant = quadrant_new_well[0];
+    var newWellname = quadrant_new_well[1];
+    deconvolutedPlateQuadrantWells[quadrant].push(newWellname);
+  });
+  
+  console.log('wells deconvoluted', wells, source_ps,dest_ps, deconvolutedPlateQuadrantWells);
+  return deconvolutedPlateQuadrantWells;
+};
+
+//// Well Selection Parsing Utilities
+
+/**
+ * Parse labeled input specified in the Well Selection mini-language:
+ * - One named range per line, if the label is omitted, 
+ * then a blank label is created:
+ *  <well selections>="<label>"
+ * - If a label is repeated, then wells are concatenated
+ * - Wells may not be repeated between labels
+ */
+var parseNamedWellRanges = Iccbl.parseNamedWellRanges = 
+  function(rawData, plateSize, errors) {
+  
+  console.log('parseNamedWellRanges', rawData, plateSize);
+  var duplicate_wells_error_msg = 'duplicate wells found in ranges: ';
+  var namedWellRanges = {};
+  
+  var ordinal = 1;
+  if (! rawData ){
+    return namedWellRanges;
+  }else{
+    rawData = rawData.trim();
+  }
+  
+  _.each(rawData.split(/\n/), function(range){
+  
+    range = range.trim();
+    if (_.isEmpty(range)) return;
+    
+    console.log('parse range', range);
+    
+    var rangeToLabel = range.split(/[=]+/);
+    var label = '';
+    var unparsed = range;
+    if (rangeToLabel.length == 2){
+      label = rangeToLabel[1].replace(/["']+/g,'');
+      unparsed = rangeToLabel[0].replace(/["']+/g,'');
+    }
+    else if (rangeToLabel.length == 1){
+      // pass
+    } else {
+      errors.push('range to label inputs may on have one equal sign per line: ' + range );
+      return;
+    }
+    
+    if (!_.has(namedWellRanges, label)){
+      var namedWellRange = {
+        label: label,
+        text: unparsed,
+        wells: [],
+        ordinal: ordinal
+      };
+      ordinal += 1;
+      namedWellRanges[label] = namedWellRange;
+    } else {
+      namedWellRange = namedWellRanges[label];
+    }
+    var parsedWells = Iccbl.parseWellSelections(unparsed, plateSize, errors);
+    console.log('parsedWells', label, parsedWells);
+    namedWellRange['wells'] = namedWellRange['wells'].concat(parsedWells);
+  });
+
+  var duplicates = 
+    Iccbl.find_duplicates(_.map(_.values(namedWellRanges),
+      function(nwr){
+        return nwr['wells'];
       }
-      return route;
-    }, route_fragment);
-  } else if (_.isObject(options)) {// generic, option order not defined
-    if (_.has(options, 'key')) {
-      return Iccbl.getKey(options.key);
+    ));
+  
+  if (!_.isEmpty(duplicates)){
+    errors.push(duplicate_wells_error_msg + duplicates.join(', '));
+  }
+  console.log('found named well ranges', namedWellRanges);
+  return namedWellRanges;
+};
+
+var find_duplicates = Iccbl.find_duplicates = function(arrays){
+  console.log('find_duplicates in arrays', arrays)
+  var duplicates = [];
+  for(var i=0;i<arrays.length;i++){
+    var test_array = arrays[i];
+    if (!_.isArray(test_array)){
+      throw 'find_duplicates requires an array of arrays';
+    }
+    for (var j=0; j< arrays.length; j++){
+      if (j==i) continue;
+      var array = arrays[j];
+      var d1 = _.intersection(test_array,array);
+      duplicates = duplicates.concat(d1);
     }
   }
-  return route_fragment;
+  duplicates = _.unique(duplicates);
+  console.log('duplicates found', duplicates);
+  return duplicates;
 };
 
 
 /**
- * Get the key off the URI stack: 
- * - pop one key for each of the key fields specified in the source definition
- * id_attribute.
+ * Parse input specified in the Well Selection mini-language:
+ * where <well selections> are comma separated well-block specifiers:
+ * - single well names,
+ * - blocks of wells, defined by:
+ *  <upper right well name> - <lower left well name>,
+ * - single columns, specified by the column number,
+ * - single rows, specified by the row letter,
+ * - column or row blocks, specified by
+ *  <left column> - <right column>
+ *  <top row> - <bottom row>
+ * 
+ **/
+var parseWellSelections = Iccbl.parseWellSelections = 
+  function(rawData, plateSize, errors){
+  
+  console.log('parseWellSelections: ', rawData, plateSize);
+  
+  var wells = [];
+  rawData = rawData.trim();
+  if (_.isEmpty(rawData)){
+    return wells;
+  }
+
+  var disallowedMatch = /[^\s\-"',a-zA-Z0-9]+/g;
+  var disallowed = disallowedMatch.exec(rawData);
+  if (disallowed){
+    errors.push('Disallowed chars found: "' + disallowed + '"');
+    return;
+  }
+  
+  var inputs = rawData.split(/\s*,\s*/);
+  
+  var numCols = Iccbl.getCols(plateSize);
+  var numRows = Iccbl.getRows(plateSize);
+  
+  var WELL_PATTERN = this.WELL_PATTERN;
+  var rangePartsUnequal = 'Both values of the range must be the same type';
+  _.each(inputs, function(input){
+    if (_.isEmpty(input)) return;
+    console.log('input', input);
+    var range = input.split(/\s*-\s*/);
+    if (range.length == 2) {
+      console.log('range:', range);
+      if (ROW_PATTERN.exec(range[0])){
+        console.log('row: ', range[0]);
+        if (!ROW_PATTERN.exec(range[1])){
+          errors.push(rangePartsUnequal + ': ' + input);
+          return;
+        }
+        var startRow = Iccbl.letterToRow(ROW_PATTERN.exec(range[0])[2]);
+        var stopRow = Iccbl.letterToRow(ROW_PATTERN.exec(range[1])[2]);
+        if(startRow>stopRow) {
+          var tempVal=startRow; 
+          startRow=stopRow; stopRow=tempVal;
+        }
+        if (stopRow >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        for(var i=0;i<=numCols;i++) {
+          for(var j=startRow; j<=stopRow; j++)
+          {
+            wells.push(Iccbl.getWellName(j,i));
+          }
+        }
+      }
+      else if (COL_PATTERN.exec(range[0])){
+        console.log('col: ', range[0]);
+        if (!COL_PATTERN.exec(range[1])){
+          errors.push(rangePartsUnequal + ': ' + input);
+          return;
+        }
+        var startCol = parseInt(COL_PATTERN.exec(range[0])[2])-1;
+        var stopCol = parseInt(COL_PATTERN.exec(range[1])[2])-1;
+        if(startCol>stopCol) {
+          var tempVal = startCol; startCol=stopCol; stopCol=tempVal;
+        }
+        if (stopCol >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        for(var i=startCol; i<=stopCol; i++) {
+          for(var j=0; j<numRows; j++) {
+            wells.push(Iccbl.getWellName(j,i));
+          }
+        }
+      }
+      else if (WELL_PATTERN.exec(range[0])){
+        if (!WELL_PATTERN.exec(range[1])){
+          errors.push(rangePartsUnequal + ': ' + input);
+          return;
+        }
+        console.log('well: ', range[0]);
+        var one = WELL_PATTERN.exec(range[0]);
+        var two = WELL_PATTERN.exec(range[1]);
+        console.log('one/two', one, two);
+        var startRow = Iccbl.letterToRow(one[1]);
+        var stopRow = Iccbl.letterToRow(two[1]);
+        if (startRow>stopRow) {
+          var tempVal=startRow; startRow=stopRow; stopRow=tempVal;
+        }
+        var startCol = parseInt(one[2])-1;
+        var stopCol = parseInt(two[2])-1;
+        
+        if(startCol>stopCol) {
+          var tempVal = startCol; startCol=stopCol; stopCol=tempVal;
+        }
+        if (stopCol >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        if (stopRow >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        console.log('start stop row/col: ', startRow,stopRow,startCol,stopCol);
+        for(var i=startCol; i<=stopCol; i++) {
+          for(var j=startRow; j<=stopRow; j++) {
+            wells.push(Iccbl.getWellName(j,i));
+          }
+        }
+      }else{
+        errors.push('unrecognized entry: ' + input);
+      }
+    }else if (range.length == 1) {
+      if (ROW_PATTERN.exec(range[0])){
+        var row = Iccbl.letterToRow(ROW_PATTERN.exec(range[0])[2]);
+        if (row >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        for(var i=0;i<numCols;i++) {
+          wells.push(Iccbl.getWellName(row,i));
+        }
+      }
+      else if (COL_PATTERN.exec(range[0])){
+        var col = parseInt(COL_PATTERN.exec(range[0])[2])-1;
+        if (col  >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        for(var j=0; j<numRows; j++) {
+          wells.push(Iccbl.getWellName(j,col));
+        }
+      }
+      else if (WELL_PATTERN.exec(range[0])){
+        var pattern = WELL_PATTERN.exec(range[0]);
+        var row = Iccbl.letterToRow(pattern[1]);
+        var col = parseInt(pattern[2])-1;
+        if (col  >= numCols){
+          errors.push('Col is out of range: "' + input + '", max: '+ numCols);
+          return;
+        }
+        if (row >= numRows){
+          errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
+          return;
+        }
+        wells.push(Iccbl.getWellName(row,col))
+      }else{
+        errors.push('unrecognized entry: ' + input);
+      }
+    }
+  });
+  console.log('wells', wells);
+  return wells;
+};
+
+/**
+ * Output selected named ranges of wells into the Well Selection mini-language:
+ * - One named range per line, if the label is blank, then it is omitted:
+ *  <well selections>="<label>"
+ * where <well selections> are comma separated well-block specifiers:
+ * - single well names,
+ * - blocks of wells, defined by:
+ *  <upper right well name> - <lower left well name>,
+ * - single columns, specified by the column number,
+ * - single rows, specified by the row letter,
+ * - column or row blocks, specified by
+ *  <left column> - <right column>
+ *  <top row> - <bottom row>
+ * 
+ **/
+var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
+  function(namedWellRanges, plateSize) {
+  
+  console.log('generateNamedWellBlockString', namedWellRanges);
+  var self = this;
+  var finalArray = [];
+//  var WELL_PATTERN = self.WELL_PATTERN;
+  var nCols = self.getCols(plateSize);
+  var nRows = self.getRows(plateSize);
+  _.each(namedWellRanges, function(namedRange){
+    var wellBlocks = self.getWellBlocks(namedRange['wells'], plateSize);
+    var label = namedRange['label'];
+    if (!_.isEmpty(wellBlocks)){
+      var entries = [];
+      _.each(wellBlocks, function(wellBlock){
+        var entry;
+        var firstEntry = wellBlock[0][0];
+        if (wellBlock.length > 1){
+          var lastBlock = wellBlock[wellBlock.length-1];
+          var lastEntry = lastBlock[lastBlock.length-1]; 
+          console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
+          if (wellBlock[0].length == nRows){
+            // assume a col
+            var firstCol = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
+            var lastCol = parseInt(WELL_PATTERN.exec(lastEntry)[2]);
+            entry = firstCol + '-' + lastCol;
+          }else if (wellBlock[0].length == nCols){
+            // assume a row
+            var rowLetter1 = WELL_PATTERN.exec(firstEntry)[1];
+            var rowLetter2 = WELL_PATTERN.exec(lastEntry)[1];
+            entry = rowLetter1 + '-' + rowLetter2;
+          } else {
+            entry = firstEntry + '-' + lastEntry;
+          }
+        }else{
+          var onlyBlock = wellBlock[0];
+          var firstEntry = onlyBlock[0];
+          if (onlyBlock.length > 1){
+            var lastEntry = onlyBlock[onlyBlock.length-1];
+            if (onlyBlock.length == nRows){
+              // assume a col
+              entry = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
+            }
+            else if (onlyBlock.length == nCols){
+              // assume a row
+              entry = WELL_PATTERN.exec(firstEntry)[1];
+            }else{
+              entry = firstEntry + '-' + lastEntry;
+            }
+          } else {
+            entry = firstEntry;
+          }
+        }
+        entries.push(entry);
+      });
+      if (!_.isEmpty(label)){
+        finalArray.push(entries.join(',') + '="' + label + '"' );
+      }else{
+        finalArray.push(entries.join(','));
+      }
+    }
+  });
+  console.log('finalArray', finalArray);
+  return finalArray.join('\n');
+};
+
+
+/**
+ * Group a list of well names into contiguous blocks of wells:
+ * Process:
+ * - starting with a sorted (by row,col) list
+ * - first, divide the list into sublists of adjacent wells; 
+ * either adjacent rows in a column or adjacent columns in a row 
+ * (which ever yields the largest sublist for the start well)
+ * - second combine adjacent row or column sublists into larger well blocks
+ * consisting of the sublists.
+ * - single wells are separated into well blocks consisting of one well.
+ * - Block shape may not be optimal, and is determined by the order of 
+ * operations (first scanning for adjacent rows, then columns) 
+ **/
+var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
+  var self = this;
+  var nCols = self.getCols(plateSize);
+  var nRows = self.getRows(plateSize);
+  wells.sort();
+  var colBlocks = [];
+  
+  function findColBlock(wellName, allWells){
+    var colBlock;
+    var row_col = Iccbl.getWellRowCol(wellName);
+    console.log('findColBlock: wellName', wellName, row_col);
+    var row = row_col[0];
+    var col = row_col[1];
+    // first scan down cols
+    var blockByCol = [wellName];
+    var allWellsCopy = _.without(allWells, wellName);
+    for(var currentRow=row+1; currentRow<nRows; currentRow++){
+      var testWell = Iccbl.getWellName(currentRow,col);
+      if (_.contains(allWellsCopy,testWell)){
+        blockByCol.push(testWell);
+        allWells = _.without(allWellsCopy, testWell);
+      } else {
+        break;
+      }
+    }
+    // second scan across rows
+    var blockByRow = [wellName];
+    var allWellsCopy = _.without(allWells, wellName);
+    for(var currentCol=col+1; currentCol<nCols; currentCol++){
+      var testWell = Iccbl.getWellName(row,currentCol);
+      if (_.contains(allWells,testWell)){
+        blockByRow.push(testWell);
+        allWells = _.without(allWells, testWell);
+      } else {
+        break;
+      }
+    }
+    // choose whichever gives biggest block, col blocks first
+    console.log('choose biggest block:', blockByCol, blockByRow);
+    if (blockByCol.length >= blockByRow.length){
+      colBlock = blockByCol;
+    }else{
+      colBlock = blockByRow;
+    }
+    
+    colBlock.sort();
+    return colBlock;
+  }
+  
+  function findColBlocks(remainingWells){
+    if(!_.isEmpty(remainingWells)){
+      var seedWell = remainingWells.shift();
+      var colBlock = findColBlock(seedWell, remainingWells);
+      colBlocks.push(colBlock);
+      remainingWells = _.difference(remainingWells, colBlock);
+      findColBlocks(remainingWells);
+    }
+  };
+  findColBlocks(wells);
+  console.log('colBlocks', colBlocks);
+  
+  function findWellBlock(colBlock, colBlocks){
+    console.log('findWellBlock', colBlock,colBlocks)
+    var wellBlock = [colBlock];
+    var test_start = Iccbl.getWellRowCol(colBlock[0]);
+    var test_stop = Iccbl.getWellRowCol(colBlock[colBlock.length-1]);
+    _.each(colBlocks, function(currentBlock){
+      var row_col_start = Iccbl.getWellRowCol(currentBlock[0]);
+      var row_col_stop = Iccbl.getWellRowCol(currentBlock[currentBlock.length-1]);
+      if (test_start[1]+1== row_col_start[1]){
+        // cols adjacent
+        if (test_start[0] == row_col_start[0]
+          && test_stop[0] == row_col_stop[0]){
+          console.log('found adjacent col', colBlock, currentBlock);
+          test_start = row_col_start;
+          wellBlock.push(currentBlock);
+        }
+      }
+      else if (test_start[0]+1 == row_col_start[0]){
+        // rows adjacent
+        if (test_start[1] == row_col_start[1]
+          && test_stop[1] == row_col_stop[1]){
+          //console.log('found adjacent row', colBlock, currentBlock);
+          test_start = row_col_start;
+          wellBlock.push(currentBlock);
+        }
+      }
+    });
+    console.log('findWellBlock finds', wellBlock);
+    return wellBlock;
+  };
+  var wellBlocks = [];
+  function findWellBlocks(remainingColBlocks){
+    if(!_.isEmpty(remainingColBlocks)){
+      var seedBlock = remainingColBlocks.shift();
+      var blocks = findWellBlock(seedBlock, remainingColBlocks);
+      _.each(blocks, function(block){
+        if (_.contains(remainingColBlocks, block)){
+          remainingColBlocks = _.without(remainingColBlocks,block);
+        }
+      });
+      wellBlocks.push(blocks);
+      findWellBlocks(remainingColBlocks);
+    }
+  };
+  findWellBlocks(colBlocks);
+  
+  console.log('final getWellBlocks', wellBlocks);
+  return wellBlocks;
+};
+
+var parseCompoundVendorIDSearch = Iccbl.parseCompoundVendorIDSearch = function(rawData,errors){
+  var search_array = []
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    search_array.push(clause);
+  });
+  return search_array;
+};
+
+/**
+ * Parse a Well search by line into an arrary of search lines of the form:
+ * input: 
+ * - lines separated by a newline char 
+ * - space or comma separated values, 
+ * output:
+ * search_line: {
+      plates: [],
+      plate_ranges: [],
+      wellnames: [],
+      errors: []
+    }
+    - errors are pushed into the passed in errors array
+ */
+var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
+
+  if (Iccbl.appModel.DEBUG){
+    console.log('value', rawData);
+  }
+  var search_array = []
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    search_array.push(clause);
+  });
+  
+  if (Iccbl.appModel.DEBUG){
+    console.log('search_array', search_array);
+  }
+  var final_search_array = [];
+  _.each(search_array, function(line){
+    var parts = line.split(/[\s,]+/);
+    if(!_.isEmpty(parts)){
+      var final_search_line = {
+        plates: [],
+        plate_ranges: [],
+        wellnames: [],
+        well_ids: [],
+        errors: [],
+        combined: []
+      };
+      _.each(parts, function(part){
+        if (Iccbl.appModel.DEBUG){
+          console.log('test part: '+ part);
+        }
+        if (PLATE_PATTERN.test(part)){
+          if (Iccbl.appModel.DEBUG){
+            console.log('found plate:' + part);
+          }
+          final_search_line.plates.push(part);
+        }else if (PLATE_RANGE_PATTERN.test(part)){
+          var rangeParts = PLATE_RANGE_PATTERN.exec(part);
+          rangeParts = [rangeParts[1],rangeParts[2]];
+          rangeParts.sort();
+          if (Iccbl.appModel.DEBUG){
+            console.log('from PLATE_RANGE_PATTERN:' + part 
+              + 'to' + rangeParts.join(','));
+          }
+          final_search_line.plate_ranges.push(rangeParts[0]+'-'+rangeParts[1]);
+        }else if (WELL_ID_PATTERN.test(part)){
+          var match = WELL_ID_PATTERN.exec(part);
+          var plate = parseInt(match[1]);
+          var wellrow = match[3].toUpperCase();
+          var wellcol = parseInt(match[4]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          var wellid = '' + plate + ':' + wellname;
+          if (Iccbl.appModel.DEBUG){
+            console.log('from WELL_ID:' + part + 'to' + wellid);
+          }
+          final_search_line['well_ids'].push(wellid);
+        }else if (WELL_PATTERN.test(part)) {
+          var match = WELL_PATTERN.exec(part);
+          var wellrow = match[1].toUpperCase();
+          var wellcol = parseInt(match[2]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          if (Iccbl.appModel.DEBUG){
+            console.log('from WELL_PATTERN:' + part + 'to:' + wellname);
+          }
+          final_search_line['wellnames'].push(wellname);
+
+        } else {
+          final_search_line['errors'].push('part not recognized: ' + part);
+          errors.push('part not recognized: ' + part);
+        }
+      });
+      
+      if (Iccbl.appModel.DEBUG){
+        console.log('step 1: search_line' + JSON.stringify(final_search_line));
+      }
+
+      var well_ids = final_search_line['well_ids'];
+      var wellnames = final_search_line['wellnames'];
+      var plates = final_search_line['plates'];
+      var plate_ranges = final_search_line['plate_ranges'];
+
+      if (_.isEmpty(well_ids) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
+          var errmsg = 'Must specify either a plate, plate range, or well_id: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+      }
+      if (!_.isEmpty(well_ids)){
+        if (!_.isEmpty(plates) || !_.isEmpty(plate_ranges)){
+          var errmsg = 'Well ids may not be defined on the same line with '
+            + 'plate or plate ranges: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        }
+      }
+        
+      // Match wellnames only if plate, plate range, or single well_id is identified
+      if (!_.isEmpty(wellnames) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
+        if (well_ids.length > 1){
+          var errmsg = 'Well names may not be defined with multiple '
+            + 'well_ids: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        } else if (well_ids.length == 1){
+          var well_id = well_ids[0];
+          var match = WELL_ID_PATTERN.exec(well_id);
+          var plate = parseInt(match[1]);
+          var wellrow = match[3].toUpperCase();
+          var wellcol = parseInt(match[4]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          final_search_line['wellnames'].push(wellname);
+          final_search_line['plates'].push(plate);
+          final_search_line['well_ids'] = [];
+        } else {
+          var errmsg = 'Must specify a plate, plate_range, or well_id '
+            + 'for wellnames: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        }
+      }
+      final_search_line.combined = _.union(
+        final_search_line.plates, final_search_line.plate_ranges,
+        final_search_line.wellnames, final_search_line.well_ids
+      );
+      if (Iccbl.appModel.DEBUG){
+        console.log('final_search_line.combined ',
+          JSON.stringify(final_search_line.combined));
+      }
+      final_search_array.push(final_search_line);
+    }
+  });
+  if (Iccbl.appModel.DEBUG){
+    console.log('final_search_array', final_search_array);
+  }
+  return final_search_array;
+  
+};
+
+
+/**
+ * Parse a Copy Plate search by line into an array of search lines of the form:
+ * input: 
+ * - lines separated by a newline char 
+ * - space or comma separated values, 
+ * - quoted strings preserved; interpreted as copy names
+ * - copy names must begin with a letter, may contain spaces and special chars
+ * if quoted
+ * - numbers separated by (spaces) and dash interpreted as a plate range
+ * output:
+ * search_line: {
+      plates: [],
+      plate_ranges: [],
+      copies: [],
+      combined: []
+    }
+    - errors are pushed into the passed in errors array
+ */
+var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
+  
+  var search_array = []
+  
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+    
+    // split quoted strings, split on spaces or commas
+    var parts = _.filter(_.map(
+      clause.match(PLATE_COPY_RANGE_SPLITTING_PATTERN), 
+      function(val){
+        return val;
+        // 20180313 - do not remove quotes on client; API parser will remove
+        //        // unquote
+        //        return val.replace(/["']+/g,'');
+      }),
+      function(val){
+        val = val.trim();
+        return !_.isEmpty(val);
+      });
+    search_array.push(parts);
+  });
+  
+  console.log('search_array', search_array);
+
+  var final_search_array = [];
+  _.each(search_array, function(parts){
+    if(!_.isEmpty(parts)){
+      var final_search_line = {
+        combined: [],
+        plates: [],
+        plate_ranges: [],
+        copies: []
+      };
+      _.each(parts, function(part){
+        if (PLATE_PATTERN.test(part)){
+          final_search_line.plates.push(part);
+        }else if (PLATE_RANGE_PATTERN.test(part)){
+          var rangeParts = PLATE_RANGE_PATTERN.exec(part);
+          final_search_line.plate_ranges.push(rangeParts[1]+'-'+rangeParts[2]);
+        }else if (COPY_NAME_PATTERN.test(part)){
+          final_search_line.copies.push(part);
+        } else {
+          errors.push('Copy names must begin with a letter: ' + part);
+        }
+      });
+      final_search_line.combined = _.union(
+        final_search_line.plates, final_search_line.plate_ranges,
+        final_search_line.copies
+      );
+      
+      final_search_array.push(final_search_line);
+    }
+  });
+  return final_search_array;
+};
+
+
+/**
+ * TODO: refactor this into the SIUnitsFormatter
+ */
+var parseSIVolume = Iccbl.parseSIVolume = function(rawText){
+  var volErrMsg = 'Volume not parsed, must be of the form: ' +
+    '"[number][uL|nL]"';
+  var volMatch = SIUnitsFormatter.prototype.SI_UNIT_PATTERN.exec(rawText);
+  if (!volMatch){
+    throw volErrMsg;
+  }
+//  console.log('parse volMatch', volMatch);
+  var volume = parseFloat(volMatch[1]);
+  // Allow for a maximum of 3 digits
+  volume = volume.toPrecision(3);
+  var multiplier = 1e-6;
+  if (volMatch.length == 4){
+    if (volMatch[3].toLowerCase() == 'n'){
+      multiplier = 1e-9;
+    } else {
+      multiplier = 1e-6;
+    }
+  }
+  volume *= multiplier;
+  volume = volume.toPrecision(3);
+  return volume;
+}
+
+/**
+ * Parse a screening inquiry of the form:
+ * ignored text ...(#screen_facility_id) (plate ranges) (volume) (replicates),
+ * e.g.
+ * Screener Name (1292) 3560-3567, 1795-1811 100 nL x 2
+ * 
+ * @ return 
+ * { 
+ *    screen_facility_id, volume_required, plate_ranges, replicate_count }
+ */
+var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText, errors) {
+  
+  var screenPattern = /\(\s*(\w+)\s*\)/; 
+  var volumePattern = /\s+([\d\.]+\s*[un]L)\s+x\s*\d+\s*$/i;
+  var replicatePattern = /[un]L\s+x\s*(\d+)/i;
+  var generalErrMsg = 'Screening inquiry format: ' +
+    '"(screen id) plate-ranges volume replicates"';
+  var screenErrMsg = 'Screen Facility ID not parsed - must be of the form: ' +
+    '"(screen_facility_id)" with parenthesis';
+  var volErrMsg = 'Volume not parsed, must be of the form: ' +
+    '"[number][uL|nL]"';
+  var replicateErrMsg = 'Screening replicates not parsed, must be of the form: ' +
+    '"X [number]"';
+  var screenMatch = screenPattern.exec(rawText);
+  if (!screenMatch){
+    errors.push(screenErrMsg);
+  }
+  var volMatch = volumePattern.exec(rawText);
+  if (!volMatch){
+    var detailMessage = 'vol match fails for pattern: "' + volumePattern.source + '" ' +
+      'for the text: "' + rawText + '"';
+    console.log(detailMessage);
+    errors.push(volErrMsg);
+    if (Iccbl.appModel.DEBUG){
+      errors.push(detailMessage);
+    };
+  }
+  var replicateMatch = replicatePattern.exec(rawText);
+  if (!replicateMatch) {
+    errors.push(replicateErrMsg);
+  }
+
+  if (_.isEmpty(errors)){
+    var data = {
+      rawText: rawText
+    };
+    var screenText = screenMatch[0];
+    data['screen_facility_id']= screenMatch[1];
+    var volume = Iccbl.parseSIVolume(volMatch[1])
+    data['volume_required']= volume;
+    data['replicate_count'] = replicateMatch[1];
+    
+    var startPlatesIndex = rawText.indexOf(screenText) + screenText.length;
+    var endPlatesIndex = rawText.indexOf(volMatch[0]);
+    var plateText = rawText.slice(startPlatesIndex,endPlatesIndex);
+    data['plate_ranges'] = Iccbl.parseRawPlateSearch(plateText, errors);
+    
+    if (_.isEmpty(errors)){
+      if (_.isEmpty(data['plate_ranges'])){
+        errors.push('No plate ranges found');
+      } 
+    }
+    return data;
+  }
+  return null;
+};
+
+
+/**
+ * Decode the screening inquiry values from the URL "search" parameter, encoded using 
+ * the above described "plate_search_mini_language"
+ * 
+ * @return urlStackData {
+ *  plate_search, volume_required, replicate_count, show_retired, show_existing
+ * }
+ */
+var parseScreeningInquiryURLParam 
+    = Iccbl.parseScreeningInquiryURLParam 
+    = function(urlData, errors) {
+
+  var urlStackData = {};
+  var extra_volumes = [];
+  var errors = [];
+  var fullPlateSearch = [];
+ 
+  _.each(urlData.split(';'), function(element){
+
+    if (Iccbl.appModel.DEBUG) console.log('parse element; "' + element + '"');
+    
+    if (element == 'show_retired_plates'){
+      urlStackData.show_retired_plates = true;
+      return;
+    }
+    if (element == 'show_existing'){
+      urlStackData.show_existing = true;
+      return;
+    }
+    // Convert SI unit volume required
+    else if (URI_REPLICATE_VOLUME_PATTERN.exec(element)){
+      var match = URI_REPLICATE_VOLUME_PATTERN.exec(element);
+      var volMatch = match[3];
+      if (urlStackData.volume_required){
+        extra_volumes.push(volMatch);
+      }else{
+        urlStackData.volume_required = Iccbl.parseSIVolume(volMatch);
+      }
+      urlStackData.replicate_count = parseInt(match[2]);
+      return;
+    }
+    
+    var plateSearchTextArray = [];
+    var plateData = Iccbl.parseRawPlateSearch(element, errors);
+    _.each(plateData, function(plateClause){
+      plateSearchTextArray = plateSearchTextArray.concat(
+        plateClause.plates, plateClause.plate_ranges);
+      _.each(plateClause.copies,function(copy){
+        if (copy.match(/[ \,\-\:]/)){
+          copy = '"' + copy + '"';
+        }
+        plateSearchTextArray.push(copy);
+      });
+    });
+    fullPlateSearch.push(plateSearchTextArray.join(', '));
+  });
+  urlStackData['plate_search'] = fullPlateSearch;
+    
+  if (!_.isEmpty(extra_volumes)){
+    errors.push(
+      'More than one volume required specified in the URL; ' +
+      'Extra specifiers are ignored: ' + extra_volumes.join(', '));
+  }
+  return urlStackData;
+};
+
+/**
+ * Return an array of ID keys from the model 
+ * 
+ * @param schema a resource definition as defined by the API
+ * @param model Backbone.Model or Object described by the schema
+ * @return array
+ */
+var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
+  if (! model) return;
+  
+  if (_.has(schema, 'id_attribute')) {
+  
+    var id_attribute = schema['id_attribute'];
+    var idList = [];
+    
+    _.each(id_attribute, function(item){
+      var keyval;
+      if (model instanceof Backbone.Model){
+        keyval = model.get(item);
+      }else{
+        keyval = _.result(model,item);
+      }
+      if (!_.isUndefined(keyval)){
+        idList.push(keyval);
+        //throw new TypeError('ID key: ' + item + ', not found on: ' + model);
+      }
+    });
+    return idList;
+  } else {
+    throw new TypeError("'id_attribute' not found on the schema: " 
+            + JSON.stringify(schema)
+            + ', for the model: ' + JSON.stringify(model.attributes));
+  }
+  
+};
+
+/**
+ * Generate an ID string for the model
+ * 
+ * The "complete ID" is formed by joining the ID keys with the forward slash.
+ */
+var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
+  function(model, schema){
+    
+    return Iccbl.getIdKeys(model,schema).join('/');
+};
+
+/**
+ * Pops the appropriate number of items from the URI stack to form a model key.
+ *  
+ * - pop one key, in order, for each of the key fields specified in 
+ * the resource id_attribute.
  * 
  * @param resource - a resource definition as defined by the API
  * @param urlStack -
@@ -240,7 +1371,9 @@ var getKey = Iccbl.getKey = function(options) {
  * @param consumedStack -
  *          holds the items popped off the stack
  */
-var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consumedStack){
+var popKeyFromStack = Iccbl.popKeyFromStack = function(
+    resource, urlStack, consumedStack){
+  
   var id  = '';
   var self = this;
   var checkStack = function(stack){
@@ -285,102 +1418,88 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consu
   return id;
 };
 
-
 /**
- * Get the keys as an array from the model: 
- * - the key may composite single-value; use the list of key fields from the 
- * resource definition id_attribute.
- * 
- * @param schema - a resource definition as defined by the API
+ * Sort an array of keys based on the associated ordinal for each key 
+ * in the Resource.fields "fieldHash"
  */
-var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
-  if (_.has(schema, 'id_attribute')) {
-    var id_attribute = schema['id_attribute'];
-    console.log('create id from ' + id_attribute);
-    var idList = [];
-    _.each(id_attribute, function(item){
-      if (model.has(item)){
-        idList.push(model.get(item));
+var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
+  var sorted = _(keys).sort(function(a, b) {
+    if (!_.has(fieldHash, a) || !_.has(fieldHash, b)) {
+      if (_.has(fieldHash, b)) {
+        return -1;
+      } else if (_.has(fieldHash, a)) {
+        return 1;
       }
-    });
-    return idList;
-  } else {
-    throw new TypeError("'id_attribute' not found on the schema: " 
-            + JSON.stringify(schema)
-            + ', for the model: ' + JSON.stringify(model.attributes));
-  }
-  
+      return 0;
+    }
+    order_a = fieldHash[a]['ordinal'];
+    // TODO: need an edit order by
+    order_b = fieldHash[b]['ordinal'];
+    if (_.isNumber(order_a) && _.isNumber(order_b)) {
+      return order_a - order_b;
+    } else if (_.isNumber(order_a)) {
+      return -1;
+    } else if (_.isNumber(order_b)) {
+      return 1;
+    } else {
+      return 0;
+    }
+  });
+  return sorted;
 };
 
-
 /**
- * Create a string ID from the 'id_attribute' of a schema resource definition. -
- * the id_attribute is an array of field specifiers - the 'ID' will be each of
- * these fields, concatenated with a forward slash. Note: the composite key is
- * the public key; although there is often an 'ID' field, it should not be used
- * for URL's, as it is a internal, possibly transient implementation detail.
- */
-var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
-  function(model, schema){
-  
-  if (_.has(schema, 'id_attribute')) {
-    var id_attribute = schema['id_attribute'];
-    console.log('create id from ' + id_attribute);
-    var id = _.reduce(id_attribute, function(memo, item){
-      if(!_.isEmpty(memo)) memo += '/';
-      return memo += model.get(item);
-    }, '');
-    return id;
-  } else {
-    throw new TypeError("'id_attribute' not found on the schema: " 
-        + JSON.stringify(schema)
-        + ', for the model: ' + JSON.stringify(model.attributes));
-  }
-};
-
-
-/**
- * Create an string 'title' from the 'id_attribute' of a schema resource
- * definition. - the title_attribute is an array of field specifiers and
- * strings. - if an array item is a field, the field value will be used, - if an
- * array item is not a field, then it will be concatenated directly.
+ * Create a title from the schema "title_attribute".
+ * 
+ * Note: the title_attribute is an array of field specifiers and strings. 
+ * If an array item is a field, the field value will be used, 
+ * If an array item is not a field, then it will be concatenated directly.
  */
 var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
-    function(model, schema){
-  var re_isQuoted = /['"]+/g;
-  var fields = schema['fields'];
-  if(_.has(schema, 'title_attribute')){
-    var title = _.reduce(
-      schema['title_attribute'],
-      function(memo, item){
-        if(item && item.match(re_isQuoted)){
-          memo += item.replace(re_isQuoted, '');
-        }else{
-          if( model.has(item) ){
-            var val = model.get(item);
-            if (!_.isEmpty(fields[item].vocabulary_scope_ref)){
-              val = Iccbl.appModel.getVocabularyTitle(fields[item].vocabulary_scope_ref,val);
-            }
-            memo += val
+  function(model, schema){
+    var re_isQuoted = /['"]+/g;
+    var fields = schema['fields'];
+    if(_.has(schema, 'title_attribute')){
+      var title = _.reduce(
+        schema['title_attribute'],
+        function(memo, item){
+          if(item && item.match(re_isQuoted)){
+            memo += item.replace(re_isQuoted, '');
           }else{
-            memo += item
+            if( model.has(item) ){
+              var val = model.get(item);
+              if (!_.has(fields,item)){
+                throw 'Title property: ' + item + ', not present on model: '+ schema.key ;
+              }
+              if (!_.isEmpty(fields[item].vocabulary_scope_ref)){
+                val = Iccbl.appModel.getVocabularyTitle(
+                  fields[item].vocabulary_scope_ref,val);
+              }
+              memo += val
+            }else{
+              memo += item
+            }
           }
-        }
-        return memo ;
-      }, '');
-    return title;
-  }else{
-    throw new TypeError("'title_attribute' not found on the schema: " + 
-        JSON.stringify(schema)
-        + ', for the model: ' + JSON.stringify(model.attributes));
-  }
+          return memo ;
+        }, '');
+      return title;
+    }else{
+      throw new TypeError("'title_attribute' not found on the schema: " + 
+          JSON.stringify(schema)
+          + ', for the model: ' + JSON.stringify(model.attributes));
+    }
 };
 
 
 /**
- * Matches array items against the matchstring. - Matches from the right to
- * left; allowing URI fragments to match their parent URIs. Similar the the
- * contains function, but using item.indexOf(matchString) ||
+ * Determine if an array of URI fragments contains any match with the given 
+ * matchString.
+ * Useful for determining if a partial URI (the matchstring) matches the URL, 
+ * parsed as a URL stack array.
+ * 
+ * Matches from the right to left; 
+ * allowing URI fragments to match their parent URIs. 
+ * Similar the the contains function, but using item.indexOf(matchString) ||
  * matchString.indexOf(item) for the truth test.
  */
 var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
@@ -398,93 +1517,150 @@ var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
   });
 };
 
-
 /**
- * Split label strings on non-word characters, then re-join into lines, where
- * each line is less than max_line_length (or, if a part is longer than
- * max_line_length, then that part becomes an entire line).
+ * Break a long label into multiple lines for display.
+ * 
+ * Split label strings on non-word characters and re-join into lines, 
+ * where each line is less than max_line_length 
+ * (or, if a part is longer than max_line_length, 
+ * then that part becomes an entire line).
  */
-var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
-  var lines = [];
-  var labelParts = original_label.split(/([\s_\-\.,]+)/);
-  var line = '';
-  _.each(labelParts, function(part){
-    if(line.length > 0){
-      var temp = line + part;
-      if(temp.trim().length <= max_line_length){
-        line = temp;
-      }else{
-        line = line.trim();
-        if (line.length > 0) {
-          lines.push(line);
-        }
-        line = part;
-      }
-    }else{
-      if( part != ' '){
-        line = part;
-      }
-    }
-  });
-  line = line.trim();
-  lines.push(line);
+var createLabel = Iccbl.createLabel = 
+  function(original_label, max_line_length, break_char){
   
-  if(_.isUndefined(break_char)){
-    break_char = '<br>';
-  }
-  return lines.join(break_char);
+    var lines = [];
+    var labelParts = original_label.split(/([\s_\-\.,]+)/);
+    var line = '';
+    _.each(labelParts, function(part){
+      if(line.length > 0){
+        var temp = line + part;
+        if(temp.trim().length <= max_line_length){
+          line = temp;
+        }else{
+          line = line.trim();
+          if (line.length > 0) {
+            lines.push(line);
+          }
+          line = part;
+        }
+      }else{
+        if( part != ' '){
+          line = part;
+        }
+      }
+    });
+    line = line.trim();
+    lines.push(line);
+    
+    if(_.isUndefined(break_char)){
+      break_char = '<br>';
+    }
+    return lines.join(break_char);
 };
 
+/**
+ * Parse an inline comment array of the form:
+ * [ "comment_user$comment_date$comment_text", ...]
+ */
+var parseComments = Iccbl.parseComments = function(comment_array){
+  return _.map(
+    comment_array,
+    function(comment){
+      var comment_parts = comment.split(Iccbl.appModel.LIST_DELIMITER_SUB_ARRAY);
+      if (comment_parts.length == 3){
+        return '(' + comment_parts[0] + ') ' +
+          Iccbl.getDateString(comment_parts[1]) + 
+          ': ' + comment_parts[2];
+      } else {
+        console.log('unparsed comment:', comment_parts)
+        return comment_parts.join(Iccbl.appModel.LIST_DELIMITER_SUB_ARRAY);
+      }
+    }).join('\n===== end comment =====\n');
+};
+
+/**
+ * Create a comment icon with a link to display (parsed) comments in a 
+ * modal dialog.
+ */
+var createCommentIcon = Iccbl.createCommentIcon = function(comments, title){
+  var comment_icon = $(
+    '<span class="glyphicon glyphicon-comment" ' +
+    'style="color: lightgray; " ></span>');
+  comment_icon.attr('title', comments);
+  
+  var rows = 10;
+  var buttons_on_top = false;
+  if (comments.length > 300){
+    rows = 30;
+    buttons_on_top = true;
+  }
+  comment_icon.click(function(e){
+    e.preventDefault();
+    var body = $('<textarea class="input-full" rows=' + rows + ' ></textarea>');
+    body.val(comments);
+    Iccbl.appModel.showModalMessage({
+      title: title,
+      view: body,
+      buttons_on_top: buttons_on_top
+    });
+  });
+  return comment_icon;
+};
 
 var formatResponseError = Iccbl.formatResponseError = function(response){
-    var msg = '';
-    var sep = '\n';
-    if (!_.isUndefined(response.status))
-        msg += response.status;
-    if (!_.isUndefined(response.statusText))
-        msg += sep + response.statusText;
-    if (!_.isEmpty(response.responseText))
-        msg += sep + response.responseText;
-    return msg;
+  
+  var msg = '';
+  var sep = '\n';
+  if (!_.isUndefined(response.status))
+      msg += response.status;
+  if (!_.isUndefined(response.statusText))
+      msg += sep + response.statusText;
+  if (!_.isEmpty(response.responseText))
+      msg += sep + response.responseText;
+  return msg;
 }
 
 var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
+
   /**
    * Override collection parse method: Parse server response data.
    */
-  parse : function(response) {
-    console.log('Collection on client, parse called');
-    if(_.has(response,'objects') && _.isArray(response.objects) ){
-      return response.objects;
-    }
-    return response;
+  parse : function(resp) {
+    if (_.has(resp,Iccbl.appModel.API_RESULT_DATA)){
+      return resp[Iccbl.appModel.API_RESULT_DATA];
+    } 
+    return resp.objects;
   },
+  
   setSearch: function(){
     //nop, for now
   }
 });
 
 
-var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback, options){
-  var options = options || {};
-  var data_for_get = options.data_for_get || {};
-  data_for_get = _.extend({ limit: 0 },data_for_get);
-  var CollectionClass = Iccbl.CollectionOnClient.extend({
-    url: url 
-  });
-  var instance = new CollectionClass();
-  instance.fetch({
-    data: data_for_get,
-    success: function(collection, response) {
-      callback(collection);
-    },
-    always: function(){
-      console.log('done: ');
-    }
-  }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+var getCollectionOnClient = Iccbl.getCollectionOnClient = 
+  function(url, callback, options){
+  
+    var options = options || {};
+    var data_for_get = options.data_for_get || {};
+    data_for_get = _.extend({ limit: 0 },data_for_get);
+    var CollectionClass = Iccbl.CollectionOnClient.extend({
+      url: url 
+    });
+    var instance = new CollectionClass();
+    instance.fetch({
+      data: data_for_get,
+      success: function(collection, response) {
+        callback(collection);
+      },
+      always: function(){
+        console.log('done: ');
+      }
+    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
 };
 
-var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
+var getCollection = Iccbl.getCollection = 
+  function(schemaResult, url, callback) {
     var CollectionClass = Iccbl.MyCollection.extend({
         url : url,
         defaults : {}
@@ -509,8 +1685,8 @@ var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) 
     });
 };
 
-
 var MyModel = Iccbl.MyModel = Backbone.Model.extend({
+
   url : function() {
     // Add trailing slash for Tastypie
     var url = Backbone.Model.prototype.url.call(this);
@@ -524,30 +1700,200 @@ var MyModel = Iccbl.MyModel = Backbone.Model.extend({
   },
 });
 
+
+///// Backgrid.Cell customizations /////
+
 var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
+  
   initialize: function (options) {
     
     Backgrid.Cell.prototype.initialize.apply(this, arguments);
     
     var self = this;
+    var initialValue = this.initialValue = this.model.get(this.column.get('name'));
     this.model.on('change:'+this.column.get("name") , function(){
-      self.$el.addClass('edited');
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        if (self.isEdited()){
+          self.$el.addClass('edited');
+      } else {
+        self.$el.removeClass('edited');
+      }
+      }
     });
+  },
+  
+  isEdited: function() {
+    if (this.isEditable()){
+      var val = this.model.get(this.column.get('name'));
+      return val !== this.initialValue;
+    }
+    return false;
+  },
+  
+  isEditable: function(){
+    var model = this.model, column = this.column;
+    return Backgrid.callByNeed(column.editable(), column, model);
+  },
+  
+});
+
+/**
+ * Override BooleanCell:
+ * - cellClick toggles the checkbox
+ * - "edited" flag is set and initialValue is tracked
+ */
+var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
+  
+  initialize: function(){
+    
+    BooleanCell.__super__.initialize.apply(this, arguments);
+    var self = this;
+    var initialValue = this.initialValue = this.model.get(this.column.get('name'));
+    
+    this.model.on('change:'+this.column.get("name") , function(){
+      if (self.isEdited()){
+        self.$el.addClass('edited');
+      } else {
+        self.$el.removeClass('edited');
+      }
+    });
+  },
+  
+  isEditable: function(){
+    var model = this.model, column = this.column;
+    return Backgrid.callByNeed(column.editable(), column, model);
+  },
+  
+  isEdited: function() {
+    if (this.isEditable()){
+      var val = this.model.get(this.column.get('name'));
+      console.log('isEdited:', this.initialValue, val, val !== this.initialValue);
+      return val !== this.initialValue;
+    }
+    return false;
+  },
+  
+  // Set up to toggle the checkbox whenever the TD is clicked
+  events: {
+    'click': 'cellClicked'
+  },
+  
+  cellClicked: function(e){
+    e.stopPropagation();
+    if (this.isEditable()){
+      var model = this.model, column = this.column;
+      var checked = model.get(column.get("name"));
+      if (this.isEdited()){
+        if (checked){
+          model.set(column.get("name"), this.initialValue);
+        } else {
+          model.set(column.get("name"), !checked);
+        }
+      } else {
+        model.set(column.get("name"), !checked);
+      }
+    }
+  },
+  
+  render: function () {
+    var model = this.model, column = this.column;
+    var val = this.formatter.fromRaw(model.get(column.get("name")), model);
+    this.$el.empty();
+    if (this.isEditable()){
+      this.$el.css('text-align','center');
+      this.$el.append($("<input>", {
+        tabIndex: -1,
+        type: "checkbox",
+        checked: this.formatter.fromRaw(model.get(column.get("name")), model)
+      }));
+      //      this.delegateEvents();
+    } else {
+      this.$el.text(val);
+    }
+    return this;
+  }
+
+});
+  
+var StringFormatter = Iccbl.StringFormatter = function () {};
+
+StringFormatter.prototype = new Backgrid.StringFormatter();
+
+_.extend(StringFormatter.prototype, {
+  /**
+   * Extend Backgrid.StringFormatter to add spaces between values in arrays.
+   */
+  fromRaw: function (rawValue, model) {
+    if (_.isUndefined(rawValue) || _.isNull(rawValue)) return '';
+    if (_.isArray(rawValue)) {
+      return rawValue.join(', ');
+    } else {
+      return rawValue + '';
+    }
   }
 });
 
+/**
+ * Simple unformatted cell to wrap long strings
+ */
+var TextWrapCell = Iccbl.TextWrapCell = Backgrid.Cell.extend({
+  formatter: Iccbl.StringFormatter,
+  className: 'text-wrap-cell',
+
+  /**
+   * Override render to use $el.html() instead of $el.text()
+   * - the "text()" method escapes string values
+   */
+  render: function () {
+    var $el = this.$el;
+    $el.empty();
+    var model = this.model;
+    var columnName = this.column.get("name");
+    $el.html(this.formatter.fromRaw(model.get(columnName), model));
+    $el.addClass(columnName);
+    this.updateStateClassesMaybe();
+    this.delegateEvents();
+    return this;
+  },
+  
+});
+
+/**
+ * CommentArrayCell and CommentFormatter:
+ * Parse a nested comment array for table view
+ */
+var CommentFormatter = Iccbl.CommentFormatter = function () {};
+CommentFormatter.prototype = new Backgrid.CellFormatter();
+_.extend(CommentFormatter.prototype, {
+  fromRaw: function (rawValue, model) {
+    if (_.isUndefined(rawValue) || _.isNull(rawValue) || _.isEmpty(rawValue)) return '';
+    return Iccbl.parseComments(rawValue);
+  }
+});
+
+var CommentArrayCell = Iccbl.CommentArrayCell = Iccbl.TextWrapCell.extend({
+  formatter: CommentFormatter
+});
+
 var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
+  formatter: Iccbl.StringFormatter,
   initialize: function(){
     StringCell.__super__.initialize.apply(this, arguments);
     var self = this;
     this.model.on('change:'+this.column.get("name") , function(){
-      self.$el.addClass('edited');
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
     });
   }  
 });
 
-// TODO: redo the link cell like the UriListCell
 var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
+  
+  // TODO: redo the link cell like the UriListCell
+  
   className : "link-cell",
 
   events : {
@@ -567,8 +1913,10 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   title: null,
 
   /**
-   * @property {string} [target="_blank"] The target attribute of the
+   * @property {string} [target="_self"] The target attribute of the
    *           generated anchor.
+   * - _blank: to create a new tab
+   * - _self
    */
   target: "_self",
   
@@ -580,23 +1928,48 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
     console.log('link clicked, override to handle', e);
   },
   
+  get_href: function(){
+    var self = this;
+    return Iccbl.formatString(self.hrefTemplate,self.model);
+  },
+  
   render : function() {
     var self = this;
     this.$el.empty();
     var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-    var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
     self.$el.append($('<a>', {
       tabIndex : -1,
-      href : interpolatedVal,
-      target : self.target
+      href : self.get_href(),
+      target : self.target,
+      title: self.title
     }).text(formattedValue));
     return this;
   },
 });
 
+var DateLinkCell = Iccbl.DateLinkCell = Iccbl.LinkCell.extend({
+
+  render: function() {
+    var self = this;
+    this.$el.empty();
+    var formattedValue = getIccblDateString(
+      this.model.get(this.column.get("name")));
+    var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
+    self.$el.append($('<a>', {
+      tabIndex : -1,
+      href : interpolatedVal,
+      target : self.target,
+      title: self.title
+    }).text(formattedValue));
+    return this;
+  }
+
+});
+
 
 var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
-  className : "uri-list-cell",
+  
+  className : "text-wrap-cell",
 
   /**
    * @property {string} ["string with {model_key} values to interpolate"]
@@ -629,7 +2002,7 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
       var i = 0;
       _.each(rawValue, function(val){
         var interpolatedVal = Iccbl.formatString(self.hrefTemplate, self.model, val);
-        if(i>0) self.$el.append(',');
+        if(i>0) self.$el.append(', ');
         self.$el.append($('<a>', {
           tabIndex : -1,
           href : interpolatedVal,
@@ -645,7 +2018,9 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
 }); 
 
 var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
+  
   className : "image-cell",
+  
   events : {
       "click #link" : "toLink",
   },
@@ -672,8 +2047,15 @@ var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
       
 });
 
+/**
+ * @deprecated
+ * Render the cell as a link that triggers the MyCollection:detail event
+ *
+ */
 var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
+  
   className : "detail-cell",
+  
   events : {
     "click #edit" : "editDetail",
   },
@@ -685,7 +2067,8 @@ var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
 
   render : function() {
     this.$el.empty();
-    var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
+    var formattedValue = this.formatter.fromRaw(
+      this.model.get(this.column.get("name")));
     this.$el.append($("<a id='edit' >", {
       tabIndex : -1,
       href : '',
@@ -707,9 +2090,10 @@ var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
   },
 });
 
-var NumberFormatter = Backgrid.NumberFormatter;
-//var NumberCell = Backgrid.NumberCell;
+var NumberFormatter = Iccbl.NumberFormatter = Backgrid.NumberFormatter;
+
 var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
+  
   initialize: function (options) {
     
     NumberCell.__super__.initialize.apply(this, arguments);
@@ -719,11 +2103,12 @@ var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
     var column = this.column;
     var currVal = model.get(column.get("name"));
     this.model.on('change:'+this.column.get("name") , function(){
-      if (parseFloat(currVal) !== parseFloat(model.get(column.get("name")))) {
-        self.$el.addClass('edited');
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        if (parseFloat(currVal) !== parseFloat(model.get(column.get("name")))) {
+          self.$el.addClass('edited');
+        }
       }
     });
-    
   }
 });
 
@@ -735,16 +2120,27 @@ DecimalFormatter.prototype = new Backgrid.NumberFormatter();
  
 _.extend(DecimalFormatter.prototype, {
  
+  defaults: _.extend({}, NumberFormatter.prototype.defaults, {
+    // If True, allow trailing zeros, only relevant if not using rounding
+    trailing_zeros: false, 
+    use_rounding: true
+  }),
+
   /**
-   * Modified to pass non-numbers through.
+   * Modified to:
+   * - pass non-numbers through
+   * - use rounding instead of fixed decimal truncation by default
    */
   fromRaw: function (number, model) {
     var args = [].slice.call(arguments, 1);
     if(_.isUndefined(number)){
-      return '';
+      return null;
     }
     if(_.isNull(number)){
-      return '';
+      return null;
+    }
+    if (_.isString(number) && _.isEmpty(number)){
+      return null;
     }
     if(!_.isNumber(number)){
       try{
@@ -754,12 +2150,24 @@ _.extend(DecimalFormatter.prototype, {
         return number;
       }
     }
-     
-    args.unshift(number);
-    return (NumberFormatter.prototype.fromRaw.apply(this, args) || "0");
+    
+    if (this.use_rounding == true){
+      number = round(number, this.decimals);
+    } else {
+      number = number.toFixed(~~this.decimals);
+      if (this.trailing_zeros == false){
+        number = number*1;
+      }
+    }
+    number = ''+number;
+    
+    var parts = number.split('.');
+    var integerPart = parts[0];
+    var decimalPart = parts[1] ? (this.decimalSeparator || '.') + parts[1] : '';
+
+    return integerPart.replace(this.HUMANIZED_NUM_RE, '$1' + this.orderSeparator) + decimalPart;
+    
   }
-
-
 });  
 
 /**
@@ -775,6 +2183,7 @@ _.extend(DecimalFormatter.prototype, {
 var SIUnitsFormatter = Iccbl.SIUnitsFormatter = function () {
  Backgrid.NumberFormatter.apply(this, arguments);
 };
+
 
 SIUnitsFormatter.prototype = new Backgrid.NumberFormatter();
 
@@ -798,14 +2207,18 @@ _.extend(SIUnitsFormatter.prototype, {
       ['k', 1e3],
       ['', 1],
       ['m', 1e-3,],
-      ['μ', 1e-6,],
       ['u', 1e-6,],
+      ['μ', 1e-6,],
       ['n', 1e-9 ],
       ['p', 1e-12 ]
       ],
-    multiplier: 1
+    multiplier: 1,
+    trailing_zeros: false, // If True, allow trailing zeros
+    use_rounding: true
   }),
 
+  SI_UNIT_PATTERN: /([\d\.]+)\s*((\w|\xB5|\x{03BC})\w)?/i,
+  
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.
    * Takes a raw value from a model and returns an optionally formatted string.
@@ -820,38 +2233,43 @@ _.extend(SIUnitsFormatter.prototype, {
   fromRaw: function (number, model) {
 
     if (_.isNull(number) || _.isUndefined(number)) return '';
+    if (_.isString(number) && _.isEmpty(number)){
+      return null;
+    }
 
     return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
   },
 
   /**
-   * Convert the number to a siunit value; number = .0025 multiplier = 1000
-   * 
-   * @return Math.round(number*multiplier,decimals) + symbol
+   * Return the best match SI Unit (unit_symbol,unit_val) for the default_unit_value, 
+   * such that:
+   * default_unit_value can be represented a number between 1 and 1000;
+   * (best_match_symbol_val)<=default_unit_value<(next_higher_symbol_val)
+   */
+  getSIUnit: function(default_unit_value) {
+    var pairUnit = _.find(this.siunits, function(pair){
+      return pair[1] <= Math.abs(default_unit_value); 
+    });
+    
+    return pairUnit;
+  },
+  
+  /**
+   * Convert the number to a siunit value
    */
   getUnit: function(rawNumber, multiplier, symbol, decimals) {
-     
+    var self = this;
     if(!_.isNumber(rawNumber)){
       try{
         number = parseFloat(rawNumber);
       }catch(e){
-        console.log('not a number: ' + number + ', ex:' + e);
-        return number;
+        console.log('not a number: ' + rawNumber+ ', ex:' + e);
+        return rawNumber;
       }
     }else{
       number = rawNumber;
     }
     if(number == 0 ) return number;
-    var zeroPadding = 0;
-    if (number<1){
-      for (i=1; i<=rawNumber.length; i++) {
-        var c = rawNumber.charAt(rawNumber.length-i);
-        if (c=='.' || c!= '0'){
-          break;
-        }
-        zeroPadding += 1;
-      }
-    }
     if(!_.isNumber(multiplier)){
       try{
         multiplier = parseFloat(multiplier);
@@ -859,16 +2277,24 @@ _.extend(SIUnitsFormatter.prototype, {
         console.log('not a number - multiplier: ' + multiplier+ ', ex:' + e);
       }
     }
-
-    if(multiplier >= 1){
+    if(multiplier > 0){
       number = number * multiplier;
     }else{
-      console.log("Error, DecimalCell multiplier < 1: " + multiplier);
+      console.log("Error, DecimalCell multiplier ! > 0: " + multiplier);
     }
-     
-    pairUnit = _.find(this.siunits, function(pair){
-      return pair[1] <= Math.abs(number); 
-    });
+    
+    var pairUnit = self.getSIUnit(number);
+    // 20180423 - If defaultUnit is set and less than the number, use it:
+    // Test the SIUnit to make sure it does not result in a 0 display value;
+    // if it does, use the recommended SIUnit
+    if (_.isNumber(self.defaultUnit) && number >= self.defaultUnit ){
+      var test_pairUnit = self.getSIUnit(self.defaultUnit);
+      var test_val = (1/test_pairUnit[1])*number;
+      test_val = test_val.toFixed(decimals)*1;
+      if (test_val != 0){
+        pairUnit = test_pairUnit;
+      }
+    }
      
     if(_.isUndefined(pairUnit)){
       console.log('could not find units for the input number: ' + number);
@@ -876,34 +2302,20 @@ _.extend(SIUnitsFormatter.prototype, {
     }
      
     var val = (1/pairUnit[1])*number;
-    val = val.toFixed(decimals)*1;
-    // val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
-
-    var finalValue = '' + val;
-    if (zeroPadding!=0){
-      var newZeroPadding = 0;
-      for (i=1; i<=finalValue.length; i++) {
-        var c = finalValue.charAt(finalValue.length-i);
-        if (c=='.' || c!= '0'){
-          break;
-        }
-        newZeroPadding += 1;
+    
+    if (self.use_rounding == false){
+      // NOTE: use truncate to match current Screensaver functionality
+      val = val.toFixed(~~decimals);
+      if( self.trailing_zeros == false){
+        val = val*1;
       }
-      var newDecimals = 0;
-      if (finalValue.indexOf('.')>-1){
-        newDecimals = finalValue.split('.')[1].length;
-      }
-      if (newZeroPadding < zeroPadding){
-        if (newDecimals < decimals){
-          newDecimals += zeroPadding;
-        }
-        if (newDecimals > decimals){
-          newDecimals = decimals;
-        }
-        finalValue = val.toFixed(newDecimals);
-      }
+    } else {
+      val = round(val, decimals);
+      //      val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
     }
-    return finalValue + ' ' + pairUnit[0] + symbol;
+
+    var formattedValue = '' + val + ' ' + pairUnit[0] + symbol;
+    return formattedValue;
   },
  
   
@@ -918,38 +2330,34 @@ _.extend(SIUnitsFormatter.prototype, {
    */
   toRaw: function (formattedValue, model) {
     var self = this;
-    var unit = '';
     var tokens;
     var rawValue, scaledRawValue;
     var unitMultiplier;
     
     if (formattedValue === '') return null;
 
-    tokens = formattedValue.split(' ');
-
-    rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
-
-    if (_.isUndefined(rawValue)) return rawValue;
-
-    if (tokens.length == 2 ) {
-      unit = tokens[1].trim().charAt(0);
+    // TODO: test regex version here
+    var match = this.SI_UNIT_PATTERN.exec(formattedValue);
+    if (!match){
+      throw 'SI Unit value not recognized' + formattedValue;
     }
-      
-    var pairUnit = _.find(self.siunits, function(pair){
-      return pair[0] == unit;
-    });
-    if (_.isUndefined(pairUnit)){
-      console.log('unknown unit: ' + unit);
-      // FIXME: indicate error to the user
-      return null;
+    var originalNumberPart = match[1];
+    rawValue = NumberFormatter.prototype.toRaw.call(this,originalNumberPart);
+    var pairUnit = [self.defaultSymbol, self.defaultUnit];
+    if (match.length==4){
+      var unit = match[3].toLowerCase();
+      pairUnit = _.find(self.siunits, function(pair){
+        return pair[0] == unit;
+      });
     }
-    unitMultiplier = pairUnit[1];
+     
+   unitMultiplier = pairUnit[1];
     
     var originalPrecision = 0;
-    if (tokens[0].indexOf('.')>-1){
-      originalPrecision = (tokens[0] + "").split(".")[1].length;
+    if (originalNumberPart.indexOf('.')>-1){
+      originalPrecision = (originalNumberPart + "").split(".")[1].length;
     }
-    
+
     // use the multiplier to scale the raw value
     newRawValue = rawValue / this.multiplier;
     // use the SIUnit to scale the raw value
@@ -1053,9 +2461,451 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
     formatter.multiplier = this.multiplier;
     formatter.decimals = this.decimals;
     formatter.symbol = this.symbol;
+    formatter.defaultUnit = this.defaultUnit;
   }
 
 });  
+
+var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
+
+  className: 'text-wrap-cell',
+
+  initialize: function(){
+    
+    SelectCell.__super__.initialize.apply(this, arguments);
+    var self = this;
+    this.model.on('change:'+this.column.get("name") , function(){
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
+    });
+  },
+  
+  /** 
+   * override Backgrid.SelectCell:
+   * - render to return the cell value if optionValues is malformed or missing 
+   * the value
+   */
+  render: function () {
+    this.$el.empty();
+
+    var optionValues = _.result(this, "optionValues");
+    var model = this.model;
+    var rawData = this.formatter.fromRaw(
+      model.get(this.column.get("name")), model);
+    var selectedText = [];
+
+    if (_.isArray(optionValues) &&  !_.isEmpty(optionValues)){
+      for (var k = 0; k < rawData.length; k++) {
+        var rawDatum = '' + rawData[k];
+        for (var i = 0; i < optionValues.length; i++) {
+          var optionValue = optionValues[i];
+          if (_.isArray(optionValue)) {
+            var optionText  = optionValue[0];
+            var optionValue = optionValue[1];
+            if (optionValue.toLowerCase() == rawDatum.toLowerCase()){
+              selectedText.push(_.escape(optionText));
+            }
+          }
+          else if (_.isObject(optionValue)) {
+            var optionGroupValues = optionValue.values;
+            for (var j = 0; j < optionGroupValues.length; j++) {
+              var optionGroupValue = optionGroupValues[j];
+              if (optionGroupValue[1].toLowerCase() == rawDatum.toLowerCase()) {
+                selectedText.push(_.escape(optionGroupValue[0]));
+              }
+            }
+          }
+          else {
+            throw new TypeError;
+          }
+        }
+      }
+    }
+    var isEmpty = (
+        _.isEmpty(rawData)
+        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])));
+    if( !isEmpty && _.isEmpty(selectedText)){
+      selectedText = rawData;
+
+      Iccbl.appModel.error(Iccbl.formatString(
+        'column: {column}, vocabulary: {vocabulary} is misconfigured: rawData: "{rawData}"',
+        { column: this.column.get("name"),
+          vocabulary: _.result(this, "vocabulary_scope_ref"),
+          rawData: rawData 
+        }));
+      console.log(Iccbl.formatString(
+        'column: {column}, vocabulary: {vocabulary} is misconfigured,' 
+          + 'rawData: "{rawData}", optionValues: {optionValues}',
+        { column: this.column.get("name"),
+          vocabulary: _.result(this, "vocabulary_scope_ref"),
+          rawData: rawData,
+          optionValues: optionValues
+        }));
+    }
+    var finalText = selectedText.join(this.delimiter);
+    
+    if(!_.isUndefined(this.hrefTemplate)){
+      // hack - if hrefTemplate is defined, treat this like a link cell - 20150828
+      var target = this.target || "_self";
+      var interpolatedVal = Iccbl.formatString(this.hrefTemplate,this.model);
+      this.$el.append($('<a>', {
+        tabIndex : -1,
+        href : interpolatedVal,
+        target : this.target
+      }).text(finalText));
+      
+    }else{
+      this.$el.append(finalText);
+    }
+
+    this.delegateEvents();
+
+    return this;
+  }
+
+});
+
+/**
+ * Override Backgrid DateTimeFormatter
+ * - recognize user input in the format MM/DD/YYYY
+ * - but also recognize ISO 8601 format, so values from the server are parsed
+ */
+var DatetimeFormatter = Iccbl.DatetimeFormatter = function (options) {
+  _.extend(this, this.defaults, options || {});
+
+  if (!this.includeDate && !this.includeTime) {
+    throw new Error("Either includeDate or includeTime must be true");
+  }
+};
+
+DatetimeFormatter.prototype = new Backgrid.DatetimeFormatter();
+_.extend(DatetimeFormatter.prototype, {
+
+  fromRaw: function (rawData, model) {
+    if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
+    rawData = rawData.trim();
+    if ((rawData + '').trim() === '') return null;
+    
+    return getIccblDateString(Iccbl.dateParse(rawData));
+  },
+
+  toRaw: function(formattedData, model){
+    if (_.isNull(formattedData) || _.isUndefined(formattedData)) return '';
+    if ((formattedData + '').trim() === '') return null;
+    if(ICCBL_DATE_RE.test(formattedData)){
+      var MMDDYYYY = ICCBL_DATE_RE.exec(formattedData) || [];
+      var jsDate = new Date(
+        MMDDYYYY[3] * 1 || 0,
+        MMDDYYYY[1] * 1 - 1 || 0,
+        MMDDYYYY[2] * 1 || 0);
+      var temp = getISODateString(jsDate);
+      return temp;
+    }else{
+      return;
+    }
+  },
+  
+  /**
+   * Modify Backgrid DatetimeFormatter convert:
+   * - ignore timezone - remove UTC conversion
+   * - add in ICCBL_DATE_RE
+   * TODO: refactor, using Iccbl.dateParse
+   */
+  _convert: function (data, validate) {
+    if ((data + '').trim() === '') return null;
+
+    var date, time = null;
+    if (_.isNumber(data)) {
+      var jsDate = new Date(data);
+      date = lpad(jsDate.getFullYear(), 4, 0) 
+        + '-' + lpad(jsDate.getMonth() + 1, 2, 0) 
+        + '-' + lpad(jsDate.getDate(), 2, 0);
+      time = lpad(jsDate.getHours(), 2, 0) 
+        + ':' + lpad(jsDate.getMinutes(), 2, 0) 
+        + ':' + lpad(jsDate.getSeconds(), 2, 0);
+      // modified 20150831 - use local date/time
+      //date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
+      //time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
+    }
+    else {
+      data = data.trim();
+      var parts = data.split(ISO_SPLITTER_RE) || [];
+      date = ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
+      time = date && parts[1] ? parts[1] : TIME_RE.test(parts[0]) ? parts[0] : '';
+    }
+    // FIXME: review this 
+    var MMDDYYYY = ICCBL_DATE_RE.exec(date) || [];
+    var HHmmssSSS = TIME_RE.exec(time) || [];
+
+    if (validate) {
+      if (this.includeDate && _.isUndefined(MMDDYYYY[0])) return;
+      if (this.includeTime && _.isUndefined(HHmmssSSS[0])) return;
+      if (!this.includeDate && date) return;
+      if (!this.includeTime && time) return;
+    }
+
+    var jsDate = new Date(MMDDYYYY[3] * 1 || 0,
+                                   MMDDYYYY[1] * 1 - 1 || 0,
+                                   MMDDYYYY[2] * 1 || 0,
+                                   HHmmssSSS[1] * 1 || null,
+                                   HHmmssSSS[2] * 1 || null,
+                                   HHmmssSSS[3] * 1 || null,
+                                   HHmmssSSS[5] * 1 || null);
+
+    var result = '';
+
+    if (this.includeDate) {
+      result = ( getIccblDateString(jsDate) );
+    }
+
+    if (this.includeTime) {
+      result = ( result 
+          + (this.includeDate ? 'T' : '') 
+          + lpad(jsDate.getHours(), 2, 0) 
+          + ':' + lpad(jsDate.getMinutes(), 2, 0) 
+          + ':' + lpad(jsDate.getSeconds(), 2, 0)
+          );
+
+      if (this.includeMilli) {
+        result = result + '.' + lpad(jsDate.getMilliseconds(), 3, 0);
+      }
+    }
+
+    if (this.includeDate && this.includeTime) {
+      result += "Z";
+    }
+    return result;
+  },
+  
+});
+
+/**
+ * DateCellEditor replacement:
+ * - bootstrap-datepicker editor
+ * - use bootstrap-datepicker to convert user input to a JavaScript Date
+ */
+var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
+
+  template: [
+     '  <input type="text" class="form-control" >',
+     ].join(''),
+
+  initialize: function (options) {
+    DateCell2Editor.__super__.initialize.apply(this, arguments);
+    _.bindAll(this, 'saveOrCancel', 'postRender');
+    
+    this.value = new Date(this.model.get(this.column.get('name')));
+  },
+  
+  setValue: function(value) {
+    $('input', this.el).datepicker('setUTCDate', value);
+  },
+
+  getValue: function() {
+      var input = $('input', this.el);
+      var date = input.datepicker('getDate');
+      try{
+        return Iccbl.getISODateString(date);
+      } catch(e) {
+        console.log('invalid date', e, date);
+        return date;
+      }
+  },
+    
+  /**
+     Renders a text input with the cell value formatted for display, if it
+     exists.
+  */
+  render: function () {
+    var el = $(this.el);
+    el.html(this.template);
+
+    var input = $('input', el);
+    input.datepicker({
+        dateFormat: 'dd/mm/yyyy',
+        autoclose: true,
+        todayBtn: 'linked',
+        todayHighlight: true,
+        orientation: "bottom auto"
+    }).on('hide', this.saveOrCancel);
+    
+    // manually get the input-group-addon click
+    $('#datepicker-icon',el).click(function(e) {
+      input.datepicker().focus();
+    });
+    this.setValue(this.value);
+      
+    return this;
+  },
+  
+  saveOrCancel: function (e) {
+    var model = this.model;
+    var column = this.column;
+      var newValue = this.getValue();
+      model.set(column.get("name"), newValue);
+      var NewCommand = function() {};
+      NewCommand.prototype = new Backgrid.Command(e);
+      _.extend(NewCommand.prototype, {
+        save: function(){ return true; }
+      });
+      var command = new NewCommand(e);
+      model.trigger("backgrid:edited", model, column, command);
+  },
+  
+  postRender: function (model, column) {
+    if (column == null || column.get("name") == this.column.get("name")) {
+      // move the cursor to the end on firefox if text is right aligned
+      if (this.$el.css("text-align") === "right") {
+        var val = this.$el.val();
+        this.$el.focus().val(null).val(val);
+      }
+      else this.$el.focus();
+    }
+    return this;
+  }
+});
+
+/**
+ * DateCell replacement:
+ * - bootstrap-datepicker editor
+ * - simplified date serialization:
+ * - bypass the Backgrid.DateTimeFormatter on fromRaw,
+ * - use bootstrap-datepicker to convert user input to a JavaScript Date
+ */
+var DateCell2 = Iccbl.DateCell2 = Backgrid.Cell.extend({
+  
+  initialize: function(){
+    Iccbl.DateCell2.__super__.initialize.apply(this, arguments);
+    var self = this;
+  }, 
+  
+  /**
+     Render a text string in a table cell. The text is converted from the
+     model's raw value for this cell's column.
+  */
+  render: function () {
+    var $el = this.$el;
+    $el.empty();
+    var model = this.model;
+    var columnName = this.column.get("name");
+    $el.text(this.fromRaw(model.get(columnName), model));
+    $el.addClass(columnName);
+    this.updateStateClassesMaybe();
+    this.delegateEvents();
+    return this;
+  },
+
+  /**
+   * Convert model value to display:
+   * - simplified from the Backgrid.DateTimeFormatter.fromRaw
+   */
+  fromRaw: function (rawData, model) {
+    
+    if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
+    if (_.isDate(rawData)){
+      return getIccblDateString(rawData);
+    } else {
+      rawData = rawData.trim();
+      if ((rawData + '').trim() === '') return null;
+      
+      return getIccblDateString(Iccbl.dateParse(rawData));
+    }
+  },
+
+  isEditable: function() {
+    return Backgrid.callByNeed(this.column.editable(), this.column, this.model);
+  },
+  
+  enterEditMode: function () {
+    var model = this.model;
+    var column = this.column;
+    
+    if (this.isEditable()) {
+
+      // ICCBL-Hack to stop the column from resizing on entering edit mode  
+      // https://github.com/cloudflare/backgrid/issues/489
+      this.$el.width((this.$el.outerWidth()) + 'px');
+      
+      this.currentEditor = new DateCell2Editor({
+        model: model,
+        column: column
+      });
+      
+      model.trigger("backgrid:edit", model, column, this, this.currentEditor);
+
+      // Need to redundantly undelegate events for Firefox
+      this.undelegateEvents();
+      this.$el.empty();
+      this.currentEditor.render();
+      this.$el.append(this.currentEditor.$el);
+      this.$el.addClass("editor");
+
+      model.trigger("backgrid:editing", model, column, this, this.currentEditor);
+    }
+  },
+  
+  /**
+     Removes the editor and re-render in display mode.
+  */
+  exitEditMode: function () {
+    this.$el.removeClass("error");
+    this.currentEditor.remove();
+    this.stopListening(this.currentEditor);
+    delete this.currentEditor;
+    this.$el.removeClass("editor");
+    this.render();
+  }
+
+});
+
+
+
+/**
+ * Override DateCell
+ * - set the format to MM/DD/YYYY
+ * @deprecated use DateCell2 instead
+ */
+var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
+
+  /** @property {Backgrid.CellFormatter} [formatter=Backgrid.DatetimeFormatter] */
+  formatter: DatetimeFormatter,
+
+  /**
+  Initializes this cell and the datetime formatter.
+
+  @param {Object} options
+  @param {Backbone.Model} options.model
+  @param {Backgrid.Column} options.column
+  */
+  initialize: function (options) {
+    var self = this;
+    // Note __super__ == Backgrid.DateCell.prototype
+    DateCell.__super__.initialize.apply(this, arguments);
+    var formatter = this.formatter;
+    //   formatter.includeDate = this.includeDate;
+    formatter.includeTime = false;
+    //   formatter.includeMilli = this.includeMilli;
+
+    var placeholder = "MM/DD/YYYY";
+  
+    this.editor = this.editor.extend({
+      attributes: _.extend(
+          {}, this.editor.prototype.attributes, this.editor.attributes, {
+            placeholder: placeholder
+          })
+    });
+    
+    this.model.on('change:'+this.column.get("name") , function(){
+      // Block updates caused by adding columns
+      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+        self.$el.addClass('edited');
+      }
+    });
+  }
+  
+});
 
 /**
  * uses the options.attributes.label
@@ -1089,6 +2939,39 @@ var DeleteCell = Iccbl.DeleteCell = Iccbl.BaseCell.extend({
   }
 });
 
+/**
+ * Extend a LinkCell, with a comment mouse over.
+ */
+var CommentArrayLinkCell = Iccbl.CommentArrayLinkCell = Iccbl.LinkCell.extend({
+  /*
+   * @property {string} [comment_attribute='comment_array'] The model
+   * attribute containing the apilog comment_array 
+   */
+  comment_attribute: 'comment_array',
+  
+  /*
+   * Provide a title for generated dialog
+   */
+  title_function: function(model){
+    return 'Comments'; // + ': ' + Iccbl.getIdFromIdAttribute(model, resource)
+  },
+  
+  render: function(){
+    var self = this;
+    Iccbl.LinkCell.prototype.render.apply(this, arguments);
+    var comments = this.model.get(self.comment_attribute);
+    if (!_.isEmpty(comments)){
+      comments = Iccbl.parseComments(comments);
+      this.$el.attr('title',comments);
+      this.$el.append(Iccbl.createCommentIcon(
+        comments,
+        self.title_function(self.model)));
+    }
+    return this;
+  }
+});
+
+
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
   /**
    * Override collection parse method: Parse server response data.
@@ -1111,13 +2994,14 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
 });
 
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
+  
   initialize: function(args) {
     console.log('initialize UriContainerView');
     var model = this.model = args.model;
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
     
-    Backbone.View.prototype.initialize.apply(this,arguments);
+    Backbone.Layout.prototype.initialize.apply(this,arguments);
   },
   
   /**
@@ -1126,8 +3010,12 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   reportUriStack: function(reportedUriStack, options) {
     var options = options || {source: this};
     var consumedStack = this.consumedStack || [];
-    var actualStack = consumedStack.concat(reportedUriStack);
-    this.model.set({'uriStack': actualStack}, options);     
+    if (reportedUriStack){
+      actualStack = consumedStack.concat(reportedUriStack);
+    }else{
+      actualStack = consumedStack.slice(0);
+    }
+    Iccbl.appModel.reportUriStack(actualStack, options);
   },
   
   /**
@@ -1137,8 +3025,8 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
    *          the event source triggering view
    */
   uriStackChange: function(model, val, options) {
-    if(options.source === this){
-      console.log('self generated uristack change');
+    if(options && options.source === this){
+      console.log('UriContainerView: self generated uristack change');
       return;
     }else{
       var uriStack = _.clone(this.model.get('uriStack'));
@@ -1152,8 +3040,9 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   },
   
   changeUri: function(uriStack) {
-    window.alert('ContentView changeUri function must be implemented. uriStack: ' +
-        JSON.stringify(uriStack));
+    window.alert(
+      'ContentView changeUri function must be implemented. uriStack: ' +
+      JSON.stringify(uriStack));
   }
 });
 
@@ -1196,11 +3085,17 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   initialize : function(options) {
     var self = this;
     this.options = options;
-    this.url = options.url;
-    this.listModel = options.listModel;
-
     Backbone.PageableCollection.prototype.initialize.apply(this, options);
+    
+    // Define an order_by callback for backbone.paginator:
+    // backbone.paginator will "map extra query parameters" when performing fetch
+    this.queryParams.order_by = function(){
+      // Note: the orderStack is converted using "traditional" array serialization:
+      // see: http://api.jquery.com/jQuery.param/
+      return self.listModel.get('order');
+    }
   },
+
   mode: 'server',
 
   url : function() {
@@ -1211,7 +3106,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   state : {
     pageSize : 25,  // TODO: probably not necessary
   },
-  
+
   // PageableCollection.fetch() uses the queryParams attribute to interpret
   // the server response and to determine the data hash sent to the server.
   // Adjust the query params for tastypie.
@@ -1224,20 +3119,14 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
                             // vocabularies - FIXME: make this a setting?
     totalRecords : null, // unset for tastypie
     totalPages : null, // unset for tastypie
-    sortKey : "order_by", // modified for tastypie
+    //    sortKey : "order_by", // modified for tastypie
     order : null, // unset for tastypie
-    order_by : function() {// modified for tastypie: use only
-      if ( typeof this.state !== 'undefined' 
-            && this.state.orderStack
-            && this.state.orderStack.length ) {
-        // Note: convert the orderStack using "traditional" array serialization
-        // see: http://api.jquery.com/jQuery.param/
-        // var val = this.state.orderStack.join('&order_by=');
-        return this.state.orderStack;
-      }
-    }, 
     includes: function(){
-      return this.listModel.get('includes');
+      var temp = this.listModel.get('includes');
+      if (!_.isEmpty(this.extraIncludes)){
+        temp = _.union(temp,this.extraIncludes);
+      }
+      return temp;
     }
   },
 
@@ -1245,14 +3134,19 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * Override
    */
   parseState : function(response, queryParams, state, options) {
-    // hack the response for tastypie:
-    // note, this is because the pageable collection doesn't work with the
-    // backbone-tastypie.js fix
+    // Adjust for expected response from server:
     var state = _.clone(state);
-    if(!response.meta && response.meta.total_count){
-      msg = 'error in response: no meta information';
+    var meta = _.result(response,Iccbl.appModel.API_RESULT_META);
+    if (!meta){
+      console.log('error no meta: ', response);
+      msg = 'error in response: no "' + Iccbl.appModel.API_RESULT_META + '"';
       Iccbl.appModel.error(msg);
-      throw Exception(msg);
+      throw msg;
+    }
+    if(! _.isNumber(meta.total_count)){
+      msg = 'error "total_count" not found in meta: ', meta;
+      Iccbl.appModel.error('error in server response');
+      throw msg;
     }
     state.totalRecords = response.meta.total_count;
     
@@ -1270,16 +3164,25 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * Override
    */
   parseRecords: function (resp, options) {
-    return resp.objects;
+    if (Iccbl.appModel.API_RESULT_DATA){
+      return resp[Iccbl.appModel.API_RESULT_DATA];
+    } else {
+      return resp.objects;
+    }
   },
       
   /**
    * Method for external callers to set the search, with fetch
+   * @param options - for Backbone.Collection.fetch:
+   * { reset: false } (default) - uses set to (intelligently) merge the fetched 
+   * models ("add" events are fired),
+   * {reset: true}, in which case the collection will be (efficiently) reset 
+   * (no "add" events will be fired)
    */
-  setSearch: function(searchHash) {
+  setSearch: function(searchHash, options) {
     var self = this;
     var searchHash = _.clone(searchHash);
-    self.listModel.set('search', searchHash);
+    self.listModel.set(Iccbl.appModel.URI_PATH_SEARCH, searchHash);
     
     // Tell all the header cells
     this.trigger("MyServerSideFilter:search", searchHash, this);
@@ -1292,22 +3195,22 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     // - if the search key is not in the queryParams, then it is not a column
     // - this will add it manually to the queryParams (which are serialized in
     // the fetch to the server).
-    var _data = {};
     _.each(_.keys(searchHash), function(key) {
       var val = searchHash[key]
-
       if(_.isEmpty("" + val)){
           delete self.queryParams[key];
       }else{
+        if (_.isString(val)){
+          val = val.trim();
+        }
         // Check if param dne, or if param exists and is a value to be set.
         // The reason for the "isFunction" check is that the Backgrid-filter
         // defined params are function calls to get the current value in the
         // searchbox - so skip those as state is stored there.
         if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
-        	_data[key]=val;
         	// Make the params persistent (if not a backgrid-filter)
           self.queryParams[key] = function () {
-            var search = self.listModel.get('search');
+            var search = self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH);
             if (!_.isEmpty(search)){
               return _.result(search, key, null);
             }
@@ -1317,9 +3220,12 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       }
     });
 
-    self.fetch({reset: true}).fail(
-      function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-    );
+    //self.fetch({reset: true}).fail(
+    if (_.result(options, 'fetch') !== false){
+      self.fetch(options).fail(
+        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+      );
+    }
   },
 
   /**
@@ -1330,23 +3236,12 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     console.log('addSearch: ' + JSON.stringify(searchHash) 
       + ', options: ' + JSON.stringify(options) );
     var self = this;
-    var oldsearchHash = _.clone(self.listModel.get('search'));
-    oldsearchHash = _.extend(oldsearchHash, searchHash);
-    self.listModel.set({
-      'search' : oldsearchHash
-    });
-    _.each(_.keys(searchHash), function(key){
-      // make the params persistent (if not a backgrid-filter)
-      self.queryParams[key] = function () {
-        return self.listModel.get('search')[key] || null;
-      };
-    });
-    if(options && options.reset){
-      console.log('collection.addSearch: reset');
-      self.getFirstPage({reset: true, fetch: true}).fail(
-        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-      );
+    var newSearchHash = _.clone(self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH));
+    newSearchHash = _.extend(newSearchHash, searchHash);
+    if(options && options.reset && self.state.currentPage != 1){
+      self.state.currentPage = 1;
     }
+    self.listModel.set(Iccbl.appModel.URI_PATH_SEARCH, newSearchHash);
   },
 
   /**
@@ -1355,13 +3250,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * if options.reset == true, then fetch, otherwise no fetch.
    */ 
   clearSearch: function(searchKeys, options) {
-    console.log('clearsearch: ' + JSON.stringify(searchKeys) 
-        + ', options: ' + JSON.stringify(options) );
+//    console.log('clearsearch: ' + JSON.stringify(searchKeys) 
+//        + ', options: ' + JSON.stringify(options) );
     var self = this;
     var searchHash = {};
     var found = false;
     if (!_.isUndefined(searchKeys)) {
-      searchHash = _.clone(self.listModel.get('search'));
+      searchHash = _.clone(self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH));
       _.each(searchKeys, function(searchKey) {
         if(_.has(searchHash, searchKey)){
           delete searchHash[searchKey];
@@ -1370,15 +3265,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       });
     }
     if(found){
-      self.listModel.set({
-        'search' : searchHash
-      });
-      if(options && options.reset){
-        console.log('collection.clearSearch: reset');
-        self.getFirstPage({reset: true, fetch: true}).fail(
-          function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-        );
-      }
+      self.state.currentPage = 1;
+      var data = {};
+      data[Iccbl.appModel.URI_PATH_SEARCH] = searchHash;
+      self.listModel.set(data, options);
     }
   },
 
@@ -1388,9 +3278,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * from state based on "queryParams"
    */
   setSorting : function(sortKey, order, options) {
+    var self = this;
     var state = this.state;
     
-    var orderStack = state.orderStack || [];
+    var orderStack = this.listModel.get('order') || [];
     
     var newdir = order == 1 ? '-' : order == -1 ? '': null;
     
@@ -1424,7 +3315,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     
     console.log('Ordering update: old: ' + JSON.stringify(orderStack) 
         + ', new: ' + JSON.stringify(newStack));
-    state.orderStack = newStack;
+    self.listModel.set('order', newStack);
     
     // Backbone.PageableCollection.prototype.setSorting.call(this, sortKey,
     // order);
@@ -1451,39 +3342,23 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
 });
 
-
+//// Header Cell Definitions /////
 
 var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
-  
-  filtericon_text : '<span class="pull-left glyphicon glyphicon-search" id="filter-icon" ></span>',
- 
+
+  ___klass: 'MultiSortHeaderCell',
+
   initialize : function(options) {
     this.options = options;
     MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
 
     this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-    this.filterIcon = $(this.filtericon_text);
     
     this.listenTo(this.collection,"sort",this.collectionSorted);
     this.listenTo(this.collection,"Iccbl:clearSorts", this.removeCellDirection);
-
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
     _.bindAll(this, '_submit', 'clearSearch');
   },
   
-  _search: function(){
-    throw '_search must be implemented';
-  },
-  
-  clearSearch: function(){
-    throw 'clearSearch must be implemented';
-  },
-  
-  _submit: function(){
-    throw '_submit must be implemented';
-  },
- 
   // Original onClick, for reference, from Backgrid
   // onClick: function (e) {
   // e.preventDefault();
@@ -1536,16 +3411,16 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     if(_.isUndefined(this.tempdirection)){
       this.tempdirection = this.column.get("direction");
     }
-    console.log('tempdirection1: ' + this.tempdirection);
-    if(this.tempdirection == "ascending"){
-      this.tempdirection = "descending";
-    }else if(this.tempdirection == "descending"){
+    if(this.tempdirection == "descending"){
+      this.tempdirection = "ascending";
+    }else if(this.tempdirection == "ascending"){
       this.tempdirection = "none";
     }else{
-      this.tempdirection = "ascending";
+      this.tempdirection = "descending";
     }
     
-    this.setCellDirection(column, self.tempdirection=="none"?null:self.tempdirection );
+    this.setCellDirection(
+      column, self.tempdirection=="none"?null:self.tempdirection );
 
     var args = arguments;
     
@@ -1553,14 +3428,17 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
       console.log('delayedclick: tempdirection: ' + self.tempdirection);
       if(self.tempdirection !== self.lastExecutedVal){
         console.log('delayed click: ' + self.tempdirection );
-        collection.trigger(event, column, self.tempdirection=="none"?null:self.tempdirection);
+        collection.trigger(
+          event, column, self.tempdirection=="none"?null:self.tempdirection);
         self.lastExecutedVal = self.tempdirection;
       }else{
-        console.log('this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
+        console.log(
+          'this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
       }
     };
-    _.debounce(delayedClick, 750)();
-    // FIXME: both throttle and debounce seem to work the same;
+    _.debounce(delayedClick, 1000)();
+    // FIXME: 
+    // Both throttle and debounce seem to work the same;
     // that is they both are working like setTimeout
     // _.throttle(delayedClick, 5000, {leading: false})();
     
@@ -1570,12 +3448,12 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   collectionSorted: function(collection, options){
     var self = this;
     var name = this.column.get('name');
-    var state = this.collection.state;
 
     var i = 0;
-    if (state) {
+    if (this.collection.listModel) {
       
-      _.each(state.orderStack, function(order_entry){
+      var orderStack = this.collection.listModel.get('order') || [];
+      _.each(orderStack, function(order_entry){
         i++;
         var dir = order_entry.substring(0,1);
         var direction = null;
@@ -1620,10 +3498,10 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
       this.$el.addClass(direction);
        
       var num = 1;
-      if(self.collection.state.orderStack &&
-          !_.isEmpty(self.collection.state.orderStack)){
+      var orderStack = self.collection.listModel.get('order') || [];
+      if (!_.isEmpty(orderStack)) {
         var i = 0;
-        var found = _.find(self.collection.state.orderStack, function(fieldname){
+        var found = _.find(orderStack, function(fieldname){
           i++;
           if(fieldname == name || fieldname == '-' + name){ 
             num = i;
@@ -1631,10 +3509,8 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
           }
         });
         if(!found){
-          // TODO: is this still necessary?
-          num = self.collection.state.orderStack.length+1; 
+          num = orderStack.length+1; 
         }
-        
       }
       sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>" 
           + num + "<b class='sort-caret'></b></span>");
@@ -1685,8 +3561,161 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     return this;
   }
     
-});
+}); // end MultiSortHeaderCell
 
+var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend({
+  
+  filtericon_text : '<span class="pull-left glyphicon glyphicon-search" ' +
+    ' id="filter-icon" ></span>',
+  expandicon_text : '<span ' +
+    ' class="pull-left glyphicon glyphicon-chevron-down" ' +
+    ' id="expand-filter-icon" > ' +
+    ' <span id="expand-filter-icon-text" ></span></span>',
+  collapseicon_text : '<span ' +
+    ' class="pull-left glyphicon glyphicon-chevron-up"'+
+    ' id="collapse-filter-icon" ></span>',
+  
+  initialize : function(options) {
+    var self = this;
+    FilterHeaderCell.__super__.initialize.apply(this, arguments);
+
+    this.filterIcon = $(this.filtericon_text);
+    this.collapseIcon = $(this.collapseicon_text);
+    this.expandIcon = $(this.expandicon_text);
+    this.expandIconText = this.expandIcon.find('#expand-filter-icon-text');
+    
+    this.fieldinformation = options.fieldinformation || this.fieldinformation;
+    if (_.isUndefined(this.fieldinformation)){
+      throw 'must define a fieldinformation for FilterHeaderCell';
+    }
+    this.serverSideFilter = options.serverSideFilter || this.serverSideFilter;
+    if (_.isUndefined(this.serverSideFilter)){
+      throw 'must define a serverSideFilter for FilterHeaderCell';
+    }
+    
+    this._serverSideFilter = new this.serverSideFilter(_.extend({
+      columnName: this.column.get('name'),
+      fieldinformation: this.fieldinformation
+    }, options));
+
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+  
+  /**
+   * Listen for router generated search events
+   */
+  _search: function(hash, collection){
+    var self = this;
+    var name = this.column.get('name');
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    
+    if(found){
+      self.$el.addClass('filtered');
+      self.expandIconText.html(
+        self._serverSideFilter._printSearchHash(
+          self._serverSideFilter._getSearchHash()));
+    }else{
+      self.$el.removeClass('filtered');
+      self.expandIconText.empty();
+    }
+  },  
+  
+  clearSearch: function(options){
+    var self=this;
+    var name = this.column.get('name');
+    
+    if (_.result(options,'fields_to_clear')){
+      if (!_.contains(options.fields_to_clear, name)){
+        return;
+      }
+    }
+    
+    self._serverSideFilter.clear();
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    self.collapseIcon.hide();
+    self.expandIconText.empty();
+    self.expandIcon.hide();
+  },      
+  
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+  
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches, {silent: true});
+      
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash,{reset: true});
+    }else{
+      console.log('nothing submitted');
+    }
+  },
+  
+  render : function() {
+    var self = this;
+    FilterHeaderCell.__super__.render.apply(this);
+    if (_.result(this.fieldinformation,'filtering') !== true){
+      return this;
+    }
+  
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    this.$el.append(this.filterIcon);
+    this.$el.append(this.collapseIcon);
+    this.$el.append(this.expandIcon);
+
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+    
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+    });
+    
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+  
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.$el.addClass('expanded');
+    });
+  
+    this.collapseIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.hide();
+      self.$el.removeClass('expanded');
+    });
+  
+    this.expandIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.$el.addClass('expanded');
+    });
+    return this;
+  },  
+
+}); // end FilterHeaderCell
+
+///// Header Cell Filters /////
 
 var BackgridFormFilter = Backbone.Form.extend({
   
@@ -1705,17 +3734,74 @@ var BackgridFormFilter = Backbone.Form.extend({
       ].join('')),
    
   initialize : function(options) {
-    var self = this;
-    var options = this.options = options || {};
-      
-    if(!options.columnName){
-      throw "must define column name option for the BackgridFormFilter, options: " + options;
-    }else{
-      this.columnName = options.columnName;
-    }
     BackgridFormFilter.__super__.initialize.apply(this, arguments);
+    var self = this;
+
+    this.fieldinformation = options.fieldinformation || this.fieldinformation;
+    if (_.isUndefined(this.fieldinformation)){
+      throw 'must define a fieldinformation for header cell BackgridFormFilter';
+    }
+    
+    this.columnName = options.columnName || this.columnName;
+    if (_.isUndefined(this.columnName)){
+      throw 'must define a columnName member for header cell BackgridFormFilter';
+    }
+    
   },
 
+  _printSearchHash: function(searchHash){
+    function lookupOperator(operator){
+      var lookup = {
+        gt: '>',
+        lt: '<',
+        gte: '>=',
+        lte: '<=',
+        eq: '='
+      };
+      return _.result(lookup, operator, operator);
+    }
+    
+    return '&nbsp;' + _.map(              
+      _.pairs(searchHash), 
+      function(pair){
+        var key_operator = pair[0].split('__');
+        var val = '' + pair[1]
+        var operator = '='
+        if (key_operator.length == 2){
+          operator = key_operator[1];
+          operator = lookupOperator(operator);
+        }
+        if (operator == 'range'){
+          val = val.split(",").join('-');
+        } else {
+          val = val.split(",").join(', ');
+        }
+        if (key_operator[0].charAt(0)=='-'){
+          operator = 'not ' + operator;
+        }
+        return operator + '&nbsp;' + val;
+      }).join('&');
+  },
+  
+  _getSearchHash: function(){
+    throw '_getSearchHash must be implemented';
+  },
+  
+  _search: function(){
+    throw '_search must be implemented';
+  },
+  
+  clearSearch: function(){
+    throw 'clearSearch must be implemented';
+  },
+  
+  _submit: function(){
+    throw '_submit must be implemented';
+  },
+  isSet: function(){
+    throw 'isSet must be implemented';
+  },
+ 
   /**
    * - add a submit button 
    * - add a clear button
@@ -1723,6 +3809,7 @@ var BackgridFormFilter = Backbone.Form.extend({
   render: function () {
     var self = this;
     BackgridFormFilter.__super__.render.apply(this, arguments);
+
     this.$el.append([
       '<div id="form-last-row" class="iccbl-headerfield-form-last-row" >',
       '<div class="col-xs-6">',
@@ -1756,19 +3843,8 @@ var BackgridFormFilter = Backbone.Form.extend({
   
   templateData: function() {
     return { years: 0, months: 0, dates: 0 };
-  },
+  }
   
-  /**
-   * Convenience - determine if the form has been set with any values
-   */
-  isSet: function(){
-    var values = this.getValue();
-    var found = _.find(_.keys(values), function(key){
-      // signal isSet for any field value set
-      return values[key]>0 || !_.isEmpty(values[key]);
-    });
-    return !_.isEmpty(found);
-  },
   
 });
 
@@ -1778,10 +3854,10 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
   errorClass: 'has-error',
   criteriaTemplate: 
     [
-      '<span  data-editor></span>'
+      '<span  data-editor ></span>'
     ].join(''),
   fieldTemplate: [
-      '<div data-editor title="<%= help %>" class="form-control" >',
+      '<div data-editor title="<%= help %>" class="" >',
     ].join(''),
 
   getPossibleSearches: function(){
@@ -1795,21 +3871,24 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
     return possibleSearches;
   },
   
-  /**
-   * Determine if the form has been set with any values.
-   */
-  isSet: function(){
-    var values = this.getValue();
-    var found = _.find(_.keys(values), function(key){
-      if(key == 'lower_criteria' ){
-        if(values[key] == 'blank' || values[key] == 'not blank') return true;
-        return false;
-      }
-      // signal isSet for any field value set
-      return values[key]>0 || !_.isEmpty(values[key]);
-    });
-    return !_.isEmpty(found);
-  },
+//  /**
+//   * Determine if the form has been set with any values.
+//   */
+//  isSet: function(){
+//    var values = this.getValue();
+//    if (_.isEmpty(values['lower_criteria'])){
+//      return false;
+//    }
+//    var found = _.find(_.keys(values), function(key){
+//      if(key == 'lower_criteria' ){
+//        if(values[key] == 'blank' || values[key] == 'not blank') return true;
+//        return false;
+//      }
+//      // signal isSet for any field value set
+//      return values[key]>0 || !_.isEmpty(values[key]);
+//    });
+//    return !_.isEmpty(found);
+//  },
   
   clear: function(){
     var self = this;
@@ -1823,7 +3902,7 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
 var TextFormFilter = CriteriumFormFilter.extend({
   
   criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne', 
-    'in': 'in','blank':'is_null','not blank':'not_blank'},
+    'in': 'in','blank':'is_blank','not blank':'not_blank'},
     
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
@@ -1877,6 +3956,9 @@ var TextFormFilter = CriteriumFormFilter.extend({
     });
     this.model = new FormFields();
     this.model.set('lower_criteria','='); // default
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria','form_textarea','invert_field']; 
     
     TextFormFilter.__super__.initialize.apply(this, arguments);
@@ -1893,6 +3975,9 @@ var TextFormFilter = CriteriumFormFilter.extend({
   
   isSet: function(){
     var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
     var found = _.find(_.keys(values), function(key){
       if(key == 'lower_criteria' ){
         if(values[key] == 'blank' || values[key] == 'not blank') return true;
@@ -1904,15 +3989,13 @@ var TextFormFilter = CriteriumFormFilter.extend({
     return !_.isEmpty(found);
   },
   
-  /**
-   * TextFormFilter handles router generated searches
-   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
     
     var found = false;
     _.each(_.keys(self.criterium), function(criteriaKey){
+      
       var criteria = self.criterium[criteriaKey];
       var searchTerm = self.columnName + '__' + criteria;
       var nsearchTerm = '-' + self.columnName + '__' + criteria;
@@ -1930,13 +4013,18 @@ var TextFormFilter = CriteriumFormFilter.extend({
         searchTerm = self.columnName + '__' + criteria;
         delete searchHash[self.columnName]
         searchHash[searchTerm] = searchVal;
+      }else if (criteria == 'is_blank'){
+        searchTerm = self.columnName + '__is_null';
+        nsearchTerm = '-' + self.columnName + '__is_null';
+        searchVal = _.result(
+          searchHash,searchTerm, _.result(searchHash,nsearchTerm, null));
       }
       if(searchVal !== null){
         found = true;
         self.setValue('lower_criteria', criteriaKey);
-        if(criteria == 'is_null'){
+        if(criteria == 'is_blank'){
           self.$el.find('[data-fields="form_textarea"]').hide();
-          if(searchVal == 'false'){
+          if(searchVal == false || searchVal == 'false'){
             self.setValue('lower_criteria', 'not blank');
           }
         }else{
@@ -1951,9 +4039,30 @@ var TextFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
 
-  /**
-   * TextFormFilter Form submit handler
-   */
+  _getSearchHash: function(){
+    var self = this;
+    
+    var searchHash = {};
+    var values = self.getValue();
+    var criteria = self.criterium[values['lower_criteria']];
+    var searchKey = self.columnName + '__' + criteria;
+    var searchVal = values['form_textarea'];
+    if (criteria == 'not_blank'){
+      searchKey = self.columnName + '__' + 'is_blank';
+      searchVal = 'false'
+    } else if (criteria == 'is_blank'){
+      searchVal = 'true';
+    } else if (criteria == 'in' && searchVal){
+      searchVal = searchVal.split( /\s*[,\n]\s*/);
+    }
+    var invert = values['invert_field'];
+    if(invert) searchKey = '-'+searchKey;
+    searchHash[searchKey] = searchVal;
+  
+    return searchHash;
+    
+  },
+
   _submit: function(){
     var self = this;
     if(!self.isSet()) return;
@@ -1967,21 +4076,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
       // this.$el.find('#range_upper_block').removeClass(self.errorClass);
     }
     
-    var values = self.getValue();
-    var criteria = self.criterium[values['lower_criteria']];
-    var searchKey = self.columnName + '__' + criteria;
-    var searchVal = values['form_textarea'];
-    if(criteria == 'not_blank'){
-      searchKey = self.columnName + '__' + 'is_null';
-      searchVal = 'false'
-    }else if(criteria == 'is_null'){
-      searchVal = 'true';
-    }
-    var invert = values['invert_field'];
-    if(invert) searchKey = '-'+searchKey;
-    searchHash[searchKey] = searchVal;
-  
-    return searchHash
+    return self._getSearchHash();
   },
 
   getPossibleSearches: function(){
@@ -2001,7 +4096,9 @@ var DateEditor = Backbone.Form.editors.Date.extend({
    * to override the monthnames otherwise. (Using var Self = Form.editors.Date;
    * this.options = _.extend({ monthNames: Self.monthNames, why?
    */
-  monthNames: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  monthNames: [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 
+    'Nov', 'Dec'],
 
   initialize : function(options) {
     var self = this;
@@ -2013,7 +4110,7 @@ var DateEditor = Backbone.Form.editors.Date.extend({
 
 var DateFormFilter = CriteriumFormFilter.extend({
   
-  criterium: {'=':'eq','>':'gt','>=':'gte','<':'lt','<=':'lte','<>':'ne',
+  criterium: {'': 'unset', '=':'eq','>':'gt','>=':'gte','<':'lt','<=':'lte','<>':'ne',
     'between':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
 
   template: _.template([
@@ -2106,6 +4203,9 @@ var DateFormFilter = CriteriumFormFilter.extend({
     });
     this.model = new FormFields();
     this.model.set('lower_criteria','='); // default
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria','lower_value','form_textarea',
                            'upper_value','invert_field']; 
     
@@ -2113,16 +4213,19 @@ var DateFormFilter = CriteriumFormFilter.extend({
       var criteria = self.getValue('lower_criteria');
       console.log('change:' + criteria)
       if(criteria == 'between'){
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="lower_value"]')
+          .find('input').prop('disabled', false);
         self.$el.find('[data-fields="form_textarea"]').hide();
         self.$el.find('#range_upper_block').show();
       }else if(criteria == 'in'){
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+        self.$el.find('[data-fields="lower_value"]')
+          .find('input').prop('disabled', true);
         self.setValue('lower_value', '');
         self.$el.find('#range_upper_block').hide();
         self.$el.find('[data-fields="form_textarea"]').show();
       }else{
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="lower_value"]')
+          .find('input').prop('disabled', false);
         self.$el.find('[data-fields="form_textarea"]').hide();
         self.$el.find('#range_upper_block').hide();
       }
@@ -2132,9 +4235,21 @@ var DateFormFilter = CriteriumFormFilter.extend({
     
   },
 
-  /**
-   * DateFormFilter
-   */
+  clear: function(){
+    this.model.set('lower_criteria',null);
+  },
+
+  isSet: function(){
+    var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
+    var found = _.find(_.keys(values), function(key){
+      return values[key] !== '';
+    });
+    return !_.isEmpty(found);
+  },
+  
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -2160,17 +4275,19 @@ var DateFormFilter = CriteriumFormFilter.extend({
             self.$el.find('#range_upper_block').show();
             var vals = searchVal.split(',');
             if(vals.length < 2){
-              throw "the range filter requires 2 date arguments separated by a comma, given: " + searchVal
+              throw "the range filter requires 2 date arguments separated by " +
+              "a comma, given: " + searchVal
             }
             self.setValue('lower_value', new Date(vals[0]));
             self.setValue('upper_value', new Date(vals[1]));
           }else if(criteria == 'in'){
-            self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+            self.$el.find('[data-fields="lower_value"]')
+              .find('input').prop('disabled', true);
             self.setValue('lower_value', '');
             self.$el.find('[data-fields="form_textarea"]').show();
             self.setValue('form_textarea', searchVal);
           }else if(criteria == 'is_null'){
-            if(searchVal == 'false'){
+            if(searchVal == false || searchVal == 'false'){
               self.setValue('lower_criteria', 'not blank');
             }
           }else{
@@ -2192,28 +4309,13 @@ var DateFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
 
-  /**
-   * DateFormFilter Form submit handler
-   */
-  _submit: function(){
-    var self  = this;
-    if(!self.isSet()) return;
+  _getSearchHash: function(){
+    var self = this;
     var searchHash = {};
-    
-    // validate:true: tells bbf to run model.validate(), in addition to
-    // field[].validate()
-    var errors = self.commit({ validate: true }); 
-    if(!_.isEmpty(errors)){
-      console.log('form errors, abort submit: ' + JSON.stringify(errors));
-      this.$el.find('#range_upper_block').addClass(self.errorClass);
-      return;
-    }else{
-      this.$el.find('#range_upper_block').removeClass(self.errorClass);
-    }
-    
     var values = self.getValue();
-    
     var name = self.columnName;
+
+    
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
     var criteria = self.criterium[values['lower_criteria']];
@@ -2240,206 +4342,26 @@ var DateFormFilter = CriteriumFormFilter.extend({
       }
     }
     return searchHash
+    
+  },
+
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+    
+    // validate:true: tells bbf to run model.validate(), in addition to
+    // field[].validate()
+    var errors = self.commit({ validate: true }); 
+    if(!_.isEmpty(errors)){
+      console.log('form errors, abort submit: ' + JSON.stringify(errors));
+      this.$el.find('#range_upper_block').addClass(self.errorClass);
+      return;
+    }else{
+      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+    }
+    
+    return self._getSearchHash();
   }
-});
-
-
-var TextHeaderCell = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    TextHeaderCell.__super__.initialize.apply(this, arguments);
-
-    this._serverSideFilter = new TextFormFilter({
-      columnName: self.column.get('name')
-    });
-  },
-
-  
-  /**
-   * TextHeaderCell Form submit handler
-   */
-  _submit: function(e){
-    var self  = this;
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-  
-    var searchHash = self._serverSideFilter._submit();
-    if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
-      
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash,{reset: true});
-    }else{
-      console.log('nothing submitted');
-    }
-  },
-
-  /**
-   * TextHeaderCell Listen for router generated search events
-   */
-  _search: function(hash, collection){
-    var self = this;
-    var name = this.column.get('name');
-    var searchHash = _.clone(hash);
-
-    // TODO: could use form.isSet() instead of found
-    var found = this._serverSideFilter._search(searchHash);
-    
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }else{
-      self._serverSideFilter.$el.hide();
-      self.filterIcon.show();
-    }
-  },  
-  
-  /**
-   * TextHeaderCell clears all possible searches if options.reset, then trigger
-   * a collection fetch
-   */
-  clearSearch: function(options){
-    var self=this;
-    self._serverSideFilter.clear();
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
-  },      
-  
-  /**
-   * TextHeaderCell
-   */
-  render : function() {
-    var self = this;
-    TextHeaderCell.__super__.render.apply(this);
-  
-    this.$el.append(this.filterIcon);
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-  
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-  
-    return this;
-  },  
-});
-
-
-var DateHeaderCell = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    DateHeaderCell.__super__.initialize.apply(this, arguments);
-    
-    this._serverSideFilter = new DateFormFilter({
-      columnName: self.column.get('name')
-    });
-  },
-  
-  /**
-   * DateHeaderCell Form submit handler
-   */
-  _submit: function(e){
-    var self  = this;
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-    
-    var name = this.column.get('name');
-    var searchHash = self._serverSideFilter._submit();
-    if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash,{reset: true});
-    }else{
-      console.log('Date Cell nothing submitted');
-    }
-  },
-  
-  /**
-   * DateHeaderCell Listen for router generated search events
-   */
-  _search: function(hash, collection){
-    var self = this;
-    var name = this.column.get('name');
-    var searchHash = _.clone(hash);
-
-    // TODO: could use form.isSet() instead of found
-    var found = this._serverSideFilter._search(searchHash);
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }else{
-      self._serverSideFilter.$el.hide();
-      self.filterIcon.show();
-    }
-  },  
-
-  /**
-   * DateHeaderCell clears all possible searches if options.reset, then trigger
-   * a collection fetch
-   */
-  clearSearch: function(options){
-    var self=this;
-    self._serverSideFilter.clear();
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
-  },      
-
-  /**
-   * DateHeaderCell
-   */
-  render : function() {
-    var self = this;
-    DateHeaderCell.__super__.render.apply(this);
-  
-    this.$el.append(this.filterIcon);
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-    });
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-    
-    return this;
-  },  
 });
 
 var BooleanFormFilter = CriteriumFormFilter.extend({
@@ -2476,19 +4398,20 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = new FormFields();
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria'] 
     
     BooleanFormFilter.__super__.initialize.apply(this, arguments);
   },
 
-  _submit: function(){
-    var self  = this;
-    if(!self.isSet()) return;
+  _getSearchHash: function(){
+    var self = this;
     var searchHash = {};
-    
     var values = self.getValue();
     var name = self.columnName;
-    
+
     var criteria = self.criterium[values['lower_criteria']];
     if(criteria == 'not_blank'){
       searchKey = name + '__' + 'is_null';
@@ -2503,13 +4426,16 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
       searchKey = name + '__eq';
       searchHash[searchKey]='true';
     }
-    
-    return searchHash
+    return searchHash;
+  },
+  
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+
+    return self._getSearchHash();
   },
 
-  /**
-   * BooleanFormFilter Set the form from router generated event
-   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -2538,10 +4464,6 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     return searchTerm;
   },  
   
-  /**
-   * BooleanFormFilter Convenience - determine if the form has been set with any
-   * values
-   */
   isSet: function(){
     var values = this.getValue();
     var found = _.find(_.keys(values), function(key){
@@ -2557,103 +4479,6 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
   
 });
 
-var BooleanHeaderCell = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    BooleanHeaderCell.__super__.initialize.apply(this, arguments);
-  
-    this._serverSideFilter = new BooleanFormFilter({
-      columnName: self.column.get('name')
-    });
-  },
-
-  
-  /**
-   * BooleanHeaderCell Form submit handler
-   */
-  _submit: function(e){
-    var self  = this;
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-  
-    var searchHash = self._serverSideFilter._submit();
-    if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash,{reset: true});
-    }else{
-      console.log('nothing submitted');
-    }
-  },
-
-  /**
-   * BooleanHeaderCell Listen for router generated search events
-   */
-  _search: function(hash, collection){
-    var self = this;
-    var name = this.column.get('name');
-    var searchHash = _.clone(hash);
-
-    // TODO: could use form.isSet() instead of found
-    var found = this._serverSideFilter._search(searchHash);
-    
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }else{
-      self._serverSideFilter.$el.hide();
-      self.filterIcon.show();
-    }
-  },  
-  
-  /**
-   * BooleanHeaderCell clears all possible searches if options.reset, then
-   * trigger a collection fetch
-   */
-  clearSearch: function(options){
-    var self=this;
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self._serverSideFilter.clear();
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    self.collection.clearSearch(possibleSearches);
-  },      
-  
-  /**
-   * BooleanHeaderCell
-   */
-  render : function() {
-    var self = this;
-    BooleanHeaderCell.__super__.render.apply(this);
-    this.$el.append(this.filterIcon);
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-  
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-  
-    return this;
-  },  
-});
-
 var SelectorFormFilter = CriteriumFormFilter.extend({
 
   criterium: {'': 'unset', 'blank':'is_null','not blank':'not_blank'},
@@ -2667,27 +4492,71 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
 
    altFieldTemplate: _.template([
       '<div class="form-group" style="margin-bottom: 0px;" >',
-      '    <div class="checkbox" style="text-align: left; min-height: 0px; padding-top: 0px;" > ',
-      '      <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>',
+      '    <div class="checkbox" style="text-align: left; ',
+      '       min-height: 0px; padding-top: 0px;" > ',
+      '      <label for="<%= editorId %>">',
+      '      <div><span data-editor\></div><%= title %></label>',
       '    </div>',
       '  </div>'
       ].join('')),
+ 
+  initialize: function(options){
     
-  initialize : function(options) {
     var self = this;
-    var options = this.options = options || {};
-    var formSchema = this.schema = {};
+    this.fieldinformation = options.fieldinformation || this.fieldinformation;
+    if (_.isUndefined(this.fieldinformation)){
+      throw 'must define a fieldinformation for SelectorFormFilter';
+    }
     
-    if(!options.choiceHash){
-      throw "must define choiceHash option for the SelectorFormFilter, options: " + options;
-    }else{
-      var choiceHash = this.choiceHash = options.choiceHash;
+    // Create a form of checkboxes, one for each vocabulary item:
+    // 1. start with fieldinformation.choices
+    // 2. override with fieldinformation.vocabulary:
+    // 2.a from fieldinformation.vocabulary, if available
+    // 2.b fetch and add vocabulary from server
+    var choiceHash = {}
+    var vocabulary;
+    if(_.isUndefined(this.fieldinformation.choices)){
+      if (Iccbl.appModel.DEBUG)
+        console.log([
+            'Warn: fieldinformation for a selection field type must define a ',
+            '"choices" list: field key: ' + this.column.get('name')].join(''));
+      this.fieldinformation.choices = [];
     }
-    if(!options.selectedFields){
-      throw "must define selectedFields option for the SelectorFormFilter, options: " + options;
+    if(!_.isEmpty(this.fieldinformation.vocabulary)){
+      // TODO: vocabulary is using the titles as the key, 
+      // because of how Backgrid.SelectCell initializes
+      _.each(this.fieldinformation.vocabulary,function(pair){
+        choiceHash[pair[1]] = pair[0];
+      });
     }else{
-      var selectedFields = this.selectedFields = options.selectedFields || [];
+      try{
+        vocabulary = Iccbl.appModel.getVocabulary(
+          this.fieldinformation.vocabulary_scope_ref);
+        _.each(_.keys(vocabulary),function(choice){
+          choiceHash[choice] = vocabulary[choice].title;
+        });
+      }catch(e){
+        console.log(
+          'vocabulary error', this.fieldinformation.key,
+          this.fieldinformation.vocabulary_scope_ref);
+      }
     }
+
+    var formSchema = this.schema = {};  
+
+    if(_.isUndefined(this.fieldinformation.choices)){
+      if (Iccbl.appModel.DEBUG)
+        console.log([
+            'Warn: fieldinformation for a selection field type must define a ',
+            '"choices" list: field key: ' + this.column.get('name')].join(''));
+      this.fieldinformation.choices = [];
+    }
+
+    // Set BackboneForms selectedFields variable:
+    // Check which fields will be included (defaults to all)
+    // - for SelectorFormFilter, add all choices, to create a checkbox for each
+    var selectedFields = _.clone(this.fieldinformation.choices);
+    
     _.each(_.keys(choiceHash), function(choice){
       formSchema[choice] = { 
           title: choiceHash[choice],
@@ -2738,18 +4607,20 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         self.$el.find('[data-fields]').find('input').prop('disabled', false);
       }
     });
+    
+  },
+      
+  clear: function(){
+    SelectorFormFilter.__super__.clear.apply(this, arguments);
+    this.$el.find('[data-fields]').find('input').prop('disabled', false);
   },
 
-  /**
-   * SelectorFormFilter Form submit handler
-   */
-  _submit: function(){
-    var self  = this;
-    if(!self.isSet()) return;
+  _getSearchHash: function(){
+    var self = this;
     var searchHash = {};
-    
     var values = self.getValue();
     var name = self.columnName;
+
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
     
@@ -2770,21 +4641,27 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       searchHash[name +'__in'] = selected.join(',');
     }
     
-    return searchHash
+    return searchHash;
+  },
+    
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+
+    return self._getSearchHash();
   },
 
-  /**
-   * SelectorFormFilter Set the form from router generated event
-   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
     var searchTerm = null;
     var name = this.columnName;
+    var searchVal = null;
 
     _.each(self.getPossibleSearches(), function(term){
       if(_.has(searchHash,term)){
         searchTerm = term;
+        searchVal = searchHash[term];
       }
     });
     
@@ -2794,14 +4671,17 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         name = '-' + name;
       }
       if(searchTerm ==  name + '__is_null'){
-        if(searchVal == 'true'){
+        if(searchVal == 'true' || searchVal == true){
           self.setValue('lower_criteria','blank');
         }else{
           self.setValue('lower_criteria', 'not blank');
         }
       }else{
         var searchVal = searchHash[searchTerm];
-        _.each(searchVal.split(','), function(choice){
+        if (!_.isArray(searchVal)){
+          searchVal = searchVal.split(',');
+        }
+        _.each(searchVal, function(choice){
           self.setValue(choice, true);
         });
       }
@@ -2816,146 +4696,27 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
   isSet: function(){
     var values = this.getValue();
     var found = _.find(_.keys(values), function(key){
-      if(key == 'invert_field' ) return false;
+      if(key == 'invert_field' ) return false; // skip invert field 
       return values[key];
     });
     return found;
   },
   
   getPossibleSearches: function(){
-    return [this.columnName + '__in', '-'+this.columnName + '__in',
+    var possibleSearches = [this.columnName + '__in', '-'+this.columnName + '__in',
             this.columnName + '__is_null'];
+    possibleSearches.push(this.columnName)
+    return possibleSearches;
   },
-});
-
-var SelectorHeaderCell = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    SelectorHeaderCell.__super__.initialize.apply(this, arguments);
-
-    var choiceHash = {}
-    var vocabulary;
-    if(_.isUndefined(this.fieldinformation.choices)){
-      if (Iccbl.appModel.DEBUG)
-        console.log([
-            'Warn: fieldinformation for a selection field type must define a ',
-            '"choices" list: field key: ' + this.column.get('name')].join(''));
-      this.fieldinformation.choices = [];
-    }
-    if(!_.isEmpty(this.fieldinformation.vocabulary)){
-      // TODO: vocabulary is using the titles as the key, 
-      // because of how Backgrid.SelectCell initializes
-      _.each(this.fieldinformation.vocabulary,function(pair){
-        choiceHash[pair[1]] = pair[0];
-      });
-    }else{
-      try{
-        vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
-        _.each(_.keys(vocabulary),function(choice){
-          choiceHash[choice] = vocabulary[choice].title;
-        });
-      }catch(e){
-        console.log('vocabulary error', this.column.get('name'),e);
-      }
-    }
-    this._serverSideFilter = new SelectorFormFilter({
-        choiceHash: choiceHash,
-        columnName: self.column.get('name'),
-        selectedFields: _.clone(self.fieldinformation.choices)
-      });
-  },
-  
-  /**
-   * SelectorHeaderCell Form submit handler
-   */
-  _submit: function(e){
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-
-    var self  = this;
-    var searchHash = self._serverSideFilter._submit();
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
-    if(!_.isEmpty(searchHash)){
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash,{reset: true});
-    }else{
-      self.collection.fetch().fail(
-        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
-      );      
-    }
-  },
-  
-  /**
-   * SelectorHeaderCell Listen for router generated search events
-   */
-  _search: function(hash, collection){
-    var self = this;
-    var searchHash = _.clone(hash);
-    // TODO: could use form.isSet() instead of found
-    var found = this._serverSideFilter._search(searchHash);
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }else{
-      self._serverSideFilter.$el.hide();
-      self.filterIcon.show();
-    }
-  },  
-
-  /**
-   * SelectorHeaderCell clears all possible searches if options.reset, then
-   * triggers a collection fetch.
-   */
-  clearSearch: function(options){
-    var self=this;
-    self._serverSideFilter.clear();
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
-  },      
-
-  /**
-   * SelectorHeaderCell
-   */
-  render : function() {
-    var self = this;
-    SelectorHeaderCell.__super__.render.apply(this);
-  
-    this.$el.append(this.filterIcon);
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-
-    return this;
-  }
 });
 
 var NumberFormFilter = CriteriumFormFilter.extend({
   
-  criterium: {'=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
-    '<>':'ne', 'x..y':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
+  criterium: {
+    '=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
+    '<>':'ne', 'x..y':'range', 'in': 'in','blank':'is_null',
+    'not blank':'not_blank'
+  },
   
   // FIXME: this template is a mix of adaptive and fixed styles, for instance:
   // for the first input-group: style="width: 50px"
@@ -2969,7 +4730,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       '</div>',
       '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
       '<div class="input-group" id="range_upper_block" style="display: none;" >',
-      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
+      '   <span class="input-group-addon" for="upper_value" style="width: 4em; ">to</span>',
       '   <span data-fields="upper_value"/>',
       '</div>',
       '<div class=""  data-fields="invert_field" />',
@@ -3032,24 +4793,28 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = options['model'] = new FormFields();
-    this.model.set('lower_criteria','='); // default
+    this.model.set('lower_criteria','>'); // default
     
     options.fields = fields.concat(
-        ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']); 
+        ['lower_criteria','lower_value','form_textarea',
+         'upper_value','invert_field']); 
     
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
       if(criteria == 'x..y'){
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="lower_value"]')
+          .find('input').prop('disabled', false);
         self.$el.find('[data-fields="form_textarea"]').hide();
         self.$el.find('#range_upper_block').show();
       }else if(criteria == 'in'){
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+        self.$el.find('[data-fields="lower_value"]')
+          .find('input').prop('disabled', true);
         self.setValue('lower_value', '');
         self.$el.find('#range_upper_block').hide();
         self.$el.find('[data-fields="form_textarea"]').show();
       }else{
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="lower_value"]')
+          .find('input').prop('disabled', false);
         self.$el.find('[data-fields="form_textarea"]').hide();
         self.$el.find('#range_upper_block').hide();
       }
@@ -3059,21 +4824,17 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     
   },
 
-  /**
-   * NumberFormFilter Convenience - determine if the form has been set with any
-   * values
-   */
   isSet: function(){
     var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
     var found = _.find(_.keys(values), function(key){
       return values[key] !== '';
     });
     return !_.isEmpty(found);
   },
   
-  /**
-   * NumberFormFilter Set the form from router generated event
-   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -3100,12 +4861,13 @@ var NumberFormFilter = CriteriumFormFilter.extend({
           self.setValue('lower_value', vals[0]);
           self.setValue('upper_value', vals[1]);
         }else if(criteria == 'in'){
-          self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+          self.$el.find('[data-fields="lower_value"]')
+            .find('input').prop('disabled', true);
           self.setValue('lower_value', '');
           self.$el.find('[data-fields="form_textarea"]').show();
           self.setValue('form_textarea', searchVal);
         }else if(criteria == 'is_null'){
-          if(searchVal == 'false'){
+          if(searchVal == false || searchVal == 'false'){
             self.setValue('lower_criteria', 'not blank');
           }
         }else{
@@ -3115,35 +4877,22 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         if(negated){
           self.setValue('invert_field', true);
         }
-        
       }
     });
     return found;
   },  
 
-  /**
-   * NumberFormFilter Form submit handler
-   */
-  _submit: function(){
-    var self  = this;
-    if(!self.isSet()) return;
+  _getSearchHash: function(){
+    var self = this;
     var searchHash = {};
-    var errors,values,name,invert,criteria,searchKey;
+    var values = self.getValue();
+    var name = self.columnName;
 
-    errors = self.commit({ validate: true }); 
-    if(!_.isEmpty(errors)){
-      console.log('form errors, abort submit: ' + JSON.stringify(errors));
-      this.$el.find('#range_upper_block').addClass(self.errorClass);
-      return;
-    }else{
-      this.$el.find('#range_upper_block').removeClass(self.errorClass);
-    }
-    values = self.getValue();
-    name = self.columnName;
-    invert = values['invert_field'];
+    var searchHash = {};
+    var invert = values['invert_field'];
     if(invert) name = '-'+name;
-    criteria = self.criterium[values['lower_criteria']];
-    searchKey = name + '__' + criteria;
+    var criteria = self.criterium[values['lower_criteria']];
+    var searchKey = name + '__' + criteria;
     
     if(criteria == 'in'){
       searchHash[searchKey] = values['form_textarea'];
@@ -3164,105 +4913,24 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         searchHash[searchKey] = ''+values['lower_value'];
       }
     }
-    return searchHash
+    return searchHash;
+  },
+
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+    var errors = self.commit({ validate: true }); 
+    if(!_.isEmpty(errors)){
+      console.log('form errors, abort submit: ' + JSON.stringify(errors));
+      this.$el.find('#range_upper_block').addClass(self.errorClass);
+      return;
+    }else{
+      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+    }
+    
+    return self._getSearchHash();
   }
 });
-
-var NumberHeaderCell = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    NumberHeaderCell.__super__.initialize.apply(this, arguments);
-    
-    this._serverSideFilter = new NumberFormFilter({
-      columnName: self.column.get('name')
-    });
-  },
-  
-  
-  /**
-   * NumberHeaderCell Form submit handler
-   */
-  _submit: function(e){
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-    var self  = this;
-    var name = this.column.get('name');
-    var searchHash = self._serverSideFilter._submit();
-    
-    if(!_.isEmpty(searchHash)){
-      self.collection.clearSearch(self._serverSideFilter.getPossibleSearches());
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash,{reset: true});
-    }else{
-      console.log('nothing submitted');
-    }
-  },
-  
-  /**
-   * NumberHeaderCell Listen for router generated search events
-   */
-  _search: function(hash, collection){
-    var self = this;
-    var name = this.column.get('name');
-    var searchHash = _.clone(hash);
-    var found = this._serverSideFilter._search(searchHash);
-
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }else{
-      self._serverSideFilter.$el.hide();
-      self.filterIcon.show();
-    }
-  },  
-
-  /**
-   * NumberHeaderCell clears all possible searches if options.reset, then
-   * trigger a collection fetch
-   */
-  clearSearch: function(options){
-    var self=this;
-    self._serverSideFilter.clear();
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    self.collection.clearSearch(self._serverSideFilter.getPossibleSearches());
-  },      
-  
-  /**
-   * NumberHeaderCell
-   */
-  render : function() {
-    var self = this;
-    NumberHeaderCell.__super__.render.apply(this);
-  
-    this.$el.append(this.filterIcon);
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-  
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-  
-    return this;
-  },  
-});
-
 
 var SIUnitFormFilter = NumberFormFilter.extend({
   
@@ -3303,15 +4971,29 @@ var SIUnitFormFilter = NumberFormFilter.extend({
 
   initialize : function(options) {
     var self = this;
-    var options = this.options = options || {};
+
+    this.fieldinformation = options.fieldinformation || this.fieldinformation;
+    if (_.isUndefined(this.fieldinformation)){
+      throw 'must define a fieldinformation for SIUnitFormFilter';
+    }
+    
+    var options = _.extend({},this.fieldinformation['display_options'],options);
+
+    if(!options.symbol)
+    {
+      throw new Error('SIUnitHeaderCell: field information requires the '+
+          '"symbol" option');
+    }
     var multiplier = this.multiplier = options.multiplier || 1;
     var symbol = this.symbol = options.symbol;
+    var defaultUnit = this.defaultUnit = options.defaultUnit;
     var units = this.units = [];
     var formSchema = options.schema = options.schema || {};
     
     if(! options.symbol){
       throw 'Error: SIUnitFormFilter requires a "symbol" option' 
     }
+    this.defaultSymbol = null;
     _.each(this.siunits,function(pair){
       if(options.maxunit){
         if(options.maxunit < pair[1]) return;
@@ -3320,6 +5002,9 @@ var SIUnitFormFilter = NumberFormFilter.extend({
         if(options.minunit > pair[1]) return;
       }
       units.push({ val: pair[1], label: pair[0] + self.symbol });
+      if (pair[1]==defaultUnit){
+        self.defaultSymbol = pair[0] + self.symbol;
+      }
     });
     formSchema['lower_siunit'] = {
       title: '', 
@@ -3342,14 +5027,27 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     options['fields'] = ['lower_siunit','upper_siunit']
     
     SIUnitFormFilter.__super__.initialize.call(this, options);
+    
   },
   
-  /**
-   * SIUnitFormFilter Convenience - determine if the form has been set with any
-   * values
-   */
+  render: function(){
+    SIUnitFormFilter.__super__.render.apply(this, arguments);
+    
+    // Fixme: these values must be set after render, because inheritance is not
+    // proper for this class.
+    if (_.isNumber(this.defaultUnit)){
+      this.setValue('lower_siunit',this.defaultUnit);
+      this.setValue('upper_siunit',this.defaultUnit);
+    }
+    return this;
+    
+  },
+  
   isSet: function(){
     var values = this.getValue();
+    if (_.isEmpty(values['lower_criteria'])){
+      return false;
+    }
     var found = _.find(_.keys(values), function(key){
       if(key == 'lower_criteria' 
         || key == 'lower_siunit'
@@ -3360,13 +5058,24 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     return !_.isEmpty(found);
   },
   
-  /**
-   * SIUnitFormFilter Form submit handler
-   */
-  _submit: function(){
+  _printSearchHash: function(searchHash){
     var self = this;
-    var searchHash = SIUnitFormFilter.__super__._submit.call(this);
-    
+    _.each(_.keys(searchHash), function(key){
+      var nu = self._findNumberAndUnit(searchHash[key]);
+      searchHash[key] = nu.number + '&nbsp;' 
+        + _.result(_.invert(_.object(self.siunits)),nu.unit,nu.unit)
+        + self.symbol;
+    });
+    return SIUnitFormFilter.__super__._printSearchHash.call(this, searchHash);
+  },
+  
+  _getSearchHash: function(){
+    var self = this;
+    var searchHash = {};
+    var values = self.getValue();
+    var name = self.columnName;
+
+    var searchHash = SIUnitFormFilter.__super__._getSearchHash.call(this);
     if(!_.isEmpty(searchHash)){
       var searchKey = _.keys(searchHash)[0];
       var searchValue = searchHash[searchKey];
@@ -3375,8 +5084,10 @@ var SIUnitFormFilter = NumberFormFilter.extend({
 
       if(criteria == 'range'){
         searchHash[searchKey] = [
-            self._calculate(self.multiplier,values['lower_siunit'],values['lower_value']),
-            self._calculate(self.multiplier,values['upper_siunit'],values['upper_value'])
+            self._calculate(
+              self.multiplier,values['lower_siunit'],values['lower_value']),
+            self._calculate(
+              self.multiplier,values['upper_siunit'],values['upper_value'])
             ].join(',');
       }else if(criteria == 'in'){
         var newvalues = _.map(searchValue.split(','),function(val){
@@ -3393,7 +5104,17 @@ var SIUnitFormFilter = NumberFormFilter.extend({
       }
       console.log('SIunit new search value: ' + searchHash[searchKey]);
     }
-    return searchHash
+    return searchHash;
+  },
+
+  
+  /**
+   * SIUnitFormFilter Form submit handler
+   */
+  _submit: function(){
+    var self = this;
+    SIUnitFormFilter.__super__._submit.call(this);
+    return self._getSearchHash();
   },
   
   _calculate: function(multiplier, sci_mult, val){
@@ -3401,7 +5122,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     function strip(number) {
       return (parseFloat(number.toPrecision(12)));
       };
-    val = strip(val * multiplier);
+    val = strip(val / multiplier);
     if(sci_mult > 0){ // if sci unit is undefined, assume to be 1
       val = strip(val * sci_mult);
     }
@@ -3411,7 +5132,6 @@ var SIUnitFormFilter = NumberFormFilter.extend({
   _findNumberAndUnit: function(number){
     var decimals = 3; // TODO: users will not be expected to enter values beyond
                       // 3 decimals
-    
     var self = this;
     function strip(number) {
       return (parseFloat(number.toPrecision(12)));
@@ -3427,14 +5147,11 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     }
     
     var val = (1/pair[1])*number;
-    val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
-    
+    //val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
+    val = round(val,decimals);
     return {number:val, unit: pair[1]};
   },
   
-  /**
-   * SIUnitFormFilter Set the form from router generated event
-   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -3457,363 +5174,6 @@ var SIUnitFormFilter = NumberFormFilter.extend({
   }  
   
 });
-
-
-var SIUnitHeaderCell = MultiSortHeaderCell.extend({
-
-  symbol: "",
-  
-  initialize: function(options){
-    var self = this;
-    SIUnitHeaderCell.__super__.initialize.apply(this,arguments);
-
-    var name = this.column.get('name');
-    var cell_options = this.fieldinformation['display_options'];
-    if(!cell_options || !cell_options.symbol)
-    {
-      throw new Error('SIUnitHeaderCell: field information requires the '+
-          '"symbol" option');
-    }
-    this._serverSideFilter = new SIUnitFormFilter(_.extend({
-      columnName: self.column.get('name')}, cell_options ));
-  },
-
-  /**
-   * SIUnitHeaderCell Form submit handler
-   */
-  _submit: function(e){
-    var self  = this;
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-    
-    var name = this.column.get('name');
-    var searchHash = self._serverSideFilter._submit();
-    if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash,{reset: true});
-    }else{
-      console.log('nothing submitted');
-    }
-  },
-  
-  /**
-   * SIUnitHeaderCell Listen for router generated search events
-   */
-  _search: function(hash, collection){
-    var self = this;
-    var name = this.column.get('name');
-    var searchHash = _.clone(hash);
-
-    // TODO: could use form.isSet() instead of found
-    var found = this._serverSideFilter._search(searchHash);
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }else{
-      self._serverSideFilter.$el.hide();
-      self.filterIcon.show();
-    }
-  },  
-
-  /**
-   * SIUnitHeaderCell clears all possible searches if options.reset, then
-   * trigger a collection fetch
-   */
-  clearSearch: function(options){
-    var self=this;
-    self._serverSideFilter.clear();
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
-  }, 
-  
-  /** SIUnitHeaderCell * */
-  render : function() {
-    SelectorHeaderCell.__super__.render.apply(this);
-    var self = this;
-  
-    this.$el.append(this.filterIcon);
-
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    
-    this._serverSideFilter.clearButton().click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self.clearSearch();
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-
-    // TODO: customize the default units values
-    this._serverSideFilter.setValue('lower_siunit',1);
-    this._serverSideFilter.setValue('upper_siunit',1);
-    return this;
-  }
-});
-
-
-var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
-  /** 
-   * override Backgrid.SelectCell:
-   * - render to return the cell value if optionValues is malformed or missing 
-   * the value
-   */
-  render: function () {
-    this.$el.empty();
-
-    var optionValues = _.result(this, "optionValues");
-    var model = this.model;
-    var rawData = this.formatter.fromRaw(model.get(this.column.get("name")), model);
-    var selectedText = [];
-
-    if (_.isArray(optionValues) &&  !_.isEmpty(optionValues)){
-      for (var k = 0; k < rawData.length; k++) {
-        var rawDatum = rawData[k];
-        for (var i = 0; i < optionValues.length; i++) {
-          var optionValue = optionValues[i];
-          if (_.isArray(optionValue)) {
-            var optionText  = optionValue[0];
-            var optionValue = optionValue[1];
-            if (optionValue.toLowerCase() == rawDatum.toLowerCase()){
-              selectedText.push(_.escape(optionText));
-            }
-          }
-          else if (_.isObject(optionValue)) {
-            var optionGroupValues = optionValue.values;
-            for (var j = 0; j < optionGroupValues.length; j++) {
-              var optionGroupValue = optionGroupValues[j];
-              if (optionGroupValue[1].toLowerCase() == rawDatum.toLowerCase()) {
-                selectedText.push(_.escape(optionGroupValue[0]));
-              }
-            }
-          }
-          else {
-            throw new TypeError;
-          }
-        }
-      }
-      
-    }
-    var isEmpty = ( _.isEmpty(rawData) 
-        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])))
-    if( !isEmpty && _.isEmpty(selectedText)){
-      selectedText = rawData;
-
-      Iccbl.appModel.error(Iccbl.formatString(
-        'column: {column}, vocabulary: {vocabulary} is misconfigured: rawData: {rawData}',
-        { column: this.column.get("name"),
-          vocabulary: _.result(this, "vocabulary_scope_ref"),
-          rawData: rawData 
-        }));
-      console.log(Iccbl.formatString(
-        'column: {column}, vocabulary: {vocabulary} is misconfigured,' 
-          + 'rawData: {rawData}, optionValues: {optionValues}',
-        { column: this.column.get("name"),
-          vocabulary: _.result(this, "vocabulary_scope_ref"),
-          rawData: rawData,
-          optionValues: optionValues
-        }));
-    }
-    var finalText = selectedText.join(this.delimiter);
-    
-    if(!_.isUndefined(this.hrefTemplate)){
-      // hack - if hrefTemplate is defined, treat this like a link cell - 20150828
-      var target = this.target || "_self";
-      var interpolatedVal = Iccbl.formatString(this.hrefTemplate,this.model);
-      this.$el.append($('<a>', {
-        tabIndex : -1,
-        href : interpolatedVal,
-        target : this.target
-      }).text(finalText));
-      
-    }else{
-      this.$el.append(finalText);
-    }
-
-    this.delegateEvents();
-
-    return this;
-  }
-
-});
-
-/**
- * Utility function from Backgrid
- */
-function lpad(str, length, padstr) {
-  var paddingLen = length - (str + '').length;
-  paddingLen =  paddingLen < 0 ? 0 : paddingLen;
-  var padding = '';
-  for (var i = 0; i < paddingLen; i++) {
-    padding = padding + padstr;
-  }
-  return padding + str;
-}
-
-
-/**
- * Override Backgrid DateTimeFormatter
- * - recognize user input in the format MM/DD/YYYY
- * - but also recognize ISO 8601 format, so values from the server are parsed
- */
-var DatetimeFormatter = Iccbl.DatetimeFormatter = function (options) {
-  _.extend(this, this.defaults, options || {});
-
-  if (!this.includeDate && !this.includeTime) {
-    throw new Error("Either includeDate or includeTime must be true");
-  }
-};
-DatetimeFormatter.prototype = new Backgrid.DatetimeFormatter();
-_.extend(DatetimeFormatter.prototype, {
-
-  fromRaw: function (rawData, model) {
-    if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
-    rawData = rawData.trim();
-    if ((rawData + '').trim() === '') return null;
-    
-    return getIccblDateString(Iccbl.dateParse(rawData));
-  },
-
-  toRaw: function(formattedData, model){
-    if (_.isNull(formattedData) || _.isUndefined(formattedData)) return '';
-    if ((formattedData + '').trim() === '') return null;
-    if(ICCBL_DATE_RE.test(formattedData)){
-      var DDMMYYYY = ICCBL_DATE_RE.exec(formattedData) || [];
-      var jsDate = new Date(
-        DDMMYYYY[3] * 1 || 0,
-        DDMMYYYY[2] * 1 - 1 || 0,
-        DDMMYYYY[1] * 1 || 0);
-      var temp = getISODateString(jsDate);
-      return temp;
-    }else{
-      return;
-    }
-  },
-  
-  /**
-   * Modify Backgrid DatetimeFormatter convert:
-   * - ignore timezone - remove UTC conversion
-   * - add in ICCBL_DATE_RE
-   * TODO: refactor, using Iccbl.dateParse
-   */
-  _convert: function (data, validate) {
-    if ((data + '').trim() === '') return null;
-
-    var date, time = null;
-    if (_.isNumber(data)) {
-      var jsDate = new Date(data);
-      date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
-      time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getSeconds(), 2, 0);
-      // modified 20150831 - use local date/time
-      //date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
-      //time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
-    }
-    else {
-      data = data.trim();
-      var parts = data.split(ISO_SPLITTER_RE) || [];
-      date = ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
-      time = date && parts[1] ? parts[1] : TIME_RE.test(parts[0]) ? parts[0] : '';
-    }
-    // FIXME: review this 
-    var DDMMYYYY = ICCBL_DATE_RE.exec(date) || [];
-    var HHmmssSSS = TIME_RE.exec(time) || [];
-
-    if (validate) {
-      if (this.includeDate && _.isUndefined(DDMMYYYY[0])) return;
-      if (this.includeTime && _.isUndefined(HHmmssSSS[0])) return;
-      if (!this.includeDate && date) return;
-      if (!this.includeTime && time) return;
-    }
-
-    var jsDate = new Date(DDMMYYYY[3] * 1 || 0,
-                                   DDMMYYYY[2] * 1 - 1 || 0,
-                                   DDMMYYYY[1] * 1 || 0,
-                                   HHmmssSSS[1] * 1 || null,
-                                   HHmmssSSS[2] * 1 || null,
-                                   HHmmssSSS[3] * 1 || null,
-                                   HHmmssSSS[5] * 1 || null);
-
-    var result = '';
-
-    if (this.includeDate) {
-      result = ( getIccblDateString(jsDate) );
-    }
-
-    if (this.includeTime) {
-      result = ( result 
-          + (this.includeDate ? 'T' : '') 
-          + lpad(jsDate.getHours(), 2, 0) 
-          + ':' + lpad(jsDate.getMinutes(), 2, 0) 
-          + ':' + lpad(jsDate.getSeconds(), 2, 0)
-          );
-
-      if (this.includeMilli) {
-        result = result + '.' + lpad(jsDate.getMilliseconds(), 3, 0);
-      }
-    }
-
-    if (this.includeDate && this.includeTime) {
-      result += "Z";
-    }
-
-    return result;
-  },
-  
-});
-
-
-/**
- * Override DateCell
- * - set the format to MM/DD/YYYY
- */
-var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
-
-  /** @property {Backgrid.CellFormatter} [formatter=Backgrid.DatetimeFormatter] */
-  formatter: DatetimeFormatter,
-
-  /**
-  Initializes this cell and the datetime formatter.
-
-  @param {Object} options
-  @param {Backbone.Model} options.model
-  @param {Backgrid.Column} options.column
-  */
-  initialize: function (options) {
-    DateCell.__super__.initialize.apply(this, arguments);
-    var formatter = this.formatter;
-    //   formatter.includeDate = this.includeDate;
-    //   formatter.includeTime = this.includeTime;
-    //   formatter.includeMilli = this.includeMilli;
-
-    var placeholder = "MM/DD/YYYY";
-  
-    this.editor = this.editor.extend({
-      attributes: _.extend({}, this.editor.prototype.attributes, this.editor.attributes, {
-        placeholder: placeholder
-      })
-    });
-  }
-  
-});
-
-
 
 /**
  * Return an array for backgrid column descriptors.
@@ -3841,20 +5201,42 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
   var cell_options = prop.display_options || {};
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
+
   var backgridCellType = StringCell;
   var typeMap = {
-    'date': Iccbl.DateCell,
+    'date': Iccbl.DateCell2,
     'link': Iccbl.LinkCell,
     'siunit': Iccbl.SIUnitsCell,
     'float': Iccbl.NumberCell, //'Number',
     'decimal': Iccbl.DecimalCell,
-    'image': Iccbl.ImageCell
+    'image': Iccbl.ImageCell,
+    'boolean': Iccbl.BooleanCell,
+    'list': Iccbl.TextWrapCell,
+    'full_string': Iccbl.TextWrapCell,
+    'comment_array': Iccbl.CommentArrayCell
+  }
+
+  if(!_.isEmpty(prop.vocabulary)){
+    cell_options.optionValues = prop.vocabulary; 
+  }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
+    cell_options = _.extend(cell_options,{
+      optionValues: 
+        Iccbl.appModel.getVocabularySelectCellArray(prop.vocabulary_scope_ref),
+      vocabulary_scope_ref: prop.vocabulary_scope_ref
+    });
   }
   
   if (_.has(prop, 'backgridCellType')){
+    console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
     backgridCellType = prop.backgridCellType;
+    if(!_.isEmpty(cell_options)){
+      cell_options = _.extend({}, cell_options, backgridCellType);
+      backgridCellType = backgridCellType.extend(cell_options);
+    }
   } else {
-    if(_.has(typeMap,display_type)){
+    if(!_.isEmpty(cell_options.optionValues)){
+      backgridCellType = Iccbl.SelectCell;
+    }else if(_.has(typeMap,display_type)){
       if (Iccbl.appModel.DEBUG)
         console.log('field', key, display_type, 'typemap',typeMap[display_type])
       var backgridCellType = typeMap[display_type];
@@ -3862,16 +5244,23 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if (display_type=='link' && data_type=='list'){
         backgridCellType = Iccbl.UriListCell;
       }
-      
-      if(!_.isEmpty(cell_options)){
-        backgridCellType = backgridCellType.extend(cell_options);
+      if (display_type=='link' && data_type=='date'){
+        backgridCellType = Iccbl.DateLinkCell;
       }
     }else{
       if (Iccbl.appModel.DEBUG)
         console.log('no special cell type for', display_type, 'data_type',data_type);
     }
-  }
-  
+    if(!_.isEmpty(cell_options)){
+      backgridCellType = backgridCellType.extend(cell_options);
+    }
+    
+  }  
+//  if (data_type == 'list'){
+//    backgridCellType = backgridCellType.extend({
+//      formatter: Iccbl.StringFormatter
+//    });
+//  }
   column = _.extend(column, {
     'name' : key,
     'label' : prop['title'],
@@ -3888,28 +5277,6 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   if(_.has(prop,'editability') && _.contains(prop['editability'],'l')){
     column['editable'] = true;
   }
-  if(!_.isEmpty(prop.vocabulary)){
-    // TODO: this is probably backwards, since it appears SelectCell
-    // wants [title,val], not [val,title]
-    cell_options.optionValues = prop.vocabulary; 
-    column['cell'] = Iccbl.SelectCell.extend(cell_options);
-  }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
-    var optionValues = [];
-    var vocabulary_scope_ref = prop.vocabulary_scope_ref;
-    try{
-      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
-        _.each(_.keys(vocabulary),function(choice){
-          optionValues.push([vocabulary[choice].title,choice]);
-        });
-    }catch(e){
-      console.log('build column errorr: e',e);
-    }
-    cell_options = _.extend(cell_options,{
-      optionValues: optionValues,
-      vocabulary_scope_ref: vocabulary_scope_ref
-    } );
-    column['cell'] = Iccbl.SelectCell.extend(cell_options);
-  }
   if(orderStack && _.contains(orderStack, key)){
     column['direction'] = 'ascending';
   }
@@ -3917,38 +5284,35 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     column['direction'] = 'descending';
   }
   
+  var headerCellDefaults = {
+    'fieldinformation': prop,
+    'serverSideFilter': TextFormFilter
+  };
   if (optionalHeaderCell) {
-    column['headerCell'] = optionalHeaderCell;
-  }else{
-    // More specific header cell, if available
+    column['headerCell'] = optionalHeaderCell.extend(headerCellDefaults);
+  }else if (_.has(prop, 'headerCell')){
+    column['headerCell'] = prop.headerCell.extend(headerCellDefaults);
+  } 
+  else{
+    // Set up a more specific header cell, with filter
     if(data_type == 'string'){
-      column['headerCell'] = TextHeaderCell;
+      headerCellDefaults['serverSideFilter'] = TextFormFilter;
     }
     else if(data_type == 'integer'
       || data_type == 'float'
       || data_type == 'decimal' ){
-      var headerCell = NumberHeaderCell;
       
       if(display_type == 'siunit'){
-        headerCell = SIUnitHeaderCell;
-        if(!cell_options.symbol){
-          console.log('cell_options', cell_options, typeof cell_options);
-          Iccbl.appModel.error(Iccbl.formatString(
-            ('Error constructing SIUnit header cell: "{key}" ' + 
-              'missing required "symbol" in backgrid_cell_options {options}')  ,
-            { key: key,
-              options: cell_options
-            }));
-        }
-        
+        headerCellDefaults['serverSideFilter'] = SIUnitFormFilter;
+      } else {
+        headerCellDefaults['serverSideFilter'] = NumberFormFilter;
       }
-      column['headerCell'] = headerCell;
     }
     else if( data_type == 'date'){
-      column['headerCell'] = DateHeaderCell;
+      headerCellDefaults['serverSideFilter'] = DateFormFilter;
     }
     else if( data_type == 'boolean'){
-      column['headerCell'] = BooleanHeaderCell;
+      headerCellDefaults['serverSideFilter'] = BooleanFormFilter;
     }
 
     if( edit_type == 'select' 
@@ -3957,15 +5321,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       || edit_type == 'multiselect3' 
         
     ){
-      column['headerCell'] = SelectorHeaderCell;
+      headerCellDefaults['serverSideFilter'] = SelectorFormFilter;
     }
-    
-    if(!_.has(column, 'headerCell')){
-      column['headerCell'] = TextHeaderCell;
-      console.log('no special header cell found for col: ' + key + 
-        ', dt: ', data_type,'edit_type', edit_type);
-    }
-    
+    column['headerCell'] = FilterHeaderCell.extend(headerCellDefaults);
   }
     
   return column;
@@ -3998,12 +5356,14 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
         i++;
       }
     } else {
+      var hashSearch = RegExp('^(' + key + ')(_{2}\w+)?$');
+      var orderSearch = RegExp('^-?' + key + '$');
       if( 
         _.findKey(searchHash, function(val,hashkey){
-            return hashkey.indexOf(key) > -1
+          return hashSearch.test(hashkey);
         })
         ||  _.find(orderStack, function(orderkey){
-          return orderkey.indexOf(key) > -1
+          return orderSearch.test(orderkey);
         }))
       {
         colModel[i] = column;

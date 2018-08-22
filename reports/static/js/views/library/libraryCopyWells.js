@@ -52,7 +52,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // Detail view
         var well_id = uriStack.shift();
         this.consumedStack = [well_id];
-        _key = library.key + '/' + copy.get('copy_name')+ '/' + well_id;
+        var _key = library.key + '/' + copy.get('copy_name')+ '/' + well_id;
         appModel.getModel(resourceId, _key, this.showDetail );
       } else {
         // List view
@@ -84,9 +84,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
-      collection = new Collection({
-        url: url,
-      });
+      collection = new Collection();
 
       resource = appModel.cloneResource(resource);
       if(self.copy) {
@@ -94,7 +92,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         resource.fields['library_short_name']['visibility'] = ['d'];
       }
       
-      // Set concentration type visibilty based concentrations found in library wells
+      // Set concentration type visibility based concentrations found in library wells
       var concentration_types = self.library.get('concentration_types');
       resource.fields['mg_ml_concentration']['visibility'] = [];
       resource.fields['molar_concentration']['visibility'] = [];
@@ -234,28 +232,31 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
           
           var saveFunction = function() {
-            appModel.showSaveWithComments(function(formValues){
-              console.log('form values', formValues);
-              var comments = formValues['comments'];
-              var headers = {};
-              headers[appModel.HEADER_APILOG_COMMENT] = comments;
-              
-              Backbone.sync("patch",changedCollection,
-                {
-                  headers: headers,
-                  error: function(){
-                    appModel.jqXHRfail.apply(this,arguments);
-                    console.log('error, refetch', arguments);
-                    changedCollection.reset();
-                    collection.fetch({ reset: true });
-                  },
-                  success: function(){
-                    changedCollection.reset();
-                    collection.fetch({ reset: true });
+            appModel.showOkCommentForm({
+              ok: function(formValues){
+                console.log('form values', formValues);
+                var comments = formValues['comments'];
+                var headers = {};
+                headers[appModel.HEADER_APILOG_COMMENT] = comments;
+                
+                Backbone.sync("patch",changedCollection,
+                  {
+                    headers: headers,
+                    error: function(){
+                      appModel.jqXHRfail.apply(this,arguments);
+                      console.log('error, refetch', arguments);
+                      changedCollection.reset();
+                      collection.fetch({ reset: true });
+                    },
+                    success: function(){
+                      changedCollection.reset();
+                      collection.fetch({ reset: true });
+                    }
                   }
-                }
-              );
+                );
+              }
             });
+          
           };
           saveFunction();
           
@@ -275,7 +276,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       extraControls.push(showHistoryButton);
       showHistoryButton.click(function(e){
         e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
         var search = {};
         search['ref_resource_name'] = 'copywell';
         search['key__icontains'] = [
@@ -318,22 +319,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               e.preventDefault();
               var well_id = this.model.get('well_id');
               self.consumedStack = [well_id];
-              _key = [self.library.key, self.copy.get('copy_name'), well_id].join('/');
+              var _key = [self.library.key, self.copy.get('copy_name'), well_id].join('/');
               appModel.getModel('copywell', _key, self.showDetail );
             }
           }));
             
       
       var view = new ListView({ 
-        _name: 'WellsListView',
         uriStack: uriStack,
-        schemaResult: resource,
         resource: resource,
         url: url,
         collection: collection,
         extraControls: extraControls
       });
-      view._instanceName = 'WellsListView_instance';
         
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);

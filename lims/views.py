@@ -1,3 +1,5 @@
+from __future__ import unicode_literals 
+
 import logging
 from django.shortcuts import render
 from django.contrib.auth import logout
@@ -7,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def main(request):
-    search = request.GET.get('search', '')
-    logger.debug(str(('main search: ', search)))
-    return render(request, 'lims/index_require.html', {'search': search})
+    logger.info('retrieve home for user: %r: %r', 
+        request.user, request.user.is_authenticated)
+    return render(request, 'lims/index_require.html', {})
 
 def logout_page(request):
     """

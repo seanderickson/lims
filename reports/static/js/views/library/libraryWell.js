@@ -11,14 +11,15 @@ define([
   'views/generic_edit',
   'views/list2',
   'views/library/library',
+  'utils/tabbedController',
   'templates/generic-tabbed.html',
   'templates/genericResource.html'
 ], 
 function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, 
-         DetailView, DetailLayout, EditView, ListView, LibraryView, layout,
-         genericLayout ) {
-  
-  var LibraryWellView = Backbone.Layout.extend({
+         DetailView, DetailLayout, EditView, ListView, LibraryView, 
+         TabbedController, layout, genericLayout ) {
+
+  var LibraryWellView = TabbedController.extend({
     
     template: _.template(layout),
     
@@ -27,26 +28,27 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      this.library = args.library;
       
-      this.tabbed_resources = _.extend(
-        {}, _.mapObject(this.tabbed_resources_template, function(val,key){
+      this.tabbed_resources = _.extend({}, 
+        _.mapObject(this.tabbed_resources_template, function(val,key){
           return _.clone(val);
         }));
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail'){
-          var permission = self.tabbed_resources[key].permission;
-          if (_.isUndefined(permission)){
-            permission = self.tabbed_resources[key].resource;
-          }
-          if (!appModel.hasPermission(permission)){
-            delete self.tabbed_resources[key];
-          }
-        }
-      });
-      if (! self.model.has('duplex_wells')){
+      
+      console.log('self.model.resource.key', self.model.resource.key);
+      if ( self.model.resource.key != 'silencingreagent'){
+        console.log('remove duplex_wells tab for', self.model.resource.key);
         delete self.tabbed_resources['duplex_wells'];
+      } else {
+//        if (self.model.get('is_pool') != true){
+//          console.log('remove duplex_wells tab for non pool well', self.model, self.model.get('is_pool'));
+//          delete self.tabbed_resources['duplex_wells'];
+//        }
       }
+      if (! self.model.has('other_wells')){
+          delete self.tabbed_resources['other_wells_with_reagent'];
+        
+      }
+      TabbedController.prototype.initialize.apply(this,arguments);
       
       _.bindAll(this, 'click_tab');
     },
@@ -61,46 +63,37 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         description: 'Duplex Wells', 
         title: 'Duplex Wells', 
         invoke: 'setDuplexWells',
-        resource: 'well'
+        group: 'readEverythingAdmin'
       },
-//      other_wells: { 
-//        description: 'Other Wells', 
-//        title: 'Other Wells', 
-//        invoke: 'setOtherWells',
-//        resource: 'well'
-//      },
       annotations: { 
         description: 'Annotations', 
         title: 'Annotations', 
         invoke: 'setAnnotations',
-        resource: 'well',
-        permission: 'screen'
+        permission: '' // All logged in users
+      },
+      other_wells: { 
+        description: 'Other Wells With the same reagent identifier', 
+        title: 'Other Wells With Reagent', 
+        invoke: 'setOtherWells',
+        permission: '' // All logged in users
       }
     },      
     
     events: {
-        'click ul.nav-tabs >li': 'click_tab',
+      'click ul.nav-tabs >li': 'click_tab',
     },
 
-    /**
-     * Child view bubble up URI stack change event
-     */
-    reportUriStack: function(reportedUriStack) {
-      var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
-      this.trigger('uriStack:change', actualStack );
-    },
-
+    
     /**
      * Layoutmanager hook
      */
     serialize: function() {
-      console.log('serialize called...');
       var self = this;
+      var base_url = [
+        'library', self.model.get('library_short_name'),'well',
+        self.model.key].join('/');
       return {
-        'base_url': [
-           self.library.resource.key,self.library.key,self.model.resource.key,
-           self.model.key].join('/'),
+        'base_url': base_url,
         'tab_resources': self.tabbed_resources
       }      
     }, 
@@ -123,43 +116,46 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           throw msg;
         }
       }
-      this.change_to_tab(viewId);
+
+      // re-fetch the model with all necessary fields
+      var resource = self.model.resource;
+      if (self.model.get('screen_type') == 'small_molecule'){
+        resource = appModel.getResource('smallmoleculereagent');
+      } else if (self.model.get('screen_type') == 'rnai'){
+        resource = appModel.getResource('silencingreagent');
+      } else {
+        resource = appModel.getResource('naturalproductreagent');
+      }
+      
+      appModel.getModel(resource.key, self.model.get('well_id'), 
+        function(model){
+          self.model = model;
+          if (self.model.get('is_pool') != true){
+            console.log('remove duplex_wells tab for non pool well', self.model, self.model.get('is_pool'));
+            delete self.tabbed_resources['duplex_wells'];
+            $('#duplex_wells').remove();
+          }
+          if (_.isEmpty(self.model.get('other_wells_with_reagent'))){
+            console.log('remove other_wells tab for non pool well', self.model, self.model.get('other_wells'));
+            delete self.tabbed_resources['other_wells'];
+            $('#other_wells').remove();
+          }
+          self.change_to_tab(viewId);
+        },
+        {
+          data_for_get: {
+            // Include "none" fields
+            includes: ['duplex_wells','pool_well', 
+              'screening_mg_ml_concentration', 'screening_molar_concentration', 
+              '*']
+          }
+        }
+      );
       console.log('afterRender, done.');
     },
     
-    click_tab : function(event){
-      event.stopPropagation();
-      event.preventDefault();
-      var key = event.currentTarget.id;
-      if(_.isEmpty(key)) return;
-      this.change_to_tab(key);
-    },
-
-    change_to_tab: function(key){
-      if(_.has(this.tabbed_resources, key)){
-        this.$('li').removeClass('active');
-        this.$('#' + key).addClass('active');
-        if(key !== 'detail'){
-          this.consumedStack = [key];
-        }else{
-          this.consumedStack = [];
-        }
-        var delegateStack = _.clone(this.uriStack);
-        this.uriStack = [];
-        var method = this[this.tabbed_resources[key]['invoke']];
-        if (_.isFunction(method)) {
-          method.apply(this,[delegateStack]);
-        } else {
-          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-        }
-      }else{
-        var msg = 'Unknown tab: ' + key;
-        appModel.error(msg);
-        throw msg;
-      }
-    },
-    
     setDetail: function(delegateStack) {
+      var self = this;
       var key = 'detail';
       
       var view = this.tabViews[key];
@@ -171,24 +167,70 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         afterRender: function(){
           var self = this;
           DetailView.prototype.afterRender.apply(this,arguments);
-          // TODO: support for generic images
+          // TODO: support for generic images in detail view
           if(this.model.has('structure_image')){
-            self.$('#content').append(
-                '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="' 
-                + self.model.get('structure_image') + '" alt="image" />')
+            $('#generic-detail-stickit-container').append(
+                '<img style="position: absolute; top: 8em; right: 3em" src="' 
+                + self.model.get('structure_image') + '" alt="structure image" />');
+            $('#structure_image').closest('tr').remove();
           }
+          
+
         }
       });
       
-      view = new DetailLayout({ 
+      var DetailLayoutWell = DetailLayout.extend({
+        history: function(event) {
+          event.preventDefault();
+          var self = this;
+          
+          var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
+          var search = {};
+          search['ref_resource_name'] = 'well';
+          search['key'] = encodeURIComponent(this.model.key);
+          newUriStack.push(appModel.createSearchString(search));
+          var route = newUriStack.join('/');
+          console.log('history route: ' + route);
+          appModel.router.navigate(route, {trigger: true});
+        },
+        download: function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          
+          var self = this;
+          var url = [self.model.resource.apiUri,self.model.get('well_id'),
+                     'report'].join('/');
+          
+          appModel.download(url, this.model.resource);
+          //url += '?format=xls&use_vocabularies=true&use_titles=true&raw_lists=true';
+          //appModel.downloadUrl(url);
+        },
+      
+      });
+      
+      view = new DetailLayoutWell({ 
         model: this.model,
         uriStack: delegateStack, 
         buttons: ['download', 'history'],
         DetailView: detailView
       });
       this.tabViews[key] = view;
-
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
+      this.setView("#tab_container", view ).render();
+    },
+
+    setOtherWells: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,
+                 self.model.key,
+                 'other_wells'].join('/')
+      var view = new ListView({
+        uriStack: delegateStack,
+        url: url,
+        resource: self.model.resource
+      });
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
     
@@ -203,7 +245,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     setAnnotations: function(delegateStack){
       console.log('set annotations...');
       var self = this;
-      var url = [self.model.resource.apiUri,
+      var wellResource = appModel.getResource('well');
+      var url = [wellResource.apiUri,
                  self.model.get('well_id'), 'annotations'].join('/');
       var studyResource = appModel.getResource('study'); 
       studyResource['fields'] = _.pick(studyResource['fields'],
@@ -219,27 +262,26 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var AnnotationView = Backbone.Layout.extend({
           template: _.template(genericLayout),
           afterRender: function(){
-            $content = $('<div class="container" id="studies_container"></div>');
-            $('#resource_content').html($content);
-
+            var $content = $('<div class="container" id="studies_container"></div>');
             _.each(data, function(studyData){
-
-              var facility_id = data['facility_id']
-              $content = $([
+              var facility_id = studyData['facility_id']
+              var $studyContainer = $([
                 '<div class="row">',
                 '<div class="col-xs-6" id="study_info-'+facility_id + '"></div>',
                 '<div class="col-xs-6" id="annotation_info-'+facility_id + '"></div>',
                 '</div>',
                 ].join(''));
-              $('#studies_container').append($content);
+              console.log('studyData entry', studyData, facility_id, $studyContainer);
+              $content.append($studyContainer);
               var model = new Backbone.Model(studyData);
               model.resource = studyResource;
-              view = new DetailView({
+              var studyView = new DetailView({
                 model: model,
                 resource: studyResource,
                 buttons: []
               });
-              $content.find('#study_info-'+facility_id + '').append(view.render().$el);
+              $studyContainer.find('#study_info-'+facility_id + '')
+                .append(studyView.render().$el);
               
               // Create a resource schema on the fly for the annotations
               var schema = {
@@ -249,19 +291,23 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               }
               _.each(_.values(schema.fields), appModel.parseSchemaField );
               schema = _.extend(schema, appModel.schemaClass);
+              console.log('study specific schema', schema);
+              console.log('values', studyData.values);
               var model = new Backbone.Model(studyData.values);
               model.resource = schema;
-              view = new DetailView({
+              var studySpecificDetail = new DetailView({
                 model: model,
                 resource: schema,
                 buttons: []
               });
-              $content.find('#annotation_info-'+facility_id + '').append(view.render().$el);
+              $studyContainer.find('#annotation_info-'+facility_id + '')
+                .append(studySpecificDetail.render().$el);
             });
+            this.$el.find('#resource_content').html($content);
             
           }
         });
-        var $el = self.setView('#tab_container', new AnnotationView()).render().$el;
+        self.setView('#tab_container', new AnnotationView()).render();
       };
       $.ajax({
         type : "GET",
@@ -275,9 +321,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.reportUriStack();
     },
 
+    /** Generate a duplex well report for the given pool well **/
     setDuplexWells: function(delegateStack){
       var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'duplex_wells'].join('/')
+      var url = [appModel.dbApiUri,'well',self.model.key,'duplex_wells'].join('/')
       
       function showDuplexWells(response){
         console.log('process duplex data...', response);
@@ -295,8 +342,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           appModel.error('No confirmed positive values in the response');
           return;
         }
-        var ColoredConfirmmationCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell',
+        var ColoredConfirmationCell = Backgrid.Cell.extend({
           render: function(){
             this.$el.empty();
             var key = this.column.get('name');
@@ -323,11 +369,21 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'editable' : false,
           'visible': true,
           'headerCell': Backgrid.HeaderCell.extend({
+            sortable: function() { return false; },
             render: function(){
               this.$el.empty();
               var well_data = this.column.get("label");
               this.$el.append([well_data['vendor_id'],well_data['sequence'], 
-                               well_data['well_id']].join('<br>'));
+                               ].join('<br>'));
+              this.$el.append('<br>')
+              var hrefTemplate = '#library/{library_short_name}/well/{well_id}'
+              var href = Iccbl.formatString(hrefTemplate,well_data);
+              this.$el.append($('<a>', {
+                tabIndex : -1,
+                href : href,
+                target : '_blank',
+              }).text(well_data['well_id']));              
+              
               return this;
             }
           })
@@ -339,7 +395,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               'description' : 'Screen',
               'order': 1,
               'sortable': true,
-              'cell': ColoredConfirmmationCell
+              'cell': ColoredConfirmationCell
             })
         ];
         
@@ -353,8 +409,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               'label' : label,
               'description' : 'Duplex Well Data',
               'order': 1,
-              'sortable': true,
-              'cell': ColoredConfirmmationCell
+              'sortable': false,
+              'cell': ColoredConfirmationCell
             })
           );
         });
@@ -390,13 +446,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 '</button> inconclusive or no data</label></li>',
               '</ul></span></div>'
               ].join(''));
-            $('#resource_content').html($content);
-            $('#legend').html($legend);
-            $('#grid').html(_grid.render().$el);
+            $content.find('#legend').html($legend);
+            $content.find('#grid').html(_grid.render().$el);
+            this.$el.find('#resource_content').html($content);
           }
         });
         
-        var $el = self.setView('#tab_container', new GridView()).render().$el;
+        self.setView('#tab_container', new GridView()).render();
       };
       $.ajax({
         type : "GET",
@@ -407,7 +463,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         fail: function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }      
       });
       
-      this.reportUriStack();
+      this.reportUriStack([]);
       
     }
   });

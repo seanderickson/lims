@@ -8,26 +8,30 @@ define([
     'views/menu',
     'views/content',
     'views/message',
+    'views/backgroundJobPanel',
     'views/search_box',
     'templates/app_layout.html'
 ], function($, _, Backbone, layoutmanager, Iccbl, appModel, MenuView, 
-            ContentView, MessageView, SearchView, layout) {
+            ContentView, MessageView, BackgroundJobPanel, SearchView, layout) {
 
     var AppView = Backbone.Layout.extend({
       el: '#application_div',
       
       initialize: function(args) {
         this.listenTo(appModel, 'change:messages', this.setMessages);
-        _.bindAll(this,'setMessages');
+        
+        _.bindAll(this,'setMessages','setBackgroundJobs');
       },
       
       views: {
         "#menu": new MenuView(),
         "#container": new ContentView({model: appModel, property: 'uriStack'}),
+        "#search_box": new SearchView()
       },
       
       setMessages: function() {
         var messages = appModel.get('messages');
+        console.log('set messages', messages);
         if(!_.isEmpty(messages)){
           this.messageView = new MessageView({model: appModel});
           this.setView("#messages", this.messageView).render();
@@ -36,13 +40,23 @@ define([
         }
       },
       
+      setBackgroundJobs: function() {
+        var jobs = appModel.getJobCollection();
+        console.log('set background jobs', jobs);
+        
+        $jobsEl = this.$('#background_jobs');
+        $jobsEl.empty();
+        jobs.each(function(job){
+          console.log('process job', job);
+          var jobView = new BackgroundJobPanel({model: job});
+          $jobsEl.append(jobView.render().$el)
+        });
+        
+      },
+      
       afterRender: function() {
         var self = this;
         function postRender() {
-          self.searchView = new SearchView(),
-          Backbone.Layout.setupView(self.searchView);
-          self.setView("#search_box", self.searchView ).render();
-          
           if (appModel.hasPermission('screen','write')){
             var addScreenButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
@@ -82,15 +96,24 @@ define([
             });
             $('#additional_buttons_box').append(addLibraryButton);
           }
+          self.listenTo(
+            appModel.getJobCollection(), 'add remove', self.setBackgroundJobs);
+
+          $('#about').click(function(e){
+            e.preventDefault();
+            console.log('about click...');
+            appModel.setUriStack(['about']);
+          });
+          $('#home').click(function(e){
+            e.preventDefault();
+            console.log('home click...');
+            appModel.setUriStack(['home']);
+          });
           
-        }
-        // Pre-fetch options for the search_box
-        $(this).queue([
-           appModel.getScreenOptions,
-           appModel.getUserOptions,
-           appModel.getLibraryOptions,
-           postRender]);
         
+        };
+        
+        postRender();
       },
       
       template: _.template(layout)

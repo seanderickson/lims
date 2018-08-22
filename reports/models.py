@@ -1,23 +1,51 @@
 from __future__ import unicode_literals
 
+from _collections import defaultdict
 from collections import OrderedDict
 import json
 import logging
 
+from aldjemy.core import get_engine
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db import transaction
-from tastypie.utils.dict import dict_strip_unicode_keys
-from aldjemy.core import get_engine
+from django.utils import timezone
+from django.utils.encoding import smart_bytes
+import six
 
+from reports import strftime_log
+from reports.serialize import LimsJSONEncoder
+
+import reports.schema as SCHEMA
+
+API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
 logger = logging.getLogger(__name__)
 
+def dict_strip_unicode_keys(uni_dict):
+    """
+    Converts a dict of unicode keys into a dict of ascii keys.
+
+    Useful for converting a dict to a kwarg-able format.
+    
+    # see tastypie.dict_strip_unicode_keys for original implementation.
+    """
+    if six.PY3:
+        return uni_dict
+
+    data = {}
+
+    for key, value in uni_dict.items():
+        data[smart_bytes(key)] = value
+
+    return data
+
 
 class MetaManager(models.Manager):
+    ''' Special manager for the MetaHash table '''
 
     def __init__(self, **kwargs):
         super(MetaManager,self).__init__(**kwargs)
@@ -46,11 +74,12 @@ class MetaManager(models.Manager):
         this hash;
             e.g. "fields.field", or "fields.resource, or fields.vocabulary"
         '''
+        logger.debug('scope: %r', scope)
         metahash = {}
         if not clear:
-            metahash = cache.get('metahash:'+scope)
+            metahash = cache.get('metahash:%s'%scope)
         else:
-            cache.delete('metahash:'+scope)
+            cache.delete('metahash:%s'%scope)
             
         if not metahash:
             metahash = self._get_and_parse(
@@ -85,19 +114,20 @@ class MetaManager(models.Manager):
             logger.warn('field definitions not found for: %r',
                 field_definition_scope)
             return {}
-        logger.debug('field_definition_table: %r', field_definition_table)
+        logger.debug('field_definition_table: %r', 
+            [field.key for field in field_definition_table])
         # the objects themselves are stored in the metahash table as well
         unparsed_objects = \
             MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
-        logger.debug('unparsed_objects: %r', unparsed_objects)
+        logger.debug('unparsed_objects: %r', 
+            [field.key for field in unparsed_objects])
         parsed_objects = OrderedDict()
         for unparsed_object in unparsed_objects:
             parsed_object = {}
             # only need the key from the field definition table
-            for field_key in [ x.key for x in field_definition_table]:  
-                parsed_object.update(
-                    { field_key : unparsed_object.get_field(field_key) })
-            
+            for field_key in [x.key for x in field_definition_table]:
+                parsed_object[field_key] = unparsed_object.get_field(field_key)
+                
             # NOTE: choices for the "vocabulary_scope_ref" are being stored 
             # here for convenience
             
@@ -133,17 +163,6 @@ class LogDiff(models.Model):
             "<LogDiff(ref_resource_name=%r, key=%r, field=%r)>" 
             % (self.log.ref_resource_name, self.log.key, self.field_key))
 
-API_ACTION_POST = 'POST'
-API_ACTION_PUT = 'PUT'
-# NOTE: "CREATE" - to distinguish PATCH/modify, PATCH/create
-API_ACTION_CREATE = 'CREATE' 
-API_ACTION_PATCH = 'PATCH'
-API_ACTION_DELETE = 'DELETE'
-API_ACTION_CHOICES = ((API_ACTION_POST,API_ACTION_POST),
-                      (API_ACTION_PUT,API_ACTION_PUT),
-                      (API_ACTION_CREATE,API_ACTION_CREATE),
-                      (API_ACTION_PATCH,API_ACTION_PATCH),
-                      (API_ACTION_DELETE,API_ACTION_DELETE))
 class ApiLog(models.Model):
     
     objects = models.Manager()
@@ -157,7 +176,7 @@ class ApiLog(models.Model):
         null=False, max_length=128, db_index=True)
 
     # Full public key of the resource instance being logged (may be composite, 
-    # separted by '/')
+    # separated by '/')
     key = models.CharField(null=False, max_length=128, db_index=True)
     
     # Full uri of the resource instance being logged, 
@@ -168,14 +187,22 @@ class ApiLog(models.Model):
     date_time = models.DateTimeField(null=False)
     
     api_action = models.CharField(
-        max_length=10, null=False, choices=API_ACTION_CHOICES)
+        max_length=10, null=False, 
+        choices=zip(
+            API_ACTION.get_ordered_dict().keys(),
+            API_ACTION.get_ordered_dict().values(),
+            )
+        )
     
     comment = models.TextField(null=True)
     
-    parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
+    parent_log = models.ForeignKey(
+        'self', related_name='child_logs', null=True, on_delete=models.CASCADE)
     
-    # Nested fields are defined in the json_field
+    # json_field stores meta information
     json_field = models.TextField(null=True)
+    
+    is_preview = models.BooleanField(default=False)
     
     class Meta:
         unique_together = (('ref_resource_name', 'key', 'date_time'))    
@@ -186,46 +213,93 @@ class ApiLog(models.Model):
     
     def __repr__(self):
         return (
-            '<ApiLog(id=%d, api_action=%r, ref_resource_name=%r, '
-            'key=%r, date_time=%r)>'
+            '<ApiLog(id=%r, api_action=%r, ref_resource_name=%r, '
+            'key=%r, uri=%r, date_time=%s, su_id: %r, username=%s)>'
             % (self.id, self.api_action, self.ref_resource_name, self.key,
-               self.date_time))
+               self.uri, strftime_log(self.date_time), self.user_id, 
+               self.username))
 
+    @property
+    def log_uri(self):
+        ''' Return the URI of the ApiLog
+        '''
+        
+        return '/'.join([
+            self.ref_resource_name,self.key, strftime_log(self.date_time)])
+    
     @staticmethod   
     def json_dumps(obj):
-        return json.dumps(
-            obj, skipkeys=False,check_circular=True, allow_nan=True, 
-            default=lambda x: str(x), cls=DjangoJSONEncoder)
-    
-    def save(self, **kwargs):
-        ''' override to convert json fields '''
         
-        # ONLY on first save, create the associated logdiffs
+        obj_as_dict = { k:v for k,v in vars(obj).items() if k[0] != '_'}
+        diffs = defaultdict(list)
+        for dl in obj.logdiff_set.all():
+            diffs[dl.field_key] = [dl.before,dl.after]
+        obj_as_dict['diffs'] = dict(diffs)
+        return json.dumps(obj_as_dict, cls=LimsJSONEncoder)
+    
+    @staticmethod
+    def _encode_before_after(val):
+        '''
+        Encode LogDiff.before and after values:
+        All diff values are stored as strings unless they represent list values:
+        - in this case the JSON representation of the list is stored. 
+        '''
+        if val is None:
+            return val
+        if isinstance(val, (list,tuple)):
+            val = json.dumps(val, cls=LimsJSONEncoder)
+        elif not isinstance(val, six.string_types):
+            val = str(val)
+        return val
+        
+    def save(self, **kwargs):
+        ''' 
+        Override to store/encode the diffs:
+        - before/after are stored as the string representation of the field 
+        value.
+        - if the field value is a list, store the JSON representation.
+        '''
+        
         is_new = self.pk is None
+        
+        logger.debug('encode json field: log: %r', self.json_field)
+        if self.json_field:
+            if isinstance(self.json_field, dict):
+                try:
+                    self.json_field = json.dumps(self.json_field, cls=LimsJSONEncoder)
+                except:
+                    logger.exception('error with json_field value encoding: %r - %r', 
+                        e, json_field)
         models.Model.save(self, **kwargs)
         
         if is_new:
+            logger.debug('logging new diffs: %r', self.diffs)
             bulk_create_diffs = []
             for key,diffs in self.diffs.items():
                 assert isinstance(diffs, (list,tuple))
                 assert len(diffs) == 2
+                before = self._encode_before_after(diffs[0])
+                after = self._encode_before_after(diffs[1])
                 bulk_create_diffs.append(LogDiff(
                     log=self,
                     field_key = key,
                     field_scope = 'fields.%s' % self.ref_resource_name,
-                    before=diffs[0],
-                    after=diffs[1]))
+                    before=before,
+                    after=after))
             LogDiff.objects.bulk_create(bulk_create_diffs)
         else:
+            logger.debug('logging update diffs: %r', self.diffs)
             # Note: this option should not be used for bulk creation
             for key,diffs in self.diffs.items():
                 assert isinstance(diffs, (list,tuple))
                 assert len(diffs) == 2
+                before = self._encode_before_after(diffs[0])
+                after = self._encode_before_after(diffs[1])
                 found = False
                 for logdiff in self.logdiff_set.all():
                     if logdiff.field_key == key:
-                        logdiff.before = diffs[0]
-                        logdiff.after = diffs[1]
+                        logdiff.before=before
+                        logdiff.after=after
                         logdiff.save()
                         found = True
                 if not found:
@@ -233,8 +307,8 @@ class ApiLog(models.Model):
                         log=self,
                         field_key = key,
                         field_scope = 'fields.%s' % self.ref_resource_name,
-                        before=diffs[0],
-                        after=diffs[1])
+                        before=before,
+                        after=after)
                         
     @staticmethod
     def bulk_create(logs):
@@ -249,6 +323,16 @@ class ApiLog(models.Model):
                     conn.execute(
                         'select last_value from reports_apilog_id_seq;')
                         .scalar() or 0)
+                
+                for log in logs:
+                    if log.json_field:
+                        if isinstance(log.json_field, dict):
+                            try:
+                                log.json_field = json.dumps(log.json_field, cls=LimsJSONEncoder)
+                            except:
+                                logger.exception('error with json_field value encoding: %r - %r', 
+                                    e, log.json_field)
+                
                 ApiLog.objects.bulk_create(logs)
                 #NOTE: Before postgresql & django 1.10 only: 
                 # ids must be manually created on bulk create
@@ -263,8 +347,8 @@ class ApiLog(models.Model):
                                 log=log,
                                 field_key = key,
                                 field_scope = 'fields.%s' % log.ref_resource_name,
-                                before=logdiffs[0],
-                                after=logdiffs[1])
+                                before=ApiLog._encode_before_after(logdiffs[0]),
+                                after=ApiLog._encode_before_after(logdiffs[1]))
                         )
                 LogDiff.objects.bulk_create(bulk_create_diffs)
             
@@ -296,7 +380,7 @@ class MetaHash(models.Model):
     class Meta:
         unique_together = (('scope', 'key'))    
     
-    def get_field_hash(self):
+    def get_json_field_hash(self):
         if self.json_field:
             if not self.loaded_field: 
                 self.loaded_field = json.loads(self.json_field)
@@ -305,19 +389,21 @@ class MetaHash(models.Model):
             return {}
     
     def get_field(self, field):
-        if field in self._meta.get_all_field_names():
+        field_names = set([
+            f.name for f in self._meta.get_fields()])
+        if field in field_names:
             return getattr(self,field)
-        temp = self.get_field_hash()
-        if(field in temp):
+        temp = self.get_json_field_hash()
+        if field in temp:
             return temp[field]
         else:
-            logger.debug('unknown field: ' + field + ' for ' + str(self))
+            logger.debug('unknown field: %s',field)
             return None
     
-    def set_field(self, field, value):
-        temp = self.get_field_hash()
+    def set_json_field(self, field, value):
+        temp = self.get_json_field_hash()
         temp[field] = value;
-        self.json_field = json.dumps(temp)
+        self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
     def is_json(self):
         """
@@ -343,7 +429,7 @@ class MetaHash(models.Model):
     
     def __repr__(self):
         return (
-            '<MetaHash(id=%d, scope=%r, key=%r)>'
+            '<MetaHash(id=%r, scope=%r, key=%r)>'
             % (self.id, self.scope, self.key))
 
 class Vocabulary(models.Model):
@@ -355,6 +441,13 @@ class Vocabulary(models.Model):
     alias                   = models.CharField(max_length=64)
     ordinal                 = models.IntegerField();
     title                   = models.CharField(max_length=512)
+    is_retired              = models.NullBooleanField()
+    comment                 = models.TextField(null=True)
+    description             = models.TextField(null=True)
+    
+    # checklist item fields (consider moving to userchecklistitem)
+    expire_interval_days    = models.IntegerField(null=True)
+    expire_notifiy_days     = models.IntegerField(null=True)
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to 
     # migrate them out to real fields for rel db use cases)
@@ -365,14 +458,14 @@ class Vocabulary(models.Model):
     class Meta:
         unique_together = (('scope', 'key'))    
     
-    def get_field_hash(self):
+    def get_json_field_hash(self):
         if self.json_field:
             return json.loads(self.json_field)
         else:
             return {}
     
     def get_field(self, field):
-        temp = self.get_field_hash()
+        temp = self.get_json_field_hash()
         if(field in temp):
             return temp[field]
         else:
@@ -380,10 +473,10 @@ class Vocabulary(models.Model):
             logger.debug('%r, field not found: %r',self, field) 
             return None
             
-    def set_field(self, field, value):
-        temp = self.get_field_hash()
+    def set_json_field(self, field, value):
+        temp = self.get_json_field_hash()
         temp[field] = value;
-        self.json_field = json.dumps(temp)
+        self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
     def __repr__(self):
         return (
@@ -412,7 +505,7 @@ class UserGroup(models.Model):
     title = models.TextField(unique=True, null=True)
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
-    
+    description = models.TextField(null=True)
     # Super Groups: 
     # - inherit permissions from super_groups, this group is a sub_group to them
     # - inherit users from sub_groups, this group is a super_group to them
@@ -486,6 +579,7 @@ class UserProfile(models.Model):
     # TODO: make this unique
     ecommons_id = models.TextField(null=True)
 
+    # TODO: fields also found on ScreensaverUser
     harvard_id = models.TextField(null=True)
     harvard_id_expiration_date = models.DateField(null=True)
     harvard_id_requested_expiration_date = models.DateField(null=True)
@@ -497,39 +591,11 @@ class UserProfile(models.Model):
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
 
-    # # required if the field is a JSON field; choices are from the TastyPie 
-    # # field types
-    # json_field_type = models.CharField(
-    #     max_length=128, null=True); 
-    # 
-    # # This is the "meta" field, it contains "virtual" json fields
-    # json_field = models.TextField(null=True)     
-
     def __repr__(self):
         return (
             '<UserProfile(username=%r, id=%d, auth_user=%d)>'
             % (self.username, self.id, self.user.id))
     
-    # def get_field_hash(self):
-    #     if self.json_field:
-    #         return json.loads(self.json_field)
-    #     else:
-    #         return {}
-    # 
-    # def get_field(self, field):
-    #     temp = self.get_field_hash()
-    #     if(field in temp):
-    #         return temp[field]
-    #     else:
-    #         # Note, json_field is sparse, not padded with empty attributes
-    #         logger.debug(str((self,'field not found: ',field))) 
-    #         return None
-    #         
-    # def set_field(self, field, value):
-    #     temp = self.get_field_hash()
-    #     temp[field] = value;
-    #     self.json_field = json.dumps(temp)
-
     def get_all_groups(self):
 
         groups = set()
@@ -556,6 +622,52 @@ class UserProfile(models.Model):
         return self.user.last_name
     
 
+class Job(models.Model):
+
+    user_requesting = models.ForeignKey(
+        'UserProfile', on_delete=models.PROTECT)
+    
+    # Unique URI for the resource action being serviced
+    uri = models.TextField()
+    method = models.TextField()
+    encoding = models.TextField()
+    content_type = models.TextField()
+    http_accept = models.TextField()
+    # JSON encoded request params
+    params = models.TextField()
+    
+    # user comment on post
+    comment = models.TextField(null=True);
+    # Extra posted context data (filenames, etc.); JSON encoded
+    context_data = models.TextField(null=True)
+      
+    # Assigned when the job is running
+    process_id = models.TextField(null=True)
+    # Extra runtime information, json encoded
+    process_env = models.TextField(null=True)
+    process_messages = models.TextField(null=True)
+    
+    state = models.TextField(
+        default=SCHEMA.VOCAB.job.state.PENDING, 
+        choices=zip(
+            SCHEMA.VOCAB.job.state.get_ordered_dict().keys(),
+            SCHEMA.VOCAB.job.state.get_ordered_dict().values(),
+            ))
+    date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
+    date_time_submitted = models.DateTimeField(null=True) 
+    date_time_processing = models.DateTimeField(null=True) 
+    date_time_completed = models.DateTimeField(null=True) 
+    
+    response_status_code = models.IntegerField(null=True)
+    #JSON encoded response content
+    response_content = models.TextField(null=True)
+      
+    def __repr__(self):
+        return (
+            '<Job(id=%d, user_id=%d)>'
+            % (self.id, self.user_requesting.id))
+     
+     
 # class ListLog(models.Model):
 #     '''
 #     A model that holds the keys for the items created in a "put_list"
@@ -630,37 +742,3 @@ class UserProfile(models.Model):
 #     value1 = models.TextField(null=True)
 #     value2 = models.TextField(null=True)
 # 
-# class Job(models.Model):
-#     # POC: 20141128
-#     # Version 0.1: for processing large uploaded files
-#     
-#     # Client information
-#     remote_addr = models.TextField(null=True)
-#     request_method = models.TextField(null=True)
-#     
-#     # original path info, used by job process to submit full job to endpoint
-#     path_info = models.TextField(null=True)
-#     
-#     # user comment on post
-#     comment = models.TextField(null=True);
-#     
-#     # 0.1: original POST input is saved to this file
-#     input_filename = models.TextField(null=True)
-#     
-#     date_time_fullfilled = models.DateTimeField(null=True) 
-#     date_time_processing = models.DateTimeField(null=True) 
-#     date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
-# 
-#     # if the response is large, save to a temp file
-#     response_filename = models.TextField(null=True)
-#     
-#     # store response to field
-#     response_content = models.TextField(null=True)
-#     
-#     # HTTP response code, saved from the endpoint job submission on completion
-#     response_code = models.IntegerField();
-#     
-#     def __unicode__(self):
-#         return unicode(str((self.id, self.path_info, self.date_time_requested)))
-#     
-#     

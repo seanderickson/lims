@@ -1,78 +1,248 @@
-resource_uri,key,scope,ordinal,title,description
-/reports/api/v1/vocabulary/serviceactivity.type/assay_dev_consult/,assay_dev_consult,serviceactivity.type,0,assay_dev_consult,
-/reports/api/v1/vocabulary/serviceactivity.type/automation/,automation,serviceactivity.type,1,automation,
-/reports/api/v1/vocabulary/serviceactivity.type/image_analysis/,image_analysis,serviceactivity.type,2,image_analysis,
-/reports/api/v1/vocabulary/serviceactivity.type/informatics/,informatics,serviceactivity.type,3,informatics,
-/reports/api/v1/vocabulary/serviceactivity.type/medchem_analytical/,medchem_analytical,serviceactivity.type,4,medchem_analytical,
-/reports/api/v1/vocabulary/serviceactivity.type/medchem_consult/,medchem_consult,serviceactivity.type,5,medchem_consult,
-/reports/api/v1/vocabulary/serviceactivity.type/medchem_synthesis/,medchem_synthesis,serviceactivity.type,6,medchem_synthesis,
-/reports/api/v1/vocabulary/serviceactivity.type/other/,other,serviceactivity.type,7,other,
-/reports/api/v1/vocabulary/serviceactivity.type/training_acumen/,training_acumen,serviceactivity.type,8,training_acumen,
-/reports/api/v1/vocabulary/serviceactivity.type/training_biomekfx/,training_biomekfx,serviceactivity.type,9,training_biomekfx,
-/reports/api/v1/vocabulary/serviceactivity.type/training_combi/,training_combi,serviceactivity.type,10,training_combi,
-/reports/api/v1/vocabulary/serviceactivity.type/training_combi_nl/,training_combi_nl,serviceactivity.type,11,training_combi_nl,
-/reports/api/v1/vocabulary/serviceactivity.type/training_cybio/,training_cybio,serviceactivity.type,12,training_cybio,
-/reports/api/v1/vocabulary/serviceactivity.type/training_envision/,training_envision,serviceactivity.type,13,training_envision,
-/reports/api/v1/vocabulary/serviceactivity.type/training_flexstation_iii/,training_flexstation_iii,serviceactivity.type,14,training_flexstation_iii,
-/reports/api/v1/vocabulary/serviceactivity.type/training_hp_d300/,training_hp_d300,serviceactivity.type,15,training_hp_d300,
-/reports/api/v1/vocabulary/serviceactivity.type/training_ixm/,training_ixm,serviceactivity.type,16,training_ixm,
-/reports/api/v1/vocabulary/serviceactivity.type/training_lumina_ii/,training_lumina_ii,serviceactivity.type,17,training_lumina_ii,
-/reports/api/v1/vocabulary/serviceactivity.type/training_m5/,training_m5,serviceactivity.type,18,training_m5,
-/reports/api/v1/vocabulary/serviceactivity.type/training_octet/,training_octet,serviceactivity.type,19,training_octet,
-/reports/api/v1/vocabulary/serviceactivity.type/training_other/,training_other,serviceactivity.type,20,training_other,
-/reports/api/v1/vocabulary/serviceactivity.type/training_qpcr_abi/,training_qpcr_abi,serviceactivity.type,21,training_qpcr_abi,
-/reports/api/v1/vocabulary/serviceactivity.type/training_qpcr_qstudio_7_flex/,training_qpcr_qstudio_7_flex,serviceactivity.type,22,training_qpcr_qstudio_7_flex,
-/reports/api/v1/vocabulary/serviceactivity.type/training_qpcr_roche/,training_qpcr_roche,serviceactivity.type,23,training_qpcr_roche,
-/reports/api/v1/vocabulary/serviceactivity.type/training_velos/,training_velos,serviceactivity.type,24,training_velos,
-/reports/api/v1/vocabulary/serviceactivity.type/training_wellmate/,training_wellmate,serviceactivity.type,25,training_wellmate,
-/reports/api/v1/vocabulary/screen.species/bacteria/,bacteria,screen.species,1,bacteria,
-/reports/api/v1/vocabulary/screen.species/c_elegans/,c_elegans,screen.species,2,c_elegans,
-/reports/api/v1/vocabulary/screen.species/drosophila/,drosophila,screen.species,3,drosophila,
-/reports/api/v1/vocabulary/screen.species/human/,human,screen.species,4,human,
-/reports/api/v1/vocabulary/screen.species/mouse/,mouse,screen.species,5,mouse,
-/reports/api/v1/vocabulary/screen.species/other/,other,screen.species,6,other,
-/reports/api/v1/vocabulary/screen.species/yeast/,yeast,screen.species,7,yeast,
-/reports/api/v1/vocabulary/screen.species/zebrafish/,zebrafish,screen.species,8,zebrafish,
-/reports/api/v1/vocabulary/screen.assay_type/biochemical/,biochemical,screen.assay_type,1,biochemical,
-/reports/api/v1/vocabulary/screen.assay_type/cell_based/,cell_based,screen.assay_type,2,cell_based,
-/reports/api/v1/vocabulary/screen.assay_type/multi_cellular_organism/,multi_cellular_organism,screen.assay_type,3,multi_cellular_organism,
-/reports/api/v1/vocabulary/study.type/in_silico/,in_silico,study.type,1,"In silico",
-/reports/api/v1/vocabulary/study.type/in_vitro/,in_vitro,study.type,2,"In vitro",
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/absorbance/,absorbance,datacolumn.assay_readout_type,1,absorbance,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fluorescence_activated_cell_sorting/,fluorescence_activated_cell_sorting,datacolumn.assay_readout_type,2,fluorescence_activated_cell_sorting,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fluorescence_intensity/,fluorescence_intensity,datacolumn.assay_readout_type,3,fluorescence_intensity,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fp/,fp,datacolumn.assay_readout_type,4,fp,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/fret/,fret,datacolumn.assay_readout_type,5,fret,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/imaging/,imaging,datacolumn.assay_readout_type,6,imaging,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/luminescence/,luminescence,datacolumn.assay_readout_type,7,luminescence,
-/reports/api/v1/vocabulary/datacolumn.assay_readout_type/unspecified/,unspecified,datacolumn.assay_readout_type,8,unspecified,
-/reports/api/v1/vocabulary/library.solvent/dmso/,dmso,library.solvent,1,DMSO,DMSO
-/reports/api/v1/vocabulary/library.solvent/rnai_buffer/,rnai_buffer,library.solvent,2,"RNAi buffer","RNAi buffer"
-/reports/api/v1/vocabulary/library.solvent/other_aqueous/,other_aqueous,library.solvent,3,"Other (aqueous)","Other (aqueous)"
-/reports/api/v1/vocabulary/screen.type/small_molecule/,small_molecule,screen.type,1,"Small Molecule","A small molecule screen"
-/reports/api/v1/vocabulary/screen.type/rnai/,rnai,screen.type,2,RNAi,"An RNAi Screen"
-/reports/api/v1/vocabulary/library.type/commercial/,commercial,library.type,1,Commercial,"A commercial llibrary"
-/reports/api/v1/vocabulary/library.type/dos/,dos,library.type,2,DOS,DOS
-/reports/api/v1/vocabulary/library.type/annotation/,annotation,library.type,4,Annotation,Annotation
-/reports/api/v1/vocabulary/library.type/academic_collection/,academic_collection,library.type,5,"Academic Collection","Academic Collection"
-/reports/api/v1/vocabulary/library.type/nih_mlp/,nih_mlp,library.type,6,NIH-MLP,NIH-MLP
-/reports/api/v1/vocabulary/library.type/known_bioactives/,known_bioactives,library.type,7,"Known Bioactives","Known Bioactives"
-/reports/api/v1/vocabulary/library.type/nci/,nci,library.type,8,NCI,NCI
-/reports/api/v1/vocabulary/library.type/natural_products/,natural_products,library.type,9,"Natural Products","Natural Products"
-/reports/api/v1/vocabulary/library.type/sirna/,sirna,library.type,10,siRNA,siRNA
-/reports/api/v1/vocabulary/library.type/shrna/,shrna,library.type,11,shRNA,shRNA
-/reports/api/v1/vocabulary/library.type/mirna_inhibitor/,mirna_inhibitor,library.type,12,"miRNA Inhibitor","miRNA Inhibitor"
-/reports/api/v1/vocabulary/library.type/mirna_mimic/,mirna_mimic,library.type,13,"miRNA Mimic","miRNA Mimic"
-/reports/api/v1/vocabulary/library.type/other/,other,library.type,14,Other,Other
-/reports/api/v1/vocabulary/library.type/discrete/,discrete,library.type,15,Discrete,Discrete
-/reports/api/v1/vocabulary/library.type/fragment/,fragment,library.type,3,Fragment,Fragment
-/reports/api/v1/vocabulary/library.screening_status/not_yet_plated/,not_yet_plated,library.screening_status,1,"Not Yet Plated","Not Yet Plated"
-/reports/api/v1/vocabulary/library.screening_status/not_allowed/,not_allowed,library.screening_status,2,"Not Allowed","Not Allowed"
-/reports/api/v1/vocabulary/library.screening_status/retired/,retired,library.screening_status,3,Retired,Retired
-/reports/api/v1/vocabulary/library.screening_status/requires_permission/,requires_permission,library.screening_status,4,"Requires Permission","Requires Permission"
-/reports/api/v1/vocabulary/library.screening_status/not_recommended/,not_recommended,library.screening_status,5,"Not Recommended","Not Recommended"
-/reports/api/v1/vocabulary/library.screening_status/allowed/,allowed,library.screening_status,6,Allowed,Allowed
-/reports/api/v1/vocabulary/screen.project_phase/primary_screen/,primary_screen,screen.project_phase,1,"Primary Screen","Primary Screen"
-/reports/api/v1/vocabulary/screen.project_phase/counter_screen/,counter_screen,screen.project_phase,2,"Counter Screen","Counter Screen"
-/reports/api/v1/vocabulary/screen.project_phase/follow_up_screen/,follow_up_screen,screen.project_phase,3,"Follow Up Screen","Follow Up Screen"
-/reports/api/v1/vocabulary/screen.project_phase/annotation/,annotation,screen.project_phase,4,Annotation,Annotation
+key,scope,ordinal,title
+assay_dev_consult,serviceactivity.type,0,"Assay Dev Consult"
+automation,serviceactivity.type,1,Automation
+image_analysis,serviceactivity.type,2,"Image Analysis"
+informatics,serviceactivity.type,3,Informatics
+medchem_analytical,serviceactivity.type,4,"MedChem - Analytical"
+medchem_consult,serviceactivity.type,5,"MedChem - Consult"
+medchem_synthesis,serviceactivity.type,6,"MedChem - Synthesis"
+other,serviceactivity.type,7,Other
+training_acumen,serviceactivity.type,8,"Training - Acumen"
+training_biomekfx,serviceactivity.type,9,"Training - BiomekFX"
+training_combi,serviceactivity.type,10,"Training - Combi"
+training_combi_nl,serviceactivity.type,11,"Training - Combi nL"
+training_cybio,serviceactivity.type,12,"Training - CyBio"
+training_envision,serviceactivity.type,13,"Training - Envision"
+training_flexstation_iii,serviceactivity.type,14,"Training - Flexstation III"
+training_hp_d300,serviceactivity.type,15,"Training - HP D300"
+training_ixm,serviceactivity.type,16,"Training - IXM"
+training_ixm_c,serviceactivity.type,17,"Training - IXM C"
+training_lumina_ii,serviceactivity.type,18,"Training - Lumina II"
+training_m5,serviceactivity.type,19,"Training - M5"
+training_octet,serviceactivity.type,20,"Training - Octet"
+training_other,serviceactivity.type,21,"Training - Other"
+training_qpcr_abi,serviceactivity.type,22,"Training - QPCR-ABI"
+training_qpcr_qstudio_7_flex,serviceactivity.type,23,"Training - QPCR-Qstudio 7 Flex"
+training_qpcr_roche,serviceactivity.type,24,"Training - QPCR-Roche"
+training_velos,serviceactivity.type,25,"Training - Velos"
+training_wellmate,serviceactivity.type,26,"Training - Wellmate"
+bacteria,screen.species,0,bacteria
+c_elegans,screen.species,1,"C. Elegans"
+drosophila,screen.species,2,Drosophila
+human,screen.species,3,human
+mouse,screen.species,4,mouse
+other,screen.species,5,Other
+yeast,screen.species,6,yeast
+zebrafish,screen.species,7,zebrafish
+biochemical,screen.assay_type,0,Biochemical
+cell_based,screen.assay_type,1,Cell-based
+multi_cellular_organism,screen.assay_type,2,"Multi-cellular organism"
+in_silico,study.type,0,"In silico"
+in_vitro,study.type,1,"In vitro"
+absorbance,datacolumn.assay_readout_type,0,Absorbance
+fluorescence_activated_cell_sorting,datacolumn.assay_readout_type,1,"Fluorescence Activated Cell Sorting"
+fluorescence_intensity,datacolumn.assay_readout_type,2,"Fluorescence Intensity"
+fp,datacolumn.assay_readout_type,3,FP
+fret,datacolumn.assay_readout_type,4,FRET
+imaging,datacolumn.assay_readout_type,5,Imaging
+luminescence,datacolumn.assay_readout_type,6,Luminescence
+unspecified,datacolumn.assay_readout_type,7,Unspecified
+b_i_rnai_2011,funding_support,0,"B-I RNAi 2011"
+b_i_rnai_2012,funding_support,1,"B-I RNAi 2012"
+b_i_rnai_2013,funding_support,2,"B-I RNAi 2013"
+clardy_grants,funding_support,3,"Clardy Grants"
+d_andrea_cmcr,funding_support,4,"D'Andrea CMCR"
+d_andrea_ohsu,funding_support,5,"D'Andrea OHSU"
+darpa_1km,funding_support,6,"DARPA 1KM"
+external_academic,funding_support,7,"External Academic"
+external_industry,funding_support,8,"External Industry"
+gates_elledge_r,funding_support,9,"Gates-Elledge (R)"
+gray_library_screen,funding_support,10,"Gray Library Screen"
+harvard_catalyst,funding_support,11,"Harvard Catalyst"
+hhmi_elledge_sm,funding_support,12,"HHMI-Elledge (SM)"
+hms_affiliate,funding_support,13,"HMS Affiliate"
+hms_cetr,funding_support,14,HMS-CETR
+hms_quad_internal,funding_support,15,"HMS Quad (internal)"
+iccb_l_external,funding_support,16,"ICCB-L External"
+iccb_l_hms_affiliate,funding_support,17,"ICCB-L HMS Affiliate"
+iccb_l_hms_quad_internal,funding_support,18,"ICCB-L HMS Quad (Internal)"
+icg,funding_support,19,ICG
+levy_adp_2014_2015,funding_support,20,"Levy ADP (2014-2015)"
+lincs,funding_support,21,LINCS
+lsp,funding_support,22,LSP
+ludwig,funding_support,23,Ludwig
+marcus_library_screen,funding_support,24,"Marcus Library Screen"
+mirna_consortium_2009,funding_support,25,"miRNA Consortium 2009"
+mitchison_p01,funding_support,26,"Mitchison P01"
+nerce_nsrb,funding_support,27,NERCE/NSRB
+nerce_nsrb_to_iccbl,funding_support,28,"NERCE/NSRB to ICCBL"
+novartis,funding_support,29,Novartis
+nsrb_rnai_external,funding_support,30,"NSRB-RNAi External"
+nsrb_rnai_hms_affiliate,funding_support,31,"NSRB-RNAi HMS Affiliate"
+nsrb_rnai_quad_internal,funding_support,32,"NSRB-RNAi Quad (internal)"
+off_site,funding_support,33,Off-site
+other,funding_support,34,Other
+sanofi_aventis,funding_support,35,Sanofi-Aventis
+unspecified,funding_support,36,Unspecified
+yuan_nih_06_07,funding_support,37,"Yuan NIH 06-07"
+assay_dev_consult,activity.type,0,"Assay Dev Consult"
+automation,activity.type,1,Automation
+image_analysis,activity.type,2,"Image Analysis"
+informatics,activity.type,3,Informatics
+medchem_analytical,activity.type,4,"MedChem - Analytical"
+medchem_consult,activity.type,5,"MedChem - Consult"
+medchem_synthesis,activity.type,6,"MedChem - Synthesis"
+other,activity.type,7,Other
+training_acumen,activity.type,8,"Training - Acumen"
+training_biomekfx,activity.type,9,"Training - BiomekFX"
+training_combi,activity.type,10,"Training - Combi"
+training_combi_nl,activity.type,11,"Training - Combi nL"
+training_cybio,activity.type,12,"Training - CyBio"
+training_envision,activity.type,13,"Training - Envision"
+training_flexstation_iii,activity.type,14,"Training - Flexstation III"
+training_hp_d300,activity.type,15,"Training - HP D300"
+training_ixm,activity.type,16,"Training - IXM"
+training_ixm_c,activity.type,17,"Training - IXM C"
+training_lumina_ii,activity.type,18,"Training - Lumina II"
+training_m5,activity.type,19,"Training - M5"
+training_octet,activity.type,20,"Training - Octet"
+training_other,activity.type,21,"Training - Other"
+training_qpcr_abi,activity.type,22,"Training - QPCR-ABI"
+training_qpcr_qstudio_7_flex,activity.type,23,"Training - QPCR-Qstudio 7 Flex"
+training_qpcr_roche,activity.type,24,"Training - QPCR-Roche"
+training_velos,activity.type,25,"Training - Velos"
+training_wellmate,activity.type,26,"Training - Wellmate"
+graduate_student,user.classification,0,"Graduate Student"
+iccb_fellow,user.classification,1,"ICCB Fellow"
+other,user.classification,2,Other
+postdoc,user.classification,3,Postdoc
+principal_investigator,user.classification,4,"Principal Investigator"
+research_assistant,user.classification,5,"Research Assistant"
+female,user.gender,0,Female
+male,user.gender,1,Male
+hms_affiliate_hms_quad,lab_head.appointment_category,0,"HMS Affiliate with HMS Quad Appointment"
+hms_quad_faculty,lab_head.appointment_category,1,"HMS Quad Faculty"
+bcmp,lab_head.appointment_department,0,BCMP
+biomedical_informatics,lab_head.appointment_department,1,"Biomedical Informatics"
+cell_bio,lab_head.appointment_department,2,"Cell Bio"
+genetics,lab_head.appointment_department,3,Genetics
+micro_and_immuno,lab_head.appointment_department,4,"Micro and Immuno"
+neuro,lab_head.appointment_department,5,Neuro
+sys_bio,lab_head.appointment_department,6,"Sys Bio"
+293_hek_293,cell_line,0,"293 [HEK-293]"
+293t_17_hek_293t_17,cell_line,1,"293T/17 [HEK 293T/17]"
+786_o,cell_line,2,786-O
+a_375,cell_line,3,A-375
+a549,cell_line,4,A549
+be_2_c,cell_line,5,BE(2)-C
+beas_2b,cell_line,6,BEAS-2B
+bs_c_1,cell_line,7,bs-c-1
+bt_474,cell_line,8,BT-474
+c2c12,cell_line,9,C2C12
+c_33_a,cell_line,10,"C-33 A"
+ccl_61,cell_line,11,CCL-61
+colo_858,cell_line,12,"COLO 858"
+cos,cell_line,13,COS
+crl_1721,cell_line,14,CRL-1721
+crl_2813,cell_line,15,CRL-2813
+dentritic_cells,cell_line,16,"Dentritic cells"
+es_2,cell_line,17,ES-2
+h2373,cell_line,18,H2373
+h4,cell_line,19,H4
+hap1,cell_line,20,HAP1
+hct_116,cell_line,21,"HCT 116"
+hela,cell_line,22,HeLa
+hela_s3,cell_line,23,"HeLa S3"
+hep_2,cell_line,24,HEp-2
+hep_g2,cell_line,25,"Hep G2"
+hepg2_15,cell_line,26,HepG2-15
+ht_1080,cell_line,27,HT-1080
+ht_29,cell_line,28,HT-29
+htert_rpe_1,cell_line,29,"hTERT RPE-1"
+huh_7,cell_line,30,Huh-7
+huv_ec_c,cell_line,31,HUV-EC-C
+hybridoma_from_balb_c_mouse_luc_90_anti_human_cs1,cell_line,32,"Hybridoma from Balb/c mouse, LUC 90 anti-human CS1"
+ipsc,cell_line,33,iPSC
+j774a_1,cell_line,34,J774a.1
+jurkat,cell_line,35,Jurkat
+lovo,cell_line,36,LoVo
+mcf7,cell_line,37,MCF7
+mda_mb_231,cell_line,38,MDA-MB-231
+mda_mb_468,cell_line,39,MDA-MB-468
+mdck_canine_kidney,cell_line,40,"MDCK--canine kidney"
+mefs,cell_line,41,MEFs
+mewo,cell_line,42,MeWo
+mm_1s,cell_line,43,MM.1S
+n_a,cell_line,44,N/A
+nctc_clone_929_l_cell_l_929_derivative_of_strain_l,cell_line,45,"NCTC clone 929 [L cell, L-929, derivative of Strain L]"
+nih_3t3,cell_line,46,NIH/3T3
+oci_ly1,cell_line,47,OCI-Ly1
+oct4gip_es_cells_pmid_11932748,cell_line,48,"Oct4GiP ES cells (PMID: 11932748)"
+oe19,cell_line,49,OE19
+pc_3,cell_line,50,PC-3
+peripheral_blood_mononuclear_cells,cell_line,51,"Peripheral blood mononuclear cells"
+primary_chondrocytes,cell_line,52,"Primary chondrocytes"
+primary_human_cardiomyocytes_ips_derived,cell_line,53,"Primary human cardiomyocytes (iPS-derived)"
+primary_human_foreskin_fibroblasts_hff,cell_line,54,"Primary human foreskin fibroblasts (HFF)"
+primary_human_proximal_tubular_epithelial_cells,cell_line,55,"Primary human proximal tubular epithelial cells"
+primary_macrophages,cell_line,56,"Primary macrophages"
+primary_neurons,cell_line,57,"Primary neurons"
+primary_red_blood_cells,cell_line,58,"Primary red blood cells"
+primary_t_cells,cell_line,59,"Primary T cells"
+raw_264_7,cell_line,60,"RAW 264.7"
+rgc_5,cell_line,61,RGC-5
+rpe_fucci,cell_line,62,RPE-Fucci
+saos2,cell_line,63,Saos2
+sh_sy5y,cell_line,64,SH-SY5Y
+siha,cell_line,65,SiHa
+sjsa_1,cell_line,66,SJSA-1
+sk_n_as,cell_line,67,SK-N-AS
+tc_797,cell_line,68,TC-797
+thp1_lucia_cells,cell_line,69,"THP1 Lucia cells"
+thp1_lucia_isg_cells,cell_line,70,"THP1-Lucia ISG cells"
+u266,cell_line,71,U266
+u_2_os,cell_line,72,"U-2 OS"
+u3a_cells_stat1_null_pmid_18824601,cell_line,73,"U3A cells STAT1-null (PMID 18824601)"
+u937,cell_line,74,U937
+vero,cell_line,75,Vero
+wm_115,cell_line,76,WM-115
+dharmafect_1,transfection_agent,0,"DharmaFECT 1"
+dharmafect_2,transfection_agent,1,"DharmaFECT 2"
+dharmafect_4,transfection_agent,2,"DharmaFECT 4"
+hiperfect,transfection_agent,3,HiPerFect
+lipofectamine_2000,transfection_agent,4,"Lipofectamine 2000"
+lipofectamine_rnaimax,transfection_agent,5,"Lipofectamine RNAiMAX"
+lonza_amaxa_nucleofector_4d,transfection_agent,6,"Lonza Amaxa Nucleofector 4D"
+oligofectamine,transfection_agent,7,Oligofectamine
+x_tremegene,transfection_agent,8,X-tremeGENE
+established,assayprotocol.type,0,Established
+preliminary,assayprotocol.type,1,Preliminary
+rnai,screen.type,0,RNAi
+small_molecule,screen.type,1,"Small Molecule"
+allowed,library.screening_status,0,Allowed
+not_allowed,library.screening_status,1,"Not Allowed"
+not_recommended,library.screening_status,2,"Not Recommended"
+requires_permission,library.screening_status,3,"Requires Permission"
+retired,library.screening_status,4,Retired
+academic_collection,library.type,0,"Academic Collection"
+annotation,library.type,1,Annotation
+commercial,library.type,2,Commercial
+discrete,library.type,3,Discrete
+dos,library.type,4,DOS
+fragment,library.type,5,Fragment
+known_bioactives,library.type,6,"Known Bioactives"
+mirna_inhibitor,library.type,7,"miRNA Inhibitor"
+mirna_mimic,library.type,8,"miRNA Mimic"
+natural_products,library.type,9,"Natural Products"
+nci,library.type,10,NCI
+other,library.type,11,Other
+sirna,library.type,12,siRNA
+dmso,library.solvent,0,DMSO
+other_aqueous,library.solvent,1,"Other (aqueous)"
+rnai_buffer,library.solvent,2,"RNAi buffer"
+broad_icg,labaffiliation.category,0,Broad/ICG
+harvard_fas,labaffiliation.category,1,"Harvard FAS"
+hms,labaffiliation.category,2,HMS
+hms_affiliated_hospital,labaffiliation.category,3,"HMS Affiliated Hospital"
+hsph,labaffiliation.category,4,HSPH
+other,labaffiliation.category,5,Other

@@ -31,8 +31,8 @@ define([
     initialize : function(attributes, options) {
       console.log('initialize ListView: ');
       var self = this;
-      Iccbl.assert( !_.isUndefined(options.schemaResult), 
-      		'listView options: schemaResult is required');
+      Iccbl.assert( !_.isUndefined(options.resource), 
+      		'listView options: "resource" is required');
 
       Iccbl.assert( !_.isUndefined(options.router), 
       		'listView options: router is required');
@@ -86,16 +86,19 @@ define([
       }
 
       var Collection = Iccbl.MyCollection.extend({
-      	state: _state
+      	state: _state,
+      	url: this._options.url,
+      	listModel: listModel
       });
-      var collection = self.collection = new Collection({
-        'url': this._options.url,
-        listModel: listModel
-      });
+      var collection = self.collection = new Collection();
+//      var collection = self.collection = new Collection({
+//        'url': this._options.url,
+//        listModel: listModel
+//      });
       this.objects_to_destroy.push(collection);
 
       this.listenTo(this.listModel, 'change:search', function(){
-        var searchHash = self.listModel.get('search')
+        var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH)
         var current_options = _.clone(self.model.get('current_options'));
         console.log('===--- list detect: listModel change:search old: ' 
         		+ JSON.stringify(current_options.search) 
@@ -136,10 +139,10 @@ define([
       }
       var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
 
-      this.buildGrid(this._options.schemaResult);
+      this.buildGrid(this._options.resource);
     },
 
-    buildGrid : function(schemaResult) {
+    buildGrid : function(resource) {
 
       console.log('buildGrid...');
       var self = this;
@@ -148,7 +151,7 @@ define([
   		function (model, column) {
           console.log('---- process link for '+ column);
 
-          var fieldDef = schemaResult.fields[column];
+          var fieldDef = resource.fields[column];
           if( _.has(fieldDef,'backgrid_cell_options')) {
               // NOTE: format for backgrid cell options is "/{attribute_key}/"
               backgrid_cell_options = fieldDef['backgrid_cell_options'];
@@ -170,13 +173,12 @@ define([
           }
       });
 
-      self.listenTo(
-        self.collection, "MyCollection:edit", 
+      self.listenTo(self.collection, "MyCollection:edit", 
     		function (model) {
-          var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+          var id = Iccbl.getIdFromIdAttribute( model, resource );
           // signal to the app_model that the current view has changed 
           // todo: separate out app_model from list_model
-          this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
+          this.model.set({    current_scratch: { resource: resource, model: model} ,
                               current_view: 'edit',
                               current_options: { key: id },
                               routing_options: {trigger: false, replace: false}
@@ -184,9 +186,9 @@ define([
       });
 
       self.listenTo(self.collection, "MyCollection:detail", function (model) {
-        var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+        var id = Iccbl.getIdFromIdAttribute( model, resource );
 
-          this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
+          this.model.set({    current_scratch: { resource: resource, model: model} ,
                               current_view: 'detail',
                               current_options: { key: id },
                               routing_options: {trigger: false, replace: false}
@@ -253,12 +255,12 @@ define([
       this.objects_to_destroy.push(paginator);
 
       // Extraselector
-      if( _.has(schemaResult, 'extraSelectorOptions')){
-          var searchHash = self.listModel.get('search');
+      if( _.has(resource, 'extraSelectorOptions')){
+          var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
           console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
           var extraSelectorModel = new Backbone.Model({ selection: '' });
-          var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
+          var extraSelectorKey = resource.extraSelectorOptions.searchColumn;
           _.each(_.keys(searchHash), function(key){
               console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
               if( key == extraSelectorKey || key  === extraSelectorKey+ '__exact'){
@@ -267,11 +269,11 @@ define([
           });
           var extraSelectorInstance = self.extraSelectorInstance =
               new Iccbl.GenericSelector({ model: extraSelectorModel }, 
-                                          schemaResult.extraSelectorOptions );
+                                          resource.extraSelectorOptions );
           this.objects_to_destroy.push(extraSelectorInstance);
 
           this.listenTo(this.listModel, 'change: search', function(){
-              var searchHash = self.listModel.get('search');
+              var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
               console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
               _.each(_.keys(searchHash), function(key){
                   console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
@@ -282,16 +284,16 @@ define([
           });
           this.listenTo(extraSelectorModel, 'change', function() {
               console.log('===--- extraSelectorModel change');
-              var searchHash = _.clone(self.listModel.get('search'));
+              var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
               var value = extraSelectorModel.get('selection');
               searchHash[extraSelectorKey + '__exact'] = value;
-              self.listModel.set('search', searchHash);
+              self.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
               self.collection.setSearch(searchHash);
           });
       }
 
       var columns = Iccbl.createBackgridColModel(
-        this._options.schemaResult.fields, [],{}, Iccbl.MyHeaderCell);
+        this._options.resource.fields, [],{}, Iccbl.MyHeaderCell);
 
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
@@ -311,8 +313,8 @@ define([
                   // set on create, from the Meta Hash
                   var defaults = {};
 
-                  id_attributes = self._options.schemaResult['id_attribute']
-                  _.each(schemaResult.fields, function(value, key){
+                  id_attributes = self._options.resource['id_attribute']
+                  _.each(resource.fields, function(value, key){
                       if (key == 'resource_uri') {
                           defaults[key] = self._options.url;
                       } else if (key == 'id'){
@@ -330,7 +332,7 @@ define([
                   // // TODO: get the model "edit title" from the metainformation_hash
                   // var detailView = new DetailView(
                       // { model: new NewModel},
-                      // { isEditMode: true, title: "Add new record", schemaResult:schemaResult, router:self._options.router});
+                      // { isEditMode: true, title: "Add new record", resource:resource, router:self._options.router});
 //
                   // $('#list-container').hide();
                   // // NOTE: having self bind to the detailView like this:
@@ -406,7 +408,7 @@ define([
       
       var fetched = false;
       
-      var searchHash = self.listModel.get('search');
+      var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
       if(!_.isEmpty(searchHash)){
         self.collection.setSearch(searchHash);
         fetched = true;

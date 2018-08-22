@@ -5,10 +5,10 @@ import io
 import logging
 
 from PIL import Image
-import dateutil
+import dateutil.parser
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.core.urlresolvers import resolve
+from django.urls import resolve
 from django.utils.encoding import force_text
 import pytz
 import six
@@ -24,6 +24,12 @@ CSV_MIMETYPE = 'text/csv'
 XLS_MIMETYPE = 'application/xls'
 XLSX_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 SDF_MIMETYPE = 'chemical/x-mdl-sdfile'
+ZIP_MIMETYPE = 'application/zip'
+MULTIPART_MIMETYPE = 'multipart/form-data'
+
+INTEGER_POSTGRES_MAX=2147483647
+
+INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY = '_line'
 
 def make_local_time(datetime_obj):
     '''
@@ -70,29 +76,54 @@ def to_simple(data):
 
 def parse_val(value, key, data_type, options=None):
     """
+    Parse a string value as the given data_type:
     All values are read as strings from the input files, so this function 
     converts them as directed.
-    TODO: validation
     """
     try:
+        # FIXME: None should be returned for String
         if ( value is None 
             or value == '' 
-            or value == 'None' 
-            or value == u'None' 
             or value == 'null'
             or value == u'n/a'):
             if data_type == 'string': 
-                return ''
+                if value == '':
+                    return value
+                else:
+                    return None
             elif data_type == 'list':
                 return []
             else:  
                 return None
         if data_type == 'string':
+            # NOTE: on bootstrap, non-string array values may be sent as strings
+            # (because the default field schema data_type is string)
+            if isinstance(value, six.string_types):
+                value = value.strip()
             return value
         elif data_type == 'integer':
-            # todo: this is a kludge, create an integer from values like "5.0"
-            return int(float(value))
+            val = None
+            if isinstance(value, six.string_types):
+                # Note: convert an integer from values like "5.0"
+                try:
+                    val = int(float(value))
+                except:
+                    val = int(value)
+            else:
+                val = int(value)
+            
+            if val and val != 0:
+                if abs(val) > INTEGER_POSTGRES_MAX:
+                    raise ValidationError(
+                        key=key, 
+                        msg='abs(%d) > %d (PostGreSQL integer max value)' 
+                            % (val, INTEGER_POSTGRES_MAX))
+            return val
         elif data_type == 'date':
+            if isinstance(value, datetime.date):
+                return value
+            elif isinstance(value, datetime.datetime):
+                return value.date()
             return dateutil.parser.parse(value).date()
         elif data_type == 'datetime':
             return dateutil.parser.parse(value)
@@ -120,13 +151,21 @@ def parse_val(value, key, data_type, options=None):
             return value # otherwise, better be a list
         else:
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))
+    except ValidationError, e:
+        raise
     except Exception, e:
         logger.exception('value not parsed %r:%r',key, value)
-        raise ValidationError(key=key,msg='parse error: %r' % str(e))
+        msg = str(e)
+        if hasattr(e,'message'):
+            msg = e.message
+        raise ValidationError(key=key,msg='parse error: %s' % msg)
 
 def parse_json_field(val, key, json_field_type):
-    'Parse a field nested in the json_obj'
-     
+    '''
+    Parse input field values for composing the nested json field in a 
+    MetaHash table.
+    '''
+    logger.debug('parse_json_field: %r, %r, %r', val,key,json_field_type)
     # FIXME: now that tastypie is removed, 
     # json_field_type should equal data_type
     if json_field_type == 'fields.CharField':
@@ -153,8 +192,17 @@ def parse_json_field(val, key, json_field_type):
             'unknown json_field_type: %s' % json_field_type)
 
 def resolve_image(request, uri):
-    logger.debug('find image at %r', uri)
     view, args, kwargs = resolve(uri)
     kwargs['request'] = request
     response = view(*args, **kwargs)
     return Image.open(io.BytesIO(response.content))
+
+def encode_utf8(val):
+    '''For writing, make sure all strings are byte strings encoded as UTF-8
+    '''
+    if val is None:
+        return val
+    elif isinstance(val, basestring):
+        return val.encode('utf-8')
+    else:
+        return str(val)

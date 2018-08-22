@@ -51,7 +51,7 @@ DBUSER=${DBUSER:-"screensaver-lims"}
 DB=${DB:-"screensaver-lims"}  
 DBHOST=${DBHOST:-"localhost"}  
 DBPASSWORD=${DBPASSWORD:-""}
-SETENV_SCRIPT=${SETENV_SCRIPT:-""}
+#SETENV_SCRIPT=${SETENV_SCRIPT:-""}
 DEBUG=${DEBUG:-false}
 RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 
@@ -77,14 +77,24 @@ fi
 
 DJANGO_CMD=./manage.py
 
-if [[ -n "$SETENV_SCRIPT" ]]; then
-  AUTH_FILE=${AUTH_FILE:-"/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu" }
-
-  DJANGO_CMD="$SETENV_SCRIPT $AUTH_FILE ./manage.py"
-fi
-
 
 source ./utils.sh
+
+#if [[ -n "$SETENV_SCRIPT" ]]; then
+#  AUTH_FILE=${AUTH_FILE:-"/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu" }
+#
+#  DJANGO_CMD="$SETENV_SCRIPT $AUTH_FILE ./manage.py"
+#fi
+
+if [[ -n $AUTH_FILE ]]; then
+  read_auth_file $AUTH_FILE
+fi
+
+# set an overlay settings.py (overrides logging settings, so we don't 
+# overwrite/or change the perms for the server logs)
+export DJANGO_SETTINGS_MODULE=lims.settings-server-commandline
+
+DJANGO_CMD="./manage.py"
 
 function ts {
   date +%Y%m%dT%H%M%S%z
@@ -151,6 +161,9 @@ function restoredb {
       `ls -1 ${D}/screensaver*${filespec}.schema.pg_dump` >>"$LOGFILE" 2>&1 
   fi
 
+  # clear out the job directory on db rebuild
+  rm -rf ${SUPPORTDIR}/logs/background
+  
   echo "restoredb completed: $(ts) " >> "$LOGFILE"
 
 }
@@ -173,11 +186,16 @@ function restoredb_data {
     echo "+++ LOADING attached file and result data ... "
     echo "+++ LOADING attached file data: ${D}/screensaver*${filespec}.attached_file.pg_dump $(ts)" >> "$LOGFILE"
 
-    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    PG_RESTORE_CMD="pg_restore"
+    if [[ $IS_DEV_SERVER -eq 1 ]]; then
+      PG_RESTORE_CMD="nice -5 pg_restore"
+    fi
+
+    $PG_RESTORE_CMD -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
 
     echo "+++ LOADING result data: ${D}/screensaver*${filespec}.result_data.pg_dump $(ts)" >> "$LOGFILE"
-    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    $PG_RESTORE_CMD -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
   
@@ -203,12 +221,14 @@ function restoredb_data {
 }
 
 function django_syncdb {
+
+  echo "django_syncdb: $(ts) ..." >> "$LOGFILE"
   
   # migrate replaces syncdb; 
   # note; some of the system migrations (auth, sites, admin, contenttypes ) will
   # generate errors due to interdependencies; these appear to resolve themselves - 20151030
   
-  for x in sites auth contenttypes admin sessions tastypie reports;
+  for x in sites auth contenttypes admin sessions reports;
   do
     echo "migrate app: $x ..." >> "$LOGFILE"
     $DJANGO_CMD migrate $x; #  --fake-initial; 
@@ -227,6 +247,8 @@ function django_syncdb {
 
   # TODO: remove if memcached is installed
   $DJANGO_CMD createcachetable
+
+  echo "django_syncdb done: $(ts) ..." >> "$LOGFILE"
 }
 
 function premigratedb {
@@ -236,7 +258,7 @@ function premigratedb {
   
   # check which migrations are completed 
   # - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '[X]' | awk '{print $2}')
+  completed_migrations=$($DJANGO_CMD showmigrations db | grep '[X]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0001'
@@ -261,6 +283,10 @@ function premigratedb {
       -f ./db/migrations/manual/0003_controlled_vocabularies.sql \
       >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
   fi
+  migration='0004'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
     
   echo "pre migrations completed: $(ts) " >> "$LOGFILE"
  
@@ -270,79 +296,138 @@ function migratedb {
   echo "running migrations: $(ts) ..." >> "$LOGFILE"
 
   # check which migrations are completed - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '\[X\]' | awk '{print $2}')
+  completed_migrations=$($DJANGO_CMD showmigrations db | grep '\[X\]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
-  migration='0004'
+  migration='0007'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  migration='0005'
+  migration='0008'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  migration='0006'
+  migration='0010'
   if [[ ! $completed_migrations =~ $migration ]]; then
     echo "migration $migration: $(ts) ..." >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   
-  # migration='0008'
-  # if [[ ! $completed_migrations =~ $migration ]]; then
-  #   echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-  #   $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  #   echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-  # fi
+  migration='0011'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
   
-  if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
-    migration='0014'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    migration='0015'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-          -f ./db/migrations/manual/0015_post_migrate.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    migration='0016'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-          -f ./db/migrations/manual/0016_create_copy_wells.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
+  migration='0012'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0013'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0014'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  migration='0015'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+        -f ./db/migrations/manual/0015_post_migrate.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  migration='0016'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+        -f ./db/migrations/manual/0016_create_copy_wells.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0017'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0018'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0019'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+  migration='0020'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
+
+  migration='0021'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
     
-    migration='0098' 
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
+
+# TEMP: 20170614 disable post migrations; leaves vestigal fields/tables in place TODO: reinstate    
+#    migration='0098' 
+#    if [[ ! $completed_migrations =~ $migration ]]; then
+#      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+#      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+#      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+#    fi
 
     # substance ID generation left until last
-    migration='0099' 
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-  fi
+#    migration='0099' 
+#    if [[ ! $completed_migrations =~ $migration ]]; then
+#      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+#      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+#      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+#    fi
     
   echo "migrations completed: $(ts) " >> "$LOGFILE"
 
+}
+
+function migrate_result_values {
+  psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+    -f ./db/migrations/manual/result_value_migration.sql >>"$LOGFILE" 2>&1 \
+    || error "manual migrate_result_values failed: $?"
+}
+
+function result_value_cleanup {
+  echo "Result value cleanup: $(ts) ...">> "$LOGFILE"
+  psql -U $DBUSER $DB -h $DBHOST -a \
+    -f ./db/migrations/manual/result_value_cleanup.sql >>"$LOGFILE" 2>&1 \
+    || error "manual migrate_result_cleanup failed: $?"
+  echo "Result value cleanup completed: $(ts) " >> "$LOGFILE"
 }
 
 function bootstrap {
@@ -350,23 +435,26 @@ function bootstrap {
   
   BOOTSTRAP_PORT=${BOOTSTRAP_PORT:-55999}
   
-  echo "run a local dev server on port $BOOTSTRAP_PORT..."
-  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading --noreload $BOOTSTRAP_PORT  &
+  echo "run a local dev server on port $BOOTSTRAP_PORT..." >> "$LOGFILE"
+  
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
   server_pid=$!
   if [[ "$?" -ne 0 ]]; then
     runserver_status =$?
-    echo "bootstrap error, dev runserver status: $runserver_status"
+    echo "bootstrap error, dev runserver status: $runserver_status" >> "$LOGFILE"
     exit $runserver_status
   fi
 #  echo "wait for server process: ($!) to start..."
 #  wait $server_pid
   sleep 3
   
-  echo "bootstrap the metahash data..."
+  echo "bootstrap the metahash data..." >> "$LOGFILE"
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./reports/static/api_init/ \
     -f ./reports/static/api_init/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1 
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -c ${credential_file} >>"$LOGFILE" 2>&1 
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap reports failed: $?"
@@ -375,28 +463,17 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./db/static/api_init/ \
     -f ./db/static/api_init/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -c ${credential_file} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap db failed: $?"
   fi
-  
-  echo "bootstrap the server production data..."
-  
-  PYTHONPATH=. python reports/utils/db_init.py  \
-    --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
-    -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1
-  if [[ $? -ne 0 ]]; then
-    kill $server_pid
-    error "bootstrap production data failed: $?"
-  fi
 
-  # add user "sde" to the screensaver_users table 20150831
+  echo "PATCH the db/static/api_init/labaffiliation_updates.csv file..."  >> "$LOGFILE"
   curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
-    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
-    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
-
+    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/labaffiliation \
+    --data-binary @db/static/api_init/labaffiliation_updates.csv >>"$LOGFILE" 2>&1
+  
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
   echo "kill $final_server_pid"
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
@@ -412,14 +489,22 @@ function frontend_setup {
   npm --version 2>&1 || error "npm not found: $?"
   rm -rf ./node_modules 
   npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
+  cd ../..
   
+  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
+
+}
+
+function frontend_deploy {
+
+  echo "frontend_deploy: $(ts) ..." >> "$LOGFILE"
+
+  cd reports/static >>"$LOGFILE" 2>&1
+  rm bundle.*.js
+  rm 1.bundle.*.js
   npm run build 2>&1 || error "npm run build failed: $?"
   
   # TODO: frontend tests
-  
-  # add bootstrap to external folder - needed for the login template 
-  mkdir css/external
-  cp node_modules/bootstrap/dist/css/bootstrap.min.css css/external
   
   cd ../..
   
@@ -441,8 +526,474 @@ function frontend_setup {
   if [ -e ../wsgi/app.wsgi ]; then
     touch ../wsgi/app.wsgi
   fi
+
+  echo "frontend_deploy done: $(ts)" >> "$LOGFILE"
+
+}
+
+function setup_production_users {
+
+  echo "setup_production_users: $(ts) ..." >> "$LOGFILE"
+
+  echo "setup_production_users using a local dev server on port $BOOTSTRAP_PORT..." >> "$LOGFILE"
+  
+  # FIXME: using the local server may not be necessary as the server has been bootstrapped
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status" >> "$LOGFILE"
+    exit $runserver_status
+  fi
+#  echo "wait for server process: ($!) to start..."
+#  wait $server_pid
+  sleep 3
+  
+  PYTHONPATH=. python reports/utils/db_init.py  \
+    --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
+    -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions_patch.csv \
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -c ${credential_file} >>"$LOGFILE" 2>&1
+  if [[ $? -ne 0 ]]; then
+    kill $server_pid
+    error "bootstrap production data failed: $?"
+  fi
+
+  echo "Add user 'sde' to the screensaver_users table..." >> "$LOGFILE"
+  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
+    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
+    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv  >>"$LOGFILE" 2>&1
+
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  # kill $server_pid
+
+  echo "setup_production_users done: $(ts)" >> "$LOGFILE"
+
+}
+
+function run_expiration_scripts {
+  # Run user and screen privacy expiration scripts
+  echo "run user and screen privacy expiration scripts: $(ts) ..." >> "$LOGFILE"
+
+  # TODO: move these to cron jobs on deployment
+  
+  echo "1.a Send SM user data privacy expiration notifications..." >>"$LOGFILE"
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -ua_type sm -days_to_expire 730 -days_ahead_to_notify 14 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_notification.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "1.b Expire SM user agreements ..." >>"$LOGFILE" 2>&1
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -ua_type sm -days_to_expire 730 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_expiration.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "1.c Send RNAi user data privacy expiration notifications..." >>"$LOGFILE"
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -ua_type rnai -days_to_expire 730 -days_ahead_to_notify 14 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_notification.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "1.d Expire RNAi user agreements ..." >>"$LOGFILE" 2>&1
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/user_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -ua_type rnai -days_to_expire 730 \
+  -email_message_directory db/static/user_agreement/ \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_log_filename ../logs/mail_user_agreement_expiration.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.a Adjust screen Data Privacy Expiration Dates ..." >>"$LOGFILE" 2>&1
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -adjust_expiration_days_from_activity 790 \
+  -email_log_filename ../logs/mail_screen_dped_adjust.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.b Notify of screen privacy expirations ..." >>"$LOGFILE" 2>&1
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -days_ahead_to_notify 60 \
+  -email_log_filename ../logs/mail_screen_dped_notification.log \
+  -v -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.c Expire screen data sharing levels ..." >>"$LOGFILE" 2>&1
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -expire \
+  -email_log_filename ../logs/mail_screen_dped_expiration.log \
+  -v -test_only -admin_email_only >>"$LOGFILE" 2>&1
+
+  echo "2.d Notify admins for screen publications ..." >>"$LOGFILE" 2>&1
+  echo "Using pass file: ${credential_file}" >>"$LOGFILE"
+  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
+  PYTHONPATH=. python \
+  db/support/screen_privacy_expiration_emailer.py \
+  -c ${credential_file} \
+  -u ${SERVER_URL} \
+  -contact_info 'Jen Smith (jennifer_smith@hms.harvard.edu)' \
+  -admin_from_email screensaver-feedback@hms.harvard.edu \
+  -email_message_directory db/static/screen_privacy/ \
+  -screen_type sm -notifyofpublications \
+  -email_log_filename ../logs/mail_screen_notifyofpublications.log \
+  -v -test_only -admin_email_only >>"$LOGFILE" 2>&1
+
+
+  echo "Done: user and screen privacy expiration scripts: $(ts)" >> "$LOGFILE"
+}
+
+function create_studies {
+
+  # Create in_silico statistical studies
+  echo "create in_silico statistical studies: $(ts) ..." >> "$LOGFILE"
+
+  echo "create in_silico statistical studies using a local dev server on port $BOOTSTRAP_PORT..." >>"$LOGFILE" 2>&1
+  
+  # FIXME: using the local server may not be necessary as the server has been bootstrapped
+   
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status"
+    exit $runserver_status
+  fi
+  #  echo "wait for server process: ($!) to start..."
+  #  wait $server_pid
+  sleep 3
+  
+  study_id=200001
+  study_file=docs/studies/study_${study_id}.json
+  # lead_screener=sde_edit
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file} >>"$LOGFILE" 2>&1
+
+  study_id=200002
+  study_file=docs/studies/study_${study_id}.json
+  # lead_screener=sde_edit
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file} >>"$LOGFILE" 2>&1
+
+  study_id=200003
+  study_file=docs/studies/study_${study_id}.json
+  # lead_screener=sde_edit
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_confirmed_positive_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file} >>"$LOGFILE" 2>&1
+
+  # ping the studies to test
+  study_id=200001
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com 
+  study_id=200002
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+  study_id=200003
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+
+  ####
+  echo "create in_silico statistical studies finished, stop server ..."
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  # kill $server_pid
+
+  echo "create in_silico statistical studies done: $(ts)" >> "$LOGFILE"
+
+}
+
+function setup_test_data {
+  # Create data for end-user testing
+  
+  echo "setup_test_data: $(ts) ..." >> "$LOGFILE"
+
+  echo "setup test data using a local dev server on port $BOOTSTRAP_PORT..."
+  
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
+  
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status"
+    exit $runserver_status
+  fi
+#  echo "wait for server process: ($!) to start..."
+#  wait $server_pid
+  sleep 3
+  
+  test_screen=10
+  # lead_screener=jen_smith
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+
+  test_screen=10a
+  # RNAi test
+  # lead_screener=jen_smith
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+
+  test_screen=11
+  # lead_screener=djw11
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
     
-  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
+  test_screen=11a
+  # RNAi test
+  # lead_screener=djw11
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=12
+  # lead_screener=sr50
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=12a
+  # RNAi
+  # lead_screener=sr50
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=13
+  # lead_screener=rs360
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=13a
+  # RNAi
+  # lead_screener=rs360
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=14
+  # lead_screener=rw105
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=14a
+  # RNAi test
+  # lead_screener=rw105
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=15
+  # lead_screener=sde4
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=15a
+  # lead_screener=sde4
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+
+  # test RNAi Duplex  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  # test RNAi Pool  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_2.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  test_screen=16
+  # lead_screener=kls4
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/test_screen_${test_screen}.json \
+    -a PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+  
+  cherry_pick_patch_file="test_screen_${test_screen}_cpr_1.json"
+  PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
+    -f db/static/test_data/screens/${cherry_pick_patch_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screen/${test_screen}/cherrypickrequest?override=true \
+    --header "Content-Type: application/json" --header "HTTP-Accept: application/json" >>"$LOGFILE" 2>&1
+    
+  ####
+  echo "setup_test_data finished, stop server ..."
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  # kill $server_pid
+
+  echo "setup_test_data done: $(ts)" >> "$LOGFILE"
 
 }
 
@@ -454,17 +1005,22 @@ function main {
   restoredb
   
   restoredb_data
-    
+  
+  result_value_cleanup
+  
   maybe_activate_virtualenv
   
   pip install -r requirements.txt >>"$LOGFILE" 2>&1
 
-  if [[ -n "$SETTINGS_FILE" ]]; then
-    cp $SETTINGS_FILE lims/settings.py
-  else
-    echo "no SETTINGS_FILE migration.properties setting"
-    # cp lims/settings-dist.py lims/settings.py
-  fi
+# NOTE: 20170726 - removed from the migration;
+# - a data exposure ocurred due to the settings "DEBUG" flag being reset by 
+# this action. The settings file should be manually updated in the future.
+#  if [[ -n "$SETTINGS_FILE" ]]; then
+#    cp $SETTINGS_FILE lims/settings.py
+#  else
+#    echo "no SETTINGS_FILE migration.properties setting"
+#    # cp lims/settings-dist.py lims/settings.py
+#  fi
   
   mkdir logs
   
@@ -475,9 +1031,11 @@ function main {
   
   frontend_setup
   
+  frontend_deploy  
+  
   django_syncdb
 
-  premigratedb  
+  premigratedb
 
   bootstrap
   
@@ -487,8 +1045,18 @@ function main {
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
     tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
   fi  
+  
+  setup_production_users
+  
+  setup_test_data
+
+  create_studies
+
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    run_expiration_scripts
+  fi
   # put this here to see if LSF will start reporting results
-  exit 0
+  # exit 0
     
   # Integration test: run some grunt-mocha chai-jquery to test the UI?  
   
@@ -497,74 +1065,36 @@ function main {
   # wget https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental
 
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    PYTHONPATH=. reports/utils/django_requests.py -u sde  \
+    PYTHONPATH=. python reports/utils/django_requests.py -u sde  \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
+  fi
+  
+  if [[ $MIGRATE_RESULT_VALUE_TABLE -ne 0 ]]; then
+    migrate_result_values
   fi
 
 }
 
-function code_bootstrap {
-  # performs a full update, minus the database restoration
-  
-  gitpull
-  
-#  restoredb
-  
-#  restoredb_data
-    
-  maybe_activate_virtualenv
-  
-  pip install -r requirements.txt >>"$LOGFILE" 2>&1
 
-  if [[ -n "$SETTINGS_FILE" ]]; then
-    cp $SETTINGS_FILE lims/settings.py
-  else
-    echo "no SETTINGS_FILE migration.properties setting"
-    # cp lims/settings-dist.py lims/settings.py
-  fi
-  
-  mkdir logs
-  
-  if [[ $RUN_DB_TESTS -ne 0 ]] ; then
-    $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing  \
-      >> "$LOGFILE" 2>&1 || error "django tests failed: $?"
-  fi
-  
-  frontend_setup
-  
-  django_syncdb
-
-  premigratedb  
-
-  bootstrap
-  
-  # the later migrations require the bootstrapped data
-  migratedb
-  
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    if [[ $WARNINGS -ne '' ]]; then
-      msg = "${WARNINGS} \n `tail -400 migration.log`"
-      echo $msg | mail -s "Migration completed $(ts), with warning" sean.erickson.hms@gmail.com
-    else
-      tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
-    fi
-  fi  
-  # put this here to see if LSF will start reporting results
-  exit 0
-
-  
-}  
-
-echo "start migration: $(ts) ..."
+echo "start migration: $(ts) ..." >>"$LOGFILE"
 
 main "$@"
 
+#  gitpull
+  
 #  restoredb
   
 #  restoredb_data
     
+#  result_value_cleanup
+
 #  maybe_activate_virtualenv
   
+#  pip install -r requirements.txt >>"$LOGFILE" 2>&1
+
+#  frontend_setup
+
+#  frontend_deploy
   
 #  django_syncdb
 
@@ -572,45 +1102,19 @@ main "$@"
 
 #  bootstrap
   
-  # the later migrations require the bootstrapped data
+# the later migrations require the bootstrapped data
 #  migratedb
-
-
-
-
-
-
-
-echo "migration finished: $(ts)"
-
-
-function frontend_setup_grunt {
-  echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
-
-  cd reports/static >>"$LOGFILE" 2>&1
   
-  npm --version 2>&1 || error "npm not found: $?"
+#  setup_production_users
   
-  rm -rf ./node_modules # untested 20150923
-  npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
-  npm install bower
-  ./node_modules/.bin/bower cache clean
-  rm -rf ./bower_components # untested
-  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
-  
-  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || warn "grunt test failed, see logfile: $?"
-  
-  cd ../..
-  
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" \
-        --ignore="*bower_components*" --ignore="*api_init*" || error "collectstatic failed: $?"
-  fi
+#  setup_test_data
 
-  if [ -e ../wsgi/app.wsgi ]; then
-    touch ../wsgi/app.wsgi
-  fi
-    
-  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
-  
-}
+#  create_studies
+
+# run_expiration_scripts
+
+
+
+
+echo "migration finished: $(ts)" >>"$LOGFILE"
+

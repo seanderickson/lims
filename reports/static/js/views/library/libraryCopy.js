@@ -40,7 +40,8 @@ define([
         resource: 'copywell'
       },
       platelocation: { 
-        description: 'Copy Plate Locations', title: 'Copy Plate Locations', invoke: 'setCopyPlateLocations',
+        description: 'Copy Plate Locations', title: 'Copy Plate Locations', 
+        invoke: 'setCopyPlateLocations',
         resource: 'platelocation'
       }
     },      

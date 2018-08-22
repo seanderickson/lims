@@ -4,22 +4,24 @@
 
 
 from __future__ import unicode_literals
-import json
-import requests
-import sys, os
-from urlparse import urlparse
+
 import argparse
 import getpass
+import json
+import logging
+import sys, os
+from urlparse import urlparse
+
+import requests
 
 from django_requests import get_logged_in_session
-
 import reports.serialize.csvutils as csvutils
+from reports.utils import parse_credentials
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 # TODO: this replaces /reports/management/commands/db_init.py - sde4 - 201404
-
 
 class ApiError(Exception):
     
@@ -34,14 +36,14 @@ class ApiError(Exception):
                 err_msg = str(result.content)
         except ValueError,e:
             logger.warn('There is no json in the response')
-            logger.warn(str(('-----raw response text-------', result.text)) )
+            logger.warn('-----raw response text------- %r', result.text)
             err_msg = str(result.content)
 
         self.message = str((
             url,'action',action, result.reason, result.status_code, err_msg )) \
             .replace('\\n','') \
             .replace('\\','')
-        if(logger.isEnabledFor(logging.DEBUG)):
+        if logger.isEnabledFor(logging.DEBUG):
             self.message = str((url,'action',action, result.reason, 
                                 result.status_code, result.content )).replace('\\','')
 
@@ -56,13 +58,13 @@ def delete(obj_url, headers, session=None, authentication=None):
         elif authentication:
             r = requests.delete(obj_url, auth=authentication, headers=headers,verify=False)
         
-        if(r.status_code != 204):
+        if  r.status_code != 204:
             print "DELETE ERROR", r, r.text
             raise ApiError(obj_url,'DELETE',r)
         print 'DELETE: ', obj_url, ' ,response:', r.status_code
-        logger.info(str(('DELETE', obj_url)))
+        logger.info('DELETE: %r', obj_url)
     except Exception, e:
-        logger.error(str(('delete', obj_url, 'exception recorded while contacting server', e)))
+        logger.exception('on delete: %s', obj_url)
         raise e
 
 def put(input_file, obj_url,headers, session=None, authentication=None):
@@ -79,20 +81,16 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
                 raise ApiError(obj_url,'PUT',r)
             print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
                    r.status_code, ', count: ',len(r.json()['objects']))
-            if(logger.isEnabledFor(logging.DEBUG)):
+            if logger.isEnabledFor(logging.DEBUG):
                 logger.debug('--- PUT objects:')
                 try:
                     for obj in r.json()['objects']:
-                        logger.debug(str((obj)))
+                        logger.debug('object: %r', obj)
                 except ValueError,e:
                     logger.debug('----no json object to report')
-                    logger.debug(str(('text response', r.text)))
+                    logger.debug('text response: %r', r.text)
     except Exception, e:
-        extype, ex, tb = sys.exc_info()
-        logger.warn(str((
-            'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-            tb.tb_lineno, extype, ex)))
-        logger.error(str(('put', obj_url, 'exception recorded while contacting server', e)))
+        logger.exception('on put: %s', obj_url)
         raise e
     
 def patch(patch_file, obj_url,headers, session=None, authentication=None):
@@ -105,20 +103,20 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
             elif authentication:
                 r = requests.patch(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if(r.status_code not in [200,201,202,204]):
+            if r.status_code not in [200,201,202,204]:
                 # TODO: only 200
                 raise ApiError(obj_url,'PATCH',r)
             # TODO: show "Result" section of meta
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
                     r.status_code,', result: ',r.json()['meta']['Result'])
-            if(logger.isEnabledFor(logging.DEBUG)):
+            if logger.isEnabledFor(logging.DEBUG):
                 logger.debug('--- PATCHED objects:')
                 try:
                     for obj in r.json()['objects']:
-                        logger.debug(str((obj)))
+                        logger.debug('object: %r', obj)
                 except ValueError,e:
                     logger.debug('----no json object to report')
-                    logger.debug(str(('text response', r.text)))
+                    logger.debug('text response: %r', r.text)
     except Exception, e:
         logger.exception('on patch: %s', obj_url)
         raise e
@@ -137,11 +135,14 @@ parser.add_argument(
             An input action is a [command,resource,file]; 
             see the reports/static/api_init/api_init_actions.csv file''')
 parser.add_argument(
-    '-U', '--username', required=True,
+    '-U', '--username', 
     help='username for the api authentication')
 parser.add_argument(
     '-p', '--password',
     help='user password for the api authentication')
+parser.add_argument(
+    '-c', '--credential_file',
+    help = 'credential file containing the username:password for api authentication')
 parser.add_argument(
     '-v', '--verbose', dest='verbose', action='count',
     help="Increase verbosity (specify multiple times for more)")    
@@ -167,16 +168,24 @@ if __name__ == "__main__":
     url = args.url
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
-
-    password = args.password
-    if not password:
-        password = getpass.getpass()
+    
+    username = None
+    if args.credential_file:
+        username,password = parse_credentials(args.credential_file)
+    if username is None:
+        username = args.username
+        if username is None:
+            parser.error(
+                'username is required if not specifying the credential_file')
+        password = args.password
+        if not password:
+            password = getpass.getpass()
     
     headers ={}
 
-    #### log in using django form-based auth, and keep the session
+    logger.info('begin processing file: %r', args.input_actions_file)
     session = get_logged_in_session(
-        args.username, password, base_url)
+        username, password, base_url)
     # django session based auth requires a csrf token
     headers['X-CSRFToken'] = session.cookies['csrftoken']
     # always accept json for debugging the returned values

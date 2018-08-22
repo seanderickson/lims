@@ -1,0 +1,33 @@
+# Study Generators
+# (to be run from the project root)
+
+# Small Molecule screened count study:
+# - NOTE: takes 18:30 to create 885786 assay_wells on 20180110
+PYTHONPATH=. python reports/utils/django_requests.py -c sde_credentials.txt \
+  -a POST http://localhost:8000/db/api/v1/study/create_screened_count_study \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200001.json
+
+# RNAi screened count study:
+PYTHONPATH=. python reports/utils/django_requests.py -c sde_credentials.txt \
+  -a POST http://localhost:8000/db/api/v1/study/create_screened_count_study \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200002.json
+
+# RNAi confirmed positives study
+PYTHONPATH=. python reports/utils/django_requests.py -c sde_credentials.txt \
+  -a POST http://localhost:8000/db/api/v1/study/create_confirmed_positive_study \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200003.json
+
+# Test - create sm screened count study with only on column (old method, for comparison)
+PYTHONPATH=. python reports/utils/django_requests.py -c sde_credentials.txt  \
+  -a POST http://localhost:8000/db/api/v1/study/create_screened_count_study_v1 \
+  --header "Content-type: application/json" \
+  --header "HTTP-Accept: application/json" \
+  -f ./docs/studies/study_200004.json
+
+  

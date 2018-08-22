@@ -50,6 +50,22 @@ update plate set plate_type = 'marsh_384' where plate_type='Marsh 384 VB PP';
 update plate set plate_type = 'costar_96' where plate_type='Costar 96 RB PS';
 update plate set plate_type = 'genetix_384' where plate_type='Genetix 384 CB PP';
 
+update cherry_pick_request set assay_plate_type = 'eppendorf_384' where assay_plate_type='Eppendorf 384 CB PP';
+update cherry_pick_request set assay_plate_type = 'eppendorf_96' where assay_plate_type='Eppendorf 96 CB PP';
+update cherry_pick_request set assay_plate_type = 'abgene_384' where assay_plate_type='ABgene 384 CB PP';
+update cherry_pick_request set assay_plate_type = 'nunc_96' where assay_plate_type='Nunc 96 VB PS';
+update cherry_pick_request set assay_plate_type = 'marsh_384' where assay_plate_type='Marsh 384 VB PP';
+update cherry_pick_request set assay_plate_type = 'costar_96' where assay_plate_type='Costar 96 RB PS';
+update cherry_pick_request set assay_plate_type = 'genetix_384' where assay_plate_type='Genetix 384 CB PP';
+
+update cherry_pick_assay_plate set assay_plate_type = 'eppendorf_384' where assay_plate_type='Eppendorf 384 CB PP';
+update cherry_pick_assay_plate set assay_plate_type = 'eppendorf_96' where assay_plate_type='Eppendorf 96 CB PP';
+update cherry_pick_assay_plate set assay_plate_type = 'abgene_384' where assay_plate_type='ABgene 384 CB PP';
+update cherry_pick_assay_plate set assay_plate_type = 'nunc_96' where assay_plate_type='Nunc 96 VB PS';
+update cherry_pick_assay_plate set assay_plate_type = 'marsh_384' where assay_plate_type='Marsh 384 VB PP';
+update cherry_pick_assay_plate set assay_plate_type = 'costar_96' where assay_plate_type='Costar 96 RB PS';
+update cherry_pick_assay_plate set assay_plate_type = 'genetix_384' where assay_plate_type='Genetix 384 CB PP';
+
 /**
              status             
 --------------------------------

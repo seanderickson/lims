@@ -1,11 +1,9 @@
-# TODO: convert to openpyxl
 from __future__ import unicode_literals
 
 from collections import OrderedDict
 import io
 import logging
 
-from tastypie.exceptions import BadRequest
 import xlrd
 import xlsxwriter
 
@@ -13,14 +11,15 @@ from db.support.data_converter import default_converter
 from reports import MAX_IMAGE_ROWS_PER_XLS_FILE
 from reports.serialize import csvutils
 import reports.serialize
+import six
 
 
-# from PIL import Image
 logger = logging.getLogger(__name__)
 
 
 LIST_DELIMITER_XLS = ';'
 
+# TODO: compare with other packages: openpyxl, pyexcelerate
 def xls_write_workbook(file, data, request=None, image_keys=None, 
     title_function=None, list_brackets=None):
     '''
@@ -30,7 +29,7 @@ def xls_write_workbook(file, data, request=None, image_keys=None,
     '''
 
     if not isinstance(data, dict):
-        raise BadRequest(
+        raise Exception(
             'unknown data for generic xls serialization: %r' % type(data))
 
     wb = xlsxwriter.Workbook(file, {'constant_memory': True})
@@ -85,7 +84,7 @@ def write_rows_to_sheet(wb, sheet_rows, sheet_basename,
                 sheet.write_string(filerow,i,key)
             filerow += 1
         for i, (key,val) in enumerate(values.items()):
-            val = csvutils.csv_convert(
+            val = csvutils.convert_list_vals(
                 val, delimiter=LIST_DELIMITER_XLS,
                 list_brackets=list_brackets)
             if val is not None:
@@ -129,7 +128,7 @@ def generic_xls_write_workbook(file, data):
             else:
                 generic_write_rows_to_sheet(sheet_rows, sheet)
     else:
-        raise BadRequest(
+        raise Exception(
             'unknown data for generic xls serialization: %r' % type(data))
     logger.info('save to file; %r', file.name)
     wb.close()
@@ -138,7 +137,7 @@ def generic_xls_write_workbook(file, data):
 def generic_write_rows_to_sheet(rows, sheet):
     for row,values in enumerate(rows):
         for i, val in enumerate(values):
-            val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+            val = csvutils.convert_list_vals(val, delimiter=LIST_DELIMITER_XLS)
             if val is not None:
                 if len(val) > 32767: 
                     logger.error('warn, row too long, %d, key: %r, len: %d', 
@@ -169,7 +168,13 @@ def write_xls_image(worksheet, filerow, col, val, request):
         logger.info('no image at: %r, %r', val,e)
 
 def read_string(cell):
+    '''
+    Read the cell as a string. 
+    - empty strings are convervted to None
+    - integer cells are read as strings
+    '''
     value = cell.value
+    logger.debug('read string: %r: %r', cell, value)
     if value is None:
         return None
     elif cell.ctype == xlrd.XL_CELL_NUMBER:
@@ -178,28 +183,37 @@ def read_string(cell):
             value = ival
         return str(value)
     else:
-        value = str(value).strip()
-        if not value:
-            return None
+        if isinstance(value, six.string_types):
+            value = value.strip()
+            if not value:
+                return None
         return value
 
 def sheet_rows(workbook_sheet):
     def read_row(row):
         for col in range(workbook_sheet.ncols):
+            logger.debug(
+                'read cell: %r:%r, %r', row, col, 
+                read_string(workbook_sheet.cell(row,col)))
             yield read_string(workbook_sheet.cell(row,col))
     for row in range(workbook_sheet.nrows):
         yield read_row(row)
 
 def sheet_rows_dicts(sheet):
-    colnames = [xlrd.book.colname(i) for i in range(sheet.ncols)]
+    '''
+    Read the sheet as an array of dicts, with the first row as the dict keys
+    '''
     rows = sheet_rows(sheet)
-    header = rows.next()
+    header = [x for x in rows.next()]
     for row in rows:
-        yield dict(zip(header,row))
+        yield dict(zip(header,[x for x in row]))
 
 def sheet_cols(workbook_sheet):
     def read_col(col):
         for row in range(workbook_sheet.nrows):
+            logger.debug(
+                'read cell: %r:%r, %r', row, col, 
+                read_string(workbook_sheet.cell(row,col)))
             yield read_string(workbook_sheet.cell(row,col))
     for col in range(workbook_sheet.ncols):
         yield read_col(col)

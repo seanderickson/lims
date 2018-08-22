@@ -10,31 +10,55 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/screen/screenSummary', 
-  'views/screen/screenData',  
+  'views/screen/screenData',
+  'views/screen/cherryPickRequest',
+  'views/activityListView',
+  'views/serviceActivity',
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
   'views/generic_edit',
   'views/list2', 
   'utils/uploadDataForm',
   'utils/tabbedController',
-  'templates/generic-detail-screen.html'
+  'templates/generic-detail-stickit.html',
+  'templates/generic-detail-stickit-one-column.html'
+//  'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            ScreenSummaryView, ScreenDataView, DetailLayout, DetailView, EditView, 
-            ListView, UploadDataForm, TabbedController, screenTemplate) {
+            ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
+            ActivityListView, ServiceActivityView, DetailLayout, DetailView, EditView, 
+            ListView, UploadDataForm, TabbedController, detailTemplate,
+            detailOneColTemplate) {
 
   var ScreenView = TabbedController.extend({
-
+    isAdmin: false,
+    OK_STATUSES: ['accepted','ongoing'],
+    COMPLETED_STATUSES: ['completed','completed_duplicate_with_ongoing' ],
+    
     initialize: function(args) {
       var self = this;
       self.args = args;
       this._classname = 'ScreenView';
 
       this.tabbed_resources = this.screen_tabbed_resources;
-      if (self.model.get('project_phase') == 'annotation') {
+      if (! _.isEmpty(self.model.get('study_type'))) {
         this.tabbed_resources = this.study_tabbed_resources;
       } 
       
       TabbedController.prototype.initialize.apply(this,arguments);
+      
+      var access_level = this.model.get('user_access_level_granted');
+      if (access_level > 1 && _.isEmpty(self.model.get('study_type'))) {
+        this.tabbed_resources['summary'] = this.screen_tabbed_resources['summary'];
+//        if (this.model.get('has_screen_result') != 1){
+//          delete this.tabbed_resources['data']
+//        }
+        this.tabbed_resources['protocol'] = this.screen_tabbed_resources['protocol'];
+      } 
+      if (access_level > 2 && _.isEmpty(self.model.get('study_type'))){
+        this.tabbed_resources['cherrypickrequest'] = this.screen_tabbed_resources['cherrypickrequest'];
+        this.tabbed_resources['activities'] = this.screen_tabbed_resources['activities'];
+      }
+      
     },
 
     study_tabbed_resources: {
@@ -57,9 +81,15 @@ define([
         title : 'Screen Details',
         invoke : 'setDetail'
       },
+      protocol : {
+        description : 'Screen Protocol Information',
+        title : 'Protocol',
+        invoke : 'setProtocol',
+        permission: 'screen'
+      },
       summary : {
-        description : 'Screening Summary',
-        title : 'Screening Summary',
+        description : 'Visit Summary',
+        title : 'Visit Summary',
         invoke : 'setSummary',
         permission: 'screensummary'
       },
@@ -69,11 +99,11 @@ define([
         invoke : 'setData',
         permission: 'screenresult'
       },
-      cherrypicks: {
+      cherrypickrequest: {
         description : 'Cherry Pick Requests',
         title : 'Cherry Picks',
         invoke : 'setCherryPicks',
-        permission: 'cherrypick'
+        permission: 'cherrypickrequest'
       },
       activities: {
         description : 'Activities',
@@ -94,19 +124,107 @@ define([
       return this;
     },
 
+    getTitle: function() {
+      var self = this;
+      var title = [
+         '<H4 id="title">',
+         '<a href="#screen/{facility_id}" >{facility_id}</a>: '];
+      if (this.model.get('screen_type') == 'small_molecule'
+        && _.isEmpty(this.model.get('study_type'))){
+        title.push('<small>A screen for compounds that... </small>');
+      }
+      title.push('{title}');
+      title.push('</H4>');
+      var titleDiv = $(Iccbl.formatString(title.join(''), this.model));
+      if (appModel.hasGroup('readEverythingAdmin')){
+        if (!_.isEmpty(self.model.get('comments'))){
+          titleDiv.append(
+            Iccbl.createCommentIcon([self.model.get('comments')],'Commments'));
+        }
+      }
+      return titleDiv;
+    },
+       
+    /**
+     * TODO: create a ScreenDetail class
+     */
     setDetail: function(delegateStack) {
+      
       var self,outerSelf = self = this;
       var key = 'detail';
-      var fields = self.model.resource.fields;
+      var resource = self.model.resource;
+      var fields = resource.fields;
+      var model = this.model;
+      
+      if (! model.isNew() 
+          && !_.isEmpty(delegateStack)  && delegateStack[0] == '+add'){
+        // do not allow return to +add
+        console.log('cannot return to screen/id/+add...');
+        delegateStack.shift();
+      }
+      
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      if (this.model.get('project_phase')!= 'annotation') {
-        fields['collaborator_usernames'].vocabulary = (
-            _.object(this.model.get('collaborator_usernames'),
-              this.model.get('collaborator_names')));
+      fields['collaborator_ids'].vocabulary = (
+          _.object(model.get('collaborator_ids'),
+            model.get('collaborator_names')));
+
+      if (!_.isEmpty(model.get('primary_screen'))){
+        fields['primary_screen'].visibility=['d'];
       }
+      if (!_.isEmpty(model.get('reconfirmation_screens'))){
+        fields['reconfirmation_screens'].visibility=['d'];
+      }
+      
+      // Hack to change group name:
+      _.each(fields, function(field){
+        if (field.display_options && 
+            field.display_options.group == 'Pin Transfer / RNAi Transfection'){
+          if (self.model.get('screen_type')=='small_molecule'){
+            field.display_options.group = 'Pin Transfer';
+          } else {
+            field.display_options.group = 'RNAi Transfection';
+          }
+        }
+      });
+      
+      // Manage visible fields; admin fields
+      var editableKeys = model.resource.updateKeys();
+      if (model.isNew()) {
+        editableKeys = _.union(editableKeys,model.resource.createKeys());
+      }
+      editableKeys = _.filter(editableKeys, function(key){
+        return ! (
+            _.contains(fields[key].visibility, 'billing')
+            || _.contains(fields[key].visibility, 'protocol'));
+      });
+      var editVisibleKeys = model.resource.allEditVisibleKeys();
+      editVisibleKeys = _.filter(editVisibleKeys, function(key){
+        return ! (
+            _.contains(fields[key].visibility, 'billing')
+            || _.contains(fields[key].visibility, 'protocol'));
+      });
+      var detailKeys = model.resource.detailKeys();
+      var adminKeys = model.resource.adminKeys();
+      if (!self.isAdmin){
+        detailKeys = _.difference(detailKeys, adminKeys);
+      }
+      
       var editView = EditView.extend({
+
+        initialize: function() {
+          var self = this;
+          EditView.prototype.initialize.apply(this,arguments);
+        }, 
+        
+        save_success: function(data, textStatus, jqXHR){
+          EditView.prototype.save_success.apply(this,arguments);
+          appModel.unset('screens', {silent: true});
+          appModel.getScreens();
+        },
+        
         afterRender: function() {
+        
           var form = this;
           outerSelf._addVocabularyButton(
             this, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
@@ -121,7 +239,7 @@ define([
           form.$el.find('div[key="title"]').parent().prepend(
             '<span id="title-sm-screen">A screen for compounds that...</span>');
           function screenTypeSettings(screen_type){
-            // TODO: 20161128 - adjust visible fields based on the screen type
+            // 20161128 - adjust visible fields based on the screen type
             if (screen_type == 'small_molecule'){
               form.$el.find('#title-sm-screen').show();
               form.$el.find('div[data-fields="transfection_agent"]').hide();
@@ -135,149 +253,208 @@ define([
             }
           };
 
-          screenTypeSettings(this.model.get('screen_type'));
-          // Note the "screen_type:change" syntax is backwards from Backbone
+          screenTypeSettings(model.get('screen_type'));
+          // Note the forms "screen_type:change" syntax is backwards from Backbone
           form.on('screen_type:change', function(e){
             screenTypeSettings(form.getValue('screen_type'));
           });
           form.on('status:change', function(e){
             form.setValue('status_date', new Date());
           });
+          
           EditView.prototype.afterRender.apply(this,arguments);
+        },
+
+        validate: function(attrs) {
+//          // FIXME: 20170605 refactor: this must be tested to verify it works
+//          var errs = EditView.prototype.validate.apply(this,arguments);
+//          errors = errs || {};
+//          console.log('extra validation...')
+//          if (!_.isEmpty(this.model.get('data_privacy_expiration_notified_date'))) {
+//            if (!_.isEmpty(this.model.get('max_allowed_data_privacy_expiration_date'))) {
+//              errors['max_allowed_data_privacy_expiration_date'] = (
+//                'can not be set if the expiration notified date is set');
+//            }
+//            if (!_.isEmpty(this.model.get('min_allowed_data_privacy_expiration_date'))) {
+//              errors['min_allowed_data_privacy_expiration_date'] = (
+//                'can not be set if the expiration notified date is set');
+//            }
+//          }
+//          
+//          if (!_.isEmpty(errors)) return errors;
+          return null;
         }
       });
+      
+      // Custom showEdit function allows lazy loading of user choices fields
+      // FIXME: it would be better to extend DetailLayout.showEdit
+      var showEdit = function(updateModel) {
+        var self = this;
+        var model = updateModel || self.model;
+        var fields = model.resource.fields;
+        appModel.initializeAdminMode(function() {
+          
+          // FIXME: if "edit" page is reloaded, option lists here may not be loaded
+          // - caused by search_box dynamic form ajax request contention
+          // - result is that the choices are not populated here
+          // - fix lazy load search box options; or force showEdit to block 
+          // until loaded
+          
+          var userOptions = appModel.getUserOptions();
+          fields['collaborator_ids'].choiceHash = userOptions;
+          fields['lead_screener_id'].choiceHash = (
+              [{ val: '', label: ''}].concat(userOptions));
+          fields['lab_head_id'].choiceHash = (
+              appModel.getPrincipalInvestigatorOptions() );
+          fields['pin_transfer_approved_by_username'].choiceHash = (
+              appModel.getAdminUserOptions() );
+          
+          // pick just the non-billing fields: prevent backbone save from sending
+          // uninitialized billing fields on create
+          var modelKeys = detailKeys.concat(editVisibleKeys);
+          editModel = new Backbone.Model(model.pick(modelKeys));
+          editModel.set('id', model.get('id'));
+          editModel.resource = model.resource;
+          editModel.urlRoot = model.resource.apiUri;
+          editModel.url = model.url;
+          editModel.parse = model.parse;
+          editModel.isNew = model.isNew;
+
+          var editViewInstance = new editView(_.extend({}, self.args, 
+            { 
+              model: editModel,
+              uriStack: self.uriStack,
+              isCreate: true
+            }));
+          Backbone.Layout.setupView(editViewInstance);
+          view.listenTo(editViewInstance,'remove',function(){
+            view.removeView(editViewInstance);
+            view.showDetail();
+          });
+          view.listenTo(editViewInstance, 'uriStack:change', self.reportUriStack);
+          view.setView("#detail_content", editViewInstance).render();
+          appModel.setPagePending();
+          return editViewInstance;
+        });  
+      };
+
       
       var view = this.tabViews[key];
       if (view) {
         this.removeView(this.tabViews[key]);
       }
-      
       var detailView = DetailView.extend({
         afterRender: function() {
-          DetailView.prototype.afterRender.apply(this,arguments);
+          var dview = DetailView.prototype.afterRender.apply(this,arguments);
           
-          if (self.model.get('project_phase')=='annotation') {
-            // do nothing
+          if (!_.isEmpty(model.get('study_type'))) {
+            // do nothing for studies here
           } else {
-            self.createStatusHistoryTable($('#status_table'));
-            self.createActivitySummary($('#activity_summary'));
-            self.createCprTable($('#cpr_table'));
-            self.createPublicationTable(this.$el.find('#publications'));
-            self.createAttachedFileTable(this.$el.find('#attached_files'));
-            
-            // TODO: create a metadata setting for "show if present"
-            if (!self.model.has('perturbagen_molar_concentration')) {
-              $('#perturbagen_molar_concentration').closest('tr').remove();
+            if(self.model.get('user_access_level_granted') == 3 ){
+              self.createStatusHistoryTable($('#detail_extra_information'));
+              self.createActivitySummary($('#detail_extra_information'));
+              self.createCprTable($('#detail_extra_information'));
             }
-            if (!self.model.has('perturbagen_ug_ml_concentration')) {
-              $('#perturbagen_ug_ml_concentration').closest('tr').remove();
+            if (appModel.hasGroup('readEverythingAdmin')) {
+              self.createAttachedFileTable(this.$el.find('#attached_files'));
             }
-            if (!self.model.has('transfection_agent')) {
-              $('#transfection_agent').closest('tr').remove();
-            }
-            if (!self.model.has('pin_transfer_approved_by_username')) {
-              $('#pin_transfer_date_approved').closest('tr').remove();
-              $('#pin_transfer_comments').closest('tr').remove();
-            }
-            if (self.model.get('screen_type')=='small_molecule'){
-              $('#title').prepend('<span><small>A screen for compounds that...</small><span><br/>');
-            }
-            
           }
           
-        },
-        
-        serialize: function() {
-          console.log('serialize...');
-          var data = DetailView.prototype.serialize.apply(this,arguments);
-          var informationKeys = [];
-          var groupedKeys = [];
-          data['groupedKeys'].each(function(groupKey) {
-            if (_.result(groupKey,'title',null) == 'Information') {
-              informationKeys = informationKeys.concat(groupKey.fields);
-            } else {
-              groupedKeys.push(groupKey);
+          if (_.isEmpty(self.model.get('study_type'))
+              && _.isEmpty(model.get('primary_screen'))){
+            
+            // Reconfirmation up screens can be added, if the current screen is not a 
+            // reconfirmation up screen itself.
+            
+            var addReconfirmationScreenControl = $([
+              '<a class="btn btn-default btn-sm pull-right" ',
+                'role="button" id="reconfirmationScreenButton" href="#">',
+                'Add a Reconfirmation Screen</a>'
+              ].join(''));
+            if (appModel.hasPermission('screen','write')) {
+              $('#generic-detail-buttonpanel-right').append(addReconfirmationScreenControl);
             }
-          });
-          console.log('groupedKeys', groupedKeys, informationKeys);
-          data['groupedKeys'] = _.chain(groupedKeys);
-          data['informationKeys'] = _.chain(informationKeys);
-          return data;
+            addReconfirmationScreenControl.click(function(e){
+              e.preventDefault();
+              
+              var newFacilityId = self.model.get('facility_id') + 'A';
+              if (!_.isEmpty(model.get('reconfirmation_screens'))){
+                var other = self.model.get('reconfirmation_screens').sort();
+                var last = other[other.length-1];
+                var newLetter =  String.fromCharCode(last.charCodeAt(last.length-1)+1);
+                newFacilityId =  self.model.get('facility_id') + newLetter;
+              }
+              
+              var defaults = self.model.pick([
+                'screen_type', 'lab_head_id', 'lead_screener_id', 
+                'data_sharing_level',
+                'collaborator_ids', 'title', 'summary', 'species', 
+                'cell_lines', 'transfection_agent', 
+                'perturbagen_molar_concentration','perturbagen_ug_ml_concentration'
+              ]);
+              defaults['facility_id'] = newFacilityId;
+              defaults['primary_screen'] = self.model.get('facility_id');
+              var newModel = appModel.newModelFromResource(resource, defaults);
+              newModel.url = function(){
+                return resource.apiUri + '?override=true';
+              }
+              
+              console.log('new reconfirmation up screen:', newModel);
+              self.consumedStack = ['+add'];
+              editVisibleKeys.push('primary_screen');
+              showEdit(newModel);
+              self.$('ul.nav-tabs > li').addClass('disabled');
+              self.reportUriStack([]);
+              var titleDiv = $('#detail_container').find('#content_title')
+              titleDiv.append(
+                '<H4 id="title">Reconfirmation Up Screen for ' + 
+                self.model.get('facility_id') + '</H4>');
+              titleDiv.show();
+            });
+                                              
+          }
+          if (_.isEmpty(self.model.get('study_type'))
+              && appModel.hasGroup('readEverythingAdmin')) {
+            var adminControl = $('<a id="admin-control"></a>');
+            if (self.isAdmin){
+              adminControl.append('&nbsp;admin&nbsp;&lt;&lt;&nbsp;')
+            }else{
+              adminControl.append('&nbsp;admin&nbsp;&gt;&gt;&nbsp;')
+            }
+            $('#generic-detail-buttonpanel-left').append(adminControl);
+            adminControl.click(function(e){
+              e.preventDefault();
+              outerSelf.isAdmin = !outerSelf.isAdmin;
+              outerSelf.setDetail(delegateStack);
+            });
+          }
         },
         
-        template: _.template(screenTemplate)
-        
+        template: _.template(detailTemplate)
       });
 
-      var temp_validate = this.model.validate;
-      this.model.validate = function(attrs, options) {
-        errs = temp_validate();
-        if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))) {
-          if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))) {
-            errs['max_allowed_data_privacy_expiration_date'] = (
-              'can not be set if the expiration notified date is set');
-          }
-          if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))) {
-            errs['min_allowed_data_privacy_expiration_date'] = (
-              'can not be set if the expiration notified date is set');
-          }
-        }
-        return _.isEmpty(errs) ? null : errs;
-      };
-        
-      var editableKeys = self.model.resource.updateKeys();
-      if (self.model.isNew()) {
-        editableKeys = _.union(editableKeys,self.model.resource.createKeys());
-      }
-      editableKeys = _.filter(editableKeys, function(key){
-        return ! _.contains(fields[key].visibility, 'billing');
-      });
-      var editVisibleKeys = self.model.resource.allEditVisibleKeys();
-      editVisibleKeys = _.filter(editVisibleKeys, function(key){
-        return ! _.contains(fields[key].visibility, 'billing');
-      });
-      var visibleKeys = self.model.resource.detailKeys();
-      /////
-      // pick just the non-billing fields: prevent backbone save from sending
-      // uninitialized billing fields on create
-      var modelKeys = visibleKeys.concat(editVisibleKeys);
-      model = new Backbone.Model(this.model.pick(modelKeys));
-      model.set('id', this.model.get('id'));
-      model.resource = this.model.resource;
-      model.urlRoot = this.model.resource.apiUri;
-      /////
-      
+      // FIXME: 20170519: it would be better to pick needed values only from the args 
       view = new DetailLayout(_.extend(self.args, { 
         model: model, 
         uriStack: delegateStack,
         EditView: editView,
         editableKeys: editableKeys,
+        detailKeys: detailKeys,
         editVisibleKeys: editVisibleKeys,
         DetailView: detailView
       }));
-      view.showEdit = function() {
-        appModel.initializeAdminMode(function() {
-          var userOptions = appModel.getUserOptions();
-          fields['collaborator_usernames']['choices'] = userOptions;
-          fields['lead_screener_username']['choices'] = (
-              [{ val: '', label: ''}].concat(userOptions));
-          fields['lab_head_username']['choices'] = (
-              appModel.getPrincipalInvestigatorOptions() );
-          fields['publishable_protocol_entered_by']['choices'] = (
-              appModel.getAdminUserOptions() );
-          fields['pin_transfer_approved_by_username']['choices'] = (
-              appModel.getAdminUserOptions() );
-          // TODO: this should default only after pp value is entered
-          //view.model.set('publishable_protocol_entered_by',
-          //    appModel.getCurrentUser().username);
-          DetailLayout.prototype.showEdit.apply(view,arguments);
-        });  
-      };
+      // FIXME: it would be better to extend DetailLayout.showEdit here
+      view.showEdit = showEdit
+        
+      this.$("#tab_container-title").html("");
 
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      this.consumedStack = []; 
+      this.consumedStack = [];
+//      this.reportUriStack([]);
+
       this.setView("#tab_container", view ).render();
+      
       return view;
     },
     
@@ -287,9 +464,6 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-//      var cell = $('<div id="activity_summary" class="row"/>');
-//      $target_el.append(cell);
-      $target_el.empty();
       
       function build_table(collection) {
           if (collection.isEmpty()) {
@@ -300,7 +474,7 @@ define([
           $target_el.append($([
             '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
             '<div id="" class="col-xs-12" >',
-            '<table id="activity_summary" class="table-condensed data-list">',
+            '<table id="activity_summary_table" class="table-condensed data-list">',
             '<tr>',
             '<td class="dl-title small">Activities</td>', 
             '<td class="dl-data small">',
@@ -483,7 +657,7 @@ define([
           if (!_.isEmpty(errors)) {
             console.log('form errors, abort submit: ',errors);
             _.each(_.keys(errors), function(key) {
-              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              $('[name="'+key +'"]').parents('.form-group').addClass('has-error');
             });
             return false;
           } else {
@@ -562,14 +736,74 @@ define([
       });
       
       var collection = new CollectionClass();
-      var colModel = Iccbl.createBackgridColModel(resource.fields); 
+      
+      var base_fields = ['pubmed_id','pubmed_central_id','attached_filename'];
+      _.each(resource.fields,function(field){
+        if (_.contains(base_fields,field.key)){
+          field['visibility'] = ['l','d'];
+        } else {
+          field['visibility'] = ['d'];
+        }
+      });
+      var colModel = Iccbl.createBackgridColModel(resource.fields);
+      var lastCol = colModel.pop();
+      colModel.push({
+        'name' : 'citation',
+        'label' : 'Citation',
+        'sortable': false,
+        'searchable': false,
+        'editable' : false,
+        'visible': true,
+        'headerCell': Backgrid.HeaderCell,
+        'cell': Iccbl.LinkCell.extend({
+          hrefTemplate: '#publication/{publication_id}',
+          className: 'text-wrap-cell',
+          render: function(){
+            var model = this.model;
+            this.$el.empty();
+            var formattedValue = '';
+            if (this.model.has('authors')){
+              formattedValue += model.get('authors') + ' '; 
+            }
+            if (model.has('year_published')){
+              formattedValue += '(' + model.get('year_published') + '). ';
+            }
+            if (model.has('title')){
+              var title = model.get('title').trim();
+              if (title.charAt(title.length-1)!='.'){
+                title += '.';
+              }
+              formattedValue += title + ' ';
+            }
+            if (model.has('journal')){
+              formattedValue += model.get('journal') + ' '
+            }
+            if (model.has('volume')){
+              formattedValue += model.get('volume') + ', ';
+            }
+            if (model.has('pages')){
+              formattedValue += model.get('pages') + '.';
+            }
+            console.log('formattedValue', formattedValue);
+            var interpolatedVal = Iccbl.formatString(this.hrefTemplate,model);
+            this.$el.append($('<a>', {
+              tabIndex : -1,
+              href : interpolatedVal,
+              target : this.target,
+              title: 'Citation text for this publication'
+            }).text(formattedValue));
+            return this;
+          }
+        })
+      });
+      colModel.push(lastCol);
       var grid = new Backgrid.Grid({
         columns: colModel,
         collection: collection,
-        className: 'backgrid table-striped table-condensed table-hover'
+        className: 'backgrid table-striped table-condensed table-hover nested-table'
       });
       $target_el.empty();
-      var cell = $('<div>',{ class: 'col-xs-4' });
+      var cell = $('<div>',{ class: '' });
       var grid_el = grid.render().$el;
       cell.html(grid_el);
 
@@ -608,26 +842,29 @@ define([
           
           var title = 'Confirm deletion of publication: ' +
             Iccbl.getTitleFromTitleAttribute(model, resource);
-          appModel.showOkCommentForm( title, function(values){
-            appModel.clearPagePending();
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-            
-            model.collection = collection;
-            var patchUrl = [resource.apiUri, 
-                       Iccbl.getIdFromIdAttribute(model, resource),
-                       ].join('/');
-            model.url = patchUrl;
-            
-            // Backbone will only send DELETE if the model has an id
-            model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
-            model.destroy({
-              wait: true,
-              headers: headers,
-              success: function(model,response){
-                console.log('model removed successfully', model, response);
-              }
-            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+          appModel.showOkCommentForm({ 
+            title: title, 
+            ok: function(values){
+              appModel.clearPagePending();
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+              
+              model.collection = collection;
+              var patchUrl = [resource.apiUri, 
+                         Iccbl.getIdFromIdAttribute(model, resource),
+                         ].join('/');
+              model.url = patchUrl;
+              
+              // Backbone will only send DELETE if the model has an id
+              model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
+              model.destroy({
+                wait: true,
+                headers: headers,
+                success: function(model,response){
+                  console.log('model removed successfully', model, response);
+                }
+              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+            }
           });
         });            
         
@@ -659,16 +896,19 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
+      resource.fields['filename']['backgridCellType'] = Iccbl.LinkCell.extend({
+        className: 'text-wrap-cell'
+      });
       
       var collection = new CollectionClass();
       var colModel = Iccbl.createBackgridColModel(resource.fields); 
       var grid = new Backgrid.Grid({
         columns: colModel,
         collection: collection,
-        className: 'backgrid table-striped table-condensed table-hover'
+        className: 'backgrid table-striped table-condensed table-hover nested-table'
       });
       $target_el.empty();
-      var cell = $('<div>',{ class: 'col-xs-4' });
+      var cell = $('<div>',{ class: '' });
       var grid_el = grid.render().$el;
       cell.html(grid_el);
 
@@ -706,28 +946,30 @@ define([
         self.listenTo(collection, "MyCollection:delete", function (model) {
           
           var title = 'Confirm deletion of attached file: ' + 
-
-          Iccbl.getTitleFromTitleAttribute(model, resource);
-          appModel.showOkCommentForm( title, function(values){
-            appModel.clearPagePending();
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-            
-            model.collection = collection;
-            var patchUrl = [resource.apiUri, 
-                       Iccbl.getIdFromIdAttribute(model, resource),
-                       ].join('/');
-            model.url = patchUrl;
-            
-            // Backbone will only send DELETE if the model has an id
-            model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
-            model.destroy({
-              wait: true,
-              headers: headers,
-              success: function(model,response){
-                console.log('model removed successfully', model, response);
-              }
-            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
+            Iccbl.getTitleFromTitleAttribute(model, resource);
+          appModel.showOkCommentForm({
+            title: title, 
+            ok: function(values){
+              appModel.clearPagePending();
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+              
+              model.collection = collection;
+              var patchUrl = [resource.apiUri, 
+                         Iccbl.getIdFromIdAttribute(model, resource),
+                         ].join('/');
+              model.url = patchUrl;
+              
+              // Backbone will only send DELETE if the model has an id
+              model.set('id', Iccbl.getIdFromIdAttribute(model,resource));
+              model.destroy({
+                wait: true,
+                headers: headers,
+                success: function(model,response){
+                  console.log('model removed successfully', model, response);
+                }
+              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
+            }
           });
         });            
         
@@ -770,7 +1012,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: cprResource.apiUri 
       });
-      $target_el.empty();
+//      $target_el.empty();
       
       function build_table(collection) {
         if (collection.isEmpty()) {
@@ -778,9 +1020,9 @@ define([
         }
         collection.each(function(model) {
         });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
+        var originalLength = collection.length;
+        collection = new Backbone.Collection(collection.slice(0,10));
+        
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -798,7 +1040,8 @@ define([
             'order': 1,
             'sortable': true,
             'cell': Iccbl.LinkCell.extend({
-              hrefTemplate: '#cherrypickrequest/{cherry_pick_request_id}'
+              hrefTemplate: 
+                '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}'
             })
           }),
           _.extend({},colTemplate,{
@@ -815,7 +1058,9 @@ define([
             'description' : 'Requested By',
             'order': 1,
             'sortable': true,
-            'cell': TextWrapCell
+            'cell': Iccbl.TextWrapCell.extend({
+              className: 'text-wrap-cell-extra-narrow'
+            })
           })
         ];
         var colModel = new Backgrid.Columns(columns);
@@ -824,8 +1069,9 @@ define([
 
         $target_el.append($([
           '<div class="col-xs-12"><strong>',
-          'Recent <a href="#screen/' + self.model.get('facility_id'),
-          '/cherrypicks">Cherry Pick Requests</a></strong></div>',
+          'Recent Cherry Pick Requests ',
+          '<a href="#screen/' + self.model.get('facility_id'),
+          '/cherrypickrequest">(Total: ' + originalLength + ')</a></strong></div>',
           '<div class="col-xs-12" id="cprs"/>'].join('')));
         
         var _grid = new Backgrid.Grid({
@@ -838,12 +1084,13 @@ define([
       }
       
       if (self.model.has('cherry_pick_request_data')) {
-        build_table(new CollectionClass(self.model.get('cherry_pick_request_data')));
+        build_table(new CollectionClass(
+          self.model.get('cherry_pick_request_data')));
       } else {
         var cpr_collection = new CollectionClass();
         cpr_collection.fetch({
           data: { 
-            limit: 10,
+            limit: 0,
             screen_facility_id__eq: self.model.key,
             order_by: ['-date_requested']
           },
@@ -858,26 +1105,30 @@ define([
      **/
     createStatusHistoryTable: function($target_el) {
       var self = this;
+      console.log('createStatusHistoryTable, ', self.model.key, self.model);
+      if (!appModel.hasPermission('apilog')){
+        console.log('user does not have permission to query "apilog"');
+        return;
+      }
       var apilogResource = appModel.getResource('apilog');
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: apilogResource.apiUri 
       });
-      $target_el.empty();
       
       function build_table(collection) {
+        console.log('build status history table', collection);
         if (collection.isEmpty()) {
           return;
         }
         collection.each(function(model) {
-          var diffs = JSON.parse(model.get('diffs'));
+          var diffs = model.get('diffs');
           if (!_.isEmpty(diffs.status[1])){
-            model.set('status', appModel.getVocabularyTitle('screen.status', diffs.status[1]));
+            model.set(
+              'status', 
+              appModel.getVocabularyTitle('screen.status', diffs.status[1]));
           }else{
             collection.remove(model);
           }
-        });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
         });
         var colTemplate = {
           'cell' : 'string',
@@ -895,7 +1146,9 @@ define([
               'description' : 'Screen status',
               'order': 1,
               'sortable': true,
-              'cell': TextWrapCell
+              'cell': Iccbl.TextWrapCell.extend({
+                className: 'text-wrap-cell-extra-narrow'
+              })
             }),
             _.extend({},colTemplate,{
               'name' : 'date_time',
@@ -948,7 +1201,7 @@ define([
       var addButton = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="add_' + fieldKey + '_button" href="#">',
-          'Add a vocabulary item...</a>'
+          'Add a ' + vocabulary_name + ' vocabulary item...</a>'
         ].join(''));
       addButton.click(function(event) {
         event.preventDefault();
@@ -969,71 +1222,274 @@ define([
     
     setCherryPicks: function(delegateStack) {
       var self = this;
-      var key = 'cherryPicks';
-      var view = this.tabViews[key];
-      
-      if (!view) {
-        var self = this;
-        var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
-        var resource = appModel.getResource('cherrypickrequest');
-        var view = new ListView({ 
-          uriStack: _.clone(delegateStack),
-          schemaResult: resource,
-          resource: resource,
-          url: url,
-          extraControls: []
+      var cpResource = appModel.getResource('cherrypickrequest'); 
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail view
+        var cherryPickRequestId = delegateStack.shift();
+        if (cherryPickRequestId == '+add'){
+           appModel.initializeAdminMode(function() {
+             self.showAddCherryPick();
+           });
+        } else {
+          self.consumedStack.push(cherryPickRequestId);
+          var _key = cherryPickRequestId;
+          appModel.getModel(cpResource.key, _key, function(model){
+            view = new CherryPickRequestView({
+              model: model, 
+              uriStack: _.clone(delegateStack),
+              screen: self.model
+            });
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            Backbone.Layout.setupView(view);
+            self.setView("#tab_container", view ).render();
+            
+            console.log('title: ', 
+              Iccbl.getTitleFromTitleAttribute(model, model.resource));
+            self.$("#tab_container-title").html(view.getTitle());
+            self.$("#tab_container-title").show();
+          });        
+        }
+        return;
+      }else{
+        // List view
+        var extraControls = [];
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'cherrypicks'].join('/');
+        var Collection = Iccbl.MyCollection.extend({
+          url: url
         });
-        Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        self.setView("#tab_container", view ).render();
-        this.$('li').removeClass('active');
-        this.$('#'+key).addClass('active');
+        collection = new Collection();
+        if (appModel.hasPermission(cpResource.key, 'write')){
+          var showAddButton = $([
+             '<a class="btn btn-default btn-sm pull-down" ',
+               'role="button" id="add_resource" href="#">',
+               'Add</a>'
+             ].join(''));   
+           showAddButton.click(function(e){
+             e.preventDefault();
 
-      } else {
-        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+             appModel.initializeAdminMode(function() {
+               self.showAddCherryPick();
+             });
+           });
+           extraControls.push(showAddButton);
+        }    
+        
+        cpResource.fields['cherry_pick_request_id'].backgridCellType = 
+          Iccbl.LinkCell.extend(_.extend({},
+            cpResource.fields['cherry_pick_request_id'].display_options,
+            {
+              linkCallback: function(e){
+                e.preventDefault();
+                // re-fetch the full model
+                var _key = this.model.get('cherry_pick_request_id');
+                appModel.getModel(cpResource.key, _key, function(model){
+                  view = new CherryPickRequestView({
+                    model: model, 
+                    uriStack: [],
+                    screen: self.model
+                  });
+                  Backbone.Layout.setupView(view);
+                  self.consumedStack = ['cherrypickrequest',_key];
+                  self.listenTo(view , 'uriStack:change', self.reportUriStack);
+                  self.setView("#tab_container", view ).render();
+                  self.$("#tab_container-title").html(view.getTitle());
+                  self.$("#tab_container-title").show();
+                });        
+                return;
+              }
+            }));
+        
+        view = new ListView({ 
+          uriStack: _.clone(delegateStack),
+          resource: cpResource,
+          url: url,
+          collection: collection,
+          extraControls: extraControls
+        });
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
+        self.$("#tab_container-title").empty();
+        self.$("#tab_container-title").hide();
         self.setView("#tab_container", view ).render();
-        self.reportUriStack([]);
       }
     },
-
-    setActivities: function(delegateStack) {
+    
+    showAddCherryPick: function() {
+      console.log('add cherry pick request');
       var self = this;
-      var key = 'activities';
-      var view = this.tabViews[key];
+
+      var defaults = _.extend(
+        {}, 
+        _.pick(
+          self.model.attributes, 
+          ['screen_type','project_id', 'project_phase', 'lab_head_id', 
+           'lab_name', 'lead_screener_id', 'lead_screener_name']),
+        {
+          screen_facility_id: self.model.get('facility_id'),
+          screen_title: self.model.get('title'),
+          date_requested: Iccbl.getISODateString(new Date()),
+          requested_by_id: self.model.get('lead_screener_id')
+      });
       
-      if (!view) {
+      if (self.model.get('screen_type') == 'small_molecule'){
+        defaults['transfer_volume_per_well_requested'] = '0.0000016';
+        defaults['transfer_volume_per_well_approved'] = '0.0000016';
+      }
+      
+      var newModel = appModel.createNewModel('cherrypickrequest', defaults);
+
+      newModel.resource.fields['requested_by_id'].choiceHash = 
+        appModel._get_screen_member_choices(self.model);
+      newModel.resource.fields['volume_approved_by_username'].choiceHash = 
+        appModel.getAdminUserOptions();
+      
+      var view = new CherryPickRequestView({ 
+        model: newModel, 
+        screen: self.model,
+        uriStack: ['+add']
+      });
+      
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
+      self.setView("#tab_container", view ).render();
+
+      
+      this.consumedStack = ['cherrypickrequest','+add'];
+      self.reportUriStack([]);
+    },
+    
+    /**
+     * 
+     */
+    setActivities: function(delegateStack) {
+      console.log('set activities');
+      var self = this;
+      var resource = appModel.getResource('activity');
+      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      
+      _.each(_.values(resource.fields), function(field){
+        if(_.result(field.display_options,'optgroup')=='screen'){
+          field['visibility'] = [];
+        }
+      });
+      
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail View
+        
+        // Only service activities are viewed; lab activities link to visits & cprs
+        // ServiceActivity for a screen; turn of edit for screen field and funding
+        saResource.fields['screen_facility_id'].editability = [];
+        saResource.fields['funding_support']['editability'] = [];
+        saResource.fields['funding_support']['visibility'] = [];
+        
+        if (delegateStack[0]!='+add') {
+        
+          var activity_id = delegateStack.shift();
+          self.consumedStack.push(activity_id);
+          var _key = activity_id
+          appModel.getModelFromResource(saResource, _key, function(model){
+            view = new ServiceActivityView({
+              model: model, 
+              screen: self.model,
+              uriStack: _.clone(delegateStack)
+            });
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            Backbone.Layout.setupView(view);
+            self.setView("#tab_container", view ).render();
+          });        
+          return;
+          
+        } else {
+          
+          // Do not allow return to +add screen
+          delegateStack.shift();
+          self.setActivities(delegateStack);
+          return;
+        }
+
+      }else{
+        // List view
+        
         var self = this;
         var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
-        var resource = appModel.getResource('activity');
+        var extraControls = [];
+        var addServiceActivityButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_button" href="#">',
+            'Add Service Activity</a>'
+          ].join(''));
+        addServiceActivityButton.click(function(e){
+          e.preventDefault();
+          var defaults = {
+            screen_facility_id: self.model.get('facility_id')
+          };
+          
+          saResource.fields['serviced_user']['visibility'] = [];
+          saResource.fields['screen_facility_id']['editability'] = [];
+          // 20170605 - JAS - no funding support if attached to a screen
+          saResource.fields['funding_support']['editability'] = [];
+          saResource.fields['funding_support']['visibility'] = [];
+          
+          // NOTE: funding support removed from screen.service_activities: redundant
+          //
+          //// Funding supports: populate select with screen funding supports;
+          //// - if only one screen funding support; set it as default
+          //var funding_supports = self.model.get('funding_supports');
+          //var funding_support_field = saResource.fields['funding_support']
+          //if (_.isEmpty(funding_supports)){
+          //  appModel.showModalMessage('Screen must have funding supports entered');
+          //  appModel.showModalMessage({
+          //    title: 'Screen must have funding supports entered',
+          //    body: 'Enter screen funding supports before creating service activities'
+          //  });
+          //} else {
+          //  var vocabulary = appModel.getVocabularySelectOptions(
+          //    funding_support_field.vocabulary_scope_ref);
+          //  vocabulary = _.filter(vocabulary, function(item){
+          //    return _.contains(funding_supports,item.val);
+          //  });
+          //  funding_support_field.choiceHash = vocabulary;
+          //  funding_support_field.vocabulary_scope_ref = '';
+          //  if (funding_supports.length == 1){
+          //    defaults['funding_support'] = funding_supports[0];
+          //  }
+          //}
+          
+          var newModel = appModel.newModelFromResource(saResource, defaults);
+          var view = new ServiceActivityView({
+            model: newModel,
+            screen: self.model,
+            uriStack: ['+add']
+          });
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          Backbone.Layout.setupView(view);
+          self.setView("#tab_container", view ).render();
+
+          self.consumedStack = ['activities'];
+          self.reportUriStack([]);
+          view.reportUriStack(['+add']);
+        });
+        if(appModel.hasPermission(saResource.key, 'edit')){
+          extraControls.unshift(addServiceActivityButton);
+        }
         
-        var sa_vocab = appModel.getVocabulary('activity.type');
-        resource.fields['type'].vocabulary = 
-          _.map(sa_vocab, function(v) {
-            return [v.title,v.key];
-          }); // TODO: app model method for this
-        
-        console.log('combined vocab', resource.fields['type'].vocabulary );
-        
-        var view = new ListView({ 
+        var view = new ActivityListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: resource,
           resource: resource,
           url: url,
-          extraControls: []
+          extraControls: extraControls
         });
-        Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
+        
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
         self.setView("#tab_container", view ).render();
-        this.$('li').removeClass('active');
-        this.$('#'+key).addClass('active');
 
-      } else {
-        self.listenTo(view , 'uriStack:change', this.reportUriStack);
-        self.setView("#tab_container", view ).render();
-        self.reportUriStack([]);
       }
+      self.$("#tab_container-title").hide();
     },
     
     setData: function(delegateStack) {
@@ -1043,9 +1499,65 @@ define([
         model: self.model, 
         uriStack: _.clone(delegateStack)
       });
-      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
+      self.$("#tab_container-title").hide();
+    },
+    
+    setProtocol: function(delegateStack) {
+      var self = this;
+      var key = 'protocol';
+      var view = this.tabViews[key];
+      if (!view) {
+        
+        var protocolKeys = self.model.resource.filterKeys('visibility', 'protocol');
+        var editableKeys = _.intersection(
+          self.model.resource.updateKeys(), protocolKeys);
+        var editVisibleKeys = _.intersection(
+          self.model.resource.allEditVisibleKeys(),protocolKeys);
+        console.log('protocol keys', protocolKeys);
+        var buttons = ['download','history'];
+        
+        if (appModel.hasPermission('screen', 'write')) {
+          buttons.push('edit');
+        }
+        var detailView = DetailView.extend({
+          template: _.template(detailOneColTemplate),
+          afterRender: function() {
+            var dview = DetailView.prototype.afterRender.apply(this,arguments);
+            self.createPublicationTable(this.$el.find('#publications'));
+          }
+        });
+        
+        var ProtocolDetailLayout = DetailLayout.extend({
+          showEdit: function(){
+            var pSelf = this;
+            appModel.getAdminUserOptions(function(options){
+              pSelf.model.resource.fields['publishable_protocol_entered_by'].choiceHash = options;
+              return DetailLayout.prototype.showEdit.apply(pSelf, arguments);
+            });
+          }
+        });
+        
+        view = new ProtocolDetailLayout({ 
+          model: self.model, 
+          uriStack: delegateStack,
+          detailKeys: protocolKeys,
+          editVisibleKeys: editVisibleKeys,
+          editableKeys: editableKeys,
+          buttons: buttons,
+          DetailView: detailView
+        });
+        self.tabViews[key] = view;
+        
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      } else {
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      }
+      self.$("#tab_container-title").hide();
     },
 
     setSummary: function(delegateStack) {
@@ -1055,9 +1567,10 @@ define([
         model: self.model, 
         uriStack: _.clone(delegateStack)
       });
-      Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
       self.setView("#tab_container", view ).render();
+      self.$("#tab_container-title").hide();
     },
 
     setBilling: function(delegateStack) {
@@ -1091,44 +1604,90 @@ define([
             });
             self.tabViews[key] = view;
             
-            self.listenTo(view , 'uriStack:change', this.reportUriStack);
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
             self.setView("#tab_container", view ).render();
-            self.reportUriStack([]);
           },{ data_for_get: { visibilities: ['billing']}});
       } else {
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();
         self.reportUriStack([]);
       }
+      self.$("#tab_container-title").hide();
     },
 
-    /**
-     * Library Copy Plates Loaded view is a sub-view of Summary
-     */
-    showCopyPlatesLoaded: function(delegateStack) {
+    afterRender: function(){
       var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ 
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      });
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event) {
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
+      TabbedController.prototype.afterRender.apply(this,arguments);
+      $('#content_title_message').find('#screen_status_message').remove();
+      if (!_.isEmpty(self.model.get('status'))) {
+        if (_.contains(self.COMPLETED_STATUSES, self.model.get('status'))){
+          $('#content_title_message').append(
+            $('<div id="screen_status_message" class="alert alert-success"></div>').html(
+              'Screen Status: ' + appModel.getVocabularyTitle(
+                'screen.status',self.model.get('status'))));
+        }
+        else if (!_.contains(self.OK_STATUSES, self.model.get('status'))){
+          $('#content_title_message').prepend(
+            $('<div id="screen_status_message" class="alert alert-danger"></div>').html(
+              'Screen Status: ' + appModel.getVocabularyTitle(
+                'screen.status',self.model.get('status'))));
+        }
+      }
+      $(this).queue([
+        appModel.getUserOptions,
+        self.showUserDslWarnings]);
+    },
+    
+    showUserDslWarnings: function() {
+      var self = this;
+      $('#content_title_message').find('#screen_member_dsl_message').remove();
+      
+      if (!appModel.hasGroup('readEverythingAdmin')){
+        return;
+      }
 
+      console.log('showUserDslWarnings');
+      var users = appModel.getUsers();
+      var screenMembers = users.filter(function(model){
+        var userId = model.get('screensaver_user_id');
+        return ( userId == self.model.get('lead_screener_id')
+            || userId == self.model.get('lab_head_id')
+            || _.contains(self.model.get('collaborator_ids'),userId));
+      });
+      
+      var warnUsers = _.filter(screenMembers, function(member){
+        var userDsl;
+        if (self.model.get('screen_type')=='small_molecule'){
+          userDsl = member.get('sm_data_sharing_level');
+        }
+        else if (self.model.get('screen_type')=='rnai'){
+          userDsl = member.get('rnai_data_sharing_level');
+        } else {
+          console.log('unknown screen type!', self.model.get('screen_type'));
+        }
+        return _.isNumber(userDsl) && userDsl < self.model.get('data_sharing_level');
+      });
+      if (!_.isEmpty(warnUsers)){
+        var userDslProp = 'sm_data_sharing_level';
+        if (self.model.get('screen_type') == 'rnai'){
+          userDslProp = 'rnai_data_sharing_level';
+        }
+        $('#content_title_message').prepend(
+          $('<div id="screen_member_dsl_message" class="alert alert-danger"></div>').html(
+            'Screen Data Sharing Level: ' 
+            + appModel.getVocabularyTitle(
+              'screen.data_sharing_level',self.model.get('data_sharing_level'))
+            + ', is more restrictive than User Data Sharing Level: ' 
+            + _.map(warnUsers, function(user){
+              return '( #' + user.get('screensaver_user_id') + ' - '
+                + user.get('name') + ' - '
+                + appModel.getVocabularyTitle(
+                  'useragreement.data_sharing_level',user.get(userDslProp)) + ')';
+            }).join(', ')
+            + ' (violates policy)'));
+      }
     }
-
+    
   });
 
   return ScreenView;

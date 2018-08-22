@@ -1,0 +1,23 @@
+key,scope,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability
+screensaver_user_id,fields.useragreement,custom,,0,,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"Screensaver User ID","Screensaver User ID",TRUE,,,[l;d],
+username,fields.useragreement,custom,,1,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,,
+user_name,fields.useragreement,custom,,2,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"The full name of the user (last, first)","User Name",TRUE,,,[l;d],
+user_first_name,fields.useragreement,custom,,3,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"First name of the user","User First Name",TRUE,,,,
+user_last_name,fields.useragreement,custom,,4,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"Last name of the user","User Last Name",TRUE,,,,
+user_email,fields.useragreement,custom,,5,,string,,,,TRUE,"User Email","User Email",TRUE,,,,
+type,fields.useragreement,custom,,6,,string,link,"{ 'hrefTemplate': '#useragreement/{screensaver_user_id}/{type}' }",select,TRUE,"Type Small Molecule or RNAI","User Agreement Type",TRUE,,useragreement.type,[l;d],
+data_sharing_level,fields.useragreement,custom,,7,,integer,,,select,TRUE,"Data Sharing Level","Data Sharing Level",TRUE,,useragreement.data_sharing_level,[l;d],[c;u]
+status,fields.useragreement,custom,,8,"Status may be set to expired or inactive if the agreement is active",string,,,select,TRUE,"User Agreement Status",Status,TRUE,,useragreement.status,[l;d],[u]
+date_active,fields.useragreement,custom,,9,,date,,,,TRUE,"Date Active","Date Active",TRUE,,,[l;d],[c;u]
+date_expired,fields.useragreement,custom,,10,,date,,,,TRUE,"Date Expired","Date Expired",TRUE,,,[l;d],
+date_notified,fields.useragreement,custom,,11,,date,,,,TRUE,"Date Notified","Date Notified",TRUE,,,[l;d],[u]
+file_id,fields.useragreement,custom,,12,,integer,link,"{ 'hrefTemplate': '/db/attachedfile/{file_id}/content' }",,TRUE,"Attached File ID","Attached File ID",TRUE,,,,
+filename,fields.useragreement,custom,,13,,string,link,"{ 'hrefTemplate': '/db/attachedfile/{file_id}/content' }",,TRUE,"User Agreement Attached File name","Attached File",TRUE,,,[l;d],
+lab_head_id,fields.useragreement,custom,,14,,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"Lab Head User ID","Lab Head User ID",TRUE,,,,
+lab_head_name,fields.useragreement,custom,,15,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,TRUE,"Lab Head Name","Lab Head Name",TRUE,,,,
+lab_affiliation_name,fields.useragreement,custom,,16,,string,,,,TRUE,"Lab Affiliation","Lab Affiliation",TRUE,,,,
+lab_affiliation_category,fields.useragreement,custom,,17,,string,,,select,TRUE,"Lab Affiliation Category","Lab Affiliation Category",TRUE,,labaffiliation.category,,
+lab_head_data_sharing_level,fields.useragreement,custom,,18,,integer,,,select,TRUE,"Lab Head Data Sharing Level","Lab Head Data Sharing Level",TRUE,,useragreement.data_sharing_level,,
+lab_head_user_agreement_status,fields.useragreement,custom,,19,,string,,,select,TRUE,"Lab Head User Agreement Status","Lab Head Agreement Status",TRUE,,useragreement.status,,
+lab_head_file_id,fields.useragreement,custom,,20,,integer,,"{ 'hrefTemplate': '/db/attachedfile/{lab_head_file_id}/content' }",,TRUE,"Lab Head User Agreement Attached File ID","Lab Head Agreement Attached File ID",TRUE,,,,
+lab_head_filename,fields.useragreement,custom,,21,,string,link,"{ 'hrefTemplate': '/db/attachedfile/{lab_head_file_id}/content' }",,TRUE,"Lab Head User Agreement Attached File name","Lab Head Agreement Attached File",TRUE,,,,

@@ -12,14 +12,10 @@ except ImportError:
 import os.path
 
 # NOTE: the parent settings file defines the PROJECT_ROOT
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
+print 'PROJECT_ROOT: ', PROJECT_ROOT
     
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
-# TASTYPIE_FULL_DEBUG is less useful than it seems.  
-# When it is used the error is easily discernable in the server logs (and not visible there otherwise), 
-# but the client message is spammed with an html response with the error code buried somewhere inside.
-#TASTYPIE_FULL_DEBUG = DEBUG
 
 ADMINS = (
     ('Admin', 'admin@email.com'),
@@ -29,7 +25,7 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2', 
+        'ENGINE': 'django.db.backends.postgresql', 
         'NAME': 'screensaverlims',
         'USER': 'screensaverlims',
         'PASSWORD': '',
@@ -70,7 +66,7 @@ STATICFILES_DIRS = (
     # Put strings here, like "/home/html/static" or "C:/www/django/static".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-    os.path.join(PROJECT_ROOT, "static"),
+    os.path.join(PROJECT_ROOT, "lims", "static"),
 )
 
 # List of finder classes that know how to find static files in
@@ -162,11 +158,6 @@ LOGGING = {
             'handlers': ['console'],
             'propagate': True,
             'level': 'INFO',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': True,
-            'level': 'DEBUG',
         },        
     }
 }

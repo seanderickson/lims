@@ -9,6 +9,14 @@ import db.models
 import django.db.models.deletion
 
 
+#####
+# Migration prep:
+# Perform migrations required so that Django may use the legacy schema for 
+# subsequent actions
+# * This migration must be performed before the migration bootstrap step
+# * see migration.sh
+#####
+
 logger = logging.getLogger(__name__)
 
 def _update_table_autofield(db, table, column):
@@ -239,6 +247,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('db', '0001_initial'),
+        ('reports', '0001_initial'),
     ]
 
     operations = [
@@ -264,6 +273,11 @@ class Migration(migrations.Migration):
             name='substance_id',
             field=models.CharField(null=True,max_length=8),
         ),
+        migrations.AddField(
+            model_name='reagent',
+            name='comment',
+            field=models.TextField(null=True),
+        ),
         migrations.AlterField(
             model_name='silencingreagent',
             name='is_restricted_sequence',
@@ -275,14 +289,6 @@ class Migration(migrations.Migration):
             field=models.NullBooleanField(default=False),
         ),
         
-        # TODO: create substance ID's for reagents
-        # migrations.RunPython(create_reagent_ids),
-        # migrations.AlterField(
-        #     model_name='reagent',
-        #     name='substance_id',
-        #     field=models.CharField(unique=True, max_length=8),
-        #     ),
-        
         migrations.AddField(
             model_name='screen',
             name='status_date',
@@ -293,23 +299,18 @@ class Migration(migrations.Migration):
             name='status',
             field=models.TextField(null=True),
         ),
-
-#         migrations.AddField(
-#             model_name='screen',
-#             name='pin_transfer_date_approved',
-#             field=models.DateField(null=True),
-#         ),
-#         migrations.AddField(
-#             model_name='screen',
-#             name='pin_transfer_approved_by',
-#             field=models.ForeignKey('ScreensaverUser', null=True, 
-#                 related_name='pin_transfer_approved_screen')
-#         ),
-#         migrations.AddField(
-#             model_name='screen',
-#             name='pin_transfer_approval_comment',
-#             field=models.TextField(null=True),
-#         ),
+        
+        migrations.AddField(
+            model_name='screen',
+            name='parent_screen',
+            field=models.ForeignKey(
+                related_name='follow_up_screen', to='db.Screen', null=True),
+        ),
+        migrations.AlterField(
+            model_name='screen',
+            name='study_type',
+            field=models.TextField(null=True),
+        ),
         
         migrations.AddField(
             model_name='silencingreagent',
@@ -371,46 +372,10 @@ class Migration(migrations.Migration):
             ' set classification=user_classification '
             ' from  screening_room_user sru '
             ' where sru.screensaver_user_id=su.screensaver_user_id'),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head',
-            field=models.ForeignKey(
-                related_name='lab_member', to='db.ScreensaverUser', null=True),
-        ),
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_id=sru.lab_head_id '
-            ' from  screening_room_user sru '
-            ' where sru.screensaver_user_id=su.screensaver_user_id'),
-        migrations.RunSQL(
-            'UPDATE screensaver_user su '
-            ' set lab_head_id=lh.screensaver_user_id '
-            ' from  lab_head lh '
-            ' where lh.screensaver_user_id=su.screensaver_user_id'),
 
-        # migrations.AddField(
-        #     model_name='screensaveruser',
-        #     name='lab_head_affiliation_link', 
-        #     field=models.ForeignKey('LabAffiliation',null=True)),
-        # migrations.RunSQL(
-        #     'UPDATE screensaver_user su '
-        #     ' set lab_head_affiliation_link_id=lh.lab_affiliation_id '
-        #     ' from lab_head lh '
-        #     ' where su.screensaver_user_id=lh.screensaver_user_id'),
-         
         migrations.RunPython(alter_table_references),
         migrations.RunPython(add_timezone_to_timestamp_fields),
         
-        # move the lab_head->screening_room_user explicitly, because there are dependent fk's
-        migrations.RunSQL(
-            'ALTER TABLE lab_head '
-            'DROP CONSTRAINT fk_lab_head_to_screening_room_user'),
-        migrations.RunSQL(
-            'ALTER TABLE lab_head '
-            'ADD CONSTRAINT fk_lab_head_to_screensaver_user '
-            'FOREIGN KEY (screensaver_user_id) '
-            'REFERENCES screensaver_user(screensaver_user_id)'),
-
         migrations.RunPython(alter_table_parents),
         migrations.RunSQL(("ALTER TABLE {table} DROP COLUMN {column} ").format(
                   table='molfile', column='ordinal')),
@@ -434,12 +399,6 @@ class Migration(migrations.Migration):
             name='login_id',
             field=models.TextField(unique=True, null=True)),
         
-        # TODO: not implemented yet
-#         migrations.AddField(
-#             model_name='cherrypickassayplate',
-#             name='status', 
-#             field=models.TextField(null=True)),
-
         # IN PROGRESS - well volume/concentration related fields
         
         migrations.AddField(
@@ -454,11 +413,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='plate',
             name='screening_count', 
-            field=models.IntegerField(null=True)),
+            field=models.IntegerField(default=0, null=True)),
         migrations.AddField(
             model_name='plate',
             name='cplt_screening_count', 
-            field=models.IntegerField(null=True)),
+            field=models.IntegerField(default=0, null=True)),
         migrations.AddField(
             model_name='plate',
             name='mg_ml_concentration',
@@ -481,7 +440,12 @@ class Migration(migrations.Migration):
             name='date_retired',
             field=models.DateField(null=True),
         ),
-        
+        # 20170407 - added for screening room staff
+        migrations.AddField(
+            model_name='plate',
+            name='is_active',
+            field=models.NullBooleanField(),
+        ),        
         
         migrations.CreateModel(
             name='CopyWell',
@@ -491,7 +455,7 @@ class Migration(migrations.Migration):
                 # ('plate_number', models.IntegerField()),
                 ('volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
                 ('initial_volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
-#                 ('adjustments', models.IntegerField()),
+                ('cherry_pick_screening_count', models.IntegerField(null=True)),
                 ('copy', models.ForeignKey(to='db.Copy')),
                 ('mg_ml_concentration',
                     models.DecimalField(null=True, max_digits=5, decimal_places=3)),
@@ -516,6 +480,28 @@ class Migration(migrations.Migration):
             name='copywell',
             unique_together=set([('copy', 'plate', 'well')]),
         ),
+        # FIXME: not working on orchestra: moved to manual migration 0002
+        # NOTE: moved to post_migrate, kept in migrations to convince 
+        # makemigrations that this is done
+        # migrations.AlterUniqueTogether(
+        #     name='assayplate',
+        #     unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
+        # ),
+        
+        migrations.AlterField(
+            model_name='libraryscreening',
+            name='is_for_external_library_plates',
+            field=models.BooleanField(default=False)),
+        migrations.AlterField(
+            model_name='assayplate',
+            name='plate_number',
+            field=models.IntegerField(db_index=True),
+        ),
+        migrations.AlterField(
+            model_name='assayplate',
+            name='replicate_ordinal',
+            field=models.IntegerField(db_index=True),
+        ),
 
         #####
         
@@ -536,47 +522,39 @@ class Migration(migrations.Migration):
                 'db_table': 'cached_query',
             },
         ),
+#         migrations.CreateModel(
+#             name='WellQueryIndex',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('query', models.ForeignKey(to='db.CachedQuery')),
+#                 ('well', models.ForeignKey(to='db.Well')),
+#             ],
+#             options={
+#                 'db_table': 'well_query_index',
+#             },
+#         ),
         migrations.CreateModel(
-            name='WellQueryIndex',
+            name='UserChecklist',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('query', models.ForeignKey(to='db.CachedQuery')),
-                ('well', models.ForeignKey(to='db.Well')),
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
+                ('name', models.TextField()),
+                ('is_checked', models.BooleanField()),
+                ('date_effective', models.DateField()),
+                ('date_notified', models.DateField(null=True)),
+                ('admin_user', models.ForeignKey(
+                    related_name='userchecklistitems_created', 
+                    to='db.ScreensaverUser')),
+                ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
             ],
             options={
-                'db_table': 'well_query_index',
+                'db_table': 'user_checklist',
             },
-        ),
-        migrations.CreateModel(
-            name='UserChecklistItem',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', 
-                    serialize=False, auto_created=True, primary_key=True)),
-                ('item_group', models.TextField()),
-                ('item_name', models.TextField()),
-                ('status', models.TextField()),
-                ('previous_status', models.TextField(null=True)),
-                ('status_date', models.DateField()),
-                ('status_notified_date', models.DateField(null=True)),
-            ],
-            options={
-                'db_table': 'user_checklist_item',
-            },
-        ),
-        migrations.AddField(
-            model_name='userchecklistitem',
-            name='admin_user',
-            field=models.ForeignKey(related_name='userchecklistitems_created', 
-                to='db.ScreensaverUser'),
-        ),
-        migrations.AddField(
-            model_name='userchecklistitem',
-            name='screensaver_user',
-            field=models.ForeignKey(to='db.ScreensaverUser'),
         ),
         migrations.AlterUniqueTogether(
-            name='userchecklistitem',
-            unique_together=set([('screensaver_user', 'item_group', 'item_name')]),
+            name='userchecklist',
+            unique_together=set([('screensaver_user', 'name')]),
         ),
         migrations.AddField(
             model_name='attachedfile',
@@ -592,6 +570,15 @@ class Migration(migrations.Migration):
             name='funding_support',
             field=models.TextField(null=True),
         ),
+        # 20170524
+        # Allow serviced user to be null; either serviced_user or 
+        # serviced_screen required (TODO: verify workflow with JAS/KR)
+        migrations.AlterField(
+            model_name='serviceactivity',
+            name='serviced_user',
+            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+        ),
+        
         migrations.CreateModel(
             name='ScreenFundingSupports',
             fields=[
@@ -627,11 +614,14 @@ class Migration(migrations.Migration):
             name='screencelllines',
             unique_together=set([('screen', 'cell_line')]),
         ),
+        
+        # NOTE: temporary for migration
         migrations.AddField(
             model_name='screen',
-            name='transfection_agent',
+            name='transfection_agent_text',
             field=models.TextField(null=True),
         ),
+        
         migrations.CreateModel(
             name='UserFacilityUsageRole',
             fields=[
@@ -649,10 +639,6 @@ class Migration(migrations.Migration):
             name='userfacilityusagerole',
             unique_together=set([('screensaver_user', 'facility_usage_role')]),
         ),
-        migrations.AddField(
-            model_name='screensaveruser',
-            name='lab_head_affiliation', 
-            field=models.TextField(null=True)),
         migrations.RunSQL('alter table reagent alter column library_contents_version_id drop not null'),
 
         #  Update assay_well with the plate_number to expedite plate data loading stats 
@@ -677,11 +663,11 @@ class Migration(migrations.Migration):
             name='email',
             field=models.TextField(null=True),
         ),
-        migrations.AddField(
-            model_name='labaffiliation',
-            name='title',
-            field=models.TextField(null=True),
-        ),
+        # TODO: remove this field
+        
+        # TODO: django migration doesn't change the default value 
+        # - all default settings must be implemented in manual SQL (until django 2.0 ?)
+        
         migrations.AlterField(
             model_name='screenresult',
             name='experimental_well_count',
@@ -700,7 +686,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='assaywell',
             name='is_positive',
-            field=models.BooleanField(default=False),
+            field=models.BooleanField(default=False, db_index=True),
         ),
         migrations.AlterField(
             model_name='datacolumn',
@@ -712,5 +698,114 @@ class Migration(migrations.Migration):
             name='is_derived',
             field=models.BooleanField(default=False),
         ),
+        
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='assay_protocol_comments',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='cherry_pick_assay_protocols_followed',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='cherry_pick_followup_results_status',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='comments',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='is_randomized_assay_plate_layout',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='keep_source_plate_cherry_picks_together',
+            field=models.BooleanField(default=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='number_unfulfilled_lab_cherry_picks',
+            field=models.IntegerField(null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickrequest',
+            name='wells_to_leave_empty',
+            field=models.TextField(null=True),
+        ),
+        migrations.AddField(
+            model_name='cherrypickrequest',
+            name='date_volume_reserved',
+            field=models.DateField(null=True),
+        ),
+        migrations.AddField(
+            model_name='activity',
+            name='apilog_uri',
+            field=models.TextField(null=True),
+        ),
+        
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_appointment_category', 
+            field=models.TextField(null=True)),
 
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_appointment_department', 
+            field=models.TextField(null=True)),
+
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_appointment_update_date', 
+            field=models.DateField(null=True)),
+
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_appointment_category=lh.lab_head_appointment_category '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_appointment_department=lh.lab_head_appointment_department '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_appointment_update_date=lh.lab_head_appointment_update_date '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+        # end TODO: 20170918 ======
+
+        migrations.CreateModel(
+            name='UserAgreement',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('type', models.TextField()),
+                ('data_sharing_level', models.IntegerField(null=True)),
+                ('date_active', models.DateField(null=True)),
+                ('date_expired', models.DateField(null=True)),
+                ('date_notified', models.DateField(null=True)),
+                ('file', models.ForeignKey(to='db.AttachedFile', null=True)),
+            ],
+            options={
+                'db_table': 'user_agreement',
+            },
+        ),
+        migrations.AddField(
+            model_name='useragreement',
+            name='screensaver_user',
+            field=models.ForeignKey(to='db.ScreensaverUser'),
+        ),
+        migrations.AlterUniqueTogether(
+            name='useragreement',
+            unique_together=set([('screensaver_user', 'type')]),
+        ),
+
+        
     ]

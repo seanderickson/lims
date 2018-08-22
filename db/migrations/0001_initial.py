@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import django.utils.timezone
+from django.db.models.deletion import SET_NULL
 # import db.models
 # import django.db.models.deletion
 
@@ -16,6 +17,7 @@ import django.utils.timezone
 ## $> manage.py migrate --fake-initial
 
 ## Developer note:
+## 0001_initial represents the latest schema of the Screensaver 1 database.
 ## New models and fields to be added should not be included in the 0001 file, 
 ## they should be applied in subsequent files, as migration 0001 is "faked" in
 ## the migration.sh script.
@@ -23,14 +25,14 @@ import django.utils.timezone
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reports', '0001_initial'),
     ]
 
     operations = [
         migrations.CreateModel(
             name='AbaseTestset',
             fields=[
-                ('abase_testset_id', models.IntegerField(serialize=False, primary_key=True)),
+                ('abase_testset_id', 
+                    models.IntegerField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
                 ('testset_name', models.TextField()),
                 ('comments', models.TextField()),
@@ -44,8 +46,9 @@ class Migration(migrations.Migration):
             name='Activity',
             fields=[
                 ('activity_id', models.AutoField(serialize=False, primary_key=True)),
-                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
-                ('comments', models.TextField()),
+                ('date_created', 
+                    models.DateTimeField(default=django.utils.timezone.now)),
+                ('comments', models.TextField(null=True)),
                 ('date_of_activity', models.DateField()),
                 ('date_loaded', models.DateTimeField(null=True)),
                 ('date_publicly_available', models.DateTimeField(null=True)),
@@ -58,7 +61,9 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ActivityUpdateActivity',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
             ],
             options={
                 'db_table': 'activity_update_activity',
@@ -95,9 +100,9 @@ class Migration(migrations.Migration):
             name='AssayPlate',
             fields=[
                 ('assay_plate_id', models.AutoField(serialize=False, primary_key=True)),
-                ('replicate_ordinal', models.IntegerField()),
+                ('replicate_ordinal', models.IntegerField(db_index=True)),
                 ('version', models.IntegerField()),
-                ('plate_number', models.IntegerField()),
+                ('plate_number', models.IntegerField(db_index=True)),
             ],
             options={
                 'db_table': 'assay_plate',
@@ -109,7 +114,7 @@ class Migration(migrations.Migration):
                 ('assay_well_id', models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
                 ('assay_well_control_type', models.TextField(null=True,)),
-                ('is_positive', models.BooleanField()),
+                ('is_positive', models.BooleanField(db_index=True)),
                 ('confirmed_positive_value', models.TextField(null=True,)),
                 ('plate_number', models.IntegerField()),
             ],
@@ -232,7 +237,7 @@ class Migration(migrations.Migration):
                 ('plate_ordinal', models.IntegerField()),
                 ('attempt_ordinal', models.IntegerField()),
                 ('assay_plate_type', models.TextField()),
-                ('legacy_plate_name', models.TextField()),
+                ('legacy_plate_name', models.TextField(null=True)),
                 ('cherry_pick_assay_plate_type', models.CharField(max_length=31)),
 #                 ('status', models.TextField(null=True)),
             ],
@@ -472,11 +477,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='LabCherryPick',
             fields=[
-                ('lab_cherry_pick_id', models.AutoField(serialize=False, primary_key=True)),
+                ('lab_cherry_pick_id', models.AutoField(serialize=False, 
+                    primary_key=True)),
                 ('version', models.IntegerField()),
                 ('assay_plate_row', models.IntegerField(null=True)),
                 ('assay_plate_column', models.IntegerField(null=True)),
-                ('cherry_pick_assay_plate', models.ForeignKey(to='db.CherryPickAssayPlate', null=True)),
+                ('cherry_pick_assay_plate', 
+                    models.ForeignKey(
+                        to='db.CherryPickAssayPlate', null=True, 
+                        on_delete=SET_NULL)),
             ],
             options={
                 'db_table': 'lab_cherry_pick',
@@ -623,9 +632,10 @@ class Migration(migrations.Migration):
             fields=[
                 ('reagent_id', models.AutoField(serialize=False, primary_key=True)),
 #                 ('substance_id', models.CharField(default=db.models.create_id, unique=True, max_length=8)),
-                ('vendor_identifier', models.TextField()),
-                ('vendor_name', models.TextField()),
-                ('vendor_batch_id', models.TextField()),
+                ('vendor_identifier', models.TextField(null=True)),
+                ('vendor_name', models.TextField(null=True)),
+                ('vendor_name_synonym', models.TextField(null=True)),
+                ('vendor_batch_id', models.TextField(null=True)),
                 ('facility_batch_id', models.IntegerField(null=True)),
             ],
             options={
@@ -678,20 +688,20 @@ class Migration(migrations.Migration):
                 ('screen_type', models.TextField()),
                 ('title', models.TextField()),
                 ('summary', models.TextField()),
-                ('comments', models.TextField()),
-                ('abase_study_id', models.TextField()),
-                ('abase_protocol_id', models.TextField()),
-                ('publishable_protocol', models.TextField()),
-                ('publishable_protocol_entered_by', models.TextField()),
-                ('publishable_protocol_comments', models.TextField()),
-                ('study_type', models.TextField()),
-                ('url', models.TextField()),
+                ('comments', models.TextField(null=True)),
+                ('abase_study_id', models.TextField(null=True)),
+                ('abase_protocol_id', models.TextField(null=True)),
+                ('publishable_protocol', models.TextField(null=True)),
+                ('publishable_protocol_entered_by', models.TextField(null=True)),
+                ('publishable_protocol_comments', models.TextField(null=True)),
+                ('study_type', models.TextField(null=True)),
+                ('url', models.TextField(null=True)),
                 ('data_meeting_complete', models.DateField(null=True)),
                 ('data_meeting_scheduled', models.DateField(null=True)),
                 ('date_of_application', models.DateField(null=True)),
                 ('publishable_protocol_date_entered', models.DateField(null=True)),
                 ('amount_to_be_charged_for_screen', models.DecimalField(null=True, max_digits=9, decimal_places=2)),
-                ('billing_comments', models.TextField()),
+                ('billing_comments', models.TextField(null=True)),
                 ('is_billing_for_supplies_only', models.BooleanField(default=False)),
                 ('billing_info_return_date', models.DateField(null=True)),
                 ('date_charged', models.DateField(null=True)),
@@ -700,10 +710,10 @@ class Migration(migrations.Migration):
                 ('facilities_and_administration_charge', models.DecimalField(null=True, max_digits=9, decimal_places=2)),
                 ('is_fee_form_on_file', models.BooleanField(default=False)),
                 ('fee_form_requested_date', models.DateField(null=True)),
-                ('fee_form_requested_initials', models.TextField()),
+                ('fee_form_requested_initials', models.TextField(null=True)),
                 ('see_comments', models.BooleanField(default=False)),
                 ('to_be_requested', models.BooleanField(default=False)),
-                ('coms_registration_number', models.TextField()),
+                ('coms_registration_number', models.TextField(null=True)),
                 ('coms_approval_date', models.DateField(null=True)),
                 ('data_sharing_level', models.IntegerField()),
                 ('data_privacy_expiration_date', models.DateField(null=True)),
@@ -727,8 +737,8 @@ class Migration(migrations.Migration):
                 ('project_id', models.TextField()),
                 ('pubchem_assay_id', models.IntegerField(null=True)),
                 ('pubchem_deposited_date', models.DateField(null=True)),
-                ('image_url', models.TextField()),
-                ('species', models.TextField()),
+                ('image_url', models.TextField(null=True)),
+                ('species', models.TextField(null=True)),
                 ('date_loaded', models.DateTimeField(null=True)),
                 ('date_publicly_available', models.DateTimeField(null=True)),
                 ('perturbagen_molar_concentration', models.DecimalField(null=True, max_digits=13, decimal_places=12)),
@@ -758,7 +768,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ScreenerCherryPick',
             fields=[
-                ('screener_cherry_pick_id', models.AutoField(serialize=False, primary_key=True)),
+                ('screener_cherry_pick_id', 
+                    models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
             ],
             options={
@@ -851,21 +862,22 @@ class Migration(migrations.Migration):
                 ('screensaver_user_id', models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField(default=1)),
                 ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
-                ('harvard_id', models.TextField()),
+                ('harvard_id', models.TextField(null=True)),
                 ('harvard_id_expiration_date', models.DateField(null=True)),
                 ('harvard_id_requested_expiration_date', models.DateField(null=True)),
                 ('first_name', models.TextField()),
                 ('last_name', models.TextField()),
-                ('email', models.TextField()),
-                ('phone', models.TextField()),
-                ('mailing_address', models.TextField()),
-                ('ecommons_id', models.TextField()),
+                ('email', models.TextField(null=True)),
+                ('phone', models.TextField(null=True)),
+                ('mailing_address', models.TextField(null=True)),
+                ('ecommons_id', models.TextField(null=True)),
                 ('date_loaded', models.DateTimeField(null=True)),
                 ('date_publicly_available', models.DateTimeField(null=True)),
                 ('login_id', models.TextField(null=True)),
                 ('digested_password', models.TextField(null=True)),
-                ('comments', models.TextField()),
-#                 ('username', models.TextField(unique=True, null=True)),
+                ('comments', models.TextField(null=True)),
+                ('gender', models.TextField(null=True)),
+                ('username', models.TextField(unique=True, null=True)),
             ],
             options={
                 'db_table': 'screensaver_user',
@@ -980,19 +992,19 @@ class Migration(migrations.Migration):
                 'db_table': 'transfection_agent',
             },
         ),
-#         migrations.CreateModel(
-#             name='UserChecklistItem',
-#             fields=[
-#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-#                 ('item_group', models.TextField()),
-#                 ('item_name', models.TextField()),
-#                 ('status', models.TextField()),
-#                 ('status_date', models.DateField()),
-#             ],
-#             options={
-#                 'db_table': 'user_checklist_item',
-#             },
-#         ),
+        migrations.CreateModel(
+            name='UserChecklistItem',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('item_group', models.TextField()),
+                ('item_name', models.TextField()),
+                ('status', models.TextField()),
+                ('status_date', models.DateField()),
+            ],
+            options={
+                'db_table': 'user_checklist_item',
+            },
+        ),
         migrations.CreateModel(
             name='Well',
             fields=[
@@ -1093,10 +1105,16 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ServiceActivity',
             fields=[
+                ('activitylink', models.OneToOneField(
+                    primary_key=True, parent_link=True, db_column='activity_id', 
+                    serialize=False, to='db.Activity')),
                 ('service_activity_type', models.TextField()),
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.Activity')),
+#                 ('activity', models.OneToOneField(primary_key=True, 
+#                     serialize=False, to='db.Activity')),
 #                 ('funding_support', models.TextField(null=True)),
-                ('funding_support_link', models.ForeignKey(db_column='funding_support_id', to='db.FundingSupport', null=True)),
+                ('funding_support_link', models.ForeignKey(
+                    db_column='funding_support_id', to='db.FundingSupport', 
+                    null=True)),
             ],
             options={
                 'db_table': 'service_activity',
@@ -1109,9 +1127,9 @@ class Migration(migrations.Migration):
                     primary_key=True, parent_link=True,db_column='reagent_id',
                     serialize=False, to='db.Reagent')),
 #                 ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
-                ('sequence', models.TextField()),
-                ('anti_sense_sequence', models.TextField()),
-                ('silencing_reagent_type', models.TextField()),
+                ('sequence', models.TextField(null=True)),
+                ('anti_sense_sequence', models.TextField(null=True)),
+                ('silencing_reagent_type', models.TextField(null=True)),
                 ('is_restricted_sequence', models.BooleanField(default=False)),
             ],
             options={
@@ -1125,11 +1143,11 @@ class Migration(migrations.Migration):
                     primary_key=True, parent_link=True,db_column='reagent_id',
                     serialize=False, to='db.Reagent')),
 #                 ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
-                ('inchi', models.TextField()),
-                ('molecular_formula', models.TextField()),
+                ('inchi', models.TextField(null=True)),
+                ('molecular_formula', models.TextField(null=True)),
                 ('molecular_mass', models.DecimalField(null=True, max_digits=15, decimal_places=9)),
                 ('molecular_weight', models.DecimalField(null=True, max_digits=15, decimal_places=9)),
-                ('smiles', models.TextField()),
+                ('smiles', models.TextField(null=True)),
                 ('is_restricted_structure', models.BooleanField(default=False)),
                 ('salt_form_id', models.IntegerField(null=True)),
             ],
@@ -1164,6 +1182,7 @@ class Migration(migrations.Migration):
             name='derived_from_columns',
             field=models.ManyToManyField(related_name='derived_columns', to='db.DataColumn'),
         ),
+        # TODO: removed
         migrations.AddField(
             model_name='well',
             name='latest_released_reagent',
@@ -1258,7 +1277,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screenercherrypick',
             name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
+            field=models.ForeignKey(to='db.CherryPickRequest',
+                related_name='screener_cherry_picks'),
         ),
         migrations.AddField(
             model_name='screenercherrypick',
@@ -1296,9 +1316,19 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(to='db.LibraryContentsVersion', null=True),
         ),
         migrations.AddField(
+            model_name='assaywell',
+            name='well',
+            field=models.ForeignKey(to='db.Well', null=False),
+        ),
+        migrations.AddField(
+            model_name='assaywell',
+            name='screen_result',
+            field=models.ForeignKey(to='db.ScreenResult', null=False),
+        ),
+        migrations.AddField(
             model_name='reagent',
             name='well',
-            field=models.ForeignKey(to='db.Well', null=True),
+            field=models.ForeignKey(to='db.Well', null=True, related_name='reagents'),
         ),
         migrations.AddField(
             model_name='plate',
@@ -1323,7 +1353,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='labcherrypick',
             name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
+            field=models.ForeignKey(to='db.CherryPickRequest',
+                related_name='lab_cherry_picks'),
         ),
         migrations.AddField(
             model_name='labcherrypick',
@@ -1379,7 +1410,7 @@ class Migration(migrations.Migration):
             model_name='cherrypickrequest',
             name='created_by',
             field=models.ForeignKey(to='db.ScreensaverUser', 
-                null=True, related_name='created_cherry_pick'),
+                null=True, related_name='created_cherry_picks'),
         ),
         migrations.AddField(
             model_name='cherrypickrequest',
@@ -1389,7 +1420,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='cherrypickassayplate',
             name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
+            field=models.ForeignKey(
+                to='db.CherryPickRequest',
+                related_name='cherry_pick_assay_plates'),
         ),
         migrations.AddField(
             model_name='checklistitemevent',
@@ -1491,9 +1524,13 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='LabHead',
             fields=[
-                ('screensaver_user', models.OneToOneField(primary_key=True, serialize=False, to='db.ScreeningRoomUser')),
+                ('screensaver_user', models.OneToOneField(
+                    primary_key=True, serialize=False, to='db.ScreeningRoomUser')),
                 ('lab_affiliation', models.ForeignKey(
                     to='db.LabAffiliation', null=True)),
+                ('lab_head_appointment_category', models.TextField(null=True)),
+                ('lab_head_appointment_department', models.TextField(null=True)),
+                ('lab_head_appointment_update_date', models.DateField(null=True)),
             ],
             options={
                 'db_table': 'lab_head',
@@ -1767,9 +1804,22 @@ class Migration(migrations.Migration):
             name='cherrypickassayplate',
             unique_together=set([('cherry_pick_request', 'plate_ordinal', 'attempt_ordinal')]),
         ),
+        migrations.AlterUniqueTogether(
+            name='plate',
+            unique_together=set([('plate_number', 'copy')])
+        ),
         migrations.AddField(
             model_name='assayplate',
             name='library_screening',
             field=models.ForeignKey(to='db.LibraryScreening', null=True),
         ),
+        migrations.AlterUniqueTogether(
+            name='assayplate',
+            unique_together=set([('library_screening', 'plate', 'replicate_ordinal')]),
+        ),
+        
+        # FIXME: 20180404 - comprehensive review of indexes:
+        # - check that db matches models
+        # - check that models.py matches this file
+        
     ]

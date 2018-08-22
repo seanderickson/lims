@@ -7,20 +7,34 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/list2',
-  'views/screen/libraryScreening',
+  'utils/treeSelector',
   'utils/tabbedController'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
-            ListView, LibraryScreeningView, TabbedController) {
+            ListView, TreeSelector, TabbedController) {
   
   var ScreenDataView = TabbedController.extend({
     
     initialize: function(args) {
       var self = this;
       this._classname = 'ScreenDataView';
+      
+      this.tabbed_resources = this.screen_tabbed_resources;
+      if (! _.isEmpty(this.model.get('study_type'))) {
+        this.tabbed_resources = this.study_tabbed_resources;
+      } 
+      
       TabbedController.prototype.initialize.apply(this,arguments);
+      
+      if (this.model.get('user_access_level_granted') > 1){
+        if (! _.isEmpty(this.model.get('study_type'))) {
+          this.tabbed_resources['datacolumns'] = this.study_tabbed_resources['datacolumns']
+        } else {
+          this.tabbed_resources['datacolumns'] = this.screen_tabbed_resources['datacolumns']
+        }
+      }
     },
 
-    tabbed_resources: {
+    screen_tabbed_resources: {
       detail: { 
         description: 'Result Data', 
         title: 'Screen Results', 
@@ -58,16 +72,9 @@ define([
      */
     serialize: function() {
       var self = this;
-      var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
-      if (self.model.get('project_phase') == 'annotation') {
-        var displayed_tabbed_resources = _.extend({},this.study_tabbed_resources);
-      }
-      if (! self.model.get('has_screen_result')) {
-        delete displayed_tabbed_resources['datacolumns'];
-      }
       return {
         'base_url': self.model.resource.key + '/' + self.model.key + '/data',
-        'tab_resources': displayed_tabbed_resources
+        'tab_resources': self.tabbed_resources
       }      
     }, 
     
@@ -109,6 +116,7 @@ define([
       
       
       var screenResultResource = appModel.getResource('screenresult');
+
       var schemaUrl = [appModel.dbApiUri,
                        'screenresult',
                        self.model.key,
@@ -124,7 +132,7 @@ define([
         var extraControls = [];
         var show_positives_control = $([
           '<label class="checkbox-inline">',
-          '  <input type="checkbox">positives',
+          '  <input type="checkbox">show positive rows only',
           '</label>'
           ].join(''));
         var show_mutual_positives_control = $([
@@ -132,7 +140,19 @@ define([
            '  <input type="checkbox">mutual positives',
            '</label>'
            ].join(''));
-        if (self.model.get('project_phase') != 'annotation') {
+        //var show_mutual_positives_control = $([
+        //  '<button class="btn btn-default btn-sm" role="button" ',
+        //  'id="showMutualPositives" title="Show mutual positive columns" >',
+        //  'Show mutual positive columns',
+        //  '</button>'
+        //   ].join(''));
+        var show_other_screen_columns_button = $([
+          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          'id="showOtherScreenColumns" title="Show other screen columns" >',
+          'Other screen columns',
+          '</button>'
+          ].join(''))
+        if (_.isEmpty(self.model.get('study_type'))) {
           extraControls = extraControls.concat(
             show_positives_control, show_mutual_positives_control);
           extraControls.push($('<span>&nbsp;</span>'));
@@ -142,7 +162,7 @@ define([
             $deleteScreenResultsButton,$loadScreenResultsButton);
         }
         
-        // create an option vocab for the exclued col, if needed
+        // create an option vocab for the excluded col, if needed
         if (_.has(schemaResult['fields'], 'excluded')) {
           var options = [];
           _.each(schemaResult['fields'],function(field) {
@@ -156,61 +176,99 @@ define([
           console.log('custom exclude options', options);
         }
         var initialSearchHash;
-        view = new ListView({ 
+        var SRListView = ListView.extend({
+          afterRender: function(){
+            ListView.prototype.afterRender.apply(this,arguments);
+            this.$('#list_controls').append(show_other_screen_columns_button);
+            return this;
+          }
+        });
+        
+        view = new SRListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: schemaResult,
-          resource: screenResultResource,
+          resource: schemaResult,
           url: url,
-          extraControls: extraControls
+          extraControls: extraControls,
+          screen: self.model
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
-        initialSearchHash = view.listModel.get('search');
+        
+        initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
         
         if (_.has(initialSearchHash, 'is_positive__eq')
             && initialSearchHash.is_positive__eq.toLowerCase()=='true') {
           show_positives_control.find('input[type="checkbox"]').prop('checked',true);
         }
+        // 20170905 - removed show_mutual_positives - other screen columns will
+        // be added explicitly using treeSelector
+        // 20180220 - reinstated, determine state by included cols
         if (_.has(initialSearchHash, 'show_mutual_positives')
             && initialSearchHash.show_mutual_positives.toLowerCase()=='true') {
           show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
-          view.show_mutual_positives(screen_facility_id, true);
+          self.showMutualPositiveColumns(view, true);
         }
-        if (_.has(initialSearchHash, 'other_screens')) {
-          view.show_other_screens(initialSearchHash['other_screens']);
-        }
-        show_positives_control.click(function(e) {
+
+        show_other_screen_columns_button.click(function(e){
+          self.showOtherScreenColumnsDialog(view);
+        });
+        show_positives_control.find('input[type="checkbox"]').change(function(e) {
           if (e.target.checked) {
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             searchHash['is_positive__eq'] = 'true';
-            view.listModel.set('search',searchHash);
+            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
           } else {
             // make sure unset
-            var searchHash = _.clone(view.listModel.get('search'));
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
             if (_.has(searchHash,'is_positive__eq')) {
               delete searchHash['is_positive__eq'];
-              view.listModel.set('search',searchHash);
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
           }
         });
-        show_mutual_positives_control.click(function(e) {
+        // 20170905 - removed: mutual pos columns will be selected explicitly
+        // 20180220 - reinstated, determine state by included cols
+        show_mutual_positives_control.find('input[type="checkbox"]').change(function(e) {
           if (e.target.checked) {
             window.setTimeout(function() {
-              view.show_mutual_positives(screen_facility_id, true);
+              self.showMutualPositiveColumns(view, true);
             });
           } else {
             window.setTimeout(function() {
-              view.show_mutual_positives(screen_facility_id, false);
+              self.showMutualPositiveColumns(view, false);
             });
           }
         });
+        //show_mutual_positives_control.click(function(e) {
+        //  var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+        //  searchHash['is_positive__eq'] = 'true';
+        //  view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+        //  show_positives_control.find('input[type="checkbox"]').prop('checked',true);
+        //  self.showMutualPositiveColumns(view);
+        //});
         
-      };
+      }; // createResults
       
-      if (self.model.get('has_screen_result')) {
-        appModel.getResourceFromUrl(schemaUrl, createResults);
+      if (self.model.get('has_screen_result') == 1) {
+        var listOptions = ListView.prototype.parseUriStack(delegateStack);
+        console.log('parsed listOptions', listOptions);
+        var dc_ids = [];
+        if (_.has(listOptions, appModel.URI_PATH_SEARCH)){
+          if (_.has(listOptions.search,'dc_ids')){
+            dc_ids = listOptions.search.dc_ids;
+            if (dc_ids.length > 0 && _.isString(dc_ids)){
+              dc_ids = dc_ids.split(',');
+            }
+          }
+        }
+        dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
+        console.log('dc_ids', dc_ids);
+        var options = {};
+        if (!_.isEmpty(dc_ids)){
+          options['dc_ids'] = dc_ids;
+        }
+        appModel.getResourceFromUrl(schemaUrl, createResults, options);
       } else {
         if (appModel.hasPermission('screenresult','write')) {
           this.$('#tab_container').append("No data loaded ");
@@ -218,6 +276,344 @@ define([
           self.reportUriStack([]);
         }
       }
+    },
+    
+    showMutualPositiveColumns: function(listView, shown){
+      var self = this;
+
+      // Retrieve all columns visible for this screen
+      // - check the positive overlapping columns
+      var srResource = self.model.resource;
+      var resource = appModel.getResource('datacolumn');
+      var url = [resource.apiUri, 
+                 'for_screen', self.model.get('facility_id')].join('/');
+      var data_for_get = { 
+        limit: 0,
+        includes: [
+          'screen_facility_id','screen_title','name','description',
+          'assay_data_type','ordinal','vocabulary_scope_ref','edit_type'],
+        order_by: ['-study_type','screen_facility_id', 'ordinal'],
+        use_vocabularies: false
+      };
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url,
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, resource);
+        }
+      });
+      var collection = new CollectionClass();
+      collection.fetch({
+        data: data_for_get,
+        success: function(collection, response) {
+          if (shown==true){
+            collection.each(function(model){
+              if (_.contains(self.model.get('overlapping_positive_screens'),
+                    model.get('screen_facility_id'))){
+                if (model.get('positives_count')>0){
+                  model.set('checked',true);
+                }
+              }
+              if (self.model.get('screen_type') == 'rnai'){
+                if (model.get('screen_facility_id') == '200001'){
+                  // Include the study: Reagent counts for Small Molecule screens
+                  model.set('checked', true);
+                }
+                else if (model.get('screen_facility_id') == '200002'){
+                  // Include the study: Reagent counts for RNAi screens
+                  model.set('checked', true);
+                }
+              }
+            });
+            var dcs_selected = collection.where({checked: true});
+            _.each(dcs_selected, function(dc){
+              var key = dc.get('key');
+              var name = dc.get('title');
+              var dc_id = dc.get('data_column_id');
+              var field = dc.attributes;
+              field.description = Iccbl.formatString(
+                '{screen_facility_id}: {screen_title} ({name} - {description})',
+                field);
+              var grid = listView.grid;
+              
+              if (dc.get('user_access_level_granted') > 1){
+                field['filtering'] = true;
+                field['ordering'] = true;
+              }
+              if (!_.has(srResource.fields, key)){
+                srResource.fields[key] = field;
+              }
+    
+              var column = grid.columns.findWhere({ name: key });
+              if (!column){
+                var index = grid.columns.size();
+                grid.insertColumn(
+                  Iccbl.createBackgridColumn(
+                      key,field,
+                      listView.listModel.get('order')),
+                      { at: index});
+              } else {
+                console.log('column already included', key)
+              }
+            });
+          
+            var searchHash = _.clone(
+              listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
+            searchHash['show_mutual_positives'] = true;
+            listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
+          } else { // not shown
+            collection.each(function(model){
+              if (_.contains(self.model.get('overlapping_positive_screens'),
+                    model.get('screen_facility_id'))){
+                if (model.get('positives_count')>0){
+                  var key = model.get('key');
+                  if (_.has(srResource.fields, key)){
+                    delete srResource.fields[key];
+                    var column = listView.grid.columns.findWhere({ name: key });
+                    if (!column){
+                      console.log('column already not present', key)
+                    } else {
+                      listView.grid.removeColumn(column);
+                    }
+                  }
+                }
+              }
+              
+            });
+            var searchHash = _.clone(
+              listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
+            searchHash['show_mutual_positives'] = false;
+            listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
+          }          
+        },
+        always: function(){
+          console.log('done: ');
+        }
+      }).fail(function(){ 
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+      });        
+    },
+
+    showOtherScreenColumnsDialog: function(listView){
+      var self = this;
+      
+      var searchHash = listView.collection.listModel.get(appModel.URI_PATH_SEARCH);
+      var dc_ids = _.result(searchHash,'dc_ids', '');
+      if (!_.isArray(dc_ids)){
+        dc_ids = dc_ids.split(',')
+      }
+      dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
+      console.log('showOtherScreenColumnsDialog', dc_ids);
+      var resource = appModel.getResource('datacolumn');
+      var url = [resource.apiUri, 
+                 'for_screen', self.model.get('facility_id')].join('/');
+      var data_for_get = { 
+        limit: 0,
+        includes: [
+          'screen_facility_id','screen_title','name','description',
+          'assay_data_type','ordinal','study_type'],
+        order_by: ['screen_facility_id', 'ordinal'],
+        use_vocabularies: false
+      };
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url,
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, resource);
+        }
+      });
+      var collection = new CollectionClass();
+      collection.fetch({
+        data: data_for_get,
+        success: function(collection, response) {
+          showTreeSelector(collection);
+        },
+        always: function(){
+          console.log('done: ');
+        }
+      }).fail(function(){ 
+        Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+      });        
+
+      function showColumns(dcs_selected) {
+        var srResource = self.model.resource;
+        var fields = srResource.fields;
+        var grid = listView.grid;
+        
+        console.log('show columns', dcs_selected);
+        
+        _.each(dcs_selected, function(dc){
+          var key = dc.get('key');
+          var name = dc.get('title');
+          var dc_id = dc.get('data_column_id');
+          var field = dc.attributes;
+          
+          if (dc.get('user_access_level_granted') > 1){
+            field['filtering'] = true;
+            field['ordering'] = true;
+          }
+          
+          if (!_.has(srResource.fields, key)){
+            srResource.fields[key] = field;
+          }
+
+          var column = grid.columns.findWhere({ name: key });
+          if (!column){
+            var index = grid.columns.size();
+            grid.insertColumn(
+              Iccbl.createBackgridColumn(
+                  key,field,
+                  listView.listModel.get('order')),
+                  { at: index});
+          } else {
+            console.log('column already included', key)
+          }
+        
+        });
+        
+        var dc_ids_selected = _.map(dcs_selected, function(dcmodel){
+          return dcmodel.get('data_column_id');
+        });
+        // remove unselected
+        _.each(dc_ids, function(former_dc_id){
+          if (!_.contains(dc_ids_selected,former_dc_id)){
+            var column = grid.columns.find(function(gridCol){
+              var fi = gridCol.get('fieldinformation');
+              if (fi){
+                return fi['data_column_id'] == former_dc_id;
+              }
+            });
+            if (!column){
+              console.log('column already not present', former_dc_id)
+            } else {
+              grid.removeColumn(column);
+            }
+          }
+        });
+        
+        var searchHash = _.clone(
+          listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
+        searchHash['dc_ids'] = dc_ids_selected;
+        listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
+        
+      }; // showColumns
+      
+      
+      function showTreeSelector(collection){
+        console.log('showTreeSelector', dc_ids);
+        collection.each(function(model){
+          var dc_id = model.get('data_column_id');
+          if (_.contains(dc_ids, dc_id)){
+            model.set('checked', true);
+          }
+          model.set('screen_info',
+            model.get('screen_facility_id') + ' - ' + model.get('screen_title'));
+        });
+        
+        var show_positives_control = $([
+          '<label class="checkbox-inline pull-left" ',
+          '   title="Show positive columns only" >',
+          '  <input type="checkbox">positives',
+          '</label>'
+          ].join(''));
+        
+        var show_mutual_screens_control = $([
+          '<label class="checkbox-inline pull-left" ',
+          '   title="Show mutual screens having overlapping positives" >',
+          '  <input type="checkbox">mutual screens',
+          '</label>'
+          ].join(''));
+        
+        var show_studies_control = $([
+          '<label class="checkbox-inline pull-left" ',
+          '   title="Show study annotations" >',
+          '  <input type="checkbox">show studies',
+          '</label>'
+          ].join(''));
+        
+        var OtherColumnsTreeSelector = TreeSelector.extend({
+          search: function(){
+            var show_pos_only = 
+              show_positives_control.find('input[type="checkbox"]').prop('checked');
+            var show_mutual_only = 
+              show_mutual_screens_control.find('input[type="checkbox"]').prop('checked');
+            var show_studies = 
+              show_studies_control.find('input[type="checkbox"]').prop('checked');
+            var searchedModels;
+            if (!_.isEmpty(this.getSearchVal())){
+              searchedModels = OtherColumnsTreeSelector.__super__.search.apply(this,arguments);
+            } else if (show_pos_only || show_mutual_only || show_studies ) {
+              searchedModels = this.collection.models;
+            } else{
+              this.clearSearch();
+              return;
+            }
+            searchedModels = _.filter(searchedModels, function(model){
+              var shown = true;
+              if (shown && show_pos_only){
+                shown = model.get('positives_count')>0;
+              }
+              if (shown && show_mutual_only){
+                shown = _.contains(
+                  self.model.get('overlapping_positive_screens'),
+                  model.get('screen_facility_id'));
+              }
+              if (shown && show_studies){
+                shown = !_.isEmpty(model.get('study_type'));
+              }
+              return shown;
+            });
+            return searchedModels;
+          }
+        });
+        
+        var dcView = new OtherColumnsTreeSelector({
+          collection: collection,
+          treeAttributes: ['screen_info', 'title'],
+          treeAttributesForTypeAhead: ['screen_info'],
+          extraControls: [show_positives_control, show_mutual_screens_control, 
+                          show_studies_control]
+        });
+
+        show_positives_control.find('input[type="checkbox"]').change(function(e) {
+          var searchedModels = dcView.search();
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
+            collection.trigger('searchChange', searchedModels);
+          }
+        });
+        show_mutual_screens_control.find('input[type="checkbox"]').change(function(e){
+          var searchedModels = dcView.search();
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
+            collection.trigger('searchChange', searchedModels);
+          }
+        });
+        show_studies_control.find('input[type="checkbox"]').change(function(e){
+          var searchedModels = dcView.search();
+          if (e.target.checked || !_.isEmpty(searchedModels)) {
+            collection.trigger('searchChange', searchedModels);
+          }
+        });
+        
+        Backbone.Layout.setupView(dcView);
+  
+        var el = dcView.render().el;
+        var dialog = appModel.showModal({
+            buttons_on_top: true,
+            css: { 
+                display: 'table',
+                height: '500px',
+                width: '80%'
+              },
+            css_modal_content: {
+              overflow: 'hidden'
+            },
+            ok: function(){
+              showColumns(dcView.getSelected());
+            },
+            view: el,
+            title: 'Select Other Screen Columns to display'
+        });
+      }; // showTreeSelector
+      
+      
     },
     
     /**
@@ -252,9 +648,9 @@ define([
       
       var formSchema = {};
       formSchema['comments'] = {
-        title: 'Comments',
+        title: 'Comments (optional)',
         key: 'comments',
-        validators: ['required'],
+        validators: [],
         editorClass: 'input-full',
         type: 'TextArea',
         template: fieldTemplate
@@ -278,7 +674,7 @@ define([
       });
       var _form_el = form.render().el;
 
-      function saveFile() {
+      function loadScreenResultFile() {
 
         var errors = form.commit({ validate: true }); // runs schema and model validation
         if (!_.isEmpty(errors)) {
@@ -315,30 +711,58 @@ define([
             headers: headers
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-          .done(function(model, resp) {
-            // FIXME: should be showing a regular message
-            appModel.error('success');
-            // Must refetch and render, once for the containing tabbed layout,
-            // and then (during render), will refetch again for the table view
-            self.model.fetch({
-              success: function() {
-                if (!isStudy) {
-                  self.uriStack = ['detail'];
-                  // remove the child view before calling render, to prevent
-                  // it from being rendered twice, and calling afterRender twice
-                  self.removeView('#tab_container');
+          .done(function(data, resp) {
+            console.log('screen result submit result', data, resp);
+
+            function refreshOnUpdate(){
+              // Must refetch and render, once for the containing tabbed layout,
+              // and then (during render), will refetch again for the table view
+              self.model.fetch({
+                success: function() {
+                  if (!isStudy) {
+                    self.uriStack = ['detail'];
+                    // remove the child view before calling render, to prevent
+                    // it from being rendered twice, and calling afterRender twice
+                    self.removeView('#tab_container');
+                  }
+                  self.render();
                 }
-                self.render();
+              }).fail(function() { 
+                Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+              });
+            };
+            
+            if (appModel.getAppData().get('BACKGROUND_PROCESSING') == true){
+              data = _.result(data,appModel.API_RESULT_META, data);
+              if (!_.has(data, 'job')){
+                appModel.error('Job response does not contain job data');
+                return;
               }
-            }).fail(function() { 
-              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-            });
+              var jobModel = appModel.addBackgroundJob(data['job']);
+              
+              self.listenTo(jobModel, 'change:state', jobStateChanged);
+              
+              // TODO: Create a listener to update screen from any browser instance
+              function jobStateChanged(){
+                console.log('jobStateChanged:', arguments);
+                if (jobModel.get('state') != 'completed'){
+                  return;
+                }
+                if (self.isClosed == true){
+                  console.log('screen data view has been closed already');
+                  return;
+                }
+                refreshOnUpdate();
+              };
+            } else {
+              refreshOnUpdate();
+            }
           });
         }        
       }
       
       var dialog = appModel.showModal({
-          ok: saveFile,
+          ok: loadScreenResultFile,
           view: _form_el,
           title: 'Select a Screen Result (xlsx workbook) file to upload'
       });
@@ -425,9 +849,6 @@ define([
       Iccbl.getCollectionOnClient(url, function(collection) {
         // create a colModel for the list
         var columns = [];
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        })
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -450,7 +871,7 @@ define([
           'name' : 'fieldname',
           'label' : '',
           'description' : 'Datacolumn field',
-          'cell': TextWrapCell.extend({
+          'cell': Iccbl.TextWrapCell.extend({
             className: '150_width'
           })
         });
@@ -463,7 +884,7 @@ define([
             'description' : datacolumn.get('description'),
             'order': datacolumn.get('ordinal'),
             'sortable': true,
-            'cell': TextWrapCell
+            'cell': Iccbl.TextWrapCell
           });
           columns.push(col);
           if (datacolumn.has('derived_from_columns')) {

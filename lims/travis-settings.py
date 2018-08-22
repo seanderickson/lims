@@ -12,14 +12,10 @@ import os.path
 
 # NOTE: the parent settings file defines the PROJECT_ROOT
 PROJECT_ROOT = '.'
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
-    
+print 'PROJECT_ROOT: ', PROJECT_ROOT
+
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
-# TASTYPIE_FULL_DEBUG is less useful than it seems.  
-# When it is used the error is easily discernable in the server logs (and not visible there otherwise), 
-# but the client message is spammed with an html response with the error code buried somewhere inside.
-#TASTYPIE_FULL_DEBUG = DEBUG
 
 ADMINS = (
     ('Sean D Erickson', 'sean_erickson@hms.harvard.edu'),
@@ -29,7 +25,7 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2', 
+        'ENGINE': 'django.db.backends.postgresql', 
         'NAME': 'postgres',
         # The following settings are not used with sqlite3:
         'USER': 'postgres',
@@ -70,7 +66,7 @@ STATICFILES_DIRS = (
     # Put strings here, like "/home/html/static" or "C:/www/django/static".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-    os.path.join(PROJECT_ROOT, "static"),
+    os.path.join(PROJECT_ROOT, 'lims', 'static'),
 )
 
 # List of finder classes that know how to find static files in
@@ -87,16 +83,7 @@ STATICFILES_FINDERS = (
 SECRET_KEY = 'x-=2g@c)#_z_1xxn0fpxj+y)v%n7&e#xpm+coo0(5^*@l___%8i*0travis-only'
 
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake'
-    },
-    'screen': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'uniq222#@@!^^1`~'
-    },
-}
+BACKGROUND_PROCESSING = False
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
 # environments, so that the test database can be destroyed
@@ -169,12 +156,7 @@ LOGGING = {
             'handlers': ['console'],
             'propagate': True,
             'level': 'WARN',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': True,
-            'level': 'INFO',
-        },        
+        },
     }
 }
 
@@ -188,7 +170,7 @@ class DisableMigrations(object):
         return True
 
     def __getitem__(self, item):
-        return "notmigrations"
+        return None
 
 if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
     MIGRATION_MODULES = DisableMigrations()

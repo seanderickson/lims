@@ -22,17 +22,40 @@
 			      console.log('menu.html: error, undefined ui_resource:' + JSON.stringify(key) );
 			    }else{
             var ui_resource = ui_resources[key];
-			      // console.log('found ' + key);
+			      // console.log('process menu ' + key);
    %>
-            <li  class="" id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
+            <li  class="" id="<%= key %>" title="<%=ui_resource.description %>">
+            <a href="#<%= key %>"><%= ui_resource.title %></a></li>
    <%
+            // Process submenus2
+            var submenu2 = submenu['submenus'][key];
+            if (!_.has(submenu2,'submenus')){
+              return;
+            }
+            if( submenu2['expanded'] ) {
+            %>
+              <ul  class="menu nav-sidebar">
+            <%
+              _.each(_(submenu2['submenus']).keys(), 
+              function(key){
+                // console.log('process submenu2 key', key);
+                var ui_resource1 = ui_resources[key];
+              %>
+                <li class="" id="<%= key %>" title="<%=ui_resource1.description %>">
+                <a href="#<%= key %>"><strong><%= ui_resource1.title %></a></strong></li>
+              <%
+              }); // each submenu2 items
+             %>
+              </ul>
+             <%
+            } // submenu2 - expanded
           }
-        });
-      }
+        }); // each submenu
+      } // submenus not empty
    %>
       </ul>
    <%
-    }
-  });
+    } // submenu expanded
+  }); // top submenus
   %>
 </ul>

@@ -2,20 +2,35 @@ define([
   'jquery',
   'underscore',
   'backbone',
+  'backgrid',
   'iccbl_backgrid',
   'templates/modal_ok_cancel.html'    
-], function($, _, Backbone, Iccbl, modalOkCancelTemplate ){
+], function($, _, Backbone, Backgrid, Iccbl, modalOkCancelTemplate ){
   
   var API_VERSION = 'api/v1';
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
-  var SEARCH_DELIMITER = ';';
+  
   var DEBUG = false;
   
+  var API_RESULT_META = 'meta';
+  var API_RESULT_DATA = 'objects';
+  var API_MSG_RESULT = 'Result';
+    
   var SchemaClass = Iccbl.SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()
   {
     return this.filterKeys('visibility','d');
+  };  
+  SchemaClass.prototype.adminKeys = function()
+  {
+    var self = this;
+    var keys = Iccbl.sortOnOrdinal(
+      _.keys(self.fields), self.fields)
+    var adminKeys = _(keys).filter(function(key){
+      return _.result(self.fields[key], 'is_admin', false);
+    });
+    return adminKeys;
   };  
   SchemaClass.prototype.editVisibleKeys = function()
   {
@@ -53,15 +68,16 @@ define([
   
   /**
    * Groups the keys by the display_options "group":
-   * {
-   *    group: name,
-   *    fields: [fieldkey1, fieldkey2, fieldkey3... ]
-   * 
+   * @ return an array of: 
+   * [ {
+   *     group: name,
+   *     fields: [fieldkey1, fieldkey2, fieldkey3... ]
+   *    }, ...]
    */
   SchemaClass.prototype.groupedKeys = function(keys){
     var self = this;
     var groupedKeys = [];
-    var groups = {};
+    var groups = {}; // note, hash is being used only as a lazy cache, not returned
     _.each(keys,function(key){
       var fi = self.fields[key];
       if (fi && fi.display_options && fi.display_options.group){
@@ -100,7 +116,6 @@ define([
       current_view: 'home',
       current_resource_id: 'home',
       current_options: {},
-      routing_options: {},
       current_scratch: {},
       current_details: {},
       login_information: {},
@@ -118,11 +133,16 @@ define([
 
     initialize : function() {
       var self = this;
+      
+      self.userProps = {};
       this.on('change:users', function(){
-        self.unset('adminUsers');
-        self.unset('principal_investigators');
-        self.unset('userOptions');
-        self.unset('adminUserOptions');
+        _.each(_.keys(self.userProps), function(prop){
+          self.unset(prop);
+        });
+        //self.unset('adminUsers');
+        //self.unset('principal_investigators');
+        //self.unset('userOptions');
+        //self.unset('adminUserOptions');
       });
       this.on('change:screens', function(){
         self.unset('screenOptions');
@@ -150,12 +170,62 @@ define([
     start: function(callBack) {
       var self = this;
       console.log('start app_state.js');
-      this.getResources(function(){
-        self.getVocabularies(function(vocabularies){
-          self.set('vocabularies', vocabularies);
-          self.setCurrentUser(callBack);
+      self.getAppDataFromServer(function(){
+        self.getResources(function(){
+          self.setCurrentUser(function(){
+            self.getVocabularies(function(vocabularies){
+              self.set('vocabularies', vocabularies);
+              self.initialized();
+              callBack();
+            });
+          });
         });
       });
+    },
+    
+    initialized: function() {
+      var self = this;
+      var jobResource = self.getResource('job');
+      var JobCollection = Iccbl.CollectionOnClient.extend({
+        // explicitly define the id so that collection compare & equals work
+        modelId: function(attrs) {
+          return Iccbl.getIdFromIdAttribute( attrs, jobResource);
+        },
+        url: jobResource.apiUri
+      })
+      self.jobCollection = new JobCollection();
+      
+      var currentUser = self.getCurrentUser();
+      if (currentUser.is_staff || currentUser.is_superuser ){
+        // fetch pending jobs
+        data_for_fetch = {
+          limit:0,
+          username: currentUser.username,
+          'state__in': ['pending','submitted', 'processing'],
+        };
+        // background jobs
+        self.jobCollection.fetch({
+          data: data_for_fetch,
+          // prevent triggering global event handler: ajaxStart loading gif
+          global: false 
+        }).done(function(data, textStatus, jqXHR){
+          console.log('initial job fetch', arguments);
+        }).fail(function(){ 
+          Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+        });
+      }
+
+    },
+    
+    readCookie: function(name) {
+      var nameEQ = escape(name) + "=";
+      var ca = document.cookie.split(';');
+      for (var i = 0; i < ca.length; i++) {
+          var c = ca[i];
+          while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+          if (c.indexOf(nameEQ) === 0) return unescape(c.substring(nameEQ.length, c.length));
+      }
+      return null;
     },
     
     /**
@@ -163,7 +233,7 @@ define([
      */
     initializeAdminMode: function(callback) {
       var self = this;
-      console.log('start app_state.js');
+      console.log('initializeAdminMode...');
       // Pre-fetch options for the search_box
       $(this).queue([
          self.getAdminUserOptions,
@@ -176,7 +246,9 @@ define([
     setCurrentUser: function(callBack) {
       console.log('set the current user', window.user);
       var self = this;
-      this.getModel('user', window.user, 
+      // NOTE: can be replaced with "user" from the reports app
+      // 'screensaveruser' is needed for the database app
+      this.getModel('screensaveruser', window.user, 
         function(model){
           console.log('user model:', model);
           // NOTE that Backbone.Model.toJSON returns a shallow copy as a object,
@@ -194,6 +266,11 @@ define([
       return this.currentUser;
     },
     
+    /**
+     * Use the AppModel to hold search state:
+     * - search_box writes
+     * - list views read
+     */
     setSearch: function(searchId, search_object){
       console.log('setSearch', searchId, search_object)
       localStorage.setItem(''+searchId, JSON.stringify(search_object));
@@ -203,8 +280,85 @@ define([
     getSearch: function(searchId){
       var obj = localStorage.getItem(''+searchId);
       if(obj) obj = JSON.parse(obj);
-      console.log('getSearch', searchId, obj);
       return obj;
+    },
+
+    /** 
+     * Find the search data in the uriStack, if it exists: either in:
+     * URI_PATH_COMPLEX_SEARCH or,
+     * URI_PATH_ENCODED_SEARCH
+     * 
+     * @return {
+     *    API_PARAM_SEARCH: search data - resource specific search data
+     *    search_id: integer for local storage
+     *    uriStack: uriStack with the search component removed
+     *    errors: [] empty if none
+     *  }
+     */
+    findComplexSearch: function(uriStack){
+      var result = {};
+      if (_.isEmpty(uriStack)) return null;
+      var appModel = Iccbl.appModel;
+      
+      // Complex search: uses local storage for large sets of search data
+      if (_.contains(uriStack,appModel.URI_PATH_COMPLEX_SEARCH) ){
+        var index = _.indexOf(uriStack,appModel.URI_PATH_COMPLEX_SEARCH);
+        var searchId = uriStack[index+1];
+        
+        if (_.isEmpty(searchId)){
+          result['errors'] = 'no complex search id found:', uriStack;
+          return result;
+        }
+        if (!_.isNaN(parseInt(searchId))) {
+          var search_data = appModel.getSearch(searchId);
+          if(_.isUndefined(search_data) || _.isEmpty(search_data)){
+            result['errors'] = 'Browser state no longer contains searchId:'+searchId 
+              +'", search must be performed again';
+            return result;
+          }else{
+            result[appModel.API_PARAM_SEARCH_ID] = searchId;
+            result[appModel.API_PARAM_SEARCH] = search_data;
+          }  
+        }else{
+          result['errors'] = 'search ID is not a valid number: ' + searchId;
+          return result;
+        }
+        var newStack = uriStack.slice(0,index);
+        result['uriStack'] = newStack.concat(uriStack.slice(index+2));
+      
+      // Encoded search: search data are encoded as part of the URI
+      } else if (_.contains(uriStack, appModel.URI_PATH_ENCODED_SEARCH)){
+        var index = _.indexOf(uriStack,appModel.URI_PATH_ENCODED_SEARCH);
+        result[appModel.API_PARAM_SEARCH] = uriStack[index+1];
+        var newStack = uriStack.slice(0,index);
+        result['uriStack'] = newStack.concat(uriStack.slice(index+2));
+      } else {
+        console.log('no search data found on the uriStack');
+      }
+      return result;
+    },
+    
+    getLabAffiliationOptions: function(callBack){
+      console.log('getLabAffiliationOptions...', callBack);
+      var self = this;
+      var prop = 'labAffiliationOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getLabAffiliations(function(affiliations){
+          options = [];
+          affiliations.each(function(affiliation){
+            var id = affiliation.get('lab_affiliation_id');
+            var name = affiliation.get('name');
+            var category = affiliation.get('category')
+            options.push({ val: id, label: category + ' - ' + name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+        else return options;
+      }
     },
 
     getLibraryOptions: function(callBack){
@@ -224,8 +378,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getPlateLocationTree: function(callBack, options){
@@ -260,8 +415,9 @@ define([
         }, options);
       }else{
         if (callBack) callBack(locationHash);
+        else return locationHash;
       }
-      return locationHash;
+//      return locationHash;
     },
 
     getScreenOptions: function(callBack){
@@ -281,8 +437,9 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getScreeningLibraryOptions: function(screen_type, callBack){
@@ -310,8 +467,8 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
     },
 
     getPlatedLibraryOptions: function(callBack){
@@ -335,17 +492,109 @@ define([
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
     },
 
+    /** 
+		 * Get the libraries covered for search:
+		 * TODO: Test 20180322 
+		 **/
+    getLibrariesForSearch: function(searchArray, errors){
+      var libraries = this.getLibraries();
+      
+      if (!libraries){
+        console.log('libraries are not initialized');
+        return;
+      }
+      
+      function libraryForPlate(plate_number){
+        return libraries.find(function(library){
+          return ( library.get('start_plate') <= plate_number 
+              && library.get('end_plate') >= plate_number);
+        });
+      }; 
+      
+      function librariesForRange(start,end){
+        return libraries.filter(function(library){
+          return ( library.get('start_plate') <= end
+              && library.get('end_plate') >= start);
+        });
+      }
+      
+      var librariesFound = [];
+      
+      _.each(searchArray, function(parsedSearch){
+        if (_.has(parsedSearch, 'well_ids')){
+          _.each(parsedSearch['well_ids'], function(well_id){
+            var plate_number = parseInt(well_id.split(':')[0]);
+            var library = libraryForPlate(plate_number);
+            if (!library){
+              errors.push('No library found for plate: ' + plate_number);
+            } else {
+              librariesFound.unshift(library);
+            }
+          });
+        }
+        if (_.has(parsedSearch, 'plate_ranges')){
+          _.each(parsedSearch['plate_ranges'], function(plate_range){
+            var start_end = plate_range.split('-');
+            var libraries = librariesForRange(
+              parseInt(start_end[0]), parseInt(start_end[1]));
+            if (_.isEmpty(libraries)){
+              errors.push('No libraries found for range: ' + plate_range);
+            }
+            // consider checking that all libraries are same type
+            librariesFound = librariesFound.concat(libraries);
+          });
+        }
+        if (_.has(parsedSearch, 'plates')){
+          _.each(parsedSearch['plates'], function(plate){
+            var library = libraryForPlate(plate);
+            if (!library){
+              errors.push('No libraries found for plate number: ' + plate);
+            }else{
+              librariesFound.unshift(library);
+            }
+          });
+        }
+      });
+      
+      var librariesFound = _.unique(librariesFound);
+      
+      // Check that all libraries are of the same type
+      var screen_types = {};
+      _.each(librariesFound, function(library){
+        var screen_type = library.get('screen_type');
+        var list = _.result(screen_types, screen_type, []);
+        list.push(library.get('short_name'));
+        screen_types[screen_type] = list;
+      });
+      
+      if(_.size(screen_types)>1){
+        errors.push('Well searches may not contain different library types: ' 
+          + _.keys(screen_types).join(', '));
+      }
+      
+      return librariesFound;
+    },
+    
+    
     /**
      * Generate a list of "options" suitable for use in a user multiselect.
      * [ { val: username, label: name:username }, ... ]
      */
-    getAdminUserOptions: function(callBack){
+    getAdminUserOptions: function(callBack, resource){
       var self = this;
       var prop = 'adminUserOptions';
+      // Note: check for the "empty" object passed when the caller is JQuery.queue function call
+      if (!_.isString(resource)){
+        resource = null;
+      }
+      
+      if (!_.isEmpty(resource)){
+        prop += '-' + resource;
+      }
       var options = this.get(prop);
       if(!options){
         this.getAdminUsers(function(users){
@@ -353,15 +602,17 @@ define([
           users.each(function(user){
             var username = user.get('username');
             var name = user.get('name');
-            options.push({ val: username, label: name + ':' + username });
-          });
+            options.push({ val: username, label: name + ': ' + username });
+          }, resource);
+          self.userProps[prop] = new Date();
           self.set(prop,options);
           if (callBack) callBack(options);
-        });
+        }, resource);
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
     
     getUserOptions: function(callBack){
@@ -372,19 +623,53 @@ define([
         self.getUsers(function(users){
           var options = [];
           users.each(function(user){
+            var user_id = user.get('screensaver_user_id');
             var username = user.get('username');
             var name = user.get('name');
-            options.unshift({ val: username, label: name + ':' + username });
+            var _label = name;
+            if(!_.isEmpty(username)) _label += ': ' + username;
+            _label += ' (' + user_id + ')';
+            options.unshift({ val: user_id, label: _label});
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
     },
     
+    getUsernameOptions: function(callBack){
+      var self = this;
+      var prop = 'usernameOptions';
+      var options = this.get(prop);
+      if(!options){
+        self.getUsers(function(users){
+          var options = [];
+          users.each(function(user){
+            var user_id = user.get('screensaver_user_id');
+            var username = user.get('username');
+            if (_.isEmpty(username)){
+              return;
+            }
+            var name = user.get('name');
+            var _label = name;
+            if(!_.isEmpty(username)) _label += ': ' + username;
+            _label += '(' + user_id + ')';
+            options.unshift({ val: username, label: _label });
+          });
+          self.set(prop,options);
+          self.userProps[prop] = new Date();
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+        else return options;
+      }
+    },
+
     getPrincipalInvestigatorOptions: function(callBack){
       var self = this;
       var prop = 'piOptions';
@@ -393,17 +678,55 @@ define([
         this.getPrincipalInvestigators(function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            var username = user.get('username');
+            var user_id = user.get('screensaver_user_id');
             var lab_name = user.get('lab_name');
-            options.push({ val: username, label: lab_name });
+            options.push({ val: user_id, label: lab_name });
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
+    },
+    
+    getUserIdsInGroupOptions: function(usergroup, callBack){
+      var self = this;
+      var prop = 'usergroup_' + usergroup + '_Options';
+      var options = this.get(prop);
+      if(!options){
+        this.getUsersInGroup(usergroup, function(users){
+          var options = [{ val:'',label:'' }];
+          users.each(function(user){
+            var user_id = user.get('screensaver_user_id');
+            var name = user.get('name');
+            options.push({ val: user_id, label: name });
+          });
+          self.set(prop,options);
+          self.userProps[prop] = new Date();
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+        else return options;
+      }
+    },
+    
+    getUsersInGroup: function(usergroup, callBack) {
+      var prop = usergroup + '_users';
+      this.userProps[prop] = new Date();
+      return this.getCachedResourceCollection(
+        prop, 
+        this.dbApiUri + '/screensaveruser', 
+        { 
+          usergroups__eq: usergroup,
+          exact_fields: ['username','name','email'], 
+          order_by: ['name']
+        }, 
+        callBack );
     },
 
     getUserGroupOptions: function(callBack){
@@ -418,16 +741,29 @@ define([
             options.unshift({ val: name, label: name });
           });
           self.set(prop,options);
+          self.userProps[prop] = new Date();
           if (callBack) callBack(options);
         });
       }else{
         if (callBack) callBack(options);
+        else return options;
       }
-      return options;
+//      return options;
     },
 
     getPermissionsOptions: function(){
       return this.get('permissionOptions');
+    },
+    
+    getLabAffiliations: function(callback){
+      data_for_get = { 
+        exact_fields: [
+           'lab_affiliation_id','name', 'category'],
+        use_vocabularies: true,
+        order_by: ['category','name']
+      };
+      return this.getCachedResourceCollection(
+        'labAffiliations', this.dbApiUri + '/labaffiliation', data_for_get, callback );
     },
     
     getLibraries: function(callback){
@@ -453,8 +789,9 @@ define([
     
     getScreens: function(callback){
       data_for_get = { 
-        exact_fields: ['title','facility_id'], 
-        project_phase__ne: 'annotation'
+        order_by: ['facility_id'],
+        exact_fields: ['title','facility_id','data_sharing_level','screen_type'], 
+        study_type__is_null: true
       };
       return this.getCachedResourceCollection(
         'screens', this.dbApiUri + '/screen', data_for_get, callback );
@@ -502,12 +839,14 @@ define([
     },
     
     getPrincipalInvestigators: function(callback) {
+      var prop = 'principal_investigators';
+      this.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        'principal_investigators', 
+        prop, 
         this.dbApiUri + '/screensaveruser', 
         { 
-          lab_head_affiliation__is_blank: false,
-          classification__eq: 'principal_investigator',
+          lab_affiliation_id__is_blank: false,
+          classification__eq: this.VOCAB_USER_CLASSIFICATION_PI,
           exact_fields: ['username','lab_name','name','email'], 
           order_by: ['name']
         }, 
@@ -519,27 +858,50 @@ define([
         'users', 
         this.dbApiUri + '/screensaveruser', 
         { 
-          exact_fields: ['username','name','email'], 
+          exact_fields: ['username','name','email','sm_data_sharing_level','rnai_data_sharing_level'], 
           order_by: ['name']
         }, 
         callback );
     },
     
-    getAdminUsers: function(callback) {
+    /**
+     * @param resource (optional) to filter for users having write permission 
+     * on the resource
+     */
+    getAdminUsers: function(callback, resource) {
+      var self = this;
+      function filterCallback(users){
+        if (!_.isEmpty(resource)){
+          var filteredUsers = new Backbone.Collection(
+            users.filter(function(user){
+              return self._permissionMatch(
+                resource, 'write', user.get('all_permissions'));
+            })
+          );
+          callback(filteredUsers);
+        } else {
+          callback(users);
+        }
+      };
+      var prop = 'adminUsers';
+      self.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        'adminUsers', 
+        prop, 
         this.dbApiUri + '/screensaveruser', 
         { 
           is_staff__eq: true,
-          exact_fields: ['username','name','email'], 
-          order_by: ['name']
+          exact_fields: ['username','name','email', 'all_permissions'], 
+          order_by: ['name'], 
+          
         }, 
-        callback );
+        filterCallback );
     },
 
     getUserGroups: function(callback) {
+      var prop = 'usergroups';
+      this.userProps[prop] = new Date();
       return this.getCachedResourceCollection(
-        'usergroups', 
+        prop, 
         this.reportsApiUri + '/usergroup', 
         { 
           order_by: ['name']
@@ -621,6 +983,23 @@ define([
       self.set('permissionOptions',permissionOptions);
     },
 
+    /**
+     * Retrun an array of options for a Iccbl.SelectCell
+     */
+    getVocabularySelectCellArray: function(scope){
+      var options = [];
+      try{
+        var vocabulary = Iccbl.appModel.getVocabulary(scope);
+        _.each(_.keys(vocabulary),function(choice){
+          options.push([vocabulary[choice].title,choice]);
+        });
+      }catch(e){
+        var msg = 'Vocabulary unavailable: vocabulary_scope_ref: ' + scope;
+        console.log(msg,e);
+        this.error(msg);
+      }
+      return options;
+    },
     
     /** 
      * Return an array of options for a vocabulary select.
@@ -631,9 +1010,13 @@ define([
         var vocabulary = this.getVocabulary(scope);
         _.each(_.keys(vocabulary),function(choice){
           if(vocabulary[choice].is_retired){
-            console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+            console.log(
+              'skipping retired vocab: ',choice,vocabulary[choice].title );
           }else{
-            choiceHash.push({ val: choice, label: vocabulary[choice].title });
+            choiceHash.push({ 
+              val: choice, 
+              label: vocabulary[choice].title, 
+              ordinal: vocabulary[choice].ordinal });
           }
         });
       }catch(e){
@@ -641,6 +1024,9 @@ define([
         console.log(msg,e);
         this.error(msg);
       }
+      choiceHash = _.sortBy(choiceHash, function(choice){
+        return choice.ordinal;
+      });
       return choiceHash;
     },
     
@@ -665,7 +1051,10 @@ define([
         var matchedVocabularies = {};
         _.each(_.keys(vocabularies), function(candidateScope){
           if(candidateScope.match('^' + scope + '$')){
-            console.log('matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
+            if (DEBUG) {
+                console.log(
+                'matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
+            }
             _.extend(matchedVocabularies,vocabularies[candidateScope]);
           }
         });
@@ -674,6 +1063,9 @@ define([
           return matchedVocabularies;
         }
         throw "Unknown vocabulary: " + scope;
+      }
+      if (DEBUG){
+        console.log('vocabulary: ' + scope, vocabularies[scope]);
       }
       return vocabularies[scope];
     },
@@ -733,7 +1125,7 @@ define([
         });
 
         // 1. Create a resource hash, keyed by the resource id key
-        // 2. Augment uiResources with the (api)resources
+        // 2. Extend the (api)resources with the uiResource value overrides
         var ui_resources = self.get('ui_resources');
         var resources = {};
         _.each(resourcesCollection, function(resource){
@@ -742,14 +1134,14 @@ define([
           
           if (_.has(ui_resources, resource.key)) {
             ui_resources[resource.key] = _.extend(
-                {}, ui_resources[resource.key], resource);
+                {}, resource, ui_resources[resource.key]);
           } else {
             ui_resources[resource.key] = _.extend({},resource);
           }
         });
 
         // 3. for "virtual" uiResources, find the underlying apiResource, 
-        // and augment the uiResource with it
+        // and extend it using the uiResource overrides
         _.each(_.keys(ui_resources), function(key){
           var ui_resource = ui_resources[key];
           // then augment the ui resources with their api_resource, if different
@@ -759,8 +1151,13 @@ define([
           }
         });
         
+        var app_data = self.getAppData();
+        ui_resources['home']['title'] = app_data.get('app_name');
+        
         // set up permissions for all the resources
         self.setPermissionsOptions(self.get('ui_resources'));
+        
+        
         
         if(callBack) callBack();                
       });
@@ -771,9 +1168,84 @@ define([
     createNewModel: function(resourceId, defaults) {
 
       console.log('create new model for: ',resourceId, defaults );
-      
       var self = this;
       var resource = self.getResource(resourceId);
+      return this.newModelFromResource(resource,defaults);
+    },
+    
+    get_field_defaults: function(fields){
+
+      var defaults = {};
+      _.each(_.keys(fields), function(key){
+        var field = fields[key];
+        if( (!_.isUndefined(field.default) && !_.isNull(field.default))
+            && ( _.isNumber(field.default) || _.isBoolean(field.default)
+                || !_.isEmpty(field.default)))
+        {
+          try {
+            if (field.data_type == 'string'){
+                defaults[key] = field.default;
+            }else if (field.data_type == 'boolean'){
+              defaults[key] = JSON.parse(field.default.toLowerCase());
+            }else{
+              // TODO: test all types here
+              defaults[key] = JSON.parse(field.default);
+            }
+          }catch(e){
+            console.log('json parse error', key, field.default);
+            if (field.data_type == 'date' && field.default == 'now'){
+              defaults[key] = Iccbl.getISODateString(new Date());
+            }else{
+              self.error('Warning, unparseable default for field: ' 
+                + field.key + ', value: ' + field.default );
+              defaults[key] = null;
+            }
+          }
+        }else{
+          defaults[key] = null; // placeholders for the edit form
+        }
+      });
+      
+      return defaults;
+    },
+
+    newModelFromResource: function(resource, defaults) {
+      
+      var finalDefaults = _.extend({},
+        this.get_field_defaults(resource.fields), defaults);
+      delete finalDefaults['resource_uri']
+      delete finalDefaults['id'];
+      var NewModel = Backbone.Model.extend({
+        __classname: 'iccbl-model-' + resource.key,
+        urlRoot: resource.apiUri , 
+        defaults: finalDefaults,
+        resource: resource,
+        
+        /**
+         * Override parse:
+         * - unnest the post_obj_response from { objects: [ post_obj_response ] }
+         * - set the model.id; so that isNew() will report false
+         */
+        parse: function(resp,options){
+          var serverAttrs = _.result(resp, Iccbl.appModel.API_RESULT_DATA);
+          if (serverAttrs&& _.isArray(serverAttrs)){
+            if (serverAttrs.length == 1){
+              serverAttrs = serverAttrs[0];
+            }
+          }
+          serverAttrs[this.idAttribute] = Iccbl.getIdFromIdAttribute(serverAttrs,resource );
+          return serverAttrs;
+        }
+      });
+      var newModel = new NewModel();
+      newModel.resource = resource;
+      
+      return newModel;
+      
+    },
+    
+    newModelFromResourceOld: function(resource,defaults){
+
       var defaults = defaults || {};
       
       _.each(resource.allEditVisibleKeys(), function(key){
@@ -785,10 +1257,13 @@ define([
           // nop always exclude the id field to signal create case to the server
         } else {
           if(! _.has(defaults, key)){
-            if(field.default && !_.isNull(field.default)){
+            if( (!_.isUndefined(field.default) && !_.isNull(field.default))
+                && ( _.isNumber(field.default) || _.isBoolean(field.default)
+                    || !_.isEmpty(field.default)))
+            {
               try {
                 if (field.data_type == 'string'){
-                  defaults[key] = field.default;
+                    defaults[key] = field.default;
                 }else if (field.data_type == 'boolean'){
                   defaults[key] = JSON.parse(field.default.toLowerCase());
                 }else{
@@ -802,69 +1277,120 @@ define([
                 }else{
                   self.error('Warning, unparseable default for field: ' 
                     + field.key + ', value: ' + field.default );
-                  defaults[key] = '';
+                  defaults[key] = null;
                 }
               }
             }else{
-              defaults[key] = ''; // placeholders for the edit form
+              defaults[key] = null; // placeholders for the edit form
             }
           }
         }
       });
 
       var NewModel = Backbone.Model.extend({
-        urlRoot: resource.apiUri , defaults: defaults 
+        __classname: 'iccbl-model-' + resource.key,
+        urlRoot: resource.apiUri , 
+        defaults: defaults,
+        resource: resource,
+        /**
+         * Override parse:
+         * - unnest the post_obj_response from { objects: [ post_obj_response ] }
+         * - set the model.id; so that isNew() will report false
+         */
+        parse: function(resp,options){
+          var serverAttrs = _.result(resp, Iccbl.appModel.API_RESULT_DATA);
+          if (serverAttrs&& _.isArray(serverAttrs)){
+            if (serverAttrs.length == 1){
+              serverAttrs = serverAttrs[0];
+            }
+          }
+          serverAttrs[this.idAttribute] = Iccbl.getIdFromIdAttribute(serverAttrs,resource );
+          return serverAttrs;
+        }
       });
       var newModel = new NewModel();
       newModel.resource = resource;
       
       return newModel;
     },
+
+    _get_user_screen_choices: function(userModel) {
+        var screenOptions = this.getScreenOptions();
+        var userScreens = _.union(
+          userModel.get('screens_collaborator'),
+          userModel.get('screens_lab_head'),
+          userModel.get('screens_lead'));
+        var options = _.filter(screenOptions, function(option){
+          return _.contains(userScreens, option['val']);
+        });
+        console.log('found user screens: ' + 
+          userModel.get('screensaver_user_id'), options);
+        return options;
+    },
+    
+    _get_screen_member_choices: function(screenModel) {
+      // FIXME: should extend the Model for Screen
+      var members = _.object(
+        screenModel.get('collaborator_ids'),
+        screenModel.get('collaborator_names'));
+      members[screenModel.get('lead_screener_id')] = 
+        screenModel.get('lead_screener_name');
+      members[screenModel.get('lab_head_id')] = 
+        screenModel.get('lab_head_name');
+      members = _.map(_.pairs(members), function(pair){
+        return { 'val': pair[0], 'label': pair[1] + ': ' + pair[0] };
+      });
+      return members;
+    },
     
     /**
      * Get a model from the server
      */
     getModel: function(resourceId, key, callBack, options) {
+      var resource = this.getResource(resourceId);
+      return this.getModelFromResource(resource, key, callBack, options);
+    },
+    
+    getModelFromResource: function(resource, key, callBack, options) {
       var self = this;
       var options = options || {};
       var failCallback = options.failCallback;
       var data_for_get = _.extend({ includes: '*' }, options.data_for_get );
-      var resource = this.getResource(resourceId);
       if(_.isArray(key)){
         key = key.join('/');
       }
-      console.log('model key:', key);
       var url = options.url || resource.apiUri + '/' + key;
       console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
         url : url,
         defaults : { },
         parse: function(resp, options){
-          // workaround for if the server returns the object in an "objects" array
-          if(_.has(resp,'objects') && _.isArray(resp.objects)
-              && resp.objects.length == 1 ){
-            resp = resp.objects[0];
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+        },
+        fetch: function(options) {
+          var options = options || {};
+          if (!_.has(options,'data')){
+            options['data'] = data_for_get;
           }
-          return resp;
-        }
+          return Backbone.Model.prototype.fetch.apply(this, [options]);
+        }        
       });
       var instance = new ModelClass();
       instance.fetch({
-        data: data_for_get,
         success : function(model) {
-          console.log('model retrieved:', model);
           model.resource = resource;
+          model.options = options;
           model.key = key;
           model.set('id', key); // used by model.isNew(), if set use PATCH on save
           try{
             callBack(model);
           } catch (e) {
-            console.log('uncaught error: ' + e);
+            console.log('uncaught error: ', e);
             self.error('error displaying model: ' + model + ', '+ e);
           }
         }
       }).fail(function(){ 
-        console.log('fail...', arguments, failCallback);
+        console.log('fail...', failCallback);
         if (failCallback){
           failCallback.apply(this,arguments);
         }else{
@@ -878,7 +1404,11 @@ define([
       var currentUser = this.getCurrentUser();
       var menu = this.get('menu');
       
-      if(!currentUser.is_superuser) { 
+      if(!currentUser.is_staff && !currentUser.is_superuser ){
+        menu = this.get('screener_menu');
+      }
+      
+      else if(!currentUser.is_superuser) { 
         
         // Use permissions to show only allowed menus for the user
         var new_submenus = {}
@@ -889,7 +1419,7 @@ define([
 
             new_submenus[key] = menu.submenus[key];
           }else{
-            if(self.hasPermission(key)){
+            if(self.hasPermission(key,'read')){
               new_submenus[key] = menu.submenus[key];
             }else{
               console.log('user: ' + currentUser.username 
@@ -903,7 +1433,11 @@ define([
     },
         
     isEditable: function(resourceId){
-      return _.contains(_.result(this.getResource(resourceId),'visibility'), 'e');
+      try {
+        return _.contains(_.result(this.getResource(resourceId),'visibility'), 'e');
+      } catch (e) {
+        return false;
+      }
     },
     
     /**
@@ -914,8 +1448,14 @@ define([
     hasPermission: function(resource, permission){
       if (DEBUG) console.log('hasPermission', resource, permission);
       var self = this;
-      if(self.getCurrentUser().is_superuser) return true;
+      if (self.getCurrentUser().is_superuser) return true;
       
+      return self._permissionMatch(
+        resource, permission, self.getCurrentUser().all_permissions);
+    
+    },
+    
+    _permissionMatch: function(resource, permission, permissions_to_search) {
       var r_perm = 'resource/'+ resource;
       if( permission=='edit'){
         permission = 'write';
@@ -925,32 +1465,19 @@ define([
         r_perm += '/'+ permission;
       }// otherwise, will return true if user has either permission
       var match = _.find(
-          self.getCurrentUser().all_permissions, 
+          permissions_to_search, 
           function(p){
             if(p.indexOf(r_perm) > -1 ) {
               return true;
             }
           });
-      console.log('permission', r_perm, !_.isUndefined(match));
       return !_.isUndefined(match);
     },
     
-    
-    /**
-     * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
-     */
-    getSMUALevel: function(user){
-      return _.find(user.get('usergroups'), function(usergroup){
-        if(usergroup.toLowerCase().indexOf('smdsl') > -1) return true;
-      });
-    },
-    /**
-     * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
-     */
-    getRNAUALevel: function(user){
-      return _.find(user.get('usergroups'), function(usergroup){
-        if(usergroup.toLowerCase().indexOf('rnaidsl') > -1) return true;
-      });
+    hasGroup: function(groupName) {
+      var self = this;
+      if(self.getCurrentUser().is_superuser) return true;
+      return _.contains(self.getCurrentUser().usergroups, groupName);
     },
     
     /**
@@ -984,12 +1511,20 @@ define([
      *    
      */
     getResource: function(resourceId){
+      var self = this;
       var uiResources = this.get('ui_resources');
       if(!_.has(uiResources, resourceId)) {
         throw "Unknown resource: " + resourceId;
       }
-//      return uiResources[resourceId];
-      return this.cloneResource(uiResources[resourceId]);
+      var resource = this.cloneResource(uiResources[resourceId]);
+      
+      if (resourceId == 'my_screens'){
+        var suResource = uiResources['screensaveruser'];
+        var currentUser = self.getCurrentUser();
+        resource.apiUri = [suResource.apiUri, currentUser.screensaver_user_id, 'screens'].join('/');
+      }
+      
+      return resource;
     },
     
     /**
@@ -1007,13 +1542,34 @@ define([
       });
       return resource;
     },
-        
+
+    getAppData: function(){
+      return this.get('app_data');
+    },
+    
+    getAppDataFromServer: function(callback){
+      var self = this;
+      var ModelClass = Backbone.Model.extend({
+        url : [REPORTS_API_URI,'resource','app_data'].join('/')
+      });
+      var instance = new ModelClass();
+      instance.fetch({
+        success: function(model){
+          self.set('app_data', model);
+          callback(model);
+        }
+      });
+    },
+    
     getResourceFromUrl: function(schemaUrl, callback, options){
       var self = this;
       var options = options || {};
       var ModelClass = Backbone.Model.extend({
         url : schemaUrl,
-        defaults : {}
+        defaults : {},
+        parse: function(resp, options){
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+        }
       });
       var instance = new ModelClass();
       instance.fetch({
@@ -1023,7 +1579,8 @@ define([
           _.each(_.values(schema.fields), self.parseSchemaField );
           var schemaClass = new SchemaClass();
           var ui_resource = _.extend(schema, schemaClass);
-          ui_resource.apiUri = '/' + [ui_resource.api_name,self.apiVersion,ui_resource.key].join('/');
+          ui_resource.apiUri = '/' + [
+            ui_resource.api_name,self.apiVersion,ui_resource.key].join('/');
           callback(ui_resource)
         }
       }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
@@ -1035,6 +1592,7 @@ define([
     jqXHRfail: function(jqXHR, textStatus, errorThrown){
       console.log('jqXHRfail', textStatus, errorThrown);
       var msg = textStatus || 'Error';
+      msg = msg.charAt(0).toUpperCase() + msg.slice(1);
       if (errorThrown){
         msg += ': ' + errorThrown; 
       }
@@ -1051,70 +1609,207 @@ define([
       if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
         Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
       } else {
-        Iccbl.appModel.error(msg);
+        // Iccbl.appModel.error(msg);
+        Iccbl.appModel.showModalMessage({
+          buttons_on_top: false,
+          body: msg,
+          title: 'Error'
+        });
+      }
+    },
+    /**
+     * Creates a hierarchical printout of an object using 
+     * JSON.stringify
+     */
+    print_json: function(obj){
+      var str;
+      function replacer(key, val){
+        // Convert single list values into strings
+        if (_.isArray(val) && val.length==1){
+          return val[0];
+        }else{
+          return val;
+        }
+      };
+      try
+      {
+        str = JSON.stringify(obj, replacer, 2);
+        
+        // remove escapes around quotes
+        str = str.replace(/\\(["'])/g, '$1');
+        // remove python unicode literal
+        str = str.replace(/u(['"])/g,'$1');
+        // remove single quotes
+        str = str.replace(/"/g,'');
+        // remove object brackets
+        str = str.replace(/[{}]+/g,'');
+        // remove list brackets
+        str = str.replace(/[\[\]]+/g, '');
+        // remove single comma on a line
+        str = str.replace(/^\s*,\s*$/gm,'')
+        // remove empty lines
+        str = str.replace(/^\s*$\n+/gm,'');
+      }catch(e){
+        console.log('print_json', e, obj);
+        str = '' + obj;
+      }
+        
+      return str;
+    },
+    
+    /**
+     * Process an error dict into single string for display to the end user.
+     */
+    print_dict: function(dict, sep){
+      var sep = sep || '<br/>';
+      var self = this;
+      var output = '';
+      if (_.isObject(dict) && !_.isArray(dict)){
+        output = _.map(_.keys(dict), function(key){
+          var err = key + ': ';
+          var parts = self.print_dict(dict[key], sep);
+          if (parts.length > 40){
+            err += sep + parts;
+          } else {
+            err += parts;
+          }
+          return err;
+        }).join(sep);
+        
+      } else if (_.isArray(dict)){
+        var cumulative = '';
+        dict = _.map(dict, function(val){
+          if (_.isObject(val) && !_.isArray(val)){
+            var parts = self.print_dict(val, sep);
+            if (parts.length > 40){
+              cumulative += sep + parts;
+              val = sep + parts;
+            } else {
+              val = parts;
+              cumulative += parts;
+            }
+          } else {
+            cumulative += val;
+            if (cumulative.length > 40 && cumulative != val){
+              val = sep + val;
+              cumulative = val;
+            }
+          }
+          return val;
+        });
+        output += dict.join(', ');
+      } else {
+        output += dict;
+      }
+      return output;
+    },
+    
+    /**
+     * Parse connection result (sent as a JSON object)
+     * 
+     * @param options - usual options for showModalMessage, including:
+     * - title
+     * - ok function
+     * - body - text to display if the data is not recognized
+     */
+    showConnectionResult: function(data, options){
+      if (_.isObject(data) && !_.isString(data)){
+        data = _.result(data,API_MSG_RESULT,data);
+        data = _.result(data,API_RESULT_META,data);
+        
+        this.showJsonMessages(data, options);
+        //var bodyMsg = this.print_dict(data);
+        //this.showModalMessage(
+        //  _.extend({}, options, {
+        //    body: bodyMsg,
+        //    buttons_on_top: true,
+        //    buttons_on_bottom: false
+        //  }));
+      }else{
+        console.log('Warn: data should have been parsed as json]', data);
+        this.showModalMessage(
+          _.extend({}, options, {
+            okText: 'ok',
+            body: 'Action Complete'
+          }));
       }
     },
     
-    dict_to_rows: function(dict){
-      var self = this;
-      var rows = [];
-      if (_.isObject(dict) && !_.isArray(dict)){
-        _.each(_.keys(dict), function(key){
-          _.each(self.dict_to_rows(dict[key]),function(row){
-            if (_.isUndefined(row)){
-              rows.push(key);
-            }else{
-              var keyrow = [key];
-              if (!_.isArray(row)){
-                keyrow.push(row);
-              }else{
-                keyrow = keyrow.concat(row);
-              }
-              rows.push(keyrow);
-            }
-          });
-        });
-      }else{
-        console.log('obj: ', dict);
-        if (_.isArray(dict)){
-          return dict;
-        }else{
-          return [dict];
-        }
-      }
-      return rows;
-    },
     
     /**
      * Show a JSON object in a modal dialog:
      * - transform the object into a table using a depth-first traversal:
      * - each row contains the nodes traversed to each leaf node.
      */
-    showJsonMessages: function(jsonObj){
+    showJsonMessages: function(jsonObj, options){
       
       console.log('showJsonMessages: ', jsonObj);
-      var title = "Messages";
-      if(_.keys(jsonObj).length == 1){
-        title = _.keys(jsonObj)[0];
-        jsonObj = jsonObj[title];
+      var options = _.extend({
+          buttons_on_top: false,
+        }, options);
+      
+      if (!_.has(options,'title')){
+        var title = "Messages";
+        if(_.keys(jsonObj).length == 1){
+          title = _.keys(jsonObj)[0];
+          jsonObj = jsonObj[title];
+          title = title.charAt(0).toUpperCase() + title.slice(1);
+        }
+        options['title'] = title;
       }
-      
-      var msg_rows = this.dict_to_rows(jsonObj);
-      console.log('msg_rows: ', msg_rows);
-      var bodyMsg = msg_rows;
-      if (_.isArray(msg_rows) && msg_rows.length > 1){
-        bodyMsg = _.map(msg_rows, function(msg_row){
-          return msg_row.join(': ');
-        }).join('<br>');
+      var sep = '<br/>';
+      //      var bodyMsg = this.print_dict(jsonObj, sep);
+      var bodyMsg = this.print_json(jsonObj);
+      var rowCount = (bodyMsg.match(new RegExp(sep, "g")) || []).length;
+      if (rowCount > Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG){
+        bodyMsg = this.print_dict(jsonObj, '\n');
+        body = $('<textarea class="input-full" rows=' 
+          + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+        body.val(bodyMsg);
+        options['buttons_on_top'] = true;
+        options['view'] = body;
+      } else {
+        options['body'] = bodyMsg;
+        options['buttons_on_top'] = true;
+        body = $('<textarea class="input-full" rows=' 
+          + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+        body.val(bodyMsg);
+        options['view'] = body;
       }
-      
-      Iccbl.appModel.showModalMessage({
-        body: bodyMsg,
-        title: title  
-      });
-      
+      Iccbl.appModel.showModalMessage(options);
+    },
+    
+    
+    /**
+     * Uses stock JSON.stringify to generate display information in a modal dialog.
+     */
+    showJsonDirect: function(jsonObj, options){
+      console.log('showJsonMessages: ', jsonObj);
+      var options = _.extend({
+          buttons_on_top: false,
+        }, options);
+      if (!_.has(options,'title')){
+        var title = "Messages";
+        if(_.keys(jsonObj).length == 1){
+          title = _.keys(jsonObj)[0];
+          jsonObj = jsonObj[title];
+          title = title.charAt(0).toUpperCase() + title.slice(1);
+        }
+        options['title'] = title;
+      }
+      var str = JSON.stringify(jsonObj, null, 2); // spacing level = 2
+      var body = $('<textarea class="input-full" rows=' 
+        + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+      body.val(str);
+      options['buttons_on_top'] = true;
+      options['view'] = body;
+      Iccbl.appModel.showModalMessage(options);
     },
    
+    clearErrors: function(){
+      this.unset('messages');
+    },
+    
     error: function(msg){
       console.log('error: ', msg);
       var msgs = this.get('messages');
@@ -1133,44 +1828,95 @@ define([
       }
     }, 
     
-    setUriStack: function(value){
-      if(this.get('uriStack') == value ){
+    addBackgroundJob: function(jobData){
+      console.log('set job', jobData);
+      var jobResource = this.getResource('job');
+      var url = jobResource.apiUri + '/' + jobData['id'];
+      var ModelClass = Backbone.Model.extend({
+        url : url,
+        defaults : { },
+        parse: function(resp, options){
+          return _.result(resp, Iccbl.appModel.API_RESULT_DATA, resp);
+        }
+      });
+      var job = new ModelClass(jobData);
+      this.jobCollection.add(job);
+      return job;
+    },
+    
+    getJobCollection: function(){
+      return this.jobCollection;
+    },
+    
+
+    /**
+     * setUriStack:
+     * Initiates a "change:uriStack" event signal to view/controllers in the 
+     * application:
+     * Called by: UI events (menu click, tab actions)
+     * Listeners: content.js, menu.js, search_box.js
+     * Coding convention; the final designated target view (which may modify 
+     * the stack as needed) will call "reportUriStack", initiating a cascade of 
+     * "reportUriStack" calls to set the final URL and history.
+     */  
+    setUriStack: function(value, options){
+
+      var options = _.extend( {'deferred_navigation': true }, options);
+      
+      // 20180425 - fix: window location automatically encodes the hash url,
+      // and backbone router generates a second route change with the 
+      // encoded url; ensure that uriStack contains only strings so that all
+      // iterations match.
+      value = _.map(value, function(fragment){
+        return '' + fragment;
+      });
+      if(_.isEqual(this.get('uriStack'),value )){
         // signal a change event if this method was called with the same value
         // - for the menu signaling
-        this.trigger('change:uriStack', this);
+          this.trigger('change:uriStack', this);
       }else{
-        this.set({ uriStack: value });
+        this.set({ uriStack: value }, options);
       }
     },
+    
+    /**
+     * reportUriStack:
+     * Reports the final URI stack for history management:
+     * - router listens for "change:reportUriStack events.
+     * 
+     * UriStack parsing is performed by the hierarchy of controllers beginning 
+     * at "content.js" and ending with a designated final view/controller. For
+     * any given UriStack; there will be one final view/controller that is 
+     * responsible for calling "reportUriStack" which triggers a cascade of
+     * "reportUriStack" calls ending here.
+     */
+    reportUriStack: function(reportedUriStack, options) {
+      // 20180425 - fix: window location automatically encodes the hash url,
+      // and backbone router generates a second route change with the 
+      // encoded url; ensure that uriStack contains only strings so that all
+      // iterations match.
+      reportedUriStack = _.map(reportedUriStack, function(fragment){
+        return '' + fragment;
+      });
+      console.log('reportUriStack:', reportedUriStack, options);
+      this.set({ 'uriStack': reportedUriStack }, { silent: true } ); 
+      this.set({ 'reportedUriStack': reportedUriStack }, options);     
+    },
 
-    //    setUriStack: function(value){
-    //      var self = this;
-    //      var _deferred = function(){
-    //       self.set({ uriStack: value });
-    //      };
-    //      
-    //      // TODO: push the requestPageChange method up the call stack to the client code:
-    //      // - this will allow us to prevent other actions on the client side.
-    //      
-    //      if(self.isPagePending()){
-    //        self.showModal({
-    //          ok: _deferred
-    //        });
-    //      }else{
-    //        _deferred();
-    //      }
-    //    },
-        
     /**
      * Set flag to signal that the current page has pending changes;
      * (see setUriStack; modal confirm dialog will be triggered).
      */
-    setPagePending: function(callback){
+    setPagePending: function(callback, message){
       var val = callback || true;
       this.set({'pagePending': val});
+      if (!_.isUndefined(message)){
+        this.set({'pagePendingMessage': message });
+      }
     },
     clearPagePending: function(){
       this.unset('pagePending');
+      this.unset('pagePendingMessage');
     },    
     isPagePending: function(){
       return this.has('pagePending');
@@ -1191,8 +1937,12 @@ define([
       if(! self.isPagePending()){
         options.ok();
       }else{
-        options.title = 'Please confirm';
-        options.body = "Pending changes in the page: continue anyway?";
+        options.title = options.title || 'Cancel pending changes?';
+        options.cancelText = 'Return to save changes';
+        options.okText = 'Cancel changes'
+        var pendingMessage = self.get('pagePendingMessage') 
+          || "Your changes are unsaved. Continue anyway?";
+        options.body = options.body || pendingMessage;
         var pendingFunction = this.get('pagePending');
         if(_.isFunction(pendingFunction)){
           options.cancel = pendingFunction;
@@ -1201,139 +1951,225 @@ define([
       }
 
       // Clear out error messages after navigating away from page
-      self.unset('messages');
+      //      self.unset('messages');
     },
 
-    
-    
     /**
-     * Display form with a comment field and "ok" or "cancel".
-     * if "ok" is selected, comment form values are returned to the callback.
-     * FIXME: how is this different than showSaveWithComments?
-     */
-    showOkCommentForm: function(title, okCallback){
-
+     * Show "comment" type ApiLogs in a separate table; ApiLogs with comments only
+     **/
+    createCommentTable: function(model,search_data, $target_el) {
       var self = this;
       
-      var form_template = [
-         '<form  class="form-horizontal container"  autocomplete="off" >',
-         "<div data-fields='comments'/>",
-         "</form>"];
-      var altFieldTemplate =  _.template('\
-        <div class="form-group" > \
-            <label class="control-label" for="<%= editorId %>"><%= title %></label>\
-            <div class="" >\
-              <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
-              <div data-error class="text-danger" ></div>\
-              <div><%= help %></div>\
-            </div> \
-          </div>\
-        ');
-      // Build the form model
-      var FormFields = Backbone.Model.extend({
-        schema: {
-          comments: {
-            title: 'Comments',
-            key: 'comments',
-            type: 'TextArea',
-            editorClass: 'input-full',
-            validators: ['required'], 
-            template: altFieldTemplate
-          }
+      if (!self.hasGroup('readEverythingAdmin')){
+        return;
+      }
+
+      var search_data = _.extend({
+        comment__is_blank: false
+      }, search_data);
+      
+      var apilogResource = Iccbl.appModel.getResource('apilog');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: apilogResource.apiUri 
+      });
+      $target_el.empty();
+      
+      function build_table(collection) {
+        if (collection.isEmpty()) {
+          return;
         }
-      });
-      var formFields = new FormFields();
-      var form = new Backbone.Form({
-        model: formFields,
-        template: _.template(form_template.join(''))
-      });
-      var _form_el = form.render().el;
 
-      self.showModal({
-        okText: 'ok',
-        ok: function(e){
+        // _.map(_.pairs(search_data...
+        var search_ui_url = 'search/' + _.map(
+          _.zip(_.keys(search_data),_.values(search_data)), 
+          function(kv){
+            return kv.join('=');
+          }).join(Iccbl.appModel.SEARCH_DELIMITER);        
+        var search_link = $('<a>',{
+            text: 'Comments',
+            target: '_blank',
+            title: '',
+            href: '#apilog/order/-date_time/' + search_ui_url
+        });
+        var addCommentButton = $([
+          '<a class="btn btn-default btn-xs pull-down pull-right" ',
+          'role="button" id="addCommentButton" href="#">',
+          'Add</a>'
+        ].join(''));
+        
+        addCommentButton.click(function(e){
           e.preventDefault();
-          
-          self.clearPagePending();
-          
-          var errors = form.commit();
-          if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
-            return false;
-          }else{
-            okCallback(form.getValue());            
-          }
-        },
-        view: _form_el,
-        title: title
-      });
-      
-    },    
-    
-    /**
-     * Display a "Save Changes?" form with a comment field.
-     * if "ok" is selected, comment form values are returned to the callback.
-     * FIXME: how is this different than showOkCommentForm?
-     */
-    showSaveWithComments: function(okCallback){
-
-      var self = this;
-      
-      var form_template = [
-         '<form  class="form-horizontal container"  autocomplete="off" >',
-         "<div data-fields='comments'/>",
-         "</form>"];
-      var altFieldTemplate =  _.template('\
-        <div class="form-group" > \
-            <label class="control-label" for="<%= editorId %>"><%= title %></label>\
-            <div class="" >\
-              <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
-              <div data-error class="text-danger" ></div>\
-              <div><%= help %></div>\
-            </div> \
-          </div>\
-        ');
-      // Build the form model
-      var FormFields = Backbone.Model.extend({
-        schema: {
-          comments: {
-            title: 'Comments',
-            key: 'comments',
-            type: 'TextArea',
-            editorClass: 'input-full',
-            validators: ['required'], 
-            template: altFieldTemplate
-          }
+          function processComment(formValues) {
+            var url = [model.resource.apiUri,model.key].join('/');
+            var headers = {};
+            headers[Iccbl.appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+            $.ajax({
+              url: url,     
+              cache: false,
+              contentType: 'application/json', 
+              dataType: 'json', // what is expected back from the server
+              type: 'PATCH',
+              headers: headers
+            }).done(function(data, textStatus, jqXHR){
+              Iccbl.appModel.createCommentTable(model,search_data, $target_el);
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+            });
+            
+          };
+          Iccbl.appModel.showOkCommentForm({
+            ok: processComment,
+            okText: 'Save Comment',
+            title: 'Add a comment to ' + model.resource.title + ': '
+              + Iccbl.getTitleFromTitleAttribute(model,model.resource) + '?' 
+          });
+        });
+        
+        $target_el.append($([
+          '<div class="col-xs-12" id="comment_table_title"></div>',
+          '<div class="col-xs-12" id="comment_table_grid"/>'].join('')));
+        
+        $target_el.find('#comment_table_title').html(search_link);
+        
+        if (Iccbl.appModel.hasPermission(model.resource.key, 'write')){
+          $target_el.find('#comment_table_title').append(addCommentButton);
         }
-      });
-      var formFields = new FormFields();
-      var form = new Backbone.Form({
-        model: formFields,
-        template: _.template(form_template.join(''))
-      });
-      var _form_el = form.render().el;
-
-      self.showModal({
-        okText: 'ok',
-        ok: function(e){
-          e.preventDefault();
-          
-          self.clearPagePending();
-          
-          var errors = form.commit();
-          if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
-            return false;
-          }else{
-            okCallback(form.getValue());            
-          }
-        },
-        view: _form_el,
-        title: 'Save changes?'  
-      });
+        
+        collection.each(function(model) {
+          model.set('date', Iccbl.getDateString(model.get('date_time')));
+        });
+        var TextWrapCell = Backgrid.Cell.extend({
+          className: 'text-wrap-cell'
+        });
+        var colTemplate = {
+          'cell' : 'string',
+          'order' : -1,
+          'sortable': false,
+          'searchable': false,
+          'editable' : false,
+          'visible': true,
+          'headerCell': Backgrid.HeaderCell
+        };
+        var columns = [
+          _.extend({},colTemplate,{
+            'name' : 'username',
+            'label' : 'User',
+            'description' : 'User performing the action',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.LinkCell.extend({
+              hrefTemplate: '#screensaveruser/{username}',
+              target: '_blank'
+            })
+          }),
+          _.extend({},colTemplate,{
+            'name' : 'date',
+            'label' : 'Date',
+            'description' : 'Date',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.LinkCell.extend({
+              hrefTemplate: '#apilog/{log_uri}',
+              target: '_blank'
+            })
+          }),
+          _.extend({},colTemplate,{
+            'name' : 'comment',
+            'label' : 'Comment',
+            'description' : 'Comment',
+            'order': 1,
+            'sortable': true,
+            'cell': TextWrapCell
+            })
+        ];
+        var colModel = new Backgrid.Columns(columns);
+        colModel.comparator = 'order';
+        colModel.sort();
+        var grid = new Backgrid.Grid({
+          columns: colModel,
+          collection: collection,
+          className: 'backgrid table-striped table-condensed table-hover '
+        });
+        
+        $target_el.find('#comment_table_grid').html(grid.render().$el);
+        
+      }
       
+      if (model.has('comment_data')) {
+        build_table(new CollectionClass(model.get('comment_data')));
+      } else {
+        var comment_collection = new CollectionClass();
+        
+        comment_collection.fetch({
+          data: _.extend({ 
+              limit: 0,
+              order_by: ['-date_time'],
+              includes: ['log_uri']
+            }, search_data),
+          success: build_table
+        }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }
+
     },
     
+    showOkCommentForm: function(options){
+      var self = this;
+      var defaultOptions = {
+        ok: function(){},
+        okText: 'Ok',
+        cancelText: 'Cancel and return to page',
+        title: 'Save changes?',
+        requireComment: false,
+        commentValue: null
+      };
+      var options = _.extend({}, defaultOptions, options);
+      var schema = {
+        comments: {
+          title: 'Comment (optional)',
+          key: 'comments',
+          type: 'TextArea',
+          editorClass: 'input-full',
+          template: self._field_template //altFieldTemplate
+        }
+      };
+      
+      if (options.requireComment == true) {
+        schema['comments']['validators'] =['required'];
+        schema['comments']['title'] = 'Comment';
+      }
+      var FormFields = Backbone.Model.extend({
+        schema: schema
+      });
+      
+      var defaultValue = {};
+      if (options.commentValue){
+        defaultValue['comments'] = options.commentValue;
+      }
+      var formFields = new FormFields(defaultValue);
+      var form = new Backbone.Form({
+        model: formFields,
+        template: self._form_template //_.template(form_template.join(''))
+      });
+      var _form_el = form.render().el;
+      
+      if (!_.isEmpty(options.body)){
+        _form_el.prepend(options.body);
+      }
+      options.view = _form_el;
+      var okCallback = options.ok;
+      options.ok = function(e){
+        e.preventDefault();
+        self.clearPagePending();
+        var errors = form.commit();
+        if(!_.isEmpty(errors)){
+          console.log('form errors, abort submit: ' + JSON.stringify(errors));
+          return false;
+        }else{
+          okCallback(form.getValue());            
+        }
+      };
+      self.showModal(options);
+    },
     
     /** Add a vocabulary term to the editForm & to the server:
      * @param vocabulary_scope_ref
@@ -1459,13 +2295,107 @@ define([
     
     }, //addVocabularyItem  
     
+    
+    /**
+     * Download the URL:
+     * - use GET for simple URL (with no post_data)
+     * - if post_data is provided, use POST with the post_data in a form.
+     * @param $el document element to be used for a temporary iframe target for
+     * the download.
+     */
+    downloadUrl: function(url, post_data) {
+      
+      // When downloading via AJAX, the "Content-Disposition: attachment" 
+      // does not trigger a "load" (completed) event; 
+      // to monitor the state of the download, a "downloadID" is sent to the 
+      // server; the server responds with the downloadID in a response 
+      // cookie when the download is complete.
+      // The code here was helpful:
+      // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
 
+      // Set a downloadID that will be echoed back by the server as a cookie 
+      // when the download is complete.
+      var downloadID = ( new Date() ).getTime();
+      var intervalCheckTime = 1000; // 1s
+      var maxIntervals = 3600;      // 3600s
+      var limitForDownload = 0;
+      
+      // Add the "downloadID" parameter for the server
+      // Server will set a cookie on the response to signal download complete
+      
+      if (url.indexOf('?')>0){
+        url += "&downloadID=" + downloadID;
+      }else{
+        url += "?downloadID=" + downloadID;
+      }
+      
+      // tmpFrame is a target for the download
+      var $iframe = $('#tmpFrame');
+      $('#loading').fadeIn({duration:100});
+
+      // Watch local document Cookies for the the download ID 
+      // to be updated by the response headers.
+      var i = 0;
+      var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
+      var cookieTimer = window.setInterval( checkCookies, intervalCheckTime );
+      function checkCookies() {
+        if ( document.cookie.search( cookiePattern ) >= 0 ) {
+          window.clearInterval( cookieTimer );
+          $('#loading').fadeOut({duration:100});
+          return(
+            console.log( "Download complete!!" )
+          );
+        }else if(i >= maxIntervals){
+          window.clearInterval( cookieTimer );
+          window.alert('download abort after tries: ' + i);
+          return(
+            console.log( "Download abort!!" )
+          );
+        }
+        console.log(
+          "File still downloading...",
+          new Date().getTime()
+        );
+        i++;
+      }
+      
+      if(post_data){
+        console.log('post_data found for download', post_data);
+        // create a form for posting
+        var postform = $("<form />", {
+          method: 'POST',
+          action: url
+        });
+        _.each(_.keys(post_data), function(key){
+          var hiddenField = $('<input/>',{
+            type: 'hidden',
+            name: key,
+            value: encodeURI(post_data[key])
+          });
+          postform.append(hiddenField);
+        });
+        // Add the Django "csrfmiddlewaretoken" to the post form
+        postform.append($('<input/>', {
+          type: 'hidden',
+          name: "csrfmiddlewaretoken",
+          value: this.readCookie('csrftoken')
+        }));
+        $iframe.append(postform);
+        console.log('submitting post form...' + url);
+        postform.submit();
+        
+      }else{
+        // simple GET request
+        $iframe.attr('src', url);
+      }
+    },
+
+    /**
+     * Display a download dialog for the url and resource.
+     */
     download: function(url, resource, post_data){
       var self = this;
       
-      if(url.search(/\?/) < 1 ){
-        url = url + '?';
-      }
       var formSchema = {};
       
       formSchema['use_vocabularies'] = {
@@ -1519,20 +2449,20 @@ define([
         schema: formSchema
       });
       var formFields = new FormFields();
+      
       formFields.set('use_vocabularies', true);
       formFields.set('use_titles', true);
       formFields.set('raw_lists', true);
-      formFields.set('content_type', formSchema['content_type'].options[0]);
+      if (_.contains(resource.content_types, 'xls')){
+        formFields.set('content_type','xls');
+      } else {
+        formFields.set('content_type', formSchema['content_type'].options[0]);
+      }
       var form = new Backbone.Form({
         model: formFields,
         template: _.template([
-          "<div>",
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
-          // tmpFrame is a target for the download
-          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
-          ' style="visibility:hidden;position:absolute;display:none"></iframe>',
-          "</div>"
           ].join(''))
       });
       
@@ -1543,7 +2473,6 @@ define([
           form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
           form.$el.find('[name="use_titles"]').prop('disabled', true);
           form.$el.find('[name="raw_lists"]').prop('disabled', true);
-//          form.$el.find('[name="data_interchange"]').prop('disabled', true);
           form.setValue('data_interchange', true);
         }else{
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
@@ -1563,22 +2492,10 @@ define([
       });
       var el = form.render().el;
       
-//      var default_content = form.getValue('content_type');
-//      console.log('default_content: ' + default_content);
-//      if(default_content != 'csv' && default_content != 'xls'){
-//        $(el).find('[name="use_vocabularies"]').prop('disabled', true);
-//        $(el).find('[name="use_titles"]').prop('disabled', true);
-//        $(el).find('[name="raw_lists"]').prop('disabled', true);
-//        form.$el.find('[name="data_interchange"]').prop('disabled', true);
-//      }
-      
       self.showModal({
         view: el,
         title: 'Download',  
         ok: function(event){
-          var intervalCheckTime = 1000; // 1s
-          var maxIntervals = 3600;      // 3600s
-          var limitForDownload = 0;
           
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
@@ -1591,7 +2508,12 @@ define([
           }
           var values = form.getValue();
 
-          url += '&format=' + values['content_type']
+          if(url.search(/\?/) < 1 ){
+            url += '?';
+          } else {
+            url += '&';
+          }
+          url += 'format=' + values['content_type']
 
           if(values['use_vocabularies']){
             url += '&use_vocabularies=true';
@@ -1606,83 +2528,8 @@ define([
             url += '&data_interchange=true';
           }
           
-          // When downloading via AJAX, the "Content-Disposition: attachment" 
-          // does not trigger a "load" (completed) event; this workaraound
-          // will set a cookie "downloadID" from the server when the download happens.
-          // How to trigger a download and notify JavaScript when finished:
-          // send a downloadID to the server and wait for a response cookie to appear.
-          // The code here was helpful:
-          // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
+          self.downloadUrl(url, post_data);
           
-          // When tracking the download, we're going to have
-          // the server echo back a cookie that will be set
-          // when the download Response has been received.
-          var downloadID = ( new Date() ).getTime();
-          // Add the "downloadID" parameter for the server
-          // Server will set a cookie on the response to signal download complete
-          url += "&downloadID=" + downloadID;
-
-          if(post_data){
-            console.log('post_data found for download', post_data);
-            // create a form for posting
-            var el = form.$el.find('#tmpFrame');
-            
-            var postform = $("<form />", {
-              method: 'POST',
-              action: url
-            });
-
-            _.each(_.keys(post_data), function(key){
-              var hiddenField = $('<input/>',{
-                type: 'hidden',
-                name: key,
-                value: encodeURI(post_data[key])
-              });
-              postform.append(hiddenField);
-            });
-            el.append(postform);
-            console.log('submitting post form...' + url);
-            postform.submit();
-            
-          }else{
-            // simple GET request
-            form.$el.find('#tmpFrame').attr('src', url);
-          }
-          
-          
-          $('#loading').fadeIn({duration:100});
-
-          // The local cookie cache is defined in the browser
-          // as one large string; we need to search for the
-          // name-value pattern with the above ID.
-          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
-
-          // Now, we need to start watching the local Cookies to
-          // see when the download ID has been updated by the
-          // response headers.
-          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
-
-          var i = 0;
-          function checkCookies() {
-            if ( document.cookie.search( cookiePattern ) >= 0 ) {
-              clearInterval( cookieTimer );
-              $('#loading').fadeOut({duration:100});
-              return(
-                console.log( "Download complete!!" )
-              );
-            }else if(i >= maxIntervals){
-              clearInterval( cookieTimer );
-              window.alert('download abort after tries: ' + i);
-              return(
-                console.log( "Download abort!!" )
-              );
-            }
-            console.log(
-              "File still downloading...",
-              new Date().getTime()
-            );
-            i++;
-          }
         }
         
       });
@@ -1693,25 +2540,41 @@ define([
      * show a modal pop up with only an "ok" button, no "cancel" button.
      */
     showModalMessage: function(options){
-      var modalDialog = this.showModal(options);
-      modalDialog.$el.find('#modal-cancel').hide();
+      options.ok_only = true;
+      return this.showModal(options);
     },
     
     /**
-     * options.ok = ok function
-     * options.cancel = cancel function
-     * options.body
-     * options.title
+     * Display a modal dialog
      */
     showModal: function(options){
       
       var self = this;
-      var callbackOk = (options && options.ok)? options.ok : function(){};
-      var callbackCancel = (options && options.cancel)? options.cancel: function(){};
-      var okText = (options && options.okText)? options.okText : 'Continue';
-      var cancelText = (options && options.cancelText)? 
-        options.cancelText : 'Cancel and return to page';
+      var defaultOptions = {
+        ok: function(){},
+        cancel: function(){},
+        okText: 'Continue',
+        cancelText: 'Cancel and return to page',
+        body: 'Body text',
+        title: 'Title Text',
+        buttons_on_top: false,
+        buttons_on_bottom: true
+        // Optional:
+        // view: HTML or Jquery object to append to the modal body
+        // width: override the modal-dialog width
+        // css: (dict) set the .modal-dialog css
+        // css_modal_content: (dict) set the .modal-content css
+        // css_modal_body: (dict) set the .modal-body css
+        // ok_only: boolean show only the "ok" button, hide the "cancel" button
+        // 
+      };
+      
+      var options = _.extend({}, defaultOptions, options);
       console.log('options', options);
+      
+      if (!_.isUndefined(options.view)){
+        delete options.body;
+      }
       var template = _.template(modalOkCancelTemplate)({ 
             body: options.body,
             title: options.title } );
@@ -1722,70 +2585,113 @@ define([
                   console.log('cancel button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide'); 
-                  callbackCancel();
+//                  options.cancel();
+                  options.cancel(event);
               },
               'click #modal-ok':function(event) {
                   console.log('ok button click event, '); 
                   event.preventDefault();
                   self.clearPagePending();
-                  if(callbackOk(event)===false){
+                  if(options.ok(event)===false){
                     return;
                   }
                   $('#modal').modal('hide');
+//                  $('#modal').modal({show:false})
               }
           },
       });
-      modalDialog.render();
+      modalDialog.render(); //.$el.css('display','block');
       if(!_.isUndefined(options.view)){
         modalDialog.$el.find('.modal-body').append(options.view);
       }
-      modalDialog.$el.find('#modal-cancel').html(cancelText);
-      modalDialog.$el.find('#modal-ok').html(okText);
+      modalDialog.$el.find('.modal-body').css('padding-top','0px');
+      if (options.ok_only == true){
+        modalDialog.$el.find('#modal-cancel').hide();
+      } else {
+        modalDialog.$el.find('#modal-cancel').html(options.cancelText);
+      }
+      modalDialog.$el.find('#modal-ok').html(options.okText);
       $modal = $('#modal');
       $modal.empty();
       $modal.html(modalDialog.$el);
-      $modal.on('show.bs.modal', function () {
+//      modalDialog.$el.show();
+      $modal.one('show.bs.modal', function () {
         // $('.modal-content').css('height',$( window ).height()*0.95);
         $('.modal-content').css('height', 'auto');
         $('.modal-content').css('max-height','100%');
-      });      
-      $modal.on('shown.bs.modal', function () {
+      });   
+      if (options.width){
+        $('.modal-dialog').css('width', options.width);
+      }
+      if (options.css){
+        $('.modal-dialog').css(options.css);
+      }
+      if (options.css_modal_content){
+        $('.modal-content').css(options.css_modal_content);
+      }
+      if (options.css_modal_body){
+        $('.modal-body').css(options.css_modal_body);
+      }
+      
+      if (options.buttons_on_top == true){
+        $('#top_modal_buttons').show();
+      } else {
+        $('#top_modal_buttons').hide();
+      }
+      if (options.buttons_on_bottom == true){
+        $('#modal_footer').show();
+      } else {
+        $('#modal_footer').hide();
+      }
+      $modal.one('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();
+//        $modal.css('display','block');
       });
       $modal.modal({
         backdrop: 'static',
         keyboard: false, // prevent the escape key from closing the modal
         show: true
       });
+    $('#modal').one('hidden.bs.modal', '.modal', function () {
+      console.log('hidden.bs.modal', arguments);
+    });
+//      $('#modal').modal({show:true});
+//      $modal.css('display','block');
       return modalDialog;
     },
     
+    /**
+     * Create a search string for the URIstack
+     * NOTE: items on the URIStack avoid looking like URL params; therefore
+     * the "&" separator is not used.
+     * @see SEARCH_DELIMITER
+     */
     createSearchString: function(searchHash){
       return _.map(_.pairs(searchHash), 
         function(keyval) {
           return keyval.join('=');
-        }).join(SEARCH_DELIMITER)
+        }).join(Iccbl.appModel.SEARCH_DELIMITER)
     }
   });
 
   var appState = new AppState();
   
   appState._form_template = _.template([
-     '<div class="form-horizontal container" id="add_value_field" >',
+     '<div class="form-horizontal container" id="_form_template" >',
      '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
      "</form>",
+     '<div id="data-error" class="has-error" ></div>',
      "</div>"].join(''));      
   appState._field_template = _.template([
     '<div class="form-group" key="form-group-<%=key%>" >',
-    '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+    '    <label class="control-label " for="<%= editorId %>" title="<%= help %>" ><%= title %></label>',
     '    <div class="" >',
     '      <div data-editor key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
     '      <div data-error class="text-danger" ></div>',
-    '      <div><%= help %></div>',
+//    '      <div><%= help %></div>',
     '    </div>',
     '  </div>',
   ].join(''));
-  
   appState._alt_checkbox_template =  _.template('\
     <div class="form-group" style="margin-bottom: 0px;" > \
       <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
@@ -1793,23 +2699,91 @@ define([
       </div>\
     </div>\
   ');
-  
+  appState._horizontal_form_field_template = _.template([
+    '<div class="form-group" >',
+    '  <label class="control-label col-sm-6" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
+    '  <div class="col-sm-6" >',
+    '    <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '    <div data-error class="text-danger" ></div>',
+    //   <div><%= help %></div>',
+    '  </div>',
+    '</div>',
+  ].join(''));
+  appState._horizontal_form_2col_field_template = _.template([
+    '<div class="form-group" >',
+    '  <label class="control-label col-sm-2" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
+    '  <div class="col-sm-10" >',
+    '    <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '    <div data-error class="text-danger" ></div>',
+    //   <div><%= help %></div>',
+    '  </div>',
+    '</div>',
+  ].join(''));
   
   appState.schemaClass = new SchemaClass(); // make accessible to outside world
-  
   appState.resources = {};   // TO be retrieved from the server 
   
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
   appState.DEBUG = DEBUG;
-  appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
-  appState.SEARCH_DELIMITER = SEARCH_DELIMITER;
+
   appState.HEADER_APILOG_COMMENT = 'X-APILOG-COMMENT';
-  appState.MAX_SEARCH_ARRAY_SIZE = 100;
+
+  // Constants shared with the API
+  // FIXME: Get shared constants from shared API_CONSTANTS file
+  appState.API_RESULT_META = API_RESULT_META;
+  appState.API_RESULT_DATA = API_RESULT_DATA;
+  appState.API_MSG_RESULT = API_MSG_RESULT;
+  appState.API_META_MSG_WARNING = 'Warning';
+
+  appState.API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents';
+  appState.API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections';
+  
+  appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
+  appState.API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero';
+  appState.API_PARAM_OVERRIDE = 'override';
+  appState.API_PARAM_PATCH_PREVIEW_MODE = 'patch_with_preview';
+  
   appState.MSG_SEARCH_SIZE_EXCEEDED = 
     'Maximum allowed search terms: {size_limit}' + 
     ', number of terms entered: {actual_size}';
+  appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
+  appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
+  
+  /**
+   * URIStack search element SEARCH_DELIMITER
+   * NOTE: items on the URIStack avoid looking like URL params; therefore
+   * the "&" separator is not used.
+   */
+  appState.SEARCH_DELIMITER = ';';
+  /** 
+   * TODO:raw search line encode serves the same purpose as the SEARCH_DELIMITER
+   * - line encoder was created for compound name search; may include semicolon?
+   */
+  appState.UI_PARAM_RAW_SEARCH_LINE_ENCODE = '|';
+
+  appState.MAX_SEARCH_ARRAY_SIZE = 100;
+  appState.MAX_RAW_SEARCHES_IN_URL = 10;
+  appState.MAX_ROWS_IN_DIALOG_MSG = 20;
+  
+  // API Param elements are used by the API
+  appState.API_PARAM_SEARCH_ID = 'search_id'
+  appState.API_PARAM_NESTED_SEARCH = 'nested_search';
+  appState.API_PARAM_SEARCH = 'search';
+  appState.API_PARAM_ENCODED_SEARCH = 'esearch';
+  
+  // URI path elements are used to create the URI stack
+  appState.URI_PATH_COMPLEX_SEARCH = 'csearch';
+  appState.URI_PATH_ENCODED_SEARCH = 'esearch';
+  appState.URI_PATH_SEARCH = 'search';
+  appState.LIST_ARGS = [
+    appState.URI_PATH_ENCODED_SEARCH, appState.URI_PATH_COMPLEX_SEARCH,
+    'rpp','page','includes','order','log', 'children',
+    appState.URI_PATH_SEARCH];      
+  
+  appState.LIST_DELIMITER_SUB_ARRAY = '$';
+
   Iccbl.appModel = appState;
   
   return appState;

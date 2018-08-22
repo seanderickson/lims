@@ -1,0 +1,13 @@
+Screensaver Alert: {screen_count} screen(s) notified for privacy expiration in {days_ahead_to_notify} days
+
+The data sharing agreement for the following screens will expire in {days_ahead_to_notify} days.
+
+Notification emails could not be sent to either the Principal Investigator or the Lead Screener (email address is not available) for {screens_not_notified_count} Screens:
+
+Notification emails have been sent to either the Principal Investigator or the Lead Screener for the following {screens_notified_count} screen(s):
+
+The date for the Data Privacy Expiration has been set based on the latest Library Screening Activity date 
+or set to the 'Earliest/Latest Allowed Data Privacy Expiration Date', and can be 
+overridden using the 'Earliest/Latest Allowed Data Privacy Expiration Date' setting 
+in the Screen admin interface. 
+

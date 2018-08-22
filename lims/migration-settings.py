@@ -11,8 +11,9 @@ except ImportError:
 import os.path
 
 
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
+print 'PROJECT_ROOT: ', PROJECT_ROOT
 
+BACKGROUND_PROCESSING = False
 
 LOGGING = {
     'version': 1,
@@ -47,7 +48,8 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver-migration.log",
+            'filename': 
+                os.path.join(PROJECT_ROOT, 'logs', 'screensaver-migration.log'),
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',
@@ -93,11 +95,6 @@ LOGGING = {
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': True,
-            'level': 'DEBUG',
         },        
     }
 }

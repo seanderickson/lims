@@ -1,0 +1,11 @@
+Notice: Impending Expiration of ICCB-L {screen_type} User Agreement
+Dear Screensaver User:
+
+According to our records, your ICCB-Longwood {screen_type} User Agreement will expire 
+on {date_to_expire}. Your current data sharing is: {data_sharing_level}. 
+
+If you wish to retain access to Screensaver after the expiration date, please 
+complete and return a new user agreement. The agreement and related information 
+are available online at https://iccb.med.harvard.edu/screening-documents.
+
+If you have additional questions, please contact: {contact_info}

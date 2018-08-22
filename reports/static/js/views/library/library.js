@@ -11,14 +11,16 @@ define([
   'models/app_state',
   'views/library/libraryCopy', 
   'views/library/libraryWell', 
+  'views/library/libraryWells', 
   'views/generic_detail_layout',
   'views/generic_detail_stickit', 
   'views/generic_edit',
   'views/list2',
   'utils/uploadDataForm',
   'utils/tabbedController'
+  
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, LibraryCopyView, 
-            LibraryWellView, DetailLayout, DetailView, EditView, ListView, 
+            LibraryWellView, LibraryWellsView, DetailLayout, DetailView, EditView, ListView, 
             UploadDataForm, TabbedController ) {
 
   var LibraryView = TabbedController.extend({
@@ -27,7 +29,16 @@ define([
       var self = this;
       this._classname = 'LibraryView';
       _.bindAll(this, 'upload');
+      var tabbed_resources = this.tabbed_resources;
       TabbedController.prototype.initialize.apply(this,arguments);
+      
+      // add back in resources viewable for screeners
+      if (appModel.getCurrentUser().is_staff !== true){
+        this.tabbed_resources['well'] = tabbed_resources['well'];
+      }
+      
+      console.log('LibraryView initialized');
+      
     },
     
     tabbed_resources: {
@@ -53,25 +64,268 @@ define([
     
     events: {
       'click ul.nav-tabs >li': 'click_tab',
-      'click button#upload': 'upload'        
+      'click button#upload': 'upload',
+    },
+    
+    afterRender: function(){
+      
+      console.log('LibraryView.afterRender called...')
+      
+      var self = this;
+      TabbedController.prototype.afterRender.apply(this,arguments);
+
+      function showReleaseMessage(){
+        $('#content_title_message').find('#release_message').remove();
+        
+        if (self.model.isNew() || self.model.get('is_released') == true){
+          return;
+        }
+
+        var helpMsg = [
+              'Library has not been set to "released":',
+              '- data will not be available to screeners,',
+              '- Contents will be loaded without a preview,',
+              '- All other functions and logging are unaffected.'];
+        var releaseMessage = $(
+          '<div id="release_message" class="alert alert-info"></div>')
+            .html('Library has not been');
+        releaseMessage.attr('title', helpMsg.join('\n'));
+        
+        var releaseLibraryInfo = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "Info"
+        }).text('released');
+        releaseMessage.append('&nbsp;');
+        releaseMessage.append(releaseLibraryInfo);
+        
+        var releaseLibraryLink = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "Set the library to released"
+        }).text('[release now]');
+        releaseMessage.append('&nbsp;');
+        releaseMessage.append(releaseLibraryLink);
+        
+        $('#content_title_message').append(releaseMessage);
+        
+        releaseLibraryInfo.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          
+          appModel.showModalMessage({
+            'title': 'Library is not released',
+            'body': helpMsg.join('<br/>')
+          });
+        });
+        
+        releaseLibraryLink.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+
+          appModel.showOkCommentForm({
+            ok: function(formValues){
+              var options = {
+                patch: true
+              };
+              var comment = formValues['comment'];
+              if (comment){
+                options['headers'] = {};
+                options['headers'][appModel.HEADER_APILOG_COMMENT] = comment;
+              }
+              self.model.set('is_released',true);
+              self.model.save({'is_released': true}, options)
+                .done(function(data, textStatus, jqXHR){ 
+                  console.log('done releasing...');
+                  self.setDetail([]);
+                }).fail(function() { 
+                  Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+                });
+            },
+            okText: 'Release',
+            title: 'Release the library: "'
+              + Iccbl.getTitleFromTitleAttribute(self.model,self.model.resource) + '" ?' 
+          });
+
+        });
+        
+      };
+      
+      function showPreviewMessage(){
+        $('#content_title_message').find('#preview_message').remove();
+        var preview_log_id = self.model.get('preview_log_id');
+        
+        if (!_.isNumber(preview_log_id)){
+          return;
+        }
+        var previewMessage = $(
+          '<div id="preview_message" class="alert alert-info"></div>')
+            .html('Library has a preview version of well data loaded. ');
+        var showPreviewLink = $('<a>', {
+          tabIndex : -1,
+          href : "#",
+          class: 'alert-link',
+          title: "Show the well view of the preview data"
+        }).text('[view]');
+        previewMessage.append(showPreviewLink);
+        
+        var previewUriStack= ['#apilog', self.model.get('preview_log_key')]
+        var showPreviewDetails = $('<a>', {
+          tabIndex : -1,
+          href : previewUriStack.join('/'),
+          class: 'alert-link',
+          target: '_blank',
+          title: "Display the API log for the preview load operation"
+        }).text('[information]');
+        previewMessage.append('&nbsp;');
+        previewMessage.append(showPreviewDetails);
+        $('#content_title_message').append(previewMessage);
+
+        showPreviewLink.click(function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          self.change_to_tab('well', ['search','show_preview=true']);
+        });
+        
+        appModel.getModel('apilog', self.model.get('preview_log_key'), 
+          function(preview_log){
+            showPreviewDetails.attr('title', 
+              appModel.print_json(preview_log.pick(
+                ['date_time', 'username','user_id','key', 'api_action',
+                  'child_logs','comment', 'diff','json_field'])));
+          }
+        );
+        
+      };
+
+      showPreviewMessage();
+      showReleaseMessage();
+      
+      self.model.on('sync', showPreviewMessage);
+      self.model.on('sync', showReleaseMessage);
     },
 
-    upload: function(event){
+    /**
+     * Upload Library Contents:
+     * (Override)
+     * 
+     * 
+     * NOTE: For a "released" library, all Library Reagent uploads will be 
+     * committed to a "preview". 
+     * In a "preview" upload:
+     * - the server will save ApiLog "preview" logs only;
+     * - (all normal updates are rolled back)
+     * - patch logs can later be confirmed and applied by the admin.
+
+     * 
+     * A preview contains all the upload diff data on 
+     * the server and may be viewed, applied ("released"), or deleted by the 
+     * Administrator users.
+     * 
+     * @see appModel.API_PARAM_PATCH_PREVIEW_MODE
+     */
+    upload: function(e){
+      e.preventDefault();
+      e.stopPropagation();
       var self = this;
-      event.preventDefault();
       var url = _.result(this.model, 'url') + '/well';
       var content_types = self.model.resource.content_types; // use standard library content types
       if( this.model.get('screen_type') == 'small_molecule') {
         content_types.push('sdf');
       }
-      UploadDataForm.postUploadFileDialog(url, content_types)
-        .done(function(){
-          self.model.fetch();
+
+      // Only one upload preview may be stored on the server at one time
+      if (_.isNumber(self.model.get('preview_log_id'))){
+        appModel.showModalMessage({
+          title: 'Library has a pending preview release',
+          body: ['Library has a pending preview loaded:',
+            'The current preview must be either released or deleted before ',
+            'other well data may be loaded'].join('<br/>')
+        });
+        return;
+      }
+      
+      // Set the param appModel.API_PARAM_PATCH_PREVIEW_MODE
+      // as extra post_data to be sent along with the upload.
+      // API_PARAM_PATCH_PREVIEW_MODE signals the WellResource to patch as 
+      // a preview.
+      var options = {};
+      if (self.model.get('is_released') == true){
+        options[appModel.API_PARAM_PATCH_PREVIEW_MODE] = true;
+      }
+      
+      UploadDataForm.postUploadFileDialog(url, content_types, options)
+        .done(function(data, textStatus, jqXHR){
+          
+          function refreshOnUpdate(){
+            // Must refetch and render, once for the containing tabbed layout,
+            // and then (during render), will refetch again for the table view
+            self.model.fetch({
+              reset: true,
+            }).done(function() {
+              console.log('re-rendering library view...');
+//              self.render();
+              self.setDetail([]);
+            }).fail(function() { 
+              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+            });
+          };
+          
+          if (appModel.getAppData().get('BACKGROUND_PROCESSING') == true){
+            data = _.result(data,appModel.API_RESULT_META, data);
+            if (!_.has(data, 'job')){
+              appModel.error('Job response does not contain job data');
+              return;
+            }
+            var jobModel = appModel.addBackgroundJob(data['job']);
+            
+            self.listenTo(jobModel, 'change:state', jobStateChanged);
+            
+            // TODO: Create a listener to update library from any browser instance
+            function jobStateChanged(){
+              console.log('jobStateChanged:', arguments);
+              if (jobModel.get('state') != 'completed'){
+                return;
+              }
+              if (self.isClosed == true){
+                console.log('library view has been closed already');
+                return;
+              }
+              refreshOnUpdate();
+            };
+          } else {
+            refreshOnUpdate();
+          }
+          
         })
         .fail(function(){
           appModel.jqXHRfail.apply(this,arguments); 
         }
       );
+    },
+
+    /**
+     * Note: for library, upload and download operate on the library contents, 
+     * (reagents) and not on the library entity itself.
+     */
+    download: function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var self = this;
+      var resource;
+      if( this.model.get('screen_type') == 'rnai') {
+        resource = appModel.getResource('silencingreagent');
+      } else {
+        resource = appModel.getResource('smallmoleculereagent');
+      }
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'reagent'].join('/');
+      url += '?limit=0&includes=*';
+      
+      appModel.download(url, resource);
     },
     
     /**
@@ -95,6 +349,7 @@ define([
       }
       
       // Custom library model validation: plate range
+      // FIXME: 20180710 - not working
       this.model.validate = function(attrs) {
         var errs = {};
         console.log('validating: ', attrs); 
@@ -131,14 +386,41 @@ define([
       var detailView = DetailView.extend({
         afterRender: function(){
           DetailView.prototype.afterRender.apply(this,arguments);
-          self.createCommentHistoryTable($('#comments'), this);
-        },
-      });
+          var search_data = {
+            key: self.model.key,
+            ref_resource_name: self.model.resource.key,
+            comment__is_blank: false
+          };
+          appModel.createCommentTable(self.model,search_data, $('#comment_table'));
+          
+        }
+      });;
 
       view = new DetailLayout({ 
         model: this.model,
         uriStack: delegateStack, 
         DetailView: detailView,
+        EditView: EditView.extend({
+          save_success: function(data, textStatus, jqXHR){
+            EditView.prototype.save_success.apply(this,arguments);
+            appModel.unset('libraries', {silent: true});
+            appModel.getLibraries();
+          },
+          afterRender: function(){
+            EditView.prototype.afterRender.apply(this,arguments);
+            var form = this;
+            
+            form.on('screen_type:change', function(e){
+              var screen_type = form.getValue('screen_type');
+              if (screen_type == 'small_molecule'){
+                form.$el.find('div[data-fields="is_pool"]').hide();
+              }else{
+                form.$el.find('div[data-fields="is_pool"]').show();
+              }
+            });
+          }          
+        }),
+        download: self.download,
         buttons: buttons 
       });
       this.tabViews[key] = view;
@@ -147,220 +429,51 @@ define([
       this.setView("#tab_container", view ).render();
     },
     
-    /**
-     * Update the libryary with a comment table: populate
-     * using the apilog history of the library
-     **/
-    createCommentHistoryTable: function($target_el, view){
-      console.log('create the comment history table', $target_el);
-      var self = this;
-      var apilogResource = appModel.getResource('apilog');
-      var CollectionClass = Iccbl.CollectionOnClient.extend({
-        url: apilogResource.apiUri 
-      });
-      var cell = $([
-        '<div id="comment_table_div" class="row">',
-        '</div>'
-        ].join(''));
-      
-      var $addCommentButton= $(
-        '<div class="col-xs-12"><button class="btn btn-default btn-sm" role="button" \
-        id="addCommentButton" >Add comment</button></div>');
-
-      if (appModel.hasPermission('library', 'write')){
-        cell.append($addCommentButton);
-      }
-      
-      function build_table(collection){
-        if (collection.isEmpty()){
-          return;
-        }
-        $target_el.html(cell);
-        
-        collection.each(function(model){
-        });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
-        var colTemplate = {
-          'cell' : 'string',
-          'order' : -1,
-          'sortable': false,
-          'searchable': false,
-          'editable' : false,
-          'visible': true,
-          'headerCell': Backgrid.HeaderCell
-        };
-        var columns = [
-            _.extend({},colTemplate,{
-              'name' : 'comment',
-              'label' : 'Comment',
-              'description' : 'Comment',
-              'order': 1,
-              'sortable': true,
-              'cell': TextWrapCell
-            }),
-            _.extend({},colTemplate,{
-              'name' : 'date_time',
-              'label' : 'Date',
-              'description' : 'Date',
-              'order': 1,
-              'sortable': true,
-              'cell': 'Date'
-            }),
-            _.extend({},colTemplate,{
-              'name' : 'username',
-              'label' : 'Username',
-              'description' : 'Username',
-              'order': 1,
-              'sortable': true,
-              'cell': Iccbl.LinkCell.extend({
-                'hrefTemplate': '#user/{username}'
-              })
-            })
-        ];
-        var colModel = new Backgrid.Columns(columns);
-        colModel.comparator = 'order';
-        colModel.sort();
-
-        cell.append($('<div class="col-xs-12" id="comment_items"/>'));
-        
-        var comment_grid= new Backgrid.Grid({
-          columns: colModel,
-          collection: collection,
-          className: 'backgrid table-striped table-condensed table-hover '
-        });
-        cell.find('#comment_items').html(comment_grid.render().$el);
-      }
-      
-      var comment_collection = new CollectionClass();
-      comment_collection.fetch({
-        data: { 
-          limit: 0,
-          key: self.model.get('short_name'),
-          ref_resource_name: self.model.resource.key,
-          comment__is_null: false,
-          diff_keys__is_null: true,
-          order_by: ['-date_time']
-        },
-        success: build_table
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
-      
-      $addCommentButton.click(function(){
-
-        var FormFields = Backbone.Model.extend({
-          schema: {
-            comment: {
-              title: 'Comment',
-              key: 'comment',
-              type: 'TextArea',
-              editorClass: 'input-full',
-              validators: ['required'], 
-              template: appModel._field_template
-            }
-          }
-        });
-        var formFields = new FormFields();
-        var form = new Backbone.Form({
-          model: formFields,
-          template: appModel._form_template
-        });
-        var _form_el = form.render().el;
-
-        appModel.showModal({
-          okText: 'ok',
-          ok: function(e){
-            e.preventDefault();
-            
-            var errors = form.commit();
-            if(!_.isEmpty(errors)){
-              console.log('form errors, abort submit: ' + JSON.stringify(errors));
-              return false;
-            }
-            var values = form.getValue();
-            
-            // TODO: submit a PATCH with only a header comment
-            var comment = values['comment'];
-            var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = comment;
-            $.ajax({
-              url: [self.model.resource.apiUri, self.model.key].join('/'),    
-              // PATCH with no data; 
-              // data: JSON.stringify({ comment: comment }),  
-              cache: false,
-              contentType: 'application/json',
-              dataType: 'json', // what is expected back from the server
-              processData: false, // do not process data being sent
-              type: 'PATCH',
-              headers: headers, 
-              success: function(data){
-                console.log('success', data);
-                self.model.fetch({ reset: true });
-                view.render();
-              },
-              done: function(model, resp){
-                // TODO: done replaces success as of jq 1.8
-                console.log('done');
-              }
-            }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
-          
-            return true;
-            
-          },
-          view: _form_el,
-          title: 'Add comment'  
-        });
-        
-      });
-    },
-    
     setWells: function(delegateStack) {
       var self = this;
-      var schemaUrl = [self.model.resource.apiUri,self.model.key,'well',
-                       'schema'].join('/');
-      var wellResource = appModel.getResource('well'); 
-
-      function createWellView(schemaResult){
-        if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
-            !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
-          // Detail view
-          var well_id = delegateStack.shift();
-          self.consumedStack.push(well_id);
-          var _key = [self.model.key,well_id].join('/');
-          appModel.getModel(wellResource.key, well_id, function(model){
-            model.resource = schemaResult;
-            view = new LibraryWellView({
-              model: model, 
-              uriStack: _.clone(delegateStack),
-              library: self.model
-            });
-            Backbone.Layout.setupView(view);
-            self.listenTo(view , 'uriStack:change', self.reportUriStack);
-            self.setView("#tab_container", view ).render();
-            self.$("#tab_container-title").html('Well ' + model.get('well_id'));
       
-          });        
-          return;
-        }else{
-          // List view
-          var url = [self.model.resource.apiUri, 
-                     self.model.key,
-                     'well'].join('/');
-          view = new ListView({ 
+      var resource;
+      if( this.model.get('screen_type') == 'rnai') {
+        resource = appModel.getResource('silencingreagent');
+      } else {
+        resource = appModel.getResource('smallmoleculereagent');
+      }
+      
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail view
+        // TODO: will do a double fetch of the well here and in wellview
+        var well_id = delegateStack.shift();
+        appModel.getModel(resource.key, well_id, function(model){
+          model.resource = resource;
+          view = new LibraryWellView({
+            model: model, 
             uriStack: _.clone(delegateStack),
-            schemaResult: schemaResult,
-            resource: schemaResult,
-            url: url
+            library: self.model
           });
+          self.consumedStack.push(well_id);
           Backbone.Layout.setupView(view);
-          self.reportUriStack([]);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
-        }
-        
+          self.$("#tab_container-title").html('Well ' + model.get('well_id'));
+    
+        });        
+        return;
+      }else{
+        // List view
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'reagent'].join('/');
+        view = new LibraryWellsView({ 
+          uriStack: _.clone(delegateStack),
+          resource: resource,
+          url: url,
+          library: self.model
+        });
+        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
       }
-      appModel.getResourceFromUrl(schemaUrl, createWellView);
-
     },
         
     setPlates: function(delegateStack) {
@@ -374,12 +487,10 @@ define([
                  'plate'].join('/');
       view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: copyPlateResource,
         resource: copyPlateResource,
         url: url
       });
       Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -416,9 +527,7 @@ define([
         var Collection = Iccbl.MyCollection.extend({
           url: url
         });
-        collection = new Collection({
-          url: url,
-        });
+        collection = new Collection();
         
         if (appModel.hasPermission(copyResource.key, 'write')){
           var showAddButton = $([
@@ -428,7 +537,6 @@ define([
              ].join(''));   
            showAddButton.click(function(e){
              e.preventDefault();
-
              self.showAddCopy(collection);
            });
            extraControls.push(showAddButton);
@@ -457,7 +565,7 @@ define([
               linkCallback: function(e){
                 e.preventDefault();
                 // re-fetch the full model
-                copyname = this.model.get('copy_name');
+                var copyname = this.model.get('copy_name');
                 var _key = [self.model.key,copyname].join('/');
                 appModel.getModel(copyResource.key, _key, function(model){
                   view = new LibraryCopyView({
@@ -470,8 +578,10 @@ define([
                   self.listenTo(view , 'uriStack:change', self.reportUriStack);
                   self.setView("#tab_container", view ).render();
                   
-                  console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
-                  self.$("#tab_container-title").html('Copy ' + model.get('copy_name'));
+                  console.log('title: ', 
+                    Iccbl.getTitleFromTitleAttribute(model, model.resource));
+                  self.$("#tab_container-title")
+                    .html('Copy ' + model.get('copy_name'));
                 });        
                 return;
               }
@@ -479,14 +589,12 @@ define([
         
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
-          schemaResult: copyResource,
           resource: copyResource,
           url: url,
           collection: collection,
           extraControls: extraControls
         });
         Backbone.Layout.setupView(view);
-        self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.$("#tab_container-title").empty();
         self.setView("#tab_container", view ).render();
@@ -502,7 +610,7 @@ define([
       var fieldTemplate = appModel._field_template;
       var formTemplate = appModel._form_template;
       var copyResource = appModel.getResource('librarycopy');
-      var copyNameField = _.result(copyResource['fields'], 'name', {});
+      var copyNameField = _.result(copyResource['fields'], 'copy_name', {});
       var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
       var plateResource = appModel.getResource('librarycopyplate');
       var plateStatusField = _.result(plateResource['fields'],'status',{});
@@ -520,9 +628,9 @@ define([
         template: fieldTemplate 
       };
       
-      formSchema['name'] = {
+      formSchema['copy_name'] = {
         title: 'Name',
-        key: 'name',
+        key: 'copy_name',
         type: Backbone.Form.editors.Text,
         editorClass: 'form-control',
         validators: [
@@ -541,10 +649,11 @@ define([
         template: fieldTemplate 
       };
       if(_.has(copyNameField,'regex') ){
-        formSchema['name']['validators'].push(
+        formSchema['copy_name']['validators'].push(
           { type: 'regexp', 
             regexp: new RegExp(copyNameField['regex']),
-            message: _.result(copyNameField,'validation_message','Name pattern is incorrect' )
+            message: _.result(
+              copyNameField,'validation_message','Name pattern is incorrect' )
           }
         );
       }
@@ -556,7 +665,8 @@ define([
         editorClass: 'chosen-select',
         editorAttrs: { widthClass: 'col-sm-5'},
         validators: ['required'],
-        options: appModel.getVocabularySelectOptions(copyUsageTypeField.vocabulary_scope_ref),
+        options: appModel.getVocabularySelectOptions(
+          copyUsageTypeField.vocabulary_scope_ref),
         template: fieldTemplate 
       };
       
@@ -568,7 +678,8 @@ define([
         editorClass: 'chosen-select',
         editorAttrs: { widthClass: 'col-sm-5'},
         validators: [],
-        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
+        options: appModel.getVocabularySelectOptions(
+          plateStatusField.vocabulary_scope_ref),
         template: fieldTemplate 
       };
       
@@ -616,17 +727,6 @@ define([
         formSchema['initial_plate_molar_concentration'],
         plateMolarConcentrationField['display_options']);
       
-// TODO:
-//      formSchema['initial_plate_status'] = {
-//        title: 'Initial Plate Status',
-//        key: 'initial_plate_status',
-//        type: EditView.ChosenSelect,
-//        editorClass: 'chosen-select',
-//        editorAttrs: { widthClass: 'col-sm-5'},
-//        options: appModel.getVocabularySelectOptions(plateStatusField.vocabulary_scope_ref),
-//        template: fieldTemplate 
-//      };
-      
       formSchema['comments'] = {
         title: 'Comments',
         key: 'comments',
@@ -664,18 +764,24 @@ define([
       var _form_el = formview.el;
       var $form = formview.$el;
 
-      $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', true);
-      $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', true);
+      $form.find('[name="initial_plate_mg_ml_concentration"]')
+        .prop('disabled', true);
+      $form.find('[name="initial_plate_molar_concentration"]')
+        .find('input, select').prop('disabled', true);
 
       form.listenTo(form, "change", function(e){
-        console.log('change');
-        var set_initial_plate_concentration = form.getValue('set_initial_plate_concentration');
+        var set_initial_plate_concentration = 
+            form.getValue('set_initial_plate_concentration');
         if(set_initial_plate_concentration){
-          $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', false);
-          $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', false);
+          $form.find('[name="initial_plate_mg_ml_concentration"]')
+            .prop('disabled', false);
+          $form.find('[name="initial_plate_molar_concentration"]')
+            .find('input, select').prop('disabled', false);
         } else {
-          $form.find('[name="initial_plate_mg_ml_concentration"]').prop('disabled', true);
-          $form.find('[name="initial_plate_molar_concentration"]').find('input, select').prop('disabled', true);
+          $form.find('[name="initial_plate_mg_ml_concentration"]')
+            .prop('disabled', true);
+          $form.find('[name="initial_plate_molar_concentration"]')
+            .find('input, select').prop('disabled', true);
         }
       });
       
@@ -727,31 +833,12 @@ define([
           })
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data) {
+            self.model.fetch();
+            appModel.showConnectionResult(data, {
+              title: 'Copy Created'
+            });
+
             collection.fetch();
-            
-            // TODO: refactor - display response
-            if (_.isObject(data) && !_.isString(data)) {
-              data = _.result(_.result(data,'meta',data),'Result',data);
-              var msg_rows = appModel.dict_to_rows(data);
-              var bodyMsg = msg_rows;
-              if (_.isArray(msg_rows) && msg_rows.length > 1) {
-                bodyMsg = _.map(msg_rows, function(msg_row) {
-                  return msg_row.join(': ');
-                }).join('<br>');
-              }
-              var title = 'Copy created';
-              appModel.showModalMessage({
-                body: bodyMsg,
-                title: title  
-              });
-            } else {
-              console.log('ajax should have been parsed data as json', data);
-              appModel.showModalMessage({
-                title: 'Copy created',
-                okText: 'ok',
-                body: 'Copy name: ' + values['name']
-              });
-            }
           }); // ajax
         } // ok
       }); // dialog

@@ -8,31 +8,40 @@ define([
     'layoutmanager',
     'models/app_state',
     'views/generic_detail_stickit',
-    'views/simple-list',
     'templates/generic-detail-stickit.html'
 ], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
-      appModel, DetailView, SimpleListView, detailTemplate) {
+      appModel, DetailView, detailTemplate) {
+
+  // NOTE: Webpack 3 patch:
+  // Manually add the Stickit.ViewMixin object to the Backbone.Layout prototype
+  // (the Stickit object is bound using the webpack assetsPluginInstance).
+  _.extend(Backbone.Layout.prototype, Stickit.ViewMixin);
 	
 	var DetailView = Backbone.Layout.extend({
-	  
+
+
 	  attributes: { id: 'generic-detail-stickit-container' },
+	  
 	  /**
-	   * args:
-	   * this.model - implicit as the first argument the constructor
-	   * schema - resource schema hash/object
-	   * schema.detailKeys() returns the metahash field keys 'detail' in 'visibility'
+     * @param resource - the API resource schema
 	   */
 	  initialize: function(args) {
 	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
-	    var schema = this.schema = args.schema || this.model.resource;
-      var detailKeys = this.detailKeys = args.detailKeys || schema.detailKeys(); 
-      var groupedKeys = this.groupedKeys = schema.groupedKeys(this.detailKeys);
+	    this.args = args;
+	    var resource = this.resource = args.resource || this.model.resource;
+      var detailKeys = this.detailKeys = args.detailKeys || resource.detailKeys(); 
+      var adminKeys = this.adminKeys = self.model.resource.adminKeys();
+      if (! appModel.hasGroup('readEverythingAdmin')) {
+        detailKeys = this.detailKeys = _.difference(detailKeys, adminKeys);
+      }
+      var groupedKeys = this.groupedKeys = resource.groupedKeys(this.detailKeys);
+      
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       var buttons = this.buttons = args.buttons || ['download','history','back','edit'];
       if (! appModel.isEditable(self.model.resource.key)
-          || !appModel.hasPermission(schema.key, 'write')){
+          || !appModel.hasPermission(resource.key, 'write')){
         
           this.buttons = _.without(this.buttons,'edit');
           this.buttons = _.without(this.buttons,'delete');
@@ -43,11 +52,17 @@ define([
       if(! appModel.getCurrentUser().is_superuser){
         this.buttons = _.without(this.buttons,'delete');
       }
+      this.buttons_left = _.filter(this.buttons, function(button){
+        return button == 'edit';
+      });
+      this.buttons_right = _.filter(this.buttons, function(button){
+        return button != 'edit';
+      });
       
       // If "hideIfEmpty" then remove null attributes
       _.each(self.model.keys(), function(key){
-        if(! self.model.has(key) && _.has(schema.fields,key)){
-          var fi = schema.fields[key];
+        if(! self.model.has(key) && _.has(resource.fields,key)){
+          var fi = resource.fields[key];
           if (fi.display_options && fi.display_options.hideIfEmpty === true){
             self.detailKeys = _.without(detailKeys, key);
             _.each(self.groupedKeys, function(groupedKey){
@@ -61,6 +76,7 @@ define([
         }
       });
       if (appModel.DEBUG) 
+        // TODO: groupedKeys replaces detailKeys
         console.log('final detailKeys', self.detailKeys, self.groupedKeys);
       this.createBindings();
 	  },
@@ -68,12 +84,12 @@ define([
 	  createBindings: function() {
 	    var self = this;
 	    var keys = this.detailKeys;
-	    var schema = this.schema;
+	    var resource = this.resource;
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};
       
       _.each(keys, function(key) {
-        bindings['#'+key] = self.createBinding(key,schema.fields[key]);
+        bindings['#'+key] = self.createBinding(key,resource.fields[key]);
         schemaBindings['#title-'+key] = {
           observe: key,
           onGet: function(value) {
@@ -135,12 +151,13 @@ define([
       }
       
       function getTitle(vocabulary,value){
-        if (_.isEmpty(value)) return value;
+        if(_.isUndefined(value) || _.isNull(value)) return value;
         if (!_.isEmpty(vocabulary[value])){
           if(vocabulary[value].title){
             return vocabulary[value].title;
           }else if(_.isString(vocabulary[value])){
-            return _.escape(vocabulary[value]);//.replace(/</g,'&lt;');//.replace(/>/g,'&gt').replace(/&/g,'&amp');
+            return _.escape(vocabulary[value]);
+            //.replace(/</g,'&lt;');//.replace(/>/g,'&gt').replace(/&/g,'&amp');
           }else{
             console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key, fi);
             appModel.error('vocabulary misconfigured for: ' + 
@@ -187,9 +204,8 @@ define([
         if(_.isArray(value)){
           var vocabulary = getVocabulary();
           if(vocabulary){
-            finalValue = Iccbl.sortOnOrdinal(value,vocabulary);
-            finalValue = _.map(finalValue,function(value){ 
-              return getTitle(vocabulary,value);
+            finalValue = _.map(value,function(v){ 
+              return getTitle(vocabulary,v);
             });
           }
           finalValue = finalValue.join(', ');
@@ -209,6 +225,26 @@ define([
           return value;
         }
       }
+      function integerGetter(value){
+        var vocabulary = getVocabulary();
+        if(!_.isUndefined(value) && !_.isNull(value) && vocabulary){
+          value = getTitle(vocabulary,value);
+        }
+        return value;
+        // TODO: use the NumberFormatter to show numbers with thousands separator:
+        // --- on hold --- rework using options so only values (not IDs) are formatted
+        //var formatter = new Iccbl.NumberFormatter({ decimals: 0 });
+        //if(_.isString(value) || _.isNumber(value)){
+        //  formatted = formatter.fromRaw(value);
+        //  if (appModel.DEBUG){
+        //    console.log('integer getter: v:', value, ', formatted: ', 
+        //      formatted, ', options: ', cell_options);
+        //  }
+        //  return formatted;
+        //}else{
+        //  return value;
+        //}
+      }
       function booleanGetter(value){
         if(_.isBoolean(value)){
           if (value === true) return 'True';
@@ -223,7 +259,7 @@ define([
         'list': listGetter,
         'float': decimalGetter,
         'decimal': decimalGetter,
-        //'integer': defaultGetter,
+        'integer': integerGetter,
         //'string' : defaultGetter,
         'boolean' : booleanGetter
         //'datetime': defaultGetter,
@@ -234,7 +270,6 @@ define([
       function siUnitGetter(value){
         var formatter = new Iccbl.SIUnitsFormatter(cell_options)
         if(value){
-          console.log('get siunit value', value, formatter.fromRaw(value));
           return formatter.fromRaw(value);
         }else{
           return value;
@@ -275,14 +310,12 @@ define([
             _options.target = '_self';
           } 
           var vocabulary = getVocabulary();
-          if(vocabulary){
-            modelValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
-          }
           var output = [];
           _.each(modelValues, function(value){
             var text = _.result(vocabulary, value, value);
             if(value && !_.isNull(value) && value != '-' ){
-              var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
+              var interpolatedVal = Iccbl.formatString(
+                _options.hrefTemplate,self.model, value);
               var _html = '<a ' + 
                 'id="' + key + '" ' + 
                 'href="' + interpolatedVal + '" ' +
@@ -294,8 +327,11 @@ define([
               output.push(value);
             }
           });
-          
-          return output.join(',');
+          var sep = ', ';
+          if (fi.display_options && fi.display_options.separator ){
+            sep = fi.display_options.separator;
+          }
+          return output.join(sep);
         }
         return values;
       };
@@ -349,19 +385,19 @@ define([
           delete nestedLists[key];
           self.model.unset(key); // to signal empty
         }
-      }      
-
+      }
+      
       return binding;
 	  },
 	  
     afterRender : function() {
-      console.log('generic detail stickit, afterRender');
       var self = this;
       this.stickit(this.model, this.bindings);
       this.schemaFieldsModel = new Backbone.Model(this.model.resource.fields);
       this.stickit(this.schemaFieldsModel, this.schemaBindings);
 
       var btnbindings = {};
+      // FIXME: 20171114 - using stickit to manage the buttons is unnecessary
       var buttonModel = new Backbone.Model();
       _.each(this.buttons, function(button){
         btnbindings['[name="' + button + '"]'] = button;
@@ -405,7 +441,6 @@ define([
           var view = new Backgrid.Grid({
             columns: columns,
             collection: collection,
-            schemaResult: resource,
             resource: resource
           });
           // FIXME: this should work
@@ -424,10 +459,14 @@ define([
 
     serialize: function() {
       return {
-        'buttons': _.chain(this.buttons), // TODO: buttons from the schema
-//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource),
+        'buttons_right': _.chain(this.buttons_right), // TODO: buttons from the resource
+        'buttons_left': _.chain(this.buttons_left), // TODO: buttons from the resource
         'groupedKeys': _.chain(this.groupedKeys),
-        'keys': _.chain(this.detailKeys)
+        'keys': _.chain(this.detailKeys), // TODO: groupedKeys replaces detailKeys
+        'adminKeys': this.adminKeys,
+        'table_class': _.result(this.args,'table_class', 'col-sm-8'),
+        'label_col_class': _.result(this.args,'label_col_class', 'col-xs-3'),
+        'value_col_class': _.result(this.args,'value_col_class', 'col-xs-7')    
       };      
     },    
     

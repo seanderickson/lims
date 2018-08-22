@@ -16,8 +16,8 @@ define([
       var self = this;
       this.options = options;
       Iccbl.assert(
-          !_.isUndefined(options.schemaResult), 
-          'collection view requires a schemaResult struct');
+          !_.isUndefined(options.resource), 
+          'collection view requires a "resource" schema option');
       Iccbl.assert(
           !_.isUndefined(options.router), 'collection view requires a router');
       Iccbl.assert(
@@ -26,18 +26,18 @@ define([
       headers = [];
       rows = [];
       this.attributeKeys = Iccbl.sortOnOrdinal(
-          _.keys(options.schemaResult.fields), options.schemaResult.fields);
-      var resource_definition = self.options.schemaResult;
+          _.keys(options.resource.fields), options.resource.fields);
+      var resource_definition = self.options.resource;
       options.collection.each(function(model){
           headers.push(
-              Iccbl.getTitleFromTitleAttribute(model, self.options.schemaResult));
+              Iccbl.getTitleFromTitleAttribute(model, self.options.resource));
       });
       headers.unshift(
-          self.options.schemaResult['title']);
+          self.options.resource['title']);
       _.each(
           this.attributeKeys, 
             function(key){
-              var attributeTitle = self.options.schemaResult.fields[key]['title'];
+              var attributeTitle = self.options.resource.fields[key]['title'];
               if(_.isUndefined(attributeTitle)) attributeTitle = key;
               row = [{ value: attributeTitle} ]
               self.options.collection.each(function(model){

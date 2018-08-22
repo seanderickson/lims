@@ -1,8 +1,0 @@
-key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,alias
-username,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/username/,screensaver_user,,0,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[d],,
-user_fullname,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/user_fullname/,custom,,1,,string,,,,TRUE,"The full name of the user (last, first)",Name,TRUE,,,[d],,
-item_group,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/item_group/,,,2,,string,,,select,TRUE,"Item Group","Item Group",TRUE,,checklistitem.group,[l;d],,
-item_name,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/item_name/,,,3,,string,link,"{ 'hrefTemplate': '#userchecklistitem/{username}/{item_group}/{item_name}' }",select,TRUE,"Item Name","Item Name",TRUE,,checklistitem.*name,[l;d],,
-status,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/status/,,,4,,string,,,select,TRUE,Status,Status,TRUE,,checklistitem.status,[l;d],[l],
-status_date,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/status_date/,,,5,,date,,,,TRUE,"Status Date","Status Date",TRUE,,,[l;d],[l],
-admin_username,fields.userchecklistitem,/reports/api/v1/field/fields.userchecklistitem/admin_username/,custom,,6,,string,,,,TRUE,"Admin Username","Admin Username",TRUE,,,[l;d],,

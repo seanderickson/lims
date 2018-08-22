@@ -28,7 +28,8 @@
 	     </ul>
 	     <div class="col-sm-2 text-right navbar-right" id=loginmsg>
 	       {% if user.is_authenticated %}
-	         logged in as: {{ user }} <a href="{% url 'logout' %}">Log out</a>
+           logged in as: <a href="#screensaveruser/{{ user }}">{{user}}</a>
+           &nbsp;<a href="{% url 'logout' %}">Log out</a>
 	       {% else %}
 	         <a href="{{ login_url }}">Log in</a>
 	       {% endif %}

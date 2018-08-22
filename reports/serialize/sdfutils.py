@@ -4,6 +4,7 @@ import cStringIO
 import logging
 import re
 import six
+from reports.serialize import INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,8 @@ ENCODING = u'utf8',
 MOLDATAKEY = u'molfile'
 COMMENTKEY = u'comment'
 COMMENTTAG = u'comment'
+
+
 
 _moldata_re = re.compile(ur'M\s+END')
 _dos2unix = re.compile(ur'\r\n')
@@ -76,26 +79,40 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')):
         for tag, value in mol_record.items():
             print (u'%s: %s' % (tag, value)).encode(_params.ENCODING)
         print
+        
+    # TODO: implement this as a generator
     """
     result = []
     if isinstance(data, six.string_types):
         data = data.strip()
         data = data.strip(u'$')
+        
+        cumulative_lines = 1
 
         mols = _delimre.split(data)
         for mol in mols:
+            mol_lines = len(_dos_unix_le.split(mol))
             x = dict(parse_mol(mol))
+            x[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY] = cumulative_lines
+            cumulative_lines += mol_lines-1
+            
             result.append(x)
     else: # treat the data as an iterable
         buffer = cStringIO.StringIO()
+        linecount = 0
+        record_line = 0
         for line in data:
             if _delimre.match(line):
                 x = dict(parse_mol(buffer.read()))
+                x[INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY] = record_line
+                record_line = 0
                 result.append(x)
                 buffer = cStringIO.StringIO()
             else:
+                if record_line == 0:
+                    record_line = linecount
                 buffer.write(line)
-    
+            linecount += 1
     return tuple(result)
 
 
@@ -123,18 +140,22 @@ def to_sdf(data,output):
             # according to 
             # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
             # "only one blank line should terminate a data item"
-            if v:
+            if v is not None:
                 # find lists, but not strings (or dicts)
                 # Note: a dict here will be non-standard; probably an error 
                 # report, so just stringify dicts as is.
                 if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
                     for x in v:
-                        # DB should be UTF-8, so this should not be necessary,
-                        # however, it appears we have legacy non-utf data in 
-                        # some tables (i.e. small_molecule_compound_name 193090
-                        output.write(unicode.encode(x,'utf-8'))
-#                             output.write(str(x))
-                        output.write('\n')
+                        if isinstance(x, six.string_types):
+                            # DB should be UTF-8, so this should not be necessary,
+                            # however, it appears we have legacy non-utf data in 
+                            # some tables (i.e. small_molecule_compound_name 193090
+                            output.write(unicode.encode(x,'utf-8'))
+                            output.write('\n')
+                        else:
+                            # Handle non-standard sdf data (e.g. error response)
+                            output.write(str(x))
+                            output.write('\n')
                 else:
                     output.write(str(v))
                     output.write('\n')

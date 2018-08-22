@@ -33,8 +33,7 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-#            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver2.log",
-            'filename': "/www/dev.screensaver2.med.harvard.edu/support/logs/screensaver2-cli.log",
+            'filename': os.path.join(PROJECT_ROOT, 'logs', 'screensaver2-cli.log'),
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',
@@ -90,12 +89,7 @@ LOGGING = {
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
+        },
     }
 }
 

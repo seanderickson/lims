@@ -127,12 +127,6 @@ Biomol-TimTec
 >  <vendor_reagent_id> (4)
 ST001215
 
->  <OldWell> (4)
-A01
-
->  <Oldplate_number> (4)
-2
-
 >  <plate_number> (4)
 1536
 
@@ -220,12 +214,6 @@ Biomol-TimTec
 
 >  <vendor_reagent_id> (5)
 ST000077
-
->  <OldWell> (5)
-A02
-
->  <Oldplate_number> (5)
-1
 
 >  <plate_number> (5)
 1536
@@ -332,12 +320,6 @@ Biomol-TimTec
 >  <vendor_reagent_id> (6)
 ST001243
 
->  <OldWell> (6)
-A02
-
->  <Oldplate_number> (6)
-2
-
 >  <plate_number> (6)
 1536
 
@@ -439,12 +421,6 @@ Biomol-TimTec
 >  <vendor_reagent_id> (7)
 ST000202
 
->  <OldWell> (7)
-A03
-
->  <Oldplate_number> (7)
-1
-
 >  <plate_number> (7)
 1536
 
@@ -543,12 +519,6 @@ Biomol-TimTec
 
 >  <vendor_reagent_id> (8)
 ST001344
-
->  <OldWell> (8)
-A03
-
->  <Oldplate_number> (8)
-2
 
 >  <plate_number> (8)
 1536
@@ -662,12 +632,6 @@ Biomol-TimTec
 >  <vendor_reagent_id> (10)
 ST001467
 
->  <OldWell> (10)
-A04
-
->  <Oldplate_number> (10)
-2
-
 >  <plate_number> (10)
 1536
 
@@ -723,7 +687,6 @@ Biomol-TimTec1
 Biomol-TimTec
 
 >  <vendor> (3)
-Biomol-TimTec
 
 >  <vendor_reagent_id> (3)
 

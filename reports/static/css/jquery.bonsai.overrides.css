@@ -1,0 +1,20 @@
+.bonsai input[type="checkbox"] {
+  margin-top: 1px;
+  vertical-align: top;
+}
+
+.bonsai li {
+  white-space: nowrap;
+}
+
+.bonsai label {
+  margin-bottom: 0px;
+  font-weight: normal;
+  white-space: normal;
+}
+
+.glyphicon.spinning {
+    animation: spin 1s infinite linear;
+    -webkit-animation: spin2 1s infinite linear;
+}
+

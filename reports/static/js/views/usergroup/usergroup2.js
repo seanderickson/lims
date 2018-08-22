@@ -150,7 +150,7 @@ define([
       
       var view = this.tabViews[key];
       
-      this.model.resource.fields['permissions']['choices'] = appModel.get('permissionOptions');
+      this.model.resource.fields['permissions'].choiceHash = appModel.get('permissionOptions');
       
       var editView = EditView.extend({});
       
@@ -164,10 +164,10 @@ define([
           appModel.initializeAdminMode(function(){
             var fields = self.model.resource.fields;
             var options = appModel.getUserGroupOptions();
-            fields['super_groups']['choices'] = options;
-            fields['sub_groups']['choices'] = options;
-            fields['users']['choices'] = appModel.getUserOptions();
-            fields['permissions']['choices'] = appModel.getPermissionsOptions();
+            fields['super_groups'].choiceHash = options;
+            fields['sub_groups'].choiceHash = options;
+            fields['users'].choiceHash = appModel.getUsernameOptions();
+            fields['permissions'].choiceHash = appModel.getPermissionsOptions();
             DetailLayout.prototype.showEdit.call(view,arguments);
           });  
         };
@@ -190,13 +190,12 @@ define([
                  'users'].join('/');
       view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: resource,
         resource: resource,
         url: url
       });
       Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
-      self.reportUriStack([]);
+//      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -209,13 +208,11 @@ define([
                  'subgroups'].join('/');
       view = new ListView({ 
         uriStack: _.clone(delegateStack),
-        schemaResult: self.model.resource,
         resource: self.model.resource,
         url: url
       });
       Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
-      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
       
@@ -229,13 +226,11 @@ define([
                  'supergroups'].join('/');
       view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: self.model.resource,
         resource: self.model.resource,
         url: url
       }});
       Backbone.Layout.setupView(view);
       this.consumedStack = [key]; 
-      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },

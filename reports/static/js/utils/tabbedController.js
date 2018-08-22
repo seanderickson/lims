@@ -5,9 +5,16 @@ define([
   'iccbl_backgrid',
   'models/app_state',
   'views/generic_edit',
-  'templates/generic-tabbed.html'
+  'templates/generic-tabbed.html',
+  'views/generic_detail_layout'
 ], 
-function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
+function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout) {
+
+  // NOTE: Webpack 3 patch:
+  // Bind the Backbone.Layout object (and Backbone.Form) using the webpack 
+  // assetsPluginInstance
+  Backbone.Layout = LayoutManager;
+  Backbone.Form = BackboneForm;
 
   var TabbedController = Backbone.Layout.extend({
     
@@ -15,6 +22,10 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
 
     initialize: function(args) {
       var self = this;
+
+      Backbone.Layout.prototype.initialize.apply(this,arguments);
+
+      
       this.tabViews = {}; 
       this.uriStack = args.uriStack;
       this.consumedStack = [];
@@ -22,18 +33,27 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
       _.each(_.keys(displayed_tabbed_resources), function(key) {
         if (key !== 'detail') {
-          var permission = displayed_tabbed_resources[key].permission;
-          if (_.isUndefined(permission)) {
-            permission = displayed_tabbed_resources[key].resource;
-          }
-          if (!appModel.hasPermission(permission)) {
-            delete displayed_tabbed_resources[key];
+          var group = displayed_tabbed_resources[key].group;
+          if (!_.isUndefined(group)){
+            if (!appModel.hasGroup(group)){
+              delete displayed_tabbed_resources[key];
+            }
+          }else{
+            var permission = displayed_tabbed_resources[key].permission;
+            if (_.isUndefined(permission)) {
+              permission = displayed_tabbed_resources[key].resource;
+            }
+            if (permission!==''){
+              if (!appModel.hasPermission(permission, 'read')) {
+                delete displayed_tabbed_resources[key];
+              }
+            }
           }
         }
       });
       this.tabbed_resources = displayed_tabbed_resources;
       
-      _.bindAll(this, 'click_tab');
+      _.bindAll(this, 'click_tab','change_to_tab');
     },
 
     tabbed_resources: {
@@ -50,7 +70,12 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
      */
     reportUriStack: function(reportedUriStack) {
       var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
+      if (reportedUriStack){
+        actualStack = consumedStack.concat(reportedUriStack);
+      }else{
+        actualStack = consumedStack.slice(0);
+      }
+      console.log('reportUriStack: actualStack', actualStack, arguments);
       this.trigger('uriStack:change', actualStack );
     },
     
@@ -74,6 +99,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
         viewId = this.uriStack.shift();
 
         if(viewId == '+add'){
+          console.log('disable tabs during add operation...');
           this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
@@ -109,8 +135,13 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       
     },
 
-    change_to_tab: function(key) {
+    change_to_tab: function(key, newdelegateStack) {
+      var self = this;
+      console.log('change_to_tab: ' + key);
+      appModel.clearErrors();
+      self.$("#tab_container-title").empty();      
       if (_.has(this.tabbed_resources, key)) {
+        this.removeView("#tab_container");
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
         if (key !== 'detail') {
@@ -118,11 +149,17 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
         } else {
           this.consumedStack = [];
         }
-        var delegateStack = _.clone(this.uriStack);
+        
+        var delegateStack = newdelegateStack || _.clone(this.uriStack);
+//        if (!_.isUndefined(newdelegateStack)){
+//          delegateStack = newdelegateStack;
+//        }
+        
         this.uriStack = [];
         var method = this[this.tabbed_resources[key]['invoke']];
         if (_.isFunction(method)) {
           method.apply(this,[delegateStack]);
+//          self.reportUriStack([]);          
         } else {
           throw ( 
             "Tabbed resources refers to a non-function: "
@@ -135,6 +172,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       }
     },
 
+    /**
+     * TODO: not used?//
+     */
     showAdd: function() {
       console.log('add view');
       
@@ -152,6 +192,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
       this.$('#detail').addClass('active');
     },
     
+    /**
+     * TODO: not used?//
+     */
     showEdit: function() {
       var self = this;
       var delegateStack = _.clone(this.uriStack);
@@ -169,15 +212,26 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate) {
     },
     
     setDetail: function(delegateStack) {
-      // to implement
+      // must be implemented
+
+      // Example, set title
+      var title = self.model.resource.title;
+      if (!self.model.isNew()){
+        title += ': ' + Iccbl.getTitleFromTitleAttribute(self.model, self.model.resource);
+      }
+      $title = this.$el.find('#tab_container-title');
+      $title.html(title);
+      $title.show();
+      
     },    
     
-    onClose: function() {
-      // TODO: is this necessary when using Backbone LayoutManager
+    /** Backbone.layoutmanager callback **/
+    cleanup: function(){
+      console.log('cleanup...')
       this.tabViews = {};
-      this.remove();
+      this.isClosed = true;
     }
-
+    
   });
   
   return TabbedController;

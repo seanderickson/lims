@@ -26,7 +26,7 @@ def create_library_comments(apps,schema_editor):
         join library_update_activity lua on(activity_id=lua.update_activity_id) 
         join administrative_activity aa using(activity_id) 
         join library l using(library_id) 
-        where administrative_activity_type='Comment'
+        where aa.administrative_activity_type='Comment'
         order by l.library_id asc, a.date_created asc;    
     '''
     connection = schema_editor.connection
@@ -37,10 +37,8 @@ def create_library_comments(apps,schema_editor):
         for row in cursor:
             _dict = dict(zip(sql_keys,row))
             
-#             logger.info('processing: %r',_dict)
-            
             log = ApiLog()
-            # Note: as long as 0004_users migration has been completed, all
+            # Note: as long as users migration has been completed, all
             # user accounts will have a "username"
             log.username = _dict['username'] 
             log.user_id = _dict['performed_by_id'] 
@@ -50,6 +48,14 @@ def create_library_comments(apps,schema_editor):
             log.key = _dict['short_name']
             log.uri = '/'.join([log.ref_resource_name,log.key])
             log.comment = _dict['comments']
+            log.json_field = {
+                'migration': 'Library comments',
+                'data': { 
+                    'administrative_activity.activity_id': _dict['activity_id']
+                }
+            }
+            if log.username is None:
+                log.username = 'sde_EDIT'
             log.save()
             
             i += 1
@@ -64,7 +70,7 @@ def create_library_comments(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0009_convert_studies_to_screenresult'),
+        ('db', '0012_convert_studies_to_screenresult'),
 #         ('reports', '0001_initial')
     ]
 

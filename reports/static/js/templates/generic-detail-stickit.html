@@ -1,55 +1,61 @@
 <div id="generic-detail-top">
   <div class="row">
-    <div class="col-sm-12" id="generic-detail-buttonpanel">
+    <div class="col-sm-6" id="generic-detail-buttonpanel-left">
 <% 
-// add only the edit button on the top for now
-if (buttons) {
-%>
+  if (buttons_left) {
+    buttons_left.each(function(key) {
+    %>
+        <button type="button" class="btn btn-default btn-sm pull-left" id="<%=key %>" name="<%=key %>" ></button>
     <% 
-    buttons.each(function(key) {
+    }); 
+  }  
+%>
+    </div>
+    <div class="col-sm-6" id="generic-detail-buttonpanel-right">
+<% 
+  if (buttons_right) {
+    buttons_right.each(function(key) {
     %>
         <button type="button" class="btn btn-default btn-sm pull-right" id="<%=key %>" name="<%=key %>" ></button>
     <% 
     }); 
-    %>
-<% 
-}  
+  }  
 %>
     </div>
   </div>
 </div>
 
-<table class='table table-condensed data-list'>
+<div class='row'>
+  <div id='generic-detail-table' class='<%= table_class %>'>
+    <table class='table table-condensed data-list'>
 <% 
   (groupedKeys).each(function(key) { 
 %>
 <% 
     if(! _.isObject(key)) 
     {
+      extra_title_class = _.contains(adminKeys,key) ? 'admin-field': '';
 %>
      <tr>
-        <td class='col-xs-2 dl-title small' id="title-<%=key %>" title='' />
-        <td class='col-xs-6 dl-data small' id="<%=key %>">&nbsp;</td>
+        <td class='dl-title <%=label_col_class %> <%=extra_title_class %>' id="title-<%=key %>" title='' />
+        <td class='dl-data <%=value_col_class %>' id="<%=key %>">&nbsp;</td>
      </tr>
 <% 
     }else{
       var group = key;
 %>
       <tr>
-        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data small' >
+        <td class='dl-title ' title='' ><%=group.title %></td>
+        <td class='dl-data ' >
         <div class='row'>
           <div class='col-xs-12'>
-<% 
-%>
-<% 
-%>
           <table class='table-condensed data-list'>
 <% 
         _   .each(group.fields, function(groupKey){
+              extra_title_class = _.contains(adminKeys,groupKey) ? 'admin-field': '';
 %>
             <tr>
-              <td class='dl-title' id="title-<%=groupKey %>" title='' />
+              <td class='dl-title   <%=extra_title_class %>' id="title-<%=groupKey %>" title='' />
               <td class='dl-data' id="<%=groupKey %>">&nbsp;</td>
             </tr>
 <%
@@ -66,18 +72,15 @@ if (buttons) {
     }
   }); 
 %>
-</table>
-
-<form id='generic-form' class="form-horizontal" >
-    <div class="controls">
-        <% 
-        if (buttons) {
-          buttons.each(function(key) {
-        %>
-          <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ></button>
-       <% 
-          }); 
-        }  
-        %>
+    </table>
+  </div>
+  <div class='col-sm-4' >
+    <div class='row ' id='detail_extra_information'>
+      <div id='comment_table'>
+        <div class="col-xs-12" id="comment_table_title"></div>
+        <div class="col-xs-12" id="comment_table_grid"></div>
+      </div>
     </div>
-</form>
+  </div>
+</div>
+

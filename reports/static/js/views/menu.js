@@ -16,6 +16,7 @@ define([
 
       initialize: function(attributes, options) {
         console.log('initialize menu.js');
+        this._classname = 'MenuView';
         this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
       },
       
@@ -33,8 +34,8 @@ define([
        * @param options.source = the event source triggering view
        */
       uriStackChange: function(model, val, options) {
-        if(options.source === this){
-          console.log('self generated uristack change');
+        if(options && options.source === this){
+          console.log('menu: self generated uristack change');
           return;
         }else{
           this.changeUri();
@@ -66,7 +67,7 @@ define([
         this.$('li').removeClass('active');
         if(_.isEmpty(uriStack)) return; // Home, for now
 
-        var menus = appModel.get('menu');
+        var menus = appModel.getMenu();
         var found_menus = this.find_submenu_path(menus, ui_resource_id);
         if(_.isUndefined(found_menus)){
           console.log('unknown submenu: ' + ui_resource_id);
@@ -88,6 +89,8 @@ define([
         if(this.ui_resource_id){
           this.$('#' + this.ui_resource_id).addClass('active');
         }
+        window.scrollTo(0, 0);
+        
       },
 
       find_submenu_path : function(menu, id){
@@ -99,7 +102,7 @@ define([
             if(pair[0] == id ) return pair[1];
             else{
               if(_.has(pair[1], 'submenus')){
-                var temp = this.find_submenu(pair[1]['submenus'],id);
+                var temp = this.find_submenu_path(pair[1],id);
                 if( _.isObject(temp)) return _.flatten([pair[1],temp]);
               }
             }
@@ -116,7 +119,7 @@ define([
             if(pair[0] == id ) return pair[1];
             else{
               if(_.has(pair[1], 'submenus')){
-                var temp = this.find_submenu(pair[1]['submenus'],id);
+                var temp = this.find_submenu(pair[1],id);
                 if( _.isObject(temp)) return temp;
               }
             }
@@ -128,8 +131,6 @@ define([
         var self = this;
         event.preventDefault();
 
-        appModel.unset('messages');
-        
         var ui_resource_id = event.currentTarget.id;
         console.log('menu click: ' + ui_resource_id);
         
@@ -154,8 +155,7 @@ define([
           return;
         }
 
-        var menus = appModel.get('menu');
-
+        var menus = appModel.getMenu();
         var menu = this.find_submenu(menus, ui_resource_id);
         if(_.isUndefined(menu)){
           window.alert('unknown submenu: ' + ui_resource_id);
@@ -180,6 +180,8 @@ define([
               if( ui_resource_id == 'reports'){
                 appModel.setUriStack([]);
                 return;
+              } else if (_.isEmpty(menu['view'])){
+                return;
               }else{
                 appModel.setUriStack([ui_resource_id]);
               }
@@ -193,7 +195,24 @@ define([
 
         // Clear out error messages after navigating away from page
         appModel.unset('messages');
-      }
+
+      },
+      
+      //collapseAll: function(menu) {
+      //  var self = this;
+      //  console.log('collapse1', menu);
+      //  if (_.result(menu, 'expanded', false) == true){
+      //    menu['expanded'] = false;
+      //  }
+      //  var submenus = _.result(menu,'submenus');
+      //  if (submenus){
+      //    _.each(_.values(submenus), function(menu){
+      //      self.collapseAll(menu);
+      //    });
+      //  }
+      //}
+      
+      
    
     });
 

@@ -7,7 +7,6 @@ from __future__ import unicode_literals
 
 import cStringIO
 from collections import OrderedDict
-import csv
 import json
 import logging
 import os.path
@@ -19,21 +18,22 @@ from wsgiref.util import FileWrapper
 from zipfile import ZipFile
 
 from django.conf import settings
-from django.core.urlresolvers import resolve
-from django.http.response import StreamingHttpResponse
+from django.http.response import StreamingHttpResponse, Http404
 import six
+import unicodecsv
 import xlsxwriter
 
 from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, \
     MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     CSV_DELIMITER
-from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder
+from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder, encode_utf8
 import reports.serialize
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
+from django.db.utils import ProgrammingError
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def closing_iterator_wrapper(iterable, close):
         for item in iterable:
             yield item
     finally:
-        logger.info('close connection...')
+        logger.debug('close connection...')
         close()
 
 
@@ -121,7 +121,9 @@ def interpolate_value_template(value_template, row):
             logger.info('val from value template: %r, %r, %r',
                 val,row.has_key(val), row[val])
         if row.has_key(val):
-            return str(row[val])
+            return row[val]
+            # FIXME: 20170731 review utf encoding here
+            # return encode_utf8(row[val])
         else:
             logger.error(
                 'field %r needed for value template %r is not available: %r', 
@@ -129,7 +131,7 @@ def interpolate_value_template(value_template, row):
             return ''
     return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
 
-
+# TODO: inject or wrap dependency on well.library_well_type 
 def image_generator(rows, image_keys, request):
     '''
     Check that any image values in the rows can be fetched:
@@ -145,7 +147,7 @@ def image_generator(rows, image_keys, request):
                 # hack to speed things up:
                 if ( key == 'structure_image' and
                         'library_well_type' in row and
-                        row['library_well_type'].lower() == 'empty' ):
+                        row['library_well_type'] == 'empty' ):
                     row[key] = None
                 else:
                     try:
@@ -153,10 +155,16 @@ def image_generator(rows, image_keys, request):
                         image = reports.serialize.resolve_image(request, val)
                         # If it exists, write the fullpath to the file
                         fullpath = request.build_absolute_uri(val)
-                        logger.debug('image exists: %r, abs_uri: %r', val, fullpath)
+                        logger.debug(
+                            'image exists: %r, abs_uri: %r', val, fullpath)
                         row[key] = fullpath
+                    except Http404, e:
+                        logger.debug('no image found at: %r', val)
+                        row[key] = None
                     except Exception, e:
-                        logger.info('no image at: %r, %r', val,e)
+                        logger.exception(
+                            'image could not be retrieved: %r, e: %r',
+                            val, e)
                         row[key] = None
         yield row
 
@@ -212,9 +220,9 @@ def csv_generator(data, title_function=None, list_brackets=None):
     
     pseudo_buffer = Echo()
     quotechar = b'"' # note that csv under python 2.7 doesn't allow multibyte quote char
-    csvwriter = csv.writer(
+    csvwriter = unicodecsv.writer(
         pseudo_buffer, delimiter=CSV_DELIMITER, quotechar=quotechar, 
-        quoting=csv.QUOTE_ALL, lineterminator="\n")
+        quoting=unicodecsv.QUOTE_MINIMAL, lineterminator="\n")
     try:
         for rownum, row in enumerate(data):
             if rownum == 0:
@@ -224,7 +232,7 @@ def csv_generator(data, title_function=None, list_brackets=None):
                 yield csvwriter.writerow(titles)
 
             yield csvwriter.writerow([
-                csvutils.csv_convert(val, list_brackets=list_brackets) 
+                csvutils.convert_list_vals(val, list_brackets=list_brackets) 
                     for val in row.values()])
         logger.debug('wrote %d rows to csv', rownum)
     except Exception, e:
@@ -258,27 +266,27 @@ def sdf_generator(data, title_function=None):
                     continue
                 title = key
                 if title_function:
-                    title = title_function(key)
+                    title = encode_utf8(title_function(key))
                 yield '> <%s>\n' % title
-
-                if val:
+                if val is not None:
                     # Note: find lists, but not strings (or dicts)
                     # Note: a dict here will be non-standard; probably an error 
                     # report, so just stringify dicts as is.
                     if not hasattr(val, "strip") and isinstance(val, (list,tuple)): 
                         for x in val:
                             # DB should be UTF-8, so this should not be necessary,
-                            # however, it appears we have legacy non-utf data in 
+                            # however, it appears we have legacy non-UTF-8 data 
+                            # (which creates a non proper unicode string) 
                             # some tables (i.e. small_molecule_compound_name 193090
-                            yield unicode.encode(x,'utf-8')
+                            yield encode_utf8(x)
                             yield '\n'
                     else:
-                        yield str(val)
+                        yield encode_utf8(val)
                         yield '\n'
                 yield '\n'
             yield '$$$$\n'
 
-        logger.info('wrote %d', rownum)
+        logger.info('wrote %d', rownum+1)
     except Exception, e:
         logger.exception('SDF streaming error')
         raise
@@ -288,16 +296,20 @@ def cursor_generator(cursor, visible_fields, list_fields=[], value_templates=[])
     '''
     Generate dicts from cursor rows and visible fields 
     '''
+    logger.debug('visible: %r, list: %r', visible_fields, list_fields)
     for row in cursor:
         output_row = []
         for key in visible_fields:
             value = None
             if row.has_key(key):
                 value = row[key]
-                     
-            if value and key in list_fields:
+            else:
+                logger.debug('no value for key: %r, %r', key, row)
+            if value is not None and key in list_fields:
                 if isinstance(value, six.string_types):
-                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                    # NOTE: filter empty strings; func.array_to_string inserts 
+                    # a separator before every element, even if list has one value
+                    value = list(filter(None,value.split(LIST_DELIMITER_SQL_ARRAY)))
             if key in value_templates:
                 value_template = value_templates[key]
                 if DEBUG_STREAMING: 
@@ -322,7 +334,7 @@ def get_xls_response(
     for in testing, and in ScreenResultSerializer - 20160419.
     '''
     if not isinstance(data, dict):
-        raise BadRequest(
+        raise ProgrammingError(
             'unknown data for xls serialization: %r, must be a dict of '
             'sheet_row entries' % type(data))
  
@@ -341,7 +353,6 @@ def get_xls_response(
         workbook = xlsxwriter.Workbook(temp_file, {'constant_memory': True})
         
         for key, sheet_rows in data.items():
-            logger.info('type sheet_rows: %r', type(sheet_rows))
             if isinstance(sheet_rows, (dict, OrderedDict)):
                 sheet_name = default_converter(key)
                 logger.info('writing sheet %r...', sheet_name)
@@ -370,7 +381,7 @@ def get_xls_response(
                             sheet.write_string(filerow,i,title)
                         filerow += 1
                     for i, (key,val) in enumerate(values.items()):
-                        val = csvutils.csv_convert(
+                        val = csvutils.convert_list_vals(
                             val, delimiter=LIST_DELIMITER_XLS,
                             list_brackets=list_brackets)
                         if val is not None:
@@ -405,14 +416,13 @@ def get_xls_response(
                         sheet = workbook.add_worksheet(sheet_name)
                         file_names_to_zip.append(temp_file)
                         filerow = 0
+                logger.info('wrote filerows: %d file: %r',filerow, temp_file)
                               
         workbook.close()
-        logger.info('wrote file: %r', temp_file)
   
         content_type = '%s; charset=utf-8' % XLSX_MIMETYPE
         if len(file_names_to_zip) >1:
-            # create a temp zip file
-            content_type='application/zip; charset=utf-8'
+            content_type = '%s; charset=utf-8' % ZIP_MIMETYPE
             temp_file = os.path.join('/tmp',str(time.clock()))
             logger.info('temp ZIP file: %r', temp_file)
   
@@ -454,6 +464,8 @@ def get_xls_response_all_images_to_one_file(
     # using XlsxWriter for constant memory usage
     max_rows_per_sheet = 2**20
 
+    # Open with delete=False; file will be closed and deleted 
+    # by the FileWrapper1 instance when streaming is finished.
     with  NamedTemporaryFile(delete=False) as temp_file:
 
         logger.info('save to file; %r...', output_filename)
@@ -479,12 +491,13 @@ def get_xls_response_all_images_to_one_file(
 class FileWrapper1:
     """
     Wrapper to convert file-like objects to iterables
-        - modified to delete the file after iterating
+        - modified to delete the file after iterating (use only with temporary files)
     """
 
-    def __init__(self, filelike, blksize=8192):
+    def __init__(self, filelike, delete_on_close=True, blksize=8192):
         self.filelike = filelike
         self.blksize = blksize
+        self.delete_on_close = delete_on_close
 
     def __getitem__(self,key):
         data = self.filelike.read(self.blksize)
@@ -510,7 +523,10 @@ class FileWrapper1:
         # Modify: delete file after iterating
         logger.info('done writing to response...')
         self.filelike.close()
-        os.remove(self.filelike.name)
+        
+        if self.delete_on_close is True:
+            logger.info('removing file %r', self.filelike.name)
+            os.remove(self.filelike.name)
         
         raise StopIteration
 
@@ -537,6 +553,45 @@ def generic_xlsx_response(data):
     response['Content-Type'] = XLSX_MIMETYPE
     return response
 
+# def zip_file_response(files, output_filename):
+#     '''
+#     Return a StreamingHttpResponse containing the zip file for the given files.
+#     @param files to include in the zip response 
+#     '''
+#     # Open with delete=False; file will be closed and deleted 
+#     # by the FileWrapper1 instance when streaming is finished.
+#     with  NamedTemporaryFile(delete=False) as temp_file:
+#         
+#         with ZipFile(temp_file, 'w') as zip_file:
+#             for _file in files:
+#                 zip_file.write(_file, os.path.basename(_file))
+#         logger.info('wrote file %r', temp_file)
+#         logger.info('saved temp file for; %r', output_filename)
+#     
+#         temp_file.seek(0, os.SEEK_END)
+#         size = temp_file.tell()
+#         temp_file.seek(0)   
+# 
+# 
+#     filename = '%s.zip' % output_filename
+#     logger.info('download zip file: %r, %r',filename)
+#     _file = file(temp_file.name)
+#     response = StreamingHttpResponse(FileWrapper1(_file)) 
+#     response['Content-Length'] = size
+#     response['Content-Type'] = '%s; charset=utf-8' % ZIP_MIMETYPE
+#     response['Content-Disposition'] = \
+#         'attachment; filename=%s.xlsx' % output_filename
+#     return response
+
+    
+    wrapper = FileWrapper(_file)
+    response = StreamingHttpResponse(
+        wrapper, content_type='%s; charset=utf-8' % ZIP_MIMETYPE) 
+    response['Content-Length'] = os.path.getsize(temp_file)
+    response['Content-Disposition'] = \
+        'attachment; filename=%s' % filename
+    return response
+    
 
 # def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
 #     if DEBUG_STREAMING: logger.info('meta: %r', meta )
@@ -926,7 +981,7 @@ def generic_xlsx_response(data):
 #         content_type = '%s; charset=utf-8' % XLSX_MIMETYPE
 #         if len(file_names_to_zip) >1:
 #             # create a temp zip file
-#             content_type='application/zip; charset=utf-8'
+#             content_type = '%s; charset=utf-8' % ZIP_MIMETYPE
 #             temp_file = os.path.join('/tmp',str(time.clock()))
 #             logger.info('temp ZIP file: %r', temp_file)
 #  

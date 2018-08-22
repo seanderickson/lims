@@ -1,26 +1,37 @@
+<div id="generic-detail-top">
+  <div class="row">
+    <div class="col-sm-6" id="generic-detail-buttonpanel">
 <% 
-// Specialization of generic-detail-stickit for Screen.
+var extra_title_class = '';
 if (buttons) {
 %>
     <% 
     buttons.each(function(key) {
     %>
-        <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ></button>
+        <button type="button" class="btn btn-default btn-sm" id="<%=key %>" 
+          name="<%=key %>" ></button>
     <% 
     }); 
     %>
 <% 
 }  
 %>
-<div class='row'>
+    </div>
+  </div>
+</div>
+<div class='row' id='screen_block_1'>
+  <div class='col-sm-12'>
+  <div class='row'>
   <div class='col-sm-9'>
     <table class='table table-condensed data-list' style='margin-bottom: 2px;'>
 <% 
 _   (informationKeys).each(function(key){
+      extra_title_class = _.contains(adminKeys,key) ? 'admin-field': '';
 %>
-     <tr>
-        <td class='col-xs-4 dl-title ' id="title-<%=key %>" title='' />
-        <td class='col-xs-8 dl-data ' id="<%=key %>">&nbsp;</td>
+     <tr >
+        <td class='col-sm-3 dl-title <%=extra_title_class %>' 
+          id="title-<%=key %>" title=''  />
+        <td class='col-sm-6 dl-data ' id="<%=key %>">&nbsp;</td>
      </tr>
 <%
     });
@@ -34,10 +45,14 @@ _   (informationKeys).each(function(key){
       <div class='row ' id='cpr_table'></div>
     </div>
   </div>
+  </div>
+  </div>
 </div>
 
-<div class='row'>
-  <div class='col-xs-12'>
+<div class='row' id='screen_block_2' >
+  <div class='col-sm-12'>
+  <div class='row'>
+  <div class='col-sm-12'>
     <table class='table table-condensed data-list'>
 <% 
   (groupedKeys).each(function(key) { 
@@ -45,86 +60,77 @@ _   (informationKeys).each(function(key){
 <% 
     if(! _.isObject(key)) 
     {
+      extra_title_class = _.contains(adminKeys,key) ? 'admin-field': '';
 %>
-     <tr>
-        <td class='col-xs-2 dl-title ' id="title-<%=key %>" title='' />
-        <td class='col-xs-6 dl-data ' id="<%=key %>">&nbsp;</td>
-     </tr>
+      <tr id='screen_row_<%=key %>'>
+        <td class='col-sm-2 dl-title <%=extra_title_class %>' 
+          id="title-<%=key %>" title=''   />
+        <td class='col-sm-6 dl-data ' id="<%=key %>">&nbsp;</td>
+      </tr>
 <% 
     }else{
       var group = key;
+      console.log('group', group.title);
 %>
-      <tr>
 <% 
         if(group.title == 'Publishable Protocol'){
           // TODO: create a template to insert for publishable protocol
+          if(_.contains(group.fields,'publishable_protocol')){
 %>
-        <td class='col-xs-2 dl-title ' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data ' >
+
+      <tr id='screen_block_publishable_protocol'>
+        <td class='col-sm-2 dl-title ' title=''  >
+          <%=group.title %></td>
+        <td class='col-sm-6 dl-data ' >
         <div class='row'>
-          <div class='col-xs-12'>
+          <div class='col-sm-12'>
           <table class='table-condensed data-list'>
             <tr>
-              <td>
+              <td class='col-sm-12' >
               <div id='publishable_protocol'></div>
               </td>
             </tr>
             <tr>
               <td>
-              <table class='table-condensed data-list'>
-                <tr>
-                  <td class='dl-title' id='title-publishable_protocol_comments'/>
-                  <td class='dl-data' id='publishable_protocol_comments'/>
-                </tr>
-                <tr>
-                  <td class='dl-title' id='title-publishable_protocol_date_entered'/>
-                  <td class='dl-data' id='publishable_protocol_date_entered'/>
-                </tr>
-                <tr>
-                  <td class='dl-title' id='title-publishable_protocol_entered_by'/>
-                  <td class='dl-data' id='publishable_protocol_entered_by'/>
-                </tr>
-              </table>
+                <table class='table-condensed data-list'>
+<% 
+                _.each(group.fields, function(groupKey){
+                   if(groupKey=='publishable_protocol') return;
+                   extra_title_class = _.contains(adminKeys,groupKey) ? 'admin-field': '';
+%>
+                  <tr>
+                    <td class='col-sm-2 dl-title <%=extra_title_class %>' id="title-<%=groupKey %>" title='' />
+                    <td class='col-sm-6 dl-data' id="<%=groupKey %>">&nbsp;</td>
+                  </tr>
+<%
+            });
+%>
+                </table>
               </td>
             </tr>
           </table>
           </div>
         </div>
         </td>
+      </tr>
 <% 
-        }else if (group.title == 'Information'){
+          }
+        }
+        else{
 %>
-        <td class='col-xs-4 ' style='border: none;' >
-          <table class=' table-condensed data-list'>
-<% 
-        _   .each(group.fields, function(groupKey){
-%>
-            <tr>
-              <td class='col-xs-4 dl-title' id="title-<%=groupKey %>" title='' />
-              <td class='col-xs-6 dl-data' id="<%=groupKey %>">&nbsp;</td>
-            </tr>
-<%
-            });
-%>
-          </table>
-        </td>
-        <td class='col-xs-6 dl-data ' >
-          <div class='row' id='screen_extra_information'></div>
-        </td>        
-<%
-        }else{
-%>
-        <td class='col-xs-2 dl-title ' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data ' >
+      <tr id='screen_block_<%=group.title %>'>
+        <td class='col-sm-2 dl-title ' title='' ><%=group.title %></td>
+        <td class='col-sm-6 dl-data ' >
         <div class='row'>
-          <div class='col-xs-12'>
+          <div class='col-sm-12'>
           <table class='table-condensed data-list'>
 <% 
         _   .each(group.fields, function(groupKey){
+              extra_title_class = _.contains(adminKeys,groupKey) ? 'admin-field': '';
 %>
-            <tr>
-              <td class='dl-title' id="title-<%=groupKey %>" title='' />
-              <td class='dl-data' id="<%=groupKey %>">&nbsp;</td>
+           <tr>
+              <td class='col-sm-2 dl-title <%=extra_title_class %>' id="title-<%=groupKey %>" title='' />
+              <td class='col-sm-6 dl-data' id="<%=groupKey %>">&nbsp;</td>
             </tr>
 <%
             });
@@ -133,15 +139,14 @@ _   (informationKeys).each(function(key){
           </div>
         </div>
         </td>
+      </tr>
 <%
         }
-%>
-      </tr>
-<% 
     }
   }); 
 %>
     </table>
+    </div></div>
   </div>
 </div>
 <form id='generic-form' class="form-horizontal" >

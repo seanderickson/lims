@@ -1,0 +1,6 @@
+Screensaver Alert: Expired {screen_count} screen(s) to {data_sharing_level_1}
+
+The following {screen_count} screens were found on {current_date} to have an expired Data Privacy Expiration Date.
+In accordance with the user agreement, these screens have now been set to {data_sharing_level_1}.
+
+

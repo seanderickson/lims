@@ -15,7 +15,7 @@ function($, _, Iccbl, appModel, EditView) {
      * jqXHR.fail(function( jqXHR, textStatus, errorThrown ) {});
      * jqXHR.always(function( data|jqXHR, textStatus, jqXHR|errorThrown ) { });
      */
-    postUploadFileDialog: function(url, content_types){
+    postUploadFileDialog: function(url, content_types, post_data){
 
       var promise = $.Deferred();
       
@@ -146,9 +146,13 @@ function($, _, Iccbl, appModel, EditView) {
               }
             });
             
-            // TODO - add "download for update" option to the download dialog
-            
             data.append(values['type'],file);
+            
+            if (post_data){
+              _.each(_.keys(post_data), function(key){
+                data.append(key, post_data[key]);
+              });
+            }
             
             $.ajax({
               url: url,    
@@ -160,34 +164,10 @@ function($, _, Iccbl, appModel, EditView) {
               type: 'POST',
               headers: headers
             }).done(function(data, textStatus, jqXHR){ 
-              console.log('success', data);
-              
-              if (_.isObject(data) && !_.isString(data)){
-                data = _.result(_.result(data,'meta',data),'Result',data);
-                var msg_rows = appModel.dict_to_rows(data);
-                var bodyMsg = msg_rows;
-                if (_.isArray(msg_rows) && msg_rows.length > 1){
-                  bodyMsg = _.map(msg_rows, function(msg_row){
-                    return msg_row.join(': ');
-                  }).join('<br>');
-                }
-                var title = 'Upload success, File: "' + file.name + '"';
-                appModel.showModalMessage({
-                  body: bodyMsg,
-                  title: title  
-                });
-              }else{
-                console.log('data should have been parsed as json', data);
-                appModel.showModalMessage({
-                  title: 'data file uploaded',
-                  okText: 'ok',
-                  body: '"' + file.name + '", ' + data
-                });
-              }
               promise.resolveWith(this,arguments); 
             }).fail(function(jqXHR, textStatus, errorThrown){
               promise.rejectWith(this,arguments);
-            })
+            });
           
             return true;
           }

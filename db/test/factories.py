@@ -1,3 +1,5 @@
+from __future__ import unicode_literals 
+
 import factory
 import db.models
 from django.utils.timezone import now
@@ -6,13 +8,11 @@ from factory.fuzzy import FuzzyChoice, FuzzyInteger
 class ScreenFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = db.models.Screen
-    species = 'bacteria' 
     data_sharing_level = 1
-#     facility_id = factory.Sequence(lambda n: str(n))
-    project_phase = "primary_screen"
     screen_type = "small_molecule"
     title = factory.Sequence(lambda n: 'Screen Title_'+ str(n) )
     summary = factory.Sequence(lambda n: 'Screen summary No_'+ str(n) )
+    publishable_protocol = factory.Sequence(lambda n: 'Screen protocol No_'+ str(n) )
 
 class ScreensaverUserFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -22,6 +22,7 @@ class ScreensaverUserFactory(factory.django.DjangoModelFactory):
     first_name = factory.Sequence(lambda n: 'first_'+ str(n) )
     last_name = factory.Sequence(lambda n: 'last_'+ str(n) )
     email = factory.Sequence(lambda n: 'testemail_%d@testemail.com' % n )
+    is_active = True
     
 class LibraryFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -30,6 +31,8 @@ class LibraryFactory(factory.django.DjangoModelFactory):
     short_name = factory.Sequence(lambda n: 'library_'+ str(n) )
     library_name = factory.Sequence(lambda n: 'library_'+ str(n) + '_long' )
     screen_type = 'small_molecule'
+    screening_status = 'allowed'
+    provider = 'test provider'
     solvent = 'dmso'
     library_type = 'commercial'
     start_plate = factory.Sequence(lambda n: str(n*10) )
@@ -48,7 +51,6 @@ class WellFactory(factory.django.DjangoModelFactory):
 
     facility_id = 'HMSL{:0>5d}'.format(FuzzyInteger(0, 16).fuzz())
     library_well_type = FuzzyChoice(['experimental','empty','dmso','library_control','rnai_buffer'])
-#     library = models.ForeignKey(Library)
     
         
 class ReagentFactory(factory.django.DjangoModelFactory):
@@ -104,3 +106,11 @@ M  END'''
 class SubstanceFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = db.models.Substance
+
+class LabAffiliationFactory(factory.Factory):
+
+    category = factory.Sequence(lambda n: 'LAC_'+ str(n) )
+    name = factory.Sequence(lambda n: 'Lab Title '+ str(n) )    
+    ordinal = factory.Sequence(lambda n: n)
+    
+    

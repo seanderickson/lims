@@ -1,5 +1,9 @@
 from __future__ import unicode_literals
 '''
+
+For Testing Use: 
+Copy of django-sabridge implementation.
+
 Based on "django-sabridge" at https://github.com/johnpaulett/django-sabridge
 Copyright (c) 2011, John Paulett
 All rights reserved.

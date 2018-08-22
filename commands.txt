@@ -37,7 +37,45 @@ curl -k --cookie cookiefile  \
 # because the wsgi client does not communicate credentials with the apache server
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
-PYTHONPATH=. python reports/utils/django_requests.py -u sde -f lims/static/production_data/screensaver_users-prod-patch.csv -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/user --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
+
+######
+# Cherry pick request test protocols setup
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f db/static/test_data/screens/test_screen_10.json \
+  -a PATCH https://dev.screensaver2.med.harvard.edu/db/api/v1/screen?override=true \
+  --header "Content-Type: application/json" --header "Accept: application/json"
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f db/static/test_data/screens/test_screen_10_test_cherrypick.json \
+  -a POST https://dev.screensaver2.med.harvard.edu/db/api/v1/cherrypickrequest \
+  --header "Content-Type: application/json" --header "Accept: application/json" > test_cpr_result1.json
+  
+# NOTE: the cherry pick request ID must be determined for this:
+cpr_id=`egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'`
+echo "created cherry pick request: $cpr_id"
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f db/static/test_data/screens/test_screen_10_screener_cherry_picks_for_patch.csv \
+  -a PATCH https://dev.screensaver2.med.harvard.edu/db/api/v1/cherrypickrequest/$cpr_id \
+  --header "Content-Type: text/csv" --header "Accept: application/json"
+
+#####
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f db/static/test_data/screens/test_screen_10.json \
+  -a PATCH http://localhost:8000/db/api/v1/v1/screen?override=true \
+  --header "Content-Type: application/json" --header "Accept: application/json"
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f db/static/test_data/screens/test_screen_10_test_cherrypick.json \
+  -a POST http://localhost:8000/db/api/v1/cherrypickrequest \
+  --header "Content-Type: application/json" --header "Accept: application/json" > test_cpr_result1.json
+  
+# NOTE: the cherry pick request ID must be determined for this:
+cpr_id = egrep '".*cherry_pick_request_id":\s([0-9]+)*' test_cpr_result1.json | grep -Eow '[0-9]+'
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f db/static/test_data/screens/test_screen_10_screener_cherry_picks_for_patch.csv \
+  -a PATCH http://localhost:8000/db/api/v1/cherrypickrequest/$cpr_id \
+  --header "Content-Type: text/csv" --header "Accept: application/json"
 
 
 #####
@@ -67,22 +105,70 @@ curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: app
 
 #####
 # Re-initialize the meta data for the site
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ -f ./reports/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -f ./db/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
 
-# set up default testing users (note, will delete existing users)
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions.csv -U sde
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions_patch.csv -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ \
+  -f ./reports/static/api_init/api_init_actions.csv \
+  -u http://localhost:8000/reports/api/v1 -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
+  -f ./db/static/api_init/api_init_actions.csv \
+  -u http://localhost:8000/reports/api/v1 -U sde
 
-# PATCH-only user updates (usergroups/permissions) on the server:
-PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ \
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ \
+  -f ./reports/static/api_init/api_init_actions.csv \
+  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
+  -f ./db/static/api_init/api_init_actions.csv \
+  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 -U sde
+
+#####
+# Set default testing users (note, will delete existing users)
+# (To be run before User migration)
+PYTHONPATH=. python reports/utils/db_init.py \
+  --input_dir=lims/static/production_data/ \
+  -u http://localhost:8000/reports/api/v1 \
+  -f lims/static/production_data/api_init_actions.csv -U sde
+
+#####
+# PATCH-only default testing users - modify but not delete
+# (To be run after user migration)
+
+# Local 
+PYTHONPATH=. python reports/utils/db_init.py \
+  --input_dir=lims/static/production_data/ \
+  -u http://localhost:8000/reports/api/v1 \
+  -f lims/static/production_data/api_init_actions_patch.csv -U sde
+
+# Local - Just the usergroup assignments
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f lims/static/production_data/screensaver_users-prod-patch.csv \
+  -a PATCH \
+  http://localhost:8000/reports/api/v1/user \
+  --header "Content-Type: text/csv" --header "Accept: text/csv"
+
+# Server
+PYTHONPATH=. python reports/utils/db_init.py \
+  --input_dir=lims/static/production_data/ \
   -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 \
   -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
-# PATCH usergroups
+# Server - Just the usergroup assignments
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -f lims/static/production_data/screensaver_users-prod-patch.csv \
+  -a PATCH \
+  https://dev.screensaver2.med.harvard.edu/reports/api/v1/user \
+  --header "Content-Type: text/csv" --header "Accept: text/csv"
+
+# PATCH-only (Local using curl)
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
   -X PATCH http://localhost:8000/reports/api/v1/usergroup \
   --data-binary @lims/static/production_data/screensaver_usergroups-prod.csv
+# PATCH user-usergroup assignments only
+
+# Add user "sde" to the screensaver_users table 20150831
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
+ -X PATCH http://localhost:8000/db/api/v1/screensaveruser/ \
+ --data-binary @lims/static/production_data/screensaver_users-db-prod.csv 
+
 #####
 # run all tests
 ./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing
@@ -95,14 +181,20 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
 
 #####
 # upload single meta data files
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabulary/ --data-binary @db/static/api_init/vocabulary_data_updates.csv
 
-PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv" -f db/static/api_init/metahash_fields_screen.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" -H "Accept: application/json" --user sde -X PATCH http://localhost:8000/reports/api/v1/resource/ --data-binary @db/static/api_init/metahash_resource_data.csv
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f db/static/api_init/metahash_fields_useragreement.csv -v
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/field/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f db/static/api_init/metahash_fields_screen.csv
+
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/vocabulary/ --header "Content-Type: text/csv" --header "Accept: text/csv" -f reports/static/api_init/vocabulary_data.csv

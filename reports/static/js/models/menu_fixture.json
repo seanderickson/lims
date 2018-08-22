@@ -6,10 +6,13 @@
       "view": "list",
       "submenus": {
         "smallmoleculelibrary":{
-            "view": "list"
+          "view": "list"
         },
         "rnalibrary":{
-            "view": "list"
+          "view": "list"
+        },
+        "all_libraries":{
+          "view": "list"
         }
       }
     },
@@ -40,18 +43,57 @@
     "study": {
       "view": "list"
     },
+    "cherrypickrequest": {
+      "view": "list",
+      "expanded": false,
+      "submenus": {
+        "small_molecule_cprs": {
+          "view": "list"
+        },
+        "rnai_cprs": {
+          "view": "list"
+        }
+      }
+    },
     "reports": {
       "expanded": false,
       "view": "",
       "submenus": {
         "librarycopy": {
-          "view": "list"
+          "view": "list",
+          "expanded": false,
+          "submenus": {
+            "librarycopy_sm_freeze_thaw": {
+              "view": "list"
+            },
+            "librarycopy_sm_min_volume": {
+              "view": "list"
+            }
+          }
         },
         "librarycopyplate": {
-          "view": "list"
+          "view": "list",
+          "expanded": false,
+          "submenus": {
+            "librarycopyplate_sm_freeze_thaw": {
+              "view": "list"
+            },
+            "librarycopyplate_sm_min_vol": {
+              "view": "list"
+            }
+          }
         },
         "copywell": {
-          "view": "list"
+          "view": "list",
+          "expanded": false,
+          "submenus": {
+            "copywell_sm_cpr": {
+              "view": "list"
+            },
+            "copywell_rnai_cpr": {
+              "view": "list"
+            }
+          }          
         },
         "platelocation": {
           "view": "list"
@@ -60,18 +102,42 @@
           "view": "list"
         },
         "reagent":{
-          "view": "list"
+          "view": "list",
+          "expanded": true,
+          "submenus": {
+            "smallmoleculereagent":{
+              "view": "list"
+            },
+            "compound_search": {
+              "view": "list"
+            },
+            "silencingreagent":{
+              "view": "list"
+            }
+          }
         },
-        "cherrypickrequest":{
-          "view": "list"
-        },
-        "cherrypickassayplate":{
+        "labaffiliation": {
           "view": "list"
         },
         "activity":{
-          "view": "list"
+          "view": "",
+          "expanded": false,
+          "submenus": {
+            "activity_service": {
+              "view": "list"
+            },
+            "activity_lab": {
+              "view": "list"
+            },
+            "activity_all": {
+              "view": "list"
+            }
+          }          
         },
         "attachedfile":{
+          "view": "list"
+        },
+        "useragreement":{
           "view": "list"
         }
       }

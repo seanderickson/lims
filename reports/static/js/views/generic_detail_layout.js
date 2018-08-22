@@ -15,6 +15,9 @@ define([
 
   var DetailLayout = Backbone.Layout.extend({
 
+    /**
+     * @param resource - the API resource schema
+     */
     initialize: function(args) {
       console.log('---- initialize detail layout', args);
       this.uriStack = args.uriStack;
@@ -23,9 +26,10 @@ define([
       this.args = args;
       this.DetailView = args.DetailView || DetailView;
       this.EditView = args.EditView || EditView;
-      this.modelSchema = args.modelSchema || this.model.resource;
-      this.modelFields = args.modelFields || this.modelSchema.fields;
+      this.resource = args.resource || this.model.resource;
+      this.modelFields = args.modelFields || this.resource.fields;
       this.title = args.title;
+      
       _.bindAll(this, 'showDetail', 'showEdit');
     },
 
@@ -61,16 +65,16 @@ define([
       return view;
     },
     
-    clickEdit: function(event){
-      event.preventDefault();
+    clickEdit: function(e){
+      e.preventDefault();
       this.reportUriStack(['edit']);
-      this.showEdit('edit');
+      this.showEdit();
     },
 
     showEdit: function() {
       console.log('showEdit: editView: ',EditView);
       var self = this;
-      view = new this.EditView(_.extend({}, self.args, 
+      var view = new this.EditView(_.extend({}, self.args, 
         { 
           model: self.model, 
           uriStack: self.uriStack 
@@ -82,22 +86,24 @@ define([
       });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#detail_content", view ).render();
+      appModel.setPagePending();
       return view;
     },
     
     afterRender: function(){
       if (this.title){
         this.$el.find('#content_title').html(this.title).show();
+        $('#content_title_row').show();
       }
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == 'edit') {
           this.uriStack.push(viewId);
-          this.showEdit(viewId);
+          this.showEdit();
           return;
         }else if (viewId == '+add') {
           this.uriStack.push(viewId);
-          this.showEdit(viewId);
+          this.showEdit();
           return;
         }
       }
@@ -106,25 +112,30 @@ define([
      
     download: function(e){
       e.preventDefault();
+      e.stopPropagation();
       appModel.download(this.model.url, this.model.resource);
     },
 
-    cancel: function(event){
-      event.preventDefault();
+    cancel: function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      appModel.clearPagePending();
       this.showDetail();
     },    
     
-    back: function(event){
-      event.preventDefault();
+    back: function(e){
+      e.preventDefault();
+      e.stopPropagation();
       this.remove();
       appModel.router.back();
     },
 
-    history: function(event) {
-      event.preventDefault();
+    history: function(e) {
+      e.preventDefault();
+      e.stopPropagation();
       var self = this;
       
-      var newUriStack = ['apilog','order','-date_time', 'search'];
+      var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
 
@@ -146,7 +157,7 @@ define([
      * Child view bubble up URI stack change event
      */
     reportUriStack: function(reportedUriStack) {
-      console.log('reportUriStack --- ' );
+      console.log('reportUriStack --- ', reportedUriStack, this.consumedStack);
       var consumedStack = this.consumedStack || [];
       var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );

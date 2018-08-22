@@ -4,7 +4,8 @@ patch,vocabulary,vocabulary_data.csv
 patch,vocabulary,vocabulary_data_generated.csv
 patch,vocabulary,vocabulary_attachedfiletype_data.csv
 patch,vocabulary,vocabulary_checklists_data.csv
-patch,vocabulary,vocabulary_lab_affiliations_data.csv
+patch,vocabulary,vocabulary_data_updates.csv
+patch,field,metahash_fields_labcherrypick.csv
 patch,field,metahash_fields_screensaveruser.csv
 patch,field,metahash_fields_screeningroomuser.csv
 patch,field,metahash_fields_screen.csv
@@ -22,7 +23,7 @@ patch,field,metahash_fields_naturalproductreagent.csv
 patch,field,metahash_fields_copywell.csv
 patch,field,metahash_fields_cherrypickrequest.csv
 patch,field,metahash_fields_cherrypickassayplate.csv
-patch,field,metahash_fields_userchecklistitem.csv
+patch,field,metahash_fields_userchecklist.csv
 patch,field,metahash_fields_attachedfile.csv
 patch,field,metahash_fields_activity.csv
 patch,field,metahash_fields_serviceactivity.csv
@@ -31,3 +32,9 @@ patch,field,metahash_fields_cherrypickscreening.csv
 patch,field,metahash_fields_cplt.csv
 patch,field,metahash_fields_publication.csv
 patch,field,metahash_fields_platelocation.csv
+patch,field,metahash_fields_screenercherrypick.csv
+patch,field,metahash_fields_labaffiliation.csv
+patch,field,metahash_fields_useragreement.csv
+patch,field,metahash_fields_raw_data_transform.csv
+patch,field,metahash_fields_raw_data_input_file.csv
+patch,field,metahash_fields_raw_data_output.csv

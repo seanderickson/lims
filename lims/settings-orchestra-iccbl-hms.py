@@ -12,10 +12,26 @@ except ImportError:
     del sys
     
 # NOTE: the parent settings file defines the PROJECT_ROOT
-print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
+print 'PROJECT_ROOT: ', PROJECT_ROOT
     
-DEBUG = True
+# NOTE THAT DEBUG SHOULD NEVER BE True FOR A PUBLIC FACING INSTALLATION
+# - If debugging is required on the Orchestra server, first disable non-HMS
+# access through the docroot/.htaccess file.
+# (LEAKS environment variables, i.e. database password)
+DEBUG = False
 TEMPLATE_DEBUG = DEBUG
+
+# If not True, then only staff may log in to the system
+# see reports/auth.py
+IS_PRODUCTION_READY = False
+
+# NOTE: SSL may only be enforced on the production server
+# NOTE: the migration app uses insecure HTTP to initialize, 
+# TODO: enable these settings when in production
+if IS_PRODUCTION_READY is True:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 ADMINS = (
     ('Admin', 'admin@email.com'),
@@ -26,11 +42,11 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2', 
+        'ENGINE': 'django.db.backends.postgresql', 
         'NAME': 'devscreensaver2', 
         'USER': 'devscreensaver2web',
         'PASSWORD': '',
-        'HOST': 'dev.pgsql.orchestra:',
+        'HOST': 'dev.pgsql.orchestra',
         'PORT': '',                      # Set to empty string for default.
     },
 }
@@ -50,7 +66,13 @@ if 'SCREENSAVER_PGSQL_SERVER' in environ:
 
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = []
+# NOTE that 'dev.screensaver2.med.harvard.edu' is an alias for
+# 'dev.orchestraweb.med.harvard.edu'
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    'dev.orchestraweb.med.harvard.edu', 
+    'dev.screensaver2.med.harvard.edu']
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
@@ -70,7 +92,7 @@ AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
 # Example: "/var/www/example.com/static/"
-STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', '..', 'docroot', '_static')
+STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', 'docroot', '_static')
 
 # URL prefix for static files.
 # Example: "http://example.com/static/", "http://static.example.com/"
@@ -102,14 +124,60 @@ CACHES = {
             'MAX_ENTRIES': 50000 
         },
     },
-    'screen': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'uniq222#@'
+    'reports_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'reports_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
+    },
+    'resource_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'resource_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
+    },
+    'db_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'db_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
+    },
+    'screen_cache': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'screen_cache',
+        'TIMEOUT': None,
+        'OPTIONS': {
+            'MAX_ENTRIES': 100000,
+        }
     },
 }
 
 # if structure image cache directory is available.  see db.api for details.
 WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
+
+BACKGROUND_PROCESSING = True
+BACKGROUND_PROCESSOR = {
+    'post_data_directory': 
+        os.path.join(PROJECT_ROOT,'background','post_data'),
+    'job_output_directory': 
+        os.path.join(PROJECT_ROOT,'background','job_output'),
+    'credential_file': 
+        os.path.join(PROJECT_ROOT, 'lims/static/production_data/sde_credentials.txt'),
+    'python_environ_script':
+        os.path.join(PROJECT_ROOT, 'run_dev.sh'),
+
+    'sbatch_setings': {
+        'partition': 'short',
+        'time': '00:02:00',
+        'mem': '16G',
+        },
+    }
 
 LOGGING = {
     'version': 1,
@@ -187,12 +255,7 @@ LOGGING = {
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
-        },        
-        'tastypie': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
+        },
     }
 }
 

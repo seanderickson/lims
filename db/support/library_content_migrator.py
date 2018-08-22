@@ -14,6 +14,7 @@ from db.api import SmallMoleculeReagentResource, WellResource, \
     SilencingReagentResource, NaturalProductReagentResource, LibraryResource
 from reports.api import compare_dicts, is_empty_diff
 from reports.models import ApiLog
+from db.migrations import create_log_time
 
 
 logger = logging.getLogger(__name__)
@@ -145,25 +146,28 @@ where r.library_contents_version_id=%s order by well_id;
                 log = ApiLog()
                 if getattr(activity.performed_by, 'ecommons_id', None):
                     log.username = activity.performed_by.ecommons_id
+                    
+                    if log.username == 'dwrobel':
+                        log.username = 'djw11'
+                        log.user_id = 761
+                    
                 if getattr(activity.performed_by, 'user', None):
-                    log.user_id = getattr(activity.performed_by.user, 'id', log.username)
+                    log.user_id = getattr(
+                        activity.performed_by.user, 'id', log.username)
                 if not log.user_id:
                     log.user_id = 1
-                log.date_time = activity.date_created
-#                 log.date_time = make_aware(
-#                     activity.date_created,timezone.get_default_timezone())
                 log.ref_resource_name = self.libraryResource._meta.resource_name
-                # TODO: what action? could also be a REST specifier, i.e. 'PATCH'
-                log.api_action = 'PUT'
-                # store the old type in the catch-all field
-                log.json_field = json.dumps( {
-                    'administrative_activity_type': 
-                    version.library_contents_loading_activity.administrative_activity_type
-                    })
-                log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
-                log.key = '/'.join([str(x) for x in (
-                    self.libraryResource.get_id(model_to_dict(library)).values()) ])
-#                 log.diff_keys = json.dumps(['version_number'])
+                log.api_action = 'PATCH'
+                log.json_field = {
+                    'migration': 'Library (contents)',
+                    'data': { 
+                        'library_contents_version.activity_id': 
+                            activity.activity_id,
+                    }
+                }
+                log.key = library.short_name
+                log.uri = '/'.join(['library',log.key])
+                log.date_time = create_log_time(log.key, activity.date_of_activity)
                 log.diffs = {
                     'version_number': [
                         prev_version.version_number if prev_version else 0, 
@@ -172,7 +176,8 @@ where r.library_contents_version_id=%s order by well_id;
                 log.comment = activity.comments
                 log.save()
                 if prev_version:
-                    self.diff_library_wells(schema_editor,library, prev_version, version, log)            
+                    self.diff_library_wells(
+                        schema_editor,library, prev_version, version, log)            
 
                 prev_version = version
                 
@@ -190,12 +195,14 @@ where r.library_contents_version_id=%s order by well_id;
     
         print 'processed: ', i, 'libraries'
 
-    def diff_library_wells(self, schema_editor,library, version1, version2, parent_log):
+    def diff_library_wells(
+        self, schema_editor,library, version1, version2, parent_log):
         
         connection = schema_editor.connection
         
         screen_type = library.screen_type;
-        logger.info('processing library: %r, screen type: %r, versions: %r, exp wells: %d ',
+        logger.info(
+            'processing library: %r, screen type: %r, versions: %r, exp wells: %d ',
             library.short_name, library.screen_type, [version1, version2],
             library.experimental_well_count)
         i = 0
@@ -230,13 +237,16 @@ where r.library_contents_version_id=%s order by well_id;
                     if new_row:
                         prev_well = dict(zip(keys,row))
                         new_well = dict(zip(keys,new_row))
-                        log = self.create_well_log(version, prev_well, new_well, parent_log)
+                        log = self.create_well_log(
+                            version, prev_well, new_well, parent_log)
                         if log:
                             if log.diffs:
-                                cumulative_diff_keys.update(set(log.diffs.keys()))
+                                cumulative_diff_keys.update(
+                                    set(log.diffs.keys()))
                             i += 1
                     else:
-                        logger.error('no new well/reagent entry found for %r', key)
+                        logger.error(
+                            'no new well/reagent entry found for %r', key)
                     if i>0 and i % 1000 == 0:
                         logger.info(
                             '===created logs for %s: %r-%r, %d', 
@@ -244,12 +254,6 @@ where r.library_contents_version_id=%s order by well_id;
             else:
                 prev_well_map = well_map
             
-            comment = parent_log.comment
-            if not comment or len(comment)==0:
-                comment = ''
-            else:
-                comment += ': '
-            parent_log.comment = comment + json.dumps(list(cumulative_diff_keys))
             parent_log.save()
         logger.info('===created %d logs for %r, %r', 
             i, library.short_name, parent_log.comment)
@@ -262,27 +266,31 @@ where r.library_contents_version_id=%s order by well_id;
         if is_empty_diff(difflog):
             return None
         
-        activity = version.library_contents_loading_activity.activity
         log = ApiLog()
         
-        if getattr(activity.performed_by, 'ecommons_id', None):
-            log.username = activity.performed_by.ecommons_id
+        if parent_log:
+            log.username = parent_log.username
+            log.user_id = parent_log.user_id
+            log.comment = parent_log.comment
+            log.date_time = parent_log.date_time
         else:
-            log.username = 'sde'
-            
-        if getattr(activity.performed_by, 'login_id', None):
-            log.username = activity.performed_by.login_id
-        # FIXME
-        log.user_id = 1
+            activity = version.library_contents_loading_activity.activity
+            if getattr(activity.performed_by, 'ecommons_id', None):
+                log.username = activity.performed_by.ecommons_id
+            else:
+                log.username = 'sde'
+                
+            if getattr(activity.performed_by, 'login_id', None):
+                log.username = activity.performed_by.login_id
+            # FIXME
+            log.user_id = 1
         
-#         log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
-        log.date_time = activity.date_created
+            log.date_time = activity.date_of_activity
+
         log.ref_resource_name = self.wellResource._meta.resource_name
-        # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
-        log.api_action = 'MIGRATION'
+        log.api_action = 'PATCH'
         log.key = prev_dict['well_id']
         log.uri = '/db/api/v1/well/'+log.key 
-#         log.diff_dict_to_api_log(difflog)
         log.diffs = difflog
         log.json_field = json.dumps({
             'version': version.version_number })

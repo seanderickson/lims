@@ -13,8 +13,8 @@ import sys, os
 from urlparse import urlparse
 
 import requests
+import django_requests
 
-from django_requests import get_logged_in_session
 import reports.serialize.csvutils as csvutils
 from reports.utils import parse_credentials
 
@@ -154,9 +154,7 @@ if __name__ == "__main__":
         log_level = logging.INFO
     elif args.verbose >= 2:
         log_level = logging.DEBUG
-        DEBUG=True
-	from reports.utils.django_requests import DEBUG as DJANGO_REQUESTS_DEBUG
-	DJANGO_REQUESTS_DEBUG=True
+        django_requests.DEBUG = True
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
@@ -184,7 +182,7 @@ if __name__ == "__main__":
     headers ={}
 
     logger.info('begin processing file: %r', args.input_actions_file)
-    session = get_logged_in_session(
+    session = django_requests.get_logged_in_session(
         username, password, base_url)
     # django session based auth requires a csrf token
     headers['X-CSRFToken'] = session.cookies['csrftoken']

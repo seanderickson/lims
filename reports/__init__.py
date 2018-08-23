@@ -97,6 +97,21 @@ class ParseError(ValidationError):
 class BadRequestError(ValidationError):
     pass
 
+class MissingParam(ValidationError):
+    
+    def __init__(self, param_name):
+        ValidationError.__init__(key=param_name, msg='required')
+        
+class ApiNotImplemented(ValidationError):
+
+    def __init__(self, resource_name, method_name, errors=None):
+        
+        errors = errors or {}
+        errors.setdefault('message','API is not implemented')
+        errors['resource_name'] = resource_name
+        errors['method_name'] = method_name
+        ValidationError.__init__(self, errors=errors)
+
 class BackgroundJobImmediateResponse(Exception):
     
     def __init__(self, httpresponse):

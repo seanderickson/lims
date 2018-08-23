@@ -75,7 +75,8 @@ from db.support.plate_matrix_transformer import Collation
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from lims.app_data import APP_PUBLIC_DATA
-from reports import BadRequestError, ValidationError, InformationError, _now
+from reports import BadRequestError, ValidationError, InformationError, \
+    ApiNotImplemented, MissingParam, _now
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
@@ -272,7 +273,7 @@ class DbApiResource(reports.api.ApiResource):
             logger.debug('The well_query_index table exists')
             return
         except Exception as e:
-            logger.exception('creating the well_query_index table')
+            logger.info('creating the well_query_index table...')
        
         try:
             conn.execute(text(
@@ -782,7 +783,7 @@ class PlateLocationResource(DbApiResource):
             raise e   
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_detail must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
 
     @write_authorization
     @un_cache  
@@ -1529,11 +1530,13 @@ class LibraryCopyPlateResource(DbApiResource):
          **kwargs):    
         
         if screen_facility_id is None and library_screening_id is None:
-            raise NotImplementedError(
-                'must provide a "screen_facility_id" or "library_screening_id"')
+            msg = 'must provide a "screen_facility_id" or "library_screening_id"'
+            raise BadRequestError({
+                'screen_facility_id': msg, 'library_screening_id': msg})
         if screen_facility_id is not None and library_screening_id is not None:
-            raise NotImplementedError(
-                'must provide either a "screen_facility_id" or "library_screening_id"')
+            msg = 'must provide a "screen_facility_id" or "library_screening_id"'
+            raise BadRequestError({
+                'screen_facility_id': msg, 'library_screening_id': msg})
         if screen_facility_id is not None:
             if self.get_screen_resource()._meta.authorization\
                 .has_screen_read_authorization(
@@ -1883,8 +1886,10 @@ class LibraryCopyPlateResource(DbApiResource):
         if len(filter(lambda x: x is not None, 
             [cherry_pick_request_id, for_screen_facility_id, 
                 library_screening_id, plate_ids, plate_search_data]))>1:
-            raise NotImplementedError('Mutually exclusive params: %r'
-                % ['cherry_pick_request_id', 'for_screen_facility_id', 
+            raise BadRequestError(
+                key='filters', 
+                msg='Mutually exclusive params: %r'
+                    % ['cherry_pick_request_id', 'for_screen_facility_id', 
                     'library_screening_id', 'plate_ids','plate_search_data'])
             
         log_key = '/'.join(str(x) if x is not None else '%' 
@@ -2847,7 +2852,7 @@ class UserAgreementResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def post_list(self, request, schema=None, **kwargs):
-        raise NotImplementedError
+        raise ApiNotImplemented(self._meta.resource_name, 'post_list')
 
     @write_authorization
     @un_cache        
@@ -2893,11 +2898,11 @@ class UserAgreementResource(DbApiResource):
         username = deserialized.pop('username', None)
         screensaver_user_id = deserialized.pop('screensaver_user_id', None)
         if username is None and screensaver_user_id is None:
-            raise NotImplementedError(
-                'must provide a screensaver_user_id or username parameter')
+            msg = 'must provide a screensaver_user_id or username parameter'
+            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
         if username is not None and screensaver_user_id is not None:
-            raise NotImplementedError(
-                'must provide either a screensaver_user_id or username parameter')
+            msg = 'must provide a screensaver_user_id or username parameter'
+            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
         if username is not None:
             su = ScreensaverUser.objects.get(username=username)
             screensaver_user_id = su.screensaver_user_id
@@ -3715,8 +3720,7 @@ class ScreenResultAuthorization(ScreenAuthorization):
             return True
         else:
             if not screen_facility_id:
-                raise NotImplementedError(
-                    'must provide a screen_facility_id parameter')
+                raise MissingParam('screen_facility_id')
             try:
                 screen = Screen.objects.get(facility_id=screen_facility_id)
 
@@ -4001,12 +4005,11 @@ class ScreenResultResource(DbApiResource):
 
         facility_id = kwargs.get('screen_facility_id', None)
         if not facility_id:
-            raise NotImplementedError(
-                'must provide a screen_facility_id parameter')
+            raise MissingParam('screen_facility_id')
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -4627,8 +4630,7 @@ class ScreenResultResource(DbApiResource):
         screen_facility_id = param_hash.pop('screen_facility_id', None)
         extra_params['Screen'] = screen_facility_id
         if not screen_facility_id:
-            raise NotImplementedError(
-                'must provide a screen_facility_id parameter')
+            raise MissingParam('screen_facility_id')
             
         well_id = param_hash.pop('well_id', None)
         if well_id:
@@ -6041,8 +6043,7 @@ class DataColumnResource(DbApiResource):
 
         data_column_id = kwargs.get('data_column_id', None)
         if not data_column_id:
-            logger.info('no data_column_id provided')
-            raise NotImplementedError('must provide a data_column_id parameter')
+            raise MissingParam('data_column_id')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -6342,7 +6343,7 @@ class DataColumnResource(DbApiResource):
     def patch_detail(self, request, **kwargs):
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
         # that the DataColumn may be patched external from the Screen Result
-        raise NotImplementedError
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
     @un_cache
@@ -6350,7 +6351,7 @@ class DataColumnResource(DbApiResource):
     def patch_list(self, request, **kwargs):
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
         # that the DataColumn may be patched external from the Screen Result
-        raise NotImplementedError
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     @write_authorization
     @transaction.atomic    
@@ -6475,11 +6476,11 @@ class CopyWellResource(DbApiResource):
          
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
-            raise NotImplementedError('must provide a copy_name parameter')
+            raise MissingParam('copy_name')
         
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -6688,13 +6689,13 @@ class CopyWellResource(DbApiResource):
             raise e  
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
     @write_authorization
     @un_cache        
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('delete_obj is not implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
     
     @write_authorization
     @transaction.atomic
@@ -7662,7 +7663,7 @@ class CherryPickRequestResource(DbApiResource):
 
         cpr_id = kwargs.get('cherry_pick_request_id', None)
         if not cpr_id:
-            raise NotImplementedError('must provide a cherry_pick_request_id parameter')
+            raise MissingParam('cherry_pick_request_id')
         
         self.is_authenticated(request)
 
@@ -7673,7 +7674,7 @@ class CherryPickRequestResource(DbApiResource):
             raise PermissionDenied
         
         if request.method.lower() != 'get':
-            raise NotImplementedError()
+            raise ApiNotImplemented(self._meta.resource_name, '[method]_cpr_warnings')
         
         warnings = self.get_warnings(cpr_id)
         
@@ -9602,7 +9603,7 @@ class ScreenerCherryPickResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def post_list(self, request, schema=None, **kwargs):
-        raise NotImplementedError()
+        raise ApiNotImplemented(self._meta.resource_name, 'post_list')
     
 
     @write_authorization
@@ -11256,12 +11257,10 @@ class CherryPickPlateResource(DbApiResource):
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if not cherry_pick_request_id:
-            raise NotImplementedError(
-                'must provide a cherry_pick_request_id parameter')
+            raise MissingParam('cherry_pick_request_id')
         plate_ordinal = kwargs.get('plate_ordinal', None)
         if not plate_ordinal:
-            raise NotImplementedError(
-                'must provide a plate_ordinal parameter')
+            raise MissingParam('plate_ordinal')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -11719,14 +11718,12 @@ class LibraryCopyResource(DbApiResource):
     @read_authorization
     def get_detail(self, request, **kwargs):
 
-        library_short_name = kwargs.get(u'library_short_name', None)
+        library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
-            raise NotImplementedError(
-                'must provide a library_short_name parameter')
+            raise MissingParam('library_short_name')
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
-            raise NotImplementedError(
-                'must provide a copy "copy_name" parameter')
+            raise MissingParam('copy_name')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -11990,7 +11987,7 @@ class LibraryCopyResource(DbApiResource):
             raise e   
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
     @write_authorization
     @un_cache
@@ -12262,8 +12259,7 @@ class PublicationResource(DbApiResource):
 
         publication_id = kwargs.get('publication_id', None)
         if not publication_id:
-            raise NotImplementedError(
-                'must provide a publication_id parameter')
+            raise MissingParam('publication_id')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -12379,20 +12375,16 @@ class PublicationResource(DbApiResource):
             use_caching=True)
              
     def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_list')
     
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
     @un_cache        
@@ -12540,7 +12532,7 @@ class PublicationResource(DbApiResource):
     
         publication_id = kwargs.get('publication_id', None)
         if not publication_id:
-            NotImplementedError('must provide a publication_id parameter')
+            raise MissingParam('publication_id')
         
         publication = Publication.objects.get(publication_id=publication_id)
 
@@ -12683,20 +12675,16 @@ class AttachedFileResource(DbApiResource):
         ] 
         
     def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_list')
     
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     def log_to_screen(self, screen, af, request, is_delete=False):
         '''
@@ -12914,7 +12902,7 @@ class AttachedFileResource(DbApiResource):
             raise Exception('schema not initialized')
         attached_file_id = kwargs.pop('attached_file_id', None)
         if not attached_file_id:
-            NotImplementedError('must provide a attached_file_id parameter')
+            raise MissingParam('attached_file_id')
         
         af = AttachedFile.objects.get(attached_file_id=attached_file_id)
         
@@ -12959,8 +12947,7 @@ class AttachedFileResource(DbApiResource):
 
         attached_file_id = kwargs.get('attached_file_id', None)
         if not attached_file_id:
-            raise NotImplementedError(
-                'must provide a attached_file_id parameter')
+            raise MissingParam('attached_file_id')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -14097,8 +14084,7 @@ class LibraryScreeningResource(ActivityResource):
             'hide_existing','boolean')    
         
         if not facility_id:
-            raise NotImplementedError(
-                'must provide facility_id')
+            raise MissingParam('facility_id')
         if self.get_screen_resource()._meta.authorization\
             .has_screen_read_authorization(request.user, facility_id) is False:
             raise PermissionDenied
@@ -14907,7 +14893,7 @@ class LibraryScreeningResource(ActivityResource):
             raise e  
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_detail must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def validate(self, _dict, patch=False, schema=None):
 
@@ -15715,8 +15701,10 @@ class LibraryScreeningResource(ActivityResource):
     @transaction.atomic    
     def delete_obj(self, request, deserialized, log=None, **kwargs):
         
-        raise NotImplementedError(
-            'Library Screening may not be deleted - remove plates to negate')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list', { 
+            'message': 
+                'Library Screening may not be deleted - remove plates to negate'
+        })
         #         
         #         if log is None:
         #             raise ProgrammingError('log must be set: %r', kwargs)
@@ -16001,20 +15989,16 @@ class RawDataTransformerResource(DbApiResource):
             raise e  
 
     def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_list')
     
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
     @transaction.atomic
@@ -17160,7 +17144,7 @@ class ScreenResource(DbApiResource):
         
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
-            raise NotImplementedError('must provide a facility_id parameter')
+            raise MissingParam('facility_id')
         
         self.is_authenticated(request)
 
@@ -17331,7 +17315,7 @@ class ScreenResource(DbApiResource):
     def get_detail(self, request, **kwargs):
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
-            raise NotImplementedError('must provide a facility_id parameter')
+            raise MissingParam('facility_id')
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -19266,7 +19250,7 @@ class UserChecklistResource(DbApiResource):
 
         name = kwargs.get('name', None)
         if not name:
-            raise NotImplementedError('must provide a name parameter')
+            raise MissingParam('name')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -19457,8 +19441,7 @@ class UserChecklistResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError(
-            'delete obj is not implemented for UserChecklist')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
 
     @write_authorization
     @transaction.atomic()
@@ -19983,11 +19966,8 @@ class ScreensaverUserResource(DbApiResource):
         username = kwargs.get('username', None)
         ecommons_id = kwargs.get('ecommons_id', None)
         if screensaver_user_id is None and username is None and ecommons_id is None:
-            logger.info(
-                'no screensaver_user_id, username or ecommons_id provided: %r', 
-                kwargs.keys())
-            raise NotImplementedError(
-                'must provide a screensaver_user_id or username parameter')
+            msg = 'must provide a screensaver_user_id or username parameter'
+            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -20249,7 +20229,7 @@ class ScreensaverUserResource(DbApiResource):
             use_caching=True)
         
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
     @write_authorization
     @un_cache        
@@ -20508,7 +20488,8 @@ class ScreensaverUserResource(DbApiResource):
                         screensaver_user_id=lab_head_id)
                     if lab_head.classification != PI_ROLE:
                         raise ValidationError(
-                            'Chosen lab head "user.classification must be %r '
+                            key=key,
+                            msg = 'Chosen lab head "user.classification must be %r '
                             % PI_ROLE)
                 except ObjectDoesNotExist, e:
                     raise ValidationError(
@@ -20521,7 +20502,7 @@ class ScreensaverUserResource(DbApiResource):
                 if classification == PI_ROLE:
                     if lab_head_id is not None:
                         raise ValidationError(
-                            key='lab_head_id',
+                            key=key,
                             msg='Classification may not be % for lab member'
                                 % PI_ROLE)
                 elif screensaver_user.classification == PI_ROLE:
@@ -21035,7 +21016,7 @@ class ReagentResource(DbApiResource):
     
         well_id = kwargs.pop('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
                 
         well_kwargs = {
             'exact_fields':  ['other_wells_with_reagent'],
@@ -21224,7 +21205,7 @@ class ReagentResource(DbApiResource):
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         try:
             well = Well.objects.get(well_id=well_id)
@@ -21495,7 +21476,7 @@ class ReagentResource(DbApiResource):
         # substance_id = kwargs.get('substance_id')
         well_id = kwargs.get('well_id')
         if well_id is None: # and substance_id is None:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         logger.info('visibilities: %r', kwargs['visibilities'])
@@ -22383,9 +22364,9 @@ class SilencingReagentResource(ReagentResource):
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         # NOTE: patching will only be done in batch, from library/well
-        raise NotImplementedError
-
+ 
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
         - deserialized has been loaded with the well & duplex wells
@@ -22652,9 +22633,8 @@ class SmallMoleculeReagentResource(ReagentResource):
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         # NOTE: patching will only be done in batch, from library/well
-        raise NotImplementedError
-
     
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
@@ -22823,8 +22803,8 @@ class NaturalProductReagentResource(ReagentResource):
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         # NOTE: patching will only be done in batch, from library/well
-        raise NotImplementedError
 
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
@@ -22958,7 +22938,7 @@ class WellResource(DbApiResource):
         '''
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
         
         final_data = self.get_generic_reagent_resource().get_annotations(well_id)
         
@@ -22977,7 +22957,7 @@ class WellResource(DbApiResource):
         
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
         
         data = self.get_generic_reagent_resource().get_duplex_data(request, well_id)
                 
@@ -23042,7 +23022,7 @@ class WellResource(DbApiResource):
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -23773,7 +23753,7 @@ class WellResource(DbApiResource):
 
     def patch_obj(self, request, deserialized, **kwargs):
         
-        raise NotImplementedError('patch obj must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         
     @classmethod
     def create_vendor_compound_name_base_query(cls, well_search_data):
@@ -24290,7 +24270,7 @@ class LibraryResource(DbApiResource):
 
         library_short_name = kwargs.pop('short_name', None)
         if not library_short_name:
-            raise NotImplementedError('must provide a short_name parameter')
+            raise MissingParam('library_short_name')
         else:
             kwargs['short_name__eq'] = library_short_name
 

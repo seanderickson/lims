@@ -46,8 +46,8 @@ from db.support import lims_utils
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError, API_RESULT_ERROR
-from reports import ValidationError, BadRequestError, \
-    BackgroundJobImmediateResponse, _now
+from reports import ValidationError, BadRequestError, ApiNotImplemented, \
+    MissingParam, BackgroundJobImmediateResponse, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization, \
     MultiAuthentication, IccblSessionAuthentication, IccblBasicAuthentication, \
     TRAILING_SLASH
@@ -645,20 +645,14 @@ class ApiResource(SqlAlchemyResource):
 
     @read_authorization
     def get_detail(self, request, **kwargs):
-        raise NotImplemented(
-            'get_detail must be implemented for resource: %r' 
-            % self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'get_detail')
     
     @read_authorization
     def get_list(self, request, **kwargs):
-        raise NotImplemented(
-            'get_list must be implemented for resource: %r' 
-            % self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'get_list')
         
     def build_list_response(self,request, **kwargs):
-        raise NotImplemented(
-            'build_list_response must be implemented for the SqlAlchemyResource: %r' 
-            % self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'build_list_response')
 
     def _get_list_response(self,request,**kwargs):
         '''
@@ -890,9 +884,9 @@ class ApiResource(SqlAlchemyResource):
         keys = keystring.strip('/').split('/')
         logger.debug('keys: %r, id_attribute: %r', keys, id_attribute)
         if len(keys) < len(id_attribute):
-            raise NotImplementedError(
-                'resource uri %r does not contain all id attributes: %r'
-                % (resource_uri,id_attribute))
+            raise BadRequestError({
+                'resource uri': '%r does not contain all id attributes: %r'
+                % (resource_uri,id_attribute)})
         else:
             return dict(zip(id_attribute,keys))
 
@@ -906,7 +900,6 @@ class ApiResource(SqlAlchemyResource):
         if not deserialized or not isinstance(deserialized, dict):
             logger.warn('no deserialized data found')
             return {}
-#             raise ValidationError(key='deserialized', msg='No detail data found')
                
         errors = {}
         mutable_fields = fields        
@@ -968,8 +961,7 @@ class ApiResource(SqlAlchemyResource):
         DEBUG_SEARCH = False or logger.isEnabledFor(logging.DEBUG)
          
         if SCHEMA.API_PARAM_COMPLEX_SEARCH_ID not in kwargs:
-            raise BadRequestError({
-                SCHEMA.API_PARAM_COMPLEX_SEARCH_ID: 'required' })
+            raise MissingParam(SCHEMA.API_PARAM_COMPLEX_SEARCH_ID)
         search_ID = kwargs[SCHEMA.API_PARAM_COMPLEX_SEARCH_ID]
          
         all_params = self._convert_request_to_dict(request)
@@ -1628,7 +1620,7 @@ class ApiResource(SqlAlchemyResource):
         # and then posted/patched
         
         # TODO: if put_detail is used: rework based on post_detail
-        raise NotImplementedError('put_detail must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
         # schema = kwargs.pop('schema', None)
         # if not schema:
@@ -1695,9 +1687,7 @@ class ApiResource(SqlAlchemyResource):
     @un_cache 
     @transaction.atomic       
     def delete_list(self, request, **kwargs):
-        msg = 'delete_list is not implemented for %s' % self._meta.resource_name
-        logger.info(msg)
-        raise NotImplementedError(msg)
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_list')
 
     @write_authorization
     @un_cache 
@@ -1755,12 +1745,12 @@ class ApiResource(SqlAlchemyResource):
 #     @un_cache        
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('delete obj must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
     
     @write_authorization
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('patch obj must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
 
     def validate(self, _dict, patch=False, schema=None, fields=None):
         '''
@@ -2339,23 +2329,18 @@ class ApiLogResource(ApiResource):
         id = kwargs.get('id', None)
         if id:
             return self.build_list_response(request, **kwargs)
-#             return self.get_list(request, **kwargs)
             
         ref_resource_name = kwargs.get('ref_resource_name', None)
         if not ref_resource_name:
-            logger.info('no ref_resource_name provided')
-            raise NotImplementedError(
-                'must provide a ref_resource_name parameter')
+            raise MissingParam('ref_resource_name')
         
         key = kwargs.get('key', None)
         if not key:
-            logger.info('no key provided')
-            raise NotImplementedError('must provide a key parameter')
+            raise MissingParam('key')
         
         date_time = kwargs.get('date_time', None)
         if not date_time:
-            logger.info('no date_time provided')
-            raise NotImplementedError('must provide a date_time parameter')
+            raise MissingParam('date_time')
 
         return self.build_list_response(request, **kwargs)
         
@@ -2601,7 +2586,7 @@ class ApiLogResource(ApiResource):
                                 .where(expression)))
                         break
             if 'diffs' in filter_hash:
-                raise NotImplementedError('Diff filtering is not implemented')
+                raise BadRequestError(key='diffs', msg='filtering is not implemented')
             
                 
             # general setup
@@ -2984,7 +2969,6 @@ class FieldResource(ApiResource):
         ''' Internal callers - build the schema.fields hash
         '''
         
-        logger.info('build_fields for scopes: %r', scopes)
         if not scopes:
             scopes = MetaHash.objects.all()\
                 .filter(scope__icontains='fields.')\
@@ -2993,9 +2977,12 @@ class FieldResource(ApiResource):
                 # bootstrap case
                 scopes = ['fields.field',]
 
+        scopes = set(scopes)
+        logger.info('build_fields for scopes: %r', scopes)
+
         fields = {}
         field_key = '{scope}/{key}'
-        for scope in set(scopes):
+        for scope in scopes:
             logger.debug('build scope: %r', scope)
             field_hash = deepcopy(
                 MetaHash.objects.get_and_parse(
@@ -3646,12 +3633,11 @@ class VocabularyResource(ApiResource):
     def get_detail(self, request, **kwargs):
         key = kwargs.get('key', None)
         if not key:
-            raise NotImplementedError('must provide a key parameter')
+            raise MissingParam('key')
         
         scope = kwargs.get('scope', None)
         if not scope:
-            logger.info('no scope provided')
-            raise NotImplementedError('must provide a scope parameter')
+            raise MissingParam('scope')
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
@@ -4325,7 +4311,7 @@ class UserResource(ApiResource):
 
         username = kwargs.get('username', None)
         if not username:
-            raise NotImplementedError('must provide a username parameter')
+            raise MissingParam('username')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
@@ -4972,9 +4958,8 @@ class UserGroupResource(ApiResource):
 
         name = kwargs.get('name', None)
         if not name:
-            logger.info('no group name provided')
-            raise NotImplementedError('must provide a group name parameter')
-
+            raise MissingParam('name')
+        
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -5376,14 +5361,10 @@ class PermissionResource(ApiResource):
     @read_authorization
     def get_detail(self, request, **kwargs):
 
-        scope = kwargs.get('scope', None)
-        if not scope:
-            logger.info('no scope provided')
-            raise NotImplementedError('must provide a scope parameter')
-        key = kwargs.get('key', None)
-        if not key:
-            logger.info('no key provided')
-            raise NotImplementedError('must provide a key parameter')
+        if not kwargs.get('scope'):
+            raise MissingParam('scope')
+        if not kwargs.get('key'):
+            raise MissingParam('key')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -5513,10 +5494,10 @@ class PermissionResource(ApiResource):
             raise e  
 
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('delete obj is not implemented for Permission')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
     
     def patch_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('patch obj is not implemented for Permission')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
     
 
 class JobResourceAuthorization(UserGroupAuthorization):

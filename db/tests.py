@@ -337,7 +337,8 @@ class DBResourceTestCase(IResourceTestCase):
         
         return(library_screening_output, meta)
         
-    def create_screen(self, data=None, uri_params=None, resource_uri=None):
+    def create_screen(self, data=None, uri_params=None, resource_uri=None,
+        data_for_get=None):
         ''' Create a test Screen through the API'''
         
         input_data = ScreenFactory.attributes()
@@ -346,29 +347,34 @@ class DBResourceTestCase(IResourceTestCase):
         
         if data:
             input_data.update(data)
-        if 'lab_head_id' not in input_data:
+        if not set(['lab_head_id','lab_head_username']) & set(input_data.keys()):
             lab_head = self.create_lab_head()
             input_data['lab_head_id'] = str(lab_head['screensaver_user_id'])
-        user_input_data = { 'lab_head_id': input_data['lab_head_id'] }
-        if 'lead_screener_id' not in input_data:
+        
+        if 'lab_head_id' in input_data:
+            user_input_data = { 'lab_head_id': str(input_data['lab_head_id']) }
+        elif 'lab_head_username' in input_data:
+            user_input_data = { 'lab_head_username': input_data['lab_head_username'] }
+            
+        if not set(['lead_screener_id','lead_screener_username']) & set(input_data.keys()):
             lead_screener = self.create_screening_user(user_input_data)
             input_data['lead_screener_id'] = str(lead_screener['screensaver_user_id'])
-        if 'collaborator_ids' not in input_data:
+        if not set(['collaborator_ids','collaborator_usernames']) & set(input_data.keys()):
             collaborator1 = self.create_screening_user(user_input_data)
             collaborator2 = self.create_screening_user(user_input_data)
             input_data['collaborator_ids'] = [
                 collaborator1['screensaver_user_id'], collaborator2['screensaver_user_id']]
-        input_data['collaborator_ids'] = [ 
-            str(x) for x in input_data['collaborator_ids']]
+        if 'collaborator_ids' in input_data:
+            # convert ids to strings for testing
+            input_data['collaborator_ids'] = [ 
+                str(x) for x in input_data['collaborator_ids']]
+
         if resource_uri is None:
             resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         
         if uri_params is not None:
             resource_uri += '?' + '&'.join(uri_params)
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*'
-        }
+
         logger.info('screen input_data to create: %r', input_data)
         logger.info('post to %r...', resource_uri)
         resp = self.api_client.post(
@@ -382,8 +388,9 @@ class DBResourceTestCase(IResourceTestCase):
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEqual(len(new_obj[API_RESULT_DATA]), 1)        
         new_obj = new_obj[API_RESULT_DATA][0]
-        new_obj = self.get_screen(new_obj['facility_id'])  
-        logger.debug('screen created: %r', new_obj)
+        
+        new_obj = self.get_screen(
+            new_obj['facility_id'], data_for_get=data_for_get)  
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
         self.assertTrue(result, msg)
         return new_obj
@@ -447,7 +454,7 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('create user: %r', input_data)
         return self._create_resource(input_data,resource_uri,test_uri)
     
-    def create_lab_head(self, data=None):
+    def create_lab_head(self, data=None, data_for_get=None):
         lab_affiliation = self.create_lab_affiliation()
 
         input_data = ScreensaverUserFactory.attributes()
@@ -455,28 +462,27 @@ class DBResourceTestCase(IResourceTestCase):
             input_data.update(data)
 
         input_data['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
-#         input_data['classification'] = VOCAB_USER_CLASSIFICATION_PI
         input_data['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
 
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         test_uri = '/'.join([resource_uri,input_data['username']])
         logger.info('create user: %r', input_data)
-        new_lab_head = self._create_resource(input_data,resource_uri,test_uri)
+        new_lab_head = self._create_resource(
+            input_data,resource_uri,test_uri, data_for_get=data_for_get)
         
         self.assertEqual(
             new_lab_head['screensaver_user_id'], new_lab_head['lab_head_id'])
         return new_lab_head
         
-    def create_screening_user(self, data=None):
+    def create_screening_user(self, data=None, data_for_get=None):
         input_data = ScreensaverUserFactory.attributes()
         if data:
             input_data.update(data)
-        if 'lab_head_id' not in input_data:
-            raise ProgrammingError('lab_head_id is required')
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         test_uri = '/'.join([resource_uri,input_data['username']])
         logger.info('create screening user: %r', input_data)
-        return self._create_resource(input_data,resource_uri,test_uri)
+        return self._create_resource(input_data,resource_uri,test_uri,
+            data_for_get=data_for_get)
     
     def set_screening_user_data_sharing_level(
         self, screensaver_user_id, type, data_sharing_level, date_active=None,
@@ -5189,18 +5195,44 @@ class ScreenResource(DBResourceTestCase):
                 'key %r, val: %r not expected: %r' 
                     % (key, value, screen_item[key]))
         logger.debug('screen created: %r', screen_item)
+        
 
-    def test1a_create_screen_with_facility_id_override(self):
+    def test1a_create_screen_using_natural_keys(self):
+        '''
+        Create screen and relationships between:
+            screen->lab_head
+            screen->lead_screener
+            screen->collaborators
+        - using an arbitrary facility_id and the username "natural key" for 
+        the screensaver_users.
+        '''
+        logger.info('test1a_create_screen_using_natural_keys...')        
 
-        logger.info('test1_create_screen...')        
+        lab_head = self.create_lab_head()
+        user_input_data = { 'lab_head_username': lab_head['username'] }
+        data_for_get={ 'includes': [
+            'lab_head_username','lead_screener_username',
+            'collaborator_usernames','*'] }
+        lead_screener = self.create_screening_user(
+            user_input_data, data_for_get=data_for_get)
+        collaborator1 = self.create_screening_user(
+            user_input_data, data_for_get=data_for_get)
+        collaborator2 = self.create_screening_user(
+            user_input_data, data_for_get=data_for_get)
+
         data = {
             SCREEN_TYPE: 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
             'species': 'bacteria',
-            'facility_id': '10'
+            'facility_id': '10',
+            'lab_head_username': lab_head['username'],
+            'lead_screener_username': lead_screener['username'],
+            'collaborator_usernames': [
+                collaborator1['username'], collaborator2['username']],
         }
         screen_item = self.create_screen(
-            data=data, uri_params=['%s=true' % API_PARAM_OVERRIDE,])
+            data=data, uri_params=['%s=true' % API_PARAM_OVERRIDE,],
+            data_for_get=data_for_get )
         
         self.assertEqual(
             screen_item['facility_id'],data['facility_id'])
@@ -10005,6 +10037,68 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             user1_input_data2['username'], user1_output_data2['username'])
 
+    def test3a_create_lab_head_using_natural_keys(self):
+        '''
+        Create relationships between lab_head->lab_affiliation and 
+        lab_member->lab_head using the natural keys:
+        lab_affiliation: name
+        lab_head: lab_head_username
+        '''
+        lab_affiliation = self.create_lab_affiliation()
+
+        input_data = ScreensaverUserFactory.attributes()
+
+        input_data['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
+        input_data['lab_affiliation_name'] = lab_affiliation['name']
+
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+        test_uri = '/'.join([resource_uri,input_data['username']])
+        logger.info('create user: %r', input_data)
+        lab_head = self._create_resource(
+            input_data, resource_uri, test_uri,
+            data_for_get={ 'includes': ['lab_affiliation_name', '*'] })
+        
+        self.assertEqual(
+            lab_head['screensaver_user_id'], lab_head['lab_head_id'])
+    
+        self.assertEqual(
+            lab_head['lab_affiliation_name'], lab_affiliation['name'])
+    
+        # 2. Assign a Lab Member by creating a new user with lab_head_username
+        logger.info('2. Assign a user to the Lab Head...')
+        user_data = {
+            'username': 'test4screeningUser', 
+            'lab_head_username': lab_head['username']
+        }
+        updated_user = self.create_screening_user(
+            data=user_data,
+            data_for_get={ 
+                # add lab_head_username because it has visibility='none'
+                'includes': ['lab_head_username','lab_affiliation_name','*'] }
+        )
+        logger.info('User: %r (with lab head set)', updated_user)
+        
+        self.assertEqual(
+            updated_user['lab_head_id'], lab_head['screensaver_user_id'])
+        self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_name'], 
+            lab_head['lab_affiliation_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+
+        # 2.B Verify user2 is a lab member
+        lab_head_updated = self.get_single_resource(
+            resource_uri, 
+            {'screensaver_user_id': lab_head['screensaver_user_id']})
+        self.assertTrue('lab_member_ids' in lab_head_updated)
+        lab_member_ids = lab_head_updated['lab_member_ids']
+        self.assertTrue(
+            str(updated_user['screensaver_user_id']) in lab_member_ids,
+            'lab_member_ids: %r, does not contain: %r'
+            % (lab_member_ids, updated_user['screensaver_user_id']))
+
     def test3_create_lab_head(self):
 
         logger.info('test4_create_lab_head...')
@@ -10048,9 +10142,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             updated_user['lab_head_id'], lab_head['screensaver_user_id'])
         self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
-        self.assertEqual(
-            updated_user['lab_affiliation_name'], 
-            lab_head['lab_affiliation_name'])
         self.assertEqual(
             updated_user['lab_affiliation_category'], 
             lab_head['lab_affiliation_category'])

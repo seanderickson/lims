@@ -894,8 +894,7 @@ class ApiResource(SqlAlchemyResource):
         ''' parse schema fields from the deserialized dict '''
         DEBUG_PARSE = False or logger.isEnabledFor(logging.DEBUG)
         if DEBUG_PARSE:
-            logger.info('parse: %r:%r', self._meta.resource_name, schema is None)
-            logger.info('parse: %r', deserialized)
+            logger.info('parse: %r:%r', self._meta.resource_name, deserialized)
 
         if not deserialized or not isinstance(deserialized, dict):
             logger.warn('no deserialized data found')
@@ -922,6 +921,9 @@ class ApiResource(SqlAlchemyResource):
         
         initializer_dict = {}
         for key,field in mutable_fields.items():
+            if DEBUG_PARSE:
+                logger.info('try field: %r: %r',
+                    key, deserialized.get(key))
             alias = field.get('alias')
             
             if key in deserialized or alias in deserialized:            
@@ -989,6 +991,25 @@ class ApiResource(SqlAlchemyResource):
  
         return self.get_list(request,**kwargs)
     
+    def _parse_list_ids(self, deserialized, schema):
+        id_query_params = defaultdict(set)
+        # store ids by row for ValidationError key
+        rows_to_ids = defaultdict(dict)
+        for _row,_data in enumerate(deserialized):
+            try:
+                id_kwargs = self.get_id(_data, schema=schema)
+            except ValidationError as e:
+                # Consider CumulativeError
+                e.errors['input_row'] = _row
+                raise
+            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
+            if id_kwargs:
+                rows_to_ids[_row] = id_kwargs
+                for idkey,idval in id_kwargs.items():
+                    id_param = '%s__in' % idkey
+                    id_query_params[id_param].add(idval)
+        return (id_query_params,rows_to_ids)
+    
     @write_authorization
     @un_cache
     @transaction.atomic   
@@ -1046,27 +1067,23 @@ class ApiResource(SqlAlchemyResource):
             raise Exception('schema not initialized')
         
         kwargs_for_log = kwargs.copy()
+        kwargs_for_log['visibilities'] = ['d','l']
         kwargs_for_log['schema'] = schema
+
         # 20180227 - set visibilities to detail and list to make up for removing
         # includes='*' from get_list_internal
         includes = set()
-        kwargs_for_log['visibilities'] = ['d','l']
-        ids = defaultdict(set)
         for _data in deserialized:
-            id_kwargs = self.get_id(_data, schema=schema)
-            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                includes |= set(_data.keys())
-                for idkey,idval in id_kwargs.items():
-                    
-                    id_param = '%s__in' % idkey
-                    ids[id_param].add(idval)
-        if not ids:
-            logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(ids)
+            includes |= set(_data.keys())
         kwargs_for_log['includes'] = list(includes)
+            
+        (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+        if not id_query_params:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(id_query_params)
+
         try:
-            logger.info('get original state, for logging... %r', 
+            logger.debug('get original state, for logging... %r', 
                 { k:v for k,v in kwargs_for_log.items() if k != 'schema'} )
             original_data = self._get_list_response_internal(**kwargs_for_log)
             logger.info('original state retrieved: %d', len(original_data))
@@ -1082,15 +1099,22 @@ class ApiResource(SqlAlchemyResource):
             kwargs['parent_log'] = parent_log
         parent_log = kwargs['parent_log']    
         logger.info('perform patch_list: %d', len(deserialized))
-        for _dict in deserialized:
-            self.patch_obj(request, _dict, **kwargs)
-            
+        for _row,_dict in enumerate(deserialized):
+            try:
+                self.patch_obj(request, _dict, **kwargs)
+            except ValidationError, e:
+                # TODO: consider CumulativeError
+                e.errors['input_row'] = _row
+                e.errors.setdefault('input_id', rows_to_ids[_row])
+                raise
         logger.debug('Get new state, for logging: %r...',
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
+        
         logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
         logger.info('patch logs created: %d', len(logs) if logs else 0 )
+        
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         logger.debug('updates: %r', [x for x in logs if x.diffs ])
@@ -1162,20 +1186,21 @@ class ApiResource(SqlAlchemyResource):
         else:
             deserialized = [x for x in deserialized]
             
-        
-        # Limit the potential candidates for logging to found id_kwargs
-        id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
+        # 20180227 - set visibilities to detail and list to make up for removing
+        # includes='*' from get_list_internal
+        includes = set()
         for _data in deserialized:
-            id_kwargs = self.get_id(_data, schema=schema)
-            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                for idkey,idval in id_kwargs.items():
-                    id_param = '%s__in' % idkey
-                    id_vals = kwargs_for_log.get(id_param, [])
-                    id_vals.append(idval)
-                    kwargs_for_log[id_param] = id_vals
+            includes |= set(_data.keys())
+        kwargs_for_log['includes'] = list(includes)
+
+        (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+
+        if not id_query_params:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(id_query_params)
+
         try:
             logger.info('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -1203,11 +1228,19 @@ class ApiResource(SqlAlchemyResource):
         self.delete_list(request, **kwargs);
         new_objs = []
         logger.info('PUT: create new objs: %d', len(deserialized))
-        for _dict in deserialized:
-            new_objs.append(self.put_obj(request, _dict, **kwargs))
+
+        for _row,_dict in enumerate(deserialized):
+            try:
+                new_objs.append(self.put_obj(request, _dict, **kwargs))
+            except ValidationError, e:
+                # TODO: consider CumulativeError
+                e.errors['input_row'] = _row
+                e.errors.setdefault('input_id', rows_to_ids[_row])
+                raise
 
         # Get new state, for logging
         # After patch, the id keys must be present
+        id_attribute = resource = schema['id_attribute']
         for idkey in id_attribute:
             id_param = '%s__in' % idkey
             ids = set(kwargs_for_log.get(id_param,[]))
@@ -1321,24 +1354,21 @@ class ApiResource(SqlAlchemyResource):
         # Limit the potential candidates for logging to found id_kwargs
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
+        kwargs_for_log['visibilities'] = ['d','l']
+        
         # 20180227 - set visibilities to detail and list to make up for removing
         # includes='*' from get_list_internal
         includes = set()
-        kwargs_for_log['visibilities'] = ['d','l']
-        ids = defaultdict(set)
         for _data in deserialized:
-            logger.info('_data: %r', _data)
-            id_kwargs = self.get_id(_data, schema=schema)
-            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                includes |= set(_data.keys())
-                for idkey,idval in id_kwargs.items():
-                    id_param = '%s__in' % idkey
-                    ids[id_param].add(idval)
-        if not ids:
-            logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(ids)
+            includes |= set(_data.keys())
         kwargs_for_log['includes'] = list(includes)
+            
+        
+        (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+        if not id_query_params:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(id_query_params)
+        
         try:
             logger.debug('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -1355,19 +1385,25 @@ class ApiResource(SqlAlchemyResource):
             kwargs['parent_log'] = parent_log
         
         new_objs = []
-        for _dict in deserialized:
-            new_objs.append(self.patch_obj(request, _dict))
+        for _row,_dict in enumerate(deserialized):
+            try:
+                new_objs.append(self.patch_obj(request, _dict, **kwargs))
+            except ValidationError, e:
+                # TODO: consider CumulativeError
+                e.errors['input_row'] = _row
+                e.errors.setdefault('input_id', rows_to_ids[_row])
+                raise
 
         # Get new state, for logging
         # After patch, the id keys must be present
         for idkey in id_attribute:
             id_param = '%s__in' % idkey
-            ids = set(kwargs_for_log.get(id_param,[]))
+            extant_ids = set(kwargs_for_log.get(id_param,[]))
             for new_obj in new_objs:
                 if hasattr(new_obj, idkey):
                     idval = getattr(new_obj, idkey)
-                    ids.add(idval)
-            kwargs_for_log[id_param] = ids
+                    extant_ids.add(idval)
+            kwargs_for_log[id_param] = extant_ids
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.debug('post list done, new data: %d', len(new_data))
 
@@ -1937,7 +1973,7 @@ class ApiResource(SqlAlchemyResource):
                         logger.exception(
                             'key: %r, error in display options: %r - %r', 
                             key, display_options, e)
-        logger.info('siunit_default_units: %r', siunit_default_units)
+        logger.debug('siunit_default_units: %r', siunit_default_units)
         def siunit_rowproxy_generator(cursor):
             if extant_generator is not None:
                 cursor = extant_generator(cursor)

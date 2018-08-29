@@ -1,0 +1,7 @@
+username,first_name,last_name,is_staff,usergroups,is_active,email,classification,lab_head_username,lab_affiliation_name
+demoadmin,User1,Admin,TRUE,[screensaverUser;libraryAdmin;screenAdmin;readEverythingAdmin;screensaverUserAdmin;screenDslExpirationNotify;userAgreementExpirationNotify;cherryPickRequestAdmin],TRUE,sean.erickson.hms@gmail.com,,,
+demolabhead,User2,LabHead,FALSE,,TRUE,demolabhead@iccbl.med.harvard.edu,principal_investigator,,"Harvard Medical School"
+demoscreener1,User3,Screener1,FALSE,,TRUE,screener1@iccbl.med.harvard.edu,,demolabhead,
+demoscreener2,User4,Screener2,FALSE,,TRUE,screener2@iccbl.med.harvard.edu,,demolabhead,
+demolabhead2,User5,LabHead2,FALSE,,TRUE,demolabhead2@iccbl.med.harvard.edu,principal_investigator,,"International Medical School"
+demoscreener3,User6,Screener3,FALSE,,TRUE,screener3@iccbl.med.harvard.edu,,demolabhead2,

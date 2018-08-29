@@ -44,7 +44,7 @@ LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 logger = logging.getLogger(__name__)
 
 class ValidationError(Exception):
-    def __init__(self,errors=None, key=None, msg=None):
+    def __init__(self,errors=None, key=None, msg=None, input_id=None):
         
         assert errors is not None or (key and msg),( 
             'ValidationError initialization requires "errors" parameter')
@@ -60,7 +60,9 @@ class ValidationError(Exception):
             if not isinstance(msg, (list,tuple,dict)):
                 msg = [msg]
             self.errors[key] = msg
-     
+        if input_id:
+            self.errors['input_id'] = input_id
+            
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors
 

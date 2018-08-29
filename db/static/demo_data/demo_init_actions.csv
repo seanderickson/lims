@@ -1,0 +1,4 @@
+command,resource,file
+patch,labaffiliation,lab_affiliations.csv
+patch,screensaveruser,demo_screensaver_users.csv
+patch,screen,demo_screens.csv

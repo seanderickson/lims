@@ -33,7 +33,8 @@ vocab_key_replace_map = {
     'hms_affiliate_with_hms_quad_appointment': 'hms_affiliate_hms_quad',
     }
 vocab_ignore_map = {
-    'user.classification': ['unassigned',]}
+#     'user.classification': ['unassigned',],
+    }
 
 def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
     logger.info('create simple vocab: %s, %s', attr,scope)

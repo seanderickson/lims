@@ -17,6 +17,7 @@ from db.api import _now
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
 
+import db.schema as SCHEMA
 
 RESOURCE_USER_CHECKLIST = 'userchecklist'
 RESOURCE_USER_AGREEMENT = 'useragreement'
@@ -152,6 +153,9 @@ def create_screensaver_users(apps, schema_editor):
 
         if hasattr(su, 'administratoruser'):
             au.is_staff = True
+            if not su.classifcation:
+                su.classification = SCHEMA.VOCAB.screensaver_user.STAFF
+                
         au.save()
         
         try:

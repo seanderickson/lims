@@ -10,9 +10,15 @@ except ImportError:
     print >>sys.stderr, '''Base Settings not defined.  Please configure a version of
     base_settings.py for this site.'''
     del sys
-    
+
 # NOTE: the parent settings file defines the PROJECT_ROOT
 print 'PROJECT_ROOT: ', PROJECT_ROOT
+    
+try:
+    from app_data_iccbl import APP_PUBLIC_DATA
+except ImportError:
+    print >>sys.stderr, '''APP_PUBLIC_DATA not defined.  Please configure a version of
+    app_data.py for this site.'''
     
 # NOTE THAT DEBUG SHOULD NEVER BE True FOR A PUBLIC FACING INSTALLATION
 # - If debugging is required on the Orchestra server, first disable non-HMS
@@ -46,7 +52,7 @@ DATABASES = {
         'NAME': 'devscreensaver2', 
         'USER': 'devscreensaver2web',
         'PASSWORD': '',
-        'HOST': 'dev.pgsql.orchestra',
+        'HOST': 'dev.pgsql96.orchestra',
         'PORT': '',                      # Set to empty string for default.
     },
 }
@@ -58,7 +64,7 @@ _dbdefault = DATABASES['default']
 if 'SCREENSAVER_PGSQL_SERVER' in environ:
     # explicit db configuration for lincs site in environment variables
     _dbdefault['NAME'] = environ['SCREENSAVER_PGSQL_DB']
-    _dbdefault['HOST'] = environ['SCREENSAVER_PGSQL_SERVER']
+    _dbdefault['HOST'] = environ['SCREENSAVER_PGSQL96_SERVER']
     _dbdefault['USER'] = environ['SCREENSAVER_PGSQL_USER']
     _dbdefault['PASSWORD'] = environ['SCREENSAVER_PGSQL_PASSWORD']
 
@@ -162,20 +168,51 @@ CACHES = {
 WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
 
 BACKGROUND_PROCESSING = True
+APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
+
+# NOTE PROJECT_ROOT is abs path, so remove the first slash
+drive, path_and_file = os.path.splitdrive(PROJECT_ROOT)
+def get_path_parts(path):
+    folders = []
+    while 1:
+        path, folder = os.path.split(path)
+        if folder != "":
+            folders.append(folder)
+        else:
+            if path != "":
+                folders.append(path)
+            break
+    folders.reverse()
+    if folders[0] == os.path.sep:
+        folders = folders[1:]
+    print 'path', path, 'folders', folders
+    return folders
+def fix_path_for_o2(path):
+    parts = get_path_parts(path)
+    if parts[0] != 'n':
+        parts.insert(0,'n')
+    return os.path.join(os.path.sep,*parts) 
+#O2_PROJECT_ROOT=os.path.join(os.path.sep,'n',*get_path_parts(PROJECT_ROOT))
+O2_PROJECT_ROOT=fix_path_for_o2(PROJECT_ROOT)
+print 'new O2 project root', O2_PROJECT_ROOT
+# NOTE: if running on orchestra, should use PROJECT_ROOT here
+# NOTE: 20180410 - /n/www, /n/groups *are* currently mounted on orchestra
 BACKGROUND_PROCESSOR = {
     'post_data_directory': 
-        os.path.join(PROJECT_ROOT,'background','post_data'),
+        os.path.join(O2_PROJECT_ROOT,'..','logs','background','post_data'),
     'job_output_directory': 
-        os.path.join(PROJECT_ROOT,'background','job_output'),
+        os.path.join(O2_PROJECT_ROOT,'..','logs','background','job_output'),
     'credential_file': 
-        os.path.join(PROJECT_ROOT, 'lims/static/production_data/sde_credentials.txt'),
+        os.path.join(O2_PROJECT_ROOT, '..','production_data','sde_credentials.1.txt'),
     'python_environ_script':
-        os.path.join(PROJECT_ROOT, 'run_dev.sh'),
-
-    'sbatch_setings': {
+        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf02.sh'),
+    'background_process_script': 'reports.utils.background_client_util',
+    # if "sbatch_settings" is set, use SLURM/sbatch to process
+    'sbatch_settingsx': {
         'partition': 'short',
-        'time': '00:02:00',
+        'time': '00:01:00',
         'mem': '16G',
+	'open-mode':'append',
         },
     }
 

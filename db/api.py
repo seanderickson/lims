@@ -5566,7 +5566,10 @@ class ScreenResultResource(DbApiResource):
                     
                     assay_well_control_type = result_row.get('assay_well_control_type', None)
                     if assay_well_control_type:
-                        allowed_control_well_types = [WELL_TYPE.EMPTY, WELL_TYPE.DMSO]
+                        allowed_control_well_types = [
+                            WELL_TYPE.EMPTY, WELL_TYPE.DMSO, WELL_TYPE.LIBRARY_CONTROL]
+                        if screen_result.screen.screen_type == SCREEN_TYPE.RNAI:
+                            allowed_control_well_types.append(WELL_TYPE.RNAI_BUFFER)
                         if well.library_well_type in allowed_control_well_types:
                             assay_well_initializer['assay_well_control_type'] = \
                                 assay_well_control_type
@@ -23570,7 +23573,8 @@ class WellResource(DbApiResource):
                 well_data['duplex_wells'] = duplex_wells
                 
             # Pass on the reagent patch data only for experimental wells
-            REAGENT_WELL_TYPES = [WELL_TYPE.EXPERIMENTAL, WELL_TYPE.LIBRARY_CONTROL]
+            REAGENT_WELL_TYPES = [
+                WELL_TYPE.EXPERIMENTAL, WELL_TYPE.LIBRARY_CONTROL]
             if well.library_well_type in REAGENT_WELL_TYPES:
                 reagent_data.append(well_data)
                 

@@ -5422,35 +5422,36 @@ class ScreenResultResource(DbApiResource):
         # TODO: 20170731: migrate the positive types to a separate 
         # integer only column
         if dc.data_type in DATA_TYPE.positive_types:
+            raw_value = value
+            if dc.data_type == DATA_TYPE.PARTITIONED_POSITIVE:
+                if value not in PARTITION_POSITIVE_MAPPING:
+                    raise ValidationError(
+                        key=key,
+                        msg='%r val: %r must be one of %r'
+                            % (dc.data_type, value, 
+                                PARTITION_POSITIVE_MAPPING.keys()))
+                value = PARTITION_POSITIVE_MAPPING[value]
+                rv_initializer['value'] = value
+            elif dc.data_type == DATA_TYPE.CONFIRMED_POSITIVE:
+                if value not in CONFIRMED_POSITIVE_MAPPING:
+                    raise ValidationError(
+                        key=key,
+                        msg='%r val: %r must be one of %r'
+                            % (dc.data_type, value, 
+                                CONFIRMED_POSITIVE_MAPPING.keys()))
+                value = CONFIRMED_POSITIVE_MAPPING[value]
+                rv_initializer['value'] = value
+            elif  dc.data_type == DATA_TYPE.BOOLEAN_POSITIVE:
+                value = parse_val(value,key,'boolean')
+                rv_initializer['value'] = value
+
+
             if rv_initializer['is_exclude'] is True:
                 logger.warn(
                     ('excluded col, not considered for positives:'
                      'well: %r, col: %r, type: %r, val: %r'),
                     well_id, colname, dc.data_type, value)
             else:
-                raw_value = value
-                if dc.data_type == DATA_TYPE.PARTITIONED_POSITIVE:
-                    if value not in PARTITION_POSITIVE_MAPPING:
-                        raise ValidationError(
-                            key=key,
-                            msg='%r val: %r must be one of %r'
-                                % (dc.data_type, value, 
-                                    PARTITION_POSITIVE_MAPPING.keys()))
-                    value = PARTITION_POSITIVE_MAPPING[value]
-                    rv_initializer['value'] = value
-                elif dc.data_type == DATA_TYPE.CONFIRMED_POSITIVE:
-                    if value not in CONFIRMED_POSITIVE_MAPPING:
-                        raise ValidationError(
-                            key=key,
-                            msg='%r val: %r must be one of %r'
-                                % (dc.data_type, value, 
-                                    CONFIRMED_POSITIVE_MAPPING.keys()))
-                    value = CONFIRMED_POSITIVE_MAPPING[value]
-                    rv_initializer['value'] = value
-                elif  dc.data_type == DATA_TYPE.BOOLEAN_POSITIVE:
-                    value = parse_val(value,key,'boolean')
-                    rv_initializer['value'] = value
-    
                 if dc.data_type == 'partition_positive_indicator':
                     if value == PARTITION_POSITIVE_MAPPING['W']:
                         dc.weak_positives_count += 1

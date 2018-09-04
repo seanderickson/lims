@@ -107,6 +107,10 @@ function set_settings {
 
   mkdir logs
 
+  if [[ ! -e lims/settings.py ]]; then
+    error "lims.settings.py must be created for the demo server; for example, see lims/settings-demoserver.py"
+  fi
+  
   if [[ ! -n "$APP_DATA_FILE" ]]; then
     error "APP_DATA_FILE property must be set"
   fi

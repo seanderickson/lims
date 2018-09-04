@@ -1107,7 +1107,7 @@ class ApiResource(SqlAlchemyResource):
         update_count = len([x for x in logs if x.diffs ])
         logger.debug('updates: %r', [x for x in logs if x.diffs ])
         create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
-        unchanged_count = patch_count - update_count
+        unchanged_count = patch_count - update_count - create_count
         meta = { 
             SCHEMA.API_MSG_RESULT: {
                 SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
@@ -1400,7 +1400,7 @@ class ApiResource(SqlAlchemyResource):
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
-        unchanged_count = patch_count - update_count
+        unchanged_count = patch_count - update_count - create_count
         meta = { 
             SCHEMA.API_MSG_RESULT: {
                 SCHEMA.API_MSG_SUBMIT_COUNT: patch_count, 

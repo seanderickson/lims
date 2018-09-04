@@ -209,9 +209,7 @@ if __name__ == "__main__":
             headers['Referer']=resource_uri
             
             if command == 'delete':
-#                 headers.update(CONTENT_TYPES['json'])
                 delete(resource_uri, headers, session=session)
-            
             else:
                 data_file = os.path.join(args.input_dir,action['file'])
                 print 'Data File: ', data_file

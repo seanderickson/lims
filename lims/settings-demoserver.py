@@ -2,23 +2,24 @@
 # Copy this file to settings.py and change local values for your installation
 
 from os import environ
+import sys
 
 try:
     from base_settings import *
 except ImportError:
-    import sys
     print >>sys.stderr, '''Base Settings not defined.  Please configure a version of
     base_settings.py for this site.'''
-    del sys
-    
-# NOTE: the parent settings file defines the PROJECT_ROOT
+
 print 'PROJECT_ROOT: ', PROJECT_ROOT
-    
+
+try:
+    from app_data_iccbl import APP_PUBLIC_DATA
+except ImportError:
+    print >>sys.stderr, '''APP_PUBLIC_DATA not defined.  Please configure a version of
+    app_data.py for this site.'''
+
 # NOTE THAT DEBUG SHOULD NEVER BE True FOR A PUBLIC FACING INSTALLATION
-# - If debugging is required on the Orchestra server, first disable non-HMS
-# access through the docroot/.htaccess file.
-# (LEAKS environment variables, i.e. database password)
-DEBUG = True
+DEBUG = False 
 
 # If not True, then only staff may log in to the system
 # see reports/auth.py
@@ -27,13 +28,13 @@ IS_PRODUCTION_READY = True
 # NOTE: SSL may only be enforced on the production server
 # NOTE: the migration app uses insecure HTTP to initialize, 
 # TODO: enable these settings when in production
-# if IS_PRODUCTION_READY is True:
-#     SECURE_SSL_REDIRECT = True
-#     SESSION_COOKIE_SECURE = True
-#     CSRF_COOKIE_SECURE = True
+#if IS_PRODUCTION_READY is True:
+#    SECURE_SSL_REDIRECT = True
+#    SESSION_COOKIE_SECURE = True
+#    CSRF_COOKIE_SECURE = True
 
 ADMINS = (
-    ('Admin', 'admin@email.com'),
+    ('Admin', 'demoadmin@lims.com'),
 )
 
 MANAGERS = ADMINS
@@ -49,61 +50,26 @@ DATABASES = {
     },
 }
 
-# Note that the SCREENSAVER_PGSQL variables can be found in the appropriate file at:
-# /opt/apache/conf/auth/[server_address]
-# to access these variables from the commmand line, see "/setenv_and_run.sh"  
-_dbdefault = DATABASES['default']
-if 'DEMOSCREENSAVER_PGSQL_SERVER' in environ:
-    # explicit db configuration for lincs site in environment variables
-    _dbdefault['NAME'] = environ['DEMOSCREENSAVER_PGSQL_DB']
-    _dbdefault['HOST'] = environ['DEMOSCREENSAVER_PGSQL_SERVER']
-    _dbdefault['USER'] = environ['DEMOSCREENSAVER_PGSQL_USER']
-    _dbdefault['PASSWORD'] = environ['DEMOSCREENSAVER_PGSQL_PASSWORD']
-
-
-
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
-# NOTE that 'dev.screensaver2.med.harvard.edu' is an alias for
-# 'dev.orchestraweb.med.harvard.edu'
 ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
-    'dev.orchestraweb.med.harvard.edu', 
-    'demo.screensaver.med.harvard.edu'
-]
+    ]
 
-# Local time zone for this installation. Choices can be found here:
-# http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
-# although not all choices may be available on all operating systems.
-# In a Windows environment this must be set to your system time zone.
 TIME_ZONE = 'US/Eastern'
 
-# Language code for this installation. All choices can be found here:
-# http://www.i18nguy.com/unicode/language-identifiers.html
 LANGUAGE_CODE = 'en-us'
 
 SITE_ID = 1
 
 AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 
-# Absolute path to the directory static files should be collected to.
-# Don't put anything in this directory yourself; store your static files
-# in apps' "static/" subdirectories and in STATICFILES_DIRS.
-# Example: "/var/www/example.com/static/"
-STATIC_ROOT = ''
-# STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', 'docroot', '_static')
+STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', 'docroot', '_static')
 
-# URL prefix for static files.
-# Example: "http://example.com/static/", "http://static.example.com/"
 STATIC_URL = '/_static/'
 
-# Additional locations of static files
 STATICFILES_DIRS = (
-    # Put strings here, like "/home/html/static" or "C:/www/django/static".
-    # Always use forward slashes, even on Windows.
-    # Don't forget to use absolute paths, not relative paths.
-    os.path.join(PROJECT_ROOT, "lims", "static"),
 )
 
 # List of finder classes that know how to find static files in
@@ -114,7 +80,7 @@ STATICFILES_FINDERS = (
 )
 
 # Make this unique, and don't share it with anybody.
-SECRET_KEY = 'tell_no_one1_demo2##$%^^!xxx'
+SECRET_KEY = '##%%@@unique-key-demo-server11xx!'
 
 CACHES = {
     'default': {
@@ -160,23 +126,53 @@ CACHES = {
 }
 
 # if structure image cache directory is available.  see db.api for details.
-WELL_STRUCTURE_IMAGE_DIR='/home/sde4/docs/work/images/structure-images'
+WELL_STRUCTURE_IMAGE_DIR='/structure-images'
 
 BACKGROUND_PROCESSING = True
-BACKGROUND_PROCESSOR = {
-    'post_data_directory': 
-        os.path.join(PROJECT_ROOT,'background','post_data'),
-    'job_output_directory': 
-        os.path.join(PROJECT_ROOT,'background','job_output'),
-    'credential_file': 
-        os.path.join(PROJECT_ROOT, 'demoadmin_credentials.txt'),
-    'python_environ_script':
-        os.path.join(PROJECT_ROOT, 'run_dev.sh'),
+APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
 
-    'sbatch_setings': {
+# NOTE PROJECT_ROOT is abs path, so remove the first slash
+drive, path_and_file = os.path.splitdrive(PROJECT_ROOT)
+def get_path_parts(path):
+    folders = []
+    while 1:
+        path, folder = os.path.split(path)
+        if folder != "":
+            folders.append(folder)
+        else:
+            if path != "":
+                folders.append(path)
+            break
+    folders.reverse()
+    if folders[0] == os.path.sep:
+        folders = folders[1:]
+    print 'path', path, 'folders', folders
+    return folders
+def fix_path_for_o2(path):
+    parts = get_path_parts(path)
+    if parts[0] != 'n':
+        parts.insert(0,'n')
+    return os.path.join(os.path.sep,*parts)
+#O2_PROJECT_ROOT=os.path.join(os.path.sep,'n',*get_path_parts(PROJECT_ROOT))
+O2_PROJECT_ROOT=fix_path_for_o2(PROJECT_ROOT)
+print 'new O2 project root', O2_PROJECT_ROOT
+
+BACKGROUND_PROCESSOR = {
+    'post_data_directory':
+        os.path.join(O2_PROJECT_ROOT,'..','logs','background','post_data'),
+    'job_output_directory':
+        os.path.join(O2_PROJECT_ROOT,'..','logs','background','job_output'),
+    'credential_file':
+        os.path.join(O2_PROJECT_ROOT, '..','production_data','demoadmin_credentials.txt'),
+    'python_environ_script':
+        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf02.sh'),
+    'background_process_script': 'reports.utils.background_client_util',
+    # if "sbatch_settings" is set, use SLURM/sbatch to process
+    'sbatch_settingsx': {
         'partition': 'short',
-        'time': '00:02:00',
+        'time': '00:01:00',
         'mem': '16G',
+        'open-mode':'append',
         },
     }
 
@@ -190,9 +186,6 @@ LOGGING = {
         'simple': {
             'format': '%(levelname)s %(asctime)s: %(name)s:%(lineno)d: %(message)s'
         },
-        'simple1': {
-            'format': '%(levelname)s %(msecs)s: %(name)s:%(lineno)d: %(message)s'
-        },
     },
     'filters': {
         'require_debug_false': {
@@ -200,11 +193,6 @@ LOGGING = {
         }
     },
     'handlers': {
-        'mail_admins': {
-            'level': 'ERROR',
-            'filters': ['require_debug_false'],
-            'class': 'django.utils.log.AdminEmailHandler'
-        },
         'console':{
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
@@ -221,7 +209,7 @@ LOGGING = {
     },
     'loggers': {
         'django': {
-            'handlers': ['mail_admins','console','logfile'],
+            'handlers': ['logfile'],
             'level': 'WARN',
             'propagate': False,
         },
@@ -246,11 +234,6 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
-#         'db.views': {  
-#             'handlers': ['logfile'],
-#             'propagate': True,
-#             'level': 'WARN',
-#         },        
         'django.db': {  # for SQL
             'handlers': ['console','logfile'],
             'propagate': False,

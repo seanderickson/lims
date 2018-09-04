@@ -423,7 +423,7 @@ function frontend_deploy {
 function main {
   # Steps:
   
-#  gitpull
+  gitpull
   
   create_demo_db
   
@@ -449,27 +449,27 @@ function main {
 
 echo "start create demo server script: $(ts) ..." >>"$LOGFILE"
 
-# main "$@"
+ main "$@"
 
 #  gitpull
   
-  create_demo_db
+#  create_demo_db
   
-  maybe_activate_virtualenv
+#  maybe_activate_virtualenv
   
-  pip install -r requirements.txt >>"$LOGFILE" 2>&1
+#  pip install -r requirements.txt >>"$LOGFILE" 2>&1
 
-  set_settings
+#  set_settings
 
-  django_migrate
+#  django_migrate
 
-  frontend_setup
+#  frontend_setup
 
-  frontend_deploy
+#  frontend_deploy
   
-  bootstrap
+#  bootstrap
 
-  load_demo_data
+#  load_demo_data
   
 
 

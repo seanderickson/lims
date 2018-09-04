@@ -1,2 +1,5 @@
 facility_id,title,screen_type,project_phase,lab_head_username,lead_screener_username,collaborator_usernames,summary,data_sharing_level,collaborator_usernames
 10,"Test Small Molecule Screen",small_molecule,primary_screen,demolabhead,demoscreener1,demoscreener2,"Illustrate functionality for screen attributes",0,demoscreener2;demoscreener3
+11,"Test Assay",small_molecule,primary_screen,demolabhead2,demoscreener3,,"Shows assay results",0,
+12,"Test RNAi Cell Assay",rnai,primary_screen,demolabhead,demoscreener1,,"Shows RNAi assay results",0,
+13,"Test RNAi biochemical assay",rnai,primary_screen,demolabhead2,demoscreener3,,"Shows a systemic response",0,

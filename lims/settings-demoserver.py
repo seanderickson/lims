@@ -131,41 +131,15 @@ WELL_STRUCTURE_IMAGE_DIR='/structure-images'
 BACKGROUND_PROCESSING = True
 APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
 
-# NOTE PROJECT_ROOT is abs path, so remove the first slash
-drive, path_and_file = os.path.splitdrive(PROJECT_ROOT)
-def get_path_parts(path):
-    folders = []
-    while 1:
-        path, folder = os.path.split(path)
-        if folder != "":
-            folders.append(folder)
-        else:
-            if path != "":
-                folders.append(path)
-            break
-    folders.reverse()
-    if folders[0] == os.path.sep:
-        folders = folders[1:]
-    print 'path', path, 'folders', folders
-    return folders
-def fix_path_for_o2(path):
-    parts = get_path_parts(path)
-    if parts[0] != 'n':
-        parts.insert(0,'n')
-    return os.path.join(os.path.sep,*parts)
-#O2_PROJECT_ROOT=os.path.join(os.path.sep,'n',*get_path_parts(PROJECT_ROOT))
-O2_PROJECT_ROOT=fix_path_for_o2(PROJECT_ROOT)
-print 'new O2 project root', O2_PROJECT_ROOT
-
 BACKGROUND_PROCESSOR = {
     'post_data_directory':
-        os.path.join(O2_PROJECT_ROOT,'..','logs','background','post_data'),
+        os.path.join(PROJECT_ROOT,'..','logs','background','post_data'),
     'job_output_directory':
-        os.path.join(O2_PROJECT_ROOT,'..','logs','background','job_output'),
+        os.path.join(PROJECT_ROOT,'..','logs','background','job_output'),
     'credential_file':
-        os.path.join(O2_PROJECT_ROOT, '..','production_data','demoadmin_credentials.txt'),
+        os.path.join(PROJECT_ROOT, 'db','static','demo_data','demosuperuser_credentials.txt'),
     'python_environ_script':
-        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf02.sh'),
+        os.path.join(PROJECT_ROOT, 'run.sh'),
     'background_process_script': 'reports.utils.background_client_util',
     # if "sbatch_settings" is set, use SLURM/sbatch to process
     'sbatch_settingsx': {

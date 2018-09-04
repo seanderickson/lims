@@ -107,18 +107,18 @@ function set_settings {
 
   mkdir logs
 
-  # NOTE: automatically copy the settings file from the repository version
-  # - unset the SETTINGS_FILE property to bypass
-  if [[ -n "$SETTINGS_FILE" ]]; then
-    cp $SETTINGS_FILE lims/settings.py
+  if [[ ! -n "$APP_DATA_FILE" ]]; then
+    error "APP_DATA_FILE property must be set"
+  fi
+  if [[ -e "$APP_DATA_FILE" ]]; then
+    cp $APP_DATA_FILE lims/
   else
-    echo "no SETTINGS_FILE migration.properties setting"
-    # cp lims/settings-dist.py lims/settings.py
+    error "no $APP_DATA_FILE found for APP_DATA_FILE migration.properties setting"
   fi
 
   login_template="reports/templates/login.html"
   demo_login_template="reports/templates/login_demo.html"
-  if [[ -n $demo_login_template ]]; then
+  if [[ -e $demo_login_template ]]; then
     echo "copy $demo_login_template to $login_template"
     cp $demo_login_template $login_template
   fi
@@ -132,11 +132,6 @@ function gitpull {
   git fetch $REMOTE >>"$LOGFILE" 2>&1 || error "git-fetch failed: $?"
   git checkout $BRANCH >>"$LOGFILE" 2>&1 || error "git-checkout failed: $?"
 
-  # reset api_init files that may have been modified during the previous migration
-  if [[ -e db/static/api_init/vocabulary_data_generated.csv ]]; then
-    # save the old version, might be useful
-    mv db/static/api_init/vocabulary_data_generated.csv db/static/api_init/vocabulary_data_generated.old
-  fi
   # Forgo the heavy-handed approach  
   #  git reset --hard $REMOTE/$BRANCH >> "$LOGFILE" 2>&1 || error "git hard reset failed: $?"
   git checkout $REMOTE/$BRANCH ./db/static/api_init/*.csv

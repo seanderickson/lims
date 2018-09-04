@@ -7,7 +7,7 @@ provider,fields.library,,,5,,,TRUE,"The vendor or source that provided the libra
 screen_type,fields.library,,,6,,,TRUE,"RNAi' or 'Small Molecule'","Screen Type",TRUE,,screen.type,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
 plate_size,fields.library,,,7,,,TRUE,"The library plate size","Plate Size",TRUE,,plate.size,[l;d;e],[c],string,,,select,,,384,TRUE,,,,,
 solvent,fields.library,,,8,,,TRUE,"Solvent used in the library wells",Solvent,TRUE,,library.solvent,[d;e],[c;u],string,,,select,,,,TRUE,,,,,
-library_type,fields.library,,,9,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,[l;d;e],[c;u],string,,,select,,,,,,,,,
+library_type,fields.library,,,9,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
 is_pool,fields.library,,,10,,,TRUE,"Whether wells contains pools of reagents or single reagents","Is Pool",TRUE,,,[l;d;e],[c;u],boolean,,,,,,,,,,,,
 screening_status,fields.library,,,11,,,TRUE,"Screening Status","Screening Status",TRUE,,library.screening_status,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
 start_plate,fields.library,,,12,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,

@@ -28,7 +28,8 @@ from django.views.decorators.csrf import csrf_exempt
 
 from db.support.data_converter import default_converter
 from reports import ValidationError, InformationError, BadRequestError, \
-    BackgroundJobImmediateResponse, LoginFailedException, API_RESULT_ERROR
+    ApiNotImplemented, BackgroundJobImmediateResponse, LoginFailedException, \
+    API_RESULT_ERROR
 from reports.auth import DEBUG_AUTHENTICATION
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
@@ -512,20 +513,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 logger.info('BackgroundJobImmediateResponse returned: %r', 
                     e.httpresponse)
                 response = e.httpresponse
-            except BadRequestError as e:
-                logger.exception('Bad request exception: %r', e)
-                response = self.build_error_response(
-                    request, e.errors, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
-            except InformationError as e:
-                logger.exception('Information error: %r', e)
-                response = self.build_error_response(
-                    request, e.errors, **kwargs)
-                if 'xls' in response['Content-Type']:
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.xlsx' % API_RESULT_ERROR
             except ValidationError as e:
                 logger.exception('Validation error: %r', e)
                 response = self.build_error_response(
@@ -544,7 +531,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if request.META.get('HTTP_AUTHORIZATION'):
                     response['WWW-Authenticate'] = \
                         'Basic realm="%s"' % settings.BASIC_AUTH_REALM
-
             except django.core.exceptions.ValidationError as e:
                 logger.exception('Django validation error: %s', e)
                 if hasattr(e, 'error_dict'):
@@ -637,7 +623,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             # UI that the download request is finished
             downloadID = request.GET.get('downloadID', None)
             if downloadID:
-                logger.info('set cookie "downloadID" %r', downloadID )
+                logger.debug('set cookie "downloadID" %r', downloadID )
                 response.set_cookie('downloadID', downloadID)
             else:
                 logger.debug('no downloadID: %s' % request.GET )
@@ -650,7 +636,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         self.use_cache = use_cache
 
     def get_cache(self):
-        raise NotImplementedError('get_cache must be implemented: %r', self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'get_cache')
 
     def deserialize(self, request, format=None, schema=None):
         
@@ -698,6 +684,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     { 'filename': file.name })
             elif 'xls' in request.FILES:
                 file = request.FILES['xls']
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), XLS_MIMETYPE, list_keys=list_keys), 
+                    { 'filename': file.name } )
+            elif 'xlsx' in request.FILES:
+                file = request.FILES['xlsx']
                 return (
                     self.get_serializer().deserialize(
                         file.read(), XLS_MIMETYPE, list_keys=list_keys), 

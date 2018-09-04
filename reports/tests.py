@@ -49,15 +49,16 @@ $ ./manage.py test --settings=lims.test_settings
 
 from __future__ import unicode_literals
 
+from datetime import datetime
 from decimal import Decimal
 import json
 import logging
 import os
 import re
+import shutil
 import sys
 import unittest
 import urlparse
-from datetime import datetime
 
 import dateutil.parser
 from django.conf import settings
@@ -70,15 +71,15 @@ from django.test.client import Client, FakePayload
 from django.test.runner import DiscoverRunner
 from django.test.testcases import SimpleTestCase
 
-
 from reports import HEADER_APILOG_COMMENT, DJANGO_ACCEPT_PARAM, \
     HTTP_PARAM_AUTH, HTTP_PARAM_CONTENT_TYPE
+import reports; 
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
 from reports.dump_obj import dumpObj
 from reports.models import MetaHash, UserGroup, \
     UserProfile, ApiLog, Permission, Job
 import reports.schema as SCHEMA
-from reports.serialize import parse_val, JSON_MIMETYPE, CSV_MIMETYPE,\
+from reports.serialize import parse_val, JSON_MIMETYPE, CSV_MIMETYPE, \
     MULTIPART_MIMETYPE
 import reports.serialize.csvutils as csvutils
 from reports.serialize.sdfutils import MOLDATAKEY
@@ -86,7 +87,6 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 import reports.utils.background_processor
 import reports.utils.log_utils
-import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,6 @@ BASE_URI = '/reports/api/v1'
 # Required for non-staff users to log in
 settings.IS_PRODUCTION_READY = True
 
-import reports; 
 try:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__[0]))
 except:

@@ -44,7 +44,7 @@ LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 logger = logging.getLogger(__name__)
 
 class ValidationError(Exception):
-    def __init__(self,errors=None, key=None, msg=None):
+    def __init__(self,errors=None, key=None, msg=None, input_id=None):
         
         assert errors is not None or (key and msg),( 
             'ValidationError initialization requires "errors" parameter')
@@ -60,7 +60,9 @@ class ValidationError(Exception):
             if not isinstance(msg, (list,tuple,dict)):
                 msg = [msg]
             self.errors[key] = msg
-     
+        if input_id:
+            self.errors['input_id'] = input_id
+            
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors
 
@@ -96,6 +98,21 @@ class ParseError(ValidationError):
 
 class BadRequestError(ValidationError):
     pass
+
+class MissingParam(ValidationError):
+    
+    def __init__(self, param_name):
+        ValidationError.__init__(key=param_name, msg='required')
+        
+class ApiNotImplemented(ValidationError):
+
+    def __init__(self, resource_name, method_name, errors=None):
+        
+        errors = errors or {}
+        errors.setdefault('message','API is not implemented')
+        errors['resource_name'] = resource_name
+        errors['method_name'] = method_name
+        ValidationError.__init__(self, errors=errors)
 
 class BackgroundJobImmediateResponse(Exception):
     

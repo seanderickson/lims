@@ -237,13 +237,16 @@ function django_syncdb {
   echo "- Create the adminuser: $adminuser"
   # update, as of Django >1.7, initial_data is no longer used to initialize superuser
   # try this method instead
-  
-  # FIXME: echo password vulnerability
-  
   _adminuser="'"$adminuser"'"
   _adminpass="'"$adminpass"'"
   _adminemail="'"$adminemail"'"
-  echo "from django.contrib.auth.models import User; User.objects.create_superuser($_adminuser, $_adminemail , $_adminpass)" | $DJANGO_CMD shell
+  python -c "import django; django.setup(); \
+   from django.contrib.auth import get_user_model; \
+   get_user_model()._default_manager.db_manager().create_superuser( \
+   username=$_adminuser, \
+   email=$_adminemail, \
+   password=$_adminpass)"  
+  
 
   # TODO: remove if memcached is installed
   $DJANGO_CMD createcachetable

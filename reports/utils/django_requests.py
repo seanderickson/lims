@@ -65,6 +65,8 @@ def get_logged_in_session(username, password, base_url,
             username,password is not None,base_url,login_form)
     s = requests.Session()
     # first, get the page, to induce django to generate the csrf token
+    if DEBUG:
+        print 'get: %s%s' % (base_url, login_form)
     r = s.get('%s%s' % (base_url, login_form), verify=False)
     
     if not r.status_code in [200]:

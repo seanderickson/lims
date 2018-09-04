@@ -34,22 +34,22 @@ import reports.serialize.xlsutils as xlsutils
 # for the HTTP Header "Accept"
 DJANGO_ACCEPT_PARAM = 'HTTP_ACCEPT'
 
+CONTENT_TYPES = OrderedDict((
+        ('sdf', SDF_MIMETYPE),
+        ('xls', XLS_MIMETYPE),
+        ('xlsx', XLSX_MIMETYPE),
+        ('csv', CSV_MIMETYPE),
+        ('json', JSON_MIMETYPE),
+    ))
+
+
 logger = logging.getLogger(__name__)
 
     
 class BaseSerializer(object):
     
-    # The list of supported mime-types should be sorted
-    # in order of increasing desirability, in case of a situation 
-    # where there is a tie 
-    content_types = OrderedDict( (
-        ('sdf', SDF_MIMETYPE),
-        ('xls', XLS_MIMETYPE),
-        ('xlsx', XLSX_MIMETYPE),
-        ('csv', CSV_MIMETYPE),
-        ('html', 'text/html'),
-        ('json', JSON_MIMETYPE),
-     ))
+    content_types = CONTENT_TYPES
+    
     def __init__(self):
         pass
 

@@ -1,11 +1,10 @@
 from __future__ import unicode_literals
 
-from __builtin__ import False
 import cStringIO
 from collections import OrderedDict, defaultdict
+import copy
 import csv
 from decimal import Decimal
-import decimal
 import filecmp
 import io
 import json
@@ -15,17 +14,14 @@ import random
 import re
 import string
 import sys
-import unittest
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-from django.urls import resolve
 from django.db import connection
-from django.db.utils import ProgrammingError
 from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
-from django.utils.timezone import now
-from django.conf import settings
+from django.urls import resolve
 import xlrd
 import xlsxwriter
 
@@ -44,18 +40,19 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_LCPS_MUST_BE_DELETED, API_MSG_CPR_PLATES_PLATED, \
     API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED, \
     API_MSG_CPR_CONCENTRATIONS, \
-    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, API_MSG_SUCCESS, \
+    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, \
     API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
     WellResource
-
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
     PlateLocation, LibraryScreening, LabAffiliation
 import db.models
+from db.schema import VOCAB
+import db.schema as SCHEMA
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.support.plate_matrix_transformer import Collation, Counter
 import db.support.plate_matrix_transformer
@@ -64,26 +61,19 @@ from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory, LabAffiliationFactory
 from reports import ValidationError, HEADER_APILOG_COMMENT, _now, \
     API_RESULT_ERROR, HTTP_PARAM_AUTH, DJANGO_ACCEPT_PARAM
-from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
-    API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
-    API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_NOT_ALLOWED, \
-    API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ,\
+from reports.api import API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ, \
     API_PARAM_PATCH_PREVIEW_MODE, API_PARAM_SHOW_PREVIEW
 from reports.models import ApiLog, UserProfile, UserGroup, Vocabulary
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE, \
     xlsutils, LimsJSONEncoder
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
 from reports.tests import IResourceTestCase, equivocal, TestApiClient
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-import copy
 
-import db.schema as SCHEMA
-from db.schema import VOCAB
 
 # SCHEMA imports
-
 FIELD = SCHEMA.FIELD
 
 APILOG = SCHEMA.APILOG
@@ -323,8 +313,8 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
         library_screening_output = resp[API_RESULT_DATA][0]
@@ -337,7 +327,8 @@ class DBResourceTestCase(IResourceTestCase):
         
         return(library_screening_output, meta)
         
-    def create_screen(self, data=None, uri_params=None, resource_uri=None):
+    def create_screen(self, data=None, uri_params=None, resource_uri=None,
+        data_for_get=None):
         ''' Create a test Screen through the API'''
         
         input_data = ScreenFactory.attributes()
@@ -346,29 +337,34 @@ class DBResourceTestCase(IResourceTestCase):
         
         if data:
             input_data.update(data)
-        if 'lab_head_id' not in input_data:
+        if not set(['lab_head_id','lab_head_username']) & set(input_data.keys()):
             lab_head = self.create_lab_head()
             input_data['lab_head_id'] = str(lab_head['screensaver_user_id'])
-        user_input_data = { 'lab_head_id': input_data['lab_head_id'] }
-        if 'lead_screener_id' not in input_data:
+        
+        if 'lab_head_id' in input_data:
+            user_input_data = { 'lab_head_id': str(input_data['lab_head_id']) }
+        elif 'lab_head_username' in input_data:
+            user_input_data = { 'lab_head_username': input_data['lab_head_username'] }
+            
+        if not set(['lead_screener_id','lead_screener_username']) & set(input_data.keys()):
             lead_screener = self.create_screening_user(user_input_data)
             input_data['lead_screener_id'] = str(lead_screener['screensaver_user_id'])
-        if 'collaborator_ids' not in input_data:
+        if not set(['collaborator_ids','collaborator_usernames']) & set(input_data.keys()):
             collaborator1 = self.create_screening_user(user_input_data)
             collaborator2 = self.create_screening_user(user_input_data)
             input_data['collaborator_ids'] = [
                 collaborator1['screensaver_user_id'], collaborator2['screensaver_user_id']]
-        input_data['collaborator_ids'] = [ 
-            str(x) for x in input_data['collaborator_ids']]
+        if 'collaborator_ids' in input_data:
+            # convert ids to strings for testing
+            input_data['collaborator_ids'] = [ 
+                str(x) for x in input_data['collaborator_ids']]
+
         if resource_uri is None:
             resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         
         if uri_params is not None:
             resource_uri += '?' + '&'.join(uri_params)
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*'
-        }
+
         logger.info('screen input_data to create: %r', input_data)
         logger.info('post to %r...', resource_uri)
         resp = self.api_client.post(
@@ -382,8 +378,9 @@ class DBResourceTestCase(IResourceTestCase):
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEqual(len(new_obj[API_RESULT_DATA]), 1)        
         new_obj = new_obj[API_RESULT_DATA][0]
-        new_obj = self.get_screen(new_obj['facility_id'])  
-        logger.debug('screen created: %r', new_obj)
+        
+        new_obj = self.get_screen(
+            new_obj['facility_id'], data_for_get=data_for_get)  
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
         self.assertTrue(result, msg)
         return new_obj
@@ -447,7 +444,7 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('create user: %r', input_data)
         return self._create_resource(input_data,resource_uri,test_uri)
     
-    def create_lab_head(self, data=None):
+    def create_lab_head(self, data=None, data_for_get=None):
         lab_affiliation = self.create_lab_affiliation()
 
         input_data = ScreensaverUserFactory.attributes()
@@ -455,28 +452,27 @@ class DBResourceTestCase(IResourceTestCase):
             input_data.update(data)
 
         input_data['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
-#         input_data['classification'] = VOCAB_USER_CLASSIFICATION_PI
         input_data['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
 
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         test_uri = '/'.join([resource_uri,input_data['username']])
         logger.info('create user: %r', input_data)
-        new_lab_head = self._create_resource(input_data,resource_uri,test_uri)
+        new_lab_head = self._create_resource(
+            input_data,resource_uri,test_uri, data_for_get=data_for_get)
         
         self.assertEqual(
             new_lab_head['screensaver_user_id'], new_lab_head['lab_head_id'])
         return new_lab_head
         
-    def create_screening_user(self, data=None):
+    def create_screening_user(self, data=None, data_for_get=None):
         input_data = ScreensaverUserFactory.attributes()
         if data:
             input_data.update(data)
-        if 'lab_head_id' not in input_data:
-            raise ProgrammingError('lab_head_id is required')
         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
         test_uri = '/'.join([resource_uri,input_data['username']])
         logger.info('create screening user: %r', input_data)
-        return self._create_resource(input_data,resource_uri,test_uri)
+        return self._create_resource(input_data,resource_uri,test_uri,
+            data_for_get=data_for_get)
     
     def set_screening_user_data_sharing_level(
         self, screensaver_user_id, type, data_sharing_level, date_active=None,
@@ -2328,14 +2324,14 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
             '%r' % post_response)
         self.assertTrue(
-            meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
-                % (API_MSG_SUBMIT_COUNT, meta))
+                % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
         
         # 2. Verify plates
@@ -2395,12 +2391,12 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % post_response)
-        self.assertTrue(meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], '%r' % post_response)
+        self.assertTrue(meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
-            % (API_MSG_SUBMIT_COUNT, meta))
+            % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
         
         # 4. Verify plates status changed to "retired"
@@ -2477,18 +2473,18 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
         logger.info('meta: %r', meta)
         plate_location_msg = \
             'Plate Location Result: {room}-{freezer}-{shelf}-{bin}'\
                 .format(**plate_location_input)
-        self.assertTrue(plate_location_msg in meta[API_MSG_RESULT])
-        plate_location_result = meta[API_MSG_RESULT][plate_location_msg]
+        self.assertTrue(plate_location_msg in meta[SCHEMA.API_MSG_RESULT])
+        plate_location_result = meta[SCHEMA.API_MSG_RESULT][plate_location_msg]
         self.assertTrue(
-            API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
-        self.assertTrue(plate_location_result[API_MSG_UPDATED]==6, 
+            SCHEMA.API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
+        self.assertTrue(plate_location_result[SCHEMA.API_MSG_UPDATED]==6, 
             'Wrong %r count: %r' 
-            % (API_MSG_UPDATED,plate_location_result))
+            % (SCHEMA.API_MSG_UPDATED,plate_location_result))
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -2613,15 +2609,15 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in patch_response, '%r' % patch_response)
         meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % patch_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
             '%r' % patch_response)
         self.assertEqual(
-            meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT],
+            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT],
             (end_plate-start_plate+1),
             '"%r" : %r, expected: %r' 
-            % (API_MSG_SUBMIT_COUNT,
+            % (SCHEMA.API_MSG_SUBMIT_COUNT,
                 meta, (end_plate-start_plate+1)))
         
         # 3. Verify that the plates have the expected location
@@ -2711,15 +2707,15 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in patch_response, '%r' % patch_response)
         meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % patch_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
             '%r' % patch_response)
         self.assertEqual(
-            meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT],
+            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT],
             (end_plate-start_plate+1),
             '"%r" : %r, expected: %r' 
-            % (API_MSG_SUBMIT_COUNT,
+            % (SCHEMA.API_MSG_SUBMIT_COUNT,
                 meta, (end_plate-start_plate+1)))
         
         # Verify that the plates have the expected location
@@ -5189,18 +5185,44 @@ class ScreenResource(DBResourceTestCase):
                 'key %r, val: %r not expected: %r' 
                     % (key, value, screen_item[key]))
         logger.debug('screen created: %r', screen_item)
+        
 
-    def test1a_create_screen_with_facility_id_override(self):
+    def test1a_create_screen_using_natural_keys(self):
+        '''
+        Create screen and relationships between:
+            screen->lab_head
+            screen->lead_screener
+            screen->collaborators
+        - using an arbitrary facility_id and the username "natural key" for 
+        the screensaver_users.
+        '''
+        logger.info('test1a_create_screen_using_natural_keys...')        
 
-        logger.info('test1_create_screen...')        
+        lab_head = self.create_lab_head()
+        user_input_data = { 'lab_head_username': lab_head['username'] }
+        data_for_get={ 'includes': [
+            'lab_head_username','lead_screener_username',
+            'collaborator_usernames','*'] }
+        lead_screener = self.create_screening_user(
+            user_input_data, data_for_get=data_for_get)
+        collaborator1 = self.create_screening_user(
+            user_input_data, data_for_get=data_for_get)
+        collaborator2 = self.create_screening_user(
+            user_input_data, data_for_get=data_for_get)
+
         data = {
             SCREEN_TYPE: 'small_molecule',
             'cell_lines': ['293_hek_293','colo_858'],
             'species': 'bacteria',
-            'facility_id': '10'
+            'facility_id': '10',
+            'lab_head_username': lab_head['username'],
+            'lead_screener_username': lead_screener['username'],
+            'collaborator_usernames': [
+                collaborator1['username'], collaborator2['username']],
         }
         screen_item = self.create_screen(
-            data=data, uri_params=['%s=true' % API_PARAM_OVERRIDE,])
+            data=data, uri_params=['%s=true' % API_PARAM_OVERRIDE,],
+            data_for_get=data_for_get )
         
         self.assertEqual(
             screen_item['facility_id'],data['facility_id'])
@@ -5486,9 +5508,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 17,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 17, 
@@ -5612,9 +5634,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 1,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 0, 
@@ -5915,9 +5937,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: expected_plate_count,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: expected_plate_count, 
@@ -6087,8 +6109,8 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: expected_updated_plate_count,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: expected_updated_plate_count, 
@@ -6194,8 +6216,8 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 6,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 0, 
@@ -6284,8 +6306,8 @@ class ScreenResource(DBResourceTestCase):
         resp = self.deserialize(resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 2,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 2, 
@@ -7800,7 +7822,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             self._submit_screener_cherry_picks(
                 cpr_data['cherry_pick_request_id'])
         
-        self.assertTrue(API_MSG_WARNING not in meta, 
+        self.assertTrue(SCHEMA.API_MSG_WARNING not in meta, 
             'meta warning: %r' % meta)
         if API_MSG_LCPS_UNFULFILLED in meta:
             self.assertEqual(meta[API_MSG_LCPS_UNFULFILLED], 0)
@@ -8304,7 +8326,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('patch screener_cherry_picks error: %r', _data)
         _errors = _data[API_RESULT_ERROR]
-        self.assertTrue(API_MSG_NOT_ALLOWED in _errors)
+        self.assertTrue(SCHEMA.API_MSG_NOT_ALLOWED in _errors)
         self.assertTrue(API_MSG_LCPS_MUST_BE_DELETED in _errors)
         
         # 3 delete lab cherry picks
@@ -8474,12 +8496,12 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(
             LCP_COPYWELL_KEY.format(**lcp_well_1_a1) in selected_lcps)
         
-        self.assertTrue(API_MSG_WARNING in _meta, 
-            'missing warning: %r' % API_MSG_WARNING)
+        self.assertTrue(SCHEMA.API_MSG_WARNING in _meta, 
+            'missing warning: %r' % SCHEMA.API_MSG_WARNING)
         self.assertTrue(API_MSG_LCPS_INSUFFICIENT_VOLUME 
-            in _meta[API_MSG_WARNING])
+            in _meta[SCHEMA.API_MSG_WARNING])
         insufficient_volume_cws = \
-            _meta[API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
+            _meta[SCHEMA.API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
         
         cw_name =  LCP_COPYWELL_KEY.format(**lcp_well_1_a1)
         self.assertTrue(cw_name in insufficient_volume_cws,
@@ -8539,12 +8561,12 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(
             LCP_COPYWELL_KEY.format(**lcp_well_1_a2) in changed_lcps[0])
         
-        self.assertTrue(API_MSG_WARNING in _meta, 
-            'missing warning: %r' % API_MSG_WARNING)
+        self.assertTrue(SCHEMA.API_MSG_WARNING in _meta, 
+            'missing warning: %r' % SCHEMA.API_MSG_WARNING)
         self.assertTrue(
-            API_MSG_LCPS_INSUFFICIENT_VOLUME in _meta[API_MSG_WARNING])
+            API_MSG_LCPS_INSUFFICIENT_VOLUME in _meta[SCHEMA.API_MSG_WARNING])
         insufficient_volume_cws = \
-            _meta[API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
+            _meta[SCHEMA.API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
         
         new_lcps = self._get_lcps(cpr_id)
         
@@ -9523,7 +9545,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('delete lcps response: %r', _data)
         self.assertTrue(API_RESULT_ERROR in _data)
-        self.assertTrue(API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
+        self.assertTrue(SCHEMA.API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
         
         # 3.c Verify that cancel_reservation disallowed if plating date is set
         cancel_reservation_resource_uri = '/'.join([
@@ -9538,7 +9560,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('cancel_reservation response: %r', _data)
         self.assertTrue(API_RESULT_ERROR in _data)
-        self.assertTrue(API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
+        self.assertTrue(SCHEMA.API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
     
     def test_b_minimal_set_finder(self):
         
@@ -10005,6 +10027,68 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             user1_input_data2['username'], user1_output_data2['username'])
 
+    def test3a_create_lab_head_using_natural_keys(self):
+        '''
+        Create relationships between lab_head->lab_affiliation and 
+        lab_member->lab_head using the natural keys:
+        lab_affiliation: name
+        lab_head: lab_head_username
+        '''
+        lab_affiliation = self.create_lab_affiliation()
+
+        input_data = ScreensaverUserFactory.attributes()
+
+        input_data['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
+        input_data['lab_affiliation_name'] = lab_affiliation['name']
+
+        resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
+        test_uri = '/'.join([resource_uri,input_data['username']])
+        logger.info('create user: %r', input_data)
+        lab_head = self._create_resource(
+            input_data, resource_uri, test_uri,
+            data_for_get={ 'includes': ['lab_affiliation_name', '*'] })
+        
+        self.assertEqual(
+            lab_head['screensaver_user_id'], lab_head['lab_head_id'])
+    
+        self.assertEqual(
+            lab_head['lab_affiliation_name'], lab_affiliation['name'])
+    
+        # 2. Assign a Lab Member by creating a new user with lab_head_username
+        logger.info('2. Assign a user to the Lab Head...')
+        user_data = {
+            'username': 'test4screeningUser', 
+            'lab_head_username': lab_head['username']
+        }
+        updated_user = self.create_screening_user(
+            data=user_data,
+            data_for_get={ 
+                # add lab_head_username because it has visibility='none'
+                'includes': ['lab_head_username','lab_affiliation_name','*'] }
+        )
+        logger.info('User: %r (with lab head set)', updated_user)
+        
+        self.assertEqual(
+            updated_user['lab_head_id'], lab_head['screensaver_user_id'])
+        self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_name'], 
+            lab_head['lab_affiliation_name'])
+        self.assertEqual(
+            updated_user['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+
+        # 2.B Verify user2 is a lab member
+        lab_head_updated = self.get_single_resource(
+            resource_uri, 
+            {'screensaver_user_id': lab_head['screensaver_user_id']})
+        self.assertTrue('lab_member_ids' in lab_head_updated)
+        lab_member_ids = lab_head_updated['lab_member_ids']
+        self.assertTrue(
+            str(updated_user['screensaver_user_id']) in lab_member_ids,
+            'lab_member_ids: %r, does not contain: %r'
+            % (lab_member_ids, updated_user['screensaver_user_id']))
+
     def test3_create_lab_head(self):
 
         logger.info('test4_create_lab_head...')
@@ -10048,9 +10132,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             updated_user['lab_head_id'], lab_head['screensaver_user_id'])
         self.assertEqual(updated_user['lab_name'], lab_head['lab_name'])
-        self.assertEqual(
-            updated_user['lab_affiliation_name'], 
-            lab_head['lab_affiliation_name'])
         self.assertEqual(
             updated_user['lab_affiliation_category'], 
             lab_head['lab_affiliation_category'])
@@ -13229,7 +13310,7 @@ class RawDataTransformer(DBResourceTestCase):
         
             logger.info('response: %r', post_response )
             
-            self.assertEqual(post_response[API_RESULT_META][API_MSG_RESULT],API_MSG_SUCCESS)
+            self.assertEqual(post_response[API_RESULT_META][SCHEMA.API_MSG_RESULT],SCHEMA.API_MSG_SUCCESS)
             
         download_url = '/db/screen_raw_data_transform/' + test_screen['facility_id']
 

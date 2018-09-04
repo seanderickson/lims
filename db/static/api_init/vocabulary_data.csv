@@ -98,7 +98,7 @@ graduate_student,user.classification,2,,"Graduate Student","Graduate Student",
 iccb_fellow,user.classification,3,,"ICCB Fellow","ICCB Fellow",TRUE
 research_assistant,user.classification,4,,"Research Assistant","Research Assistant",
 postdoc,user.classification,5,,Postdoc,Postdoc,
-iccb_l_nsrb_staff,user.classification,6,,"ICCB-L/NSRB staff","ICCB-L/NSRB staff",
+staff,user.classification,6,,Staff,Staff,
 other,user.classification,7,,Other,Other,
 unassigned,user.classification,8,,Unassigned,Unassigned,
 serviceactivity,activity.class,5,,"Service Activity","Service Activity",

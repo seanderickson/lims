@@ -43,6 +43,10 @@ define([
       this.createKeys(),
       this.updateKeys());
     
+    var do_not_display_keys = this.filterKeys('visibility','none');
+    
+    keys = _.difference(keys, do_not_display_keys);
+    
     return Iccbl.sortOnOrdinal(keys,this.fields);
   };  
   SchemaClass.prototype.createKeys = function()

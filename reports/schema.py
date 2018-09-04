@@ -24,9 +24,20 @@ API_RESULT_OBJ = 'object'
 API_RESULT_DATA = 'objects'
 API_RESULT_META = 'meta'
 
+API_MSG_SUBMIT_COUNT = 'Data submitted'
+API_MSG_RESULT = 'Result'
+API_MSG_WARNING = 'Warning'
+API_MSG_NOT_ALLOWED = 'Action not allowed'
+API_MSG_UPDATED = 'Updated'
+API_MSG_CREATED = 'Created'
+API_MSG_UNCHANGED = 'Unchanged'
+API_MSG_COMMENTS = 'Comments'
+API_MSG_ACTION = 'Action'
+API_MSG_SUCCESS = 'Success'
+
+
 API_PARAM_SEARCH = 'search'
 API_PARAM_NESTED_SEARCH = 'nested_search_data'
-# URI_PARAM_RAW_SEARCH = 'raw_search_data'
 # Complex search - a search data structure sent as a POST header 
 API_PARAM_COMPLEX_SEARCH_ID = 'search_id'
 URI_PATH_COMPLEX_SEARCH = 'csearch'
@@ -55,7 +66,8 @@ class ERROR(schema_obj):
     LINE = 'line'
 
 
-# Define API resources
+##### Define API resources
+
 class RESOURCE(schema_obj):
     ''' Constants for the Resource resource: constant field names'''
     resource_name = 'resource'

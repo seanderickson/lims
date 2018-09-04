@@ -46,8 +46,8 @@ from db.support import lims_utils
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError, API_RESULT_ERROR
-from reports import ValidationError, BadRequestError, \
-    BackgroundJobImmediateResponse, _now
+from reports import ValidationError, BadRequestError, ApiNotImplemented, \
+    MissingParam, BackgroundJobImmediateResponse, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization, \
     MultiAuthentication, IccblSessionAuthentication, IccblBasicAuthentication, \
     TRAILING_SLASH
@@ -77,22 +77,10 @@ API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
 
 API_PARAM_OVERRIDE = 'override'
-# API_PARAM_NO_PREVIEW = 'no_preview'
 API_PARAM_PATCH_PREVIEW_MODE = 'patch_with_preview'
 API_PARAM_SHOW_PREVIEW = 'show_preview'
 API_PARAM_PREVIEW_LOGS = 'preview_logs'
 API_PARAM_NO_BACKGROUND = 'no_background'
-
-API_MSG_SUBMIT_COUNT = 'Data submitted'
-API_MSG_RESULT = 'Result'
-API_MSG_WARNING = 'Warning'
-API_MSG_NOT_ALLOWED = 'Action not allowed'
-API_MSG_UPDATED = 'Updated'
-API_MSG_CREATED = 'Created'
-API_MSG_UNCHANGED = 'Unchanged'
-API_MSG_COMMENTS = 'Comments'
-API_MSG_ACTION = 'Action'
-API_MSG_SUCCESS = 'Success'
 
 DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_FIELDS = False or logger.isEnabledFor(logging.DEBUG)
@@ -645,20 +633,14 @@ class ApiResource(SqlAlchemyResource):
 
     @read_authorization
     def get_detail(self, request, **kwargs):
-        raise NotImplemented(
-            'get_detail must be implemented for resource: %r' 
-            % self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'get_detail')
     
     @read_authorization
     def get_list(self, request, **kwargs):
-        raise NotImplemented(
-            'get_list must be implemented for resource: %r' 
-            % self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'get_list')
         
     def build_list_response(self,request, **kwargs):
-        raise NotImplemented(
-            'build_list_response must be implemented for the SqlAlchemyResource: %r' 
-            % self._meta.resource_name)
+        raise ApiNotImplemented(self._meta.resource_name, 'build_list_response')
 
     def _get_list_response(self,request,**kwargs):
         '''
@@ -890,9 +872,9 @@ class ApiResource(SqlAlchemyResource):
         keys = keystring.strip('/').split('/')
         logger.debug('keys: %r, id_attribute: %r', keys, id_attribute)
         if len(keys) < len(id_attribute):
-            raise NotImplementedError(
-                'resource uri %r does not contain all id attributes: %r'
-                % (resource_uri,id_attribute))
+            raise BadRequestError({
+                'resource uri': '%r does not contain all id attributes: %r'
+                % (resource_uri,id_attribute)})
         else:
             return dict(zip(id_attribute,keys))
 
@@ -900,13 +882,11 @@ class ApiResource(SqlAlchemyResource):
         ''' parse schema fields from the deserialized dict '''
         DEBUG_PARSE = False or logger.isEnabledFor(logging.DEBUG)
         if DEBUG_PARSE:
-            logger.info('parse: %r:%r', self._meta.resource_name, schema is None)
-            logger.info('parse: %r', deserialized)
+            logger.info('parse: %r:%r', self._meta.resource_name, deserialized)
 
         if not deserialized or not isinstance(deserialized, dict):
             logger.warn('no deserialized data found')
             return {}
-#             raise ValidationError(key='deserialized', msg='No detail data found')
                
         errors = {}
         mutable_fields = fields        
@@ -929,6 +909,9 @@ class ApiResource(SqlAlchemyResource):
         
         initializer_dict = {}
         for key,field in mutable_fields.items():
+            if DEBUG_PARSE:
+                logger.info('try field: %r: %r',
+                    key, deserialized.get(key))
             alias = field.get('alias')
             
             if key in deserialized or alias in deserialized:            
@@ -968,8 +951,7 @@ class ApiResource(SqlAlchemyResource):
         DEBUG_SEARCH = False or logger.isEnabledFor(logging.DEBUG)
          
         if SCHEMA.API_PARAM_COMPLEX_SEARCH_ID not in kwargs:
-            raise BadRequestError({
-                SCHEMA.API_PARAM_COMPLEX_SEARCH_ID: 'required' })
+            raise MissingParam(SCHEMA.API_PARAM_COMPLEX_SEARCH_ID)
         search_ID = kwargs[SCHEMA.API_PARAM_COMPLEX_SEARCH_ID]
          
         all_params = self._convert_request_to_dict(request)
@@ -996,6 +978,25 @@ class ApiResource(SqlAlchemyResource):
         kwargs[SCHEMA.API_PARAM_SEARCH] = raw_search_data
  
         return self.get_list(request,**kwargs)
+    
+    def _parse_list_ids(self, deserialized, schema):
+        id_query_params = defaultdict(set)
+        # store ids by row for ValidationError key
+        rows_to_ids = defaultdict(dict)
+        for _row,_data in enumerate(deserialized):
+            try:
+                id_kwargs = self.get_id(_data, schema=schema)
+            except ValidationError as e:
+                # Consider CumulativeError
+                e.errors['input_row'] = _row
+                raise
+            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
+            if id_kwargs:
+                rows_to_ids[_row] = id_kwargs
+                for idkey,idval in id_kwargs.items():
+                    id_param = '%s__in' % idkey
+                    id_query_params[id_param].add(idval)
+        return (id_query_params,rows_to_ids)
     
     @write_authorization
     @un_cache
@@ -1027,12 +1028,12 @@ class ApiResource(SqlAlchemyResource):
             
         if len(deserialized) == 0:
             meta = { 
-                API_MSG_RESULT: {
-                    API_MSG_SUBMIT_COUNT : 0, 
-                    API_MSG_UPDATED: 0, 
-                    API_MSG_CREATED: 0,
-                    API_MSG_UNCHANGED: 0, 
-                    API_MSG_COMMENTS: 'no data patched'
+                SCHEMA.API_MSG_RESULT: {
+                    SCHEMA.API_MSG_SUBMIT_COUNT : 0, 
+                    SCHEMA.API_MSG_UPDATED: 0, 
+                    SCHEMA.API_MSG_CREATED: 0,
+                    SCHEMA.API_MSG_UNCHANGED: 0, 
+                    SCHEMA.API_MSG_COMMENTS: 'no data patched'
                 }
             }
             logger.info('PATCH list: %r', meta)
@@ -1054,27 +1055,23 @@ class ApiResource(SqlAlchemyResource):
             raise Exception('schema not initialized')
         
         kwargs_for_log = kwargs.copy()
+        kwargs_for_log['visibilities'] = ['d','l']
         kwargs_for_log['schema'] = schema
+
         # 20180227 - set visibilities to detail and list to make up for removing
         # includes='*' from get_list_internal
         includes = set()
-        kwargs_for_log['visibilities'] = ['d','l']
-        ids = defaultdict(set)
         for _data in deserialized:
-            id_kwargs = self.get_id(_data, schema=schema)
-            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                includes |= set(_data.keys())
-                for idkey,idval in id_kwargs.items():
-                    
-                    id_param = '%s__in' % idkey
-                    ids[id_param].add(idval)
-        if not ids:
-            logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(ids)
+            includes |= set(_data.keys())
         kwargs_for_log['includes'] = list(includes)
+            
+        (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+        if not id_query_params:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(id_query_params)
+
         try:
-            logger.info('get original state, for logging... %r', 
+            logger.debug('get original state, for logging... %r', 
                 { k:v for k,v in kwargs_for_log.items() if k != 'schema'} )
             original_data = self._get_list_response_internal(**kwargs_for_log)
             logger.info('original state retrieved: %d', len(original_data))
@@ -1090,27 +1087,34 @@ class ApiResource(SqlAlchemyResource):
             kwargs['parent_log'] = parent_log
         parent_log = kwargs['parent_log']    
         logger.info('perform patch_list: %d', len(deserialized))
-        for _dict in deserialized:
-            self.patch_obj(request, _dict, **kwargs)
-            
+        for _row,_dict in enumerate(deserialized):
+            try:
+                self.patch_obj(request, _dict, **kwargs)
+            except ValidationError, e:
+                # TODO: consider CumulativeError
+                e.errors['input_row'] = _row
+                e.errors.setdefault('input_id', rows_to_ids[_row])
+                raise
         logger.debug('Get new state, for logging: %r...',
             {k:v for k,v in kwargs_for_log.items() if k != 'schema'})
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.info('new data: %d, log patches...', len(new_data))
+        
         logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
         logger.info('patch logs created: %d', len(logs) if logs else 0 )
+        
         patch_count = len(deserialized)
         update_count = len([x for x in logs if x.diffs ])
         logger.debug('updates: %r', [x for x in logs if x.diffs ])
         create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
-            API_MSG_RESULT: {
-                API_MSG_SUBMIT_COUNT : patch_count, 
-                API_MSG_UPDATED: update_count, 
-                API_MSG_CREATED: create_count,
-                API_MSG_UNCHANGED: unchanged_count, 
-                API_MSG_COMMENTS: parent_log.comment
+            SCHEMA.API_MSG_RESULT: {
+                SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_CREATED: create_count,
+                SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
         }
         if deserialize_meta:
@@ -1170,20 +1174,21 @@ class ApiResource(SqlAlchemyResource):
         else:
             deserialized = [x for x in deserialized]
             
-        
-        # Limit the potential candidates for logging to found id_kwargs
-        id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
+        # 20180227 - set visibilities to detail and list to make up for removing
+        # includes='*' from get_list_internal
+        includes = set()
         for _data in deserialized:
-            id_kwargs = self.get_id(_data, schema=schema)
-            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                for idkey,idval in id_kwargs.items():
-                    id_param = '%s__in' % idkey
-                    id_vals = kwargs_for_log.get(id_param, [])
-                    id_vals.append(idval)
-                    kwargs_for_log[id_param] = id_vals
+            includes |= set(_data.keys())
+        kwargs_for_log['includes'] = list(includes)
+
+        (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+
+        if not id_query_params:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(id_query_params)
+
         try:
             logger.info('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -1211,11 +1216,19 @@ class ApiResource(SqlAlchemyResource):
         self.delete_list(request, **kwargs);
         new_objs = []
         logger.info('PUT: create new objs: %d', len(deserialized))
-        for _dict in deserialized:
-            new_objs.append(self.put_obj(request, _dict, **kwargs))
+
+        for _row,_dict in enumerate(deserialized):
+            try:
+                new_objs.append(self.put_obj(request, _dict, **kwargs))
+            except ValidationError, e:
+                # TODO: consider CumulativeError
+                e.errors['input_row'] = _row
+                e.errors.setdefault('input_id', rows_to_ids[_row])
+                raise
 
         # Get new state, for logging
         # After patch, the id keys must be present
+        id_attribute = resource = schema['id_attribute']
         for idkey in id_attribute:
             id_param = '%s__in' % idkey
             ids = set(kwargs_for_log.get(id_param,[]))
@@ -1240,11 +1253,11 @@ class ApiResource(SqlAlchemyResource):
         update_count = len([x for x in logs if x.diffs ])
         delete_count = len([x for x in logs if x.api_action == API_ACTION.DELETE])
         meta = { 
-            API_MSG_RESULT: {
-                API_MSG_SUBMIT_COUNT : put_count, 
-                API_MSG_UPDATED: update_count,
+            SCHEMA.API_MSG_RESULT: {
+                SCHEMA.API_MSG_SUBMIT_COUNT : put_count, 
+                SCHEMA.API_MSG_UPDATED: update_count,
                 'Deleted': delete_count,
-                API_MSG_COMMENTS: parent_log.comment
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
         }
         if deserialize_meta:
@@ -1302,12 +1315,12 @@ class ApiResource(SqlAlchemyResource):
             
         if len(deserialized) == 0:
             meta = { 
-                API_MSG_RESULT: {
-                    API_MSG_SUBMIT_COUNT : 0, 
-                    API_MSG_UPDATED: 0, 
-                    API_MSG_CREATED: 0,
-                    API_MSG_UNCHANGED: 0, 
-                    API_MSG_COMMENTS: 'no data posted'
+                SCHEMA.API_MSG_RESULT: {
+                    SCHEMA.API_MSG_SUBMIT_COUNT : 0, 
+                    SCHEMA.API_MSG_UPDATED: 0, 
+                    SCHEMA.API_MSG_CREATED: 0,
+                    SCHEMA.API_MSG_UNCHANGED: 0, 
+                    SCHEMA.API_MSG_COMMENTS: 'no data posted'
                 }
             }
             return self.build_response(
@@ -1329,24 +1342,21 @@ class ApiResource(SqlAlchemyResource):
         # Limit the potential candidates for logging to found id_kwargs
         kwargs_for_log = kwargs.copy()
         kwargs_for_log['schema'] = schema
+        kwargs_for_log['visibilities'] = ['d','l']
+        
         # 20180227 - set visibilities to detail and list to make up for removing
         # includes='*' from get_list_internal
         includes = set()
-        kwargs_for_log['visibilities'] = ['d','l']
-        ids = defaultdict(set)
         for _data in deserialized:
-            logger.info('_data: %r', _data)
-            id_kwargs = self.get_id(_data, schema=schema)
-            logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                includes |= set(_data.keys())
-                for idkey,idval in id_kwargs.items():
-                    id_param = '%s__in' % idkey
-                    ids[id_param].add(idval)
-        if not ids:
-            logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(ids)
+            includes |= set(_data.keys())
         kwargs_for_log['includes'] = list(includes)
+            
+        
+        (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+        if not id_query_params:
+            logger.info('No ids found for PATCH (may be ok if id is generated)')
+        kwargs_for_log.update(id_query_params)
+        
         try:
             logger.debug('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -1363,19 +1373,25 @@ class ApiResource(SqlAlchemyResource):
             kwargs['parent_log'] = parent_log
         
         new_objs = []
-        for _dict in deserialized:
-            new_objs.append(self.patch_obj(request, _dict))
+        for _row,_dict in enumerate(deserialized):
+            try:
+                new_objs.append(self.patch_obj(request, _dict, **kwargs))
+            except ValidationError, e:
+                # TODO: consider CumulativeError
+                e.errors['input_row'] = _row
+                e.errors.setdefault('input_id', rows_to_ids[_row])
+                raise
 
         # Get new state, for logging
         # After patch, the id keys must be present
         for idkey in id_attribute:
             id_param = '%s__in' % idkey
-            ids = set(kwargs_for_log.get(id_param,[]))
+            extant_ids = set(kwargs_for_log.get(id_param,[]))
             for new_obj in new_objs:
                 if hasattr(new_obj, idkey):
                     idval = getattr(new_obj, idkey)
-                    ids.add(idval)
-            kwargs_for_log[id_param] = ids
+                    extant_ids.add(idval)
+            kwargs_for_log[id_param] = extant_ids
         new_data = self._get_list_response_internal(**kwargs_for_log)
         logger.debug('post list done, new data: %d', len(new_data))
 
@@ -1386,12 +1402,12 @@ class ApiResource(SqlAlchemyResource):
         create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
-            API_MSG_RESULT: {
-                API_MSG_SUBMIT_COUNT: patch_count, 
-                API_MSG_UPDATED: update_count, 
-                API_MSG_CREATED: create_count,
-                API_MSG_UNCHANGED: unchanged_count, 
-                API_MSG_COMMENTS: parent_log.comment
+            SCHEMA.API_MSG_RESULT: {
+                SCHEMA.API_MSG_SUBMIT_COUNT: patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_CREATED: create_count,
+                SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
         }
         if deserialize_meta:
@@ -1497,10 +1513,10 @@ class ApiResource(SqlAlchemyResource):
         if patched_log:
             patched_log.save()
             logger.debug('post log: %r', patched_log)
-            meta[API_MSG_RESULT] = API_MSG_SUCCESS
+            meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
         else:
             logger.info('no post log')
-            meta[API_MSG_WARNING] = 'No Changes were detected'
+            meta[SCHEMA.API_MSG_WARNING] = 'No Changes were detected'
 
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
@@ -1590,11 +1606,11 @@ class ApiResource(SqlAlchemyResource):
             id_attribute=id_attribute, schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
-            meta[API_MSG_RESULT] = API_MSG_SUCCESS
+            meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
             logger.debug('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
-            meta[API_MSG_WARNING] = 'No Changes were detected'
+            meta[SCHEMA.API_MSG_WARNING] = 'No Changes were detected'
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', kwargs.get('test_only'))
@@ -1628,7 +1644,7 @@ class ApiResource(SqlAlchemyResource):
         # and then posted/patched
         
         # TODO: if put_detail is used: rework based on post_detail
-        raise NotImplementedError('put_detail must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
         # schema = kwargs.pop('schema', None)
         # if not schema:
@@ -1695,9 +1711,7 @@ class ApiResource(SqlAlchemyResource):
     @un_cache 
     @transaction.atomic       
     def delete_list(self, request, **kwargs):
-        msg = 'delete_list is not implemented for %s' % self._meta.resource_name
-        logger.info(msg)
-        raise NotImplementedError(msg)
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_list')
 
     @write_authorization
     @un_cache 
@@ -1755,12 +1769,12 @@ class ApiResource(SqlAlchemyResource):
 #     @un_cache        
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('delete obj must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
     
     @write_authorization
     @transaction.atomic    
     def patch_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('patch obj must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
 
     def validate(self, _dict, patch=False, schema=None, fields=None):
         '''
@@ -1947,7 +1961,7 @@ class ApiResource(SqlAlchemyResource):
                         logger.exception(
                             'key: %r, error in display options: %r - %r', 
                             key, display_options, e)
-        logger.info('siunit_default_units: %r', siunit_default_units)
+        logger.debug('siunit_default_units: %r', siunit_default_units)
         def siunit_rowproxy_generator(cursor):
             if extant_generator is not None:
                 cursor = extant_generator(cursor)
@@ -2339,23 +2353,18 @@ class ApiLogResource(ApiResource):
         id = kwargs.get('id', None)
         if id:
             return self.build_list_response(request, **kwargs)
-#             return self.get_list(request, **kwargs)
             
         ref_resource_name = kwargs.get('ref_resource_name', None)
         if not ref_resource_name:
-            logger.info('no ref_resource_name provided')
-            raise NotImplementedError(
-                'must provide a ref_resource_name parameter')
+            raise MissingParam('ref_resource_name')
         
         key = kwargs.get('key', None)
         if not key:
-            logger.info('no key provided')
-            raise NotImplementedError('must provide a key parameter')
+            raise MissingParam('key')
         
         date_time = kwargs.get('date_time', None)
         if not date_time:
-            logger.info('no date_time provided')
-            raise NotImplementedError('must provide a date_time parameter')
+            raise MissingParam('date_time')
 
         return self.build_list_response(request, **kwargs)
         
@@ -2601,7 +2610,7 @@ class ApiLogResource(ApiResource):
                                 .where(expression)))
                         break
             if 'diffs' in filter_hash:
-                raise NotImplementedError('Diff filtering is not implemented')
+                raise BadRequestError(key='diffs', msg='filtering is not implemented')
             
                 
             # general setup
@@ -2984,7 +2993,6 @@ class FieldResource(ApiResource):
         ''' Internal callers - build the schema.fields hash
         '''
         
-        logger.info('build_fields for scopes: %r', scopes)
         if not scopes:
             scopes = MetaHash.objects.all()\
                 .filter(scope__icontains='fields.')\
@@ -2993,9 +3001,12 @@ class FieldResource(ApiResource):
                 # bootstrap case
                 scopes = ['fields.field',]
 
+        scopes = set(scopes)
+        logger.info('build_fields for scopes: %r', scopes)
+
         fields = {}
         field_key = '{scope}/{key}'
-        for scope in set(scopes):
+        for scope in scopes:
             logger.debug('build scope: %r', scope)
             field_hash = deepcopy(
                 MetaHash.objects.get_and_parse(
@@ -3646,12 +3657,11 @@ class VocabularyResource(ApiResource):
     def get_detail(self, request, **kwargs):
         key = kwargs.get('key', None)
         if not key:
-            raise NotImplementedError('must provide a key parameter')
+            raise MissingParam('key')
         
         scope = kwargs.get('scope', None)
         if not scope:
-            logger.info('no scope provided')
-            raise NotImplementedError('must provide a scope parameter')
+            raise MissingParam('scope')
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
@@ -4325,7 +4335,7 @@ class UserResource(ApiResource):
 
         username = kwargs.get('username', None)
         if not username:
-            raise NotImplementedError('must provide a username parameter')
+            raise MissingParam('username')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
@@ -4972,9 +4982,8 @@ class UserGroupResource(ApiResource):
 
         name = kwargs.get('name', None)
         if not name:
-            logger.info('no group name provided')
-            raise NotImplementedError('must provide a group name parameter')
-
+            raise MissingParam('name')
+        
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -5376,14 +5385,10 @@ class PermissionResource(ApiResource):
     @read_authorization
     def get_detail(self, request, **kwargs):
 
-        scope = kwargs.get('scope', None)
-        if not scope:
-            logger.info('no scope provided')
-            raise NotImplementedError('must provide a scope parameter')
-        key = kwargs.get('key', None)
-        if not key:
-            logger.info('no key provided')
-            raise NotImplementedError('must provide a key parameter')
+        if not kwargs.get('scope'):
+            raise MissingParam('scope')
+        if not kwargs.get('key'):
+            raise MissingParam('key')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -5513,10 +5518,10 @@ class PermissionResource(ApiResource):
             raise e  
 
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('delete obj is not implemented for Permission')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
     
     def patch_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('patch obj is not implemented for Permission')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
     
 
 class JobResourceAuthorization(UserGroupAuthorization):

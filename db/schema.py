@@ -362,6 +362,17 @@ class VOCAB(reports.schema.VOCAB):
             NOT_ALLOWED = 'not_allowed'
             RETIRED = 'retired'
             REQUIRES_PERMISSION = 'requires_permission'
+    
+    class screensaver_user(schema_obj):
+        
+        class classification(schema_obj):
+            PRINCIPAL_INVESTIGATOR = 'principal_investigator'
+            GRADUATE_STUDENT = 'graduate_student'
+            ICCB_FELLOW = 'iccb_fellow'
+            RESEARCH_ASSISTANT = 'research_assistant'
+            POSTDOC = 'postdoc'
+            STAFF = 'staff'
+            OTHER = 'other'
             
     class screen(schema_obj):
         
@@ -381,6 +392,7 @@ class VOCAB(reports.schema.VOCAB):
             PRINCIPAL_INVESTIGATOR = 'principal_investigator'
             LEAD_SCREENER = 'lead_screener'
             COLLABORATOR = 'collaborator'
+            
         class screen_result_availability(schema_obj):
             AVAILABLE = 1
             NOT_SHARED = 2

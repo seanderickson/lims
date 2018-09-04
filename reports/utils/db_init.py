@@ -1,8 +1,12 @@
-# Use this to load api metadata initialization files that are detailed in the
-# "api_init_actions" file:
-# See static/api_init/api_init_actions.csv
+'''
+utils.db_init:
 
+This module implements API requests using the requests package:
+ - actions specified in an api_init_actions" csv file.
+ 
+@see static/api_init/api_init_actions.csv
 
+'''
 from __future__ import unicode_literals
 
 import argparse
@@ -14,112 +18,118 @@ from urlparse import urlparse
 
 import requests
 
-from django_requests import get_logged_in_session
+import django_requests
+import reports.schema as SCHEMA
 import reports.serialize.csvutils as csvutils
+from reports.serializers import CONTENT_TYPES
 from reports.utils import parse_credentials
 
 
 logger = logging.getLogger(__name__)
 
-# TODO: this replaces /reports/management/commands/db_init.py - sde4 - 201404
-
 class ApiError(Exception):
     
     def __init__(self, url, action, result):
         err_msg = ''
-        logger.exception('result.content: %r', result.content)
         try:
-            json_status = result.json()
-            if json_status and 'error_message' in json_status:
-                err_msg = json_status['error_message']
-            else:
-                err_msg = str(result.content)
+            err_msg = result.json()
         except ValueError,e:
-            logger.warn('There is no json in the response')
-            logger.warn('-----raw response text------- %r', result.text)
             err_msg = str(result.content)
 
-        self.message = str((
-            url,'action',action, result.reason, result.status_code, err_msg )) \
-            .replace('\\n','') \
-            .replace('\\','')
-        if logger.isEnabledFor(logging.DEBUG):
-            self.message = str((url,'action',action, result.reason, 
-                                result.status_code, result.content )).replace('\\','')
+        self.message = {
+            'url': url,
+            'action': action, 
+            'reason': result.reason,
+            'status_code': result.status_code,
+            'message': err_msg
+            }
 
     def __str__(self):
         return str(self.message)
 
+def _print_result(r):
+    result = r.json()
+    result = result.get(SCHEMA.API_RESULT_META, result)
+    return result.get(SCHEMA.API_MSG_RESULT, result)
+    
 
 def delete(obj_url, headers, session=None, authentication=None):
-    try:
-        if session:
-            r = session.delete(obj_url, headers=headers,verify=False)
-        elif authentication:
-            r = requests.delete(obj_url, auth=authentication, headers=headers,verify=False)
-        
-        if  r.status_code != 204:
-            print "DELETE ERROR", r, r.text
-            raise ApiError(obj_url,'DELETE',r)
-        print 'DELETE: ', obj_url, ' ,response:', r.status_code
-        logger.info('DELETE: %r', obj_url)
-    except Exception, e:
-        logger.exception('on delete: %s', obj_url)
-        raise e
+    if session:
+        r = session.delete(obj_url, headers=headers,verify=False)
+    elif authentication:
+        r = requests.delete(
+            obj_url, auth=authentication, headers=headers,verify=False)
+    if not r.status_code < 300:
+        raise ApiError(obj_url,'DELETE',r)
+
+    print 'DELETE: {}, response: {}'.format(
+        obj_url, r.status_code)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('result: %r', r)
 
 def put(input_file, obj_url,headers, session=None, authentication=None):
-    try:
-        with open(input_file) as f:
-            if session:
-                r = session.put(
-                    obj_url, headers=headers, data=f.read(),verify=False)
-            elif authentication:
-                r = requests.put(
-                    obj_url, auth=authentication, 
-                    headers=headers, data=f.read(),verify=False)
-            if not r.status_code in [200,201,202]:
-                raise ApiError(obj_url,'PUT',r)
-            print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
-                   r.status_code, ', count: ',len(r.json()['objects']))
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug('--- PUT objects:')
-                try:
-                    for obj in r.json()['objects']:
-                        logger.debug('object: %r', obj)
-                except ValueError,e:
-                    logger.debug('----no json object to report')
-                    logger.debug('text response: %r', r.text)
-    except Exception, e:
-        logger.exception('on put: %s', obj_url)
-        raise e
-    
-def patch(patch_file, obj_url,headers, session=None, authentication=None):
-    try:
-        print 'PATCH: ' , patch_file, 'to ', obj_url
-        with open(patch_file) as f:
-            if session:
-                r = session.patch(
-                    obj_url, headers=headers, data=f.read(),verify=False)
-            elif authentication:
-                r = requests.patch(
-                    obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if r.status_code not in [200,201,202,204]:
-                # TODO: only 200
-                raise ApiError(obj_url,'PATCH',r)
-            # TODO: show "Result" section of meta
-            print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
-                    r.status_code,', result: ',r.json()['meta']['Result'])
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug('--- PATCHED objects:')
-                try:
-                    for obj in r.json()['objects']:
-                        logger.debug('object: %r', obj)
-                except ValueError,e:
-                    logger.debug('----no json object to report')
-                    logger.debug('text response: %r', r.text)
-    except Exception, e:
-        logger.exception('on patch: %s', obj_url)
-        raise e
+    with open(input_file) as f:
+        if session:
+            r = session.put(
+                obj_url, headers=headers, data=f.read(),verify=False)
+        elif authentication:
+            r = requests.put(
+                obj_url, auth=authentication, 
+                headers=headers, data=f.read(),verify=False)
+        if not r.status_code < 300:
+            raise ApiError(obj_url,'PUT',r)
+        print 'PUT: {} to {}, response: {}, count: {}, result: {} '.format(
+            input_file, obj_url, r.status_code, 
+            len(r.json().get(SCHEMA.API_RESULT_DATA, [])),
+            _print_result(r))
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('result: %r', r.json())
+
+def patch(input_file, obj_url,headers, session=None, authentication=None):
+    with open(input_file) as f:
+        if session:
+            r = session.patch(
+                obj_url, headers=headers, data=f.read(),verify=False)
+        elif authentication:
+            r = requests.patch(
+                obj_url, auth=authentication, headers=headers, 
+                data=f.read(),verify=False)
+        if not r.status_code < 300:
+            raise ApiError(obj_url,'PATCH',r)
+        
+        print 'PATCH: {} to {}, response: {}, result: {} '.format(
+            input_file, obj_url, r.status_code, 
+            _print_result(r))
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('result: %r', r.json())
+
+
+def post(input_file, extension, obj_url,headers, session=None, authentication=None):
+    with open(input_file) as f:
+        logger.info('headers: %r', headers)
+        # NOTE: the extension as the files key is a ICCBL LIMS specific
+        files = { extension: f }
+        
+        if session:
+            print 'POST with session auth'
+            r = session.post(
+                obj_url, headers=headers, files=files,verify=False)
+        elif authentication:
+            print 'POST with basic auth'
+            r = requests.post(
+                obj_url, auth=authentication, headers=headers, 
+                files=files,verify=False)
+        if not r.status_code < 300:
+            raise ApiError(obj_url,'PATCH',r)
+        
+        print 'POST: {} to {}, response: {}, result: {} '.format(
+            input_file, obj_url, r.status_code, 
+            _print_result(r))
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('result: %r', r.json())
 
 
 parser = argparse.ArgumentParser(description='url')
@@ -142,7 +152,7 @@ parser.add_argument(
     help='user password for the api authentication')
 parser.add_argument(
     '-c', '--credential_file',
-    help = 'credential file containing the username:password for api authentication')
+    help = 'credential file containing the username:password')
 parser.add_argument(
     '-v', '--verbose', dest='verbose', action='count',
     help="Increase verbosity (specify multiple times for more)")    
@@ -154,16 +164,10 @@ if __name__ == "__main__":
         log_level = logging.INFO
     elif args.verbose >= 2:
         log_level = logging.DEBUG
-        DEBUG=True
-	from reports.utils.django_requests import DEBUG as DJANGO_REQUESTS_DEBUG
-	DJANGO_REQUESTS_DEBUG=True
+        django_requests.DEBUG = True
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
-    CONTENT_TYPES =   { 
-        'json': {'content-type': 'application/json'},
-        'csv':  {'content-type': 'text/csv'},
-        } 
                 
     url = args.url
     u = urlparse(url)
@@ -181,15 +185,15 @@ if __name__ == "__main__":
         if not password:
             password = getpass.getpass()
     
-    headers ={}
+    session_headers ={}
 
     logger.info('begin processing file: %r', args.input_actions_file)
-    session = get_logged_in_session(
+    session = django_requests.get_logged_in_session(
         username, password, base_url)
-    # django session based auth requires a csrf token
-    headers['X-CSRFToken'] = session.cookies['csrftoken']
-    # always accept json for debugging the returned values
-    headers['Accept'] = 'application/json'
+    # Django session based auth requires a csrf token
+    session_headers['X-CSRFToken'] = session.cookies['csrftoken']
+    # Always accept json for debugging the returned values
+    session_headers['Accept'] = 'application/json'
     
     with open(args.input_actions_file) as input_file:
         api_init_actions = csvutils.from_csv(input_file)
@@ -201,30 +205,31 @@ if __name__ == "__main__":
             resource = action['resource'].lower()
             resource_uri = url + '/' + resource
             
-            # tastypie session based auth requires the referer to be set
+            headers = session_headers.copy()
             headers['Referer']=resource_uri
             
             if command == 'delete':
-                headers.update(CONTENT_TYPES['json'])
                 delete(resource_uri, headers, session=session)
-            
             else:
                 data_file = os.path.join(args.input_dir,action['file'])
                 print 'Data File: ', data_file
                 extension = os.path.splitext(data_file)[1].strip('.')
-                headers.update(CONTENT_TYPES[extension])
+                
+                if extension not in CONTENT_TYPES:
+                    raise Exception('Unknown file extension: %r, types: %r'
+                        % (extension, CONTENT_TYPES))
                         
                 if command == 'put':
+                    headers.update({ 'content-type': CONTENT_TYPES[extension] })
                     put(data_file, resource_uri, headers, session=session)
-                        
                 elif command == 'patch':
+                    headers.update({ 'content-type': CONTENT_TYPES[extension] })
                     patch(data_file, resource_uri, headers, session=session)
-  
+                elif command == 'post':
+                    post(data_file, extension, resource_uri, headers, session=session)
                 else:
                     raise Exception(str((
-                        'Only [ PUT, PATCH, DELETE ] are supported.',
-                        '- cannot POST multiple objects to tastypie; ',
-                        'therefore the "post" command is invalid with the initialization scripts',
+                        'Only [ PATCH, POST, PUT, DELETE ] are supported.',
                         'resource entry: ',json.dumps(action) )) )
 
 

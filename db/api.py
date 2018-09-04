@@ -75,18 +75,15 @@ from db.support.plate_matrix_transformer import Collation
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from lims.app_data import APP_PUBLIC_DATA
-from reports import BadRequestError, ValidationError, InformationError, _now
+from reports import BadRequestError, ValidationError, InformationError, \
+    ApiNotImplemented, MissingParam, _now
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
     CumulativeError, LIST_DELIMITER_SUB_ARRAY
-from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
-    API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
-    API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_SUCCESS, API_RESULT_DATA, \
-    API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
+from reports.api import API_PARAM_OVERRIDE, \
     API_PARAM_PATCH_PREVIEW_MODE, API_PARAM_NO_BACKGROUND, API_PARAM_PREVIEW_LOGS, \
-    API_PARAM_SHOW_PREVIEW, \
-    DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
+    API_PARAM_SHOW_PREVIEW, DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
     background_job
 from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, \
@@ -95,7 +92,8 @@ import reports.api
 from reports.api_base import un_cache, MultiAuthentication, \
     IccblBasicAuthentication, IccblSessionAuthentication, TRAILING_SLASH
 from reports.models import Vocabulary, ApiLog, UserProfile
-from reports.schema import DATE_FORMAT
+from reports.schema import DATE_FORMAT, API_RESULT_DATA, API_RESULT_META, \
+    API_RESULT_OBJ
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE, \
     INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, csvutils, LimsJSONEncoder
@@ -272,7 +270,7 @@ class DbApiResource(reports.api.ApiResource):
             logger.debug('The well_query_index table exists')
             return
         except Exception as e:
-            logger.exception('creating the well_query_index table')
+            logger.info('creating the well_query_index table...')
        
         try:
             conn.execute(text(
@@ -782,7 +780,7 @@ class PlateLocationResource(DbApiResource):
             raise e   
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_detail must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
 
     @write_authorization
     @un_cache  
@@ -842,14 +840,14 @@ class PlateLocationResource(DbApiResource):
         if action == API_ACTION.CREATE:
             action += ': ' + update_log.key
         meta = { 
-            API_MSG_RESULT: { 
+            SCHEMA.API_MSG_RESULT: { 
                 'Plate location': action,
                 # Note remove submitted/unchanged count, inaccurate because
                 # all plates for the location are "submitted"
-                # API_MSG_SUBMIT_COUNT : patch_count, 
-                API_MSG_UPDATED: update_count, 
-                # API_MSG_UNCHANGED: unchanged_count, 
-                API_MSG_COMMENTS: log.comment
+                # SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                # SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: log.comment
             }
         }
         if deserialize_meta:
@@ -1529,11 +1527,13 @@ class LibraryCopyPlateResource(DbApiResource):
          **kwargs):    
         
         if screen_facility_id is None and library_screening_id is None:
-            raise NotImplementedError(
-                'must provide a "screen_facility_id" or "library_screening_id"')
+            msg = 'must provide a "screen_facility_id" or "library_screening_id"'
+            raise BadRequestError({
+                'screen_facility_id': msg, 'library_screening_id': msg})
         if screen_facility_id is not None and library_screening_id is not None:
-            raise NotImplementedError(
-                'must provide either a "screen_facility_id" or "library_screening_id"')
+            msg = 'must provide a "screen_facility_id" or "library_screening_id"'
+            raise BadRequestError({
+                'screen_facility_id': msg, 'library_screening_id': msg})
         if screen_facility_id is not None:
             if self.get_screen_resource()._meta.authorization\
                 .has_screen_read_authorization(
@@ -1883,8 +1883,10 @@ class LibraryCopyPlateResource(DbApiResource):
         if len(filter(lambda x: x is not None, 
             [cherry_pick_request_id, for_screen_facility_id, 
                 library_screening_id, plate_ids, plate_search_data]))>1:
-            raise NotImplementedError('Mutually exclusive params: %r'
-                % ['cherry_pick_request_id', 'for_screen_facility_id', 
+            raise BadRequestError(
+                key='filters', 
+                msg='Mutually exclusive params: %r'
+                    % ['cherry_pick_request_id', 'for_screen_facility_id', 
                     'library_screening_id', 'plate_ids','plate_search_data'])
             
         log_key = '/'.join(str(x) if x is not None else '%' 
@@ -2232,7 +2234,7 @@ class LibraryCopyPlateResource(DbApiResource):
             
             meta = kwargs.get('meta', {})
             if plate_search_errors:
-                meta['API_MSG_WARNING'] = \
+                meta['SCHEMA.API_MSG_WARNING'] = \
                     'Plates not found: %s' % ', '.join(sorted(plate_search_errors))
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -2381,11 +2383,11 @@ class LibraryCopyPlateResource(DbApiResource):
             update_count = len([x for x in logs if x.diffs ])
             unchanged_count = patch_count - update_count
             meta = { 
-                API_MSG_RESULT: { 
-                    API_MSG_SUBMIT_COUNT : patch_count, 
-                    API_MSG_UPDATED: update_count, 
-                    API_MSG_UNCHANGED: unchanged_count, 
-                    API_MSG_COMMENTS: parent_log.comment
+                SCHEMA.API_MSG_RESULT: { 
+                    SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                    SCHEMA.API_MSG_UPDATED: update_count, 
+                    SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                    SCHEMA.API_MSG_COMMENTS: parent_log.comment
                 }
             }
             return self.build_response(
@@ -2464,10 +2466,10 @@ class LibraryCopyPlateResource(DbApiResource):
                 [str(location_data[k]) for k in plate_location_fields])
             _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), JSON_MIMETYPE)
-            results = _data[API_RESULT_META][API_MSG_RESULT]
+            results = _data[API_RESULT_META][SCHEMA.API_MSG_RESULT]
             logger.info('results plate location patch: %r', results)
             meta = { 
-                API_MSG_RESULT: { 
+                SCHEMA.API_MSG_RESULT: { 
                     'Plate Location Result: %s' % plate_location_name: results,
                     'Plate Copy Ranges patched': ','.join(copy_plate_ranges),
                     'Plate Copy Count': len(original_data)
@@ -2847,7 +2849,7 @@ class UserAgreementResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def post_list(self, request, schema=None, **kwargs):
-        raise NotImplementedError
+        raise ApiNotImplemented(self._meta.resource_name, 'post_list')
 
     @write_authorization
     @un_cache        
@@ -2893,11 +2895,11 @@ class UserAgreementResource(DbApiResource):
         username = deserialized.pop('username', None)
         screensaver_user_id = deserialized.pop('screensaver_user_id', None)
         if username is None and screensaver_user_id is None:
-            raise NotImplementedError(
-                'must provide a screensaver_user_id or username parameter')
+            msg = 'must provide a screensaver_user_id or username parameter'
+            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
         if username is not None and screensaver_user_id is not None:
-            raise NotImplementedError(
-                'must provide either a screensaver_user_id or username parameter')
+            msg = 'must provide a screensaver_user_id or username parameter'
+            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
         if username is not None:
             su = ScreensaverUser.objects.get(username=username)
             screensaver_user_id = su.screensaver_user_id
@@ -3715,8 +3717,7 @@ class ScreenResultAuthorization(ScreenAuthorization):
             return True
         else:
             if not screen_facility_id:
-                raise NotImplementedError(
-                    'must provide a screen_facility_id parameter')
+                raise MissingParam('screen_facility_id')
             try:
                 screen = Screen.objects.get(facility_id=screen_facility_id)
 
@@ -4001,12 +4002,11 @@ class ScreenResultResource(DbApiResource):
 
         facility_id = kwargs.get('screen_facility_id', None)
         if not facility_id:
-            raise NotImplementedError(
-                'must provide a screen_facility_id parameter')
+            raise MissingParam('screen_facility_id')
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -4627,8 +4627,7 @@ class ScreenResultResource(DbApiResource):
         screen_facility_id = param_hash.pop('screen_facility_id', None)
         extra_params['Screen'] = screen_facility_id
         if not screen_facility_id:
-            raise NotImplementedError(
-                'must provide a screen_facility_id parameter')
+            raise MissingParam('screen_facility_id')
             
         well_id = param_hash.pop('well_id', None)
         if well_id:
@@ -5136,6 +5135,10 @@ class ScreenResultResource(DbApiResource):
         return self.patch_detail(request, **kwargs)
     
     @write_authorization
+    def post_detail(self, request, **kwargs):
+        return self.patch_detail(request, **kwargs)
+    
+    @write_authorization
     def patch_list(self, request, **kwargs):
         return self.patch_detail(request, **kwargs)
 
@@ -5204,7 +5207,7 @@ class ScreenResultResource(DbApiResource):
             self.create_screen_result(request, screen, columns, result_values)
              
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -5265,7 +5268,7 @@ class ScreenResultResource(DbApiResource):
                 }
                 screen_result.date_loaded = screen_log.date_time
                 screen_result.created_by = adminuser
-                meta[API_MSG_ACTION] = 'replaced'
+                meta[SCHEMA.API_MSG_ACTION] = 'replaced'
             else:
                 screen_result = ScreenResult.objects.create(
                     screen=screen,
@@ -5276,7 +5279,7 @@ class ScreenResultResource(DbApiResource):
                 screen_log.diffs = {
                     'last_data_loading_date': [None, screen_log.date_time] }
                 logger.info('created screen result: %r', screen_result)
-                meta[API_MSG_ACTION] = 'created'
+                meta[SCHEMA.API_MSG_ACTION] = 'created'
             
             screen_log.save()
             screenresult_log.parent_log = screen_log
@@ -6041,8 +6044,7 @@ class DataColumnResource(DbApiResource):
 
         data_column_id = kwargs.get('data_column_id', None)
         if not data_column_id:
-            logger.info('no data_column_id provided')
-            raise NotImplementedError('must provide a data_column_id parameter')
+            raise MissingParam('data_column_id')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -6342,7 +6344,7 @@ class DataColumnResource(DbApiResource):
     def patch_detail(self, request, **kwargs):
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
         # that the DataColumn may be patched external from the Screen Result
-        raise NotImplementedError
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
     @un_cache
@@ -6350,7 +6352,7 @@ class DataColumnResource(DbApiResource):
     def patch_list(self, request, **kwargs):
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
         # that the DataColumn may be patched external from the Screen Result
-        raise NotImplementedError
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     @write_authorization
     @transaction.atomic    
@@ -6475,11 +6477,11 @@ class CopyWellResource(DbApiResource):
          
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
-            raise NotImplementedError('must provide a copy_name parameter')
+            raise MissingParam('copy_name')
         
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -6688,13 +6690,13 @@ class CopyWellResource(DbApiResource):
             raise e  
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
     @write_authorization
     @un_cache        
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError('delete_obj is not implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
     
     @write_authorization
     @transaction.atomic
@@ -7662,7 +7664,7 @@ class CherryPickRequestResource(DbApiResource):
 
         cpr_id = kwargs.get('cherry_pick_request_id', None)
         if not cpr_id:
-            raise NotImplementedError('must provide a cherry_pick_request_id parameter')
+            raise MissingParam('cherry_pick_request_id')
         
         self.is_authenticated(request)
 
@@ -7673,7 +7675,7 @@ class CherryPickRequestResource(DbApiResource):
             raise PermissionDenied
         
         if request.method.lower() != 'get':
-            raise NotImplementedError()
+            raise ApiNotImplemented(self._meta.resource_name, '[method]_cpr_warnings')
         
         warnings = self.get_warnings(cpr_id)
         
@@ -8522,7 +8524,7 @@ class CherryPickRequestResource(DbApiResource):
                         plating_date__isnull=False)                
                 if plated_assay_plates_query.exists():
                     raise ValidationError({
-                        API_MSG_NOT_ALLOWED: 
+                        SCHEMA.API_MSG_NOT_ALLOWED: 
                             ('Screener cherry picks may not be reassigned after '
                              'plates have been plated'),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
@@ -8611,7 +8613,7 @@ class CherryPickRequestResource(DbApiResource):
                     _meta[API_MSG_SCPS_CREATED] = cpr.screener_cherry_picks.all().count()    
 
             if final_warn_msg:
-                _meta[API_MSG_WARNING] = final_warn_msg
+                _meta[SCHEMA.API_MSG_WARNING] = final_warn_msg
                             
             response = { API_RESULT_OBJ: cpr, API_RESULT_META: _meta }
             logger.info('response: %r', response)
@@ -8748,11 +8750,11 @@ class CherryPickRequestResource(DbApiResource):
                     plating_date__isnull=False)                
             if plated_assay_plates_query.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+                    SCHEMA.API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
                     API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
             })
             raise ValidationError({
-                API_MSG_NOT_ALLOWED: 
+                SCHEMA.API_MSG_NOT_ALLOWED: 
                     ('Lab cherry pick plates already assigned; '
                     'reservation must be canceled before reassignment is allowed'),
                 API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
@@ -9078,13 +9080,13 @@ class CherryPickRequestResource(DbApiResource):
                         plating_date__isnull=False)                
                 if plated_assay_plates_query.exists():
                     raise ValidationError({
-                        API_MSG_NOT_ALLOWED: 
+                        SCHEMA.API_MSG_NOT_ALLOWED: 
                             ('Lab Cherry Picks may not be deleted after plates are plated'),
                         API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                 })
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: 
+                    SCHEMA.API_MSG_NOT_ALLOWED: 
                         ('Lab cherry pick plates already assigned; '
                         'cancel reservation to deallocate plates'),
                     API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
@@ -9198,7 +9200,7 @@ class CherryPickRequestResource(DbApiResource):
                     cpr.cherry_pick_assay_plates.filter(plating_date__isnull=False)
                 if plated_assay_plates_query.exists():
                     raise ValidationError({
-                        API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+                        SCHEMA.API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
                         API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                     })
@@ -9286,7 +9288,7 @@ class CherryPickRequestResource(DbApiResource):
         if lcp_query.exists():
             if cpr.lab_cherry_picks.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: 
+                    SCHEMA.API_MSG_NOT_ALLOWED: 
                         ('Lab cherry picks already assigned: (%d); '
                         'delete lab cherry picks to change '
                         'screener cherry pick selections' 
@@ -9397,7 +9399,7 @@ class CherryPickRequestResource(DbApiResource):
         if lcp_query.exists():
             if cpr.lab_cherry_picks.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: 
+                    SCHEMA.API_MSG_NOT_ALLOWED: 
                         ('Lab cherry picks already assigned: (%d); '
                         'delete lab cherry picks to change '
                         'screener cherry pick selections' 
@@ -9532,7 +9534,7 @@ class CherryPickRequestResource(DbApiResource):
             
         meta = {}
         if lcp_assigned_count == 0:
-            meta[API_MSG_WARNING] = 'No eligible copies found'
+            meta[SCHEMA.API_MSG_WARNING] = 'No eligible copies found'
         else:
             total_count = cpr.lab_cherry_picks.all().count()
             meta = {
@@ -9602,7 +9604,7 @@ class ScreenerCherryPickResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def post_list(self, request, schema=None, **kwargs):
-        raise NotImplementedError()
+        raise ApiNotImplemented(self._meta.resource_name, 'post_list')
     
 
     @write_authorization
@@ -9628,7 +9630,7 @@ class ScreenerCherryPickResource(DbApiResource):
          
         if cpr.lab_cherry_picks.exists():
             raise ValidationError({
-                API_MSG_NOT_ALLOWED: 
+                SCHEMA.API_MSG_NOT_ALLOWED: 
                     ('Lab cherry picks already assigned: (%d); '
                     'delete lab cherry picks to change '
                     'screener cherry pick selections' 
@@ -9799,7 +9801,7 @@ class ScreenerCherryPickResource(DbApiResource):
             API_MSG_SCP_RESELECTED: ', '.join(scps_to_reselect)
         }
         if messages:
-            result_message[API_MSG_COMMENTS] = messages
+            result_message[SCHEMA.API_MSG_COMMENTS] = messages
         
         self.get_cpr_resource().clear_cache(request)
         new_cpr_data = self.get_cpr_resource()._get_detail_response_internal(
@@ -10291,14 +10293,14 @@ class LabCherryPickResource(DbApiResource):
                     plating_date__isnull=False)                
             if plated_assay_plates_query.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+                    SCHEMA.API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
                     API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                     API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                 })
             if param_override is not True:
                 raise ValidationError({
                     API_PARAM_OVERRIDE: 'required',
-                    API_MSG_WARNING: 
+                    SCHEMA.API_MSG_WARNING: 
                         ('Lab cherry pick plates already assigned; '
                         'cancel reservation to deallocate plates, '
                         'or choose override to keep plating and change assignments'),
@@ -10341,7 +10343,7 @@ class LabCherryPickResource(DbApiResource):
                     'source_well_id': 
                         'not a current lab cherry pick: %r' % source_well_id }
                 if is_mapped:
-                    error_dict[API_MSG_WARNING] = (
+                    error_dict[SCHEMA.API_MSG_WARNING] = (
                         'lab cherry pick reservation must be canceled in '
                         'order to add new selections')
                 raise ValidationError(error_dict)
@@ -10543,7 +10545,7 @@ class LabCherryPickResource(DbApiResource):
             API_MSG_LCP_CHANGED: changed,
             API_MSG_LCP_DESELECTED: deselected,
             API_MSG_LCP_SELECTED: selected,
-            API_MSG_WARNING: warning_messages,
+            SCHEMA.API_MSG_WARNING: warning_messages,
         }
         if result_meta_allocate:
             _meta.update(result_meta_allocate)
@@ -11256,12 +11258,10 @@ class CherryPickPlateResource(DbApiResource):
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if not cherry_pick_request_id:
-            raise NotImplementedError(
-                'must provide a cherry_pick_request_id parameter')
+            raise MissingParam('cherry_pick_request_id')
         plate_ordinal = kwargs.get('plate_ordinal', None)
         if not plate_ordinal:
-            raise NotImplementedError(
-                'must provide a plate_ordinal parameter')
+            raise MissingParam('plate_ordinal')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -11637,7 +11637,7 @@ class CherryPickPlateResource(DbApiResource):
             request, original_cpap_data, new_cpap_data, schema=schema, 
             parent_log=parent_log)
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS }
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS }
         if patch_logs:
             plating_fields = set(['plating_date', 'plated_by_username', 'plating_comments'])
             screening_fields = set(['screening_date', 'screened_by_username', 'screening_comments'])
@@ -11719,14 +11719,12 @@ class LibraryCopyResource(DbApiResource):
     @read_authorization
     def get_detail(self, request, **kwargs):
 
-        library_short_name = kwargs.get(u'library_short_name', None)
+        library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
-            raise NotImplementedError(
-                'must provide a library_short_name parameter')
+            raise MissingParam('library_short_name')
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
-            raise NotImplementedError(
-                'must provide a copy "copy_name" parameter')
+            raise MissingParam('copy_name')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -11990,7 +11988,7 @@ class LibraryCopyResource(DbApiResource):
             raise e   
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
     @write_authorization
     @un_cache
@@ -12177,11 +12175,11 @@ class LibraryCopyResource(DbApiResource):
                     logger.debug('saved plate: %r', p.plate_number)
                 logger.info('created %d plates', plates_created)
                 logger.info('patch_obj done for librarycopy: %r', librarycopy)
-                meta[API_MSG_RESULT] = {
+                meta[SCHEMA.API_MSG_RESULT] = {
                     'plates created': plates_created,
                 }
                 if warnings:
-                    meta[API_MSG_WARNING] = warnings
+                    meta[SCHEMA.API_MSG_WARNING] = warnings
             
             return { API_RESULT_META: meta, API_RESULT_OBJ: librarycopy }
             
@@ -12262,8 +12260,7 @@ class PublicationResource(DbApiResource):
 
         publication_id = kwargs.get('publication_id', None)
         if not publication_id:
-            raise NotImplementedError(
-                'must provide a publication_id parameter')
+            raise MissingParam('publication_id')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -12379,20 +12376,16 @@ class PublicationResource(DbApiResource):
             use_caching=True)
              
     def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_list')
     
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for Publications")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
     @un_cache        
@@ -12540,7 +12533,7 @@ class PublicationResource(DbApiResource):
     
         publication_id = kwargs.get('publication_id', None)
         if not publication_id:
-            NotImplementedError('must provide a publication_id parameter')
+            raise MissingParam('publication_id')
         
         publication = Publication.objects.get(publication_id=publication_id)
 
@@ -12683,20 +12676,16 @@ class AttachedFileResource(DbApiResource):
         ] 
         
     def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_list')
     
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for AttachedFiles")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     def log_to_screen(self, screen, af, request, is_delete=False):
         '''
@@ -12914,7 +12903,7 @@ class AttachedFileResource(DbApiResource):
             raise Exception('schema not initialized')
         attached_file_id = kwargs.pop('attached_file_id', None)
         if not attached_file_id:
-            NotImplementedError('must provide a attached_file_id parameter')
+            raise MissingParam('attached_file_id')
         
         af = AttachedFile.objects.get(attached_file_id=attached_file_id)
         
@@ -12959,8 +12948,7 @@ class AttachedFileResource(DbApiResource):
 
         attached_file_id = kwargs.get('attached_file_id', None)
         if not attached_file_id:
-            raise NotImplementedError(
-                'must provide a attached_file_id parameter')
+            raise MissingParam('attached_file_id')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -14097,8 +14085,7 @@ class LibraryScreeningResource(ActivityResource):
             'hide_existing','boolean')    
         
         if not facility_id:
-            raise NotImplementedError(
-                'must provide facility_id')
+            raise MissingParam('facility_id')
         if self.get_screen_resource()._meta.authorization\
             .has_screen_read_authorization(request.user, facility_id) is False:
             raise PermissionDenied
@@ -14201,7 +14188,7 @@ class LibraryScreeningResource(ActivityResource):
         
         meta = { 'total_count': len(_data) }
         if plate_search_errors:
-            meta[API_MSG_WARNING] = plate_search_errors
+            meta[SCHEMA.API_MSG_WARNING] = plate_search_errors
         response_data = {
             API_RESULT_META: meta,
             API_RESULT_DATA: _data 
@@ -14907,7 +14894,7 @@ class LibraryScreeningResource(ActivityResource):
             raise e  
 
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_detail must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def validate(self, _dict, patch=False, schema=None):
 
@@ -14979,7 +14966,7 @@ class LibraryScreeningResource(ActivityResource):
         }
         meta.update(plate_meta)
         _data = { API_RESULT_DATA: [new_data] }
-        _data[API_RESULT_META] = { API_MSG_RESULT: meta }
+        _data[API_RESULT_META] = { SCHEMA.API_MSG_RESULT: meta }
         
         return _data
 
@@ -15066,7 +15053,7 @@ class LibraryScreeningResource(ActivityResource):
         }
         meta.update(plate_meta)
         _data = { API_RESULT_DATA: [new_data] }
-        _data[API_RESULT_META] = { API_MSG_RESULT: meta }
+        _data[API_RESULT_META] = { SCHEMA.API_MSG_RESULT: meta }
         
         return _data
 
@@ -15341,7 +15328,7 @@ class LibraryScreeningResource(ActivityResource):
                 end_plate = Plate.objects.get(
                     copy=copy,
                     plate_number=_data['end_plate'])
-                logger.info(
+                logger.debug(
                     'found start: %r, end: %r plates', start_plate, end_plate)
                 if start_plate.copy.library != end_plate.copy.library:
                     raise ValidationError(
@@ -15702,7 +15689,7 @@ class LibraryScreeningResource(ActivityResource):
         if plate_warnings:
             warnings['plate_status'] = sorted(plate_warnings)
         if warnings:
-            meta[API_MSG_WARNING] = warnings
+            meta[SCHEMA.API_MSG_WARNING] = warnings
         
         logger.info('return meta information: %r', meta)
         # MODIFIED: 20170605 - per JAS/KR, overdraw volume but warn
@@ -15715,8 +15702,10 @@ class LibraryScreeningResource(ActivityResource):
     @transaction.atomic    
     def delete_obj(self, request, deserialized, log=None, **kwargs):
         
-        raise NotImplementedError(
-            'Library Screening may not be deleted - remove plates to negate')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list', { 
+            'message': 
+                'Library Screening may not be deleted - remove plates to negate'
+        })
         #         
         #         if log is None:
         #             raise ProgrammingError('log must be set: %r', kwargs)
@@ -16001,20 +15990,16 @@ class RawDataTransformerResource(DbApiResource):
             raise e  
 
     def put_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Put list is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_list')
     
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Post detail is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
     
     def patch_list(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch list is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_list')
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError(
-            "Patch detail is not implemented for Raw Data Transform")
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
     @transaction.atomic
@@ -16365,7 +16350,7 @@ class RawDataTransformerResource(DbApiResource):
             rdt.save()
             logger.info('wrote temp file: %r', temp_file.name)
         
-        _meta[API_MSG_RESULT] = API_MSG_SUCCESS
+        _meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
         
         return self.build_response(
             request, {API_RESULT_META: _meta }, response_class=HttpResponse, **kwargs)
@@ -17160,7 +17145,7 @@ class ScreenResource(DbApiResource):
         
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
-            raise NotImplementedError('must provide a facility_id parameter')
+            raise MissingParam('facility_id')
         
         self.is_authenticated(request)
 
@@ -17331,7 +17316,7 @@ class ScreenResource(DbApiResource):
     def get_detail(self, request, **kwargs):
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
-            raise NotImplementedError('must provide a facility_id parameter')
+            raise MissingParam('facility_id')
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -17686,6 +17671,14 @@ class ScreenResource(DbApiResource):
                     .select_from(collaborators)
                     .where(collaborators.c.screen_id 
                         == literal_column('screen.screen_id'))),
+                'collaborator_usernames': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(collaborators.c.username),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(collaborators)
+                    .where(collaborators.c.screen_id 
+                        == literal_column('screen.screen_id'))),
                 'collaborator_names': (
                     select([
                         func.array_to_string(
@@ -17697,6 +17690,7 @@ class ScreenResource(DbApiResource):
                 'lab_affiliation': lab_head_table.c.lab_affiliation,
                 'lab_name': lab_head_table.c.lab_name_full,
                 'lab_head_name': lab_head_table.c.name,
+                'lab_head_username': lab_head_table.c.username,
                 'lab_head_id': lab_head_table.c.screensaver_user_id,
                 'lead_screener_name': (
                     select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
@@ -17704,6 +17698,10 @@ class ScreenResource(DbApiResource):
                     .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
                 'lead_screener_id': (
                     select([_su.c.screensaver_user_id])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
+                'lead_screener_username': (
+                    select([_su.c.username])
                     .select_from(_su)
                     .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
                 'has_screen_result': (
@@ -18232,24 +18230,41 @@ class ScreenResource(DbApiResource):
 
         initializer_dict = self.parse(deserialized,  schema=schema, create=create)
             
-        errors = self.validate(deserialized,  schema=schema, patch=not create)
-        if errors:
-            raise ValidationError(errors)
-        
         _key = 'lab_head_id'
-        if _key in initializer_dict:
+        lab_head_id = initializer_dict.get(_key)
+        if lab_head_id:
             try: 
-                # may not be null
                 lab_head = ScreensaverUser.objects.get(
-                    screensaver_user_id=initializer_dict[_key])
+                    screensaver_user_id=lab_head_id)
                 initializer_dict['lab_head'] = lab_head
                 
             except ObjectDoesNotExist:
                 raise ValidationError(
                     key=_key,
                     msg='No such user: %r' % initializer_dict[_key])
+        # Look for the lab_head_username alternate natural key
+        _key = 'lab_head_username'
+        lab_head_username = initializer_dict.get(_key)
+        if lab_head_username:
+            try: 
+                lab_head = ScreensaverUser.objects.get(
+                    username=lab_head_username)
+                logger.info('found alternate lab_head_username: %r', 
+                    lab_head_username)
+                if lab_head_id and lab_head_id != lab_head.screensaver_user_id:
+                    raise ValidationError(
+                        key='lab_head_username',
+                        msg='may not be set if "lab_head_id" is set')
+                initializer_dict['lab_head'] = lab_head
+                initializer_dict['lab_head_id'] = lab_head.screensaver_user_id
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=_key,
+                    msg='No such user: %r' % initializer_dict[_key])
+        
         _key = 'lead_screener_id'
-        if _key in initializer_dict:
+        lead_screener_id = initializer_dict.get(_key)
+        if lead_screener_id:
             try:
                 # may not be null
                 initializer_dict['lead_screener'] = (
@@ -18259,11 +18274,33 @@ class ScreenResource(DbApiResource):
                 raise ValidationError(
                     key=_key,
                     msg='No such user: %r' % initializer_dict[_key])
+        # Look for the lab_head_username alternate natural key
+        _key = 'lead_screener_username'
+        lead_screener_username = initializer_dict.get(_key)
+        if lead_screener_username:
+            try: 
+                lead_screener = ScreensaverUser.objects.get(
+                    username=lead_screener_username)
+                logger.info('found alternate lead_screener_username: %r', 
+                    lead_screener_username)
+                if lead_screener_id \
+                    and lead_screener_id != lead_screener.screensaver_user_id:
+                    raise ValidationError(
+                        key='lead_screener_username',
+                        msg='may not be set if "lead_screener_id" is set')
+                
+                initializer_dict['lead_screener'] = lead_screener
+                initializer_dict['lead_screener_id'] = lead_screener.screensaver_user_id
+                
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=_key,
+                    msg='No such user: %r' % initializer_dict[_key])
+
         _key = 'collaborator_ids'
-        if initializer_dict.get(_key, None) is not None:
-            collaborator_ids = initializer_dict[_key]
-            collaborators = []
-            # may empty
+        collaborator_ids = initializer_dict.get(_key)
+        collaborators = []
+        if collaborator_ids:
             for collaborator_id in collaborator_ids:
                 try:
                     collaborators.append(ScreensaverUser.objects.get(
@@ -18271,8 +18308,28 @@ class ScreenResource(DbApiResource):
                 except ObjectDoesNotExist:
                     raise ValidationError(
                         key=_key,
-                        msg='No such user: %r' % collaborator_username)
+                        msg='No such screensaver_user_id: %r' % collaborator_id)
             initializer_dict['collaborators'] = collaborators
+        # Look for the collaborator_usernames - alternate natural keys
+        _key = 'collaborator_usernames'
+        collaborator_usernames = initializer_dict.get(_key)
+        if collaborator_usernames:
+            if collaborators:
+                raise ValidationError(
+                    key=_key,
+                    msg='May not be set if "collaborator_ids" is set')
+            alternate_collaborators = []
+            for collaborator_username in collaborator_usernames:
+                try:
+                    alternate_collaborators.append(
+                        ScreensaverUser.objects.get(
+                            username=collaborator_username))
+                except ObjectDoesNotExist:
+                    raise ValidationError(
+                        key=_key,
+                        msg='No such username: %r' % collaborator_username)
+            initializer_dict['collaborators'] = alternate_collaborators
+                
         _key = 'pin_transfer_approved_by_username'
         pin_transfer_approved_by = None
         if _key in initializer_dict:
@@ -18294,6 +18351,10 @@ class ScreenResource(DbApiResource):
             initializer_dict.get('pin_transfer_date_approved',None)
         pin_transfer_comments = \
             initializer_dict.get('pin_transfer_comments', None)
+
+        errors = self.validate(initializer_dict,  schema=schema, patch=not create)
+        if errors:
+            raise ValidationError(errors)
         
         related_initializer = {}
         related_initializer['cell_lines'] = \
@@ -18428,7 +18489,7 @@ class ScreenResource(DbApiResource):
                 screen.publication_set.add(query)
         
         _key = 'primary_screen'
-        _val = deserialized.get(_key, None)
+        _val = deserialized.get(_key)
         if _val:
             if ( screen.parent_screen 
                 and screen.parent_screen.facility_id != _val):
@@ -18648,7 +18709,7 @@ class StudyResource(ScreenResource):
             logger.info('study values created for: %r', study_obj)
         
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -18866,7 +18927,7 @@ class StudyResource(ScreenResource):
                     result_value_generator(result))
             logger.info('study values created for: %r', study_obj)
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -19081,7 +19142,7 @@ class StudyResource(ScreenResource):
             logger.info('study values created for: %r', study_obj)
         
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -19266,7 +19327,7 @@ class UserChecklistResource(DbApiResource):
 
         name = kwargs.get('name', None)
         if not name:
-            raise NotImplementedError('must provide a name parameter')
+            raise MissingParam('name')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
         return self.build_list_response(request, **kwargs)
@@ -19457,8 +19518,7 @@ class UserChecklistResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def delete_obj(self, request, deserialized, **kwargs):
-        raise NotImplementedError(
-            'delete obj is not implemented for UserChecklist')
+        raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
 
     @write_authorization
     @transaction.atomic()
@@ -19714,7 +19774,18 @@ class LabAffiliationResource(DbApiResource):
         fields = schema['fields']
         
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
-
+        if not id_kwargs:
+            # Look for alternate identifier; unique field "name"
+            lab_affiliation_name = deserialized.get('name')
+            if lab_affiliation_name:
+                try:
+                    lab_affiliation  = \
+                        LabAffiliation.objects.get(name=lab_affiliation_name)
+                    id_kwargs = { 'lab_affiliation_id': lab_affiliation.lab_affiliation_id }
+                    logger.info('found lab_affiliation by name: %r', lab_affiliation)
+                except ObjectDoesNotExist:
+                    logger.info('affiliation_name does not exist: %r', lab_affiliation_name)
+        
         patch = bool(id_kwargs)
         initializer_dict = self.parse(deserialized, schema=schema, create=not patch)
         errors = self.validate(initializer_dict, schema=schema, patch=patch)
@@ -19983,11 +20054,8 @@ class ScreensaverUserResource(DbApiResource):
         username = kwargs.get('username', None)
         ecommons_id = kwargs.get('ecommons_id', None)
         if screensaver_user_id is None and username is None and ecommons_id is None:
-            logger.info(
-                'no screensaver_user_id, username or ecommons_id provided: %r', 
-                kwargs.keys())
-            raise NotImplementedError(
-                'must provide a screensaver_user_id or username parameter')
+            msg = 'must provide a screensaver_user_id or username parameter'
+            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -20123,6 +20191,7 @@ class ScreensaverUserResource(DbApiResource):
                 ),
             'lab_name': lab_head_table.c.lab_name_full,
             'lab_head_id': lab_head_table.c.screensaver_user_id,
+            'lab_head_username': lab_head_table.c.username,
             'lab_member_ids': (
                 select([
                     func.array_to_string(
@@ -20249,7 +20318,7 @@ class ScreensaverUserResource(DbApiResource):
             use_caching=True)
         
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
     @write_authorization
     @un_cache        
@@ -20374,7 +20443,7 @@ class ScreensaverUserResource(DbApiResource):
 
         DEBUG_USER_PATCH = False or logger.isEnabledFor(logging.DEBUG)
         
-        PI_ROLE = USER_ROLE.PRINCIPAL_INVESTIGATOR
+        PI_ROLE = SCHEMA.VOCAB.screensaver_user.classification.PRINCIPAL_INVESTIGATOR
         
         schema = kwargs.pop('schema', None)
         if not schema:
@@ -20413,6 +20482,7 @@ class ScreensaverUserResource(DbApiResource):
             if val['scope'] == 'fields.screensaveruser'}
         initializer_dict = self.parse(
             deserialized, create=not is_patch, fields=screensaveruser_fields)
+        logger.info('patch screensaveruser initializer_dict: %r', initializer_dict)
         
         if screensaver_user is None:
             if id_kwargs:
@@ -20500,35 +20570,78 @@ class ScreensaverUserResource(DbApiResource):
                     screensaver_user.first_name = first_name
                     screensaver_user.last_name = last_name
 
-            key = 'lab_head_id'
-            lab_head_id = initializer_dict.get(key,None)
+            _key = 'lab_head_id'
+            lab_head_id = initializer_dict.get(_key)
+            lab_head = None
             if lab_head_id:
                 try:
                     lab_head = ScreensaverUser.objects.get(
                         screensaver_user_id=lab_head_id)
                     if lab_head.classification != PI_ROLE:
                         raise ValidationError(
-                            'Chosen lab head "user.classification must be %r '
-                            % PI_ROLE)
+                            key=_key,
+                            msg = 'Chosen lab head "user.classification" '
+                                'must be %r ' % PI_ROLE)
                 except ObjectDoesNotExist, e:
                     raise ValidationError(
                         key=_key,
-                        msg='Screensaver user for %r not found' % lh_id)
+                        msg='Screensaver user for %r not found' % lab_head_id)
+
+            _key = 'lab_head_username'
+            lab_head_username = initializer_dict.get(_key)
+            logger.info('got lab_head_username: %r', lab_head_username)
+            if lab_head_username:
+                if lab_head:
+                    if lab_head.username and lab_head.username != lab_head_username:
+                        raise ValidationError(
+                            key=_key, 
+                            msg='must be the same user as the "lab_head_id"')
+                else:
+                    try:
+                        lab_head = ScreensaverUser.objects.get(
+                            username=lab_head_username)
+                        if lab_head.classification != PI_ROLE:
+                            raise ValidationError(
+                                key=_key,
+                                msg = 'Chosen lab head "user.classification" '
+                                    'must be %r ' % PI_ROLE)
+                        initializer_dict['lab_head_id'] = lab_head.screensaver_user_id
+                    except ObjectDoesNotExist, e:
+                        raise ValidationError(
+                            key=_key,
+                            msg='Screensaver user for %r not found' 
+                                % lab_head_username)
             
-            key = 'classification'
-            classification = initializer_dict.get(key,None)
+            _key = 'classification'
+            classification = initializer_dict.get(_key)
             if classification:
                 if classification == PI_ROLE:
-                    if lab_head_id is not None:
+                    if lab_head is not None:
                         raise ValidationError(
-                            key='lab_head_id',
+                            key=_key,
                             msg='Classification may not be % for lab member'
                                 % PI_ROLE)
                 elif screensaver_user.classification == PI_ROLE:
                     raise ValidationError(
-                        key=key, msg='May not be changed from %r'
+                        key=_key, msg='May not be changed from %r'
                             % PI_ROLE)
-                    
+            
+            _key = 'lab_affiliation_name'
+            lab_affiliation_name = initializer_dict.get(_key)
+            if lab_affiliation_name:
+                lab_affiliation = LabAffiliation.objects.get(
+                    name=lab_affiliation_name)
+                la_id = initializer_dict.get('lab_affiliation_id')
+                if la_id:
+                    if la_id != lab_affiliation.lab_affiliation_id:
+                        raise ValidationError(
+                            key=_key,
+                            msg='may not be set if "lab_affiliation_id" is set')
+                else:
+                    initializer_dict['lab_affiliation_id'] = \
+                        lab_affiliation.lab_affiliation_id
+            
+            logger.info('final initializer: %r', initializer_dict)
             for key, val in initializer_dict.items():
                 if hasattr(screensaver_user, key):
                     setattr(screensaver_user, key, val)
@@ -20584,6 +20697,11 @@ class ScreensaverUserResource(DbApiResource):
 
             auth_user = user.user
             is_staff = auth_user.is_staff
+            if is_staff:
+                if not screensaver_user.classification:
+                    screensaver_user.classification = \
+                        SCHEMA.VOCAB.screensaver_user.classification.STAFF
+            
         screensaver_user.save()
         logger.info('user saved: %r',screensaver_user)
         
@@ -20610,7 +20728,11 @@ class ScreensaverUserResource(DbApiResource):
                 if screensaver_user.lab_head != screensaver_user:
                     screensaver_user.lab_head = screensaver_user
             
-            if screensaver_user.classification != PI_ROLE:
+            else:
+                if screensaver_user.lab_affiliation is not None:
+                    raise ValidationError(
+                        key='lab_affiliation_id',
+                        msg='may not be set unless user is a Principal Investigator')
                 
                 lab_head = screensaver_user.lab_head
                 if lab_head is None:
@@ -20631,25 +20753,25 @@ class ScreensaverUserResource(DbApiResource):
                                     messages.append
                 
                 # Reset user dsls to lab_head values
-                # TODO: warn and override                
-#                 if screensaver_user.sm_data_sharing_level \
-#                         != lab_head.sm_data_sharing_level:
-#                     if lab_head.sm_data_sharing_level is not None:
-#                         messages.append('%r updated from %r to %r'
-#                             % ( 'sm_data_sharing_level',
-#                                 screensaver_user.sm_data_sharing_level,
-#                                 lab_head.sm_data_sharing_level ))
-#                         screensaver_user.sm_data_sharing_level = \
-#                             lab_head.sm_data_sharing_level
-#                 if screensaver_user.rnai_data_sharing_level \
-#                         != lab_head.rnai_data_sharing_level:
-#                     if lab_head.rnai_data_sharing_level is not None:
-#                         messages.append('%r updated from %r to %r'
-#                             % ( 'rnai_data_sharing_level',
-#                                 screensaver_user.rnai_data_sharing_level,
-#                                 lab_head.rnai_data_sharing_level ))
-#                         screensaver_user.rnai_data_sharing_level = \
-#                             lab_head.rnai_data_sharing_level
+                # TODO: warn and override
+                # if screensaver_user.sm_data_sharing_level \
+                #         != lab_head.sm_data_sharing_level:
+                #     if lab_head.sm_data_sharing_level is not None:
+                #         messages.append('%r updated from %r to %r'
+                #             % ( 'sm_data_sharing_level',
+                #                 screensaver_user.sm_data_sharing_level,
+                #                 lab_head.sm_data_sharing_level ))
+                #         screensaver_user.sm_data_sharing_level = \
+                #             lab_head.sm_data_sharing_level
+                # if screensaver_user.rnai_data_sharing_level \
+                #         != lab_head.rnai_data_sharing_level:
+                #     if lab_head.rnai_data_sharing_level is not None:
+                #         messages.append('%r updated from %r to %r'
+                #             % ( 'rnai_data_sharing_level',
+                #                 screensaver_user.rnai_data_sharing_level,
+                #                 lab_head.rnai_data_sharing_level ))
+                #         screensaver_user.rnai_data_sharing_level = \
+                #             lab_head.rnai_data_sharing_level
             
         screensaver_user.save()
         
@@ -20728,7 +20850,7 @@ class ScreensaverUserResource(DbApiResource):
         
         
         meta = {
-            API_MSG_RESULT: {
+            SCHEMA.API_MSG_RESULT: {
                 'messages': messages
             },
         }
@@ -21035,7 +21157,7 @@ class ReagentResource(DbApiResource):
     
         well_id = kwargs.pop('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
                 
         well_kwargs = {
             'exact_fields':  ['other_wells_with_reagent'],
@@ -21224,7 +21346,7 @@ class ReagentResource(DbApiResource):
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         try:
             well = Well.objects.get(well_id=well_id)
@@ -21495,7 +21617,7 @@ class ReagentResource(DbApiResource):
         # substance_id = kwargs.get('substance_id')
         well_id = kwargs.get('well_id')
         if well_id is None: # and substance_id is None:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         logger.info('visibilities: %r', kwargs['visibilities'])
@@ -22383,9 +22505,9 @@ class SilencingReagentResource(ReagentResource):
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         # NOTE: patching will only be done in batch, from library/well
-        raise NotImplementedError
-
+ 
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
         - deserialized has been loaded with the well & duplex wells
@@ -22652,9 +22774,8 @@ class SmallMoleculeReagentResource(ReagentResource):
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         # NOTE: patching will only be done in batch, from library/well
-        raise NotImplementedError
-
     
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
@@ -22823,8 +22944,8 @@ class NaturalProductReagentResource(ReagentResource):
     @write_authorization
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         # NOTE: patching will only be done in batch, from library/well
-        raise NotImplementedError
 
     def _patch_wells(self, request, deserialized):
         ''' For bulk update: 
@@ -22958,7 +23079,7 @@ class WellResource(DbApiResource):
         '''
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
         
         final_data = self.get_generic_reagent_resource().get_annotations(well_id)
         
@@ -22977,7 +23098,7 @@ class WellResource(DbApiResource):
         
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
         
         data = self.get_generic_reagent_resource().get_duplex_data(request, well_id)
                 
@@ -23042,7 +23163,7 @@ class WellResource(DbApiResource):
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            raise NotImplementedError('must provide a well_id parameter')
+            raise MissingParam('well_id')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -23596,13 +23717,13 @@ class WellResource(DbApiResource):
             meta.update(deserialize_meta)
         
         meta.update({ 
-            API_MSG_RESULT: { 
-                API_MSG_SUBMIT_COUNT: patch_count, 
-                API_MSG_UPDATED: update_count, 
-                API_MSG_CREATED: create_count, 
-                API_MSG_UNCHANGED: patch_count-update_count-create_count,
-                API_MSG_ACTION: library_log.api_action, 
-                API_MSG_COMMENTS: library_log.comment
+            SCHEMA.API_MSG_RESULT: { 
+                SCHEMA.API_MSG_SUBMIT_COUNT: patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_CREATED: create_count, 
+                SCHEMA.API_MSG_UNCHANGED: patch_count-update_count-create_count,
+                SCHEMA.API_MSG_ACTION: library_log.api_action, 
+                SCHEMA.API_MSG_COMMENTS: library_log.comment
             }
         })
         logger.info('wells patch complete: %r', meta)
@@ -23773,7 +23894,7 @@ class WellResource(DbApiResource):
 
     def patch_obj(self, request, deserialized, **kwargs):
         
-        raise NotImplementedError('patch obj must be implemented')
+        raise ApiNotImplemented(self._meta.resource_name, 'patch_obj')
         
     @classmethod
     def create_vendor_compound_name_base_query(cls, well_search_data):
@@ -24290,7 +24411,7 @@ class LibraryResource(DbApiResource):
 
         library_short_name = kwargs.pop('short_name', None)
         if not library_short_name:
-            raise NotImplementedError('must provide a short_name parameter')
+            raise MissingParam('library_short_name')
         else:
             kwargs['short_name__eq'] = library_short_name
 

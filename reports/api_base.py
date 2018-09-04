@@ -688,6 +688,12 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     self.get_serializer().deserialize(
                         file.read(), XLS_MIMETYPE, list_keys=list_keys), 
                     { 'filename': file.name } )
+            elif 'xlsx' in request.FILES:
+                file = request.FILES['xlsx']
+                return (
+                    self.get_serializer().deserialize(
+                        file.read(), XLS_MIMETYPE, list_keys=list_keys), 
+                    { 'filename': file.name } )
             elif 'csv' in request.FILES:
                 file = request.FILES['csv']
                 return (

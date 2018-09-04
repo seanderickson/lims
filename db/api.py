@@ -81,13 +81,9 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HTTP_PARAM_DATA_INTERCHANGE, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError, \
     CumulativeError, LIST_DELIMITER_SUB_ARRAY
-from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
-    API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
-    API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_SUCCESS, API_RESULT_DATA, \
-    API_RESULT_META, API_RESULT_OBJ, API_MSG_NOT_ALLOWED, API_PARAM_OVERRIDE, \
+from reports.api import API_PARAM_OVERRIDE, \
     API_PARAM_PATCH_PREVIEW_MODE, API_PARAM_NO_BACKGROUND, API_PARAM_PREVIEW_LOGS, \
-    API_PARAM_SHOW_PREVIEW, \
-    DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
+    API_PARAM_SHOW_PREVIEW, DEBUG_AUTHORIZATION, write_authorization, read_authorization, \
     background_job
 from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, \
@@ -96,7 +92,8 @@ import reports.api
 from reports.api_base import un_cache, MultiAuthentication, \
     IccblBasicAuthentication, IccblSessionAuthentication, TRAILING_SLASH
 from reports.models import Vocabulary, ApiLog, UserProfile
-from reports.schema import DATE_FORMAT
+from reports.schema import DATE_FORMAT, API_RESULT_DATA, API_RESULT_META, \
+    API_RESULT_OBJ
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE, ZIP_MIMETYPE, \
     INPUT_FILE_DESERIALIZE_LINE_NUMBER_KEY, csvutils, LimsJSONEncoder
@@ -843,14 +840,14 @@ class PlateLocationResource(DbApiResource):
         if action == API_ACTION.CREATE:
             action += ': ' + update_log.key
         meta = { 
-            API_MSG_RESULT: { 
+            SCHEMA.API_MSG_RESULT: { 
                 'Plate location': action,
                 # Note remove submitted/unchanged count, inaccurate because
                 # all plates for the location are "submitted"
-                # API_MSG_SUBMIT_COUNT : patch_count, 
-                API_MSG_UPDATED: update_count, 
-                # API_MSG_UNCHANGED: unchanged_count, 
-                API_MSG_COMMENTS: log.comment
+                # SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                # SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: log.comment
             }
         }
         if deserialize_meta:
@@ -2237,7 +2234,7 @@ class LibraryCopyPlateResource(DbApiResource):
             
             meta = kwargs.get('meta', {})
             if plate_search_errors:
-                meta['API_MSG_WARNING'] = \
+                meta['SCHEMA.API_MSG_WARNING'] = \
                     'Plates not found: %s' % ', '.join(sorted(plate_search_errors))
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename,
@@ -2386,11 +2383,11 @@ class LibraryCopyPlateResource(DbApiResource):
             update_count = len([x for x in logs if x.diffs ])
             unchanged_count = patch_count - update_count
             meta = { 
-                API_MSG_RESULT: { 
-                    API_MSG_SUBMIT_COUNT : patch_count, 
-                    API_MSG_UPDATED: update_count, 
-                    API_MSG_UNCHANGED: unchanged_count, 
-                    API_MSG_COMMENTS: parent_log.comment
+                SCHEMA.API_MSG_RESULT: { 
+                    SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                    SCHEMA.API_MSG_UPDATED: update_count, 
+                    SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                    SCHEMA.API_MSG_COMMENTS: parent_log.comment
                 }
             }
             return self.build_response(
@@ -2469,10 +2466,10 @@ class LibraryCopyPlateResource(DbApiResource):
                 [str(location_data[k]) for k in plate_location_fields])
             _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), JSON_MIMETYPE)
-            results = _data[API_RESULT_META][API_MSG_RESULT]
+            results = _data[API_RESULT_META][SCHEMA.API_MSG_RESULT]
             logger.info('results plate location patch: %r', results)
             meta = { 
-                API_MSG_RESULT: { 
+                SCHEMA.API_MSG_RESULT: { 
                     'Plate Location Result: %s' % plate_location_name: results,
                     'Plate Copy Ranges patched': ','.join(copy_plate_ranges),
                     'Plate Copy Count': len(original_data)
@@ -5138,6 +5135,10 @@ class ScreenResultResource(DbApiResource):
         return self.patch_detail(request, **kwargs)
     
     @write_authorization
+    def post_detail(self, request, **kwargs):
+        return self.patch_detail(request, **kwargs)
+    
+    @write_authorization
     def patch_list(self, request, **kwargs):
         return self.patch_detail(request, **kwargs)
 
@@ -5206,7 +5207,7 @@ class ScreenResultResource(DbApiResource):
             self.create_screen_result(request, screen, columns, result_values)
              
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -5267,7 +5268,7 @@ class ScreenResultResource(DbApiResource):
                 }
                 screen_result.date_loaded = screen_log.date_time
                 screen_result.created_by = adminuser
-                meta[API_MSG_ACTION] = 'replaced'
+                meta[SCHEMA.API_MSG_ACTION] = 'replaced'
             else:
                 screen_result = ScreenResult.objects.create(
                     screen=screen,
@@ -5278,7 +5279,7 @@ class ScreenResultResource(DbApiResource):
                 screen_log.diffs = {
                     'last_data_loading_date': [None, screen_log.date_time] }
                 logger.info('created screen result: %r', screen_result)
-                meta[API_MSG_ACTION] = 'created'
+                meta[SCHEMA.API_MSG_ACTION] = 'created'
             
             screen_log.save()
             screenresult_log.parent_log = screen_log
@@ -8523,7 +8524,7 @@ class CherryPickRequestResource(DbApiResource):
                         plating_date__isnull=False)                
                 if plated_assay_plates_query.exists():
                     raise ValidationError({
-                        API_MSG_NOT_ALLOWED: 
+                        SCHEMA.API_MSG_NOT_ALLOWED: 
                             ('Screener cherry picks may not be reassigned after '
                              'plates have been plated'),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
@@ -8612,7 +8613,7 @@ class CherryPickRequestResource(DbApiResource):
                     _meta[API_MSG_SCPS_CREATED] = cpr.screener_cherry_picks.all().count()    
 
             if final_warn_msg:
-                _meta[API_MSG_WARNING] = final_warn_msg
+                _meta[SCHEMA.API_MSG_WARNING] = final_warn_msg
                             
             response = { API_RESULT_OBJ: cpr, API_RESULT_META: _meta }
             logger.info('response: %r', response)
@@ -8749,11 +8750,11 @@ class CherryPickRequestResource(DbApiResource):
                     plating_date__isnull=False)                
             if plated_assay_plates_query.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+                    SCHEMA.API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
                     API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
             })
             raise ValidationError({
-                API_MSG_NOT_ALLOWED: 
+                SCHEMA.API_MSG_NOT_ALLOWED: 
                     ('Lab cherry pick plates already assigned; '
                     'reservation must be canceled before reassignment is allowed'),
                 API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
@@ -9079,13 +9080,13 @@ class CherryPickRequestResource(DbApiResource):
                         plating_date__isnull=False)                
                 if plated_assay_plates_query.exists():
                     raise ValidationError({
-                        API_MSG_NOT_ALLOWED: 
+                        SCHEMA.API_MSG_NOT_ALLOWED: 
                             ('Lab Cherry Picks may not be deleted after plates are plated'),
                         API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                 })
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: 
+                    SCHEMA.API_MSG_NOT_ALLOWED: 
                         ('Lab cherry pick plates already assigned; '
                         'cancel reservation to deallocate plates'),
                     API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count()
@@ -9199,7 +9200,7 @@ class CherryPickRequestResource(DbApiResource):
                     cpr.cherry_pick_assay_plates.filter(plating_date__isnull=False)
                 if plated_assay_plates_query.exists():
                     raise ValidationError({
-                        API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+                        SCHEMA.API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
                         API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                         API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                     })
@@ -9287,7 +9288,7 @@ class CherryPickRequestResource(DbApiResource):
         if lcp_query.exists():
             if cpr.lab_cherry_picks.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: 
+                    SCHEMA.API_MSG_NOT_ALLOWED: 
                         ('Lab cherry picks already assigned: (%d); '
                         'delete lab cherry picks to change '
                         'screener cherry pick selections' 
@@ -9398,7 +9399,7 @@ class CherryPickRequestResource(DbApiResource):
         if lcp_query.exists():
             if cpr.lab_cherry_picks.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: 
+                    SCHEMA.API_MSG_NOT_ALLOWED: 
                         ('Lab cherry picks already assigned: (%d); '
                         'delete lab cherry picks to change '
                         'screener cherry pick selections' 
@@ -9533,7 +9534,7 @@ class CherryPickRequestResource(DbApiResource):
             
         meta = {}
         if lcp_assigned_count == 0:
-            meta[API_MSG_WARNING] = 'No eligible copies found'
+            meta[SCHEMA.API_MSG_WARNING] = 'No eligible copies found'
         else:
             total_count = cpr.lab_cherry_picks.all().count()
             meta = {
@@ -9629,7 +9630,7 @@ class ScreenerCherryPickResource(DbApiResource):
          
         if cpr.lab_cherry_picks.exists():
             raise ValidationError({
-                API_MSG_NOT_ALLOWED: 
+                SCHEMA.API_MSG_NOT_ALLOWED: 
                     ('Lab cherry picks already assigned: (%d); '
                     'delete lab cherry picks to change '
                     'screener cherry pick selections' 
@@ -9800,7 +9801,7 @@ class ScreenerCherryPickResource(DbApiResource):
             API_MSG_SCP_RESELECTED: ', '.join(scps_to_reselect)
         }
         if messages:
-            result_message[API_MSG_COMMENTS] = messages
+            result_message[SCHEMA.API_MSG_COMMENTS] = messages
         
         self.get_cpr_resource().clear_cache(request)
         new_cpr_data = self.get_cpr_resource()._get_detail_response_internal(
@@ -10292,14 +10293,14 @@ class LabCherryPickResource(DbApiResource):
                     plating_date__isnull=False)                
             if plated_assay_plates_query.exists():
                 raise ValidationError({
-                    API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
+                    SCHEMA.API_MSG_NOT_ALLOWED: API_MSG_CPR_PLATED_CANCEL_DISALLOWED, 
                     API_MSG_LCP_PLATES_ASSIGNED: cpr.cherry_pick_assay_plates.count(),
                     API_MSG_LCP_ASSAY_PLATES_PLATED: plated_assay_plates_query.count()
                 })
             if param_override is not True:
                 raise ValidationError({
                     API_PARAM_OVERRIDE: 'required',
-                    API_MSG_WARNING: 
+                    SCHEMA.API_MSG_WARNING: 
                         ('Lab cherry pick plates already assigned; '
                         'cancel reservation to deallocate plates, '
                         'or choose override to keep plating and change assignments'),
@@ -10342,7 +10343,7 @@ class LabCherryPickResource(DbApiResource):
                     'source_well_id': 
                         'not a current lab cherry pick: %r' % source_well_id }
                 if is_mapped:
-                    error_dict[API_MSG_WARNING] = (
+                    error_dict[SCHEMA.API_MSG_WARNING] = (
                         'lab cherry pick reservation must be canceled in '
                         'order to add new selections')
                 raise ValidationError(error_dict)
@@ -10544,7 +10545,7 @@ class LabCherryPickResource(DbApiResource):
             API_MSG_LCP_CHANGED: changed,
             API_MSG_LCP_DESELECTED: deselected,
             API_MSG_LCP_SELECTED: selected,
-            API_MSG_WARNING: warning_messages,
+            SCHEMA.API_MSG_WARNING: warning_messages,
         }
         if result_meta_allocate:
             _meta.update(result_meta_allocate)
@@ -11636,7 +11637,7 @@ class CherryPickPlateResource(DbApiResource):
             request, original_cpap_data, new_cpap_data, schema=schema, 
             parent_log=parent_log)
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS }
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS }
         if patch_logs:
             plating_fields = set(['plating_date', 'plated_by_username', 'plating_comments'])
             screening_fields = set(['screening_date', 'screened_by_username', 'screening_comments'])
@@ -12174,11 +12175,11 @@ class LibraryCopyResource(DbApiResource):
                     logger.debug('saved plate: %r', p.plate_number)
                 logger.info('created %d plates', plates_created)
                 logger.info('patch_obj done for librarycopy: %r', librarycopy)
-                meta[API_MSG_RESULT] = {
+                meta[SCHEMA.API_MSG_RESULT] = {
                     'plates created': plates_created,
                 }
                 if warnings:
-                    meta[API_MSG_WARNING] = warnings
+                    meta[SCHEMA.API_MSG_WARNING] = warnings
             
             return { API_RESULT_META: meta, API_RESULT_OBJ: librarycopy }
             
@@ -14187,7 +14188,7 @@ class LibraryScreeningResource(ActivityResource):
         
         meta = { 'total_count': len(_data) }
         if plate_search_errors:
-            meta[API_MSG_WARNING] = plate_search_errors
+            meta[SCHEMA.API_MSG_WARNING] = plate_search_errors
         response_data = {
             API_RESULT_META: meta,
             API_RESULT_DATA: _data 
@@ -14965,7 +14966,7 @@ class LibraryScreeningResource(ActivityResource):
         }
         meta.update(plate_meta)
         _data = { API_RESULT_DATA: [new_data] }
-        _data[API_RESULT_META] = { API_MSG_RESULT: meta }
+        _data[API_RESULT_META] = { SCHEMA.API_MSG_RESULT: meta }
         
         return _data
 
@@ -15052,7 +15053,7 @@ class LibraryScreeningResource(ActivityResource):
         }
         meta.update(plate_meta)
         _data = { API_RESULT_DATA: [new_data] }
-        _data[API_RESULT_META] = { API_MSG_RESULT: meta }
+        _data[API_RESULT_META] = { SCHEMA.API_MSG_RESULT: meta }
         
         return _data
 
@@ -15688,7 +15689,7 @@ class LibraryScreeningResource(ActivityResource):
         if plate_warnings:
             warnings['plate_status'] = sorted(plate_warnings)
         if warnings:
-            meta[API_MSG_WARNING] = warnings
+            meta[SCHEMA.API_MSG_WARNING] = warnings
         
         logger.info('return meta information: %r', meta)
         # MODIFIED: 20170605 - per JAS/KR, overdraw volume but warn
@@ -16349,7 +16350,7 @@ class RawDataTransformerResource(DbApiResource):
             rdt.save()
             logger.info('wrote temp file: %r', temp_file.name)
         
-        _meta[API_MSG_RESULT] = API_MSG_SUCCESS
+        _meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
         
         return self.build_response(
             request, {API_RESULT_META: _meta }, response_class=HttpResponse, **kwargs)
@@ -18708,7 +18709,7 @@ class StudyResource(ScreenResource):
             logger.info('study values created for: %r', study_obj)
         
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -18926,7 +18927,7 @@ class StudyResource(ScreenResource):
                     result_value_generator(result))
             logger.info('study values created for: %r', study_obj)
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -19141,7 +19142,7 @@ class StudyResource(ScreenResource):
             logger.info('study values created for: %r', study_obj)
         
         meta = {
-            API_MSG_RESULT: API_MSG_SUCCESS
+            SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS
         }
         meta.update(screen_result_meta)
         if deserialize_meta:
@@ -20849,7 +20850,7 @@ class ScreensaverUserResource(DbApiResource):
         
         
         meta = {
-            API_MSG_RESULT: {
+            SCHEMA.API_MSG_RESULT: {
                 'messages': messages
             },
         }
@@ -23716,13 +23717,13 @@ class WellResource(DbApiResource):
             meta.update(deserialize_meta)
         
         meta.update({ 
-            API_MSG_RESULT: { 
-                API_MSG_SUBMIT_COUNT: patch_count, 
-                API_MSG_UPDATED: update_count, 
-                API_MSG_CREATED: create_count, 
-                API_MSG_UNCHANGED: patch_count-update_count-create_count,
-                API_MSG_ACTION: library_log.api_action, 
-                API_MSG_COMMENTS: library_log.comment
+            SCHEMA.API_MSG_RESULT: { 
+                SCHEMA.API_MSG_SUBMIT_COUNT: patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_CREATED: create_count, 
+                SCHEMA.API_MSG_UNCHANGED: patch_count-update_count-create_count,
+                SCHEMA.API_MSG_ACTION: library_log.api_action, 
+                SCHEMA.API_MSG_COMMENTS: library_log.comment
             }
         })
         logger.info('wells patch complete: %r', meta)

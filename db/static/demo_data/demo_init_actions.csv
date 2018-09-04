@@ -2,3 +2,9 @@ command,resource,file
 patch,labaffiliation,lab_affiliations.csv
 patch,screensaveruser,demo_screensaver_users.csv
 patch,screen,demo_screens.csv
+patch,library,demo_libraries.csv
+post,library/sm_1/well,library_1_5.sdf
+post,library/rna_duplex_1/well,library_50001_50004_duplex.xlsx
+post,library/rna_pool_1/well,library_50005_pool.xlsx
+patch,library,demo_libraries_release.csv
+post,screen/10/screenresult,screen_10_screenresult.xlsx

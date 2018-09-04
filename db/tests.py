@@ -1,11 +1,10 @@
 from __future__ import unicode_literals
 
-from __builtin__ import False
 import cStringIO
 from collections import OrderedDict, defaultdict
+import copy
 import csv
 from decimal import Decimal
-import decimal
 import filecmp
 import io
 import json
@@ -15,17 +14,14 @@ import random
 import re
 import string
 import sys
-import unittest
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-from django.urls import resolve
 from django.db import connection
-from django.db.utils import ProgrammingError
 from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
-from django.utils.timezone import now
-from django.conf import settings
+from django.urls import resolve
 import xlrd
 import xlsxwriter
 
@@ -44,18 +40,19 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_MSG_LCPS_MUST_BE_DELETED, API_MSG_CPR_PLATES_PLATED, \
     API_MSG_CPR_PLATES_SCREENED, API_MSG_LCPS_UNFULFILLED, \
     API_MSG_CPR_CONCENTRATIONS, \
-    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, API_MSG_SUCCESS, \
+    API_PARAM_SET_DESELECTED_TO_ZERO, API_MSG_SCPS_DELETED, \
     API_MSG_COPYWELLS_ALLOCATED, API_MSG_COPYWELLS_DEALLOCATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
     WellResource
-
 import db.api
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
     PlateLocation, LibraryScreening, LabAffiliation
 import db.models
+from db.schema import VOCAB
+import db.schema as SCHEMA
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.support.plate_matrix_transformer import Collation, Counter
 import db.support.plate_matrix_transformer
@@ -64,26 +61,19 @@ from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory, LabAffiliationFactory
 from reports import ValidationError, HEADER_APILOG_COMMENT, _now, \
     API_RESULT_ERROR, HTTP_PARAM_AUTH, DJANGO_ACCEPT_PARAM
-from reports.api import API_MSG_COMMENTS, API_MSG_CREATED, \
-    API_MSG_SUBMIT_COUNT, API_MSG_UNCHANGED, API_MSG_UPDATED, \
-    API_MSG_ACTION, API_MSG_RESULT, API_MSG_WARNING, API_MSG_NOT_ALLOWED, \
-    API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ,\
+from reports.api import API_RESULT_META, API_PARAM_OVERRIDE, API_RESULT_OBJ, \
     API_PARAM_PATCH_PREVIEW_MODE, API_PARAM_SHOW_PREVIEW
 from reports.models import ApiLog, UserProfile, UserGroup, Vocabulary
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE,\
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE, \
     xlsutils, LimsJSONEncoder
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
     ScreenResultSerializer
 from reports.tests import IResourceTestCase, equivocal, TestApiClient
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-import copy
 
-import db.schema as SCHEMA
-from db.schema import VOCAB
 
 # SCHEMA imports
-
 FIELD = SCHEMA.FIELD
 
 APILOG = SCHEMA.APILOG
@@ -323,8 +313,8 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
         library_screening_output = resp[API_RESULT_DATA][0]
@@ -2334,14 +2324,14 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
             '%r' % post_response)
         self.assertTrue(
-            meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
-                % (API_MSG_SUBMIT_COUNT, meta))
+                % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
         
         # 2. Verify plates
@@ -2401,12 +2391,12 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], '%r' % post_response)
-        self.assertTrue(meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT]==6, 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], '%r' % post_response)
+        self.assertTrue(meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
-            % (API_MSG_SUBMIT_COUNT, meta))
+            % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
         
         # 4. Verify plates status changed to "retired"
@@ -2483,18 +2473,18 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
         logger.info('meta: %r', meta)
         plate_location_msg = \
             'Plate Location Result: {room}-{freezer}-{shelf}-{bin}'\
                 .format(**plate_location_input)
-        self.assertTrue(plate_location_msg in meta[API_MSG_RESULT])
-        plate_location_result = meta[API_MSG_RESULT][plate_location_msg]
+        self.assertTrue(plate_location_msg in meta[SCHEMA.API_MSG_RESULT])
+        plate_location_result = meta[SCHEMA.API_MSG_RESULT][plate_location_msg]
         self.assertTrue(
-            API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
-        self.assertTrue(plate_location_result[API_MSG_UPDATED]==6, 
+            SCHEMA.API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
+        self.assertTrue(plate_location_result[SCHEMA.API_MSG_UPDATED]==6, 
             'Wrong %r count: %r' 
-            % (API_MSG_UPDATED,plate_location_result))
+            % (SCHEMA.API_MSG_UPDATED,plate_location_result))
         
         # Get plates as defined
         resource_uri = BASE_URI_DB + '/librarycopyplate'
@@ -2619,15 +2609,15 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in patch_response, '%r' % patch_response)
         meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % patch_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
             '%r' % patch_response)
         self.assertEqual(
-            meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT],
+            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT],
             (end_plate-start_plate+1),
             '"%r" : %r, expected: %r' 
-            % (API_MSG_SUBMIT_COUNT,
+            % (SCHEMA.API_MSG_SUBMIT_COUNT,
                 meta, (end_plate-start_plate+1)))
         
         # 3. Verify that the plates have the expected location
@@ -2717,15 +2707,15 @@ class LibraryResource(DBResourceTestCase):
         self.assertTrue(
             API_RESULT_META in patch_response, '%r' % patch_response)
         meta = patch_response[API_RESULT_META]
-        self.assertTrue(API_MSG_RESULT in meta, '%r' % patch_response)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % patch_response)
         self.assertTrue(
-            API_MSG_SUBMIT_COUNT in meta[API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
             '%r' % patch_response)
         self.assertEqual(
-            meta[API_MSG_RESULT][API_MSG_SUBMIT_COUNT],
+            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT],
             (end_plate-start_plate+1),
             '"%r" : %r, expected: %r' 
-            % (API_MSG_SUBMIT_COUNT,
+            % (SCHEMA.API_MSG_SUBMIT_COUNT,
                 meta, (end_plate-start_plate+1)))
         
         # Verify that the plates have the expected location
@@ -5518,9 +5508,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 17,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 17, 
@@ -5644,9 +5634,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 1,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 0, 
@@ -5947,9 +5937,9 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: expected_plate_count,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: expected_plate_count, 
@@ -6119,8 +6109,8 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: expected_updated_plate_count,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: expected_updated_plate_count, 
@@ -6226,8 +6216,8 @@ class ScreenResource(DBResourceTestCase):
         logger.info('resp: %r', resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 6,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 0, 
@@ -6316,8 +6306,8 @@ class ScreenResource(DBResourceTestCase):
         resp = self.deserialize(resp)
 
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
-        actual_result_meta = resp[API_RESULT_META][API_MSG_RESULT]
+        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        actual_result_meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         expected_result_meta = {
             API_MSG_SCREENING_PLATES_UPDATED: 2,
             API_MSG_SCREENING_ADDED_PLATE_COUNT: 2, 
@@ -7832,7 +7822,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             self._submit_screener_cherry_picks(
                 cpr_data['cherry_pick_request_id'])
         
-        self.assertTrue(API_MSG_WARNING not in meta, 
+        self.assertTrue(SCHEMA.API_MSG_WARNING not in meta, 
             'meta warning: %r' % meta)
         if API_MSG_LCPS_UNFULFILLED in meta:
             self.assertEqual(meta[API_MSG_LCPS_UNFULFILLED], 0)
@@ -8336,7 +8326,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('patch screener_cherry_picks error: %r', _data)
         _errors = _data[API_RESULT_ERROR]
-        self.assertTrue(API_MSG_NOT_ALLOWED in _errors)
+        self.assertTrue(SCHEMA.API_MSG_NOT_ALLOWED in _errors)
         self.assertTrue(API_MSG_LCPS_MUST_BE_DELETED in _errors)
         
         # 3 delete lab cherry picks
@@ -8506,12 +8496,12 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(
             LCP_COPYWELL_KEY.format(**lcp_well_1_a1) in selected_lcps)
         
-        self.assertTrue(API_MSG_WARNING in _meta, 
-            'missing warning: %r' % API_MSG_WARNING)
+        self.assertTrue(SCHEMA.API_MSG_WARNING in _meta, 
+            'missing warning: %r' % SCHEMA.API_MSG_WARNING)
         self.assertTrue(API_MSG_LCPS_INSUFFICIENT_VOLUME 
-            in _meta[API_MSG_WARNING])
+            in _meta[SCHEMA.API_MSG_WARNING])
         insufficient_volume_cws = \
-            _meta[API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
+            _meta[SCHEMA.API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
         
         cw_name =  LCP_COPYWELL_KEY.format(**lcp_well_1_a1)
         self.assertTrue(cw_name in insufficient_volume_cws,
@@ -8571,12 +8561,12 @@ class CherryPickRequestResource(DBResourceTestCase):
         self.assertTrue(
             LCP_COPYWELL_KEY.format(**lcp_well_1_a2) in changed_lcps[0])
         
-        self.assertTrue(API_MSG_WARNING in _meta, 
-            'missing warning: %r' % API_MSG_WARNING)
+        self.assertTrue(SCHEMA.API_MSG_WARNING in _meta, 
+            'missing warning: %r' % SCHEMA.API_MSG_WARNING)
         self.assertTrue(
-            API_MSG_LCPS_INSUFFICIENT_VOLUME in _meta[API_MSG_WARNING])
+            API_MSG_LCPS_INSUFFICIENT_VOLUME in _meta[SCHEMA.API_MSG_WARNING])
         insufficient_volume_cws = \
-            _meta[API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
+            _meta[SCHEMA.API_MSG_WARNING][API_MSG_LCPS_INSUFFICIENT_VOLUME]
         
         new_lcps = self._get_lcps(cpr_id)
         
@@ -9555,7 +9545,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('delete lcps response: %r', _data)
         self.assertTrue(API_RESULT_ERROR in _data)
-        self.assertTrue(API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
+        self.assertTrue(SCHEMA.API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
         
         # 3.c Verify that cancel_reservation disallowed if plating date is set
         cancel_reservation_resource_uri = '/'.join([
@@ -9570,7 +9560,7 @@ class CherryPickRequestResource(DBResourceTestCase):
         _data = self.deserialize(resp)
         logger.info('cancel_reservation response: %r', _data)
         self.assertTrue(API_RESULT_ERROR in _data)
-        self.assertTrue(API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
+        self.assertTrue(SCHEMA.API_MSG_NOT_ALLOWED in _data[API_RESULT_ERROR])
     
     def test_b_minimal_set_finder(self):
         
@@ -13320,7 +13310,7 @@ class RawDataTransformer(DBResourceTestCase):
         
             logger.info('response: %r', post_response )
             
-            self.assertEqual(post_response[API_RESULT_META][API_MSG_RESULT],API_MSG_SUCCESS)
+            self.assertEqual(post_response[API_RESULT_META][SCHEMA.API_MSG_RESULT],SCHEMA.API_MSG_SUCCESS)
             
         download_url = '/db/screen_raw_data_transform/' + test_screen['facility_id']
 

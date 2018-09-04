@@ -77,22 +77,10 @@ API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
 
 API_PARAM_OVERRIDE = 'override'
-# API_PARAM_NO_PREVIEW = 'no_preview'
 API_PARAM_PATCH_PREVIEW_MODE = 'patch_with_preview'
 API_PARAM_SHOW_PREVIEW = 'show_preview'
 API_PARAM_PREVIEW_LOGS = 'preview_logs'
 API_PARAM_NO_BACKGROUND = 'no_background'
-
-API_MSG_SUBMIT_COUNT = 'Data submitted'
-API_MSG_RESULT = 'Result'
-API_MSG_WARNING = 'Warning'
-API_MSG_NOT_ALLOWED = 'Action not allowed'
-API_MSG_UPDATED = 'Updated'
-API_MSG_CREATED = 'Created'
-API_MSG_UNCHANGED = 'Unchanged'
-API_MSG_COMMENTS = 'Comments'
-API_MSG_ACTION = 'Action'
-API_MSG_SUCCESS = 'Success'
 
 DEBUG_RESOURCES = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_FIELDS = False or logger.isEnabledFor(logging.DEBUG)
@@ -1040,12 +1028,12 @@ class ApiResource(SqlAlchemyResource):
             
         if len(deserialized) == 0:
             meta = { 
-                API_MSG_RESULT: {
-                    API_MSG_SUBMIT_COUNT : 0, 
-                    API_MSG_UPDATED: 0, 
-                    API_MSG_CREATED: 0,
-                    API_MSG_UNCHANGED: 0, 
-                    API_MSG_COMMENTS: 'no data patched'
+                SCHEMA.API_MSG_RESULT: {
+                    SCHEMA.API_MSG_SUBMIT_COUNT : 0, 
+                    SCHEMA.API_MSG_UPDATED: 0, 
+                    SCHEMA.API_MSG_CREATED: 0,
+                    SCHEMA.API_MSG_UNCHANGED: 0, 
+                    SCHEMA.API_MSG_COMMENTS: 'no data patched'
                 }
             }
             logger.info('PATCH list: %r', meta)
@@ -1121,12 +1109,12 @@ class ApiResource(SqlAlchemyResource):
         create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
-            API_MSG_RESULT: {
-                API_MSG_SUBMIT_COUNT : patch_count, 
-                API_MSG_UPDATED: update_count, 
-                API_MSG_CREATED: create_count,
-                API_MSG_UNCHANGED: unchanged_count, 
-                API_MSG_COMMENTS: parent_log.comment
+            SCHEMA.API_MSG_RESULT: {
+                SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_CREATED: create_count,
+                SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
         }
         if deserialize_meta:
@@ -1265,11 +1253,11 @@ class ApiResource(SqlAlchemyResource):
         update_count = len([x for x in logs if x.diffs ])
         delete_count = len([x for x in logs if x.api_action == API_ACTION.DELETE])
         meta = { 
-            API_MSG_RESULT: {
-                API_MSG_SUBMIT_COUNT : put_count, 
-                API_MSG_UPDATED: update_count,
+            SCHEMA.API_MSG_RESULT: {
+                SCHEMA.API_MSG_SUBMIT_COUNT : put_count, 
+                SCHEMA.API_MSG_UPDATED: update_count,
                 'Deleted': delete_count,
-                API_MSG_COMMENTS: parent_log.comment
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
         }
         if deserialize_meta:
@@ -1327,12 +1315,12 @@ class ApiResource(SqlAlchemyResource):
             
         if len(deserialized) == 0:
             meta = { 
-                API_MSG_RESULT: {
-                    API_MSG_SUBMIT_COUNT : 0, 
-                    API_MSG_UPDATED: 0, 
-                    API_MSG_CREATED: 0,
-                    API_MSG_UNCHANGED: 0, 
-                    API_MSG_COMMENTS: 'no data posted'
+                SCHEMA.API_MSG_RESULT: {
+                    SCHEMA.API_MSG_SUBMIT_COUNT : 0, 
+                    SCHEMA.API_MSG_UPDATED: 0, 
+                    SCHEMA.API_MSG_CREATED: 0,
+                    SCHEMA.API_MSG_UNCHANGED: 0, 
+                    SCHEMA.API_MSG_COMMENTS: 'no data posted'
                 }
             }
             return self.build_response(
@@ -1414,12 +1402,12 @@ class ApiResource(SqlAlchemyResource):
         create_count = len([x for x in logs if x.api_action == API_ACTION.CREATE])
         unchanged_count = patch_count - update_count
         meta = { 
-            API_MSG_RESULT: {
-                API_MSG_SUBMIT_COUNT: patch_count, 
-                API_MSG_UPDATED: update_count, 
-                API_MSG_CREATED: create_count,
-                API_MSG_UNCHANGED: unchanged_count, 
-                API_MSG_COMMENTS: parent_log.comment
+            SCHEMA.API_MSG_RESULT: {
+                SCHEMA.API_MSG_SUBMIT_COUNT: patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_CREATED: create_count,
+                SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
         }
         if deserialize_meta:
@@ -1525,10 +1513,10 @@ class ApiResource(SqlAlchemyResource):
         if patched_log:
             patched_log.save()
             logger.debug('post log: %r', patched_log)
-            meta[API_MSG_RESULT] = API_MSG_SUCCESS
+            meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
         else:
             logger.info('no post log')
-            meta[API_MSG_WARNING] = 'No Changes were detected'
+            meta[SCHEMA.API_MSG_WARNING] = 'No Changes were detected'
 
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
@@ -1618,11 +1606,11 @@ class ApiResource(SqlAlchemyResource):
             id_attribute=id_attribute, schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
-            meta[API_MSG_RESULT] = API_MSG_SUCCESS
+            meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
             logger.debug('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
-            meta[API_MSG_WARNING] = 'No Changes were detected'
+            meta[SCHEMA.API_MSG_WARNING] = 'No Changes were detected'
         param_hash = self._convert_request_to_dict(request)
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', kwargs.get('test_only'))

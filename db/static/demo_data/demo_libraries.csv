@@ -1,0 +1,4 @@
+short_name,library_name,provider,screen_type,library_type,plate_size,solvent,screening_status,start_plate,end_plate,description,is_pool
+sm_1,"Small Molecule Library 1",HMS-ICCBL,small_molecule,academic_collection,384,dmso,allowed,1,5,"A sample of small molecule definitions for testing",
+rna_duplex_1,"Duplex SiRNA Library 1",HMS-ICCBL,rnai,academic_collection,384,rnai_buffer,allowed,50001,50004,"A sample of SiRNA definitions for testing",
+rna_pool_1,"Pool SiRNA Library 1",HMS-ICCBL,rnai,academic_collection,384,rnai_buffer,allowed,50005,50005,"A sample of SiRNA definitions for testing",TRUE

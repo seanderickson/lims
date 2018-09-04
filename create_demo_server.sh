@@ -30,7 +30,7 @@ SCRIPTPATH="$($REALPATH $0)"
 SAVEPATH="$SCRIPTPATH.save"
 BASEDIR=${BASEDIR:-"$(dirname $SCRIPTPATH)"}
 SUPPORTDIR=${SUPPORTDIR-"$(dirname $BASEDIR)"}
-LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/migration.log"}}
+LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/create_demo.log"}}
 
 if [[ $# -lt 2 ]]
 then
@@ -278,6 +278,8 @@ function django_migrate {
 
 function load_demo_data {
 
+  echo "load_demo_data $(ts) ..." >> "$LOGFILE"
+
   echo "run a local dev server on port $BOOTSTRAP_PORT..." >> "$LOGFILE"
   
   nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
@@ -303,14 +305,12 @@ function load_demo_data {
     kill $server_pid
     error "load demo reports data failed: $?" >> "$LOGFILE"
   fi
-  echo "reports load result \"$?\"..." >> "$LOGFILE"
-  
-    
+
   echo "load demo db data..." >> "$LOGFILE"
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./db/static/demo_data/ \
     -f ./db/static/demo_data/demo_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/db/api/v1 -c ${credential_file} >>"$LOGFILE" 2>&1 
+    -u http://localhost:${BOOTSTRAP_PORT}/db/api/v1 -U demoadmin -p demoadmin >>"$LOGFILE" 2>&1 
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "load demo db data failed: $?" >> "$LOGFILE"

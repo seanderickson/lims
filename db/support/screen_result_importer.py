@@ -71,6 +71,9 @@ RESULT_VALUE_FIELD_MAP = OrderedDict((
     ('type', 'assay_well_control_type'),
     ('exclude', 'exclude'),
 ))
+RESULT_VALUE_FIELD_MAP_ALTERNATES = {
+    'control type': 'assay_well_control_type'        
+    }
 
 # TODO: 20180315 - use db.schema to map constants for fields
 
@@ -168,6 +171,8 @@ def result_value_field_mapper(header_row, parsed_columns):
     for i,value in enumerate(header_row):
         if value.lower() in RESULT_VALUE_FIELD_MAP:
             mapped_row.append(RESULT_VALUE_FIELD_MAP[value.lower()])
+        elif value.lower() in RESULT_VALUE_FIELD_MAP_ALTERNATES:
+            mapped_row.append(RESULT_VALUE_FIELD_MAP_ALTERNATES[value.lower()])
         else:
             colname = xlrd.book.colname(i)
             mapped_row.append(colname)
@@ -176,7 +181,7 @@ def result_value_field_mapper(header_row, parsed_columns):
     unmapped = [key for key,value in RESULT_VALUE_FIELD_MAP.items() 
         if value not in mapped_row]
     if unmapped:
-        msg=('Missing fields: %s in result values header row: %r'
+        msg=('Missing fields: [%s] in the given result values header row: [%s]'
             % (', '.join(['"%s"'%f for f in unmapped]), 
                ', '.join(['"%s"'% f for f in header_row])))
         logger.info(msg)

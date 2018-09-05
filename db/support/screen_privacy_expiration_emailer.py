@@ -444,7 +444,6 @@ if __name__ == "__main__":
                 return screen
     
             def replace_for_html(screen):
-                screen = replace_html_values(screen, screen_schema)
                 members = []
                 for user_id in get_member_ids(screen):
                     user = users[user_id].copy()
@@ -460,6 +459,7 @@ if __name__ == "__main__":
                     pub = publications[int(pub_id)]
                     pubs_text.append(PUB.format_publication(pub))
                 screen[SCREEN.PUBLICATIONS] = '<br/>'.join(pubs_text)
+                screen = replace_html_values(screen, screen_schema)
                 return screen
             
             txt_screens = []
@@ -799,7 +799,6 @@ if __name__ == "__main__":
                 return screen
     
             def replace_for_html(screen):
-                screen = replace_html_values(screen, screen_schema)
                 members = []
                 for user_id in get_member_ids(screen):
                     user = users[user_id].copy()
@@ -810,6 +809,7 @@ if __name__ == "__main__":
                     text = users_html_format.format(**user)
                     members.append(text)
                 screen[PSEUDO_FIELD_MEMBERS] = '<br/>'.join(members)
+                screen = replace_html_values(screen, screen_schema)
                 return screen
             
             txt_notified_screens = []

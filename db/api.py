@@ -17373,11 +17373,11 @@ class ScreenResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
+        logger.info('filter expression: %r', filter_expression)
         filename = self._get_filename(readable_filter_hash, schema, **extra_params)
         
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
-        logger.info('filter expression: %r', filter_expression)
 
         order_params = param_hash.get('order_by', [])
         order_params.append('-facility_id')

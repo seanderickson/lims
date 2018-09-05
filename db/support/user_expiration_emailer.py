@@ -1,6 +1,5 @@
 from __future__ import unicode_literals
 
-from argparse import ArgumentError
 import argparse
 from collections import defaultdict, OrderedDict
 import datetime
@@ -14,9 +13,8 @@ from requests.packages import urllib3
 
 from db.schema import get_href, get_title, get_vocab_title, \
     replace_vocabularies, replace_html_values, DB_API_URI, DATE_FORMAT
-import db.schema
+import db.schema as SCHEMA
 from reports import InformationError, HEADER_APILOG_COMMENT_CLIENT
-from reports.api import API_RESULT_DATA, API_RESULT_META
 from reports.utils import parse_credentials
 from reports.utils.admin_emailer import Emailer, read_email_template, \
     create_prettytable, validate_email
@@ -27,9 +25,9 @@ import reports.utils.django_requests as django_requests
 
 logger = logging.getLogger(__name__)
 
-USER = db.schema.SCREENSAVER_USER
-UA = db.schema.USER_AGREEMENT
-VOCAB = db.schema.VOCAB
+USER = SCHEMA.SCREENSAVER_USER
+UA = SCHEMA.USER_AGREEMENT
+VOCAB = SCHEMA.VOCAB
 
 DEFAULT_APILOG_COMMENT = 'Automated user agreement action'
 
@@ -333,7 +331,7 @@ if __name__ == "__main__":
                 content = json.loads(r.content)
                 logger.info('PATCH result: %r', content)
                 logger.info('content: %r', content.keys())
-                logger.info('meta: %r', content[API_RESULT_META])
+                logger.info('meta: %r', content[SCHEMA.API_RESULT_META])
                 
             # Send the Admin email
             (msg_subject, msg_body_lines) = \
@@ -467,7 +465,7 @@ if __name__ == "__main__":
                 content = json.loads(r.content)
                 logger.info('PATCH result: %r', content)
                 logger.info('content: %r', content.keys())
-                logger.info('meta: %r', content[API_RESULT_META])
+                logger.info('meta: %r', content[SCHEMA.API_RESULT_META])
             
             # Send the Admin email
             (msg_subject, msg_body_lines) = \

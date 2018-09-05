@@ -172,7 +172,12 @@ def result_value_field_mapper(header_row, parsed_columns):
         if value.lower() in RESULT_VALUE_FIELD_MAP:
             mapped_row.append(RESULT_VALUE_FIELD_MAP[value.lower()])
         elif value.lower() in RESULT_VALUE_FIELD_MAP_ALTERNATES:
-            mapped_row.append(RESULT_VALUE_FIELD_MAP_ALTERNATES[value.lower()])
+            alt_header_val = RESULT_VALUE_FIELD_MAP_ALTERNATES[value.lower()]
+            if alt_header_val in mapped_row:
+                raise ParseError(
+                    key='Header row', 
+                    msg='alt header [%s] already mapped' % value)
+            mapped_row.append(alt_header_val)
         else:
             colname = xlrd.book.colname(i)
             mapped_row.append(colname)

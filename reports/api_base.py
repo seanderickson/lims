@@ -35,6 +35,7 @@ from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import BaseSerializer, LimsSerializer
 from reports.utils.django_requests import convert_request_method_to_put
+from django.utils.http import is_same_domain
 
 
 # from django.utils.http import same_origin

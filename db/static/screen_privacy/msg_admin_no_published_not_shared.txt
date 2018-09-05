@@ -1,1 +1,3 @@
 Screensaver Notification: no published {screen_type} screens that are not shared
+
+No action needed at this time.

@@ -449,9 +449,8 @@ function bootstrap {
     echo "bootstrap error, dev runserver status: $runserver_status" >> "$LOGFILE"
     exit $runserver_status
   fi
-#  echo "wait for server process: ($!) to start..."
-#  wait $server_pid
-  sleep 3
+  echo "wait for server process: $server_pid to start..." >>"$LOGFILE" 
+  sleep 10
   
   echo "bootstrap the metahash data..." >> "$LOGFILE"
   PYTHONPATH=. python reports/utils/db_init.py  \
@@ -478,7 +477,7 @@ function bootstrap {
     --data-binary @db/static/api_init/labaffiliation_updates.csv >>"$LOGFILE" 2>&1
   
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
-  echo "kill $final_server_pid"
+  echo "kill $final_server_pid ..." >>"$LOGFILE" 
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
   # kill $server_pid
 
@@ -550,10 +549,9 @@ function setup_production_users {
     echo "setup test data error, dev runserver status: $runserver_status" >> "$LOGFILE"
     exit $runserver_status
   fi
-#  echo "wait for server process: ($!) to start..."
-#  wait $server_pid
-  sleep 3
-  
+  echo "wait for server process: $server_pid to start..." >>"$LOGFILE"  
+  sleep 10
+  echo "run api init ..." >>"$LOGFILE" 
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
     -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions_patch.csv \
@@ -710,10 +708,10 @@ function create_studies {
     echo "setup test data error, dev runserver status: $runserver_status"
     exit $runserver_status
   fi
-  #  echo "wait for server process: ($!) to start..."
-  #  wait $server_pid
-  sleep 3
   
+  echo "wait for server process: $server_pid to start..." >>"$LOGFILE" 
+  sleep 10
+  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   study_id=200001
   study_file=docs/studies/study_${study_id}.json
   # lead_screener=sde_edit
@@ -725,6 +723,7 @@ function create_studies {
 
   study_id=200002
   study_file=docs/studies/study_${study_id}.json
+  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
@@ -734,6 +733,7 @@ function create_studies {
 
   study_id=200003
   study_file=docs/studies/study_${study_id}.json
+  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_confirmed_positive_study \
@@ -741,7 +741,7 @@ function create_studies {
     --header "HTTP-Accept: application/json" \
     -f ${study_file} >>"$LOGFILE" 2>&1
 
-  # ping the studies to test
+  echo "ping the studies to test..." >>"$LOGFILE" 
   study_id=200001
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
@@ -759,9 +759,9 @@ function create_studies {
     | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
 
   ####
-  echo "create in_silico statistical studies finished, stop server ..."
+  echo "create in_silico statistical studies finished, stop server ..." >>"$LOGFILE" 
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
-  echo "kill $final_server_pid"
+  echo "kill $final_server_pid" >>"$LOGFILE" 
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
   # kill $server_pid
 

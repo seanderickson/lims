@@ -1987,7 +1987,7 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
    * @property {string} [target="_blank"] The target attribute of the generated
    *           anchor.
    */
-  target: "_blank",
+  target: "_self",
   
   initialize : function(options) {
     UriListCell.__super__.initialize.apply(this, arguments);

@@ -271,7 +271,7 @@ define([
         appModel.getResourceFromUrl(schemaUrl, createResults, options);
       } else {
         if (appModel.hasPermission('screenresult','write')) {
-          this.$('#tab_container').append("No data loaded ");
+          this.$('#tab_container').empty().append("No data loaded ");
           this.$('#tab_container').append($loadScreenResultsButton);
           self.reportUriStack([]);
         }

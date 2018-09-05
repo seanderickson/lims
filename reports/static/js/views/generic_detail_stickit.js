@@ -163,11 +163,6 @@ define([
             appModel.error('vocabulary misconfigured for: ' + 
               fi.vocabulary_scope_ref + ', field: ' + fi.key + ': ' + value);
           }
-        }else{
-          console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key 
-            + ', value:' + value, fi);
-          appModel.error('vocabulary not found for: ' + 
-            fi.vocabulary_scope_ref + ', field: ' + fi.key + ', value: "' + value + '"');
         }
         return value;
       };      

@@ -147,15 +147,6 @@ define([
           }
         });
       
-//      resource.fields['copy_name']['backgridCellType'] =
-//        Iccbl.CommentArrayLinkCell.extend({
-//          comment_attribute: 'copy_comments',
-//          title_function: function(model){
-//            return 'Comments for Copy: ' + model.get('library_short_name')
-//              + '/' + model.get('copy_name');
-//          }
-//        });
-      
       resource.fields['plate_number']['backgridCellType'] =
         Iccbl.CommentArrayLinkCell.extend({
           comment_attribute: 'comment_array',
@@ -164,6 +155,23 @@ define([
               + model.get('library_short_name') + '/' 
               + model.get('copy_name')  + '/'
               + model.get('plate_number');
+          },
+          get_link_stack: function(){
+            var newUriStack = [
+              'library',this.model.get('library_short_name'),
+              'plate', appModel.URI_PATH_SEARCH];
+            var search = {};
+            search['copy_name__in'] = this.model.get('copies_screened');
+            newUriStack.push(appModel.createSearchString(search));
+            return newUriStack;
+          },
+          get_href: function(){
+            var uriStack = this.get_link_stack();
+            return '#' + uriStack.join('/');
+          },
+          linkCallback: function(e){
+            e.preventDefault();
+            appModel.setUriStack(this.get_link_stack());
           }
         });
       
@@ -171,13 +179,26 @@ define([
         Iccbl.LinkCell.extend(_.extend({},
           resource.fields['screening_count'].display_options,
           {
+            get_link_stack: function(){
+              var newUriStack = [
+                'screen',self.model.get('screen_facility_id'),
+                'summary','libraryscreening', appModel.URI_PATH_SEARCH];
+              var search = {};
+              var plate_number = this.model.get('plate_number');
+              search['library_plates_screened__contains'] = _.map(
+                this.model.get('copies_screened'), function(copy_name){
+                  return plate_number + '/' + copy_name;
+                }).join(';');
+              newUriStack.push(appModel.createSearchString(search));
+              return newUriStack;
+            },
+            get_href: function(){
+              var uriStack = this.get_link_stack();
+              return '#' + uriStack.join('/');
+            },
             linkCallback: function(e){
               e.preventDefault();
-              var search_entry = Iccbl.formatString(
-                'library_plates_screened__contains={copy_name}/{plate_number}',
-                this.model);
-              self.uriStack = [appModel.URI_PATH_SEARCH, search_entry];
-              self.change_to_tab('libraryscreening');
+              appModel.setUriStack(this.get_link_stack());
             }
           }));
       

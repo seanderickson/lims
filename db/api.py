@@ -24494,6 +24494,8 @@ class LibraryResource(DbApiResource):
                 self._meta.resource_name)
             _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
             _well = self.bridge['well']
+            _plate = self.bridge['plate']
+            _copy = self.bridge['copy']
             _apilog = self.bridge['reports_apilog']
             custom_columns = {
                 'comment_array': (
@@ -24587,6 +24589,11 @@ class LibraryResource(DbApiResource):
                     .select_from(_well)
                     .where(_well.c.library_id==_l.c.library_id)
                     ),
+                'date_screenable': (
+                    select([func.min(_plate.c.date_plated)])
+                    .select_from(_plate.join(_copy, _plate.c.copy_id==_copy.c.copy_id))
+                    .where(_copy.c.library_id == _l.c.library_id)
+                    )
                 }
                      
             base_query_tables = ['library']

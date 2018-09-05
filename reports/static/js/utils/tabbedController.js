@@ -149,17 +149,11 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
         } else {
           this.consumedStack = [];
         }
-        
         var delegateStack = newdelegateStack || _.clone(this.uriStack);
-//        if (!_.isUndefined(newdelegateStack)){
-//          delegateStack = newdelegateStack;
-//        }
-        
         this.uriStack = [];
         var method = this[this.tabbed_resources[key]['invoke']];
         if (_.isFunction(method)) {
           method.apply(this,[delegateStack]);
-//          self.reportUriStack([]);          
         } else {
           throw ( 
             "Tabbed resources refers to a non-function: "

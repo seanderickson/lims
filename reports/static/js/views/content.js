@@ -308,7 +308,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.setView('#content', self.subView).render();
       }
       if (self.titleFunction){
-        titleFunction();
+        self.titleFunction();
       }
     },
     

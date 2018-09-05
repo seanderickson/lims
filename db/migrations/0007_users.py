@@ -153,7 +153,7 @@ def create_screensaver_users(apps, schema_editor):
 
         if hasattr(su, 'administratoruser'):
             au.is_staff = True
-            if not su.classifcation:
+            if not su.classification:
                 su.classification = SCHEMA.VOCAB.screensaver_user.STAFF
                 
         au.save()

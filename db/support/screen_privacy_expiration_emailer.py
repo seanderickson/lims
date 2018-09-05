@@ -1,8 +1,7 @@
 from __future__ import unicode_literals
 
-from argparse import ArgumentError
 import argparse
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 import datetime
 import json
 import logging
@@ -11,14 +10,12 @@ from urlparse import urlparse
 
 import dateutil.parser
 from django.conf import settings
-import pytz
 from requests.packages import urllib3
 
 from db.schema import get_href, get_vocab_title, replace_vocabularies, \
     replace_html_values, DB_API_URI, DATE_FORMAT
-import db.schema
-from reports import InformationError, HEADER_APILOG_COMMENT_CLIENT
-from reports.api import API_RESULT_DATA, API_RESULT_META
+import db.schema as SCHEMA
+from reports import HEADER_APILOG_COMMENT_CLIENT
 from reports.serialize import LimsJSONEncoder, parse_val
 from reports.utils import parse_credentials, sort_nicely
 from reports.utils.admin_emailer import Emailer, read_email_template, \
@@ -30,11 +27,9 @@ import reports.utils.django_requests as django_requests
 
 logger = logging.getLogger(__name__)
 
-# Schema field name constants
-SCREEN = db.schema.SCREEN
-USER = db.schema.SCREENSAVER_USER
-PUB = db.schema.PUBLICATION
-# Alias some commonly used fields
+SCREEN = SCHEMA.SCREEN
+USER = SCHEMA.SCREENSAVER_USER
+PUB = SCHEMA.PUBLICATION
 FIELD_DSL = SCREEN.DATA_SHARING_LEVEL
 FIELD_DPED = SCREEN.DATA_PRIVACY_EXPIRATION_DATE
 FIELD_NOTIFICATION_DATE = SCREEN.DATA_PRIVACY_EXPIRATION_NOTIFIED_DATE
@@ -44,7 +39,7 @@ FIELD_MAX_DPED = SCREEN.MAX_DATA_PRIVACY_EXPIRATION_DATE
 SCREEN_STATUS_IGNORE =['dropped_technical','dropped_resources',
     'transferred_to_broad_institute']
 
-VOCAB = db.schema.VOCAB
+VOCAB = SCHEMA.VOCAB
 VOCAB_DSL = VOCAB.screen.data_sharing_level
 VOCAB_USER_ROLE = VOCAB.screen.user_role
 VOCAB_SCREEN_RESULT_AVAILABILITY = VOCAB.screen.screen_result_availability
@@ -154,8 +149,6 @@ parser.add_argument(
 parser.add_argument(
     '-v', '--verbose', dest='verbose', action='count',
     help="Increase verbosity (specify multiple times for more)")    
-    
-
 
 
 if __name__ == "__main__":
@@ -261,7 +254,7 @@ if __name__ == "__main__":
         elif key == PSEUDO_FIELD_MEMBERS:
             return 'Members'
         else:
-            return db.schema.get_title(key, schema)
+            return SCHEMA.get_title(key, schema)
     
     def get_role(user_id,screen):
         role_field = 'screensaver_user_role'
@@ -592,7 +585,7 @@ if __name__ == "__main__":
                 content = json.loads(r.content)
                 logger.info('PATCH result: %r', content)
                 logger.info('content: %r', content.keys())
-                logger.info('meta: %r', content.get(API_RESULT_META,None))
+                logger.info('meta: %r', content.get(SCHEMA.API_RESULT_META,None))
 
             # send admin email
             def fill_parms(txt):
@@ -772,7 +765,7 @@ if __name__ == "__main__":
             content = json.loads(r.content)
             logger.info('PATCH result: %r', content)
             logger.info('content: %r', content.keys())
-            logger.info('meta: %r', content.get(API_RESULT_META,None))
+            logger.info('meta: %r', content.get(SCHEMA.API_RESULT_META,None))
                         
             # Create the admin message
     
@@ -987,7 +980,7 @@ if __name__ == "__main__":
                 content = json.loads(r.content)
                 logger.info('PATCH result: %r', content)
                 logger.info('content: %r', content.keys())
-                logger.info('meta: %r', content.get(API_RESULT_META,None))
+                logger.info('meta: %r', content.get(SCHEMA.API_RESULT_META,None))
                             
             # Create the admin message
             (msg_subject, msg_body_lines) = \

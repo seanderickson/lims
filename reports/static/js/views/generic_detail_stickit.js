@@ -87,13 +87,28 @@ define([
 	    var resource = this.resource;
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};
-      
+
+      function create_title(fi){
+        if (Iccbl.appModel.hasGroup('readEverythingAdmin') 
+            && fi.vocabulary_scope_ref){
+          return Iccbl.formatString(
+            '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
+            + ' class="" '
+            + ' target=_blank >{title}</a>',fi);
+        } else {
+          return fi.title + ':';
+        }
+      };
+
       _.each(keys, function(key) {
         bindings['#'+key] = self.createBinding(key,resource.fields[key]);
         schemaBindings['#title-'+key] = {
           observe: key,
+          updateMethod: 'html',
           onGet: function(value) {
-            if (value) return value.title + ":";
+            if (value){
+              return create_title(value);
+            }
             else return 'Title for ' + key;
           },
           attributes: [{

@@ -854,6 +854,16 @@ define([
            fieldAttrs: {}
          };
       
+      function create_title(fi){
+        if (fi.vocabulary_scope_ref){
+          return Iccbl.formatString(
+            '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
+            + ' target=_blank >{title}</a>',fi);
+        } else {
+          return fi.title;
+        }
+      };
+      
       _.each(this.editVisibleKeys, function(key) {
 
         var fi = self.modelFields[key];
@@ -861,7 +871,7 @@ define([
 
         var fieldSchema = _.extend({}, defaultFieldSchema);
         
-        fieldSchema['title'] = fi.title;
+        fieldSchema['title'] = create_title(fi);
         var tooltip = fi.description;
         if (fi.required) {
           tooltip += ' (required)';

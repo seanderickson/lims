@@ -1018,7 +1018,6 @@ if __name__ == "__main__":
             
             def replace_for_html(screen):
                 # Create a copy of the screen and format values as needed
-                screen = replace_html_values(screen, screen_schema)
                 member_ids = get_member_ids(screen)
                 members =[]
                 for user_id in member_ids:
@@ -1036,6 +1035,7 @@ if __name__ == "__main__":
                         text += ', %s' % msg
                     members.append(text)
                 screen[PSEUDO_FIELD_MEMBERS] = '<br/>'.join(members)
+                screen = replace_html_values(screen, screen_schema)
                 return screen
             
             txt_notified_screens = []

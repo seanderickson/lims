@@ -9,7 +9,7 @@ lab_head_id,fields.screensaveruser,,,7,,TRUE,"The Screensaver User ID of the Lab
 lab_head_username,fields.screensaveruser,,,7,,TRUE,"Lab Head Usernamw","Lab Head Username",TRUE,,[none],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{lab_head_id}' }",,,,,,,3
 lab_affiliation_id,fields.screensaveruser,,,8,,TRUE,"Lab Affiliation ID","Principal Investigator Lab Affiliation",TRUE,,,[c;u],integer,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}', 'widthClass': 'col-sm-8' }",select,,,,,,1
 lab_affiliation_name,fields.screensaveruser,,,9,,TRUE,"Lab Affiliation Name","Principal Investigator Lab Affiliation Name",TRUE,,[none],[c;u],string,,,,,,,,,1
-lab_affiliation_category,fields.screensaveruser,,,10,,TRUE,"Lab Affiliation Category","Lab Affiliation Category",TRUE,lab_affiliation.category,,,string,,,select,,,,,,1
+lab_affiliation_category,fields.screensaveruser,,,10,,TRUE,"Lab Affiliation Category","Lab Affiliation Category",TRUE,labaffiliation.category,,,string,,,select,,,,,,1
 lab_head_appointment_category,fields.screensaveruser,,,13,,TRUE,"Lab Head Appointment Category","App't Category",TRUE,lab_head.appointment_category,,[c;u],string,,,select,,,,,,
 lab_head_appointment_department,fields.screensaveruser,,,14,,TRUE,"Lab Head Appointment Department","App't Department",TRUE,lab_head.appointment_department,,[c;u],string,,,select,,,,,,
 lab_head_appointment_update_date,fields.screensaveruser,,,15,,TRUE,"The date when Lab Head Appointment was set","Date App't Updated",TRUE,,,[c;u],date,,,,,,,,,

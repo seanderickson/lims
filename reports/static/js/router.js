@@ -100,7 +100,7 @@ function($, _, Backbone, appModel) {
       document.title = 'Screensaver LIMS' + ': ' + route;
 
       // Clear out error messages after navigating away from page
-      appModel.clearErrors();
+//      appModel.clearErrors();
       console.log('route: ', route, options);
       
       // Trigger false to suppress further parsing, 

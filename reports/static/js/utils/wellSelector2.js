@@ -78,7 +78,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       });
       
       this.listenTo(this.collection, 'change:' + columnIndex, function(){
-        console.log('change:(column index):' + columnIndex);
         self.renderSelection();
       });
     },
@@ -135,7 +134,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
   
     /** @property */
     events: {
-      "keydown input[type=checkbox]": "onKeydown",
+//      "keydown input[type=checkbox]": "onKeydown",
       "change input[type=checkbox]": "onChange",
       "click": "cellClicked",
       "click input[type=checkbox]": "cellClicked"
@@ -224,24 +223,24 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       this.checkbox().blur();
     },
   
-    /**
-       Process keyboard navigation.
-       ** FIXME: copied code from parent class - remove.
-    */
-    onKeydown: function (e) {
-      var command = new Backgrid.Command(e);
-      if (command.passThru()) return true; // skip ahead to `change`
-      if (command.cancel()) {
-        e.stopPropagation();
-        this.checkbox().blur();
-      }
-      else if (command.save() || command.moveLeft() || command.moveRight() ||
-               command.moveUp() || command.moveDown()) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.model.trigger("backgrid:edited", this.model, this.column, command);
-      }
-    },
+//    /**
+//       Process keyboard navigation.
+//       ** FIXME: copied code from parent class - remove.
+//    */
+//    onKeydown: function (e) {
+//      var command = new Backgrid.Command(e);
+//      if (command.passThru()) return true; // skip ahead to `change`
+//      if (command.cancel()) {
+//        e.stopPropagation();
+//        this.checkbox().blur();
+//      }
+//      else if (command.save() || command.moveLeft() || command.moveRight() ||
+//               command.moveUp() || command.moveDown()) {
+//        e.preventDefault();
+//        e.stopPropagation();
+//        this.model.trigger("backgrid:edited", this.model, this.column, command);
+//      }
+//    },
   
     cellClicked: function(e) {
       if (this.model.collection.editable === false) return;
@@ -845,6 +844,8 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       var className = 'wellselector';
       if (self.plateSize == 1536){
         className += ' ' + 'extra-small-table';
+      }else{
+        className += ' ' + 'small-table';
       }
         
       var colModel = new Backgrid.Columns(columns);

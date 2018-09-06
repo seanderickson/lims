@@ -154,6 +154,11 @@ var formatString = Iccbl.formatString = function(
     default_val) 
   {
   var isBackboneModel = object instanceof Backbone.Model;
+  if (!isBackboneModel){
+    if (typeof(object.get)=='function' && _.has(object,'attributes')){
+      isBackboneModel = true;
+    }
+  }
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
     function (match) 
     {

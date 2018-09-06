@@ -516,6 +516,9 @@ table.backgrid.left-align td{
   font-size: medium;
 }
 
+.small-table {
+ font-size: 13px;
+}
 .extra-small-table {
  font-size: 7px;
 }

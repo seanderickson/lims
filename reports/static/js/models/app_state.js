@@ -1774,11 +1774,6 @@ define([
         options['view'] = body;
       } else {
         options['body'] = bodyMsg;
-        options['buttons_on_top'] = true;
-        body = $('<textarea class="input-full" rows=' 
-          + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
-        body.val(bodyMsg);
-        options['view'] = body;
       }
       Iccbl.appModel.showModalMessage(options);
     },

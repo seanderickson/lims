@@ -554,7 +554,7 @@ define([
       var currVal = this.model.get(this.key);
       if (!_.find(this.schema.options,function(option) {
         return option.val == currVal;
-      })) {
+        })) {
         this.$el.attr('data-placeholder', currVal);
       }else if (this.schema.placeholder) {
         this.$el.attr('data-placeholder', this.schema.placeholder);
@@ -872,6 +872,7 @@ define([
         var fieldSchema = _.extend({}, defaultFieldSchema);
         
         fieldSchema['title'] = create_title(fi);
+        fieldSchema['rawTitle'] = fi.title;
         var tooltip = fi.description;
         if (fi.required) {
           tooltip += ' (required)';
@@ -926,7 +927,7 @@ define([
           if (_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)) {
             fieldSchema['options'] = self._createVocabularyChoices(fi);
             if (!fieldSchema.placeholder) {
-              fieldSchema.placeholder = 'choose ' + fieldSchema.title + '...';
+              fieldSchema.placeholder = 'choose ' + fieldSchema.rawTitle + '...';
             }
           }
           fieldSchema.validators = self._createValidators(fi);

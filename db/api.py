@@ -15753,7 +15753,8 @@ class RawDataTransformerResource(DbApiResource):
         'Control wells must be \'empty\', \'DMSO\', or \'Library Control\'')
     ERROR_MATRIX_SIZE_DETECTED = \
         'Matrix size detected: %d, does not match Assay Plate Size: %d'
-    ERROR_COLLATION_COUNT = 'Number of collations: %d, '\
+    ERROR_COLLATION_COUNT = 'Number of collations: '\
+        'conditions (%d) * replicates (%d) * readouts (%d) = %d, '\
         'must be a divisor of the number matrices read: %d'
     ERROR_PLATE_COUNT = (
         'Plates required (%d) does not match # of plates entered (%d): '
@@ -16260,10 +16261,12 @@ class RawDataTransformerResource(DbApiResource):
 
             if collation_count > len(matrices):
                 msg = self.ERROR_COLLATION_COUNT % (
+                    len(conditions),len(replicates),len(readouts), 
                     collation_count, len(matrices))
                 raise ValidationError(key=filekey, msg=msg)
             if len(matrices)%collation_count != 0:
                 msg = self.ERROR_COLLATION_COUNT % (
+                    len(conditions),len(replicates),len(readouts), 
                     collation_count, len(matrices))
                 raise ValidationError(key=filekey, msg=msg)
             

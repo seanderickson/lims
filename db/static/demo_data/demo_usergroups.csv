@@ -22,11 +22,10 @@ screenDataSharingLevelsAdmin,,,
 screenResultAdmin,[screenResultView],,[resource/screenresult/write;resource/datacolumn/write;resource/rawdatatransform/write]
 serviceActivityView,[userView],,
 serviceActivityAdmin,[serviceActivityView],,[resource/serviceactivity/write]
-userAdmin,[adminEditor;userView],,[resource/user/write;resource/screensaveruser/write;resource/attachedfile/write;resource/labaffiliation/write;resource/userchecklist/write]
+userAdmin,[adminEditor;userView],,[resource/user/write;resource/screensaveruser/write;resource/attachedfile/write;resource/labaffiliation/write;resource/userchecklist/write;resource/usergroup/write]
 screensaverUserAdmin,[screensaverUser;screensaverUserView;userAdmin],,[resource/screensaveruser/write;resource/useragreement/write;/resource/labaffiliation/write;resource/useragreement/write]
 labHeadAdmin,[userAdmin],,
 userChecklistAdmin,[userView],,[resource/userchecklist/write]
-userGroupAdmin,[userAdmin],,[resource/usergroup/write]
 libraryCopyAdmin,[screensaverUser],,[resource/librarycopy/write;resource/platelocation/write;resource/librarycopyplate/write]
 libraryCopyWellAdmin,[libraryCopyAdmin],,[resource/copywell/write]
 apilogView,[screensaverUser],[readEverythingAdmin],[resource/apilog/read]

@@ -1,5 +1,5 @@
 username,first_name,last_name,is_staff,usergroups,is_active,email,classification,lab_head_username,lab_affiliation_name
-demoadmin,User0,Admin,TRUE,[screensaverUser;libraryAdmin;screenAdmin;readEverythingAdmin;screensaverUserAdmin;screenDslExpirationNotify;userAgreementExpirationNotify;cherryPickRequestAdmin],TRUE,adminuser@iccbl.harvard.edu,,,
+demoadmin,User0,Admin,TRUE,[screensaverUser;libraryAdmin;screenAdmin;readEverythingAdmin;screensaverUserAdmin;screenDslExpirationNotify;userAgreementExpirationNotify;cherryPickRequestAdmin;serviceActivityPerformers],TRUE,adminuser@iccbl.harvard.edu,,,
 demolabhead,User1,Labhead,FALSE,,TRUE,demolabhead1@iccbl.med.harvard.edu,principal_investigator,,"Harvard Medical School"
 demoscreener1,User2,Screener,FALSE,,TRUE,screener1@iccbl.harvard.edu,,demolabhead,
 demoscreener2,User3,Screener,FALSE,,TRUE,screener2@iccbl.harvard.edu,,demolabhead,

@@ -205,10 +205,14 @@ def create_user_checklist_from_checklist_item_events(apps, schema_editor):
     and reports_apilog/reports_logdiff;
         /* clear for new migration 0007 */
         
-        delete from reports_logdiff where exists( select null from reports_apilog where ref_resource_name = 'userchecklist' and log_id=id);
+        delete from reports_logdiff where exists( 
+            select null from reports_apilog 
+            where ref_resource_name = 'userchecklist' and log_id=id);
         delete from reports_apilog where ref_resource_name = 'userchecklist';
         delete from user_checklist ;
-        delete from reports_logdiff where exists( select null from reports_apilog where ref_resource_name = 'useragreement' and log_id=id);
+        delete from reports_logdiff where exists( 
+            select null from reports_apilog 
+            where ref_resource_name = 'useragreement' and log_id=id);
         delete from reports_apilog where ref_resource_name = 'useragreement';
         delete from user_agreement ;
     

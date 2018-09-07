@@ -821,8 +821,6 @@ function main {
   
   setup_production_users
   
-#  setup_test_data
-
   create_studies
 
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
@@ -880,8 +878,6 @@ main "$@"
   
 #  setup_production_users
   
-#  setup_test_data
-
 #  create_studies
 
 # run_expiration_scripts

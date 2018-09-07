@@ -39,9 +39,13 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'groups'].join('/');
+      
+      // FIXME: 20180906
+      // FIXME: should use list2.js
+      // FIXME: rpp is not being honored here
       var ListModel = Backbone.Model.extend({
         defaults: {
-            rpp: 50,
+            rpp: 0,
             page: 1,
             order: {},
             search: {}}

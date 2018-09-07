@@ -1761,18 +1761,16 @@ define([
         }
         options['title'] = title;
       }
-      var sep = '<br/>';
-      //      var bodyMsg = this.print_dict(jsonObj, sep);
       var bodyMsg = this.print_json(jsonObj);
-      var rowCount = (bodyMsg.match(new RegExp(sep, "g")) || []).length;
+      var rowCount = (bodyMsg.match(new RegExp('\n', "g")) || []).length;
       if (rowCount > Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG){
-        bodyMsg = this.print_dict(jsonObj, '\n');
         body = $('<textarea class="input-full" rows=' 
           + Iccbl.appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
         body.val(bodyMsg);
         options['buttons_on_top'] = true;
         options['view'] = body;
       } else {
+        bodyMsg = bodyMsg.replace(/\n/g, '<br/>');
         options['body'] = bodyMsg;
       }
       Iccbl.appModel.showModalMessage(options);

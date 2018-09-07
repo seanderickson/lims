@@ -54,7 +54,10 @@ def execute_from_python(job_id, sbatch=False):
         os.makedirs(job_output_dir)
     credential_file = settings.BACKGROUND_PROCESSOR['credential_file']
     python_environ_script = settings.BACKGROUND_PROCESSOR['python_environ_script']
-
+    if not os.path.exists(python_environ_script):
+        raise InformationError(
+            key='python_environ_script',
+            msg='file does not exist: %r' % python_environ_script)
     # background_process_script = settings.BACKGROUND_PROCESSOR['background_process_script']
     background_process_script = os.path.abspath(__file__)
     logger.info('this file: %r', background_process_script)

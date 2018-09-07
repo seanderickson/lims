@@ -144,19 +144,25 @@ define([
           function showResponse(e) {
             e.preventDefault();
             var response_content = self.model.get('response_content');
-            try{
-              responseJSON = JSON.parse(response_content);
-              responseJSON['Status Code'] = self.model.get('response_status_code');
-              appModel.showJsonMessages(responseJSON, { title: 'Job Response'});
-            }catch(e){
-              console.log(
-                'Error, unable to parse response as JSON: ', response_content);
-              appModel.showModalMessage({
-                buttons_on_top: false,
-                body: response_content,
-                title: 'Error'
-              });
+            var state = self.model.get('state');
+            var data = {
+              'Status Code': self.model.get('response_status_code'),
+              'Current status': state
+            };
+            if (self.model.has('process_messages')){
+              data['Process Messages'] = self.model.get('process_messages');
             }
+            if (response_content){
+              try{
+                var responseJSON = JSON.parse(response_content);
+                data = _.extend(data, responseJSON);
+              }catch(e){
+                console.log(
+                  'Error, unable to parse response as JSON: ', response_content);
+                data['Response Content'] = response_content;
+              }
+            }
+            appModel.showJsonMessages(data, { title: 'Job Response: ' + state});
           };
           var state = self.model.get('state');
           if (_.contains(['pending', 'submitted', 'processing'], state)){

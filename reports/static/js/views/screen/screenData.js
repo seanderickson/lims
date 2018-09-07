@@ -813,7 +813,11 @@ define([
               })
               .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
               .done(function(model, resp) {
-                appModel.error('success');
+                
+                //appModel.showModalMessage({
+                //  body: 'Screen Result has been deleted',
+                //  title: 'Success'
+                //});
                 // Must refetch and render, once for the containing tabbed layout,
                 // and then (during render), will refetch again for the detail view
                 self.model.fetch({

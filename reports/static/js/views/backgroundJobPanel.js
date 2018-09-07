@@ -33,10 +33,6 @@ define([
         
         function retrieveModel(){
           console.log('retreive job state...')
-          if (_.contains(['completed','failed'] , self.finalJobState)){
-            clearInterval(self.jobTimer);
-            return;
-          }
           self.model.fetch({global: false })
             .done(function(model){
               console.log('new model', model);
@@ -55,6 +51,7 @@ define([
               self.$el.addClass('alert alert-danger alert-dismissible');
               self.$el.append(failEl);
               Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+              clearInterval(self.jobTimer);
             });
         }
         
@@ -140,7 +137,7 @@ define([
           return link;
         };
         
-        function getState() {
+        function getStateEl() {
           function showResponse(e) {
             e.preventDefault();
             var response_content = self.model.get('response_content');
@@ -164,18 +161,18 @@ define([
             }
             appModel.showJsonMessages(data, { title: 'Job Response: ' + state});
           };
-          var state = self.model.get('state');
-          if (_.contains(['pending', 'submitted', 'processing'], state)){
-            state += self.animated_ellipsis;
+          var displayStateMsg = self.model.get('state');
+          if (_.contains(['pending', 'submitted', 'processing'], displayStateMsg)){
+            displayStateMsg += self.animated_ellipsis;
           }
           if (_.contains(['failed','completed'], state)){
             var stateEl = $('<a>', {
               href: '#', title: 'show response', class: 'alert-link'
-            }).text(state);
+            }).text(displayStateMsg);
             stateEl.click(showResponse);
-            state = stateEl;
+            displayStateMsg = stateEl;
           }
-          return state;
+          return displayStateMsg;
         };          
         
         var dismissLink = 
@@ -187,7 +184,7 @@ define([
           Iccbl.formatString(': {method}: {uri}', self.model)
         );
         $el.append(', State: ');
-        $el.append(getState());
+        $el.append(getStateEl());
         var state = self.model.get('state');
         if (state == 'pending'){
           $el.removeClass('alert-success alert-danger');

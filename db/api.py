@@ -373,6 +373,7 @@ class DbApiResource(reports.api.ApiResource):
                 '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
 
     @classmethod
+    @transaction.atomic
     def get_create_well_data_column_positive_index(cls):
         '''
         If the well_data_column_positive_index has been cleared, recreate.
@@ -432,6 +433,7 @@ class DbApiResource(reports.api.ApiResource):
         return _wdc
     
     @classmethod
+    @transaction.atomic
     def get_create_screen_overlap_indexes(cls):
         _wdc = cls.get_create_well_data_column_positive_index()
         _screen_overlap = cls.get_table_def('screen_overlap')
@@ -463,6 +465,7 @@ class DbApiResource(reports.api.ApiResource):
                     str(insert_statement.compile(
                         dialect=postgresql.dialect(),
                         compile_kwargs={"literal_binds": True})))
+                
             result = get_engine().execute(insert_statement)
             logger.info('screen_overlap insert statement, executed: %d.' % result.rowcount)
         return _screen_overlap
@@ -19918,11 +19921,15 @@ class ScreensaverUserResource(DbApiResource):
         ]    
 
     def dispatch_user_groupview(self, request, **kwargs):
-        username = kwargs.pop('username', None)
-        if username:
-            su = ScreensaverUser.objects.get(username=username)
-            kwargs['screensaver_user_id'] = su.screensaver_user_id
             
+        screensaver_user_id = kwargs.get('screensaver_user_id')
+        if screensaver_user_id:
+            su = ScreensaverUser.objects.get(screensaver_user_id=screensaver_user_id)
+            if not su.username:
+                raise Http404(
+                    'Specified user is not a login user (no username): {}'.format( 
+                    screensaver_user_id))
+            kwargs['username'] = su.username
         return UserGroupResource().dispatch('list', request, **kwargs)    
     
     def dispatch_user_checklistview(self, request, **kwargs):

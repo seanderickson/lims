@@ -65,7 +65,8 @@ class ValidationError(Exception):
             
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors
-
+    def __str__(self, *args, **kwargs):
+        return self.__repr__(*args, **kwargs)
 
 class CumulativeError(ValidationError):
     

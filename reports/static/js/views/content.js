@@ -22,6 +22,7 @@ define([
   'views/usergroup/usergroup2',
   'views/activityListView',
   'views/apilogView',
+  'views/contact',
   'utils/uploadDataForm',
   'test/detailTest',
   'utils/wellSelector',
@@ -36,7 +37,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          LibraryWellsView, LibraryWellView,
          ScreenView, LibraryScreeningView, CherryPickRequestView,
          PlateLocationView, UserAdminView, UserView, UserGroupAdminView, 
-         ActivityListView, ApilogView, UploadDataForm, DetailTestView, 
+         ActivityListView, ApilogView, ContactView, UploadDataForm, DetailTestView, 
          WellSelectorView, SearchBox, layout, welcomeLayout, 
          welcomeScreenerLayout, aboutLayout) {
 
@@ -58,7 +59,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ActivityListView': ActivityListView,
     'LibraryWellsView': LibraryWellsView,
     'LibraryWellView': LibraryWellView,
-    'ApilogView': ApilogView
+    'ApilogView': ApilogView,
+    'content': ContactView
   };
   
   var ContentView = Iccbl.UriContainerView.extend({
@@ -380,9 +382,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.setViewInternal(view);
         self.reportUriStack([]);
         return;
-      }
-      
-      if (uiResourceId == 'about'){
+      }else if (uiResourceId == 'about'){
         var AboutView = Backbone.Layout.extend({
           template: _.template(aboutLayout),
           initialize: function(){
@@ -392,6 +392,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         $('#navbar').children().removeClass('active');
         $('#navbar').children('#about').addClass('active');
         var view = new AboutView();
+        self.objects_to_destroy.push(view);
+        self.setViewInternal(view);
+        self.reportUriStack([]);
+        return;
+      }else if (uiResourceId == 'contact'){
+        $('#navbar').children().removeClass('active');
+        $('#navbar').children('#contact').addClass('active');
+        var view = new ContactView();
         self.objects_to_destroy.push(view);
         self.setViewInternal(view);
         self.reportUriStack([]);

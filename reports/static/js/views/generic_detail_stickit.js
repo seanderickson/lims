@@ -7,10 +7,10 @@ define([
     'iccbl_backgrid',
     'layoutmanager',
     'models/app_state',
-    'views/generic_detail_stickit',
+//    'views/generic_detail_stickit',
     'templates/generic-detail-stickit.html'
 ], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
-      appModel, DetailView, detailTemplate) {
+      appModel, detailTemplate) {
 
   // NOTE: Webpack 3 patch:
   // Manually add the Stickit.ViewMixin object to the Backbone.Layout prototype
@@ -134,7 +134,6 @@ define([
         else if (_.isString(value) && value === '' ) return '-';
         else if (_.isObject(value) && _.isEmpty(value)) return '-';
         else{
-//          return _.escape(value);
           return value;
         }
       }     

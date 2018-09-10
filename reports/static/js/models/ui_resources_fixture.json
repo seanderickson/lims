@@ -7,11 +7,18 @@
     "description": "home"
   },
   "about": {
-    "title": "ICCB-L Screensaver LIMS",
+    "title": "Screensaver LIMS",
     "route": "about",
     "view": "AboutView",
-    "content_header": "ICCB-L Screensaver LIMS",
+    "content_header": "Screensaver LIMS",
     "description": "About page"
+  },  
+  "contact": {
+    "title": "Screensaver LIMS",
+    "route": "contact",
+    "view": "ContactView",
+    "content_header": "ICCB-L Screensaver LIMS",
+    "description": "Contact information"
   },  
   "reports": {
     "title": "Reports",

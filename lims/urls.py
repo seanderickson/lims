@@ -32,6 +32,7 @@ urlpatterns = [
     # url(r'^accounts/logout/$', views.logout_page, name='logout'),
      
      
+    url(r'^$', views.main, name="home"),
     url(r'^lims/$', views.main, name="home"),
     url(r'^db/', include('db.urls')),
     url(r'^reports/', include('reports.urls')),

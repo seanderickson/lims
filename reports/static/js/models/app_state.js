@@ -2463,20 +2463,35 @@ define([
           ].join(''))
       });
       
-      form.listenTo(form, "change", function(e){
-        console.log('change');
+      form.listenTo(form, "content_type:change", function(e){
+        // NOTE: 20180910 - default option for sdf is data_interchange
         var content_type = form.getValue('content_type');
         if(content_type == 'sdf'){
-          form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
-          form.$el.find('[name="use_titles"]').prop('disabled', true);
-          form.$el.find('[name="raw_lists"]').prop('disabled', true);
+          //form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
+          //form.$el.find('[name="use_titles"]').prop('disabled', false);
+          //form.$el.find('[name="raw_lists"]').prop('disabled', false);
           form.setValue('data_interchange', true);
-        }else{
-          form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
-          form.$el.find('[name="use_titles"]').prop('disabled', false);
-          form.$el.find('[name="raw_lists"]').prop('disabled', false);
-          form.$el.find('[name="data_interchange"]').prop('disabled', false);
         }
+        
+      });
+      
+      form.listenTo(form, "change", function(e){
+        console.log('change');
+        
+        // NOTE: 20180910 - allow options for sdf as well
+        //var content_type = form.getValue('content_type');
+        //if(content_type == 'sdf'){
+        //  form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
+        //  form.$el.find('[name="use_titles"]').prop('disabled', false);
+        //  form.$el.find('[name="raw_lists"]').prop('disabled', false);
+        //  form.setValue('data_interchange', true);
+        //}
+        //else{
+        //  form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
+        //  form.$el.find('[name="use_titles"]').prop('disabled', false);
+        //  form.$el.find('[name="raw_lists"]').prop('disabled', false);
+        //  form.$el.find('[name="data_interchange"]').prop('disabled', false);
+        //}
         if (form.getValue('data_interchange') === true ){
           form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
           form.$el.find('[name="use_titles"]').prop('disabled', true);

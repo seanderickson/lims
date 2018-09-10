@@ -260,7 +260,8 @@ class BaseSerializer(object):
         """
         if isinstance(content, six.binary_type):
             content = force_text(content)
-        content = content.decode('utf-8').replace(r'(\w+):', r'"\1" :')
+#         content = content.decode('utf-8').replace(r'(\w+):', r'"\1" :')
+        content = content.replace(r'(\w+):', r'"\1" :')
         if content:
             result = json.loads(content)
             logger.debug('json decoded, loaded: %d', len(result))

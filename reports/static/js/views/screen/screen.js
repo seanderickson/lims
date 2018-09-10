@@ -306,8 +306,10 @@ define([
               [{ val: '', label: ''}].concat(userOptions));
           fields['lab_head_id'].choiceHash = (
               appModel.getPrincipalInvestigatorOptions() );
-          fields['pin_transfer_approved_by_username'].choiceHash = (
-              appModel.getAdminUserOptions() );
+          if (_.has(fields,'pin_transfer_approved_by_username')){
+            fields['pin_transfer_approved_by_username'].choiceHash = (
+                appModel.getAdminUserOptions() );
+          }
           
           // pick just the non-billing fields: prevent backbone save from sending
           // uninitialized billing fields on create

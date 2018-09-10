@@ -270,6 +270,7 @@ define([
         }
         appModel.getResourceFromUrl(schemaUrl, createResults, options);
       } else {
+        this.$('#datacolumns').addClass('disabled');
         if (appModel.hasPermission('screenresult','write')) {
           this.$('#tab_container').empty().append("No data loaded ");
           this.$('#tab_container').append($loadScreenResultsButton);
@@ -410,7 +411,7 @@ define([
         limit: 0,
         includes: [
           'screen_facility_id','screen_title','name','description',
-          'assay_data_type','ordinal','study_type'],
+          'assay_data_type','ordinal','study_type','vocabulary_scope_ref'],
         order_by: ['screen_facility_id', 'ordinal'],
         use_vocabularies: false
       };

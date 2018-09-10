@@ -20,11 +20,14 @@ define([
 	    console.log('app_data', app_data.toJSON());
 	    this.contactInfo = [
         ['Screening Facility', 'Screening Facility Information', 
-          Iccbl.formatString('<a href="{facility_url}">{facility_name}</a>', app_data)],
+          Iccbl.formatString('<a href="{facility_url}">{facility_name}</a>', 
+            app_data)],
         ['Site URL', 'Screensaver URL', 
           Iccbl.formatString('<a href="{site_url}">{site_url}</a>', app_data)],
         ['Feedback', 'Submit feedback and questions', 
-          Iccbl.formatString('<a mailto="{contact_feedback_email}">{contact_feedback_email}</a>', app_data)],
+          Iccbl.formatString(
+            '<a href="mailto:{contact_feedback_email}">{contact_feedback_email}</a>', 
+            app_data)],
 	    ];
 	    console.log('contactInfo', this.contactInfo);
 	  },

@@ -575,8 +575,8 @@ define([
           var cpr_id = self.form4.getValue()['searchVal'];
           var resource = appModel.getResource('cherrypickrequest');
           appModel.getModelFromResource(resource, cpr_id, function(model){
-            var uriStack = ['#screen', model.get('screen_facility_id'), 
-              resource.key,cpr_id].join('/');
+            var uriStack = ['screen', model.get('screen_facility_id'), 
+              resource.key,cpr_id];
               appModel.setUriStack(uriStack);
           });
         });      

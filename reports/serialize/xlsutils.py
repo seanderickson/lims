@@ -7,7 +7,7 @@ import logging
 import xlrd
 import xlsxwriter
 
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports import MAX_IMAGE_ROWS_PER_XLS_FILE
 from reports.serialize import csvutils
 import reports.serialize

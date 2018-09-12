@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 import logging
 from django.db import migrations, models
-from db.support.data_converter import default_converter
 from reports.models import ApiLog
 
 logger = logging.getLogger(__name__)

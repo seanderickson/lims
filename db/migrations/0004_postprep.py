@@ -10,7 +10,6 @@ from django.contrib.auth.models import User, UserManager
 from django.db import migrations, models
 import pytz
 
-from db.support.data_converter import default_converter
 
 logger = logging.getLogger(__name__)
 

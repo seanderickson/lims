@@ -11,7 +11,7 @@ import re
 from django.db import migrations, models
 
 from db.migrations import create_log_time, _child_log_from
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports.models import ApiLog
 from db.models import CherryPickLiquidTransfer, CherryPickScreening,\
     CherryPickAssayPlate, LibraryScreening, CherryPickRequest

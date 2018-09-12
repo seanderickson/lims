@@ -26,7 +26,7 @@ from django.utils.crypto import constant_time_compare
 from django.utils.encoding import force_text
 from django.views.decorators.csrf import csrf_exempt
 
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports import ValidationError, InformationError, BadRequestError, \
     ApiNotImplemented, BackgroundJobImmediateResponse, LoginFailedException, \
     API_RESULT_ERROR
@@ -606,10 +606,14 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 if kwargs:
                     msg = [ (key,str(kwargs[key])[:100]) 
                         for key in kwargs.keys() ]
+                username = str(request.user)
+                if hasattr(request.user, 'username'):
+                    username = getattr(request.user,'username')
                 logger.info(
-                    'wrap_view: %r, method: %r, user: %r, request: %r, '
+                    'wrap_view: %r, method: %r, username: %r, request: %r, '
                     'kwargs: %r', 
-                    view, request.method, request.user, request, msg)
+                    view, request.method, username, request, msg)
+                logger.info('REMOTE_ADDR: %r', request.META.get('REMOTE_ADDR'))
             else:
                 logger.info('wrap_view: %r, %r', view, request)
             
@@ -717,35 +721,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         logger.debug('serialize to: %r', content_type)
         return self.get_serializer().serialize(data, content_type)
 
-    def _get_filename(self, readable_filter_hash, schema, filename=None, **extra):
-        MAX_VAL_LENGTH = 20
-        file_elements = [self._meta.resource_name]
-        if filename is not None:
-            file_elements.append(filename)
-        if extra is not None:
-            for key,val in extra.items():
-                file_elements.append(str(key))
-                if val is not None:
-                    val = default_converter(str(val))
-                    val = val[:MAX_VAL_LENGTH]
-                    file_elements.append(val)
-        for key,val in readable_filter_hash.items():
-            if key not in schema['id_attribute']:
-                file_elements.append(str(key))
-            val = default_converter(str(val))
-            val = val[:MAX_VAL_LENGTH]
-            file_elements.append(val)
-                
-        if len(file_elements) > 1:
-            # Add an extra separator for the resource name
-            file_elements.insert(1,'_')
-            
-        filename = '_'.join(file_elements)
-        logger.info('filename: %r', filename)
-        MAX_FILENAME_LENGTH = 128
-        filename = filename[:128]
-        return filename
-    
     def get_serializer(self):
         return self._meta.serializer
         

@@ -53,6 +53,7 @@ from reports.api_base import IccblBaseResource, un_cache, Authorization, \
     TRAILING_SLASH
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, Job
+from reports.utils import default_converter
 import reports.schema as SCHEMA
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE, \
@@ -805,6 +806,95 @@ class ApiResource(SqlAlchemyResource):
         if DEBUG_RESOURCES:
             logger.info('schema fields: %r', schema[RESOURCE.FIELDS].keys())
         return schema
+
+    
+    def _get_filename(self, data_hash, schema, is_for_detail=False, **kwargs):
+        
+        id_parts = self.get_file_id(data_hash, schema, is_for_detail)
+        
+        if kwargs is not None:
+            MAX_VAL_LENGTH = 20
+            for key,val in kwargs.items():
+                id_parts.append(str(key))
+                val = default_converter(str(val))
+                if val:
+                    val = val[:MAX_VAL_LENGTH]
+                    id_parts.append(val)
+        
+        id_parts.append(_now().strftime(SCHEMA.DATE_TIME_FILE_FORMAT))
+        
+        logger.debug(
+            '_get_filename: %r, is_for_detail: %r', id_parts, is_for_detail)
+        return '_'.join(id_parts)
+        
+    
+    # def _get_filename_old(self, readable_filter_hash, schema, filename=None, **extra):
+    #     MAX_VAL_LENGTH = 20
+    #     file_elements = [self._meta.resource_name]
+    #     if filename is not None:
+    #         file_elements.append(filename)
+    #     if extra is not None:
+    #         for key,val in extra.items():
+    #             file_elements.append(str(key))
+    #             if val is not None:
+    #                 val = default_converter(str(val))
+    #                 val = val[:MAX_VAL_LENGTH]
+    #                 file_elements.append(val)
+    #     for key,val in readable_filter_hash.items():
+    #         if key not in schema['id_attribute']:
+    #             file_elements.append(str(key))
+    #         val = default_converter(str(val))
+    #         val = val[:MAX_VAL_LENGTH]
+    #         file_elements.append(val)
+    #             
+    #     # if len(file_elements) > 1:
+    #     #     # Add an extra separator for the resource name
+    #     #     file_elements.insert(1,'_')
+    #         
+    #     filename = '_'.join(file_elements)
+    #     logger.info('filename: %r', filename)
+    #     MAX_FILENAME_LENGTH = 128
+    #     filename = filename[:128]
+    
+    def get_file_id(self, data,  schema, is_for_detail):
+        
+        resource_name = schema.get('short_key')
+        if not resource_name:
+            if is_for_detail:
+                resource_name = schema.get('title')
+                resource_name = default_converter(resource_name)
+            else:
+                resource_name = schema.get('listing_title')
+                if not resource_name:
+                    resource_name = schema.get('title')
+                resource_name = default_converter(resource_name)
+        else:
+            if not is_for_detail:
+                resource_name += 's'
+        id_parts = [resource_name]
+
+        id_attributes = schema.get('file_id_attribute',schema.get('id_attribute'))
+        
+        logger.debug('id_attributes for file: %r, data: %r', id_attributes, data)
+        
+        if not id_attributes:
+            return id_parts
+        
+        MAX_VAL_LENGTH = 20
+        for id_attribute in id_attributes:
+            if id_attribute in data:
+                val = data[id_attribute]
+                if val:
+                    val = default_converter(str(val))
+                    val = val[:MAX_VAL_LENGTH]
+                    id_parts.append(val)
+            elif id_attribute in schema:
+                val = schema[id_attribute]
+                if val:
+                    val = default_converter(str(val))
+                    val = val[:MAX_VAL_LENGTH]
+                    id_parts.append(val)
+        return id_parts
     
     def get_id(self,deserialized, validate=False, schema=None, **kwargs):
         ''' 
@@ -2499,7 +2589,8 @@ class ApiLogResource(ApiResource):
           
             (filter_expression, filter_hash, readable_filter_hash) = SqlAlchemyResource.\
                 build_sqlalchemy_filters(schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
 
             if filter_expression is None and 'parent_log_id' not in kwargs:
                 raise InformationError(
@@ -3733,7 +3824,8 @@ class VocabularyResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             
             if DEBUG_GET_LIST: 
                 logger.info('filter_fields: %r, kwargs: %r', 
@@ -4385,7 +4477,8 @@ class UserResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             
             filter_expression = self._meta.authorization.filter(
                 request.user, filter_expression)
@@ -5040,7 +5133,8 @@ class UserGroupResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
               
@@ -5429,7 +5523,8 @@ class PermissionResource(ApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                   
@@ -5633,7 +5728,8 @@ class JobResource(ApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
 
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)

@@ -15,9 +15,8 @@ end_plate,fields.library,,,13,,,TRUE,"The plate number for the last plate in the
 plate_count,fields.library,custom,,14,,,TRUE,"The number of plates in the library","Plate Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/plate' }",,,,,,,,,,
 description,fields.library,,,15,,,TRUE,"A description of the library",Description,TRUE,,,[d;e],[c;u],string,,,textarea,,,,,,,,,
 owner,fields.library,custom,,16,Internal,,TRUE,"The user that owns the library, if applicable.",Owner,TRUE,,,[d;e],,string,,,,TRUE,,,,,,,,[readEverythingAdmin]
-copies,fields.library,custom,,199,Internal,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,,,list,,,,TRUE,,,,,,,,[readEverythingAdmin]
+copies,fields.library,custom,,199,,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#library/{short_name}/copy/{__val__}', 'target': '_self' }",,TRUE,,,,,,,,[readEverythingAdmin]
 screening_copies,fields.library,custom,,199,,,TRUE,"Copies designated as ""library_screening_plates""","Screening Copies",TRUE,,,,,list,,,,TRUE,,,,,,,,[readEverythingAdmin]
-copies2,fields.library,custom,,199,,,TRUE,"The copies that have been made of this library",Copies,TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#library/{short_name}/copy/{__val__}', 'target': '_self' }",,TRUE,,,,,,,,[readEverythingAdmin]
 date_loaded,fields.library,,,98,Admin,,TRUE,"The date the library data was loaded","Date Loaded",TRUE,,,,,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
 date_publicly_available,fields.library,,,99,Admin,,TRUE,"The date the library data was made publicly available","Date Publicly Available",TRUE,,,,,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
 date_screenable,fields.library,,,97,Admin,,TRUE,"The earliest date on which a copy of this library was plated","Date First Plated",TRUE,,,[d],,date,,,,TRUE,,,,,,,,[readEverythingAdmin]
@@ -28,5 +27,5 @@ molar_concentrations,fields.library,custom,,999,internal,,TRUE,"Molar Concentrat
 mg_ml_concentrations,fields.library,custom,,999,internal,,TRUE,"mg/ml Concentration values of wells for this library","mg/ml Concentrations",TRUE,,,[none],,list,,,,,,,,,,,,
 library_id,fields.library,,,999,internal,,TRUE,"Internal Library ID","Internal Library ID",TRUE,,,[none],,integer,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,,,,,,,,
 is_released,fields.library,,,999,internal,"If a library is not released, it will not be visible to screeners, if it is released, it is viewable to all and any well content updates will be commited as a ""preview"" which must be applied before it is visible.",TRUE,"True if the library is released (may be viewed by screeners)","Is Released",TRUE,,,[d],[c;u],boolean,,,,TRUE,,,,,,,,[readEverythingAdmin]
-preview_log_id,fields.library,custom,,999,internal,,TRUE,"Preview log, if exists, for a pending load","Preview Log",TRUE,,,,,integer,link,"{ 'hrefTemplate': '#apilog/{preview_log_key}' }",,TRUE,,,,,,,,[readEverythingAdmin]
+preview_log_id,fields.library,custom,,999,internal,,TRUE,"Preview log, if exists, for a pending load","Preview Log ID",TRUE,,,,,integer,link,"{ 'hrefTemplate': '#apilog/{preview_log_key}' }",,TRUE,,,,,,,,[readEverythingAdmin]
 preview_log_key,fields.library,custom,,999,internal,,TRUE,"Preview log, if exists, for a pending library content load operation","Preview Log",TRUE,,,[d],,string,link,"{ 'hrefTemplate': '#apilog/{preview_log_key}' }",,TRUE,,,,,,,,

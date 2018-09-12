@@ -18,22 +18,23 @@ from wsgiref.util import FileWrapper
 from zipfile import ZipFile
 
 from django.conf import settings
+from django.db.utils import ProgrammingError
 from django.http.response import StreamingHttpResponse, Http404
 import six
 import unicodecsv
 import xlsxwriter
 
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, \
     MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     CSV_DELIMITER
-from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder, encode_utf8
+from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder, encode_utf8,\
+    ZIP_MIMETYPE
 import reports.serialize
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
-from django.db.utils import ProgrammingError
 
 
 logger = logging.getLogger(__name__)
@@ -371,6 +372,7 @@ def get_xls_response(
                 max_rows_per_sheet = 2**20
                 sheet = workbook.add_worksheet(sheet_name)
                 filerow = 0
+                cumulative_filerows = 0
                 sheets = 1
                 for row,values in enumerate(sheet_rows):
                     if filerow == 0:
@@ -405,18 +407,19 @@ def get_xls_response(
                     if row % 10000 == 0:
                         logger.info('wrote %d rows to temp file', row)
                 
-                    if filerow > max_rows_per_sheet:
+                    if filerow >= max_rows_per_sheet:
+                        cumulative_filerows += filerow
                         workbook.close()
                         logger.info('wrote file: %r', temp_file)
           
                         # Create an new Excel file and add a worksheet.
-                        filename = '%s_%s.xlsx' % (output_filename, filerow)
+                        filename = '%s_%s.xlsx' % (output_filename, cumulative_filerows)
                         temp_file = os.path.join(temp_dir, filename)
                         workbook = xlsxwriter.Workbook(temp_file, {'constant_memory': True})
                         sheet = workbook.add_worksheet(sheet_name)
                         file_names_to_zip.append(temp_file)
                         filerow = 0
-                logger.info('wrote filerows: %d file: %r',filerow, temp_file)
+                logger.info('wrote %d filerows to file: %r',filerow, temp_file)
                               
         workbook.close()
   

@@ -47,6 +47,8 @@ DATE_FORMAT = "%Y-%m-%d"
 # Date Time format to use for serialized date times
 DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+DATE_TIME_FILE_FORMAT = "%Y%m%d-%H%M%S"
+
 class schema_obj(object):
     @classmethod
     def get_dict(cls):

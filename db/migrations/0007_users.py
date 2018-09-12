@@ -14,7 +14,7 @@ from django.db.utils import ProgrammingError
 import pytz
 
 from db.api import _now
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports.models import ApiLog
 
 import db.schema as SCHEMA

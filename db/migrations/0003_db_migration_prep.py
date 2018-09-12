@@ -7,7 +7,7 @@ import re
 
 from django.db import migrations, models
 
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 import lims
 from lims.base_settings import PROJECT_ROOT
 import unicodecsv as csv

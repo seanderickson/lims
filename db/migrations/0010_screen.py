@@ -12,7 +12,7 @@ from django.db.utils import IntegrityError
 from pytz import timezone
 import pytz
 
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports.models import ApiLog
 
 from db.migrations import create_log_time

@@ -70,7 +70,7 @@ from db.models import ScreensaverUser, Screen, \
 from db.schema import VOCAB
 from db.support import lims_utils, screen_result_importer, bin_packer, \
     raw_data_reader, plate_matrix_transformer
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from db.support.plate_matrix_transformer import Collation
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
@@ -573,7 +573,8 @@ class PlateLocationResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                  
@@ -1951,7 +1952,8 @@ class LibraryCopyPlateResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
             
@@ -2664,7 +2666,8 @@ class UserAgreementResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
               
@@ -4262,8 +4265,7 @@ class ScreenResultResource(DbApiResource):
         return count
 
     def get_query(
-            self, username, screenresult, param_hash, schema, limit, offset,
-            **extra_params):
+            self, username, screenresult, param_hash, schema, limit, offset):
 
         logger.info('build screenresult query')
         
@@ -4283,7 +4285,9 @@ class ScreenResultResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
+        filename = self._get_filename(
+            readable_filter_hash, schema, 
+            **{'screen': screenresult.screen.facility_id})
                               
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
@@ -4626,23 +4630,13 @@ class ScreenResultResource(DbApiResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
-        extra_params = {}
         screen_facility_id = param_hash.pop('screen_facility_id', None)
-        extra_params['Screen'] = screen_facility_id
         if not screen_facility_id:
             raise MissingParam('screen_facility_id')
-            
-        well_id = param_hash.pop('well_id', None)
-        if well_id:
-            param_hash['well_id__eq'] = well_id
-
         screenresult = ScreenResult.objects.get(
             screen__facility_id=screen_facility_id)              
-
-        show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
-        if show_mutual_positives is True:
-            extra_params['mutual_positive'] = None
             
+        show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
         extra_dc_ids = param_hash.get('dc_ids', None)
             
         logger.info('build screen_result schema...')
@@ -4670,7 +4664,7 @@ class ScreenResultResource(DbApiResource):
                 param_hash,
                 schema,
                 limit,
-                offset, **extra_params)
+                offset)
         # Custom screen result serialization
         
         def is_excluded_gen(rows):
@@ -6093,7 +6087,8 @@ class DataColumnResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
 
             filter_expression = self._meta.authorization.filter(
                 request.user, filter_expression)
@@ -6534,7 +6529,8 @@ class CopyWellResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
 
@@ -7885,7 +7881,8 @@ class CherryPickRequestResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
         
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
@@ -9962,7 +9959,8 @@ class ScreenerCherryPickResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
+        filename = self._get_filename(
+            readable_filter_hash, schema, **extra_params)
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
                                  
@@ -10839,7 +10837,8 @@ class LabCherryPickResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema, **extra_params)
+            filename = self._get_filename(
+                readable_filter_hash, schema, **extra_params)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
             
@@ -11310,7 +11309,8 @@ class CherryPickPlateResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)                                  
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)                                  
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
             
@@ -11778,7 +11778,8 @@ class LibraryCopyResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
 
@@ -12310,7 +12311,8 @@ class PublicationResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
 
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
@@ -13007,7 +13009,8 @@ class AttachedFileResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
 
@@ -13416,8 +13419,8 @@ class ActivityResource(DbApiResource):
         
         # NOTE: try "filter_in_sql" for performance
         # NOTE: filters are done in the subquery clauses
-#         filter_expression = \
-#             self._meta.authorization.filter(user,filter_expression)
+        # filter_expression = \
+        #     self._meta.authorization.filter(user,filter_expression)
               
         order_params = param_hash.get('order_by', [])
         order_params.append('-date_of_activity')
@@ -14758,7 +14761,8 @@ class LibraryScreeningResource(ActivityResource):
         logger.info('order_clauses: %r', order_clauses)
         stmt = stmt.order_by('activity_id')
 
-        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
+        filename = self._get_filename(
+            readable_filter_hash, schema, **extra_params)
         
         return (field_hash, columns, stmt, count_stmt,filename)
         
@@ -17233,7 +17237,9 @@ class ScreenResource(DbApiResource):
                     _data['is_restricted_view'] = True
         else:
             logger.info('cache key set: %s', cache_key)
-              
+        schema = self.build_schema(request.user)
+        filename = self._get_filename({
+            'facility_id': facility_id }, schema, True)
         # Serialize
         # FIXME: refactor to generalize serialization:
         # see build_response method
@@ -17241,7 +17247,7 @@ class ScreenResource(DbApiResource):
             request,format=kwargs.get('format', None))
         if content_type in [XLS_MIMETYPE,CSV_MIMETYPE]:
             _data = {'objects': [_data]}
-            filename = 'screen_detail_%s' % facility_id
+#             filename = 'screen_detail_%s' % facility_id
         response = HttpResponse(
             content=self.get_serializer().serialize(
                 _data, content_type),
@@ -17380,7 +17386,8 @@ class ScreenResource(DbApiResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
         logger.info('filter expression: %r', filter_expression)
-        filename = self._get_filename(readable_filter_hash, schema, **extra_params)
+        filename = self._get_filename(
+            readable_filter_hash, schema, **extra_params)
         
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
@@ -19374,7 +19381,8 @@ class UserChecklistResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
               
@@ -19677,7 +19685,8 @@ class LabAffiliationResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                   
@@ -20105,7 +20114,15 @@ class ScreensaverUserResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        
+        extra_file_params = {}
+        if 'is_staff' in readable_filter_hash:
+            if readable_filter_hash['is_staff'].lower() == 'false':
+                extra_file_params['screener'] = ''
+            else:
+                extra_file_params['staff'] = ''
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail, **extra_file_params)
 
         filter_expression = self._meta.authorization.filter(
             request.user, filter_expression)
@@ -21858,7 +21875,9 @@ class ReagentResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
+        filename = self._get_filename(
+            readable_filter_hash, schema, 
+            param_hash.get('is_for_detail',False))
         
         if filter_expression is None\
             and any([well_ids,plate_numbers,library,
@@ -24477,7 +24496,8 @@ class LibraryResource(DbApiResource):
             (filter_expression, filter_hash, readable_filter_hash) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            filename = self._get_filename(readable_filter_hash, schema)
+            filename = self._get_filename(
+                readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
                 

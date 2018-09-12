@@ -8,7 +8,6 @@ import re
 
 from django.db import migrations, models
 
-from db.support.data_converter import default_converter
 import lims
 
 

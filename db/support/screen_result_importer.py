@@ -12,7 +12,7 @@ from xlsxwriter.utility import xl_col_to_name
 from db import WELL_NAME_PATTERN
 import db.schema as SCHEMA
 from db.support import lims_utils
-from db.support.data_converter import default_converter
+from reports.utils import default_converter
 from reports import ParseError, ValidationError, LIST_DELIMITER_SQL_ARRAY
 from reports.serialize import parse_val
 from reports.serialize.xlsutils import sheet_cols, sheet_rows, \

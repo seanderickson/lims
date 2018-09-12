@@ -34,3 +34,10 @@ def sort_nicely(l):
     """ Sort the given list in the way that humans expect.
     """
     return sorted(l, key=alphanum_key)
+
+DEFAULT_CONVERTER=re.compile(r'[\W]+')
+def default_converter(original_text, sep='_'):
+    if not original_text:
+        return None
+    temp = DEFAULT_CONVERTER.sub(' ', original_text)
+    return sep.join(temp.lower().split())      

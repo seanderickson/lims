@@ -12,15 +12,17 @@
 # - postgres
 ##
 
-function error () {
-  warn "$@"
-  exit 1
-}
+if [[ $# -lt 2 ]]
+then
+  echo "Usage: $0 [branch] [repository] [migration_file]"
+  exit $WRONG_ARGS
+fi 
 
-WARNINGS=''
-function warn () {
-  WARNINGS = "${WARNINGS}, $@"
-}
+BRANCH=$1
+REMOTE=$2
+MIGRATION_PROPERTIES_FILE=${3:-${MIGRATION_PROPERTIES_FILE:-"./migration.properties"}}
+
+source ./utils.sh
 
 REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
 if [[ -z $REALPATH ]]; then
@@ -33,17 +35,6 @@ SAVEPATH="$SCRIPTPATH.save"
 BASEDIR=${BASEDIR:-"$(dirname $SCRIPTPATH)"}
 SUPPORTDIR=${SUPPORTDIR-"$(dirname $BASEDIR)"}
 LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/migration.log"}}
-
-if [[ $# -lt 2 ]]
-then
-  echo "Usage: $0 [branch] [repository] [migration_file]"
-  exit $WRONG_ARGS
-fi 
-
-BRANCH=$1
-REMOTE=$2
-#MIGRATION_PROPERTIES_FILE=${3:-${MIGRATION_PROPERTIES_FILE:-${BASE_DIR:+"$BASE_DIR/migration.properties"}}}
-MIGRATION_PROPERTIES_FILE=${3:-${MIGRATION_PROPERTIES_FILE:-"./migration.properties"}}
 
 source $MIGRATION_PROPERTIES_FILE
 
@@ -70,21 +61,10 @@ if $DEBUG; then
   LOGFILE=$(tty)
 fi
 
-VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv"}}
+VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv_o2"}}
 if [[ -z $VENV ]]; then
   error 'no virtualenv available'
 fi
-
-DJANGO_CMD=./manage.py
-
-
-source ./utils.sh
-
-#if [[ -n "$SETENV_SCRIPT" ]]; then
-#  AUTH_FILE=${AUTH_FILE:-"/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu" }
-#
-#  DJANGO_CMD="$SETENV_SCRIPT $AUTH_FILE ./manage.py"
-#fi
 
 if [[ -n $AUTH_FILE ]]; then
   read_auth_file $AUTH_FILE
@@ -502,8 +482,11 @@ function frontend_deploy {
   echo "frontend_deploy: $(ts) ..." >> "$LOGFILE"
 
   cd reports/static >>"$LOGFILE" 2>&1
-  rm bundle.*.js
-  rm 1.bundle.*.js
+  rm bundle.*
+  rm 1.bundle.*
+  rm 2.bundle.*
+  rm 3.bundle.*
+  
   npm run build 2>&1 || error "npm run build failed: $?"
   
   # TODO: frontend tests
@@ -582,7 +565,6 @@ function run_expiration_scripts {
   # TODO: move these to cron jobs on deployment
   
   echo "1.a Send SM user data privacy expiration notifications..." >>"$LOGFILE"
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
@@ -595,7 +577,6 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "1.b Expire SM user agreements ..." >>"$LOGFILE" 2>&1
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
@@ -608,7 +589,6 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "1.c Send RNAi user data privacy expiration notifications..." >>"$LOGFILE"
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
@@ -621,7 +601,6 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "1.d Expire RNAi user agreements ..." >>"$LOGFILE" 2>&1
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/user_expiration_emailer.py \
   -c ${credential_file} \
@@ -634,7 +613,6 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.a Adjust screen Data Privacy Expiration Dates ..." >>"$LOGFILE" 2>&1
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
@@ -647,7 +625,6 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.b Notify of screen privacy expirations ..." >>"$LOGFILE" 2>&1
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
@@ -660,7 +637,6 @@ function run_expiration_scripts {
   -v -admin_email_only >>"$LOGFILE" 2>&1
 
   echo "2.c Expire screen data sharing levels ..." >>"$LOGFILE" 2>&1
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \
@@ -674,7 +650,6 @@ function run_expiration_scripts {
 
   echo "2.d Notify admins for screen publications ..." >>"$LOGFILE" 2>&1
   echo "Using pass file: ${credential_file}" >>"$LOGFILE"
-  #PYTHONPATH=. ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu python \
   PYTHONPATH=. python \
   db/support/screen_privacy_expiration_emailer.py \
   -c ${credential_file} \

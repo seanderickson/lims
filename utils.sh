@@ -35,12 +35,12 @@ function invenv {
 
 function maybe_activate_virtualenv {
   if [[ -z $VENV ]]; then
-    error 'assertion error'
+    error "no VENV environment variable set"
   fi
 
-#  if [[ ! -e $VENV ]]; then
-#    virtualenv --no-site-packages --distribute $VENV
-#  fi
+  if [[ ! -e $VENV ]]; then
+    error "VENV: \"$VENV\" does not exist"
+  fi
   VENV="$($REALPATH $VENV)"
 
   if invenv; then return; fi
@@ -80,3 +80,8 @@ function maybe_activate_virtualenv_orchestra {
 
   error 'failed to activate virtualenv (reason unknown)'
 }
+
+function ts {
+  date +%Y%m%dT%H%M%S%z
+}
+

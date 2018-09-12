@@ -10,7 +10,7 @@ import reports.hms.auth
 
 logger = logging.getLogger(__name__)
 
-DEBUG_AUTHENTICATION = True
+DEBUG_AUTHENTICATION = False
 
 USER_PROXY_LOGIN_PATTERN = re.compile(r'(\w+)\:(\w+)')
 USER_PROXY_ADMIN_GROUP = 'screensaverUserAdmin'

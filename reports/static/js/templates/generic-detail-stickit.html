@@ -1,6 +1,5 @@
-<div id="generic-detail-top">
-  <div class="row">
-    <div class="col-sm-6" id="generic-detail-buttonpanel-left">
+<div id="generic-detail-top" class="row">
+  <div class="col-sm-6" id="generic-detail-buttonpanel-left">
 <% 
   if (buttons_left) {
     buttons_left.each(function(key) {
@@ -10,8 +9,8 @@
     }); 
   }  
 %>
-    </div>
-    <div class="col-sm-6" id="generic-detail-buttonpanel-right">
+  </div>
+  <div class="col-sm-6" id="generic-detail-buttonpanel-right">
 <% 
   if (buttons_right) {
     buttons_right.each(function(key) {
@@ -21,7 +20,6 @@
     }); 
   }  
 %>
-    </div>
   </div>
 </div>
 
@@ -82,5 +80,9 @@
       </div>
     </div>
   </div>
+</div>
+<div id="generic-detail-bottom" class="row">
+  <div class="col-sm-6" id="generic-detail-bottom-buttonpanel-left"/>
+  <div class="col-sm-6" id="generic-detail-bottom-buttonpanel-right"/>
 </div>
 

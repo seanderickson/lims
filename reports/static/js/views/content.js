@@ -261,8 +261,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         });
       
       self.listenTo(view, 'update_title', function(val){
+        console.log('update_title', val);
         if(val) {
-          this.$('#content_title').html(resource.title + ': <small>' + val + '</small>');
+          this.$('#content_title').html(resource.listing_title + ': <small>' + val + '</small>');
           this.$('#content_title_row').show();
         }else{
           if (!_.contains(['well', 'smallmoleculereagent','silencingreagent'],resource.key)){

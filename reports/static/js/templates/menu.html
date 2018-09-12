@@ -7,7 +7,7 @@
     var ui_resource = ui_resources[key];
   %>
     <li class="" id="<%= key %>" title="<%=ui_resource.description %>">
-    <a href="#"><strong><%= ui_resource.title %></a></strong></li>
+    <a href="#<%= key %>"><strong><%= ui_resource.listing_title %></a></strong></li>
   <%
 		var submenu = menu['submenus'][key];
     if( submenu['expanded'] ) {
@@ -25,7 +25,7 @@
 			      // console.log('process menu ' + key);
    %>
             <li  class="" id="<%= key %>" title="<%=ui_resource.description %>">
-            <a href="#<%= key %>"><%= ui_resource.title %></a></li>
+            <a href="#<%= key %>"><%= ui_resource.listing_title %></a></li>
    <%
             // Process submenus2
             var submenu2 = submenu['submenus'][key];

@@ -22,6 +22,7 @@
   },  
   "reports": {
     "title": "Reports",
+    "listing_title": "Reports",
     "route": "",
     "view": "AboutView",
     "content_header": "ICCB-L Screensaver LIMS",
@@ -29,525 +30,534 @@
   },
 
   "screensaveruser": {
-        "header_message": "All users (Screeners and Staff)",
-        "title": "Screensaver Users",
-        "route": "list/screensaveruser",
-        "listView": "ListView",
-        "detailView": "UserView",
-        "api_resource": "screensaveruser",
-        "url_root": "/db/api/v1",
-        "description": "View user information",
-        "options": { }
-    },
-
-    "screeners": {
-        "header_message": "Screening Users",
-        "title": "Screeners",
-        "route": "list/screeners",
-        "listView": "ListView",
-        "detailView": "UserView",
-        "api_resource": "screensaveruser",
-        "url_root": "/db/api/v1",
-        "description": "View user information",
-        "options": { 
-          "search": {"is_staff__exact": "False"} }
-    },
-    "staff": {
-        "header_message": "Staff",
-        "title": "Staff Users",
-        "route": "list/staff",
-        "listView": "ListView",
-        "detailView": "UserView",
-        "api_resource": "screensaveruser",
-        "url_root": "/db/api/v1",
-        "description": "View user information",
-        "options": { 
-          "search": {"is_staff__exact": "True"} }
-    },
-    "libraryscreening": {
-      "title": "Library Screening Visit",
-      "detailView": "LibraryScreeningView",
-      "listView": "ListView",
-      "api_resource": "libraryscreening"
-    },
-    "cherrypickrequest": {
-      "detailView": "CherryPickRequestView",
-      "title": "Cherry Pick Requests",
-      "listView": "ListView",
-      "api_resource": "cherrypickrequest"
-    },
-    "small_molecule_cprs": {
-      "detailView": "CherryPickRequestView",
-      "listView": "ListView",
-      "header_message": "Small Molecule Screen CPRs",
-      "title": "Small Molecule CPRs",
-      "api_resource": "cherrypickrequest",
-      "options": { 
-        "search": { "screen_type__in": "small_molecule" }
-      }
-    },
-    "rnai_cprs": {
-      "detailView": "CherryPickRequestView",
-      "listView": "ListView",
-      "header_message": "RNAi CPRs",
-      "title": "RNAi CPRs",
-      "api_resource": "cherrypickrequest",
-      "options": { 
-        "search": { "screen_type__in": "rnai" }
-      }
-    },
-    "cherrypickassayplate": {
-      "detailView": "DetailView",
-      "listView": "ListView",
-      "api_resource": "cherrypickassayplate"
-    },
-    "externallibraryscreening": {
-      "api_resource": "libraryscreening"
-    },
-    "screen": {
-        "header_message": "All screens (Small Molecule and RNAi)",
-        "title": "Screens",
-        "route": "list/screen",
-        "listView": "ListView",
-        "detailView": "ScreenView",
-        "api_resource": "screen",
-        "url_root": "/db/api/v1",
-        "description": "View screen information",
-        "options": { 
-          "search": { "study_type__is_null": true }
-        }
-    },
-    "my_screens": {
-        "header_message": "My Screens",
-        "title": "My Screens",
-        "route": "list/screen",
-        "listView": "ListView",
-        "detailView": "ScreenView",
-        "api_resource": "screen",
-        "url_root": "/db/api/v1",
-        "description": "Browse screens that you lead, head, or collaborate on",
-        "options": { 
-          "search": { "study_type__is_null": true }
-        }
-    },
-    "small_molecule_screens": {
-        "header_message": "Small Molecule Screens",
-        "title": "Small Molecule Screens",
-        "route": "list/small_molecule_screens",
-        "listView": "ListView",
-        "detailView": "DetailView",
-        "api_resource": "screen",
-        "url_root": "/db/api/v1",
-        "description": "View small molecule screen information",
-        "options": { 
-          "search": { "screen_type": "small_molecule",
-                      "study_type__is_null": true
-                    }
-        }
-    },
-    "rnai_screens": {
-        "header_message": "All screens (Small Molecule and RNAi)",
-        "title": "RNAi Screens",
-        "route": "list/rnai_screens",
-        "listView": "ListView",
-        "detailView": "DetailView",
-        "api_resource": "screen",
-        "url_root": "/db/api/v1",
-        "description": "View rnai screen information",
-        "options": { 
-          "search": { "screen_type": "rnai",
-                      "study_type__is_null": true }
-        }
-    },
-    "study": {
-        "header_message": "Studies",
-        "title": "Studies",
-        "route": "list/studies",
-        "listView": "ListView",
-        "detailView": "ScreenView",
-        "api_resource": "study",
-        "url_root": "/db/api/v1",
-        "description": "View Studies",
-        "options": { 
-          "search": { "study_type__is_null": false },
-          "order": ["facility_id"]
-        }
-    },
-    "screenresult": {
-      "options": {
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24
-      }
-    },
-    "library": {
-        "header_message": "All libraries (Small Molecule and RNAi)",
-        "title": "Libraries",
-        "route": "list/library",
-        "listView": "ListView",
-        "detailView": "LibraryView",
-        "api_resource": "library",
-        "url_root": "/db/api/v1",
-        "description": "View active Libries (Screening Status is 'allowed' or 'requires permission')",
-        "options": {
-          "rpp": 500,
-          "search": {
-            "screening_status__in": ["allowed", "requires_permission"],
-            "-library_type__in": ["dos"]
-          }
-        }
-    },
-    "screened_library": {
-        "header_message": "Screened Libraries",
-        "title": "Libraries",
-        "route": "list/library",
-        "listView": "ListView",
-        "detailView": "LibraryView",
-        "api_resource": "library",
-        "url_root": "/db/api/v1",
-        "description": "Screened Libraries",
-        "options": {
-          "rpp": 500
-        }
-    },
-    "smallmoleculelibrary": {
-        "header_message": "Small Molecule Libraries",
-        "title": "Small Molecule Libraries",
-        "route": "list/smallmoleculelibrary",
-        "listView": "ListView",
-        "detailView": "LibraryView",
-        "api_resource": "library",
-        "url_root": "/db/api/v1",
-        "description": "View active Small Molecule Libraries (Screening Status is 'allowed' or 'requires permission')",
-        "options": { 
-          "rpp": 500, 
-          "includes": ["-screen_type","-is_pool"],
-          "order": [], 
-          "search": { 
-            "screen_type__in": "small_molecule",
-            "screening_status__in": ["allowed", "requires_permission"],
-            "-library_type__in": ["dos"]
-           } 
-        }
-    },
-    "rnalibrary": {
-        "header_message": "RNAi Libraries",
-        "title": "RNAi Libraries",
-        "route": "list/rnalibrary",
-        "listView": "ListView",
-        "detailView": "LibraryView",
-        "api_resource": "library",
-        "url_root": "/db/api/v1",
-        "description": "View active RNAi Libraries (Screening Status is 'allowed' or 'requires permission')",
-        "options": { 
-          "rpp": 500, 
-          "search": { 
-            "screen_type__in": "rnai",
-            "screening_status__in": ["allowed", "requires_permission"]
-          }, 
-          "includes": ["-screen_type"],
-          "order": []  
-        }
-    },
-    "all_libraries": {
-        "header_message": "All libraries (active and retired)",
-        "description": "View all libraries (any Screening Status)",
-        "title": "All Active and Retired Libraries",
-        "route": "list/library",
-        "listView": "ListView",
-        "detailView": "LibraryView",
-        "api_resource": "library",
-        "url_root": "/db/api/v1",
-        "options": {
-          "rpp": 500
-        }
-    },
-    "well": {
-      "header_message": "Wells",
-      "title": "Well",
-      "route": "list/well",
-      "listView": "libraryWellsView",
-      "detailView": "LibraryWellView",
-      "api_resource": "well",
-      "url_root": "/db/api/v1",
-      "description": "Well information",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 384,
-        "order": []  }
-    },
-    "reagent": {
-      "header_message": "Wells",
-      "title": "Well",
-      "route": "list/reagent",
-      "listView": "LibraryWellsView",
-      "detailView": "LibraryWellView",
-      "api_resource": "reagent",
-      "url_root": "/db/api/v1",
-      "description": "Reagent Well information",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 384,
-        "order": []  }
-    },
-    "compound_search": {
-      "key": "compound_search",
-      "header_message": "Compound Search",
-      "title": "Small Molecule Compound Name or Vendor ID Search",
-      "listView": "LibraryWellsView",
-      "detailView": "LibraryWellView",
-      "api_resource": "smallmoleculereagent",
-      "url_root": "/db/api/v1",
-      "description": "Search for compounds",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
-        "order": []  }
-    },    
-    "smallmoleculereagent": {
-      "key": "smallmoleculereagent",
-      "header_message": "Small Molecule search",
-      "title": "Small Molecule Reagent",
-      "listView": "LibraryWellsView",
-      "detailView": "LibraryWellView",
-      "url_root": "/db/api/v1",
-      "description": "Search for compounds",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
-        "order": []
-      }
-    },
-    "silencingreagent": {
-      "key": "silencingreagent",
-      "header_message": "RNAi Reagent search",
-      "title": "RNAi Reagent",
-      "listView": "LibraryWellsView",
-      "detailView": "LibraryWellView",
-      "url_root": "/db/api/v1",
-      "description": "Search for RNAi Reagents",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
-        "order": []  
-      }
-    },    
-    "librarycopy": {
-      "title": "Copy",
-      "options": { 
-        "order": []  }
-    },
-    "librarycopy_sm_freeze_thaw": {
-      "title": "Small Molecule Copy Freeze Thaw",
-      "api_resource": "librarycopy",
-      "description": "Show the screening copies that have been freeze/thawed 12 or more times",
-      "options": { 
-        "order": ["-avg_plate_screening_count"],
-        "includes": [
-          "-copy_plate_count","-min_molar_concentration",
-          "-max_molar_concentration","-min_mg_ml_concentration",
-          "-max_mg_ml_concentration","-plate_locations",
-          "-avg_plate_cp_screening_count"],
-        "search": {
-          "plates_available__gt": 0,
-          "-library_type__in": "dos",
-          "screen_type__in": "small_molecule",
-          "-usage_type__in": "cherry_pick_source_plates",
-          "avg_plate_screening_count__gte": 12
-        }
-      }
-    },
-    "librarycopy_sm_min_volume": {
-      "title": "Small Molecule Copy Min Vol Remaining",
-      "api_resource": "librarycopy",
-      "description": "Show the screening copies that have a minimum well volume less than 7 uL",
-      "options": { 
-        "order": ["min_plate_volume"],
-        "includes": [
-          "-copy_plate_count","-min_molar_concentration",
-          "-max_molar_concentration","-min_mg_ml_concentration",
-          "-max_mg_ml_concentration","-plate_locations",
-          "-avg_plate_cp_screening_count"],
-        "search": {
-          "plates_available__gt": 0,
-          "min_plate_volume__lt": 0.000007,
-          "screen_type__in": "small_molecule",
-          "-usage_type__in": "cherry_pick_source_plates",
-          "-library_type__in": "dos"
-        }
-      }
-    },
-    "librarycopyplate": {
-      "title": "Copy Plate",
-      "detailView": "LibraryCopyPlateView",
-      "listView": "LibraryCopyPlateView",
-      "options": { 
-        "order": []  }
-    },
-    "librarycopyplate_sm_freeze_thaw": {
-      "title": "Small Molecule Plate Freeze Thaw",
-      "description": "Show the screening copy plates that have been freeze/thawed 12 or more times",
-      "detailView": "LibraryCopyPlateView",
-      "listView": "LibraryCopyPlateView",
-      "api_resource": "librarycopyplate",
-      "options": { 
-        "order": ["-screening_count","plate_number","copy_name"],
-        "includes": [
-          "-experimental_copy_well_count","-status_date","-plate_type",
-          "-avg_remaining_volume", "-molar_concentration",
-          "-mg_ml_concentration","-first_date_screened","-last_date_screened",
-          "-cplt_screening_count"],
-        "search": {
-          "screen_type__in": "small_molecule",
-          "-copy_usage_type__in": "cherry_pick_source_plates", 
-          "-library_type__in": "dos",
-          "screening_count__gte": "12",
-          "status__in": "available"
-        }
-      }
-    },
-    "librarycopyplate_sm_min_vol": {
-      "title": "Small Molecule Plate Min Vol Remaining",
-      "description": "Show the screening copy plates that have a minimum well volume less than 7 uL",
-      "detailView": "LibraryCopyPlateView",
-      "listView": "LibraryCopyPlateView",
-      "api_resource": "librarycopyplate",
-      "options": { 
-        "order": ["remaining_well_volume","plate_number","copy_name"],
-        "includes": [
-          "-experimental_copy_well_count","-status_date","-plate_type",
-          "-avg_remaining_volume", "-molar_concentration",
-          "-mg_ml_concentration","-first_date_screened","-last_date_screened",
-          "-cplt_screening_count"],
-        "search": {
-          "screen_type__in": "small_molecule",
-          "-copy_usage_type__in": "cherry_pick_source_plates", 
-          "-library_type__in": "dos",
-          "remaining_well_volume__lt": 0.000007,
-          "status__in": "available"
-        }
-      }
-    },
-    "copywell": {
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
-        "search": { 
-          "library_well_type__in": "experimental"
-        }
-      }
-    },
-    "copywell_sm_cpr": {
-      "listView": "ListView",
-      "header_message": "Small Molecule, Cherry Pick Source Copy Well",
-      "title": "Copy Well (small molecule, cherry pick source plates)",
-      "api_resource": "copywell",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
-        "search": { 
-          "library_screen_type": "small_molecule",
-          "copy_usage_type__in": "cherry_pick_source_plates",
-          "plate_status__in": "available",
-          "library_well_type__in": "experimental"
-        }
-      }
-    },
-    "copywell_rnai_cpr": {
-      "listView": "ListView",
-      "header_message": "RNAi, Cherry Pick Source Copy Well",
-      "title": "Copy Well (RNAi, cherry pick source plates)",
-      "api_resource": "copywell",
-      "options": { 
-        "rpp_selections" : [24,96,384,1000],
-        "rpp": 24,
-        "search": { 
-          "library_screen_type": "rnai",
-          "copy_usage_type__in": "cherry_pick_source_plates",
-          "plate_status__in": "available",
-          "library_well_type__in": "experimental"
-        }
-      }
-    },
-    "platelocation": {
-      "title": "Copy Plate Location",
-      "detailView": "PlateLocationView",
-      "listView": "ListView",
-      "api_resource": "platelocation",
-      "options": { 
-        "search": {"plate_count__gt":0},
-        "order": []  }
-    },
-    "activity": {
-      "title": "Activities",
-      "detailView": "ActivityView",
-      "listView": "ActivityListView",
-      "api_resource": "activity",
-      "options": { 
-        "order": []  
-      }
-    },
-    "activity_lab": {
-      "title": "Lab Activities",
-      "detailView": "ActivityView",
-      "listView": "ActivityListView",
-      "api_resource": "activity",
-      "options": {
-        "search": {
-          "-activity_class" : "serviceactivity"
-        },
-        "order": []  
-      }
-    },
-    "activity_service": {
-      "title": "Service Activities",
-      "detailView": "ActivityView",
-      "listView": "ActivityListView",
-      "api_resource": "activity",
-      "options": { 
-        "search": {
-          "activity_class" : "serviceactivity"
-        },
-        "order": []  
-      }
-    },
-    "activity_all": {
-      "title": "Activities",
-      "detailView": "ActivityView",
-      "listView": "ActivityListView",
-      "api_resource": "activity",
-      "options": { 
-        "order": []  
-      }
-    },
-    "userchecklistitem": {
-      "options": {
-        "rpp": 200
-      }
-    },
-    "useragreement": {
-      "options": {
-        "order": ["screensaver_user_id"],
-        "rpp": 50
-      }
-    },
-    "labaffiliation": {
-      "detailView": "DetailView"
-    },
-    "apilog": {
-      "detailView": "ApilogView"
-    },
-    "detail_test": {
-      "header_message": "Detail Test View",
-      "title": "Detail Test View",
-      "route": "list/detailtest",
-      "listView": "ListView",
-      "detailView": "DetailTestView",
-      "api_resource": "reagent"
-    },
-    "wellselectortest": {
-      "header_message": "Well Selector Test View",
-      "title": "Well Selector Test View",
-      "detailView": "WellSelectorView",
-      "api_resource": "reagent"
+    "header_message": "All users (Screeners and Staff)",
+    "route": "list/screensaveruser",
+    "listView": "ListView",
+    "detailView": "UserView",
+    "api_resource": "screensaveruser",
+    "url_root": "/db/api/v1",
+    "description": "View user information",
+    "options": { }
+  },
+  "screeners": {
+    "header_message": "Screening Users",
+    "title": "Screener",
+    "listing_title": "Screeners",
+    "route": "list/screeners",
+    "listView": "ListView",
+    "detailView": "UserView",
+    "api_resource": "screensaveruser",
+    "url_root": "/db/api/v1",
+    "description": "View user information",
+    "options": { 
+      "search": {"is_staff__exact": "False"} }
+  },
+  "staff": {
+    "header_message": "Staff",
+    "title": "Staff User",
+    "listing_title": "Staff Users",
+    "route": "list/staff",
+    "listView": "ListView",
+    "detailView": "UserView",
+    "api_resource": "screensaveruser",
+    "url_root": "/db/api/v1",
+    "description": "View user information",
+    "options": { 
+      "search": {"is_staff__exact": "True"} }
+  },
+  "libraryscreening": {
+    "detailView": "LibraryScreeningView",
+    "listView": "ListView",
+    "api_resource": "libraryscreening"
+  },
+  "cherrypickrequest": {
+    "detailView": "CherryPickRequestView",
+    "listView": "ListView",
+    "api_resource": "cherrypickrequest"
+  },
+  "small_molecule_cprs": {
+    "detailView": "CherryPickRequestView",
+    "listView": "ListView",
+    "header_message": "Small Molecule Screen CPRs",
+    "title": "Small Molecule CPR",
+    "listing_title": "Small Molecule CPRs",
+    "api_resource": "cherrypickrequest",
+    "options": { 
+      "search": { "screen_type__in": "small_molecule" }
     }
+  },
+  "rnai_cprs": {
+    "detailView": "CherryPickRequestView",
+    "listView": "ListView",
+    "header_message": "RNAi CPR",
+    "title": "RNAi CPR",
+    "listing_title": "RNAi CPRs",
+    "api_resource": "cherrypickrequest",
+    "options": { 
+      "search": { "screen_type__in": "rnai" }
+    }
+  },
+  "cherrypickassayplate": {
+    "detailView": "DetailView",
+    "listView": "ListView",
+    "api_resource": "cherrypickassayplate"
+  },
+  "externallibraryscreening": {
+    "api_resource": "libraryscreening"
+  },
+  "screen": {
+    "header_message": "All screens (Small Molecule and RNAi)",
+    "route": "list/screen",
+    "listView": "ListView",
+    "detailView": "ScreenView",
+    "api_resource": "screen",
+    "url_root": "/db/api/v1",
+    "description": "View screen information",
+    "options": { 
+      "search": { "study_type__is_null": true }
+    }
+  },
+  "my_screens": {
+    "header_message": "My Screens",
+    "listing_title": "My Screens",
+    "route": "list/screen",
+    "listView": "ListView",
+    "detailView": "ScreenView",
+    "api_resource": "screen",
+    "url_root": "/db/api/v1",
+    "description": "Browse screens that you lead, head, or collaborate on",
+    "options": { 
+      "search": { "study_type__is_null": true }
+    }
+  },
+  "small_molecule_screens": {
+    "header_message": "Small Molecule Screens",
+    "title": "Small Molecule Screen",
+    "listing_title": "Small Molecule Screens",
+    "route": "list/small_molecule_screens",
+    "listView": "ListView",
+    "detailView": "DetailView",
+    "api_resource": "screen",
+    "url_root": "/db/api/v1",
+    "description": "View small molecule screen information",
+    "options": { 
+      "search": { "screen_type": "small_molecule",
+                  "study_type__is_null": true
+                }
+    }
+  },
+  "rnai_screens": {
+    "header_message": "All screens (Small Molecule and RNAi)",
+    "listing_title": "RNAi Screens",
+    "title": "RNAi Screen",
+    "route": "list/rnai_screens",
+    "listView": "ListView",
+    "detailView": "DetailView",
+    "api_resource": "screen",
+    "url_root": "/db/api/v1",
+    "description": "View rnai screen information",
+    "options": { 
+      "search": { "screen_type": "rnai",
+                  "study_type__is_null": true }
+    }
+  },
+  "study": {
+    "header_message": "Studies",
+    "route": "list/studies",
+    "listView": "ListView",
+    "detailView": "ScreenView",
+    "api_resource": "study",
+    "url_root": "/db/api/v1",
+    "description": "View Studies",
+    "options": { 
+      "search": { "study_type__is_null": false },
+      "order": ["facility_id"]
+    }
+  },
+  "screenresult": {
+    "options": {
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24
+    }
+  },
+  "library": {
+    "header_message": "All libraries (Small Molecule and RNAi)",
+    "route": "list/library",
+    "listView": "ListView",
+    "detailView": "LibraryView",
+    "api_resource": "library",
+    "url_root": "/db/api/v1",
+    "description": "View active Libries (Screening Status is 'allowed' or 'requires permission')",
+    "options": {
+      "rpp": 500,
+      "search": {
+        "screening_status__in": ["allowed", "requires_permission"],
+        "-library_type__in": ["dos"]
+      }
+    }
+  },
+  "screened_library": {
+    "header_message": "Screened Libraries",
+    "route": "list/library",
+    "listView": "ListView",
+    "detailView": "LibraryView",
+    "api_resource": "library",
+    "url_root": "/db/api/v1",
+    "description": "Screened Libraries",
+    "options": {
+      "rpp": 500
+    }
+  },
+  "smallmoleculelibrary": {
+    "header_message": "Small Molecule Libraries",
+    "title": "Small Molecule Library",
+    "listing_title": "Small Molecule Libraries",
+    "route": "list/smallmoleculelibrary",
+    "listView": "ListView",
+    "detailView": "LibraryView",
+    "api_resource": "library",
+    "url_root": "/db/api/v1",
+    "description": "View active Small Molecule Libraries (Screening Status is 'allowed' or 'requires permission')",
+    "options": { 
+      "rpp": 500, 
+      "includes": ["-screen_type","-is_pool"],
+      "order": [], 
+      "search": { 
+        "screen_type__in": "small_molecule",
+        "screening_status__in": ["allowed", "requires_permission"],
+        "-library_type__in": ["dos"]
+       } 
+    }
+  },
+  "rnalibrary": {
+    "header_message": "RNAi Libraries",
+    "title": "RNAi Library",
+    "listing_title": "RNAi Libraries",
+    "route": "list/rnalibrary",
+    "listView": "ListView",
+    "detailView": "LibraryView",
+    "api_resource": "library",
+    "url_root": "/db/api/v1",
+    "description": "View active RNAi Libraries (Screening Status is 'allowed' or 'requires permission')",
+    "options": { 
+      "rpp": 500, 
+      "search": { 
+        "screen_type__in": "rnai",
+        "screening_status__in": ["allowed", "requires_permission"]
+      }, 
+      "includes": ["-screen_type"],
+      "order": []  
+    }
+  },
+  "all_libraries": {
+      "header_message": "All libraries (active and retired)",
+      "description": "View all libraries (any Screening Status)",
+      "listing_title": "All Active and Retired Libraries",
+      "route": "list/library",
+      "listView": "ListView",
+      "detailView": "LibraryView",
+      "api_resource": "library",
+      "url_root": "/db/api/v1",
+      "options": {
+        "rpp": 500
+      }
+  },
+  "well": {
+    "header_message": "Wells",
+    "route": "list/well",
+    "listView": "libraryWellsView",
+    "detailView": "LibraryWellView",
+    "api_resource": "well",
+    "url_root": "/db/api/v1",
+    "description": "Well information",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 384,
+      "order": []  }
+  },
+  "reagent": {
+    "header_message": "Wells",
+    "title": "Well",
+    "route": "list/reagent",
+    "listView": "LibraryWellsView",
+    "detailView": "LibraryWellView",
+    "api_resource": "reagent",
+    "url_root": "/db/api/v1",
+    "description": "Reagent Well information",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 384,
+      "order": []  }
+  },
+  "compound_search": {
+    "key": "compound_search",
+    "header_message": "Compound Search",
+    "title": "Small Molecule Compound Name or Vendor ID Search",
+    "listing_title": "Small Molecule Compound Name or Vendor ID Search",
+    "listView": "LibraryWellsView",
+    "detailView": "LibraryWellView",
+    "api_resource": "smallmoleculereagent",
+    "url_root": "/db/api/v1",
+    "description": "Search for compounds",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24,
+      "order": []  }
+  },    
+  "smallmoleculereagent": {
+    "key": "smallmoleculereagent",
+    "header_message": "Small Molecule search",
+    "title": "Small Molecule Reagent",
+    "listing_title": "Small Molecule Reagents",
+    "listView": "LibraryWellsView",
+    "detailView": "LibraryWellView",
+    "url_root": "/db/api/v1",
+    "description": "Search for compounds",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24,
+      "order": []
+    }
+  },
+  "silencingreagent": {
+    "key": "silencingreagent",
+    "header_message": "RNAi Reagent search",
+    "title": "RNAi Reagent",
+    "listing_title": "RNAi Reagents",
+    "listView": "LibraryWellsView",
+    "detailView": "LibraryWellView",
+    "url_root": "/db/api/v1",
+    "description": "Search for RNAi Reagents",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24,
+      "order": []  
+    }
+  },    
+  "librarycopy": {
+    "title": "Copy",
+    "listing_title": "Copies",
+    "options": { 
+      "order": []  }
+  },
+  "librarycopy_sm_freeze_thaw": {
+    "title": "Small Molecule Copy Freeze Thaw",
+    "listing_title": "Small Molecule Copy Freeze Thaw",
+    "api_resource": "librarycopy",
+    "description": "Show the screening copies that have been freeze/thawed 12 or more times",
+    "options": { 
+      "order": ["-avg_plate_screening_count"],
+      "includes": [
+        "-copy_plate_count","-min_molar_concentration",
+        "-max_molar_concentration","-min_mg_ml_concentration",
+        "-max_mg_ml_concentration","-plate_locations",
+        "-avg_plate_cp_screening_count"],
+      "search": {
+        "plates_available__gt": 0,
+        "-library_type__in": "dos",
+        "screen_type__in": "small_molecule",
+        "-usage_type__in": "cherry_pick_source_plates",
+        "avg_plate_screening_count__gte": 12
+      }
+    }
+  },
+  "librarycopy_sm_min_volume": {
+    "title": "Small Molecule Copy Min Vol Remaining",
+    "listing_title": "Small Molecule Copy Min Vol Remaining",
+    "api_resource": "librarycopy",
+    "description": "Show the screening copies that have a minimum well volume less than 7 uL",
+    "options": { 
+      "order": ["min_plate_volume"],
+      "includes": [
+        "-copy_plate_count","-min_molar_concentration",
+        "-max_molar_concentration","-min_mg_ml_concentration",
+        "-max_mg_ml_concentration","-plate_locations",
+        "-avg_plate_cp_screening_count"],
+      "search": {
+        "plates_available__gt": 0,
+        "min_plate_volume__lt": 0.000007,
+        "screen_type__in": "small_molecule",
+        "-usage_type__in": "cherry_pick_source_plates",
+        "-library_type__in": "dos"
+      }
+    }
+  },
+  "librarycopyplate": {
+    "detailView": "LibraryCopyPlateView",
+    "listView": "LibraryCopyPlateView",
+    "options": { 
+      "order": []  }
+  },
+  "librarycopyplate_sm_freeze_thaw": {
+    "title": "Small Molecule Plate Freeze Thaw",
+    "listing_title": "Small Molecule Plate Freeze Thaw",
+    "description": "Report the screening copy plates that have been freeze/thawed 12 or more times",
+    "detailView": "LibraryCopyPlateView",
+    "listView": "LibraryCopyPlateView",
+    "api_resource": "librarycopyplate",
+    "options": { 
+      "order": ["-screening_count","plate_number","copy_name"],
+      "includes": [
+        "-experimental_copy_well_count","-status_date","-plate_type",
+        "-avg_remaining_volume", "-molar_concentration",
+        "-mg_ml_concentration","-first_date_screened","-last_date_screened",
+        "-cplt_screening_count"],
+      "search": {
+        "screen_type__in": "small_molecule",
+        "-copy_usage_type__in": "cherry_pick_source_plates", 
+        "-library_type__in": "dos",
+        "screening_count__gte": "12",
+        "status__in": "available"
+      }
+    }
+  },
+  "librarycopyplate_sm_min_vol": {
+    "title": "Small Molecule Plate Min Vol Remaining",
+    "listing_title": "Small Molecule Plate Min Vol Remaining",
+    "description": "Show the screening copy plates that have a minimum well volume less than 7 uL",
+    "detailView": "LibraryCopyPlateView",
+    "listView": "LibraryCopyPlateView",
+    "api_resource": "librarycopyplate",
+    "options": { 
+      "order": ["remaining_well_volume","plate_number","copy_name"],
+      "includes": [
+        "-experimental_copy_well_count","-status_date","-plate_type",
+        "-avg_remaining_volume", "-molar_concentration",
+        "-mg_ml_concentration","-first_date_screened","-last_date_screened",
+        "-cplt_screening_count"],
+      "search": {
+        "screen_type__in": "small_molecule",
+        "-copy_usage_type__in": "cherry_pick_source_plates", 
+        "-library_type__in": "dos",
+        "remaining_well_volume__lt": 0.000007,
+        "status__in": "available"
+      }
+    }
+  },
+  "copywell": {
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24,
+      "search": { 
+        "library_well_type__in": "experimental"
+      }
+    }
+  },
+  "copywell_sm_cpr": {
+    "listView": "ListView",
+    "header_message": "Small Molecule, Cherry Pick Source Copy Well",
+    "title": "Copy Well (small molecule, cherry pick source plates)",
+    "listing_title": "Copy Wells (small molecule, cherry pick source plates)",
+    "api_resource": "copywell",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24,
+      "search": { 
+        "library_screen_type": "small_molecule",
+        "copy_usage_type__in": "cherry_pick_source_plates",
+        "plate_status__in": "available",
+        "library_well_type__in": "experimental"
+      }
+    }
+  },
+  "copywell_rnai_cpr": {
+    "listView": "ListView",
+    "header_message": "RNAi, Cherry Pick Source Copy Well",
+    "title": "Copy Well (RNAi, cherry pick source plates)",
+    "listing_title": "Copy Wells (RNAi, cherry pick source plates)",
+    "api_resource": "copywell",
+    "options": { 
+      "rpp_selections" : [24,96,384,1000],
+      "rpp": 24,
+      "search": { 
+        "library_screen_type": "rnai",
+        "copy_usage_type__in": "cherry_pick_source_plates",
+        "plate_status__in": "available",
+        "library_well_type__in": "experimental"
+      }
+    }
+  },
+  "platelocation": {
+    "detailView": "PlateLocationView",
+    "listView": "ListView",
+    "api_resource": "platelocation",
+    "options": { 
+      "search": {"plate_count__gt":0},
+      "order": []  }
+  },
+  "activity": {
+    "detailView": "ActivityView",
+    "listView": "ActivityListView",
+    "api_resource": "activity",
+    "options": { 
+      "order": []  
+    }
+  },
+  "activity_lab": {
+    "title": "Lab Activity",
+    "listing_title": "Lab Activities",
+    "detailView": "ActivityView",
+    "listView": "ActivityListView",
+    "api_resource": "activity",
+    "options": {
+      "search": {
+        "-activity_class" : "serviceactivity"
+      },
+      "order": []  
+    }
+  },
+  "activity_service": {
+    "title": "Service Activity",
+    "listing_title": "Service Activities",
+    "detailView": "ActivityView",
+    "listView": "ActivityListView",
+    "api_resource": "activity",
+    "options": { 
+      "search": {
+        "activity_class" : "serviceactivity"
+      },
+      "order": []  
+    }
+  },
+  "activity_all": {
+    "detailView": "ActivityView",
+    "listView": "ActivityListView",
+    "api_resource": "activity",
+    "options": { 
+      "order": []  
+    }
+  },
+  "userchecklistitem": {
+    "options": {
+      "rpp": 200
+    }
+  },
+  "useragreement": {
+    "options": {
+      "order": ["screensaver_user_id"],
+      "rpp": 50
+    }
+  },
+  "labaffiliation": {
+    "detailView": "DetailView"
+  },
+  "apilog": {
+    "detailView": "ApilogView"
+  },
+  "detail_test": {
+    "header_message": "Detail Test View",
+    "title": "Detail Test View",
+    "listing_title": "Detail Test View",
+    "route": "list/detailtest",
+    "listView": "ListView",
+    "detailView": "DetailTestView",
+    "api_resource": "reagent"
+  },
+  "wellselectortest": {
+    "header_message": "Well Selector Test View",
+    "title": "Well Selector Test View",
+    "listing_title": "Well Selector Test View",
+    "detailView": "WellSelectorView",
+    "api_resource": "reagent"
+  }
 }

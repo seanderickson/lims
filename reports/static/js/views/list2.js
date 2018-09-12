@@ -1042,6 +1042,11 @@ define([
           self.$('#extra_controls_div').append(control);
         });
       }
+      if(_.has(self._options,'extraListControls')){
+        _.each(self._options.extraListControls, function(control){
+          self.$('#list_controls').prepend(control);
+        });
+      }
 
       this.delegateEvents();
       

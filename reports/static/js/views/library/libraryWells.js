@@ -471,28 +471,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             })
           );
 
-// TODO: image only downloads
-//        var imageDownload = $([
-//          '<button class="btn btn-default btn-sm pull-right" role="button" ',
-//          'id="Download images as a zip file" title="Download images" >',
-//          'Download images',
-//          '</button>'
-//          ].join(''));
-//        
-//        imageDownload.click(function(e){
-//          e.preventDefault();
-//          e.stopPropagation();
-//          
-//          // TODO: initiate download
-//          
-//          
-//        });
+        // TODO: image only downloads
+        //var imageDownload = $([
+        //  '<button class="btn btn-default btn-sm pull-right" role="button" ',
+        //  'id="Download images as a zip file" title="Download images" >',
+        //  'Download images',
+        //  '</button>'
+        //  ].join(''));
+        //
+        //imageDownload.click(function(e){
+        //  e.preventDefault();
+        //  e.stopPropagation();
+        //  
+        //  // TODO: initiate download
+        //  
+        //  
+        //});
         
         var WellListView = ListView.extend({
           afterRender: function(){
             ListView.prototype.afterRender.apply(this,arguments);
             this.$('#list_controls').append(show_data_columns_control);
-//            this.$('#list_controls').prepend(imageDownload);
             return this;
           }
         });
@@ -511,7 +510,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         
-        var extraControls = [];
+        var extraControls = self.args.extraControls || [];
         var showPreviewControl = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',

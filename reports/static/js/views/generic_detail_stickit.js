@@ -7,7 +7,6 @@ define([
     'iccbl_backgrid',
     'layoutmanager',
     'models/app_state',
-//    'views/generic_detail_stickit',
     'templates/generic-detail-stickit.html'
 ], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
       appModel, detailTemplate) {
@@ -21,7 +20,7 @@ define([
 
 
 	  attributes: { id: 'generic-detail-stickit-container' },
-	  
+    
 	  /**
      * @param resource - the API resource schema
 	   */
@@ -30,12 +29,6 @@ define([
 	    var self = this;
 	    this.args = args;
 	    var resource = this.resource = args.resource || this.model.resource;
-      var detailKeys = this.detailKeys = args.detailKeys || resource.detailKeys(); 
-      var adminKeys = this.adminKeys = self.model.resource.adminKeys();
-      if (! appModel.hasGroup('readEverythingAdmin')) {
-        detailKeys = this.detailKeys = _.difference(detailKeys, adminKeys);
-      }
-      var groupedKeys = this.groupedKeys = resource.groupedKeys(this.detailKeys);
       
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
@@ -58,36 +51,56 @@ define([
       this.buttons_right = _.filter(this.buttons, function(button){
         return button != 'edit';
       });
+
+      self.show_all_fields_control = $([
+        '<label class="checkbox-inline" ',
+        '   title="Show all fields available for the resource" >',
+        '  <input type="checkbox">show all available fields',
+        '</label>'
+        ].join(''));
       
-      // If "hideIfEmpty" then remove null attributes
-      _.each(self.model.keys(), function(key){
-        if(! self.model.has(key) && _.has(resource.fields,key)){
-          var fi = resource.fields[key];
-          if (fi.display_options && fi.display_options.hideIfEmpty === true){
-            self.detailKeys = _.without(detailKeys, key);
-            _.each(self.groupedKeys, function(groupedKey){
-              if(_.isObject(groupedKey)){
-                groupedKey.fields = _.without(groupedKey.fields, key);
-              }else{
-                self.groupedKeys = _.without(self.groupedKeys, key);
-              }
-            });
-          }
-        }
-      });
-      if (appModel.DEBUG) 
-        // TODO: groupedKeys replaces detailKeys
-        console.log('final detailKeys', self.detailKeys, self.groupedKeys);
       this.createBindings();
+	  },
+	  
+	  get_show_extra_fields: function() {
+	    return this.show_all_fields_control.find('input[type="checkbox"]').prop('checked');
 	  },
 	  
 	  createBindings: function() {
 	    var self = this;
-	    var keys = this.detailKeys;
 	    var resource = this.resource;
-      var bindings = this.bindings = {};
-      var schemaBindings = this.schemaBindings = {};
+	    var bindings = this.bindings = {};
+	    var schemaBindings = this.schemaBindings = {};
 
+      var detailKeys = self.args.detailKeys || resource.detailKeys(); 
+
+      if (self.get_show_extra_fields()){
+        detailKeys = self.resource.allKeys();
+      }
+      
+      var adminKeys = this.adminKeys = self.model.resource.adminKeys();
+      if (! appModel.hasGroup('readEverythingAdmin')) {
+        detailKeys = _.difference(detailKeys, adminKeys);
+      }
+	    
+	    if (!this.get_show_extra_fields()){
+        // If "hideIfEmpty" then remove null attributes
+        _.each(self.model.keys(), function(key){
+          if(! self.model.has(key) && _.has(resource.fields,key)){
+            var fi = resource.fields[key];
+            if (fi.display_options && fi.display_options.hideIfEmpty === true){
+              detailKeys = _.without(detailKeys, key);
+            }
+          }
+        });
+	    }
+	    self.detailKeys = detailKeys;
+      var groupedKeys = self.groupedKeys = resource.groupedKeys(detailKeys);
+
+      if (appModel.DEBUG){
+        console.log('final detailKeys', self.detailKeys, self.groupedKeys);
+      }
+      
       function create_title(fi){
         if (Iccbl.appModel.hasGroup('readEverythingAdmin') 
             && fi.vocabulary_scope_ref){
@@ -100,7 +113,7 @@ define([
         }
       };
 
-      _.each(keys, function(key) {
+      _.each(self.detailKeys, function(key) {
         bindings['#'+key] = self.createBinding(key,resource.fields[key]);
         schemaBindings['#title-'+key] = {
           observe: key,
@@ -407,12 +420,23 @@ define([
 
       var btnbindings = {};
       // FIXME: 20171114 - using stickit to manage the buttons is unnecessary
+      // Better would be using backbone forms
       var buttonModel = new Backbone.Model();
       _.each(this.buttons, function(button){
         btnbindings['[name="' + button + '"]'] = button;
         buttonModel.set(button,button);
       });
       this.stickit(buttonModel, btnbindings);
+      
+      if (appModel.hasGroup('readEverythingAdmin')) {
+        $('#generic-detail-bottom-buttonpanel-left').prepend(self.show_all_fields_control);
+        self.show_all_fields_control.find('input[type="checkbox"]').change(function(e) {
+          console.log('click show all', e);
+          e.preventDefault();
+          self.createBindings();
+          self.render();
+        });
+      }
       
       if (!_.isEmpty(self.nestedModels)) {
         _.each(_.keys(self.nestedModels), function(key) {

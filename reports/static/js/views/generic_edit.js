@@ -1382,7 +1382,10 @@ define([
       } else {
         changedAttributes = self._getChangedAttributes(this.model);
         if (! changedAttributes || _.isEmpty(changedAttributes)) {
-          appModel.error('no changes were detected');
+          appModel.showModalMessage({
+            body: 'Form values must be changed or updated in the form in order to submit.',
+            title: 'No updated values found in this form'
+          });
           return;
         }
       }

@@ -28,7 +28,6 @@ define([
     initialize: function(args) {
       var self = this;
       this._classname = 'LibraryView';
-      _.bindAll(this, 'upload');
       var tabbed_resources = this.tabbed_resources;
       TabbedController.prototype.initialize.apply(this,arguments);
       
@@ -36,9 +35,9 @@ define([
       if (appModel.getCurrentUser().is_staff !== true){
         this.tabbed_resources['well'] = tabbed_resources['well'];
       }
-      
+
+      _.bindAll(this, 'upload','download_contents');
       console.log('LibraryView initialized');
-      
     },
     
     tabbed_resources: {
@@ -266,7 +265,6 @@ define([
               reset: true,
             }).done(function() {
               console.log('re-rendering library view...');
-//              self.render();
               self.setDetail([]);
             }).fail(function() { 
               Iccbl.appModel.jqXHRfail.apply(this,arguments); 
@@ -310,7 +308,7 @@ define([
      * Note: for library, upload and download operate on the library contents, 
      * (reagents) and not on the library entity itself.
      */
-    download: function(e){
+    download_contents: function(e){
       e.preventDefault();
       e.stopPropagation();
       var self = this;
@@ -343,9 +341,9 @@ define([
       
       var self = this;
       var key = 'detail';
-      var buttons = ['download'];
+      var buttons = ['download_contents'];
       if (appModel.hasPermission('library', 'write')){
-        buttons = buttons.concat(['upload','history','edit']);
+        buttons = buttons.concat(['download','upload','history','edit']);
       }
       
       // Custom library model validation: plate range
@@ -392,6 +390,7 @@ define([
             comment__is_blank: false
           };
           appModel.createCommentTable(self.model,search_data, $('#comment_table'));
+          $('#download_contents').click(self.download_contents)
           
         }
       });;
@@ -418,9 +417,9 @@ define([
                 form.$el.find('div[data-fields="is_pool"]').show();
               }
             });
+            
           }          
         }),
-        download: self.download,
         buttons: buttons 
       });
       this.tabViews[key] = view;
@@ -464,11 +463,19 @@ define([
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'reagent'].join('/');
+        var download_contents_button = $([
+           '<a class="btn btn-default btn-sm pull-right" ',
+             'title="Download the full library reagent table (with images, if Excel)" ',
+             'role="button" id="download_contents_button" >',
+             'Full Download</a>'
+           ].join(''));
+        download_contents_button.click(self.download_contents)
         view = new LibraryWellsView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
           url: url,
-          library: self.model
+          library: self.model,
+          extraListControls: [download_contents_button]
         });
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

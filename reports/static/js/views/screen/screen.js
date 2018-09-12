@@ -198,6 +198,7 @@ define([
             _.contains(fields[key].visibility, 'billing')
             || _.contains(fields[key].visibility, 'protocol'));
       });
+      editableKeys = _.without(editableKeys, 'data_privacy_expiration_date');
       var editVisibleKeys = model.resource.allEditVisibleKeys();
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
         return ! (
@@ -266,22 +267,22 @@ define([
         },
 
         validate: function(attrs) {
-//          // FIXME: 20170605 refactor: this must be tested to verify it works
-//          var errs = EditView.prototype.validate.apply(this,arguments);
-//          errors = errs || {};
-//          console.log('extra validation...')
-//          if (!_.isEmpty(this.model.get('data_privacy_expiration_notified_date'))) {
-//            if (!_.isEmpty(this.model.get('max_allowed_data_privacy_expiration_date'))) {
-//              errors['max_allowed_data_privacy_expiration_date'] = (
-//                'can not be set if the expiration notified date is set');
-//            }
-//            if (!_.isEmpty(this.model.get('min_allowed_data_privacy_expiration_date'))) {
-//              errors['min_allowed_data_privacy_expiration_date'] = (
-//                'can not be set if the expiration notified date is set');
-//            }
-//          }
-//          
-//          if (!_.isEmpty(errors)) return errors;
+          //// FIXME: 20170605 refactor: this must be tested to verify it works
+          //var errs = EditView.prototype.validate.apply(this,arguments);
+          //errors = errs || {};
+          //console.log('extra validation...')
+          //if (!_.isEmpty(this.model.get('data_privacy_expiration_notified_date'))) {
+          //  if (!_.isEmpty(this.model.get('max_allowed_data_privacy_expiration_date'))) {
+          //    errors['max_allowed_data_privacy_expiration_date'] = (
+          //      'can not be set if the expiration notified date is set');
+          //  }
+          //  if (!_.isEmpty(this.model.get('min_allowed_data_privacy_expiration_date'))) {
+          //    errors['min_allowed_data_privacy_expiration_date'] = (
+          //      'can not be set if the expiration notified date is set');
+          //  }
+          //}
+          //
+          //if (!_.isEmpty(errors)) return errors;
           return null;
         }
       });
@@ -292,6 +293,7 @@ define([
         var self = this;
         var model = updateModel || self.model;
         var fields = model.resource.fields;
+        
         appModel.initializeAdminMode(function() {
           
           // FIXME: if "edit" page is reloaded, option lists here may not be loaded
@@ -435,8 +437,11 @@ define([
         template: _.template(detailTemplate)
       });
 
+      ScreenDetailLayout = DetailLayout.extend({
+        showEdit: showEdit
+      })
       // FIXME: 20170519: it would be better to pick needed values only from the args 
-      view = new DetailLayout(_.extend(self.args, { 
+      view = new ScreenDetailLayout(_.extend(self.args, { 
         model: model, 
         uriStack: delegateStack,
         EditView: editView,
@@ -445,15 +450,12 @@ define([
         editVisibleKeys: editVisibleKeys,
         DetailView: detailView
       }));
-      // FIXME: it would be better to extend DetailLayout.showEdit here
-      view.showEdit = showEdit
         
       this.$("#tab_container-title").html("");
 
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.consumedStack = [];
-//      this.reportUriStack([]);
 
       this.setView("#tab_container", view ).render();
       

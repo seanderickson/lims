@@ -56,18 +56,30 @@ define([
   SchemaClass.prototype.updateKeys = function()
   {
     return this.filterKeys('editability','u');
-  };  
+  };
+  SchemaClass.prototype.allKeys = function()
+  {
+    return this.filterKeys('visibility', '-none');
+  };
   SchemaClass.prototype.filterKeys = function(select_field, visibility_term)
   {
     var self = this;
     var keys = Iccbl.sortOnOrdinal(
       _.keys(self.fields), self.fields)
-    var detailKeys = _(keys).filter(function(key){
-      return _.has(self.fields, key) && 
-          _.has(self.fields[key], select_field) && 
-          _.contains(self.fields[key][select_field], visibility_term);
-    });
-    return detailKeys;
+    if (visibility_term.charAt(0) == '-'){
+      visibility_term = visibility_term.slice(1);
+      return _(keys).filter(function(key){
+        return _.has(self.fields, key) && 
+            _.has(self.fields[key], select_field) && 
+            ! _.contains(self.fields[key][select_field], visibility_term);
+      });
+    }else{
+      return _(keys).filter(function(key){
+        return _.has(self.fields, key) && 
+            _.has(self.fields[key], select_field) && 
+            _.contains(self.fields[key][select_field], visibility_term);
+      });
+    }
   };  
   
   /**

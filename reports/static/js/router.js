@@ -99,13 +99,11 @@ function($, _, Backbone, appModel) {
       // TODO: this mirrors the handler for route match in main.js
       document.title = 'Screensaver LIMS' + ': ' + route;
 
-      // Clear out error messages after navigating away from page
-//      appModel.clearErrors();
       console.log('route: ', route, options);
       
       // Trigger false to suppress further parsing, 
       // Replace false (default) to create browser history
-      var options = { trigger: false, replace:false }; 
+      var options = _.extend({ trigger: false, replace:false }, options); 
       this.navigate( route, options );
     }
 

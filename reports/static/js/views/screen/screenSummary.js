@@ -35,6 +35,7 @@ define([
       if (this.model.get('user_access_level_granted') == 3){
         this.tabbed_resources['libraryscreening'] = tabbed_resources['libraryscreening'];
       }
+      _.bindAll(this,'addLibraryScreening');
     },
 
     tabbed_resources: {
@@ -389,7 +390,9 @@ define([
       
     },
 
-    addLibraryScreening: function() {
+    addLibraryScreening: function(e) {
+      if (e) e.preventDefault();
+      
       console.log('add library screening visit');
       var self = this;
       var defaults = {
@@ -413,7 +416,6 @@ define([
       $title.show();
       
       this.consumedStack = ['libraryscreening'];
-      self.reportUriStack([]);
       view.reportUriStack(['+add']);
     },
     
@@ -422,11 +424,9 @@ define([
       var lsResource = appModel.getResource('libraryscreening'); 
       
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
-        // do not allow navigation directly to +add
-        delegateStack.shift();
+        self.addLibraryScreening();
       }
-      
-      if (!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+      else if (!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0])) {
         // Detail view
         
@@ -462,10 +462,7 @@ define([
           var $addLibraryScreeningButton = $(
             '<a class="btn btn-default btn-sm" role="button" \
             id="addLibraryScreening" href="#">Add Library Screening Visit</a>');
-          $addLibraryScreeningButton.click(function(e) {
-            e.preventDefault();
-            self.addLibraryScreening();
-          });
+          $addLibraryScreeningButton.click(self.addLibraryScreening);
           extraControls.push($addLibraryScreeningButton);
         }
         lsResource.fields['activity_class']['visibility'] = ['l','d'];

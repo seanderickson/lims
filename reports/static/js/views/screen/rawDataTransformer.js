@@ -532,7 +532,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           assayPlateSize = self.model.get('assay_plate_size');
         }
         if (_.isEmpty(assayPlateSize)){
-          appModel.error('must define the assay_plate_size');
+          appModel.showModalError('must define the assay_plate_size');
           return;
         } else {
           return assayPlateSize;
@@ -544,7 +544,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           libraryPlateSize = self.model.get('library_plate_size');
         }
         if (_.isEmpty(libraryPlateSize)){
-          appModel.error('must define the library plate size');
+          appModel.showModalError('must define the library plate size');
           return;
         } else {
           return libraryPlateSize;
@@ -734,7 +734,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         ok: function(e) {
           e.preventDefault();
           if (!_.isEmpty(wellSelector.getErrors())){
-            appModel.error(wellSelector.getErrors());
+            appModel.showJsonMessages({
+              'Well Selector Errors': wellSelector.getErrors()
+            });
           } else {
             // nop
           }
@@ -838,7 +840,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           ok: function(e) {
             e.preventDefault();
             if (!_.isEmpty(wellSelector.getErrors())){
-              appModel.error(wellSelector.getErrors());
+              appModel.showJsonMessages({
+                'Well Selector Errors': wellSelector.getErrors()
+              });
             } else {
               // nop
             }
@@ -957,7 +961,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         ok: function(e) {
           e.preventDefault();
           if (!_.isEmpty(wellSelector.getErrors())){
-            appModel.error(wellSelector.getErrors());
+            appModel.showJsonMessages({
+              'Well Selector Errors': wellSelector.getErrors()
+            });
           } else {
             var namedWellRanges = wellSelector.getSelectedWells();
             var wellRangeString = Iccbl.generateNamedWellBlockString(

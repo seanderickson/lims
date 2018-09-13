@@ -1155,6 +1155,22 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
   return final_search_array;
 };
 
+var parseRawPlateSearchToArray = Iccbl.parseRawPlateSearchToArray = function(rawData, errors){
+  var plateSearchTextArray = [];
+  
+  var plateData = Iccbl.parseRawPlateSearch(rawData, errors);
+  _.each(plateData, function(plateClause){
+    plateSearchTextArray = plateSearchTextArray.concat(
+      plateClause.plates, plateClause.plate_ranges);
+    _.each(plateClause.copies,function(copy){
+      if (copy.match(/[ \,\-\:]/)){
+        copy = '"' + copy + '"';
+      }
+      plateSearchTextArray.push(copy);
+    });
+  });
+  return plateSearchTextArray;
+};
 
 /**
  * TODO: refactor this into the SIUnitsFormatter
@@ -1293,18 +1309,18 @@ var parseScreeningInquiryURLParam
       return;
     }
     
-    var plateSearchTextArray = [];
-    var plateData = Iccbl.parseRawPlateSearch(element, errors);
-    _.each(plateData, function(plateClause){
-      plateSearchTextArray = plateSearchTextArray.concat(
-        plateClause.plates, plateClause.plate_ranges);
-      _.each(plateClause.copies,function(copy){
-        if (copy.match(/[ \,\-\:]/)){
-          copy = '"' + copy + '"';
-        }
-        plateSearchTextArray.push(copy);
-      });
-    });
+    var plateSearchTextArray = Iccbl.parseRawPlateSearchToArray(element, errors);
+//    var plateData = Iccbl.parseRawPlateSearch(element, errors);
+//    _.each(plateData, function(plateClause){
+//      plateSearchTextArray = plateSearchTextArray.concat(
+//        plateClause.plates, plateClause.plate_ranges);
+//      _.each(plateClause.copies,function(copy){
+//        if (copy.match(/[ \,\-\:]/)){
+//          copy = '"' + copy + '"';
+//        }
+//        plateSearchTextArray.push(copy);
+//      });
+//    });
     fullPlateSearch.push(plateSearchTextArray.join(', '));
   });
   urlStackData['plate_search'] = fullPlateSearch;
@@ -1316,6 +1332,7 @@ var parseScreeningInquiryURLParam
   }
   return urlStackData;
 };
+
 
 /**
  * Return an array of ID keys from the model 

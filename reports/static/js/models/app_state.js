@@ -2560,6 +2560,14 @@ define([
       
     },
     
+    showModalError: function(message){
+      return this.showModal({
+        ok_only: true,
+        title: 'Error',
+        body: message
+      });
+    },
+    
     /**
      * show a modal pop up with only an "ok" button, no "cancel" button.
      */

@@ -106,7 +106,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         key: 'replicate_count',
         editorClass: 'form-control',
         validators: ['required',EditView.CheckPositiveNonZeroValidator],
-        type: Backbone.Form.editors.Number,
+        type: EditView.NumberEditor,
         template: appModel._field_template
       };
       var FormFields = Backbone.Model.extend({
@@ -646,7 +646,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         var meta = _.result(data,appModel.API_RESULT_META, {});
         var warning = _.result(meta, appModel.API_META_MSG_WARNING);
         if (warning){
-          appModel.error(warning);
+          appModel.showJsonMessages(
+            _.pick(meta,appModel.API_META_MSG_WARNING));
         }
         self.setPlatesLink();
       }).fail(function(jqXHR, textStatus, errorThrown) { 
@@ -740,6 +741,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         e.preventDefault();
         self.formSubmit();
       });
+      self.calculateTotalVolume();
       if (!_.isEmpty(urlStackData.plate_search) 
           || !_.isUndefined(urlStackData.volume_required)){
         toggleForm();
@@ -749,6 +751,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         }
       } else {
         self.plate_range_collection.fetch();
+        self.reportUriStack([]);
       }
       self.downloadButton.click(function(e){
         e.preventDefault();
@@ -766,8 +769,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       this.listenTo(
         form, "volume_required:change", 
         self.calculateTotalVolume);
-      self.calculateTotalVolume();
-      self.reportUriStack([]);
     }
   });
 

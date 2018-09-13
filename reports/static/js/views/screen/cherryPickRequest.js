@@ -439,7 +439,7 @@ define([
       if (_.isEmpty(assay_plate_type)){
         assay_plate_type = self.model.get('assay_plate_type');
         if (_.isEmpty(assay_plate_type)){
-          appModel.error('must define the assay plate type');
+          appModel.showModalError('must define the assay plate type');
           return;
         }
       }
@@ -1653,7 +1653,7 @@ define([
         e.preventDefault();
         console.log('selection updates', lcpSelectionUpdateCollection);
         if (lcpSelectionUpdateCollection.isEmpty()) {
-          appModel.error('No changes to save');
+          appModel.showModalError('No changes to save');
           return;
         }
         function processClick(formValues){
@@ -1727,7 +1727,7 @@ define([
         e.preventDefault();
         console.log('selection updates', lcpSelectionUpdateCollection);
         if (lcpSelectionUpdateCollection.isEmpty()) {
-          appModel.error('No changes to save');
+          appModel.showModalError('No changes to save');
           return;
         }
 
@@ -2722,7 +2722,7 @@ define([
         e.preventDefault();
         console.log('selection updates', selectionUpdateCollection);
         if (selectionUpdateCollection.isEmpty()) {
-          appModel.error('No changes to save');
+          appModel.showModalError('No changes to save');
           return;
         }
         function processClick(formValues){

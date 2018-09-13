@@ -12,8 +12,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
   var ActivityView = ListView.extend({
     
     initialize: function(args) {
+      var self = this;
       this._args = args;
+      this.screen = args.screen;
+      this.user = args.user;
       var resource = args.resource;
+
+      console.log('ActivityListView', args);
       var linkCell = Iccbl.LinkCell.extend({
 
         render: function(){
@@ -30,13 +35,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
               '/cherrypickrequest/{cherry_pick_request_id}/cherrypickplates';
           }
           else {
-            if (!_.isEmpty(this.model.get('serviced_user_id'))){
-              hrefTemplate = '#screensaveruser/{serviced_user_id}/activity/{activity_id}';
-            } 
-            else if (!_.isEmpty(this.model.get('screen_facility_id'))){
+            if (self.screen){
               hrefTemplate = '#screen/{screen_facility_id}/activities/{activity_id}';
+            }
+            else if (self.user){
+              hrefTemplate = '#screensaveruser/{serviced_user_id}/activity/{activity_id}';
             } else {
-              console.log('Activity does not have a serviced user or screen!', this.model)
+              if (!_.isEmpty(this.model.get('serviced_user_id'))){
+                hrefTemplate = '#screensaveruser/{serviced_user_id}/activity/{activity_id}';
+              } 
+              else if (!_.isEmpty(this.model.get('screen_facility_id'))){
+                hrefTemplate = '#screen/{screen_facility_id}/activities/{activity_id}';
+              } else {
+                console.log('Activity does not have a serviced user or screen!', this.model)
+              }
             }
           }
           var interpolatedVal = Iccbl.formatString(hrefTemplate,this.model);

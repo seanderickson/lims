@@ -184,7 +184,7 @@ define([
       schema5['searchVal'] = {
         title: 'Screening Inquiry',
         key: 'searchVal',
-        help: 'Enter a screening inquiry',
+        help: 'Enter a screening inquiry, e.g. &quot;(Screen #) 1000-2000,2015,3017 100 nL x 2&quot;',
         placeholder: 'e.g. (Screen #) 1000-2000,2015,3017 100 nL x 2',
         validators: ['required',validateScreeningInquiry],
         type: EditView.TextArea2,
@@ -215,7 +215,7 @@ define([
         help: 'enter a Cherry Pick ID',
         placeholder: 'e.g. 44443',
         key:  'search_value', // TODO: "key" not needed>?
-        type: 'Number',
+        type: EditView.NumberEditor,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
@@ -545,7 +545,7 @@ define([
           // rework to support list args
           var uriStack = ['screen', parsedSearch.screen_facility_id,
                           'summary','plateranges',appModel.URI_PATH_SEARCH,
-                          urlSearchParts.join(appModel.SEARCH_DELIMITER)]
+                          urlSearchParts.join(appModel.SEARCH_DELIMITER)];
           console.log('route: ', uriStack);
           appModel.setUriStack(uriStack);
         });      

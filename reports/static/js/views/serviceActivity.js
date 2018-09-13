@@ -31,16 +31,40 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           
           DetailView.prototype.afterRender.apply(this,arguments);
 
+          if (appModel.hasPermission('serviceactivity', 'write')){
+            var add_another_button = $([
+              '<button class="btn btn-default btn-sm " role="button" ',
+              'id="add_another_sa_button" title="Add another Service Activity" >',
+              'Add another Service Activity',
+              '</button>'
+              ].join(''));
+            $('#generic-detail-buttonpanel-left').append(add_another_button);
+            add_another_button.click(function(e){
+              if (self.screen){
+                var uriStack = ['screen', self.screen.key,
+                                'activities','+add'];
+                console.log('route: ', uriStack);
+                appModel.setUriStack(uriStack);
+              }else{
+                var uriStack = ['screensaveruser', self.user.key,
+                                'activity','+add'];
+                console.log('route: ', uriStack);
+                appModel.setUriStack(uriStack);
+              }
+            });
+          }
+
         }
       }, self._args);
       
       var editView = EditView.extend({
         
         save_success: function(data, textStatus, jqXHR){
-          var meta = _.result(data, 'meta', null);
-          if (meta) {
-            appModel.showJsonMessages(meta);
-          }
+          // 20180912 - no need to display (kls4)
+          //var meta = _.result(data, 'meta', null);
+          //if (meta) {
+          //  appModel.showJsonMessages(meta);
+          //}
           var urlPath = [];
           if (self.user) {
             urlPath = [self.user.resource.key,self.user.key,'activity'];
@@ -52,7 +76,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           }           
           appModel.clearPagePending();
           appModel.router.navigate(urlPath.join('/'),{trigger:true});
-
         },
         
         afterRender: function(){

@@ -605,25 +605,12 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
         }
         rowCollection.add(new RowModel(row));
       };
-      
-//      if (!options.useNamedRanges != true){
-//        if (_.size(namedWellRange)>0){
-//          var testRange = this.namedWellRanges.at(0);
-//          if (!_.isEmpty(testRange)){
-//            appModel.showError
-//          }
-//        }
-//      }
-      
-//      var errors = [];
-//      var parsedRanges = Iccbl.parseNamedWellSelections(wellSelections, plate_size, errors);
       var namedWellRanges = this.namedWellRanges = 
         new Backbone.Collection(_.map(_.values(namedWellRangeInput), function(nr){
           return new NamedRange(nr);
         }),
         {comparator: 'ordinal' });
 
-      console.log('initialize: namedWellRanges', namedWellRanges);
       if (!_.isEmpty(errors)){
         this.setErrors(errors);
       }

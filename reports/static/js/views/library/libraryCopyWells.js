@@ -227,7 +227,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           e.preventDefault();
           console.log('changed collection', changedCollection,changedCollection.url);
           if(changedCollection.isEmpty()){
-            appModel.error('No changes to save');
+            appModel.showModalError('No changes to save');
             return;
           }
           

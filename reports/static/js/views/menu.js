@@ -23,9 +23,13 @@ define([
       template: _.template(menuTemplate),
       
       serialize: function(){
+        var menuData = appModel.getMenu();
+        var uiResources = appModel.get('ui_resources');
+        console.log('serialize', menu, uiResources);
+        
         return {
-          menu: appModel.getMenu(),
-          ui_resources: appModel.get('ui_resources')
+          menu: menuData,
+          ui_resources: uiResources
         };          
       },
       

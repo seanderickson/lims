@@ -38,6 +38,33 @@ define([
     }
   };
   
+  var IntegerValidator = function IntegerValidator(value, formValues) {
+    var err = {
+      type: 'integer',
+      message: 'Value must be an integer'
+    };
+
+    if (value){
+      if (!_.isNumber(value) || !Number.isInteger(value)) return err;
+    }
+  };
+  
+  var NumberEditor = Backbone.Form.editors.Number.extend({
+    initialize: function(options){
+      Backbone.Form.editors.Text.prototype.initialize.call(this, options);
+      // disable mousewheel on a input number field when in focus
+      // (to prevent Cromium browsers change the value when scrolling)
+     this.$el.on('focus', function (e) {
+        $(this).on('mousewheel.disableScroll', function (e) {
+          e.preventDefault()
+        })
+      });
+      this.$el.on('blur', function (e) {
+        $(this).off('mousewheel.disableScroll')
+      });     
+    }
+  });
+  
   var SIunitEditor = Backbone.Form.editors.Base.extend({
     
     tagname: 'siuniteditor',
@@ -128,7 +155,7 @@ define([
       formSchema['number'] = {
         title: '', 
         key:  'number',
-        type: 'Number',
+        type: NumberEditor,
         editorClass: 'form-control form-control-zero-padding',
         template: this.fieldTemplate
       };
@@ -744,19 +771,19 @@ define([
           },
         'float': 
           {
-            type: Backbone.Form.editors.Number,
+            type: NumberEditor,
             editorClass: 'form-control',
             editorAttrs: { widthClass: 'col-sm-4'}
           },
         'integer': 
           {
-            type: Backbone.Form.editors.Number,
+            type: NumberEditor,
             editorClass: 'form-control',
             editorAttrs: { widthClass: 'col-sm-4'}
           },
         'decimal': 
           {
-            type: Backbone.Form.editors.Number,
+            type: NumberEditor,
             editorClass: 'form-control',
             editorAttrs: { widthClass: 'col-sm-4'}
           },
@@ -950,10 +977,18 @@ define([
     _createValidators: function(fi) {
         
       var validators = [];
+      
+      if (fi.validators){
+        validators = validators.concat(fi.validators);
+      }
+      
       var validator;
       
       if (_.contains(['integer','float','decimal'],fi.data_type))
       {
+        if (fi.data_type == 'integer'){
+          validators.unshift(IntegerValidator);
+        }
         if (_.isNumber(fi.min)) {
           validator = function checkMin(value, formValues) {
             var err = {
@@ -1445,9 +1480,11 @@ define([
   EditView.DatePicker = DatePicker;
   EditView.DisabledField = DisabledField;
   EditView.SIunitEditor = SIunitEditor;
+  EditView.NumberEditor = NumberEditor;
   EditView.TextArea2 = TextArea2;
   EditView.CheckPositiveValidator = CheckPositiveValidator;
   EditView.CheckPositiveNonZeroValidator = CheckPositiveNonZeroValidator;
+  EditView.IntegerValidator = IntegerValidator
   Iccbl.EditView = EditView;
 	return EditView;
 });

@@ -14,6 +14,7 @@ define([
   'views/screen/cherryPickRequest',
   'views/activityListView',
   'views/serviceActivity',
+  'views/screen/libraryScreening',
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
   'views/generic_edit',
@@ -25,9 +26,9 @@ define([
 //  'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
-            ActivityListView, ServiceActivityView, DetailLayout, DetailView, EditView, 
-            ListView, UploadDataForm, TabbedController, detailTemplate,
-            detailOneColTemplate) {
+            ActivityListView, ServiceActivityView, LibraryScreeningView, 
+            DetailLayout, DetailView, EditView, ListView, UploadDataForm, 
+            TabbedController, detailTemplate, detailOneColTemplate) {
 
   var ScreenView = TabbedController.extend({
     isAdmin: false,
@@ -49,15 +50,13 @@ define([
       var access_level = this.model.get('user_access_level_granted');
       if (access_level > 1 && _.isEmpty(self.model.get('study_type'))) {
         this.tabbed_resources['summary'] = this.screen_tabbed_resources['summary'];
-//        if (this.model.get('has_screen_result') != 1){
-//          delete this.tabbed_resources['data']
-//        }
         this.tabbed_resources['protocol'] = this.screen_tabbed_resources['protocol'];
       } 
       if (access_level > 2 && _.isEmpty(self.model.get('study_type'))){
         this.tabbed_resources['cherrypickrequest'] = this.screen_tabbed_resources['cherrypickrequest'];
         this.tabbed_resources['activities'] = this.screen_tabbed_resources['activities'];
       }
+      _.bindAll(this, 'addLibraryScreening','addServiceActivity');
       
     },
 
@@ -194,16 +193,14 @@ define([
         editableKeys = _.union(editableKeys,model.resource.createKeys());
       }
       editableKeys = _.filter(editableKeys, function(key){
-        return ! (
-            _.contains(fields[key].visibility, 'billing')
-            || _.contains(fields[key].visibility, 'protocol'));
+        return ! (   _.contains(fields[key].visibility, 'billing')
+                  || _.contains(fields[key].visibility, 'protocol'));
       });
       editableKeys = _.without(editableKeys, 'data_privacy_expiration_date');
       var editVisibleKeys = model.resource.allEditVisibleKeys();
       editVisibleKeys = _.filter(editVisibleKeys, function(key){
-        return ! (
-            _.contains(fields[key].visibility, 'billing')
-            || _.contains(fields[key].visibility, 'protocol'));
+        return ! (   _.contains(fields[key].visibility, 'billing')
+                  || _.contains(fields[key].visibility, 'protocol'));
       });
       var detailKeys = model.resource.detailKeys();
       var adminKeys = model.resource.adminKeys();
@@ -1016,7 +1013,6 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: cprResource.apiUri 
       });
-//      $target_el.empty();
       
       function build_table(collection) {
         if (collection.isEmpty()) {
@@ -1380,7 +1376,15 @@ define([
         }
       });
       
-      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+      if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
+          self.addServiceActivity();
+
+//        // Do not allow return to +add screen
+//        delegateStack.shift();
+//        self.setActivities(delegateStack);
+//        return;
+      }
+      else if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail View
         
@@ -1390,31 +1394,21 @@ define([
         saResource.fields['funding_support']['editability'] = [];
         saResource.fields['funding_support']['visibility'] = [];
         
-        if (delegateStack[0]!='+add') {
-        
-          var activity_id = delegateStack.shift();
-          self.consumedStack.push(activity_id);
-          var _key = activity_id
-          appModel.getModelFromResource(saResource, _key, function(model){
-            view = new ServiceActivityView({
-              model: model, 
-              screen: self.model,
-              uriStack: _.clone(delegateStack)
-            });
-            self.listenTo(view , 'uriStack:change', self.reportUriStack);
-            Backbone.Layout.setupView(view);
-            self.setView("#tab_container", view ).render();
-          });        
-          return;
+        var activity_id = delegateStack.shift();
+        self.consumedStack.push(activity_id);
+        var _key = activity_id
+        appModel.getModelFromResource(saResource, _key, function(model){
+          view = new ServiceActivityView({
+            model: model, 
+            screen: self.model,
+            uriStack: _.clone(delegateStack)
+          });
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          Backbone.Layout.setupView(view);
+          self.setView("#tab_container", view ).render();
+        });        
+        return;
           
-        } else {
-          
-          // Do not allow return to +add screen
-          delegateStack.shift();
-          self.setActivities(delegateStack);
-          return;
-        }
-
       }else{
         // List view
         
@@ -1426,66 +1420,26 @@ define([
             'role="button" id="add_button" href="#">',
             'Add Service Activity</a>'
           ].join(''));
-        addServiceActivityButton.click(function(e){
-          e.preventDefault();
-          var defaults = {
-            screen_facility_id: self.model.get('facility_id')
-          };
-          
-          saResource.fields['serviced_user']['visibility'] = [];
-          saResource.fields['screen_facility_id']['editability'] = [];
-          // 20170605 - JAS - no funding support if attached to a screen
-          saResource.fields['funding_support']['editability'] = [];
-          saResource.fields['funding_support']['visibility'] = [];
-          
-          // NOTE: funding support removed from screen.service_activities: redundant
-          //
-          //// Funding supports: populate select with screen funding supports;
-          //// - if only one screen funding support; set it as default
-          //var funding_supports = self.model.get('funding_supports');
-          //var funding_support_field = saResource.fields['funding_support']
-          //if (_.isEmpty(funding_supports)){
-          //  appModel.showModalMessage('Screen must have funding supports entered');
-          //  appModel.showModalMessage({
-          //    title: 'Screen must have funding supports entered',
-          //    body: 'Enter screen funding supports before creating service activities'
-          //  });
-          //} else {
-          //  var vocabulary = appModel.getVocabularySelectOptions(
-          //    funding_support_field.vocabulary_scope_ref);
-          //  vocabulary = _.filter(vocabulary, function(item){
-          //    return _.contains(funding_supports,item.val);
-          //  });
-          //  funding_support_field.choiceHash = vocabulary;
-          //  funding_support_field.vocabulary_scope_ref = '';
-          //  if (funding_supports.length == 1){
-          //    defaults['funding_support'] = funding_supports[0];
-          //  }
-          //}
-          
-          var newModel = appModel.newModelFromResource(saResource, defaults);
-          var view = new ServiceActivityView({
-            model: newModel,
-            screen: self.model,
-            uriStack: ['+add']
-          });
-          self.listenTo(view , 'uriStack:change', self.reportUriStack);
-          Backbone.Layout.setupView(view);
-          self.setView("#tab_container", view ).render();
-
-          self.consumedStack = ['activities'];
-          self.reportUriStack([]);
-          view.reportUriStack(['+add']);
-        });
+        addServiceActivityButton.click(self.addServiceActivity);
         if(appModel.hasPermission(saResource.key, 'edit')){
           extraControls.unshift(addServiceActivityButton);
+        }
+        var addLibraryScreeningButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_library_screening_button" href="#">',
+            'Add Library Screening Visit</a>'
+          ].join(''));
+        addLibraryScreeningButton.click(self.addLibraryScreening);
+        if (appModel.hasPermission('libraryscreening','write')) {
+          extraControls.unshift(addLibraryScreeningButton);
         }
         
         var view = new ActivityListView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
           url: url,
-          extraControls: extraControls
+          extraControls: extraControls,
+          screen: self.model
         });
         
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -1495,6 +1449,101 @@ define([
       }
       self.$("#tab_container-title").hide();
     },
+
+    addServiceActivity: function(e){
+      if (e) {
+        e.preventDefault();
+      }
+
+      var self = this;
+      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      var defaults = {
+        screen_facility_id: self.model.get('facility_id')
+      };
+      
+      saResource.fields['serviced_user']['visibility'] = [];
+      saResource.fields['screen_facility_id']['editability'] = [];
+      // 20170605 - JAS - no funding support if attached to a screen
+      saResource.fields['funding_support']['editability'] = [];
+      saResource.fields['funding_support']['visibility'] = [];
+      
+      // NOTE: funding support removed from screen.service_activities: redundant
+      //
+      //// Funding supports: populate select with screen funding supports;
+      //// - if only one screen funding support; set it as default
+      //var funding_supports = self.model.get('funding_supports');
+      //var funding_support_field = saResource.fields['funding_support']
+      //if (_.isEmpty(funding_supports)){
+      //  appModel.showModalMessage('Screen must have funding supports entered');
+      //  appModel.showModalMessage({
+      //    title: 'Screen must have funding supports entered',
+      //    body: 'Enter screen funding supports before creating service activities'
+      //  });
+      //} else {
+      //  var vocabulary = appModel.getVocabularySelectOptions(
+      //    funding_support_field.vocabulary_scope_ref);
+      //  vocabulary = _.filter(vocabulary, function(item){
+      //    return _.contains(funding_supports,item.val);
+      //  });
+      //  funding_support_field.choiceHash = vocabulary;
+      //  funding_support_field.vocabulary_scope_ref = '';
+      //  if (funding_supports.length == 1){
+      //    defaults['funding_support'] = funding_supports[0];
+      //  }
+      //}
+      
+      var newModel = appModel.newModelFromResource(saResource, defaults);
+      var view = new ServiceActivityView({
+        model: newModel,
+        screen: self.model,
+        uriStack: ['+add']
+      });
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
+      self.setView("#tab_container", view ).render();
+
+      self.consumedStack = ['activities'];
+      self.reportUriStack([]);
+      view.reportUriStack(['+add']);
+    },
+
+    addLibraryScreening: function(e) {
+      e.preventDefault();
+      this.change_to_tab('summary', ['libraryscreening','+add']);
+//      var uriStack = ['screen', self.screen.key,
+//                      'summary','libraryscreening','+add'];
+//      console.log('route: ', uriStack);
+//      appModel.setUriStack(uriStack);
+//      
+//      console.log('add library screening visit');
+//      var self = this;
+//      var defaults = {
+//        screen_facility_id: self.model.get('facility_id'),
+//        screen_type: self.model.get('screen_type')
+//      };
+//      var newModel = appModel.createNewModel('libraryscreening', defaults);
+//
+//      var view = new LibraryScreeningView({ 
+//        model: newModel, 
+//        screen: self.model,
+//        uriStack: ['+add']
+//      });
+//      
+//      Backbone.Layout.setupView(view);
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      self.setView("#tab_container", view ).render();
+//
+//      $title = self.$el.find('#tab_container-title');
+//      $title.html('<H5 id="title">Add Library Screening Visit</H5>');
+//      $title.show();
+//      
+//      // TODO: do not set for library screening added in the screen view?
+//      this.consumedStack = ['activities'];
+//      
+//      self.reportUriStack([]);
+//      view.reportUriStack(['+add']);
+    },    
+    
     
     setData: function(delegateStack) {
       var self = this;

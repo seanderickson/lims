@@ -476,7 +476,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
           
           if (search_data_found !== true){
-            appModel.error('Error, no search data for batch edit');
+            appModel.showModalError('No search data provided for batch edit');
             return;
           }
           
@@ -715,7 +715,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           }
           
           if (search_data_found !== true){
-            appModel.error('Error, no search data for batch edit');
+            appModel.showModalError('No search data provided for batch edit');
             return;
           }
           var url = self.resource.apiUri + '/batch_edit';

@@ -81,6 +81,7 @@ define([
       if (this.model.get('is_staff') != true){
         delete self.tabbed_resources['usergrouppermissions'];
       }
+      _.bindAll(this,'addServiceActivity');
     },
 
     setLabHeadFieldVisibility: function(classification, originalClassification){
@@ -292,13 +293,10 @@ define([
           outerSelf.$('ul.nav-tabs > li').addClass('disabled');
             
           function internalShowEdit(){
-//            var fields = self.model.resource.fields;
             var fields = resource.fields;
 
             fields['lab_head_id'].choiceHash = 
               appModel.getPrincipalInvestigatorOptions();
-//            fields['lab_member_ids'].choiceHash = 
-//              appModel.getUserOptions();
             fields['lab_member_ids']['title'] = 'Lab Members';
             fields['lab_affiliation_id'].choiceHash = 
               appModel.getLabAffiliationOptions();
@@ -831,7 +829,7 @@ define([
               var values = form.getValue();
               
               if (_.result(values,'expire')){
-                appModel.error('Manual Expiration not allowed');
+                appModel.showModalError('Manual Expiration not allowed');
                 return 
               }
               else if (_.result(values,'deactivate')){
@@ -1257,118 +1255,109 @@ define([
       var activityResource = appModel.getResource('activity');
       saResource.fields['serviced_user_id']['editability'] = [];
       saResource.fields['activity_class']['visibility'] = [];
-      
-      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+
+      if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
+          self.addServiceActivity();
+      }else if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         
-        if (delegateStack[0]!='+add') {
-          var activity_id = delegateStack.shift();
-          self.consumedStack.push(activity_id);
-          var _key = activity_id
-          appModel.getModelFromResource(saResource, _key, function(model){
-            view = new ServiceActivityView({
-              model: model, 
-              user: self.model,
-              uriStack: _.clone(delegateStack)
-            });
-            self.listenTo(view , 'uriStack:change', self.reportUriStack);
-            Backbone.Layout.setupView(view);
-            self.setView("#tab_container", view ).render();
-          });        
-          return;
-          
-        } else {
-          
-          // Do not allow return to +add 
-          delegateStack.shift();
-          self.setActivities(delegateStack);
-          return;
-        }
-
-      }else{
-        // List view
-        // FIXME: refactor with ActivityListView
-        (function listView(){
-          var view, url;
-          var extraControls = [];
-          var addServiceActivityButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-              'role="button" id="add_button" href="#">',
-              'Add</a>'
-            ].join(''));
-          var showDeleteButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-              'role="button" id="showDeleteButton" href="#">',
-              'Delete</a>'
-            ].join(''));
-          var showHistoryButton = $([
-            '<a class="btn btn-default btn-sm pull-down" ',
-              'role="button" id="showHistoryButton" href="#">',
-              'History</a>'
-            ].join(''));
-          
-          addServiceActivityButton.click(function(e){
-            e.preventDefault();
-            self.addServiceActivity();
-          });
-          
-          // TODO: Shows histor only for service activities; could show for all
-          // activities?
-          showHistoryButton.click(function(e){
-            e.preventDefault();
-            var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
-            var search = {};
-            search['ref_resource_name'] = 'serviceactivity';
-            search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
-            newUriStack.push(appModel.createSearchString(search));
-            var route = newUriStack.join('/');
-            console.log('history route: ' + route);
-            appModel.router.navigate(route, {trigger: true});
-            self.remove();
-          });
-          if(appModel.hasPermission(saResource.key, 'edit')){
-            extraControls.unshift(addServiceActivityButton);
-          }
-          if(appModel.hasPermission(saResource.key, 'edit')){
-            extraControls.unshift(showDeleteButton);
-          }
-          extraControls.unshift(showHistoryButton);
-          console.log('extraControls',extraControls);
-          url = [self.model.resource.apiUri, 
-                     self.model.key,
-                     'activities'].join('/');
-          view = new ActivityListView({ 
-            uriStack: _.clone(delegateStack),
-            resource: activityResource,
-            url: url,
-            extraControls: extraControls
-          });
-          showDeleteButton.click(function(e){
-            e.preventDefault();
-            if (! view.grid.columns.findWhere({name: 'deletor'})){
-              view.grid.columns.unshift({ 
-                name: 'deletor', label: 'Delete', text:'X', 
-                description: 'delete record', 
-                sortable: false,
-                cell: Iccbl.DeleteCell.extend({
-                  render: function(){
-                    if (this.model.get('activity_class') == 'serviceactivity'){
-                      Iccbl.DeleteCell.prototype.render.apply(this, arguments);
-                    }
-                    return this;
-                  }
-                }), 
-              });
-            }
+        var activity_id = delegateStack.shift();
+        self.consumedStack.push(activity_id);
+        var _key = activity_id
+        appModel.getModelFromResource(saResource, _key, function(model){
+          view = new ServiceActivityView({
+            model: model, 
+            user: self.model,
+            uriStack: _.clone(delegateStack)
           });
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           Backbone.Layout.setupView(view);
           self.setView("#tab_container", view ).render();
-        })();
+        });        
+        return;
+          
+      }else{
+        // List view
+        var view, url;
+        var extraControls = [];
+        var addServiceActivityButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_button" href="#">',
+            'Add</a>'
+          ].join(''));
+        var showDeleteButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="showDeleteButton" href="#">',
+            'Delete</a>'
+          ].join(''));
+        var showHistoryButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="showHistoryButton" href="#">',
+            'History</a>'
+          ].join(''));
+        
+        addServiceActivityButton.click(self.addServiceActivity);
+        
+        // TODO: Shows histor only for service activities; could show for all
+        // activities?
+        showHistoryButton.click(function(e){
+          e.preventDefault();
+          var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
+          var search = {};
+          search['ref_resource_name'] = 'serviceactivity';
+          search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
+          newUriStack.push(appModel.createSearchString(search));
+          var route = newUriStack.join('/');
+          console.log('history route: ' + route);
+          appModel.router.navigate(route, {trigger: true});
+          self.remove();
+        });
+        if(appModel.hasPermission(saResource.key, 'edit')){
+          extraControls.unshift(addServiceActivityButton);
+        }
+        if(appModel.hasPermission(saResource.key, 'edit')){
+          extraControls.unshift(showDeleteButton);
+        }
+        extraControls.unshift(showHistoryButton);
+        console.log('extraControls',extraControls);
+        url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'activities'].join('/');
+        view = new ActivityListView({ 
+          uriStack: _.clone(delegateStack),
+          resource: activityResource,
+          url: url,
+          extraControls: extraControls,
+          user: self.model
+        });
+        showDeleteButton.click(function(e){
+          e.preventDefault();
+          if (! view.grid.columns.findWhere({name: 'deletor'})){
+            view.grid.columns.unshift({ 
+              name: 'deletor', label: 'Delete', text:'X', 
+              description: 'delete record', 
+              sortable: false,
+              cell: Iccbl.DeleteCell.extend({
+                render: function(){
+                  if (this.model.get('activity_class') == 'serviceactivity'){
+                    Iccbl.DeleteCell.prototype.render.apply(this, arguments);
+                  }
+                  return this;
+                }
+              }), 
+            });
+          }
+        });
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        Backbone.Layout.setupView(view);
+        self.setView("#tab_container", view ).render();
       }
     },
     
-    addServiceActivity: function() {
+    addServiceActivity: function(e) {
+      if (e){
+        e.preventDefault();
+      }
       var self = this;
       
       var saResource = Iccbl.appModel.getResource('serviceactivity');
@@ -1630,7 +1619,7 @@ define([
           console.log('changed collection', changedCollection,changedCollection.url);
           
           if(changedCollection.isEmpty()){
-            appModel.error('No changes to save');
+            appModel.showModalError('No changes to save');
             return;
           }
           var headers = {};
@@ -1775,8 +1764,8 @@ define([
             + appModel.getVocabularyTitle(
               'useragreement.data_sharing_level',userDslSm) + ')'
             + " is less restrictive than user's Screens: (" 
-            + error_screens_sm.join(',') + ')')
-            + '(violates policy)');
+            + error_screens_sm.join(',') + ')'
+            + ' - (violates policy)'));
       }
       if (!_.isEmpty(error_screens_rnai)){
         $('#content_title_message').append(
@@ -1786,7 +1775,7 @@ define([
               'useragreement.data_sharing_level',userDslRnai) + ')'
             + " is less restrictive than user's Screens: (" 
             + error_screens_rnai.join(',') + ')'
-            + '(violates policy)'));
+            + ' - (violates policy)'));
       }
     },
 

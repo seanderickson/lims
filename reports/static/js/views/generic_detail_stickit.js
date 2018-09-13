@@ -498,8 +498,8 @@ define([
         'keys': _.chain(this.detailKeys), // TODO: groupedKeys replaces detailKeys
         'adminKeys': this.adminKeys,
         'table_class': _.result(this.args,'table_class', 'col-sm-8'),
-        'label_col_class': _.result(this.args,'label_col_class', 'col-xs-3'),
-        'value_col_class': _.result(this.args,'value_col_class', 'col-xs-7')    
+        'label_col_class': _.result(this.args,'label_col_class', 'col-xs-2'),
+        'value_col_class': _.result(this.args,'value_col_class', 'col-xs-8')    
       };      
     },    
     

@@ -366,6 +366,7 @@ define([
           var comment = _.result(options.headers,appModel.HEADER_APILOG_COMMENT);
           this.model.save(changedAttributes, options)
             .done(function(data, textStatus, jqXHR){ 
+              appModel.clearPagePending();
               inner_self.save_success.apply(this,arguments);
             })
             .fail(function(jqXHR, textStatus, errorThrown) { 
@@ -606,7 +607,7 @@ define([
               '<a class="btn btn-default btn-sm pull-down pull-right" ',
                 'role="button" target="_blank" ', 
                 'id="show_screening_inquiry_link" ',
-                'title="Enter plates in the screening inquiry form to search for available copies" ',
+                'title="Use the Screening Inquiry form to search for available plate copies" ',
                 'href="#">',
                 'Show Screening Inquiry form...</a>'
               ].join(''));

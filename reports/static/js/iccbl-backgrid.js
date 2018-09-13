@@ -3684,6 +3684,16 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
     }
   },
   
+  _collapse: function(){
+    this._serverSideFilter.$el.hide();
+    this.$el.removeClass('expanded');
+  },
+
+  _expand: function(){
+    this._serverSideFilter.$el.show();
+    this.$el.addClass('expanded');
+  },  
+  
   render : function() {
     var self = this;
     FilterHeaderCell.__super__.render.apply(this);
@@ -3710,27 +3720,22 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
     this._serverSideFilter.submitButton().click(function(e){
       e.preventDefault();
       self._submit();
+      self._collapse();
     });
   
     this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.$el.addClass('expanded');
+      self._expand();
+      return false;
     });
   
     this.collapseIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.hide();
-      self.$el.removeClass('expanded');
+      self._collapse();
+      return false;
     });
   
     this.expandIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.$el.addClass('expanded');
+      self._expand();
+      return false;
     });
     return this;
   },  

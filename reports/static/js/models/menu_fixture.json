@@ -103,7 +103,7 @@
         },
         "reagent":{
           "view": "list",
-          "expanded": true,
+          "expanded": false,
           "submenus": {
             "smallmoleculereagent":{
               "view": "list"

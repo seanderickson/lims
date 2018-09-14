@@ -87,8 +87,8 @@ define([
         permission: 'screen'
       },
       summary : {
-        description : 'Visit Summary',
-        title : 'Visit Summary',
+        description : 'Summary of Library Screening transfer activities',
+        title : 'Transfer Summary',
         invoke : 'setSummary',
         permission: 'screensummary'
       },

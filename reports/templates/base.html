@@ -25,6 +25,10 @@
   
   /** container width settings
   -------------------------------------------------- **/
+  @media print {
+    .navbar,.sidebar,.controls {display:none; }
+  }
+
   @media (min-width: 568px) {
     .container {
       width: inherit;
@@ -40,7 +44,6 @@
       width: inherit;
     }
   }  
-
   /** sticky footer
   -------------------------------------------------- **/
   html {

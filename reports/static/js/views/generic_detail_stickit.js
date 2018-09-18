@@ -428,7 +428,7 @@ define([
       });
       this.stickit(buttonModel, btnbindings);
       
-      if (appModel.hasGroup('readEverythingAdmin')) {
+      if (appModel.getCurrentUser().is_superuser ) {
         $('#generic-detail-bottom-buttonpanel-left').prepend(self.show_all_fields_control);
         self.show_all_fields_control.find('input[type="checkbox"]').change(function(e) {
           console.log('click show all', e);

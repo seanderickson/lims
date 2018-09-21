@@ -538,7 +538,7 @@ def get_siunit(test_value):
       ['p', 1e-12 ]
       ]
     for symbol,val in siunits:
-        if val <= test_value:
+        if val <= abs(test_value):
             return (symbol,val)
     return None
 

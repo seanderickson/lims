@@ -62,7 +62,7 @@ from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
 import reports.utils.background_client_util as background_client_util
 import reports.utils.background_processor as background_processor
-
+import reports.utils.si_unit as si_unit
 
 logger = logging.getLogger(__name__)
 
@@ -2028,19 +2028,37 @@ class ApiResource(SqlAlchemyResource):
             if field.get('display_type', None) == 'siunit':
                 display_options = field.get('display_options', None)
                 if display_options is not None:
+                    # TODO: move display option parsing to the Field resource
                     try:
                         display_options = display_options.replace(r"'", '"')
                         display_options = json.loads(display_options)
-                        logger.debug('decoded display_options: %r', display_options)
+                        logger.debug('key: %r, decoded display_options: %r', 
+                            key, display_options)
                         
-                        default_unit = Decimal(display_options.get('defaultUnit',None))
+                        default_unit = display_options.get('defaultUnit')
+                        if not default_unit:
+                            logger.error(
+                                'SIUNIT Field configuration error, '
+                                'no "defaultUnit" in display options: '
+                                'key: %r, scope: %r, %r', 
+                                key, field['scope'], display_options)
+                            continue
+                        symbol = display_options.get('symbol')
+                        if symbol is None:
+                            logger.error(
+                                'SIUNIT Field configuration error, '
+                                'no "symbol" in display options: '
+                                'key: %r, scope: %r, %r', 
+                                key, field['scope'], display_options)
+                            continue
+                        # NOTE: convert to string to avoid float numeric errors
                         _dict = { 
-                            'default_unit': default_unit,
-                            'symbol': display_options['symbol'] 
+                            'default_unit': Decimal(str(default_unit)),
+                            'symbol': symbol 
                         }
                         multiplier = display_options.get('multiplier', None)
                         if multiplier:
-                            _dict['multiplier'] = Decimal(multiplier)
+                            _dict['multiplier'] = Decimal(str(multiplier))
                         decimals = display_options.get('decimals', None)
                         if decimals:
                             _dict['decimals'] = int(decimals)
@@ -2049,8 +2067,12 @@ class ApiResource(SqlAlchemyResource):
                             
                     except Exception, e:
                         logger.exception(
-                            'key: %r, error in display options: %r - %r', 
-                            key, display_options, e)
+                            'key: %r, scope: %r, error in display options: %r - %r', 
+                            key, field['scope'], display_options, e)
+                else:
+                    logger.error(
+                        'SIUNIT Field configuration error, no display options: '
+                        'key: %r, scope: %r', key, field['scope'])
         logger.debug('siunit_default_units: %r', siunit_default_units)
         def siunit_rowproxy_generator(cursor):
             if extant_generator is not None:
@@ -2078,15 +2100,15 @@ class ApiResource(SqlAlchemyResource):
                         default_unit = options['default_unit']
                         if val >= default_unit:
                             return '{} {}{}'.format(
-                                lims_utils.convert_decimal(
+                                si_unit.convert_decimal(
                                     val,default_unit, options.get('decimals',3)),
-                                lims_utils.get_siunit_symbol(options['default_unit']),
+                                si_unit.get_siunit_symbol(options['default_unit']),
                                 options['symbol'])
                         else:
-                            (symbol,default_unit) = lims_utils.get_siunit(val)
+                            (symbol,default_unit) = si_unit.get_siunit(val)
                             
                             return '{} {}{}'.format(
-                                lims_utils.convert_decimal(
+                                si_unit.convert_decimal(
                                     val,default_unit, options.get('decimals',3)),
                                 symbol, options['symbol'])
                     else:

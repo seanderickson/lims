@@ -87,6 +87,7 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 import reports.utils.background_processor
 import reports.utils.log_utils
+import reports.utils.si_unit
 
 
 logger = logging.getLogger(__name__)
@@ -1080,6 +1081,44 @@ class XlsSerializerTest(SimpleTestCase):
                     
                     self.fail('xlsx input object not found')
 
+class SiUnitTest(TestCase):
+    
+    def test_convert_decimal(self):
+        
+        _data = [
+            # [raw_val, target_unit, decimals, multiplier, track_significance]
+            [['0.000040000', 1e-6, 1, 1, False], 
+                '40', 'No decimal is used when track significance is off'],
+            [['0.000040000', 1e-6, 1, 1, True], 
+                '40.0', 'One decimal is kept, due to track significance flag, and decimals=1'],
+            [['0.000040000', 1e-3, 1, 1, False], 
+                '0', 'No decimal is used when track significance is off'],
+            [['0.000040000', 1e-3, 1, 1, True], 
+                '0.0', 'One decimal is kept, due to track significance flag, and decimals=1'],
+            [['0.000040000', 1e-9, 1, 1, False], 
+                '40000', 'No decimal is used when track significance is off'],
+            [['0.000040000', 1e-9, 1, 1, True], 
+                '40000.0', 'One decimal is shown to indicate significance'],
+            [['0.0000400000', 1e-9, 1, 1, True], 
+                '40000.0', 'One decimal is shown because decimals=1'],
+            [['0.00004000000', 1e-9, 1, 1, True], 
+                '40000.0', 'One decimal is shown because decimals=1'],
+            [['0.00004000000', 1e-9, 2, 1, True], 
+                '40000.00', 'Two decimals are shown because decimals=2'],
+            [['0.00004000000', 1e-9, 2, 1, False], 
+                '40000', 'No decimal is shown because decimals=2, but track significance is off'],
+
+        ]
+        
+        multiplier = 1
+        track_significance = False
+        
+        for args,expected_result, note in _data:
+            result = reports.utils.si_unit.convert_decimal(*args)
+            logger.info('input: %r, result: %r, expected: %r, Note: %s', 
+                args, result, expected_result, note)
+            self.assertEqual(str(result), expected_result)
+        
    
 class LogCompareTest(TestCase):
     

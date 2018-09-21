@@ -89,6 +89,7 @@ from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, \
     UserResourceAuthorization, FieldResource
 import reports.api
+import reports.utils.si_unit as si_unit
 from reports.api_base import un_cache, MultiAuthentication, \
     IccblBasicAuthentication, IccblSessionAuthentication, TRAILING_SLASH
 from reports.models import Vocabulary, ApiLog, UserProfile
@@ -6859,10 +6860,10 @@ class CopyWellResource(DbApiResource):
                 copywell_volume_warnings.append(
                     'CopyWell: %s, '
                     '(available: %s uL)' 
-                        % lims_utils.convert_decimal(
+                        % si_unit.convert_decimal(
                             copywell.volume, 1e-6, 1),
                     '(requested: %s uL)' 
-                        % lims_utils.convert_decimal(
+                        % si_unit.convert_decimal(
                             volume, 1e-6, 1))
 
             new_volume = copywell.volume - volume
@@ -7738,7 +7739,7 @@ class CherryPickRequestResource(DbApiResource):
         allow_percent = APP_PUBLIC_DATA.small_molecule_cherry_pick_ratio_allowed
         if cpr_data['screen_type'] == VOCAB.screen.screen_type.RNAI:
             allow_percent = APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
-        allow_percent = float(lims_utils.convert_decimal(allow_percent,1,3,100))
+        allow_percent = float(si_unit.convert_decimal(allow_percent,1,3,100))
         meta['cherry_pick_allowance_percent'] = allow_percent
         if cumulative_count > allowance:
               meta['cherry_pick_allowance_warning'] = (
@@ -7819,14 +7820,14 @@ class CherryPickRequestResource(DbApiResource):
                         scp_warn_map[searched_well_id] = {
                             'library_short_name': library_short_name,
                             'selected_concentration': u'{} {}M'.format(
-                                lims_utils.convert_decimal(
+                                si_unit.convert_decimal(
                                     molar_concentration,1e-3, 3),
-                                lims_utils.get_siunit_symbol(1e-3)),
+                                si_unit.get_siunit_symbol(1e-3)),
                             'alternate_well': best_alt['screened_well_id'],
                             'alternate_concentration':  u'{} {}M'.format(
-                                lims_utils.convert_decimal(
+                                si_unit.convert_decimal(
                                     best_alt['molar_concentration'],1e-3, 3),
-                                lims_utils.get_siunit_symbol(1e-3)),
+                                si_unit.get_siunit_symbol(1e-3)),
                             }
                 elif mg_ml_concentration:
                     best_alt = sorted(alt_list, reverse=True,
@@ -7837,11 +7838,11 @@ class CherryPickRequestResource(DbApiResource):
                         scp_warn_map[searched_well_id] = {
                             'library_short_name': library_short_name,
                             'selected_concentration': u'{} mg/ml'.format(
-                                lims_utils.convert_decimal(
+                                si_unit.convert_decimal(
                                     mg_ml_concentration,1, 3)),
                             'alternate_well': best_alt['screened_well_id'],
                             'alternate_concentration':  u'{} mg/ml'.format(
-                                lims_utils.convert_decimal(
+                                si_unit.convert_decimal(
                                     best_alt['mg_ml_concentration'],1, 3)),
                             }
                 else:
@@ -14256,14 +14257,14 @@ class LibraryScreeningResource(ActivityResource):
                         if screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
                             vol_min = LSR.MIN_WELL_VOL_SMALL_MOLECULE
                             error_key += (' (req %s)' 
-                                % lims_utils.convert_decimal(vol_min,1e-6, 1))
+                                % si_unit.convert_decimal(vol_min,1e-6, 1))
                         if volume_required is not None:
                             vol_after_transfer = (
                                 Decimal(_row['remaining_well_volume']) 
                                     - volume_required )
                             if vol_after_transfer < vol_min:
                                 self.addPlateError(
-                                    error_key % lims_utils.convert_decimal(
+                                    error_key % si_unit.convert_decimal(
                                         vol_after_transfer,1e-6, 1),
                                     plate_number)
                     else:
@@ -15544,10 +15545,10 @@ class LibraryScreeningResource(ActivityResource):
         #             plates_insufficient_volume.append(
         #                 (plate_key, 
         #                     '(available: %s uL)' 
-        #                         % lims_utils.convert_decimal(
+        #                         % si_unit.convert_decimal(
         #                             current_remaining_well_volume, 1e-6, 1),
         #                     '(requested: %s uL)' 
-        #                         % lims_utils.convert_decimal(
+        #                         % si_unit.convert_decimal(
         #                             new_volume_transferred_per_well, 1e-6, 1)))
         # 
         #         plate.remaining_well_volume = new_remaining_well_volume
@@ -15596,10 +15597,10 @@ class LibraryScreeningResource(ActivityResource):
                 plates_insufficient_volume.append(
                     (plate_key, 
                         '(available: %s uL)' 
-                            % lims_utils.convert_decimal(
+                            % si_unit.convert_decimal(
                                 plate.remaining_well_volume, 1e-6, 1),
                         '(requested: %s nL)' 
-                            % lims_utils.convert_decimal(
+                            % si_unit.convert_decimal(
                                 volume_to_transfer, 1e-9, 1)))
             cw_check_query = (
                 plate.copywell_set.exclude(volume=F('initial_volume'))
@@ -15654,7 +15655,7 @@ class LibraryScreeningResource(ActivityResource):
             # msg = '%d plates' % len(plates_insufficient_volume)
             # if library_screening.screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
             #     extra_msg = (' (%s uL is required for Small Molecule)'
-            #         %  lims_utils.convert_decimal(
+            #         %  si_unit.convert_decimal(
             #             self.MIN_WELL_VOL_SMALL_MOLECULE, 1e-6, 1))
             #     msg += extra_msg
             # raise ValidationError({

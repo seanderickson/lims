@@ -808,5 +808,21 @@ class Migration(migrations.Migration):
             unique_together=set([('screensaver_user', 'type')]),
         ),
 
+        migrations.AddField(
+            model_name='screen',
+            name='pin_transfer_approved_by',
+            field=models.ForeignKey('ScreensaverUser', null=True, 
+                on_delete=models.SET_NULL, 
+                related_name='pin_transfer_approved_screen', )),
+        migrations.AddField(
+            model_name='screen',
+            name='pin_transfer_date_approved',
+            field=models.DateField(null=True)),
+        migrations.AddField(
+            model_name='screen',
+            name='pin_transfer_comments',
+            field=models.TextField(null=True)),
+         
+
         
     ]

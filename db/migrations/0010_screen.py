@@ -66,11 +66,11 @@ def migrate_pin_transfer_approval(apps, schema_editor):
     Migrate the pin_transfer_approval activities to the
     "pin_transfer_approved_by" field, and record the date and comment
     '''
+    logger.info('1 - migrate_pin_transfer_approval')
     Screen = apps.get_model('db', 'Screen')
-    AdministrativeActivityModel = apps.get_model('db', 'AdministrativeActivity')
     count = 0
     for s in ( Screen.objects.all()
-        .filter(pin_transfer_admin_activity__isnull=False)):
+        .filter(pin_transfer_admin_activity_id__isnull=False)):
         activity = s.pin_transfer_admin_activity;
         
         logger.info('migrate pin transfer activity for screen: %r', s)
@@ -194,33 +194,8 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(migrate_screen_status),
         
-        migrations.AddField(
-            model_name='screen',
-            name='pin_transfer_approved_by',
-            field=models.ForeignKey('ScreensaverUser', null=True, 
-                on_delete=models.SET_NULL, 
-                related_name='pin_transfer_approved_screen', )),
-        migrations.AddField(
-            model_name='screen',
-            name='pin_transfer_date_approved',
-            field=models.DateField(null=True)),
-        migrations.AddField(
-            model_name='screen',
-            name='pin_transfer_comments',
-            field=models.TextField(null=True)),
-         
         migrations.RunPython(migrate_pin_transfer_approval),
         
-        migrations.RunSQL('''
-            delete from activity where exists(select null 
-            from screen where pin_transfer_admin_activity = activity_id);
-        '''),
-         
-        migrations.RemoveField(
-            model_name='screen',
-            name='pin_transfer_admin_activity',
-        ),
-         
         migrations.RunPython(migrate_screen_project_phase),
         
 # Moved to final migration        

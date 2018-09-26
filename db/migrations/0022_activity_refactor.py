@@ -95,8 +95,16 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='AdministrativeActivity',
         ),
+        migrations.RunSQL('''
+            delete from activity where exists(select null 
+            from screen where pin_transfer_admin_activity_id = activity_id);
+        '''),
          
-        # TODO: 20180921: remove pin_transfer_admin_activity_id (rework db/api)
+        migrations.RemoveField(
+            model_name='screen',
+            name='pin_transfer_admin_activity',
+        ),
+         
         migrations.RunSQL('''
             create table archived_activities as select * from activity where 
                 not (

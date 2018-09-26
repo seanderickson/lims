@@ -570,14 +570,14 @@ class Migration(migrations.Migration):
             name='funding_support',
             field=models.TextField(null=True),
         ),
-        # 20170524
-        # Allow serviced user to be null; either serviced_user or 
-        # serviced_screen required (TODO: verify workflow with JAS/KR)
-        migrations.AlterField(
-            model_name='serviceactivity',
-            name='serviced_user',
-            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
-        ),
+#         # 20170524
+#         # Allow serviced user to be null; either serviced_user or 
+#         # serviced_screen required (TODO: verify workflow with JAS/KR)
+#         migrations.AlterField(
+#             model_name='serviceactivity',
+#             name='serviced_user',
+#             field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+#         ),
         
         migrations.CreateModel(
             name='ScreenFundingSupports',
